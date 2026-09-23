@@ -237,7 +237,7 @@ fn seed_published_memo(conn: &rusqlite::Connection) -> String {
 async fn author_can_stop_their_own_memo_without_memo_stop() {
     // A manager author holds only `memo:write` — the author short-circuit
     // must let them stop their own memo (the ruling preserves that right).
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     let memo_id = seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -253,7 +253,7 @@ async fn author_can_stop_their_own_memo_without_memo_stop() {
 #[tokio::test]
 async fn admin_can_stop_another_authors_memo() {
     // `memo:stop` covers stopping anyone's memo (Owner/Admin presets).
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-admin", "role-admin");
     let memo_id = seed_published_memo(&conn);
@@ -271,7 +271,7 @@ async fn peer_manager_cannot_stop_another_managers_memo() {
     // The property the old strict-> rank rule pinned, now enforced by the
     // grant: a manager holds `memo:write` but NOT `memo:stop`, so stopping
     // another manager's memo denies even though the caller could author.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-peer", "role-manager");
     let memo_id = seed_published_memo(&conn);
@@ -290,7 +290,7 @@ async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
     // must deny — and because the denial comes from the permission gate,
     // not the author check, this also proves an unknown/unrelated user
     // cannot ride the author short-circuit.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-staff", "role-staff");
     let memo_id = seed_published_memo(&conn);
@@ -305,7 +305,7 @@ async fn staff_cannot_stop_any_memo_even_their_own_claim_is_checked() {
 
 #[tokio::test]
 async fn stop_rejects_invalid_session() {
-    let tb = TestBridge::new().with_conn(kasirmu_core::migrations::fresh_db());
+    let tb = TestBridge::new().with_conn(crate::testing::temp_conn());
     let result = stop_memo_scoped(&tb.ctx(), "missing-token", "memo-1").await;
     assert!(matches!(result, Err(BridgeError::InvalidSession)));
 }
@@ -348,7 +348,7 @@ fn session_for_device(user_id: &str, role_id: &str, device: &str) -> SessionCont
 
 #[tokio::test]
 async fn read_reaches_the_recipient_row_behind_the_session_device() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
     let memo_id = seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -376,7 +376,7 @@ async fn read_reaches_the_recipient_row_behind_the_session_device() {
 async fn read_of_a_location_memo_resolves_the_same_way() {
     // Location targeting fans out through `memo_locations` → bound terminals,
     // and the read must resolve the device identity for that branch too.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     conn.execute_batch("INSERT INTO locations (id, name) VALUES ('loc-1', 'Front')")
         .unwrap();
     conn.execute(
@@ -418,7 +418,7 @@ async fn read_is_empty_not_an_error_for_a_device_without_a_terminal_row() {
     // no row at all, so nothing is addressed to it — an empty list, and the
     // cadence still served so the banner keeps polling instead of dying on a
     // missing identity.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
     tb.sessions().write().unwrap().insert(
@@ -439,7 +439,7 @@ async fn read_is_empty_not_an_error_for_a_device_without_a_terminal_row() {
 async fn read_is_empty_for_the_empty_device_identity_login_falls_back_to() {
     // `WorkspaceContext` sends `terminal_id: await getDeviceId().catch(() => "")`,
     // so "" is a live input. It must match nothing — never every memo.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
     seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -460,7 +460,7 @@ async fn recipient_identity_is_the_row_id_an_id_or_a_device_resolves_to() {
     // device identity a session carries resolves to the row, a row id resolves
     // to itself (a caller that already holds one is not sent astray), and an
     // unresolved value stays `None` — never handed back as a terminal id.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
     let tb = TestBridge::new().with_conn(conn);
 
@@ -491,7 +491,7 @@ async fn recipient_identity_is_the_row_id_an_id_or_a_device_resolves_to() {
 
 #[tokio::test]
 async fn ack_writes_the_recipient_row_behind_the_session_device() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
     let memo_id = seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -551,7 +551,7 @@ use crate::terminals::{RegisterTerminalArgs, register_terminal_scoped};
 
 #[tokio::test]
 async fn publish_reaches_a_terminal_registered_through_the_store_db() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-staff", "role-staff");
     let tb = TestBridge::new().with_conn(conn);
@@ -640,7 +640,7 @@ async fn publish_reaches_terminals_from_both_registration_homes() {
     // identity db by `set_features` (MultiTerminal), while the other POS was
     // registered through Settings → Terminals into the per-store db. A publish
     // must address both, each by its own row id.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     seed_user(&conn, "user-staff", "role-staff");
     let auto = Terminal::new("DESKTOP-AUTHOR (auto)", "DESKTOP-AUTHOR");
@@ -718,7 +718,7 @@ async fn publish_refuses_when_no_terminal_can_receive() {
     // installation looks like before Settings → Terminals has registered
     // anything, and it is where the old silent success lived. The refusal must
     // be a failure the author can act on, and the draft must survive it.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_user(&conn, "user-manager", "role-manager");
     let tb = TestBridge::new().with_conn(conn);
     tb.sessions().write().unwrap().insert(
@@ -789,7 +789,7 @@ async fn publish_org_memo(tb: &TestBridge, token: &str) -> String {
 async fn ack_without_a_terminal_row_is_a_typed_failure_not_a_silent_ok() {
     // The caller drops the memo from view optimistically and swallows the
     // error, so a success here would hide an ack that never landed.
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "term-uuid-1", "RESTAURANT-POS");
     let memo_id = seed_published_memo(&conn);
     let tb = TestBridge::new().with_conn(conn);
@@ -822,7 +822,7 @@ async fn ack_without_a_terminal_row_is_a_typed_failure_not_a_silent_ok() {
 
 #[tokio::test]
 async fn stored_pairing_is_reused_only_while_it_names_this_devices_row() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "terminal-1", "dev-terminal-1");
     let tb = TestBridge::new().with_conn(conn);
     let session = session_for_device("user-staff", "role-staff", "dev-terminal-1");
@@ -866,7 +866,7 @@ async fn stored_pairing_is_reused_only_while_it_names_this_devices_row() {
 
 #[tokio::test]
 async fn an_unresolved_device_never_pairs_and_falls_back_to_the_stored_key() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_terminal(&conn, "terminal-1", "dev-terminal-1");
     let tb = TestBridge::new().with_conn(conn);
     let session = session_for_device("user-staff", "role-staff", "UNREGISTERED-DEVICE");

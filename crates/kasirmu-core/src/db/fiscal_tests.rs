@@ -464,3 +464,81 @@ fn the_schema_refuses_a_kind_that_bypasses_core_validation() {
         "expected the 20260928 CHECK to refuse the row, got {err}"
     );
 }
+
+// ── the statutory claim under real concurrency ───────────────────────
+
+/// Two claims racing on two connections must never observe the same ordinal.
+///
+/// The invariant is statutory: a document number identifies one document, so
+/// a reused ordinal is a legal defect, not a UI glitch. Both production
+/// callers run the claim inside an IMMEDIATE transaction
+/// (`sales_checkout.rs` / `sales_lifecycle.rs`), so the race is opened here
+/// exactly the way production opens it — a file DB, because two connections
+/// must see the same rows (an in-memory DB is private per connection).
+#[test]
+fn concurrent_claims_never_issue_the_same_number() {
+    use rusqlite::{Connection, Transaction, TransactionBehavior};
+
+    let dir = std::env::temp_dir().join(format!("oz_fiscal_race_{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("test.db");
+
+    {
+        let mut file_conn = Connection::open(&db_path).unwrap();
+        {
+            let template = migrations::fresh_db();
+            let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+            backup
+                .run_to_completion(10, std::time::Duration::from_millis(0), None)
+                .unwrap();
+        }
+        let store = Store::new(&file_conn);
+        seed_claim_fixture(&store, "ent-race", "loc-race", "sale-a");
+        seed_sale(&store, "sale-b");
+    }
+
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let spawn = |sale: &'static str| {
+        let db_path = db_path.clone();
+        let barrier = std::sync::Arc::clone(&barrier);
+        std::thread::spawn(move || {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let store = Store::new(&conn);
+            barrier.wait();
+            let tx = Transaction::new_unchecked(&conn, TransactionBehavior::Immediate).unwrap();
+            let claimed = store
+                .claim_statutory_number_for_sale(&tx, sale, "loc-race", "receipt", NOW)
+                .unwrap();
+            tx.commit().unwrap();
+            claimed.expect("a configured series must issue a number")
+        })
+    };
+    let a = spawn("sale-a");
+    let b = spawn("sale-b");
+    let mut got = vec![a.join().unwrap(), b.join().unwrap()];
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            "INV/2026-09/0001".to_string(),
+            "INV/2026-09/0002".to_string()
+        ],
+        "two concurrent claims must draw DISTINCT sequential ordinals, got {got:?}"
+    );
+
+    // And the counter itself must have advanced exactly twice.
+    let conn = Connection::open(&db_path).unwrap();
+    let counter: i64 = conn
+        .query_row(
+            "SELECT current_value FROM document_number_sequences
+             WHERE legal_entity_id = 'ent-race' AND document_kind = 'receipt'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(counter, 2, "the series must have advanced once per claim");
+
+    drop(conn);
+    let _ = std::fs::remove_dir_all(&dir);
+}

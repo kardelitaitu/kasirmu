@@ -20,6 +20,12 @@ type RenewRequest struct {
 	TenantID string `json:"tenant_id"`
 	APIKey   string `json:"api_key"` // ignored for auth — Bearer header is authoritative
 	Key      string `json:"key"`     // newly purchased key to extend subscription
+	// MachineID is this installation's device fingerprint (ADR #57 §2.5).
+	//
+	// Empty from a pre-#57 client, which is treated as "cannot decide" and
+	// NEVER as a refusal: adding this field may only ever ADD a refusal, so an
+	// old client keeps renewing exactly as it did before.
+	MachineID string `json:"machine_id,omitempty"`
 }
 
 func handleRenew(app core.App) func(e *core.RequestEvent) error {
@@ -82,6 +88,31 @@ func handleRenew(app core.App) func(e *core.RequestEvent) error {
 		if tenant.GetString("id") != req.TenantID {
 			return e.JSON(http.StatusUnauthorized, map[string]any{
 				"error": "tenant_id does not match api_key",
+			})
+		}
+
+		// ── ADR #57 §2.5: refuse renewal to a DEVICE that failed its build check ──
+		//
+		// Placed AFTER authentication on purpose: an unauthenticated caller must
+		// not be able to probe which devices are flagged by reading the status
+		// code. It is also after the tenant_id check, so the refusal implies a
+		// valid credential.
+		//
+		// The message is the SAME generic one this endpoint already returns for a
+		// non-active tenant (ADR #57 §Q-D: a fingerprint refusal must be
+		// indistinguishable from an ordinary lapse, or it tells the attacker
+		// precisely which control fired). Returning a distinct string here would
+		// undo that decision in the one place the client can read it.
+		//
+		// Scope: this denies PERSISTENCE, not access. The device keeps operating
+		// on its current signed entitlement until it expires (§2.5), because
+		// locking a till mid-shift on a false positive costs more than the abuse
+		// it prevents.
+		if deviceHasFingerprintMismatch(app, req.MachineID) {
+			log.Printf("/renew: refused for tenant %q — device %q has a fingerprint mismatch (ADR #57 §2.5)",
+				tenant.Id, req.MachineID)
+			return e.JSON(http.StatusUnauthorized, map[string]any{
+				"error": "invalid api_key or tenant is not active",
 			})
 		}
 		// ── Per-tenant lock (Fix #3: renewal TOCTOU) ─────────────

@@ -352,7 +352,8 @@
         c.appendChild(tableCard(t('table.expiringSoon'), [t('th.email'),t('th.tier'),t('th.expires'),t('th.daysLeft')], m.expiringSoon.map(d => [d.email, d.tier, d.expiresAt, String(d.daysLeft)])));
       }
       // Needs attention (#4): surfaced ABOVE the revenue hero so the
-      // operator sees action items before the numbers. Grace-period
+      // operator sees action items before the numbers. Build-integrity
+      // violations and over-quota devices (ADR #57 §2.4), then grace-period
       // subscriptions, expired-but-active keys, and recent refunds.
       if (m.needsAttention && m.needsAttention.length > 0) {
         const attCard = el('div', 'card alert-card');
@@ -360,7 +361,13 @@
         const attList = el('ul', 'alert-list');
         m.needsAttention.forEach(item => {
           const li = el('li', 'alert-item alert-item--' + item.type);
-          const cls = item.type === 'refund' ? 'alert-badge alert-badge--bad' : (item.type === 'expired_active' ? 'alert-badge alert-badge--warn' : 'alert-badge alert-badge--warn');
+          // Severity, not decoration. A tampered build (ADR #57 §2.1) and a
+          // refund are both BAD — act now; everything else is a warning to
+          // triage. The old nested ternary sent every unrecognised type to
+          // --warn, which would have rendered a re-signed APK as a mere
+          // warning: the one finding on this panel with a security cause.
+          const BAD_TYPES = ['refund', 'integrity_mismatch'];
+          const cls = 'alert-badge alert-badge--' + (BAD_TYPES.includes(item.type) ? 'bad' : 'warn');
           li.appendChild(el('span', cls, t('alert.' + item.type)));
           li.appendChild(el('span', 'alert-email', item.email || '—'));
           li.appendChild(el('span', 'alert-detail', item.detail || ''));
@@ -472,6 +479,7 @@
       // ── Search + pagination toolbar ─────────────────────────────
       const toolbar = el('div', 'tenant-toolbar');
       const searchBox = el('input', 'input search-input');
+      searchBox.setAttribute('aria-label', t('toolbar.search'));
       searchBox.placeholder = t('toolbar.searchPlaceholder');
       searchBox.value = tenantsSearch;
       searchBox.addEventListener('keydown', ev => {
@@ -699,9 +707,9 @@
       box.appendChild(el('h3', null, t('tenant.editTitle')));
       const tenant = data.tenant || {};
       const lbl1 = el('p', 'muted', t('th.email')); lbl1.style.cssText = 'margin:.5rem 0 .15rem;font-size:.72rem';
-      const email = el('input', 'input'); email.type = 'email'; email.value = tenant.email || ''; email.autocomplete = 'off'; email.spellcheck = false;
+      const email = el('input', 'input'); email.setAttribute('aria-label', t('th.email')); email.type = 'email'; email.value = tenant.email || ''; email.autocomplete = 'off'; email.spellcheck = false;
       const lbl2 = el('p', 'muted', t('tenant.phone')); lbl2.style.cssText = 'margin:.6rem 0 .15rem;font-size:.72rem';
-      const phone = el('input', 'input'); phone.type = 'tel'; phone.value = tenant.phone || ''; phone.placeholder = '+62 …';
+      const phone = el('input', 'input'); phone.setAttribute('aria-label', t('tenant.phone')); phone.type = 'tel'; phone.value = tenant.phone || ''; phone.placeholder = '+62 …';
       const errLine = el('p', 'small', ''); errLine.style.cssText = 'color:var(--danger);margin:.4rem 0 0;display:none';
       box.appendChild(lbl1); box.appendChild(email); box.appendChild(lbl2); box.appendChild(phone); box.appendChild(errLine);
       const act = el('div', 'modal-actions');
@@ -740,12 +748,12 @@
       const hint = el('p', 'small', t('tenant.grantHint')); hint.style.marginBottom = '.6rem';
       box.appendChild(hint);
       const lblT = el('p', 'muted', t('th.tier')); lblT.style.cssText = 'margin:.2rem 0 .15rem;font-size:.72rem';
-      const select = el('select', 'input'); ['plus','pro','premium','enterprise'].forEach(tier => select.appendChild(el('option', null, tier)));
+      const select = el('select', 'input'); select.setAttribute('aria-label', t('th.tier')); ['plus','pro','premium','enterprise'].forEach(tier => select.appendChild(el('option', null, tier)));
       const lblM = el('p', 'muted', t('tenant.months') + ' (' + t('tenant.or') + ' ' + t('tenant.exactDate') + ')'); lblM.style.cssText = 'margin:.6rem 0 .15rem;font-size:.72rem';
-      const months = el('input', 'input'); months.type = 'number'; months.min = '1'; months.value = '12';
-      const dateIn = el('input', 'input'); dateIn.type = 'date'; dateIn.style.marginTop = '.35rem';
+      const months = el('input', 'input'); months.setAttribute('aria-label', t('tenant.months')); months.type = 'number'; months.min = '1'; months.value = '12';
+      const dateIn = el('input', 'input'); dateIn.setAttribute('aria-label', t('tenant.exactDate')); dateIn.type = 'date'; dateIn.style.marginTop = '.35rem';
       const lblR = el('p', 'muted', t('tenant.reasonGrant')); lblR.style.cssText = 'margin:.6rem 0 .15rem;font-size:.72rem';
-      const reason = el('input', 'input'); reason.placeholder = t('tenant.reasonGrant'); reason.autocomplete = 'off';
+      const reason = el('input', 'input'); reason.setAttribute('aria-label', t('tenant.reasonGrant')); reason.placeholder = t('tenant.reasonGrant'); reason.autocomplete = 'off';
       const errLine = el('p', 'small', t('tenant.reasonRequired')); errLine.style.cssText = 'color:var(--danger);margin:.4rem 0 0;display:none';
       box.appendChild(lblT); box.appendChild(select); box.appendChild(lblM); box.appendChild(months); box.appendChild(dateIn); box.appendChild(lblR); box.appendChild(reason); box.appendChild(errLine);
       const act = el('div', 'modal-actions');
@@ -775,7 +783,7 @@
       box.appendChild(quick);
       const or = el('p', 'muted', '— ' + t('tenant.or') + ' —'); or.style.cssText = 'text-align:center;margin:.5rem 0;font-size:.72rem';
       box.appendChild(or);
-      const dateIn = el('input', 'input'); dateIn.type = 'date'; dateIn.style.width = '100%';
+      const dateIn = el('input', 'input'); dateIn.setAttribute('aria-label', t('tenant.exactDate')); dateIn.type = 'date'; dateIn.style.width = '100%';
       box.appendChild(dateIn);
       const setBtn = el('button', 'btn', t('tenant.setExactDate')); setBtn.style.cssText = 'margin-top:.5rem;width:100%'; setBtn.disabled = true;
       dateIn.addEventListener('input', () => { setBtn.disabled = !dateIn.value; });
@@ -812,9 +820,9 @@
       // gets a tier-override when they subscribe, not via admin override).
       // Keep this list in sync with the server's ValidTiers if new tiers
       // are added (see LSE-8 tier-override handler).
-      const select = el('select', 'input'); ['plus','pro','premium','enterprise'].forEach(tier => { const opt = el('option', null, tier); if (tier === (data.subscription && data.subscription.tierKey)) opt.selected = true; select.appendChild(opt); });
+      const select = el('select', 'input'); select.setAttribute('aria-label', t('th.tier')); ['plus','pro','premium','enterprise'].forEach(tier => { const opt = el('option', null, tier); if (tier === (data.subscription && data.subscription.tierKey)) opt.selected = true; select.appendChild(opt); });
       box.appendChild(select);
-      const reason = el('input', 'input'); reason.placeholder = t('tenant.reasonOverride'); reason.style.cssText = 'margin-top:.5rem;' + reason.style.cssText; box.appendChild(reason);
+      const reason = el('input', 'input'); reason.setAttribute('aria-label', t('tenant.reasonOverride')); reason.placeholder = t('tenant.reasonOverride'); reason.style.cssText = 'margin-top:.5rem;' + reason.style.cssText; box.appendChild(reason);
       const act = el('div', 'modal-actions');
       const closeModal = mountModal(modal, box);
       const cancel = el('button', 'btn btn-ghost', t('tenant.cancel')); cancel.addEventListener('click', closeModal); act.appendChild(cancel);
@@ -929,6 +937,7 @@
         const logMeta = el('span', 'muted log-meta');
         logsHead.appendChild(logMeta);
         const linesSel = el('select', 'lines-sel');
+        linesSel.setAttribute('aria-label', t('health.logsLines'));
         ['100', '300', '500'].forEach(n => {
           const o = el('option', null, n + ' lines');
           o.value = n;

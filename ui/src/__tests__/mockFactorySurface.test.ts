@@ -153,6 +153,9 @@ const KNOWN_DEAD: Record<string, string[]> = {
     'getCreditSettings', 'getReceiptSettings', 'getStoreSettings', 'getUserPreferences',
     'listCreditSales', 'setCreditSettings', 'setReceiptSettings', 'setStoreSettings',
     'setUserPreferences', 'settleCredit',
+    // `getSetupStatus` left this list with the ADR #56 §2.2 retirement: the
+    // module no longer exports it, so a mock defining it would be dead, and
+    // the factory was cleaned in the same pass.
   ],
   '@/api/products <- createProductsApiMock': [
     'createCategory', 'deleteCategory', 'updateCategory',
@@ -206,6 +209,10 @@ const KNOWN_GAPS: Record<string, string[]> = {
   // the module and not in the factory, so PosScreen's new read threw. `getSettingScoped`
   // itself is now OUT of this list because the factory defines it -- which is the
   // deletion direction this map is designed to force a visible edit for.
+  // 9 names. ADR #56 §2.1/§2.2 replaced `getSetupStatus`/`dismissSetupWizard`
+  // with `getFirstRunState`/`provisionDevice`, and the factory was brought
+  // forward in the same pass, so those two are mocked rather than listed here —
+  // the deletion direction this map is designed to force a visible edit for.
   '@/api/settings <- createSettingsApiMock': [
     'getCreditSettingsScoped', 'getDeploymentInfo', 'getHardwareSettingsScoped',
     'getSetting', 'onSettingsUpdated', 'seedDefaultRolesScoped',

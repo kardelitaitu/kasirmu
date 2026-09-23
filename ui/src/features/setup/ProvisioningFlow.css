@@ -1,0 +1,510 @@
+/* First-run provisioning (ADR #56 §2.3).
+ *
+ * Mirrors CreatePinScreen.css's tokens and card geometry deliberately: this
+ * flow REPLACES that screen on a fresh install (§2.2 makes the owner part of
+ * the provisioning transaction), so it must read as the same surface rather
+ * than a new one. Tokens only — no raw colours. */
+
+/* The container is its own scroll container on purpose. The tablet shell's
+ * html/body/#root (index.mobile.html) are height: 100% + overflow: hidden, so
+ * the page NEVER scrolls: without the two height lines below, a card taller
+ * than the viewport was clipped with no scroll distance anywhere.
+ *
+ * height: 100% resolves against #root's definite viewport height on the
+ * tablet, which is what makes overflow-y: auto actually engage (an auto-height
+ * container grows with its content and never overflows itself, so its
+ * scrollbar never appears and the clipping just moved up to #root). On the
+ * desktop shell #root has min-height only — no definite height — so the
+ * percentage resolves to auto there and the body keeps scrolling as before;
+ * min-height: 100dvh keeps the full-viewport gradient on both.
+ *
+ * The card takes margin: auto instead of justify-content: center on this
+ * container: main-axis centering on a scroll container pushes the top of the
+ * overflow ABOVE the scroll origin, where no scroll distance can reach it
+ * (the classic flex-centering trap). margin: auto is the widely-supported
+ * equivalent of `safe center` — centred when the card fits, top-aligned and
+ * fully scrollable when it does not.
+ *
+ * DISPLAY INSETS. This flow is the full-screen fresh-device surface: it renders
+ * INSTEAD of the shell (AppShell renders it before `setupKnownComplete`), so it
+ * inherits none of the shell's padding and must apply the display insets itself.
+ * That is the contract in `ui/src/theme/tokens.css` ("Every FULL-SCREEN surface
+ * applies these itself"). Those tokens resolve the host's safe-area insets, so on
+ * an inset tablet a flat `padding` leaves the card under the status or gesture bar.
+ *
+ * The gutter is its own custom property so a breakpoint can restate the gutter
+ * without restating the whole inset sum — the same shape `.setup-page` used, and
+ * `setupWizardLandscape.test.ts` pins both surfaces against it. */
+.provisioning-container {
+  --provisioning-gutter: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  min-height: 100dvh;
+  overflow-y: auto;
+  background: radial-gradient(circle at 50% -20%, var(--neutral-200) 0%, var(--neutral-50) 100%);
+  color: var(--color-fg-primary);
+  font-family: var(--font-sans);
+  padding:
+    calc(var(--provisioning-gutter) + var(--inset-top))
+    calc(var(--provisioning-gutter) + var(--inset-right))
+    calc(var(--provisioning-gutter) + var(--inset-bottom))
+    calc(var(--provisioning-gutter) + var(--inset-left));
+}
+
+.provisioning-card {
+  margin: auto;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-3xl);
+  padding: var(--space-12);
+  width: 100%;
+  max-width: 31.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Compact geometry on a SHORT viewport. Measured on the two viewports this flow
+ * actually ships to (ui/e2e/playwright.config.ts): the card is 1460px against
+ * the desktop's 768px (748px of overflow) and 1633px against the tablet's 1366px
+ * (323px over). The 48px padding and 24px gap above are desktop-sized and were
+ * applied unchanged everywhere, so 240px of a 768px screen — 31% — went to
+ * padding and whitespace before any content.
+ *
+ * This is the one saving available without restructuring the flow: the remaining
+ * content (a 2-column mode choice, the account-linking box with its 181px QR,
+ * five inputs) is all load-bearing and cannot be trimmed.
+ *
+ * Keyed on height, not width: the problem is vertical room, and the same 1024px
+ * tablet is comfortable in landscape and cramped in a shorter window. */
+@media (max-height: 900px) {
+  .provisioning-card {
+    padding: var(--space-6);
+    gap: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-card {
+    opacity: 0;
+    animation: fade-up var(--duration-600) cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+/* The keyframes MUST live in this file. CSS @keyframes do not cross files, so
+ * animation: fade-up ... forwards with no local definition left the card at the
+ * opacity: 0 above for ever: the shell rendered an invisible form, taps landed on
+ * invisible inputs, and no JS error was raised — the blank-screen-with-no-console-
+ * error signature. Byte-identical to CreatePinScreen.css:125 and
+ * LicenseActivationScreen.css:214, the two siblings this flow mirrors. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Progress rail ──────────────────────────────────────────────────
+ * The card is 1423px tall in a 1366px tablet viewport (measured, Playwright),
+ * so the submit button and the last two fields begin below the fold. The rail is
+ * the only thing telling the merchant how much form is left.
+ *
+ * State is never colour-only, matching .provisioning-field-error's contract
+ * above: a completed step shows a check glyph and the current one carries
+ * `aria-current="step"` plus a border, so the three states survive greyscale. */
+.provisioning-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.provisioning-step-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provisioning-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+/* The step's own name, beside its marker. Added because the walker found the
+ * class used with no rule — the label would have inherited whatever the <li>
+ * set, which is not a contract. */
+.provisioning-step-label {
+  white-space: nowrap;
+}
+
+.provisioning-step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-step.is-current {
+  color: var(--color-fg-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-step.is-current .provisioning-step-marker {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.provisioning-step.is-done .provisioning-step-marker {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-pos-on-primary);
+}
+
+.provisioning-step-progress {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.provisioning-header {
+  text-align: center;
+}
+
+.provisioning-header h1 {
+  font-size: var(--text-3xl);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.provisioning-header p {
+  margin: 0;
+  color: var(--color-fg-secondary);
+}
+
+.provisioning-error {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger-fg);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+}
+
+.provisioning-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.provisioning-fieldset legend {
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-3);
+  padding: 0;
+}
+
+.provisioning-store-types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.provisioning-store-type {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.provisioning-store-type:hover {
+  border-color: var(--color-accent-hover);
+}
+
+/* The selected state must not rely on colour alone (WCAG 1.4.1): `aria-pressed`
+ * carries the state to assistive tech, and the border weight carries it visually
+ * for anyone who cannot distinguish the accent hue. */
+.provisioning-store-type.is-selected {
+  border-color: var(--color-accent);
+  border-width: 2px;
+  background: var(--color-accent-subtle);
+}
+
+.provisioning-store-type small {
+  color: var(--color-fg-secondary);
+}
+
+.provisioning-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.provisioning-field label {
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-field input {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg);
+  color: var(--color-fg-primary);
+  font: inherit;
+}
+
+.provisioning-field input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+/* Inline field validation. The border marks the field AND the message names the
+ * problem: colour alone would be the only signal for a user who cannot see it,
+ * and `aria-invalid` carries the same fact to a screen reader. */
+.provisioning-field input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.provisioning-field-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
+}
+
+.provisioning-account-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.provisioning-account-hint {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  margin: 0;
+}
+
+.provisioning-account-linked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-success-subtle);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-lg);
+  color: var(--color-fg-primary);
+  font-size: var(--text-sm);
+}
+
+.provisioning-account-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.provisioning-account-input-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.provisioning-account-input-row input {
+  flex: 1;
+}
+
+.provisioning-note {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  margin: 0;
+}
+
+.provisioning-status-warn {
+  font-size: var(--text-sm);
+  color: var(--color-warning);
+  margin: 0;
+}
+
+/* Mode options (Mode 1: Standalone vs Mode 2: Linked) */
+.provisioning-mode-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.provisioning-mode-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.provisioning-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: all var(--duration-200) ease;
+}
+
+.provisioning-mode-card:hover {
+  border-color: var(--color-accent-hover);
+}
+
+.provisioning-mode-card.is-selected {
+  border-color: var(--color-accent);
+  border-width: 2px;
+  background: var(--color-accent-subtle);
+}
+
+.provisioning-mode-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.provisioning-mode-icon {
+  font-size: var(--text-lg);
+}
+
+.provisioning-mode-card p {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+  line-height: var(--leading-normal);
+}
+
+/* Tablet linking subtabs & QR display */
+.provisioning-tablet-link-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.provisioning-subtabs {
+  display: flex;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+  gap: var(--space-1);
+}
+
+.provisioning-subtab {
+  flex: 1;
+  /* Anchors this element's own noise-dither ::after (components.css). */
+  position: relative;
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: center;
+}
+
+.provisioning-subtab.active {
+  background: var(--color-bg-elevated);
+  color: var(--color-fg-primary);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.provisioning-pairing-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.provisioning-pairing-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* --color-paper, NOT a surface token: a QR quiet zone has to stay white in
+   every theme or scanners reject the code. Same reasoning, and the same
+   token, as components/QrisQrDisplay.css. */
+.provisioning-qr-wrapper {
+  /* Anchors its noise-dither ::after. */
+  position: relative;
+  background: var(--color-paper);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: inline-flex;
+}
+
+.provisioning-code-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.12em;
+  color: var(--color-fg-primary);
+  background: var(--color-bg);
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.provisioning-pulse-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-fg-secondary);
+  margin: 0;
+}
+
+.provisioning-pulse-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--color-accent);
+}
+
+/* Gated: an infinite attention pulse. Under reduced motion the dot must not
+   pulse, and nothing is lost — the static dot in the rule above IS the
+   after-state. */
+@media (prefers-reduced-motion: no-preference) {
+  .provisioning-pulse-dot {
+    animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}

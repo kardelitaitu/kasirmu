@@ -251,9 +251,17 @@ fn build_pull_sql_cursor_without_since_omits_lower_bound() {
         sql.contains("created_at > $2 OR (created_at = $2 AND id > $3)"),
         "cursor-only branch must carry the composite tiebreak, got: {sql}"
     );
+    // C3 S5 moved the arity: the origin identity is now $4, so the LIMIT
+    // is $5 (tenant + tiebreak + origin + limit). The lower-bound and
+    // tiebreak assertions above are the semantics this test protects and
+    // they are unchanged.
     assert!(
-        sql.contains("LIMIT $4"),
-        "cursor-only branch has 4 params (tenant + tiebreak + limit), got: {sql}"
+        sql.contains("LIMIT $5"),
+        "cursor-only branch has 5 params (tenant + tiebreak + origin + limit), got: {sql}"
+    );
+    assert!(
+        sql.contains("$4::text IS NULL OR origin_terminal_id IS NULL"),
+        "cursor-only branch must carry the self-origin filter, got: {sql}"
     );
 }
 
@@ -267,6 +275,69 @@ fn build_pull_sql_without_since_or_cursor_is_tenant_scoped() {
         sql.contains("tenant_id = $1"),
         "initial sync must be tenant-scoped, got: {sql}"
     );
+}
+
+/// C3 S5: every one of the four pull arms excludes rows this terminal
+/// originated, and each binds the identity at the placeholder its own
+/// renumbering produced — a mismatch here is a bind error at runtime, not a
+/// compile error, so it is asserted per arm.
+#[test]
+fn build_pull_sql_filters_self_origin_in_all_four_arms() {
+    for (label, sql, placeholder) in [
+        ("bare", build_pull_sql(None, None), "$2"),
+        ("since", build_pull_sql(Some("2026-01-01"), None), "$3"),
+        (
+            "cursor-only",
+            build_pull_sql(None, Some("2026-01-02|item-42")),
+            "$4",
+        ),
+        (
+            "since+cursor",
+            build_pull_sql(Some("2026-01-01"), Some("2026-01-02|item-42")),
+            "$5",
+        ),
+    ] {
+        assert!(
+            sql.contains("origin_terminal_id IS NULL"),
+            "{label}: a NULL origin must always match, got: {sql}"
+        );
+        let clause = format!(
+            "{placeholder}::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> {placeholder}"
+        );
+        assert!(
+            sql.contains(&clause),
+            "{label}: filter must bind {placeholder}, got: {sql}"
+        );
+        // The filter is a WHERE-list addition only: ordering and page size
+        // semantics are untouched in every arm.
+        assert!(
+            sql.contains("ORDER BY created_at ASC, id ASC"),
+            "{label}: ordering must be untouched, got: {sql}"
+        );
+    }
+}
+
+/// C3 S5: a transport that never declares a terminal identity keeps the
+/// unfiltered pull — the unpaired-install and admin-minted-token case. The
+/// field is a builder default, not a constructor parameter, so existing
+/// callers (including the ignored PG integration tests) keep compiling.
+#[test]
+fn transport_without_a_terminal_identity_has_no_filter() {
+    let transport = PgTransport::new("localhost", 5432, "db", "u", "p", "default")
+        .expect("transport builds without connecting");
+    assert_eq!(
+        transport.terminal_id, None,
+        "the default must be None: no identity, no filter"
+    );
+
+    let paired = transport.with_terminal_id(Some("terminal-A".into()));
+    assert_eq!(paired.terminal_id.as_deref(), Some("terminal-A"));
+
+    // An unpaired install explicitly passes None, which is the same state.
+    let unpaired = PgTransport::new("localhost", 5432, "db", "u", "p", "default")
+        .unwrap()
+        .with_terminal_id(None);
+    assert_eq!(unpaired.terminal_id, None);
 }
 
 #[test]
@@ -437,6 +508,124 @@ async fn pull_updates_scopes_to_tenant() {
     );
 
     // Cleanup.
+    client
+        .batch_execute(&format!(
+            "DELETE FROM offline_queue WHERE tenant_id LIKE '{ns}%';"
+        ))
+        .await
+        .ok();
+}
+
+/// C3 S5 against a REAL PostgreSQL: the transport's pull excludes rows its
+/// own `terminal_id` originated, returns the same row to a DIFFERENT
+/// terminal, and — with no identity declared — returns everything, exactly
+/// as before. The NULL-origin row is asserted in every case: an unstamped or
+/// legacy row is never suppressed.
+///
+/// Skips (does not fail) when the disposable PostgreSQL is unreachable, in
+/// the same style as the tenant-isolation test above.
+#[tokio::test]
+async fn pull_updates_excludes_self_origin_rows() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let ns = format!("pg-origin-{}", std::process::id());
+    let tenant = format!("{ns}-t");
+    let transport_a = match PgTransport::new_raw(&url, &tenant) {
+        Ok(t) => t,
+        Err(_) => {
+            eprintln!("origin-filter test skipped: cannot create raw pool");
+            return;
+        }
+    };
+    let pool = transport_a.pool.clone();
+    // PgTransport is not Clone; three handles over the SAME pool, each with
+    // its own declared identity, stand in for three terminals.
+    let as_terminal = |id: Option<&str>| {
+        PgTransport::new_raw(&url, &tenant)
+            .expect("raw pool")
+            .with_terminal_id(id.map(str::to_owned))
+    };
+    let client = match pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("origin-filter test skipped: {e}");
+            return;
+        }
+    };
+
+    client
+        .batch_execute(&format!(
+            "CREATE TABLE IF NOT EXISTS offline_queue (
+                    id TEXT PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    retry_count BIGINT NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    synced_at TIMESTAMPTZ
+                 );
+                 ALTER TABLE offline_queue ADD COLUMN IF NOT EXISTS origin_terminal_id TEXT;
+                 DELETE FROM offline_queue WHERE tenant_id LIKE '{ns}%';
+                 INSERT INTO offline_queue (id, action, payload, tenant_id, created_at, origin_terminal_id)
+                 VALUES ('{ns}-mine', 'act', '{{}}', '{tenant}', '2026-01-01T00:00:00Z', 'terminal-A'),
+                        ('{ns}-theirs', 'act', '{{}}', '{tenant}', '2026-01-01T00:00:01Z', 'terminal-B'),
+                        ('{ns}-legacy', 'act', '{{}}', '{tenant}', '2026-01-01T00:00:02Z', NULL);"
+        ))
+        .await
+        .unwrap();
+
+    let ids_of = |resp: &super::super::transport::PullResponse| -> Vec<String> {
+        let mut v: Vec<String> = resp.items.iter().map(|i| i.id.clone()).collect();
+        v.sort();
+        v
+    };
+
+    // Case 1: pulling AS terminal A must not return A's own row.
+    let as_a = as_terminal(Some("terminal-A"))
+        .pull_updates(None, None)
+        .await
+        .unwrap();
+    let ids = ids_of(&as_a);
+    assert!(
+        !ids.contains(&format!("{ns}-mine")),
+        "terminal A must not be handed back its own push, got: {ids:?}"
+    );
+    assert!(
+        ids.contains(&format!("{ns}-theirs")),
+        "another terminal's row must still travel, got: {ids:?}"
+    );
+    assert!(
+        ids.contains(&format!("{ns}-legacy")),
+        "a NULL origin is never suppressed, got: {ids:?}"
+    );
+
+    // Case 2: the SAME row IS returned when pulling as terminal B.
+    let as_b = as_terminal(Some("terminal-B"))
+        .pull_updates(None, None)
+        .await
+        .unwrap();
+    let ids = ids_of(&as_b);
+    assert!(
+        ids.contains(&format!("{ns}-mine")),
+        "A's row must reach B — the filter is per-caller: {ids:?}"
+    );
+    assert!(!ids.contains(&format!("{ns}-theirs")));
+
+    // Case 3: no terminal identity — the unpaired install / admin token path.
+    let unpaired = as_terminal(None).pull_updates(None, None).await.unwrap();
+    let ids = ids_of(&unpaired);
+    assert_eq!(
+        ids,
+        vec![
+            format!("{ns}-legacy"),
+            format!("{ns}-mine"),
+            format!("{ns}-theirs")
+        ],
+        "no identity → every tenant row, exactly as before"
+    );
+
     client
         .batch_execute(&format!(
             "DELETE FROM offline_queue WHERE tenant_id LIKE '{ns}%';"

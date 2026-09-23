@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { testSyncConnection } from '@/api/offline';
-import type { ConnectionHealth } from '@/hooks/connectionHealth';
+import { isSyncUnconfigured, type ConnectionHealth } from '@/hooks/connectionHealth';
 
 /**
  * Connection state to the cloud sync server. An alias onto the shared
@@ -65,7 +65,12 @@ const RETRY_INTERVAL_MS = 5_000;
  *
  * - `'checking'` — initial state before the first ping resolves.
  * - `'connected'` — last ping succeeded (`ok: true`).
- * - `'disconnected'` — last ping failed (network error or `ok: false`).
+ * - `'unconfigured'` — the probe ran and answered "No server URL configured":
+ *   this device has never been pointed at a sync server, so there is nothing
+ *   to be reachable or unreachable. Distinct from `'disconnected'` because
+ *   the fix is a different one (configure sync) and the fault is not a fault.
+ * - `'disconnected'` — a ping ran and failed (network error or `ok: false`
+ *   with a configured server).
  */
 export function useSyncConnection(): SyncConnectionStatus {
   const [state, setState] = useState<SyncConnectionState>('checking');
@@ -109,6 +114,13 @@ export function useSyncConnection(): SyncConnectionStatus {
           setState('connected');
           setLatencyMs(result.latencyMs);
           nextDelay = POLL_INTERVAL_MS;
+        } else if (isSyncUnconfigured(result.status, result.ok)) {
+          // The probe distinguishes these two answers; the UI used to throw
+          // that away. Keep the 5 s cadence: a bootstrap flow that writes the
+          // URL while the app is open is exactly the recovery this loop is
+          // for, and it costs nothing when no such flow ever runs.
+          setState('unconfigured');
+          setLatencyMs(null);
         } else {
           setState('disconnected');
           setLatencyMs(null);

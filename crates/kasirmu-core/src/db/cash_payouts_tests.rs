@@ -322,3 +322,126 @@ fn payout_ids_globally_unique() {
     assert_eq!(payouts.len(), 20);
     assert_eq!(s.get_total_payouts_for_shift(&shift_id).unwrap(), 210000);
 }
+
+// ── COR-28 / C18: the shift-open check is atomic with the INSERT ────
+
+/// The race the pre-fix code lost, forced rather than hoped for.
+///
+/// `create_cash_payout` used to read the shift, decide, and only then INSERT
+/// with no transaction — so a shift closed in that window still received the
+/// payout and cash left the drawer against a closed shift. Here connection B
+/// stages the close under a held `BEGIN IMMEDIATE` write lock, so the window
+/// is open for as long as this test wants; connection A then passes its
+/// pre-read (WAL readers do not block on a writer) and blocks inside the
+/// INSERT until B commits. The INSERT is now a compare-and-set on
+/// `status = 'open'`, so the row is not written and the caller gets the
+/// closed-shift error. Against the pre-fix statement — a bare INSERT with no
+/// predicate — this test returns `Ok` and the payout is persisted.
+#[test]
+fn payout_refused_when_shift_closes_between_read_and_write() {
+    // A file DB, because two connections must see the same rows (an
+    // in-memory DB is private per connection).
+    let dir = std::env::temp_dir().join(format!("oz_payout_race_{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("test.db");
+
+    let shift_id = {
+        let mut file_conn = Connection::open(&db_path).unwrap();
+        {
+            let template = migrations::fresh_db();
+            let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+            backup
+                .run_to_completion(10, std::time::Duration::from_millis(0), None)
+                .unwrap();
+        }
+        file_conn
+            .execute_batch(
+                "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+                    ('role-r', 'cashier', 'C', '[]', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+                 INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at) VALUES
+                    ('u-race', 'carol', 'h', 'Carol', 'role-r', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');",
+            )
+            .unwrap();
+        Store::new(&file_conn)
+            .open_shift("u-race", None, 1000)
+            .unwrap()
+            .id
+    };
+
+    // Connection B stages the concurrent close under a write lock it holds
+    // until told to commit — that lock is what keeps the check-then-act window
+    // open for as long as this test needs, instead of racing for it.
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let (commit_tx, commit_rx) = std::sync::mpsc::channel();
+    let closer = {
+        let db_path = db_path.clone();
+        let shift_id = shift_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            tx.execute(
+                "UPDATE shifts SET status = 'closed', closed_at = ?1, closing_balance_minor = 1000 \
+                 WHERE id = ?2",
+                params!["2025-01-01T00:00:00.000Z", shift_id],
+            )
+            .unwrap();
+            locked_tx.send(()).unwrap();
+            commit_rx.recv().unwrap(); // hold the window open until A is inside it
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    // Connection A now runs the real call. Its pre-read happens while B's
+    // close is still uncommitted, so the fast path sees an OPEN shift and
+    // proceeds; the INSERT then blocks on B's write lock. Committing B
+    // releases it, and the compare-and-set sees `status = 'closed'`.
+    let writer = {
+        let db_path = db_path.clone();
+        let shift_id = shift_id.clone();
+        std::thread::spawn(move || {
+            let conn_a = Connection::open(&db_path).unwrap();
+            conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+            Store::new(&conn_a).create_cash_payout(&shift_id, 5000, "safe drop")
+        })
+    };
+
+    // Give A time to pass the pre-read and block inside the INSERT, then let
+    // B commit. A cannot finish before that: B holds the write lock.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    commit_tx.send(()).unwrap();
+    closer.join().unwrap();
+
+    let outcome = writer.join().unwrap();
+
+    // The shift is closed — so the payout MUST be refused.
+    assert!(
+        matches!(&outcome, Err(CoreError::Validation { field, .. }) if *field == "status"),
+        "a payout against a shift that closed in the check-then-act window must be refused \
+         with the closed-shift error, got: {outcome:?}"
+    );
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    let stored: i64 = conn_a
+        .query_row(
+            "SELECT COUNT(*) FROM cash_payouts WHERE shift_id = ?1",
+            params![shift_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, 0, "the refused payout must not be persisted");
+
+    // And the closed-shift invariant the guard exists to protect.
+    let status: String = conn_a
+        .query_row(
+            "SELECT status FROM shifts WHERE id = ?1",
+            params![shift_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "closed");
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}

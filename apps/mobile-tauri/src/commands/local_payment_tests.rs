@@ -24,6 +24,16 @@ fn flow_state(conn: rusqlite::Connection) -> AppState {
     let mut state = AppState::for_test_with_conn(conn);
     let path = temp_dir.keep();
     state.db_manager = StoreDatabaseManager::new(path, migrations::ALL);
+    // ADR #56 §2.6: a store database is created by MIGRATIONS ONLY, so it is UNPROVISIONED —
+    // no `default` location, no legal entity, no `default-*` instances. Every fixture that
+    // comes through here drives a provisioned store, so the baseline is rebuilt where the
+    // database is created, for the ids these fixtures name.
+    for id in ["default", "store-a"] {
+        if let Ok(store_conn) = state.db_manager.open_store(id) {
+            let db = store_conn.lock().unwrap();
+            kasirmu_core::migrations::seed_provisioned_baseline(&db);
+        }
+    }
     state
 }
 
@@ -53,6 +63,12 @@ fn owner_session(state: &AppState, token: &str) {
 #[tokio::test]
 async fn set_then_get_round_trips_the_rail_surface() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_owner(&conn);
     let state = flow_state(conn);
     owner_session(&state, "owner-tok");

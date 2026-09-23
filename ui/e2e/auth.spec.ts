@@ -30,6 +30,10 @@ import { loginAs } from './helpers';
 const VALID_USER = 'owner';
 const VALID_PIN = '1234';
 const WRONG_PIN = '0000';
+// A wrong PIN that never touches the bottom keypad row. The error toast overlays
+// that row on the tablet layout, so a test needing several consecutive taps (the
+// colour check below) has to stay clear of it rather than race the toast.
+const WRONG_PIN_TOP_ROW = '9999';
 const UNKNOWN_USER = 'nonexistent';
 
 async function enterPin(page: Page, pin: string) {
@@ -86,6 +90,33 @@ test.describe('Staff Login', () => {
     await expect(page.locator('.staff-login-screen')).toBeVisible();
   });
 
+  // ── E2E-5b: the failed PIN marks the FIELD, not only the toast ────
+  //
+  // The unit tests assert this at the DOM level. This one runs in a real
+  // browser, which is the layer that matters: it proves the mark survives the
+  // actual React commit and the CSS, and that a reader reaching the PIN row
+  // after a failure finds it marked invalid.
+
+  test('wrong PIN marks the PIN row invalid in the real DOM', async ({ page }) => {
+    await page.locator('.staff-login-input').fill(VALID_USER);
+    await page.locator('.staff-login-submit-btn').click();
+    await page.locator('.staff-login-pad').waitFor({ state: 'visible', timeout: 10_000 });
+
+    const pinDots = page.locator('.staff-login-pin-dots');
+    // Valid before any attempt.
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+
+    await enterPin(page, WRONG_PIN);
+    await expect(page.locator('.toast--error')).toBeVisible({ timeout: 8_000 });
+
+    // The mark lands once auth state carries the error.
+    await expect(pinDots).toHaveAttribute('aria-invalid', 'true', { timeout: 8_000 });
+
+    // And it clears when the user starts retrying, so a fresh attempt is not
+    // announced as already wrong.
+    await enterPin(page, '1');
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+  });
   // ── E2E-6: Assert uniform pre-auth for unknown username (STAFF-06) ──
 
   test('unknown username advances to PIN step then errors (STAFF-06)', async ({ page }) => {
@@ -164,6 +195,74 @@ test.describe('Staff Login', () => {
     await expect(page.locator('.staff-login-screen')).toBeVisible();
   });
 
+  // ── E2E-5c: the invalid state is VISIBLE, not only announced ──────
+  //
+  // aria-invalid is invisible. This is the one assertion no jsdom suite can
+  // make: whether the stylesheet actually colours the row, which is what a
+  // sighted user gets instead of reading the toast.
+
+  test('wrong PIN colours the PIN dots, not just the attribute', async ({ page }) => {
+    await page.locator('.staff-login-input').fill(VALID_USER);
+    await page.locator('.staff-login-submit-btn').click();
+    await page.locator('.staff-login-pad').waitFor({ state: 'visible', timeout: 10_000 });
+
+    const dots = page.locator('.staff-login-pin-dots');
+    const firstDot = page.locator('.staff-login-pin-dot').first();
+
+    // The same dot while the row is VALID. Comparing against an empty row would
+    // prove nothing useful if the dots were ever filled here, so both readings are
+    // taken on the same (empty) dot: valid first, invalid after.
+    const validColour = await firstDot.evaluate((el) => getComputedStyle(el).borderColor);
+
+    await enterPin(page, WRONG_PIN_TOP_ROW);
+    // Wait for the row to carry the mark before reading the computed style; the
+    // failed attempt raises a toast that overlays the keypad on the tablet layout.
+    await expect(dots).toHaveAttribute('aria-invalid', 'true', { timeout: 8_000 });
+
+    // Assert the border IS the danger colour, resolved from the token the rule
+    // names — an exact value rather than merely "different", which is what makes
+    // this fail when the rule is removed instead of passing on the filled state.
+    // WAIT FOR THE COLOUR TO SETTLE. The dot transitions `border-color`
+    // (StaffLoginScreen.css:455), so reading it the instant aria-invalid appears
+    // returns a mid-transition BLEND — measured rgb(192,112,143), which differs
+    // from the valid colour whether or not the invalid rule exists. That made an
+    // earlier version of this test pass with the rule deleted.
+    //
+    // Poll until two consecutive reads agree, then assert against the danger token
+    // resolved from a sibling outside the dot. `--color-danger` is theme-dependent
+    // (desktop rgb(255,107,104) vs tablet rgb(244,108,111)), so a literal would pin
+    // the theme rather than the behaviour.
+    // Poll until two consecutive reads agree, i.e. the transition has finished.
+    let settled = validColour;
+    await expect
+      .poll(
+        async () => {
+          const a = await firstDot.evaluate((el) => getComputedStyle(el).borderColor);
+          await page.waitForTimeout(80);
+          const b = await firstDot.evaluate((el) => getComputedStyle(el).borderColor);
+          if (a !== b) return null;
+          settled = a;
+          return a;
+        },
+        { timeout: 5_000, message: 'dot border-color never settled' },
+      )
+      .not.toBeNull();
+
+    // The danger colour is read from a probe OUTSIDE the dot, so the dot's own
+    // transition and border rules cannot recolour the reference.
+    const danger = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      document.body.appendChild(probe);
+      probe.style.borderColor = 'var(--color-danger)';
+      probe.style.borderStyle = 'solid';
+      const c = getComputedStyle(probe).borderColor;
+      probe.remove();
+      return c;
+    });
+
+    expect(danger).not.toBe('');
+    expect(settled).toBe(danger);
+  });
   // ── Bonus: Clears PIN dots after error ───────────────────────
 
   test('clears PIN dots when error occurs', async ({ page }) => {
@@ -209,5 +308,34 @@ test.describe('Staff Login', () => {
   test('staff login shows staff greeting', async ({ page }) => {
     await loginAs(page, 'staff', '1234');
     await expect(page.locator('.ws-header-greeting')).toContainText('Staff');
+  });
+
+  test('a server outage at the PIN step shows connection copy, not internal text', async ({ page }) => {
+    // The leak this pins (measured 2026-09-23): with the login call failing at the
+    // transport level, the PIN step rendered the raw internal string "network down"
+    // to the cashier — Error.message straight from the IPC boundary. The merchant
+    // needs to know it is the connection, not their PIN, or they will keep retyping
+    // a correct PIN until the lockout trips.
+    await page.goto('/index.html');
+    await page.getByTestId('staff-login-screen').waitFor({ timeout: 30_000 });
+    await page.locator('.staff-login-input').first().fill('owner');
+    await page.locator('.staff-login-submit-btn').click();
+    await page.locator('.staff-login-pad').waitFor({ timeout: 15_000 });
+
+    // The server dies between the username check and the PIN submit.
+    await page.evaluate(async () => {
+      const mod = await import('/src/dev-mock/core/mockDispatcher.ts');
+      (mod as { handlers: Record<string, unknown> }).handlers['staff_login'] = () => {
+        throw new Error('network down');
+      };
+    });
+    for (const d of '1234') {
+      await page.locator('.staff-login-pad-key').filter({ hasText: d }).click();
+    }
+
+    const toast = page.locator('.toast--error').first();
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await expect(toast).not.toContainText('network down');
+    await expect(toast).toContainText(/offline|connection/i);
   });
 });

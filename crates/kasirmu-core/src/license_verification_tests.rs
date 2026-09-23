@@ -483,6 +483,215 @@ fn test_trial_activation_vertical_all_segments() {
     }
 }
 
+// ── apply_license_verdict_to_cache (ADR #58 option C) ──────────
+
+/// Build a minimal status response for the verdict tests.
+fn status_response(
+    status: &str,
+    device_revoked: bool,
+    expires_at: Option<&str>,
+) -> LicenseStatusResponse {
+    LicenseStatusResponse {
+        tenant_id: "test-tenant".into(),
+        status: status.into(),
+        tier: "pro".into(),
+        active: status.eq_ignore_ascii_case("active"),
+        device_revoked,
+        expires_at: expires_at.map(str::to_string),
+        grace_until: None,
+        max_locations: None,
+        max_stores: None,
+        hardware_verified: None,
+        hardware_token: None,
+    }
+}
+
+/// Seed the `default` subscription row the cache write targets.
+fn seed_subscription_row(conn: &rusqlite::Connection, status: &str, expires_at: Option<&str>) {
+    conn.execute(
+        "INSERT OR REPLACE INTO tenant_subscription
+         (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances,
+          allowed_types_json, signature, signed_payload,
+          updated_at)
+         VALUES ('default', 'pro', ?1, ?2, 2, 1, '[]', 'SIG', '{}',
+                 strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        rusqlite::params![status, expires_at],
+    )
+    .expect("seed subscription row");
+}
+
+/// The function reports the TENANT verdict as its return value, which is what
+/// the caller keys the live-session sweep on. A device-level revocation must
+/// NOT be reported through this return value — the session gate reads that
+/// from the cache instead (ADR #58 §2.4a.2), and conflating them would sweep
+/// every session on a per-device verdict.
+#[test]
+fn verdict_return_is_the_tenant_status_not_the_device_flag() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let device_only = apply_license_verdict_to_cache(
+        &conn,
+        &status_response("active", true, Some("2027-01-01T00:00:00Z")),
+    );
+    assert!(
+        !device_only,
+        "a device revocation is not a tenant revocation"
+    );
+
+    let tenant = apply_license_verdict_to_cache(&conn, &status_response("revoked", false, None));
+    assert!(tenant, "the revoked tenant status must be reported");
+}
+
+/// The device verdict is cached under `device.revoked`, and the write is
+/// unconditional — a later `false` must CLEAR an earlier `true`, or an
+/// un-revoke could never take effect on a device that had been locked out.
+#[test]
+fn verdict_caches_and_clears_the_device_flag() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    apply_license_verdict_to_cache(&conn, &status_response("active", true, None));
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("true"),
+        "a revoked device must be cached as true"
+    );
+
+    apply_license_verdict_to_cache(&conn, &status_response("active", false, None));
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("false"),
+        "an un-revoke must clear the cached verdict, not leave it stuck"
+    );
+}
+
+#[test]
+fn verdict_attestation_caches_hardware_token_and_verified_at() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let mut resp = status_response("active", false, None);
+    resp.hardware_verified = Some(true);
+    resp.hardware_token = Some("hwt_sig_12345".to_string());
+
+    apply_license_verdict_to_cache(&conn, &resp);
+
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("false")
+    );
+    assert_eq!(
+        Settings::get(&conn, keys::HARDWARE_TOKEN)
+            .unwrap()
+            .as_deref(),
+        Some("hwt_sig_12345")
+    );
+    assert!(
+        Settings::get(&conn, keys::MACHINE_VERIFIED_AT)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn verdict_hardware_mismatch_locks_device() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let mut resp = status_response("active", false, None);
+    resp.hardware_verified = Some(false); // hardware mismatch detected by server
+
+    apply_license_verdict_to_cache(&conn, &resp);
+
+    assert_eq!(
+        Settings::get(&conn, keys::DEVICE_REVOKED)
+            .unwrap()
+            .as_deref(),
+        Some("true"),
+        "hardware mismatch must lock the device under device.revoked"
+    );
+}
+
+#[test]
+fn test_status_response_deserialization_hardware_fields() {
+    let json_verified = r#"{
+        "tenant_id": "t1",
+        "status": "active",
+        "tier": "pro",
+        "active": true,
+        "device_revoked": false,
+        "hardware_verified": true,
+        "hardware_token": "hwt_test_token"
+    }"#;
+
+    let parsed: LicenseStatusResponse = serde_json::from_str(json_verified).unwrap();
+    assert_eq!(parsed.hardware_verified, Some(true));
+    assert_eq!(parsed.hardware_token.as_deref(), Some("hwt_test_token"));
+
+    let json_legacy = r#"{
+        "tenant_id": "t1",
+        "status": "active",
+        "tier": "pro",
+        "active": true,
+        "device_revoked": false
+    }"#;
+    let parsed_legacy: LicenseStatusResponse = serde_json::from_str(json_legacy).unwrap();
+    assert_eq!(parsed_legacy.hardware_verified, None);
+    assert_eq!(parsed_legacy.hardware_token, None);
+}
+
+/// The subscription row's server-authoritative fields are refreshed, so the
+/// next capability read reflects the new lifecycle without re-activation.
+#[test]
+fn verdict_refreshes_the_subscription_row() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    apply_license_verdict_to_cache(
+        &conn,
+        &status_response("canceled", false, Some("2026-06-01T00:00:00Z")),
+    );
+
+    let stored = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("row must exist");
+    assert_eq!(stored.status, "canceled");
+    assert_eq!(stored.expires_at.as_deref(), Some("2026-06-01T00:00:00Z"));
+}
+
+/// A missing row is a no-op, not an error, and still reports the verdict: this
+/// is the no-license-activated path a free/local install takes.
+#[test]
+fn verdict_on_a_missing_row_still_reports_and_does_not_panic() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    let revoked = apply_license_verdict_to_cache(&conn, &status_response("revoked", false, None));
+    assert!(
+        revoked,
+        "the verdict is the server's answer, independent of local rows"
+    );
+}
+
 // ── bundle_id serialization (C3.2) ─────────────────────────────
 
 #[test]
@@ -562,4 +771,179 @@ fn extract_error_empty_json() {
 fn extract_error_empty_string() {
     let msg = super::extract_server_error("");
     assert_eq!(msg, "");
+}
+
+// ── CRL Verification and Revocation Tests (ADR #58 §2.1/§2.2) ──────────
+
+#[test]
+fn test_crl_signature_verification_and_tamper_detection() {
+    let (private_key, public_pem) = generate_test_keypair();
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-PRO-COMPROMISED-01".into(),
+            key_hash: "a".repeat(64),
+            tenant_id: Some("tenant-compromised-1".into()),
+            revoked_at: "2026-09-22T06:00:00Z".into(),
+            reason: Some("Stolen key".into()),
+        }],
+        revoked_tenants: vec!["tenant-banned-99".into()],
+        revoked_devices: vec!["stolen-tablet-01".into()],
+    };
+
+    let payload_json = serde_json::to_string(&crl).unwrap();
+    let signature_base64 = sign_test_payload(&private_key, &payload_json);
+
+    // 1. Valid signature verifies successfully
+    let verified = verify_crl_signature_with_pem(&payload_json, &signature_base64, &public_pem)
+        .expect("verify");
+    assert_eq!(verified.issuer, "kasir.mu");
+    assert_eq!(verified.entries.len(), 1);
+    assert_eq!(verified.entries[0].key, "OZ-PRO-COMPROMISED-01");
+    assert_eq!(
+        verified.revoked_tenants,
+        vec!["tenant-banned-99".to_string()]
+    );
+    assert_eq!(
+        verified.revoked_devices,
+        vec!["stolen-tablet-01".to_string()]
+    );
+
+    // 2. Tampered payload fails verification
+    let tampered_json = payload_json.replace("kasir.mu", "attacker.io");
+    let tampered_res =
+        verify_crl_signature_with_pem(&tampered_json, &signature_base64, &public_pem);
+    assert!(
+        matches!(
+            tampered_res,
+            Err(CoreError::InvalidSubscriptionSignature(_))
+        ),
+        "tampered CRL payload must fail verification"
+    );
+
+    // 3. Corrupted base64 fails verification
+    let corrupt_res =
+        verify_crl_signature_with_pem(&payload_json, "not-valid-base64!", &public_pem);
+    assert!(
+        matches!(corrupt_res, Err(CoreError::InvalidSubscriptionSignature(_))),
+        "invalid signature base64 must fail"
+    );
+}
+
+#[test]
+fn test_crl_caching_and_revocation_checks() {
+    use crate::migrations;
+    use crate::settings::{Settings, keys};
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![CrlEntry {
+            key: "OZ-REVOKED-KEY-123".into(),
+            key_hash: {
+                use sha2::Digest;
+                let mut hasher = Sha256::new();
+                hasher.update(b"OZ-REVOKED-KEY-123");
+                hex::encode(hasher.finalize())
+            },
+            tenant_id: Some("tenant-bad".into()),
+            revoked_at: "2026-09-22T00:00:00Z".into(),
+            reason: Some("chargeback".into()),
+        }],
+        revoked_tenants: vec!["tenant-bad".into(), "tenant-banned-456".into()],
+        revoked_devices: vec!["bad-pos-tablet-01".into()],
+    };
+
+    // 1. Initial state: not revoked
+    assert!(
+        !is_revoked_in_cached_crl(&conn, Some("OZ-REVOKED-KEY-123"), None, None).unwrap(),
+        "before CRL caching, should not be marked revoked"
+    );
+
+    // 2. Apply CRL to cache for an innocent tenant
+    let revoked = apply_crl_to_cache(
+        &conn,
+        &crl,
+        Some("default"),
+        Some("OZ-CLEAN-KEY-789"),
+        Some("clean-pos-01"),
+    )
+    .expect("apply CRL");
+    assert!(!revoked, "innocent tenant must not be revoked");
+
+    // Check cached settings
+    let cached = Settings::get(&conn, keys::CRL_CACHE_JSON).unwrap();
+    assert!(cached.is_some(), "crl.cache_json must be persisted");
+    let checked_at = Settings::get(&conn, keys::CRL_CHECKED_AT).unwrap();
+    assert!(checked_at.is_some(), "crl.checked_at must be persisted");
+
+    // 3. Query revocation in cached CRL
+    assert!(
+        is_revoked_in_cached_crl(&conn, Some("OZ-REVOKED-KEY-123"), None, None).unwrap(),
+        "revoked key must match in cached CRL"
+    );
+    assert!(
+        is_revoked_in_cached_crl(&conn, None, Some("tenant-banned-456"), None).unwrap(),
+        "revoked tenant must match in cached CRL"
+    );
+    assert!(
+        is_revoked_in_cached_crl(&conn, None, None, Some("bad-pos-tablet-01")).unwrap(),
+        "revoked device must match in cached CRL"
+    );
+    assert!(
+        !is_revoked_in_cached_crl(
+            &conn,
+            Some("OZ-GOOD-KEY"),
+            Some("tenant-good"),
+            Some("pos-02")
+        )
+        .unwrap(),
+        "good key and tenant must not match in CRL"
+    );
+
+    // 4. Apply CRL where current tenant IS revoked -> should flip local status to revoked
+    let revoked_for_bad = apply_crl_to_cache(
+        &conn,
+        &crl,
+        Some("default"),
+        Some("OZ-REVOKED-KEY-123"),
+        None,
+    )
+    .expect("apply CRL");
+    assert!(revoked_for_bad, "tenant with revoked key must return true");
+
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    assert_eq!(
+        sub.status, "revoked",
+        "subscription row status must be flipped to revoked"
+    );
+}
+
+#[test]
+fn test_verify_signature_with_crl_denies_revoked_tenant() {
+    use crate::migrations;
+
+    let conn = migrations::fresh_db();
+    seed_subscription_row(&conn, "active", Some("2027-01-01T00:00:00Z"));
+
+    let crl = CrlPayload {
+        issuer: "kasir.mu".into(),
+        issued_at: "2026-09-22T07:00:00Z".into(),
+        entries: vec![],
+        revoked_tenants: vec!["default".into()],
+        revoked_devices: vec![],
+    };
+    apply_crl_to_cache(&conn, &crl, None, None, None).unwrap();
+
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    let res = sub.verify_signature_with_crl(&conn, None);
+    assert!(
+        matches!(res, Err(CoreError::LicenseRevoked(_))),
+        "verify_signature_with_crl must reject a tenant in CRL"
+    );
 }

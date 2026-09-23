@@ -21,6 +21,19 @@ pub mod error;
 /// Tablet image download manager daemon (spec 0046b §3.7) — keeps the
 /// local image cache (`$APPCACHE/images/`) in sync with the catalog.
 mod image_download;
+/// Boot-time consumer of a pending restore request (C8, slice S4b).
+///
+/// Runs from the setup closure below, BEFORE [`state::AppState::new`] opens the
+/// database — the only moment a restore swap is safe, because nothing has yet
+/// cloned the connection into the detached daemons that cannot be forced closed.
+/// The tablet twin of `apps/desktop-tauri/src/recovery.rs` (slice S4a).
+///
+/// The `run()` body is compiled out under `#[cfg(not(test))]` below, so in a test
+/// build nothing calls `consume_pending_restore` and the module is test-only
+/// reachable. `allow(dead_code)` is the same treatment
+/// `apps/desktop-tauri/src/lib.rs:64` gives its own test-only-reachable module.
+#[cfg_attr(test, allow(dead_code))]
+mod recovery;
 /// Global application state (DB, kernel, sync daemon).
 pub mod state;
 
@@ -83,6 +96,50 @@ pub fn run() {
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
             .setup(|app| {
+                // ── Pending restore request (C8, slice S4b) ───────────────────
+                // Consumed BEFORE `AppState::new` below, which opens the database
+                // and runs migrations. This is the only moment the swap is safe:
+                // the live `Arc<Mutex<Connection>>` is cloned into daemons spawned
+                // detached with no handle registry, so a later in-process swap
+                // would fight every one of them.
+                //
+                // A failed recovery must never become a failure to start. The
+                // module returns an outcome rather than an error, every outcome is
+                // logged here, and a refusal leaves the request in place for an
+                // operator while the app boots on the existing database.
+                match crate::state::resolve_db_path(app.handle()) {
+                    Ok(db_path) => match recovery::consume_pending_restore(&db_path) {
+                        recovery::Outcome::NothingPending => {}
+                        recovery::Outcome::AlreadyClaimed => {
+                            tracing::warn!(
+                                db = %db_path.display(),
+                                "a restore request is pending but another boot holds the lock; leaving it alone"
+                            );
+                        }
+                        recovery::Outcome::Restored { candidate, snapshot } => {
+                            tracing::info!(
+                                db = %db_path.display(),
+                                candidate = %candidate.display(),
+                                snapshot = %snapshot.display(),
+                                "pending restore request consumed — the database was replaced before it was opened"
+                            );
+                        }
+                        recovery::Outcome::Refused { reason } => {
+                            tracing::error!(
+                                db = %db_path.display(),
+                                reason = %reason,
+                                "a pending restore request was refused; booting on the existing database and leaving the request in place"
+                            );
+                        }
+                    },
+                    Err(error) => {
+                        tracing::error!(
+                            error = %error,
+                            "cannot resolve the database path to check for a pending restore request; booting normally"
+                        );
+                    }
+                }
+
                 let state = AppState::new(app.handle())
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
@@ -531,9 +588,6 @@ pub fn run() {
                 commands::avatars::set_avatar_scoped,
                 commands::avatars::clear_avatar_scoped,
                 commands::branding::get_brand_settings,
-                commands::branding::set_brand_primary_colour,
-                commands::branding::set_brand_logo_path,
-                commands::branding::set_brand_store_name,
                 commands::customers::list_customers_scoped,
                 commands::customers::search_customers_scoped,
                 commands::customers::get_customer_history_scoped,
@@ -558,6 +612,11 @@ pub fn run() {
                 commands::staff::update_role_scoped,
                 commands::staff::delete_role_scoped,
                 commands::staff::list_role_holders_scoped,
+                commands::staff::delete_staff_scoped,
+                commands::staff::restore_staff_scoped,
+                commands::staff::list_staff_trash_scoped,
+                commands::staff::restore_role_scoped,
+                commands::staff::list_role_trash_scoped,
                 commands::staff::create_staff_scoped,
                 commands::staff::update_staff_scoped,
                 commands::staff::get_staff_profile_scoped,
@@ -590,6 +649,11 @@ pub fn run() {
                 // the UI bridged from the save dialog's content:// URI. The desktop
                 // pair (create_backup / get_backup_status) is intentionally untouched.
                 commands::data::create_backup_to,
+                // Export without session (ADR #58 §4a Q-A option 3): read-only twin
+                // for revoked tenants. Registered alongside the gated command so the
+                // revoked screen can call it on tablet. Ledger row added to
+                // registration_gate_debt.generated.rs below.
+                commands::data::export_data_without_session,
                 commands::exchange_rates::list_exchange_rates_scoped,
                 commands::exchange_rates::list_latest_exchange_rates_scoped,
                 commands::exchange_rates::create_exchange_rate_scoped,
@@ -613,6 +677,11 @@ pub fn run() {
                 commands::health::version,
                 commands::health::get_device_id,
                 commands::health::get_local_ip,
+                // ADR #57 §2.1: makes the APK signing-certificate read observable
+                // on any device, including one with no licence activated — the
+                // state in which its only other caller (the licence-status call)
+                // returns before reaching the JNI.
+                commands::health::get_build_fingerprint,
                 commands::pos::start_sale_scoped,
                 commands::pos::add_line_scoped,
                 commands::pos::set_line_course_scoped,
@@ -650,9 +719,6 @@ pub fn run() {
                 commands::history::export_sales_by_hour,
                 commands::history::export_eod_report,
                 commands::void::void_sale_scoped,
-                commands::settings::get_receipt_settings,
-                commands::settings::get_store_settings,
-                commands::settings::get_credit_settings,
                 commands::settings::get_hardware_settings,
                 commands::settings::get_user_preferences_scoped,
                 commands::settings::set_user_preferences_scoped,
@@ -661,13 +727,15 @@ pub fn run() {
                 commands::settings::get_deployment_info,
                 commands::settings::set_setting,
                 commands::setup::get_enabled_features,
-                commands::setup::complete_setup,
-                commands::setup::dismiss_setup_wizard,
+                commands::setup::get_preset_features,
+                commands::setup::get_first_run_state,
+                commands::setup::provision_device,
                 commands::desktop_link::link_device_google,
         commands::desktop_link::link_device_email_request,
         commands::desktop_link::link_device_email_consume,
+        commands::desktop_link::start_device_pairing,
+        commands::desktop_link::poll_device_pairing,
                 commands::browser::open_product_images,
-                commands::setup::get_setup_status,
                 commands::tax::list_tax_rates_scoped,
                 commands::tax::list_tax_rate_rounding_modes_scoped,
                 commands::tax::create_tax_rate_scoped,
@@ -756,6 +824,14 @@ pub fn run() {
                 commands::legal_entities::get_legal_entity_scoped,
                 commands::legal_entities::create_legal_entity_scoped,
                 commands::legal_entities::update_legal_entity_scoped,
+                // Read-only licence surface (the settings hub's License
+                // Subscription screen renders on this shell too). Activation
+                // and billing management stay desktop-only.
+                commands::license::get_license_status,
+                commands::license::check_license_status,
+                // Primary-location read: the shared Business Defaults cards
+                // (regional / local-payment / receipt-format) resolve it first.
+                commands::locations::get_primary_location_scoped,
                 // Regional configuration read model (slice 2, saas-2 design).
                 commands::regional::get_regional_config_scoped,
                 // Regional configuration write path (slice 3, saas-2 design).

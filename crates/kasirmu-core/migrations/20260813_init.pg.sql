@@ -315,6 +315,7 @@ BEGIN
             ('offline_queue', 'synced_at', 'TEXT', NULL::text, false),
             ('offline_queue', 'tenant_id', 'TEXT', '''default''', true),
             ('offline_queue', 'priority', 'BIGINT', '1', true),
+            ('offline_queue', 'origin_terminal_id', 'TEXT', NULL::text, false),
             ('processed_webhooks', 'event_id', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'provider', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'')', true),
@@ -346,6 +347,8 @@ BEGIN
             ('roles', 'permissions', 'TEXT', '''[]''', true),
             ('roles', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('roles', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('roles', 'deleted_at', 'TEXT', NULL::text, false),
+            ('roles', 'purged_at', 'TEXT', NULL::text, false),
             ('setting_updated', 'id', 'BIGINT', NULL::text, true),
             ('setting_updated', 'key', 'TEXT', NULL::text, true),
             ('setting_updated', 'value', 'TEXT', NULL::text, true),
@@ -383,6 +386,7 @@ BEGIN
             ('sync_applied_items', 'item_id', 'TEXT', NULL::text, true),
             ('sync_applied_items', 'action', 'TEXT', NULL::text, true),
             ('sync_applied_items', 'applied_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_applied_items', 'effect_key', 'TEXT', NULL::text, false),
             ('sync_pull_state', 'id', 'BIGINT', NULL::text, true),
             ('sync_pull_state', 'since', 'TEXT', NULL::text, false),
             ('sync_pull_state', 'cursor', 'TEXT', NULL::text, false),
@@ -688,6 +692,8 @@ BEGIN
             ('users', 'hire_date', 'TEXT', NULL::text, false),
             ('users', 'national_id_hash', 'TEXT', NULL::text, false),
             ('users', 'index_id', 'BIGINT', NULL::text, false),
+            ('users', 'deleted_at', 'TEXT', NULL::text, false),
+            ('users', 'purged_at', 'TEXT', NULL::text, false),
             ('stock_adjustments', 'id', 'TEXT', NULL::text, true),
             ('stock_adjustments', 'count_id', 'TEXT', NULL::text, false),
             ('stock_adjustments', 'sku', 'TEXT', NULL::text, true),
@@ -896,6 +902,14 @@ BEGIN
             ('tax_rates', 'effective_from', 'TEXT', NULL::text, false),
             ('tax_rates', 'effective_to', 'TEXT', NULL::text, false),
             ('tax_rates', 'rounding_mode', 'TEXT', '''''', true),
+            ('provisioning', 'terminal_id', 'TEXT', NULL::text, true),
+            ('provisioning', 'tenant_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'location_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'owner_user_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'device_id', 'TEXT', NULL::text, false),
+            ('provisioning', 'mode', 'TEXT', NULL::text, true),
+            ('provisioning', 'home_region', 'TEXT', '''global''', true),
+            ('provisioning', 'provisioned_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('assignment_branches', 'assignment_user_id', 'TEXT', NULL::text, true),
             ('assignment_branches', 'branch_id', 'TEXT', NULL::text, true),
             ('assignment_workspaces', 'assignment_user_id', 'TEXT', NULL::text, true),
@@ -1356,6 +1370,38 @@ BEGIN
 END
 $oz_reconcile$;
 
+-- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────
+-- DML the SQLite chain performs before a DDL statement that would
+-- otherwise fail on the un-repaired rows. The generator cannot translate
+-- SQLite DML in general, so each one is hand-written, declared and
+-- digest-pinned above. Each is guarded on its table existing, so it is a
+-- no-op on a fresh database.
+
+-- before: idx_shifts_open_per_user (on shifts)
+DO $oz_pre_index$
+BEGIN
+    IF to_regclass('public.shifts') IS NOT NULL THEN
+        UPDATE shifts
+           SET status = 'closed',
+               closed_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+               closing_balance_minor = NULL,
+               expected_cash_minor = NULL,
+               cash_difference_minor = NULL,
+               notes = CASE WHEN notes = ''
+                            THEN 'auto-closed: duplicate open shift (COR-27 reconciliation)'
+                            ELSE notes || ' | auto-closed: duplicate open shift (COR-27 reconciliation)' END,
+               updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+         WHERE status = 'open'
+           AND EXISTS (
+               SELECT 1 FROM shifts newer
+                WHERE newer.user_id = shifts.user_id
+                  AND newer.status = 'open'
+                  AND (newer.opened_at, newer.id) > (shifts.opened_at, shifts.id)
+           );
+    END IF;
+END
+$oz_pre_index$;
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id          TEXT PRIMARY KEY,                          -- UUID v4
     user_id     TEXT NOT NULL,                             -- FK to users.id (nullable if action is from system)
@@ -1451,7 +1497,7 @@ CREATE TABLE IF NOT EXISTS offline_queue (
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     synced_at       TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1);
+, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT);
 
 CREATE TABLE IF NOT EXISTS processed_webhooks (
     event_id TEXT PRIMARY KEY,
@@ -1505,7 +1551,7 @@ CREATE TABLE IF NOT EXISTS roles (
     permissions TEXT NOT NULL DEFAULT '[]',     -- JSON array of permission strings
     created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, deleted_at TEXT, purged_at TEXT);
 
 CREATE TABLE IF NOT EXISTS setting_updated (
     id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
@@ -1566,7 +1612,11 @@ CREATE TABLE IF NOT EXISTS sync_applied_items (
     item_id    TEXT PRIMARY KEY,                     -- remote offline_queue item id
     action     TEXT NOT NULL,                        -- action applied (for diagnostics)
     applied_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, effect_key TEXT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_applied_items_effect_key
+    ON sync_applied_items(effect_key)
+    WHERE effect_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sync_pull_state (
     id         BIGINT PRIMARY KEY CHECK (id = 1),   -- single-row guard
@@ -2049,7 +2099,7 @@ CREATE TABLE IF NOT EXISTS "users" (
     emergency_contact_relationship TEXT,
     hire_date TEXT,
     national_id_hash TEXT
-, index_id BIGINT);
+, index_id BIGINT, deleted_at TEXT, purged_at TEXT);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -2379,6 +2429,41 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tax_rates_default_tenant_global
       AND legal_entity_id IS NULL
       AND location_id IS NULL;
 
+CREATE TABLE IF NOT EXISTS provisioning (
+    -- Matches terminals.device_id (20260813_init.sql:929, UNIQUE), NOT the
+    -- terminals.id surrogate: a replaced tablet keeps its id but changes its
+    -- device, and a re-provisioned device must land on its own row.
+    terminal_id    TEXT PRIMARY KEY,
+    -- The LICENCE SERVER's tenant id, written only by a 'linked' install.
+    -- NULL for 'local'. Deliberately not the local literal 'default': the two
+    -- are different namespaces (ADR #56 §2.1) and comparing them is the bug
+    -- that section exists to prevent.
+    tenant_id      TEXT,
+    -- The locations row this terminal belongs to. NOTE the target is
+    -- `locations`, not `store_profiles`: 20260906_rename_store_to_location.sql:14
+    -- renames that table, and this migration runs after it, so a reference to
+    -- the old name is a table that no longer exists. ADR #56 §2.6 removes the
+    -- seeded 'Default Store' placeholder, so on a fresh install this is a row
+    -- provision_device created rather than one the migration shipped.
+    location_id    TEXT REFERENCES locations(id),
+    owner_user_id  TEXT REFERENCES users(id),
+    -- TerminalCredential.terminal_id: the credential this device authenticates
+    -- to sync with.
+    device_id      TEXT,
+    -- Which tier of ADR #56 §2.4 was used. 'local' needs no network and is the
+    -- DEFAULT, not a fallback: the target deployment includes merchants with
+    -- unreliable connectivity. 'linked' adds the identity step.
+    mode           TEXT NOT NULL CHECK (mode IN ('local', 'linked')),
+    -- Residency mirror; see the header. 'global' initially (ADR #59 §Q6),
+    -- where 'global' means 'no residency commitment yet' and is NOT a country.
+    home_region    TEXT NOT NULL DEFAULT 'global',
+    provisioned_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    -- A linked install must name its tenant and device; a local one must not
+    -- pretend to. Enforced here rather than in Rust so a row written by any
+    -- future path (sync, downgrade, a repair script) cannot be incoherent.
+    CHECK (mode = 'local' OR (tenant_id IS NOT NULL AND device_id IS NOT NULL))
+);
+
 CREATE TABLE IF NOT EXISTS assignment_branches (
     assignment_user_id TEXT NOT NULL REFERENCES assignments(user_id) ON DELETE CASCADE,
     branch_id          TEXT NOT NULL,
@@ -2504,6 +2589,10 @@ CREATE TABLE IF NOT EXISTS shifts (
     created_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , total_payouts_minor BIGINT NOT NULL DEFAULT 0);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_open_per_user
+    ON shifts(user_id)
+    WHERE status = 'open';
 
 CREATE TABLE IF NOT EXISTS "stock_transfers" (
     id                     TEXT PRIMARY KEY,
@@ -3015,7 +3104,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
     END IF;
-    RETURN NULL;
+    -- RETURN OLD, NOT NULL (C44). A row-level BEFORE DELETE trigger that
+    -- returns NULL CANCELS the delete. The SQLite original is a WHEN-clause
+    -- trigger, and a false WHEN means the body never runs and the DELETE
+    -- PROCEEDS -- so NULL here made the retention sweep delete nothing while
+    -- reporting success: a compliance failure that raises no error anywhere.
+    -- Caught only by executing the port against real PostgreSQL.
+    RETURN OLD;
 END;
 $$;
 
@@ -3059,6 +3154,34 @@ CREATE OR REPLACE TRIGGER loyalty_tiers_validate_update
     BEFORE UPDATE OF name, min_points, points_per_unit, earn_multiplier_millionths, colour
     ON loyalty_tiers
     FOR EACH ROW EXECUTE FUNCTION loyalty_tiers_validate_fn();
+
+CREATE OR REPLACE FUNCTION stock_summary_qty_nonnegative_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.qty < 0
+       AND EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+       )
+       AND NOT EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+              AND w.allow_negative_stock = 1
+       )
+    THEN
+        RAISE EXCEPTION 'negative stock requires allow_negative_stock on the location binding';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_insert
+    BEFORE INSERT ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
+    BEFORE UPDATE ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();
 
 CREATE OR REPLACE FUNCTION assignments_scope_id_pair_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -3320,6 +3443,8 @@ CREATE INDEX IF NOT EXISTS idx_products_store_category ON products(store_id, cat
 
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
 
+CREATE INDEX IF NOT EXISTS idx_provisioning_tenant ON provisioning (tenant_id);
+
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_barcode ON receipt_barcodes(barcode);
 
 CREATE INDEX IF NOT EXISTS idx_receipt_barcodes_sale_id ON receipt_barcodes(sale_id);
@@ -3456,6 +3581,10 @@ CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 
 CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
 
+CREATE INDEX IF NOT EXISTS idx_users_trash
+    ON users(deleted_at)
+    WHERE deleted_at IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
 CREATE INDEX IF NOT EXISTS idx_webhook_tenant
@@ -3490,10 +3619,6 @@ INSERT INTO loyalty_tiers (id, name, min_points, points_per_unit, colour, sort_o
     ('tier-platinum', 'Platinum', 2000, 10, '#e5e4e2', 4, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 2000000)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, updated_at, signed_payload, api_key) VALUES
-    ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '')
-ON CONFLICT DO NOTHING;
-
 INSERT INTO workspace_types (key, name, description, layout_mode, icon, sort_order, accent_colour) VALUES
     ('restaurant-pos', 'Restaurant POS', 'Cashier terminal for restaurant ordering', 'fullscreen', 'restaurant', 1, ''),
     ('store-pos', 'Store POS', 'Cashier terminal for retail', 'fullscreen', 'store', 2, ''),
@@ -3510,10 +3635,6 @@ INSERT INTO workspaces (id, key, name, description, icon) VALUES
     ('ws-admin', 'admin', 'Admin', 'System settings, staff management, reports, audit logs, and configuration', 'admin'),
     ('ws-kds', 'kds', 'Kitchen Display', 'Order queue display for the kitchen — tap tickets to advance their status', 'kds'),
     ('ws-retail-pos', 'retail-pos', 'Retail POS', 'Cashier terminal for retail checkout', 'store')
-ON CONFLICT DO NOTHING;
-
-INSERT INTO legal_entities (id, tenant_id, name, legal_name, registration_number, tax_id, status, created_at, updated_at, country_code, locale, timezone, currency) VALUES
-    ('default:default-legal-entity', 'default', 'Default Legal Entity', 'Default Legal Entity', '', '', 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), '', '', '', '')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO workspace_type_screens (id, type_key, screen_key, sort_order) VALUES
@@ -3588,18 +3709,6 @@ INSERT INTO workspace_screens (id, workspace_key, screen_key, label, sort_order)
     (30, 'admin', 'design', '', 15)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, tenant_id, legal_entity_id, locale, ticket_prefix, index_id) VALUES
-    ('default', 'Default Store', '', '', 'USD', 'UTC', 0, to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'default', 'default:default-legal-entity', '', '', NULL)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at, created_at, updated_at, bound_location_id, purpose_key) VALUES
-    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general'),
-    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), NULL, 'general')
-ON CONFLICT DO NOTHING;
-
 -- tenant_id tables NOT yet under RLS — documented exemptions
 -- (RLS_EXEMPT in scripts/generate-pg-migration.py; the reason
 -- travels with the entry, and an undocumented table fails the
@@ -3609,14 +3718,20 @@ ON CONFLICT DO NOTHING;
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
 --   local_payment_methods — regional slice 6; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   media_assets — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a fail-fast stub (create_media_asset returns PLANNED) and the image GC loop only DELETEs. RLS is an isolation guarantee only where the write path stamps tenant_id, so there is nothing for a policy to gate yet — move back to RLS_TABLES when the media pipeline writes it
+--   media_thumbnails — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a fail-fast stub and the image GC loop only DELETEs. Nothing to gate until the media pipeline persists thumbnails
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
+--   payment_gateways — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD lands
+--   payment_settlements — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_settlements.rs is a fail-fast stub (record_settlement returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until the reconciliation job writes it
+--   provisioning — ADR #56 first-run record; written only by the desktop/tablet provision_device transaction against the LOCAL store DB, and never synced to PG. It records which server holds this tenant's data, so replicating it into the shared cloud schema would put one install's routing fact in every other tenant's reach for no read that exists. Cover if provisioning ever moves cloud-side
 --   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
 --   topology_revisions — ADR #46 desktop-side table; no PG write path yet
+--   user_location_access — no writer anywhere in the repo — no production INSERT/UPDATE exists; the only INSERTs are test fixtures (db/locations_tests.rs, db/workspaces_tests.rs) and no dynamically built statement names it. Every production reference is a read: the multi-store check in db/workspaces_instances.rs only SELECTs, and the REST surface grants but never writes. RLS is an isolation guarantee only where the write path stamps tenant_id, so there is nothing for a policy to gate yet — move back to RLS_TABLES when user-location assignment CRUD lands
 --   webhook_endpoints — no PG write path audited; cover when the admin surface writes it on PG
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────
@@ -3626,12 +3741,11 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'entity_index_cursors', 'entity_index_tombstones', 'locations', 'media_assets',
-                            'media_thumbnails', 'memo_locations', 'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue',
-                            'payment_gateways', 'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants',
-                            'products', 'receipt_number_counters', 'refunds', 'sale_idempotency', 'sale_lines', 'sales',
-                            'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors', 'sync_terminals', 'tax_rates',
-                            'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'entity_index_cursors', 'entity_index_tombstones', 'locations', 'memo_locations',
+                            'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'product_activity', 'product_bundles',
+                            'product_taxes', 'product_variants', 'products', 'receipt_number_counters', 'refunds', 'sale_idempotency',
+                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors',
+                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (

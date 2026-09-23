@@ -1,7 +1,6 @@
 # shared-ui/locales/settings.ftl — Settings page, setup wizard, sync
 
 # Setup Wizard
-setup-logo = kasir.mu
 # ── License: over-quota remediation (§J) ──
 settings-license-quota-title = Quota status
 settings-license-quota-intro = Resources measured against the { $tier } tier quotas — the same numbers the creation gates enforce.
@@ -44,17 +43,46 @@ settings-license-quota-remedy-recover = Restore suspended
 settings-license-quota-remedy-suspended = { $count } surplus register(s) suspended. They are disabled, not deleted.
 settings-license-quota-remedy-recovered = { $count } suspended register(s) restored.
 settings-license-quota-remedy-none = Nothing to change — no register of this store is over the limit or suspended.
-setup-tagline = Point of Sale — Simplified
-setup-step-store-type = Store Type
-setup-step-payments = Payments
-setup-step-products = Products
-setup-step-staff = Staff
-setup-step-hardware = Hardware
-setup-step-business-rules = Business Rules
-setup-step-data-cloud = Data & Cloud
-setup-step-account = Account
-setup-step-review = Review
-setup-step-aria = Step { $number }: { $label }
+
+### First-run provisioning (ADR #56 §2.3). The flow asks three things and then
+### provisions; the nine-step wizard's later stages became in-app settings on
+### an already-working terminal.
+setup-provision-title = Set up this terminal
+setup-provision-account-section = kasir.mu Account
+setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
+setup-provision-offline-warn = Internet connection is required to create or link your account.
+# Step labels for the first-run progress rail. Three steps, matching the three
+# decisions the form actually gates submission on: how the terminal is linked,
+# what kind of shop it is, and who signs in. A rail is not decoration here — the
+# card is ~1420px tall on a 1366px tablet, so the submit button starts below the
+# fold and the merchant cannot see where they are without one.
+setup-provision-mode-section = Does this terminal link to your account?
+setup-provision-step-progress = Step { $current } of { $total }
+setup-provision-step-account = Account
+setup-provision-step-store = Shop
+setup-provision-step-owner = Owner
+setup-mode-local-title = Offline only
+setup-mode-local-desc = Keep this terminal completely offline. No account, no cloud sync — a free starter workspace is created on the device.
+setup-mode-linked-title = Link your kasir.mu account
+setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
+setup-tab-pair = QR Pairing
+setup-tab-email = Email Code
+setup-provision-store-type = What kind of shop is this?
+setup-store-type-simple-retail = Shop
+setup-store-type-simple-retail-blurb = Barcode, cash, receipt, inventory, tax
+setup-store-type-restaurant = Restaurant or cafe
+setup-store-type-restaurant-blurb = Tables, kitchen display, staff login
+setup-provision-location-label = Shop name
+setup-provision-owner-name-label = Your name
+setup-provision-owner-username-label = Login name
+setup-provision-pin-label = PIN (at least 4 digits)
+setup-provision-pin-confirm-label = Confirm PIN
+setup-provision-pin-too-short = Use at least 4 digits.
+setup-provision-pin-mismatch = These PINs do not match yet.
+setup-provision-submit = Finish setup
+setup-provision-success = This terminal is ready.
+setup-provision-error = Could not finish setting up this terminal. Please try again.
+setup-provision-account-required = Please link your kasir.mu account before finishing setup.
 
 setup-account-title = Your account
 setup-account-desc = Optional. Link this POS to your kasir.mu account so you can sign in on the web with Google.
@@ -62,173 +90,57 @@ setup-account-google = Continue with Google
 setup-account-waiting = Waiting for your browser…
 setup-account-linked = Linked to { $email }.
 setup-account-failed = Could not link this device. You can try again, or continue without linking.
-setup-account-optional = You can skip this. Your licence key still runs the POS.
+setup-account-retry = Try again
 setup-account-tablet = Use the code sent to your account email to link this device.
 setup-account-email = Account email
+# Visible labels for the tablet's email/code fields. They shipped with only a
+# `placeholder`, which is not an accessible name: a screen reader announced two
+# unlabelled text boxes, and the only way to address them by name was the
+# placeholder — which the browser erases the moment the user types.
+setup-account-email-label = Account email
+setup-account-code-label = Verification code
 setup-account-send = Email me a code
-setup-account-sent = Code sent. It expires in 15 minutes.
 setup-account-code = 6-digit code
 setup-account-verify = Verify
+setup-account-sent = Code sent. It expires in 15 minutes.
+setup-account-optional = You can skip this. Your licence key still runs the POS.
 # The tablet's in-flight states. `setup-account-waiting` above names a browser and stays with
 # the Google control, which really does open one.
 setup-account-sending = Sending the code…
 setup-account-verifying = Checking the code…
+# Inline failures for the tablet's email leg. `setup-account-failed` above is the
+# "could not link" sentence and reads wrong for a code that was merely rejected:
+# nothing was linked yet, and the fix is to retype the code, not to try the whole
+# account connection again. Each names the step that actually failed.
+setup-account-send-failed = Could not send the code. Check the address and try again.
+setup-account-verify-failed = That code did not work. Check it and try again, or resend.
 
-setup-progress-aria = Setup progress
 
-setup-preset-question = What kind of store are you running?
-setup-preset-desc = Choose a preset to get started quickly, or customise every feature later.
-setup-preset-group-aria = Store preset
 # Accessible name for a feature toggle row. The code used to write
 # `Toggle ${f.label}`, which concatenated the English word "Toggle" with the
 # *unlocalized* array entry, so a screen reader announced "Toggle Inventory
 # Tracking" to an Indonesian user even though the visible label was correct.
-setup-feature-toggle-aria = Toggle { $name }
 
-setup-preset-simple-retail = Simple Retail
-setup-preset-simple-retail-desc = Barcode scan, cart, cash/card/QR, staff PIN, receipt printer
-setup-preset-restaurant = Restaurant
-setup-preset-restaurant-desc = Tables, KDS, split bill, QRIS, shift-based revenue
-setup-preset-full-store = Full Store
-setup-preset-full-store-desc = Everything except cloud sync and loyalty
-setup-preset-custom = Custom
-setup-preset-custom-desc = Start from scratch — enable exactly what you need
 
-setup-preset-cafe = Cafe / Bakery
-setup-preset-cafe-desc = Quick-service with kitchen display, cash+card, discounts
-setup-preset-franchise = Franchise
-setup-preset-franchise-desc = Multi-store, multi-terminal, restaurant + full admin stack
 
-setup-features-title = { $title }
-setup-features-desc = Toggle the features you need. You can change these later.
-setup-features-group-aria = { $title }
 setup-features-toggle-aria =
     .aria-label = Toggle { $label }
 
-setup-features-section-payments = Payment Methods
 
 # QRIS setup gate (C1 Free→Plus trigger — onboarding)
-setup-qris-label = QRIS (Midtrans)
-setup-qris-available = Accept QRIS payments — included with your plan.
-setup-qris-included = Included
-setup-qris-upgrade-required = QRIS payments are a Plus feature. Upgrade to Plus to accept QRIS.
-setup-qris-upgrade-cta = Upgrade to Plus
 
-setup-features-section-products = Products & Inventory
-setup-features-section-staff = Staff Management
-setup-features-section-hardware = Hardware & Peripherals
-setup-features-section-business-rules = Business Rules
-setup-features-section-data-cloud = Data, Reporting & Cloud
 
 # Feature names (short — for review tags)
-setup-feature-cash-payment = Cash
-setup-feature-card-payment = Card
-setup-feature-multi-currency = Multi-Currency
-setup-feature-inventory-tracking = Inventory
-setup-feature-product-variants = Variants
-setup-feature-categories-enabled = Categories
-setup-feature-staff-login = Staff Login
-setup-feature-staff-roles = Staff Roles
-setup-feature-shift-management = Shifts
-setup-feature-audit-log = Audit Log
-setup-feature-barcode-scanning = Barcode
-setup-feature-receipt-printing = Receipts
-setup-feature-cash-drawer = Cash Drawer
-setup-feature-customer-display = Customer Display
-setup-feature-nfc-reader = NFC
-setup-feature-discount-engine = Discounts
-setup-feature-tax-engine = Tax
-setup-feature-loyalty-program = Loyalty
-setup-feature-promotions-engine = Promotions
-setup-feature-product-bundles = Bundles
-setup-feature-reporting = Reports
-setup-feature-analytics = Analytics
-setup-feature-export-import = Export/Import
-setup-feature-cloud-sync = Cloud Sync
-setup-feature-multi-store = Multi-Store
-setup-feature-multi-terminal = Multi-Terminal
-setup-feature-plugin-system = Plugins
 
 # Feature full labels (for toggle rows)
-setup-feature-inventory-tracking-label = Inventory Tracking
-setup-feature-product-variants-label = Product Variants
-setup-feature-shift-management-label = Shift Management
-setup-feature-barcode-scanning-label = Barcode Scanner
-setup-feature-receipt-printing-label = Receipt Printer
-setup-feature-nfc-reader-label = NFC Reader
-setup-feature-tax-engine-label = Tax Engine
-setup-feature-loyalty-program-label = Loyalty Program
-setup-feature-product-bundles-label = Product Bundles
-setup-feature-reporting-label = Reporting
-setup-feature-export-import-label = Export & Import
-setup-feature-plugin-system-label = Plugin System
-setup-feature-cash-payment-label = Cash
-setup-feature-card-payment-label = Card
-setup-feature-multi-currency-label = Multi-Currency
-setup-feature-categories-enabled-label = Categories
-setup-feature-staff-login-label = Staff Login
-setup-feature-staff-roles-label = Staff Roles
-setup-feature-audit-log-label = Audit Log
-setup-feature-cash-drawer-label = Cash Drawer
-setup-feature-customer-display-label = Customer Display
-setup-feature-discount-engine-label = Discounts
-setup-feature-promotions-engine-label = Promotions
-setup-feature-analytics-label = Analytics
-setup-feature-cloud-sync-label = Cloud Sync
-setup-feature-multi-store-label = Multi-Store
-setup-feature-multi-terminal-label = Multi-Terminal
 
 # Feature descriptions
-setup-feature-cash-payment-desc = Accept cash payments and track cash drawer
-setup-feature-card-payment-desc = Accept debit and credit card payments
-setup-feature-multi-currency-desc = Support multiple currencies with exchange rates
-setup-feature-inventory-tracking-desc = Track stock levels per product with alerts
-setup-feature-product-variants-desc = Size, colour, flavour variants per product
-setup-feature-categories-enabled-desc = Group products by category with colour coding
-setup-feature-staff-login-desc = PIN or password login for cashiers
-setup-feature-staff-roles-desc = Owner, manager, cashier permission levels
-setup-feature-shift-management-desc = Open/close shifts with cash reconciliation
-setup-feature-audit-log-desc = Immutable log of sensitive actions
-setup-feature-barcode-scanning-desc = USB, serial, or Bluetooth barcode scanning
-setup-feature-receipt-printing-desc = USB, serial, or network receipt printing
-setup-feature-cash-drawer-desc = Automatic cash drawer via printer GPIO
-setup-feature-customer-display-desc = Secondary display facing the customer
-setup-feature-nfc-reader-desc = Contactless payment and loyalty card reading
-setup-feature-discount-engine-desc = Percentage and fixed-amount discounts on items or cart
-setup-feature-tax-engine-desc = Tax inclusive/exclusive with configurable rates
-setup-feature-loyalty-program-desc = Customer points, tiers, and rewards
-setup-feature-promotions-engine-desc = Buy-X-get-Y, time-limited offers, bundles
-setup-feature-product-bundles-desc = Sell multiple SKUs together as a single item
-setup-feature-reporting-desc = Sales, inventory, and shift reports
-setup-feature-analytics-desc = Charts, top products, hourly heatmap, CSV exports
-setup-feature-export-import-desc = Encrypted data export and import (.ozpkg)
-setup-feature-cloud-sync-desc = Sync data to cloud PostgreSQL with backup
-setup-feature-multi-store-desc = Manage multiple store locations
-setup-feature-multi-terminal-desc = Multiple POS terminals per store
-setup-feature-plugin-system-desc = Third-party plugins and custom drivers
 
-setup-review-title = Review Your Setup
-setup-review-desc = Here&rsquo;s a summary of your configuration. You can change anything later.
-setup-review-preset = Preset: { $name }
-setup-review-enabled = Enabled Features ({ $count })
-setup-review-disabled = Disabled Features ({ $count })
-setup-review-none = None
-setup-review-all-on = Everything on!
-setup-review-more = +{ $count } more
 
-setup-default-currency-label = Default Currency
 
-setup-complete-title = All Set!
-setup-complete-desc = Your { $preset } POS is configured and ready. You can adjust settings anytime.
-setup-launch = Launch kasir.mu
-setup-complete-features = { $count } { $count ->
     [one] feature enabled
     *[other] features enabled
 }
-setup-back = Back
-setup-skip = Skip setup
-setup-finish = Complete Setup
-setup-next = Next
 
 # Live Setup Preview
 lsp-title = Feature Preview
@@ -430,6 +342,9 @@ settings-save-partial = Some settings could not be saved. Try again.
 settings-load-failed = Failed to load settings
 settings-retry = Retry
 settings-sync-not-configured = Sync is not configured. Enter a server URL and enable sync.
+# Status-bar sync pill: the device has NO server URL at all — a configuration
+# gap, not an outage. Deliberately not "Offline" (statusbar-offline-msg).
+statusbar-sync-unconfigured-msg = { $name } · Not configured
 settings-sync-status-idle = Ready
 settings-sync-status-ok = Connected
 settings-sync-pending-count = { $count } pending
@@ -521,6 +436,10 @@ settings-license-resume-subscription = Resume subscription
 settings-license-resume-aria = Resume paused subscription
 settings-license-resume-success = Subscription resumed!
 settings-license-resume-failed = Failed to resume subscription
+# ADR #58 §2.3: Pre-expiry re-authentication window
+settings-license-reauth-banner-title = Subscription Renewal Check Required
+settings-license-reauth-banner-desc = Your subscription expires in { $days } days. Connect to the internet to re-authenticate with the license server.
+settings-license-reauth-action = Verify Online Now
 settings-copyright-notice-value = kasir.mu © 2025–2026. All rights reserved.
 
 # Appearance / Brand settings
@@ -1156,5 +1075,4 @@ settings-fiscalnum-overview-col-kind = Document kind
 settings-fiscalnum-overview-col-prefix = Prefix
 settings-fiscalnum-overview-col-current = Last number
 settings-fiscalnum-overview-col-updated = Updated
-
 

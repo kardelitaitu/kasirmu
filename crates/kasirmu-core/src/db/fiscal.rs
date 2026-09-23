@@ -210,7 +210,14 @@ impl crate::db::Store<'_> {
             });
         }
         let initial_period_key = reset_period.period_key_for(now);
-        self.conn.execute(
+        // C18-P1.5: this row IS the statutory counter the claim allocates
+        // from, so its write obeys the house rule (every SQLite write inside
+        // an explicit transaction) instead of riding autocommit. The
+        // unchecked-transaction idiom is deliberate: the surrounding Store
+        // API is synchronous with no nested-transaction guard, so the checked
+        // variant would refuse a caller that already holds one.
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO document_number_sequences
                  (id, tenant_id, legal_entity_id, document_kind, prefix,
                   current_value, reset_period, period_key, padding, created_at, updated_at)
@@ -231,6 +238,7 @@ impl crate::db::Store<'_> {
                 now,
             ],
         )?;
+        tx.commit()?;
         Ok(())
     }
 

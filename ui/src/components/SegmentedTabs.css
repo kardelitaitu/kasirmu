@@ -1,0 +1,153 @@
+/* ============================================================
+ * SegmentedTabs — a single-select tab strip whose active segment is one
+ * sliding thumb (SegmentedTabs.tsx).
+ *
+ * The fill, box and type are the design system's primary button
+ * (.btn--primary.btn--md in theme/components.css), so a segmented control
+ * reads as the same control family as the buttons beside it.
+ *
+ * The box is DERIVED from that button's own tokens, not copied as a literal.
+ * .btn--md is `font-size: var(--text-base)` at `line-height: 1`, on
+ * `padding: var(--space-2)` and a 1px border, so its border-box height is
+ * `--text-base + 2 * --space-2 + 2px` — which is exactly what .segmented-tab
+ * below sets as its min-height. The old literal 32px was that same sum, but
+ * only at a 16px root: at the 14px root a narrow window gets, "Add Staff" is
+ * 28.25px against the strip's 32px; at the 125% zoom preset it is 39.5px, at
+ * 150% 47px, at 200% 62px (measured in Chromium 2026-09-19). The pill sat at
+ * the wrong height next to the button at every one of those. Deriving it keeps
+ * the pill EXACTLY the button's height at every root font size, and it is a
+ * no-op at the 16px reference root.
+ *
+ * Still no `line-height` here, the shape .kds-tab uses one screen over: the
+ * segment centres its glyph with flex, which keeps this sheet out of the repo's
+ * frozen line-height population (themeTokenCompliance.test.ts).
+ *
+ * LAYOUT, and why it is a grid: the thumb is one column wide and moves by
+ * whole columns, so every segment must BE the same width. An equal-column grid
+ * at `width: max-content` sizes 1fr tracks to the widest label and the thumb
+ * lands within 0.03px of the active tab over two and over four uneven labels;
+ * a hug-width flex track with `flex: 1 1 0` does NOT equalize (2px off at two
+ * labels, 40px at four). `width: max-content` also keeps the track hugging its
+ * segments wherever it is mounted — block flow, flex or grid — leaving margins
+ * and placement to the caller's own className hook.
+ *
+ * WIDTH, and why the cap is a scroll viewport AROUND the track: at
+ * `max-content` the track's width is decided by the labels, so a locale with
+ * long ones makes a strip wider than the box it sits in. Measured 2026-09-21 in
+ * the Indonesian locale: the six stock-transfer status segments are 786px,
+ * against 740px of container at a 1024px viewport, 736 at 800 and 704 at 768 —
+ * cut off, because a visible overflow neither scrolls nor wraps. English is
+ * 527px and fits, which is why only the second locale broke.
+ *
+ * Capping the TRACK would fix the box and break the thumb: `1fr` tracks are only
+ * equal while the grid is at `max-content`, because each track's automatic
+ * minimum is its OWN label's min-content — so under a cap the six tracks become
+ * unequal (the widest label holds its ~150px while the rest shrink), and a thumb
+ * sized `(100% - 6px) / count` drifts off the active segment by up to the
+ * difference. The scroll viewport keeps the track at `max-content`, so the
+ * columns stay equal and the thumb stays exact. Wrapping is not an option at
+ * all: one thumb cannot sit behind a segment on a second row.
+ * ============================================================ */
+
+/* The control's OUTER box — what the surrounding layout sees, and the element
+ * the caller's `className` hook lands on. It hugs the track while there is room
+ * (`fit-content`), so nothing but the overflow case changes, and it is what caps
+ * the control at its container. `overflow-x: auto` also drops the automatic
+ * minimum size to zero, so a narrow parent can no longer be pushed wide by the
+ * strip. The scrollbar is hidden as the tablet shell's own tab bar
+ * (app/tablet/tablet.css:108) hides it: on a touch target the strip is dragged,
+ * and a focused segment is scrolled into view by the browser either way. */
+.segmented-tabs-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.segmented-tabs {
+  position: relative;
+  display: grid;
+  width: max-content;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  /* The halo around the thumb, and the single number that sizes the outer box.
+     The thumb is inset by this SAME value, so it spans the track's content box
+     and its own size does not move when this does (measured at a 16px root: the
+     thumb is 68.58 x 32 at 2px and at 3px alike). 2px, down from 3px: with 3px
+     plus a 1px border the outer box stood 8px taller than the .btn--md it
+     mirrors — the "too big" this repairs. */
+  padding: 2px;
+  background: var(--color-bg);
+  /* The hairline as an INSET RING, not `border: 1px`. A border adds its width to
+     the box, so a border could only be dropped by shrinking the thumb with it;
+     the ring paints the same line inside the halo and costs no layout size. */
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+/* The thumb: .btn--primary's fill, .btn--md's box, one column wide, inset by the
+   track's 2px padding. `translateX` percentages resolve against the thumb's OWN
+   width, so `value index * 100%` lands exactly on segment `index`; the width
+   subtracts the two insets because the 100% it divides is the track's PADDING
+   box. The index and count arrive as custom properties from the component, which
+   keeps it free of refs, measure effects and resize listeners. */
+.segmented-tab-indicator {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / var(--segmented-tab-count, 1));
+  /* NESTED radius — the correction that makes the corner clean. Two rounded rects
+     nest only while the inner radius is the outer one minus the gap; at equal
+     radii the two --radius-lg arcs, their centres a whole gap apart, crossed and
+     the gap pinched to nothing along the diagonal. The gap is the 2px halo, and
+     --radius-lg is in rem, so this tracks at every root font size. */
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: var(--color-accent);
+  transform: translateX(calc(var(--segmented-tab-index, 0) * 100%));
+  transition: transform var(--duration-300) var(--ease-out);
+  pointer-events: none;
+}
+
+.segmented-tab {
+  /* Paints the label above the thumb it sits in. */
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* .btn--md's border-box, in .btn--md's own tokens: line box (line-height: 1,
+     so the font size) + its two --space-2 paddings + its 1px border. The thumb
+     is one tab tall, so this single value sets the pill's height too. */
+  min-height: calc(var(--text-base) + 2 * var(--space-2) + 2px);
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-fg-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-150) var(--ease-out);
+}
+
+/* Inactive only: the active tab's text sits on the accent-filled thumb, and a
+   hover fill there would paint a grey box over it. */
+.segmented-tab:not(.segmented-tab--active):hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+/* .btn--primary's foreground, on the thumb's fill. */
+.segmented-tab--active {
+  color: var(--color-accent-fg);
+}
+
+.segmented-tab:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}

@@ -46,6 +46,13 @@ nav-orders = Pesanan
 error-boundary-title = Terjadi kesalahan
 error-boundary-retry = Coba Lagi
 
+# Shell layout (ADR-0001, tier T3). The shell renders the portrait prompt for a
+# page registering layout="landscape-locked"; keep the value in step with the
+# child text in AppShell/TabletAppShell (the English fallback).
+layout-rotate-to-landscape = Putar perangkat Anda ke lanskap untuk tata letak lengkap.
+layout-rotate-to-landscape-aria =
+    .aria-label = Putar ke lanskap
+
 # Status Bar
 status-bar-connected = Backend terhubung
 status-bar-disconnected = Backend terputus
@@ -441,6 +448,26 @@ auth-ip-unknown = Tidak diketahui
 auth-copyright = kasir.mu © { $year } Hak Cipta Dilindungi.
 auth-clipboard-error = Kesalahan papan klip: { $message }
 auth-error-title = Kesalahan
+
+## Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)
+auth-tab-license-key = Kunci Lisensi
+auth-tab-pair-device = Tautkan lewat HP
+auth-pair-scan-qr = Pindai kode QR ini dengan HP Anda atau kunjungi { $url }
+auth-pair-code-label = Kode Penautan
+auth-pair-waiting = Menunggu klaim di HP Anda…
+auth-pair-expired = Kode penautan kadaluarsa. Klik untuk memperbarui.
+auth-pair-refresh = Perbarui Kode
+auth-pair-success = Perangkat berhasil ditautkan!
+
+## Revoked Account (ADR #58 §2.6)
+auth-revoked-title = Akun ditangguhkan
+auth-revoked-message = Akun kasir.mu Anda telah ditangguhkan. Anda tidak dapat masuk atau memproses penjualan baru. Data Anda tetap aman dan dapat diekspor di bawah ini.
+auth-revoked-contact = Jika Anda merasa ini adalah kesalahan, silakan hubungi tim dukungan kami.
+auth-revoked-export-button = Ekspor data saya
+auth-revoked-exporting = Mengekspor…
+auth-revoked-export-aria = Ekspor semua data toko lokal ke paket terenkripsi
+auth-revoked-export-success = Data berhasil diekspor!
+auth-revoked-export-error = Ekspor gagal: { $message }
 
 ## Create Owner PIN (first-run setup)
 auth-create-pin-title = Buat PIN Pemilik

@@ -6,6 +6,17 @@
 // astro.config.mjs declares. It is deliberately NOT in the sitemap: it
 // canonicalises to /id/, so listing it would contradict itself.
 // (CF-IPCountry sniffing would require a Cloudflare Function — out of v1.)
+import LocaleFallback from '../components/LocaleFallback.astro';
+import { LANGUAGE_STORAGE_KEY } from '../lib/language';
+
+// Defined once. These two strings were spelled out seven times below — four
+// copies of the title and three of the description, one per social tag — so
+// every wording change had to be made in seven places to stay consistent, and
+// nothing checked that they agreed. The wording dropped "offline-first": the
+// sentence right after it says the same thing in words a shop owner uses.
+const TITLE = 'kasir.mu — Aplikasi Kasir Tanpa Internet untuk Indonesia';
+const DESCRIPTION =
+  'Aplikasi kasir untuk kafe, restoran, dan ritel: tetap jalan tanpa internet, tersinkron saat koneksi kembali. Gratis untuk satu toko.';
 ---
 
 <!doctype html>
@@ -13,8 +24,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>kasir.mu — POS Kasir Offline-First untuk Indonesia</title>
-    <meta name="description" content="Platform POS offline-first untuk kafe, restoran, dan ritel. Tetap berjalan tanpa internet, sinkron saat kembali online." />
+    <title>{TITLE}</title>
+    <meta name="description" content={DESCRIPTION} />
     <link rel="canonical" href="https://kasir.mu/id/" />
     <link rel="alternate" hreflang="id" href="https://kasir.mu/id/" />
     <link rel="alternate" hreflang="en" href="https://kasir.mu/en/" />
@@ -24,23 +35,45 @@
     <link rel="describedby" href="/llms.txt" type="text/plain" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="kasir.mu" />
-    <meta property="og:title" content="kasir.mu — POS Kasir Offline-First untuk Indonesia" />
-    <meta property="og:description" content="Platform POS offline-first untuk kafe, restoran, dan ritel. Tetap berjalan tanpa internet, sinkron saat kembali online." />
+    <meta property="og:locale" content="id_ID" />
+    <meta property="og:title" content={TITLE} />
+    <meta property="og:description" content={DESCRIPTION} />
     <meta property="og:url" content="https://kasir.mu/id/" />
     <meta property="og:image" content="https://kasir.mu/og-image.png" />
-    <script is:inline>
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <!-- Twitter card: this stub is the most-visited URL, so it must carry the
+         same social surface as the locale pages — it was the only page on the
+         site with no twitter:* tags at all. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={TITLE} />
+    <meta name="twitter:description" content={DESCRIPTION} />
+    <meta name="twitter:image" content="https://kasir.mu/og-image.png" />
+    <meta name="twitter:image:alt" content={TITLE} />
+    <!-- The key arrives via define:vars because an is:inline script is never
+         bundled, so it cannot import the owner (lib/language.ts) directly. -->
+    <script is:inline define:vars={{ LANGUAGE_STORAGE_KEY }}>
       // Privacy-friendly: stored user preference first, browser language fallback.
       // The last resort is 'id', not 'en': it only triggers when navigator.language
-      // is empty (essentially never), and 'id' is what the noscript fallback,
+      // is empty (essentially never), and 'id' is what the rendered fallback,
       // canonical, x-default and astro.config defaultLocale all agree on.
-      const saved = localStorage.getItem('oz_language');
+      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
       const lang = (saved || navigator.language || 'id').toLowerCase();
       const target = lang.startsWith('id') ? '/id/' : '/en/';
       window.location.replace(target);
     </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0; url=/id/" />
-    </noscript>
   </head>
-  <body></body>
+  <body>
+    <!-- Rendered, not inside `<noscript>`: a noscript heading belongs to no
+         outline a consumer receives. The 0-second meta refresh that used to sit
+         here sent this reader to /id/ before they could read it. -->
+    <LocaleFallback
+      title="kasir.mu"
+      links={[
+        { href: '/id/', label: 'Bahasa Indonesia' },
+        { href: '/en/', label: 'English', lang: 'en' },
+      ]}
+    />
+  </body>
 </html>

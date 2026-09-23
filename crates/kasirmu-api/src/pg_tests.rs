@@ -624,9 +624,18 @@ async fn pg_integration_rest_rls_non_owner() {
     // Restricted role (idempotent): DML on the tenant tables + the
     // non-tenant `roles` table the REST layer touches (sale_lines is
     // RLS-covered too — the functions stamp tenant_id explicitly).
-    // Cluster DDL window: `oz_rest_probe` is a CLUSTER-wide role shared
-    // with `pg_isolates_locations_by_tenant`, so this setup races that
-    // test and every other worker’s throwaway-DB DDL. Serialize it.
+    // Cluster DDL window: the role is cluster-wide, so this setup races every
+    // other worker’s throwaway-DB DDL. Serialize it with the DDL guard.
+    //
+    // The role NAME is this test’s own and is deliberately NOT shared with the
+    // locations RLS test: both used to create and drop one name, and a probe pool
+    // from the test that finished first keeps an IDLE session as that role after its
+    // window closes — so the other test’s setup DROP ROLE died with "role ... is
+    // being used by active sessions" (observed 22-09-26 as
+    // `pg_isolates_locations_by_tenant` and `pg_integration_rest_rls_non_owner`
+    // failing alternately in one `cargo test -p kasirmu-api --lib` run, and passing
+    // alone). One resource per test removes the race the lock cannot close; the lock
+    // stays for the DROP DATABASE and the shared schema it does serialize.
     let ddl = pg_ddl_guard(&url).await;
     let owner = pool.get().await.expect("owner connection");
     owner
@@ -1609,25 +1618,28 @@ async fn pg_isolates_locations_by_tenant() {
     let tenant_b = unique_id("pg-loc-b");
 
     // Restricted role (idempotent): DML on the location-scope tenant tables.
-    // Cluster DDL window: `oz_rest_probe` is a CLUSTER-wide role shared
-    // with `pg_integration_rest_rls_non_owner`, whose setup would otherwise
-    // race this one (CREATE ROLE → "already exists", DROP ROLE out from
-    // under a connecting probe pool).
+    //
+    // `oz_rest_probe_loc` is THIS test’s own cluster-wide role name. It was once
+    // `oz_rest_probe`, shared with `pg_integration_rest_rls_non_owner`, and the two
+    // failed alternately: the first to finish leaves an idle probe session as the
+    // role, so the other one’s setup `DROP ROLE` refuses with "is being used by
+    // active sessions". Distinct names are the fix; the DDL guard still serializes
+    // the cluster DDL both tests perform (DROP DATABASE and the shared schema).
     let ddl = pg_ddl_guard(&url).await;
     let owner = pool.get().await.expect("owner connection");
     owner
         .batch_execute(
             "DO $$\n\
              BEGIN\n\
-                 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oz_rest_probe') THEN\n\
-                     EXECUTE 'DROP OWNED BY oz_rest_probe';\n\
-                     EXECUTE 'DROP ROLE oz_rest_probe';\n\
+                 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'oz_rest_probe_loc') THEN\n\
+                     EXECUTE 'DROP OWNED BY oz_rest_probe_loc';\n\
+                     EXECUTE 'DROP ROLE oz_rest_probe_loc';\n\
                  END IF;\n\
              END $$;\n\
-             CREATE ROLE oz_rest_probe LOGIN PASSWORD 'oz_rest_probe_pw';\n\
-             GRANT USAGE ON SCHEMA public TO oz_rest_probe;\n\
+             CREATE ROLE oz_rest_probe_loc LOGIN PASSWORD 'oz_rest_probe_loc_pw';\n\
+             GRANT USAGE ON SCHEMA public TO oz_rest_probe_loc;\n\
              GRANT SELECT, INSERT, UPDATE, DELETE ON locations, user_location_access\n\
-                 TO oz_rest_probe;",
+                 TO oz_rest_probe_loc;",
         )
         .await
         .expect("probe role setup should succeed");
@@ -1640,7 +1652,7 @@ async fn pg_isolates_locations_by_tenant() {
     let scheme_end = db_url.find("://").expect("URL has a scheme") + 3;
     let at = db_url.find('@').expect("URL has credentials");
     let probe_url = format!(
-        "{}oz_rest_probe:oz_rest_probe_pw@{}",
+        "{}oz_rest_probe_loc:oz_rest_probe_loc_pw@{}",
         &db_url[..scheme_end],
         &db_url[at + 1..]
     );
@@ -1652,7 +1664,7 @@ async fn pg_isolates_locations_by_tenant() {
         let _ = conn.await;
     });
     probe_raw
-        .batch_execute("SET ROLE oz_rest_probe")
+        .batch_execute("SET ROLE oz_rest_probe_loc")
         .await
         .expect("SET ROLE should succeed");
 

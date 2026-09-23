@@ -1168,3 +1168,273 @@ func TestAdminEmailHealthSnapshot(t *testing.T) {
 		}
 	})
 }
+
+// ── POST /admin/tenants/{id}/region (ADR #59 §2.1a step 2) ────────
+
+func TestAdminSetRegion_RejectsAnUnknownRegion(t *testing.T) {
+	// The set is closed (ADR #59 §Q2). An unknown region must be rejected as bad
+	// input BEFORE any write, so a typo cannot move a tenant's data residency.
+	// 'eu' is deliberately a plausible-looking non-member: a country code is the
+	// MARKET vocabulary and must never be accepted as a residency region (§2.2).
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionbad@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"eu","reason":"moved to EU"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unknown region, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Nothing written: the rejection is the point, not a partial move.
+	untouched, _ := app.FindRecordById("tenants", tenant.Id)
+	if got := untouched.GetString("region"); got != "" {
+		t.Errorf("region = %q, want it untouched after a rejected request", got)
+	}
+}
+
+func TestAdminSetRegion_RequiresAReason(t *testing.T) {
+	// A region move answers "why did this tenant's data move?" in an incident
+	// review, so the reason is mandatory — the audit trail is the feature.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionnoreason@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"global"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 without a reason, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetRegion_IsIdempotentOnTheCurrentRegion(t *testing.T) {
+	// handleAdminRevokeDevice is the model: already in the requested region is a
+	// no-op returning 200, not an error. A retry must not fail for being true.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionnoop@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant.Set("region", regionGlobal)
+	if err := app.Save(tenant); err != nil {
+		t.Fatalf("seed region: %v", err)
+	}
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"global","reason":"re-requested"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for a no-op, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response not JSON: %v", err)
+	}
+	if body["status"] != "unchanged" {
+		t.Errorf("status = %v, want unchanged for an idempotent no-op", body["status"])
+	}
+}
+
+func TestAdminSetRegion_RequiresAdminAuth(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionnoauth@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", "",
+		`{"region":"global","reason":"nope"}`)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("expected a refusal without admin auth, got 200: %s", rec.Body.String())
+	}
+	untouched, _ := app.FindRecordById("tenants", tenant.Id)
+	if got := untouched.GetString("region"); got != "" {
+		t.Errorf("region = %q, want it untouched after an unauthenticated request", got)
+	}
+}
+
+func TestAdminSetRegion_NotFoundForAMissingTenant(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/doesnotexist123/region", lifecycleAdminKey,
+		`{"region":"global","reason":"x"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+func TestAdminSetRegion_WritesTheMoveAndTheReason(t *testing.T) {
+	// The positive leg: a tenant with no region (a row that predates the field,
+	// or one the backfill has not reached) is moved to the known region, and the
+	// handler reports the transition it made. Without this the suite proves only
+	// that refusals work, never that the move does.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionmove@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	if got := tenant.GetString("region"); got != "" {
+		t.Fatalf("precondition: region should start empty, got %q", got)
+	}
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"global","reason":"initial placement"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response not JSON: %v", err)
+	}
+	if body["status"] != "updated" {
+		t.Errorf("status = %v, want updated", body["status"])
+	}
+	// The transition is reported, so an operator sees what actually changed
+	// rather than only the value they asked for.
+	//
+	// "from" is EMPTY here, and that is the assertion: an unset region is not
+	// the same state as "already global". Reporting it as global would describe
+	// a no-op the handler correctly did not perform, and would hide the
+	// difference between a tenant that is placed and one that is not.
+	if body["from"] != "" || body["region"] != regionGlobal {
+		t.Errorf("from/region = %v/%v, want empty/%s", body["from"], body["region"], regionGlobal)
+	}
+
+	persisted, err := app.FindRecordById("tenants", tenant.Id)
+	if err != nil {
+		t.Fatalf("find tenant: %v", err)
+	}
+	if got := persisted.GetString("region"); got != regionGlobal {
+		t.Errorf("persisted region = %q, want %q", got, regionGlobal)
+	}
+}
+
+func TestKnownRegionsMatchTheSchemaSelectValues(t *testing.T) {
+	// The residency vocabulary is named in three places: RegionCode in
+	// kasirmu-core, the tenants.region select in pb_schema.json, and
+	// knownRegions() here. Three spellings of one region is exactly the
+	// routing-bug-looks-like-a-data-bug failure ADR #59 §Q2 forbids, so the
+	// Go constant and the schema must be pinned to each other.
+	//
+	// Built through dashboardMux rather than tests.NewTestApp: the latter is an
+	// empty app with no collections, so the tenants collection must come from
+	// the same boot the production routes see.
+	app, _ := dashboardMux(t)
+	defer app.Cleanup()
+
+	collection, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		t.Fatalf("find tenants: %v", err)
+	}
+	f, ok := collection.Fields.GetByName("region").(*core.SelectField)
+	if !ok {
+		t.Fatal("tenants.region must be a select field")
+	}
+	got := append([]string(nil), f.Values...)
+	want := knownRegions()
+	if len(got) != len(want) {
+		t.Fatalf("schema region values = %v, knownRegions() = %v", got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("region value %d: schema %q, Go %q", i, got[i], want[i])
+		}
+	}
+}
+
+// ── region-change audit trail (ADR #59 §2.1a step 3) ───────────────
+
+func TestAdminSetRegion_RecordsADurableAuditRow(t *testing.T) {
+	// A region move needs a ROW and not just a log line: a log is rotated
+	// away, while "why did this tenant's data move" must outlive the deploy
+	// that produced it. The row carries actor, from, to and reason.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionaudit@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"global","reason":"signed EU contract"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	events, err := app.FindRecordsByFilter(tenantRegionEventsCollection,
+		"tenant_id = {:tid}", "-created", 0, 0, map[string]any{"tid": tenant.Id})
+	if err != nil {
+		t.Fatalf("query audit events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected exactly 1 audit row, got %d", len(events))
+	}
+	e := events[0]
+	if got := e.GetString("to_region"); got != regionGlobal {
+		t.Errorf("to_region = %q, want %q", got, regionGlobal)
+	}
+	// from_region is EMPTY, matching the response and the stored value: an
+	// unset region must not be recorded as "global", or the audit would claim
+	// a move that never happened.
+	if got := e.GetString("from_region"); got != "" {
+		t.Errorf("from_region = %q, want empty for an unset source", got)
+	}
+	if got := e.GetString("reason"); got != "signed EU contract" {
+		t.Errorf("reason = %q, want the submitted reason", got)
+	}
+	// The actor distinguishes a human (admin session) from automation (the
+	// shared admin key) — the distinction an incident review actually asks.
+	if got := e.GetString("actor"); got != "admin-key" {
+		t.Errorf("actor = %q, want admin-key for a key-authenticated call", got)
+	}
+}
+
+func TestAdminSetRegion_RecordsNoAuditRowForANoOp(t *testing.T) {
+	// An idempotent no-op changes nothing, so it must not add an audit row —
+	// otherwise a retry storm buries the one real move in duplicates and the
+	// trail stops answering the question it exists for.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	tenant := seedLifecycleTenant(t, app, "regionauditnoop@test.com", "active")
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant.Set("region", regionGlobal)
+	if err := app.Save(tenant); err != nil {
+		t.Fatalf("seed region: %v", err)
+	}
+
+	rec := doJSON(mux, http.MethodPost, "/api/v1/admin/tenants/"+tenant.Id+"/region", lifecycleAdminKey,
+		`{"region":"global","reason":"retry"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	events, err := app.FindRecordsByFilter(tenantRegionEventsCollection,
+		"tenant_id = {:tid}", "-created", 0, 0, map[string]any{"tid": tenant.Id})
+	if err != nil {
+		t.Fatalf("query audit events: %v", err)
+	}
+	if len(events) != 0 {
+		t.Errorf("expected no audit row for a no-op, got %d", len(events))
+	}
+}
+
+func TestTenantRegionEvents_AreNotPubliclyReadable(t *testing.T) {
+	// LSE-5: an empty-string rule is PUBLIC in PocketBase, and a brand-new
+	// collection is exactly where that mistake gets repeated. The audit trail
+	// names tenants and records operator reasoning, so it must not be readable
+	// by anyone holding a tenant session or key.
+	app, _ := dashboardMux(t)
+	defer app.Cleanup()
+
+	coll, err := app.FindCollectionByNameOrId(tenantRegionEventsCollection)
+	if err != nil {
+		t.Fatalf("find %s: %v", tenantRegionEventsCollection, err)
+	}
+	rules := map[string]*string{
+		"list":   coll.ListRule,
+		"view":   coll.ViewRule,
+		"create": coll.CreateRule,
+		"update": coll.UpdateRule,
+		"delete": coll.DeleteRule,
+	}
+	for name, rule := range rules {
+		if rule != nil {
+			t.Errorf("%s rule = %q, want nil (superuser-only)", name, *rule)
+		}
+	}
+}

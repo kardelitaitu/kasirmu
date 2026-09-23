@@ -25,6 +25,6 @@ pub mod manifest;
 pub mod package;
 
 pub use error::PluginError;
-pub use loader::{LoadedPlugin, PluginRegistry, load_plugins};
+pub use loader::{LoadedPlugin, PluginRegistry, hash_plugin_set, load_plugins};
 pub use manager::PluginManager;
 pub use manifest::PluginManifest;

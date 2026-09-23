@@ -6,7 +6,7 @@ findings: exemplary — MONEY-05 checked arithmetic at IPC boundary with documen
 next: checked_add for received+damaged (COR-29) | perf: statement reuse mitigates the per-order line query
 */
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLines};
@@ -299,6 +299,28 @@ impl Store<'_> {
     }
 
     /// Update the status of a purchase order.
+    ///
+    /// The transition is a compare-and-set, not a blind write: the status the
+    /// caller is moving away from is read first, and the guarded UPDATE
+    /// carries it as a predicate. A competing transition that commits in
+    /// between makes that predicate match zero rows, so the loser is refused
+    /// with CoreError::Conflict and the winner's row is left untouched.
+    /// This matters because status gates receiving
+    /// ([Self::receive_purchase_order] accepts only approved) and payables:
+    /// a lost update would let stock arrive against an order the system
+    /// believes is closed, or the reverse.
+    ///
+    /// The pre-check deliberately reads OUTSIDE the transaction (the void_sale
+    /// shape, ADR #6) — reading it inside would just observe the winner's
+    /// status and then overwrite it, which is the lost update this guard
+    /// exists to prevent.
+    ///
+    /// # Errors
+    ///
+    /// CoreError::Validation for a status outside the allowed set,
+    /// CoreError::NotFound when no order carries `id`, and
+    /// CoreError::Conflict when a competing transition changed the status
+    /// first.
     pub fn update_po_status(
         &self,
         id: &str,
@@ -312,18 +334,37 @@ impl Store<'_> {
             });
         }
 
+        // The status we are transitioning FROM, read before the write lock is
+        // taken so a rival transition landing in between is detectable.
+        let current: String = self
+            .conn
+            .query_row(
+                "SELECT status FROM purchase_orders WHERE id=?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(CoreError::NotFound {
+                entity: "purchase_order",
+                id: id.to_owned(),
+            })?;
+
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let rows = self.conn.execute(
-            "UPDATE purchase_orders SET status=?1, updated_at=?2 WHERE id=?3",
-            params![new_status, now, id],
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+        let rows = tx.execute(
+            "UPDATE purchase_orders SET status=?1, updated_at=?2 WHERE id=?3 AND status=?4",
+            params![new_status, now, id, current],
         )?;
 
         if rows == 0 {
-            return Err(CoreError::NotFound {
+            tx.rollback()?;
+            return Err(CoreError::Conflict {
                 entity: "purchase_order",
-                id: id.to_owned(),
+                field: "status",
             });
         }
+
+        tx.commit()?;
 
         self.get_purchase_order(id)?.ok_or(CoreError::NotFound {
             entity: "purchase_order",

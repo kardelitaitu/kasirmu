@@ -77,7 +77,7 @@ export default function AccountRegion({ labels, region, onRegionChange }: Props)
           }}
           aria-haspopup="listbox"
           aria-expanded={regionOpen}
-          className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left outline-none transition focus:border-accent flex items-center justify-between"
+          className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left transition flex items-center justify-between"
         >
           <span>{t(labels, region === 'id' ? 'signup.regionIndonesia' : 'signup.regionGlobal')}</span>
           <svg

@@ -68,6 +68,45 @@ Two guards, because the ambient `JAVA_HOME` is the unreliable part:
    regardless of what the shell or Studio exports. Verified 2026-09-19 with `JAVA_HOME` deliberately
    left on the JBR 25 path: `gradlew help` reports `BUILD SUCCESSFUL`.
 
+### ⚠️ `TMP` must be a REAL Windows dir — a POSIX path breaks sccache
+
+`~/.cargo/config.toml` on this host sets `build.rustc-wrapper = "sccache"`, so
+**every** `rustc` call is wrapped. sccache creates a per-compile temp directory
+*under `TMP`*, and if that path is not creatable it fails the whole build with a
+message that does not name the wrapper:
+
+```
+sccache: encountered fatal error
+sccache: error: Failed to create temp dir
+sccache: caused by: The system cannot find the path specified. (os error 3)
+          at path "C:\Users\<user>\AppData\Local\Temp\tauri-cli-<pid>\sccacheXXXXXX"
+  ... exit code: 0xfffffffe
+```
+
+**Two distinct traps**, both hit on 2026-09-22 while verifying the ADR #57
+fingerprint read:
+
+1. **Do not set `TMP=/tmp/...` on Windows.** The per-process recipe above is
+   written for Git-bash, where `/tmp` resolves for *shell* commands — but the
+   native `sccache.exe` receives the literal string and cannot create it. Use a
+   real path, e.g. `TMP=C:\dev\ozpos\.tmp-build` (created first).
+2. **A failure POISONS every later build until the daemon is killed.** sccache
+   runs a persistent server that keeps the environment it was first started
+   with, so after one bad run every subsequent `cargo tauri android build` fails
+   with the *same stale* `tauri-cli-<old-pid>` path no matter how the calling
+   shell is fixed:
+
+   ```powershell
+   Get-Process sccache | Stop-Process -Force   # then rebuild
+   ```
+
+   The stale `tauri-cli-<pid>` directory it names will not exist on disk, which
+   is the tell that you are looking at a leftover daemon rather than a bad path
+   in the current shell.
+
+Setting `RUSTC_WRAPPER=` in the shell does **not** help: the wrapper comes from
+`config.toml`, not the environment.
+
 ### ⚠️ Set `TMP` / `TEMP` / `TMPDIR` to a per-process dir (avoids the WebSocket RPC race)
 
 Tauri 2's CLI starts a WebSocket server on `127.0.0.1:<random>` and writes the
@@ -162,21 +201,28 @@ keyAlias=<alias>
 storeFile=/abs/path/to/oz-pos.keystore
 ```
 
-**Nothing does this in CI any more.** It used to be done by the `android.yml`
-and `nightly.yml` workflows, which `23c963303` renamed on 2026-09-02 to
-`.github/workflows/android.yml.bak` and `.github/workflows/nightly.yml.bak` —
-GitHub never executes a `.bak` file, so no pipeline decodes the base64 keystore
-secret or writes this file today. The decode logic is still readable in that inert
-file (`.github/workflows/android.yml.bak:119-132`: base64 -d into
-`oz-pos-release.keystore`, then `keyAlias`/`password`/`storeFile` written to
-`keystore.properties` from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` /
-`KEYSTORE_PASSWORD` secrets). The only live workflows are `dev-ci.yml` (PR to
-`main`, a push to `main` and `workflow_dispatch`, three events re-read from
-`dev-ci.yml:3-8`) and `release.yml` (`v*` tags), and `release.yml` is
-desktop-only by design — its own header at `.github/workflows/release.yml:24`
-lists "Mobile (`android.yml.bak` / `ios.yml.bak`). Never part of this file." So
-restoring an Android release build means writing a workflow again; until then,
-signing is local: create `gen/android/keystore.properties` yourself.
+**A workflow does this again — on tags and on demand only.** The history first,
+because it explains the shape: `23c963303` renamed `android.yml` and `nightly.yml`
+to `.bak` on 2026-09-02 (GitHub never executes a `.bak`, so nothing decoded the
+keystore then), and `54f64de83` moved those backups into
+`.github/workflows/attic/` on 2026-09-18. **The restored
+`.github/workflows/android.yml` (2026-09-22) decodes this file again**, on a `v*`
+tag or `workflow_dispatch` — deliberately **no PR trigger**, so a workflow nobody
+can exercise locally cannot block a merge. Restoring it was not a rename: the
+retired copy pointed at `apps/tablet-client` (renamed to `apps/mobile-tauri` by
+P11), pinned JDK 17 where this file pins 21, never installed the NDK, and called
+`tauri android init` for a scaffold that is now committed.
+
+The decode logic matches the retired copy
+(`.github/workflows/attic/android.yml.bak:119-129` — corrected from `:119-132`,
+which over-ran the block: base64 -d into `oz-pos-release.keystore` at `:126`, then
+`keyAlias`/`password`/`storeFile` appended to `keystore.properties` at `:127-129`,
+from the `ANDROID_KEYSTORE_BASE64` / `KEY_ALIAS` / `KEYSTORE_PASSWORD` secrets).
+
+**With no keystore secret configured, the CI build is UNSIGNED** — which still
+proves the Android target compiles, and that is the job's actual assertion. For an
+installable signed build, create `gen/android/keystore.properties` yourself as above;
+`release.yml` remains desktop-only by design (`release.yml:24`).
 
 ---
 
@@ -206,7 +252,7 @@ Measured 2026-09-19 on this host (16 cores / 32 threads):
 
 **Read both figures as single-ABI (arm64), which is not what the commands above produce.** They
 pass no `--target`, so they build the `universal` flavor across all four ABIs; the numbers here
-came from the `--target aarch64` path that `docs/guides/android-install-test.md` and
+came from the `--target aarch64` path that `docs/guides/platform/android-install-test.md` and
 `scripts/android-cdp.mjs` use, which narrows `abiList` to `arm64-v8a`. The release column proves
 it: 26.9 MB matches the 25.8 MB arm64 `.so` plus packaging, whereas the four-ABI
 `apk/universal/release/app-universal-release.apk` measured 2026-09-20 is **104,737,268 B** and
@@ -283,11 +329,15 @@ and opens the Tauri dev server for hot-reload.
 
 ## CI notes (GitHub Actions)
 
-**There is no Android CI job.** No live workflow builds an APK: the job that did
-lives in the inert `.github/workflows/android.yml.bak` (retired by `23c963303`,
-2026-09-02), and `dev-ci.yml#static-gates` has no Android or NDK step. So the list
-below is the recipe for whoever restores the workflow, not a description of
-today's CI. For PRs targeting `main`, a CI job should:
+**There IS an Android CI job again — `.github/workflows/android.yml#android-build`**,
+restored 2026-09-22 from `attic/` and corrected (see the Signing section above for
+what needed fixing beyond the paths). It runs on a `v*` tag or
+`workflow_dispatch` **only** — deliberately no PR trigger, so a workflow that cannot
+be exercised locally cannot block a merge — and it fails if the build produces no
+APK, which is its real assertion. `dev-ci.yml#static-gates` still has no Android or
+NDK step, so nothing checks the Android build on a PR today.
+
+What that job does, which is also the manual recipe:
 
 1. Install JDK 21, Android SDK 36, NDK 30
 2. `rustup target add aarch64-linux-android`

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
   createLastmodResolver,
   frontmatterUpdated,
@@ -108,6 +108,14 @@ describe('frontmatterUpdated', () => {
 });
 
 describe('gitDatesByPath', () => {
+  // The first call reads `git log --name-only` over the whole history — ~1 s on
+  // an idle machine, several seconds while vitest is running 24 workers. Paying
+  // it here (as setup, with a budget for it) keeps every assertion below on the
+  // default timeout and makes the order the tests run in irrelevant.
+  beforeAll(() => {
+    gitDatesByPath();
+  }, 30_000);
+
   it('returns a Map', () => {
     expect(gitDatesByPath()).toBeInstanceOf(Map);
   });

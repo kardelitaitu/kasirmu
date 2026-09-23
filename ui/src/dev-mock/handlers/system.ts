@@ -17,6 +17,43 @@ function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>
   return ((args as Record<string, unknown>)?.['args'] ?? args ?? {}) as T;
 }
 
+/**
+ * True when the page was opened with `?unprovisioned=1`.
+ *
+ * Read at CALL time rather than captured at module load, so a test can navigate
+ * and then assert without importing this module first. Guarded because the
+ * handler also runs under jsdom, where `window.location` exists but search may
+ * be empty — the absent case is the normal one and must not throw.
+ */
+function unprovisionedRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('unprovisioned') === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the page was opened with `?revoked=1`.
+ *
+ * `RevokedScreen` renders only when `subscriptionState === 'revoked'`, and this
+ * mock answered a hardcoded `state: 'active'` — so the ADR #58 §2.6 data-export
+ * screen could not be reached in a browser at all. Same seam and the same
+ * reasoning as `unprovisionedRequested` above: an explicit per-navigation
+ * opt-in that changes no default, read at CALL time, guarded for jsdom.
+ *
+ * `unavailable` (a fail-closed transport reading) is deliberately NOT reachable
+ * this way — it means "we could not ask", which is a different fact from "the
+ * subscription is revoked".
+ */
+function revokedRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('revoked') === '1';
+  } catch {
+    return false;
+  }
+}
+
 
 const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   // Owner — global wildcard.
@@ -305,6 +342,110 @@ function mockAuditMatches(row: MockAuditRow, f: { outcome?: string; query?: stri
 // claiming a review that never happened on the tenant's real log.
 const mockAuditReview: { checkpoint: MockReviewCheckpoint | null } = { checkpoint: null };
 
+
+/**
+ * The store-type presets the first-run flow offers, and the feature keys each enables —
+ * a MIRROR of `FeatureRegistry::{simple_retail, restaurant, full_store, cafe, franchise,
+ * custom}` in `crates/kasirmu-core/src/features.rs:304-414`, keyed by the slugs
+ * `preset_registry` (`:427`) accepts and sorted the way `preset_feature_keys` (`:449`) sorts
+ * them.
+ *
+ * Why a copy exists here at all: the mock runs in a browser and the fact lives in Rust. The
+ * product's answer to that is the real command this handler stands in for — the UI calls
+ * `get_preset_features` rather than carrying the lists (`ui/src/api/settings.ts:257-267`),
+ * which is what keeps the UI honest. ONLY the preview reads this table, and
+ * `ui/src/__tests__/dev-mock-preset-features.test.ts` pins it against the real payload shape
+ * so a hand-edit that breaks the sort or the slug set is caught rather than silently
+ * provisioning a preview terminal with a different feature set than production.
+ */
+const MOCK_PRESET_FEATURE_KEYS: Record<string, readonly string[]> = {
+  'simple-retail': [
+    'barcode-scanning',
+    'cash-payment',
+    'categories-enabled',
+    'inventory-tracking',
+    'receipt-printing',
+    'simple-retail',
+    'tax-engine',
+  ],
+  restaurant: [
+    'cash-payment',
+    'categories-enabled',
+    'discount-engine',
+    'inventory-tracking',
+    'kitchen-display',
+    'receipt-printing',
+    'restaurant',
+    'staff-login',
+    'table-management',
+    'tax-engine',
+  ],
+  'full-store': [
+    'analytics',
+    'audit-log',
+    'barcode-scanning',
+    'card-payment',
+    'cash-drawer',
+    'cash-payment',
+    'categories-enabled',
+    'customer-display',
+    'discount-engine',
+    'export-import',
+    'gift-cards',
+    'inventory-tracking',
+    'loyalty-program',
+    'multi-currency',
+    'nfc-reader',
+    'product-bundles',
+    'product-variants',
+    'promotions-engine',
+    'quick-return',
+    'receipt-printing',
+    'reporting',
+    'shift-management',
+    'simple-retail',
+    'staff-login',
+    'staff-roles',
+    'tax-engine',
+    'usb-scale',
+  ],
+  cafe: [
+    'card-payment',
+    'cash-payment',
+    'customer-display',
+    'discount-engine',
+    'kitchen-display',
+    'promotions-engine',
+    'receipt-printing',
+    'restaurant',
+    'simple-retail',
+    'tax-engine',
+  ],
+  franchise: [
+    'analytics',
+    'audit-log',
+    'card-payment',
+    'cash-payment',
+    'categories-enabled',
+    'cloud-sync',
+    'discount-engine',
+    'inventory-tracking',
+    'kitchen-display',
+    'multi-currency',
+    'multi-store',
+    'multi-terminal',
+    'product-variants',
+    'receipt-printing',
+    'reporting',
+    'restaurant',
+    'shift-management',
+    'staff-login',
+    'staff-roles',
+    'table-management',
+    'tax-engine',
+  ],
+  custom: [],
+};
 export const systemHandlers: Record<string, MockHandler> = {
 
   // Local-IP banner for the boot/setup screen — moved verbatim from
@@ -350,9 +491,63 @@ export const systemHandlers: Record<string, MockHandler> = {
     };
   },
 
-  'get_setup_status': () => ({ completed: true, preset: 'retail' }),
-  'complete_setup': () => null,
-  'dismiss_setup_wizard': () => null,
+  // ADR #56 §2.1: the mock reports a PROVISIONED terminal by default so the dev
+  // shell routes to a session rather than the first-run flow. `provision_device`
+  // echoes what it was asked to create, matching the real command's idempotent
+  // read-back shape.
+  //
+  // ?unprovisioned=1 opts into the OTHER answer, which is the only way to reach
+  // ProvisioningFlow in a browser: the desktop shell bypasses it entirely under
+  // `import.meta.env.DEV` (AppShell.tsx:214-217), and the tablet shell — which
+  // has no bypass — reads this same handler. So without this flag the setup flow
+  // has NO end-to-end coverage, measured in round 10 of the setup audit.
+  //
+  // A query param rather than a localStorage key, deliberately: it is an explicit
+  // per-navigation opt-in that cannot persist on a developer's machine, and it
+  // adds no key for `storageKeyPins.test.ts` to police. The default is unchanged,
+  // so every existing preview and E2E run behaves exactly as before.
+  'get_first_run_state': () => (
+    unprovisionedRequested()
+      ? { state: 'unprovisioned' }
+      : {
+          state: 'provisioned',
+          location_id: 'loc-1',
+          owner_user_id: 'user-1',
+          mode: 'local',
+          home_region: 'global',
+          tenant_id: null,
+        }
+  ),
+  'plugin:dialog|save': () => '/tmp/oz-mock/kasir_export_mock.kasirpkg',
+  'plugin:dialog|open': () => '/tmp/oz-mock/kasir_import_mock.kasirpkg',
+
+  // ── Native dialogs (tauri-plugin-dialog) ─────────────────────────────
+  // The real plugin invokes these two IPC commands; with no handler the mock
+  // returned `null` for both, which every caller reads as "the user cancelled".
+  // Four flows (export, import, backup, image-pick) then returned early in
+  // SILENCE — measured 2026-09-23 on the ADR #58 §2.6 screen, where pressing
+  // "Export my data" on a revoked account did nothing at all: no error, no
+  // toast, no page error, because `pickExportPath()` resolved null before the
+  // export command was ever reached. That made the whole export path unreachable
+  // in dev and untestable in E2E.
+  //
+  // These answer a chosen path so the code AFTER the dialog runs. No file is
+  // written — the downstream data handlers already fabricate their own results.
+  // A mock that returned null would reproduce the early-return this exists to
+  // unblock; a caller testing the CANCELLED branch must stub these explicitly.
+
+  'provision_device': (a: unknown) => {
+    const args = (a as { args?: Record<string, unknown> })?.args ?? {};
+    return {
+      terminal_id: (args['terminal_id'] as string) ?? 'term-1',
+      location_id: 'loc-1',
+      owner_user_id: 'user-1',
+      created: true,
+      mode: (args['mode'] as string) ?? 'local',
+      home_region: 'global',
+    };
+  },
+
   'version': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
   'version_scoped': () => ({ name: 'oz-pos', version: pkg.version, rustVersion: '1.80', target: 'x86_64' }),
 
@@ -375,6 +570,52 @@ export const systemHandlers: Record<string, MockHandler> = {
   'plugin:updater|check': () => null,
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  // ── Device account linking (ADR #54 §2.5 / §2.6) ─────────────────────
+  // These three had NO handler at all, so `invoke` fell through to its
+  // unknown-command branch and returned `null` (with a console warning nobody
+  // reads). The consequence was that the entire account-linking flow was
+  // unusable in dev and E2E: measured 2026-09-23, "Continue with Google"
+  // resolved null and silently did nothing, and the tablet email path accepted
+  // an address, showed the code field, then rejected EVERY code with "That code
+  // did not work" — because `link_device_email_consume` never returned
+  // `{ tenantId, email, verified }`. A merchant could not link an account at
+  // all on a dev preview, which is the flow this whole objective is about.
+  //
+  // Shapes mirror the Rust structs (`kasirmu-core/src/desktop_link.rs`),
+  // `LinkedAccount` at :123 and `VerifiedAccount` at :137, both camelCase on the
+  // wire. `terminal` is Option<TerminalCredential> there and is omitted rather
+  // than sent as null — matching serde's skip-if-none for an absent credential.
+  'link_device_google': () => ({
+    tenantId: 'tenant-linked-google',
+    provider: 'google',
+    email: 'merchant@gmail.com',
+  }),
+  'link_device_email_request': () => undefined,
+  'link_device_email_consume': () => ({
+    tenantId: 'tenant-linked-email',
+    email: 'merchant@example.com',
+    verified: true,
+  }),
+
+  // Field-for-field the Rust `PairingSessionStart`
+  // (kasirmu-core/src/desktop_link.rs:38): code, poll_token, expires_at, qr_url.
+  // This answered `base_url` + `qr_payload` instead — neither field exists on the
+  // real struct, and the `qr_url` both screens read was therefore UNDEFINED.
+  // Measured 2026-09-23: the pairing instructions rendered the raw Fluent pattern
+  // "…or visit {$url}" to the merchant, on both the activation screen and the
+  // provisioning flow, because Fluent reports an unknown variable by echoing the
+  // pattern back. The QR still drew, because QRCodeSVG got undefined and encoded
+  // the string "undefined" — so the screen looked plausible while the scan target
+  // and the printed URL were both wrong.
+  'start_device_pairing': () => ({
+    code: 'ABCD-1234',
+    poll_token: 'mock-poll-token',
+    expires_at: new Date(Date.now() + 600_000).toISOString(),
+    qr_url: 'https://kasir.mu/pair?code=ABCD-1234',
+  }),
+  'poll_device_pairing': () => ({
+    status: 'pending',
+  }),
   'pause_subscription': () => ({
     status: 'paused',
     tierKey: 'plus',
@@ -387,8 +628,8 @@ export const systemHandlers: Record<string, MockHandler> = {
   }),
   'get_subscription_capabilities': () => ({
     tier: 'premium',
-    status: 'active',
-    state: 'active',
+    status: revokedRequested() ? 'revoked' : 'active',
+    state: revokedRequested() ? 'revoked' : 'active',
     // C+D-RES-1: trial state + feature-grant map ride the caps payload.
     // The mock tenant is a paid premium subscription: not a trial, no
     // payload feature overrides - exactly the null/empty-when-absent
@@ -459,6 +700,28 @@ export const systemHandlers: Record<string, MockHandler> = {
   },
   'get_enabled_features': () => ({ features: ['sales', 'inventory', 'reporting', 'staff', 'settings'] }),
 
+  // The preset→features fact has exactly ONE owner in core
+  // (`crates/kasirmu-core/src/features.rs:304-414`, read through `preset_feature_keys`
+  // at `:449`). This table is the mock's copy of it, and it is a copy because the browser
+  // preview cannot call Rust — the real `get_preset_features` (`kasirmu-bridge/src/setup.rs:225`)
+  // exists precisely so the UI never carries such a table itself. Keys are the kebab-case
+  // `feature_key` suffixes, sorted the way `preset_feature_keys` sorts them, so a preview
+  // that provisions a terminal pushes the same feature set the backend would.
+  //
+  // Unreachable here before 2026-09-22: `scripts/verify-ipc-parity.py` failed the whole gate
+  // on `get_preset_features` because the UI invoked it and nothing under `ui/src/dev-mock/`
+  // answered, so the browser preview rendered the first-run flow's failure path.
+  'get_preset_features': (a: unknown) => {
+    const { preset } = (a ?? {}) as { preset?: string };
+    const keys = MOCK_PRESET_FEATURE_KEYS[preset ?? ''];
+    // An unknown slug is an ERROR here, exactly as `BridgeError::Invalid` answers it
+    // (`kasirmu-bridge/src/setup.rs:231`). The first-run FLOW degrades to `[]` and
+    // provisions anyway (ProvisioningFlow.tsx:282-284); a mock that returned `[]` for a
+    // typo would hide the difference between that degradation and a lost preset.
+    if (!keys) throw new Error(`unknown store preset: ${preset ?? ''}`);
+    return { features: [...keys] };
+  },
+
   // ═══════════════════════════════════════════════════════════════
   // SECURITY / ENCRYPTION
   // ═══════════════════════════════════════════════════════════════
@@ -514,6 +777,7 @@ export const systemHandlers: Record<string, MockHandler> = {
   'get_backup_status': () => ({ lastBackup: null, lastBackupSize: null }),
   'create_backup': () => ({ path: '/backups/backup.db', sizeBytes: 1024 }),
   'export_data': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
+  'export_data_without_session': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
   'import_preview': () => ({ storeName: 'Test Store', appVersion: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
   'import_data': () => ({ productsImported: 10, categoriesImported: 2, salesImported: 0, customersImported: 0, usersImported: 0, settingsImported: 0 }),
 

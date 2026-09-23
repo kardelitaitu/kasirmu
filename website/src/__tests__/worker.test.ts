@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import worker from '../../worker';
+import { RUNTIME_CONFIG_EVENT } from '../lib/runtime-config';
 
 describe('Cloudflare Worker — worker.ts', () => {
   const mockEnv = {
@@ -28,6 +29,11 @@ describe('Cloudflare Worker — worker.ts', () => {
     const text = await res.text();
     expect(text).toContain('https://license.test.kasir.mu');
     expect(text).toContain('/api/contact');
+    // The dispatch is what lets an island that hydrated first hear about the
+    // URL (see onRuntimeConfigArrived in src/lib/runtime-config.ts). Asserted
+    // against the shared constant at runtime, so the Worker's own copy of the
+    // event name cannot drift away from the client's.
+    expect(text).toContain(`window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}))`);
   });
 
   it('handles CORS OPTIONS preflight for /api/contact', async () => {
@@ -94,6 +100,96 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(mockEnv.ASSETS.fetch).toHaveBeenCalledWith(req);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('static asset');
+  });
+
+  // ── Canonical host: www → apex ──────────────────────────────────
+
+  it('301s www.kasir.mu to the apex, preserving path and query', async () => {
+    // Before this, www.kasir.mu was a proxied CNAME with no Worker route, so it
+    // fell through to the dummy origin and answered 522 on every path.
+    const req = new Request('https://www.kasir.mu/en/docs/offline-mode/?tab=setup');
+    // Counted before/after rather than asserted absent: the ASSETS mock is shared
+    // across this file, so earlier tests have already called it.
+    const assetsCallsBefore = mockEnv.ASSETS.fetch.mock.calls.length;
+    const res = await worker.fetch(req, mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/docs/offline-mode/?tab=setup');
+    // The redirect is answered by the Worker itself; nothing is served from www.
+    expect(mockEnv.ASSETS.fetch.mock.calls.length).toBe(assetsCallsBefore);
+  });
+
+  it.each([
+    ['/', 'https://kasir.mu/'],
+    ['/en/', 'https://kasir.mu/en/'],
+    ['/id/pricing/?plan=plus', 'https://kasir.mu/id/pricing/?plan=plus'],
+    ['/en/account/', 'https://kasir.mu/en/account/'],
+    ['/robots.txt', 'https://kasir.mu/robots.txt'],
+    ['/__oz/runtime-config.js', 'https://kasir.mu/__oz/runtime-config.js'],
+  ])('canonicalises www path %s', async (path, expected) => {
+    const res = await worker.fetch(new Request(`https://www.kasir.mu${path}`), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(expected);
+  });
+
+  // ── Canonical scheme: http → https ──────────────────────────────
+
+  it('301s a plain-http request to https on the same path and query', async () => {
+    // Measured live 2026-09-23: http://kasir.mu/en/ answered 200 (the zone's
+    // always_use_https is off), so the same page existed on both schemes.
+    const res = await worker.fetch(new Request('http://kasir.mu/en/docs/offline-mode/?tab=setup'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/docs/offline-mode/?tab=setup');
+  });
+
+  it('sends http+www to the apex https in ONE hop', async () => {
+    const res = await worker.fetch(new Request('http://www.kasir.mu/en/pricing/?plan=plus'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/pricing/?plan=plus');
+  });
+
+  it('keeps the host on an http request to a subdomain', async () => {
+    const admin = await worker.fetch(new Request('http://admin.kasir.mu/settings'), mockEnv);
+    expect(admin.status).toBe(301);
+    expect(admin.headers.get('Location')).toBe('https://admin.kasir.mu/settings');
+
+    const dash = await worker.fetch(new Request('http://dashboard.kasir.mu/'), mockEnv);
+    expect(dash.status).toBe(301);
+    expect(dash.headers.get('Location')).toBe('https://dashboard.kasir.mu/');
+  });
+
+  it('preserves the method on a non-GET redirect (308, not a 301 that becomes GET)', async () => {
+    const res = await worker.fetch(
+      new Request('http://kasir.mu/api/contact', { method: 'POST', body: '{}' }),
+      mockEnv,
+    );
+
+    expect(res.status).toBe(308);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/api/contact');
+  });
+
+  it('collapses a double-slash www path (B24: no protocol-relative Location)', async () => {
+    const res = await worker.fetch(new Request('https://www.kasir.mu//evil.example/x'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/evil.example/x');
+  });
+
+  it('leaves https apex, dashboard and admin alone (no self-redirect)', async () => {
+    const apex = await worker.fetch(new Request('https://kasir.mu/en/docs'), mockEnv);
+    expect(apex.status).toBe(200);
+    expect(apex.headers.get('Location')).toBeNull();
+
+    const dashboard = await worker.fetch(new Request('https://dashboard.kasir.mu/'), mockEnv);
+    expect(dashboard.status).toBe(302);
+    expect(dashboard.headers.get('Location')).toBe('https://kasir.mu/en/account/');
+
+    const admin = await worker.fetch(new Request('https://admin.kasir.mu/'), mockEnv);
+    expect(admin.status).toBe(200);
+    expect(admin.headers.get('Location')).toBeNull();
   });
 
   // ── Auth gate (ADR #42) ─────────────────────────────────────────
@@ -166,13 +262,16 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(mockEnv.ASSETS.fetch).toHaveBeenCalled();
   });
 
-  it('returns 401 from /__oz/session when no cookie', async () => {
+  it('returns 200 {token:null} from /__oz/session when no cookie (not 401)', async () => {
+    // Was 401. This endpoint is a session QUERY the header asks on every page,
+    // so a 401 made the browser log a console error for every signed-out
+    // visitor. Callers already treat a missing token as signed-out.
     const req = new Request('https://admin.kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
-    expect(res.status).toBe(401);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe('not signed in');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token: string | null };
+    expect(body.token).toBeNull();
   });
 
   it('returns token from /__oz/session when cookie present', async () => {
@@ -397,13 +496,13 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('R1: returns 401 from /__oz/session on the marketing host without a cookie', async () => {
+  it('R1: returns 200 {token:null} from /__oz/session on the marketing host without a cookie', async () => {
     const req = new Request('https://kasir.mu/__oz/session');
     const res = await worker.fetch(req, mockEnv);
 
-    expect(res.status).toBe(401);
-    const body = await res.json() as { error: string };
-    expect(body.error).toBe('not signed in');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token: string | null };
+    expect(body.token).toBeNull();
   });
 
   it('R1: /__oz/logout clears the cookie and redirects to marketing login', async () => {

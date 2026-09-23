@@ -132,6 +132,7 @@ func createTestCollections(t *testing.T, app *tests.TestApp) {
 		&core.DateField{Name: "last_seen_at"},
 		&core.TextField{Name: "machine_id"},
 		&core.DateField{Name: "revoked_at"},
+		&core.TextField{Name: "hardware_fingerprint", Max: 128},
 	)
 	// Autodate created/updated mirror production so "-created" sorts work.
 	tenantMachines.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
@@ -255,6 +256,32 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		if err := ensurePasswordResetAtField(app); err != nil {
 			return err
 		}
+		// Mirror production boot: add the tenants.region residency field
+		// (ADR #59 §2.1a step 1). createTestCollections omits it on purpose,
+		// so this exercises the same idempotent migration + backfill the
+		// deployed server runs rather than a hand-built schema.
+		if err := ensureRegionField(app); err != nil {
+			return err
+		}
+		// Mirror production boot: the region-change audit collection
+		// (ADR #59 §2.1a step 3).
+		if err := ensureTenantRegionEvents(app); err != nil {
+			return err
+		}
+		// Mirror production boot: the release-channel pin store (ADR #57 §Q-B).
+		// createTestCollections omits it on purpose, so this exercises the same
+		// idempotent migration the deployed server runs.
+		if err := ensureReleaseChannels(app); err != nil {
+			return err
+		}
+		// Mirror production boot: the build-integrity report store (ADR #57 §2.4).
+		if err := ensureBuildIntegrityReports(app); err != nil {
+			return err
+		}
+		// Mirror production boot: the alert cooldown store (ADR #57 §2.4).
+		if err := ensureBuildIntegrityAlertState(app); err != nil {
+			return err
+		}
 		// Mirror production boot: add the license_keys.is_trial bool
 		// (segmented trials, C2.1) via the same idempotent migration path
 		// the deployed server uses.
@@ -342,6 +369,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
 		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
 		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
+		// Tablet device-code pairing (ADR #56 §2.5 / §5 Q1).
+		se.Router.POST("/api/v1/pairing/start", handlePairingStart(app))
+		se.Router.POST("/api/v1/pairing/claim", handlePairingClaim(app))
+		se.Router.POST("/api/v1/pairing/poll", handlePairingPoll(app))
 		// ADR #42 dashboard endpoints (user + admin).
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
@@ -352,6 +383,10 @@ func registerTestRoutes(t *testing.T, app *tests.TestApp) {
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
+		// ADR #59 §2.1a step 2: admin-only residency move.
+		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
+		se.Router.GET("/api/v1/admin/release-channels/{channel}/pins", handleAdminGetReleasePins(app))
+		se.Router.POST("/api/v1/admin/release-channels/{channel}/pins", handleAdminSetReleasePins(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
@@ -527,6 +562,7 @@ func createMinimalCollections(t *testing.T, app *tests.TestApp, skip map[string]
 			&core.DateField{Name: "last_seen_at"},
 			&core.TextField{Name: "machine_id"},
 			&core.DateField{Name: "revoked_at"},
+			&core.TextField{Name: "hardware_fingerprint", Max: 128},
 		)
 		tenantMachines.CreateRule = types.Pointer("")
 		tenantMachines.ListRule = types.Pointer("")

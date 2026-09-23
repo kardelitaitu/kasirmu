@@ -26,8 +26,18 @@ export interface ServerLicenseStatus {
   active: boolean;
   /**
    * Whether **this device** has been revoked by a tenant admin
-   * (ADR #58 §2.4a.2). Server-authored; the shell refuses to open a session
-   * while it is set.
+   * (ADR #58 §2.4a.2). Server-authored, for DISPLAY.
+   *
+   * The enforcement is not here and must not be re-implemented here: the shell
+   * refuses to open a session — and drops every live one — on the Rust side
+   * (`kasirmu-bridge/src/license.rs:568` calls `invalidate_all_sessions` when this
+   * or a hardware mismatch is set), because a client-side check cannot stop the
+   * session already open on a stolen tablet. This comment previously claimed the
+   * shell refuses the session, which is not what the code does and would invite
+   * someone to add a redundant client gate.
+   *
+   * Nothing reads it today. It is declared because the backend sends it and a
+   * future "this device was revoked" badge is the honest consumer.
    */
   deviceRevoked: boolean;
   expiresAt: string | null;
@@ -59,6 +69,12 @@ export interface LinkedAccountDto {
   provider: string;
   /** The address the provider verified. */
   email: string;
+/** The sync credential earned from linking, when the server issued one. */
+  terminal?: {
+    terminalId?: string;
+    issued?: boolean;
+    reason?: string;
+  };
 }
 
 /**
@@ -81,6 +97,12 @@ export interface VerifiedAccountDto {
   email: string;
   /** Whether the account now counts as verified. */
   verified: boolean;
+  /** The sync credential earned from linking, when the server issued one. */
+  terminal?: {
+    terminalId?: string;
+    issued?: boolean;
+    reason?: string;
+  };
 }
 
 /**
@@ -98,6 +120,38 @@ export async function requestDeviceLinkCode(email: string): Promise<void> {
 export async function consumeDeviceLinkCode(code: string): Promise<VerifiedAccountDto> {
   return loggedInvoke('link_device_email_consume', { code });
 }
+
+/** Response from starting a device-code pairing session (ADR #56 §2.5 / §5 Q1). */
+export interface PairingSessionStart {
+  code: string;
+  poll_token: string;
+  expires_at: string;
+  qr_url: string;
+}
+
+/** Response from polling an active device-code pairing session. */
+export interface PairingPollResponse {
+  status: 'pending' | 'claimed';
+  tenant_id?: string;
+  email?: string;
+  terminal?: {
+    issued?: boolean;
+    terminalId?: string;
+    deviceSecret?: string;
+    reason?: string;
+  };
+}
+
+/** Start a device-code pairing session on the licence server. */
+export async function startDevicePairing(deviceName?: string): Promise<PairingSessionStart> {
+  return loggedInvoke('start_device_pairing', { deviceName });
+}
+
+/** Poll the device-code pairing session. */
+export async function pollDevicePairing(pollToken: string): Promise<PairingPollResponse> {
+  return loggedInvoke('poll_device_pairing', { pollToken });
+}
+
 
 /**
  * Get the device-level hardware fingerprint (SPEC-2026-TRIAL-LOCK):

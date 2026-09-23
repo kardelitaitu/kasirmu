@@ -515,8 +515,17 @@ fn lifecycle_state_unparseable_expiry_fails_closed_as_expired() {
 }
 
 #[test]
-fn lifecycle_state_canceled_and_revoked_statuses() {
-    // Even with a live future expiry, the server's word is final.
+fn lifecycle_state_canceled_and_revoked_are_distinct() {
+    // ADR #58 §2.1 split these. They were one arm (`"canceled" | "revoked"`),
+    // and merging them is wrong in BOTH directions:
+    //
+    // - a revoked tenant treated as canceled would be downgraded to Free and
+    //   keep selling, so a ban would be escaped by simply continuing to trade;
+    // - a canceled tenant treated as revoked would be locked out of a business
+    //   that only stopped paying, which is the billing-lapse lockout §3.1
+    //   names as a thing this record must never do.
+    //
+    // Even with a live future expiry, the server's word is final in both cases.
     let future = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
     assert_eq!(
         state_sub(SubscriptionTier::Pro, "canceled", Some(future.clone())).lifecycle_state(),
@@ -524,7 +533,30 @@ fn lifecycle_state_canceled_and_revoked_statuses() {
     );
     assert_eq!(
         state_sub(SubscriptionTier::Pro, "revoked", Some(future)).lifecycle_state(),
-        SubscriptionLifecycleState::Canceled
+        SubscriptionLifecycleState::Revoked
+    );
+}
+
+#[test]
+fn a_revoked_row_is_never_within_grace() {
+    // §2.1: "Never within grace, never downgraded." A revoked tenant gets no
+    // grace window, because grace exists to keep a paying-but-lapsed merchant
+    // trading and a ban is not that case.
+    let past = (chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+    assert!(
+        !state_sub(SubscriptionTier::Pro, "revoked", Some(past)).is_within_grace_period(),
+        "a revoked row must never be inside the grace window"
+    );
+}
+
+#[test]
+fn the_revoked_state_round_trips_its_wire_name() {
+    // The string is the server's `status` value and the UI's display key, so it
+    // must be exactly what the admin surface writes.
+    assert_eq!(SubscriptionLifecycleState::Revoked.as_str(), "revoked");
+    assert_eq!(
+        SubscriptionLifecycleState::Revoked.as_str(),
+        "revoked".to_string()
     );
 }
 

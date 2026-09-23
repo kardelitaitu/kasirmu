@@ -106,6 +106,7 @@ export interface SettingsApiOverrides {
   getReceiptSettings?: ReturnType<typeof vi.fn>;
   getCreditSettings?: ReturnType<typeof vi.fn>;
   getEnabledFeatures?: ReturnType<typeof vi.fn>;
+  getPresetFeatures?: ReturnType<typeof vi.fn>;
   getStoreSettingsScoped?: ReturnType<typeof vi.fn>;
   getSettingScoped?: ReturnType<typeof vi.fn>;
   setReceiptSettingsScoped?: ReturnType<typeof vi.fn>;
@@ -140,9 +141,30 @@ export function createSettingsApiMock(overrides: SettingsApiOverrides = {}) {
       { printerConnection: 'auto', printerDevicePath: '', printerPaperSize: '80',
         scannerDeviceId: '', scannerInputMode: 'auto' },
     )),
-      completeSetup: vi.fn(),
-    dismissSetupWizard: vi.fn(),
-    getSetupStatus: vi.fn(),
+    // The preset→features lookup the first-run flow makes before submitting.
+    // Defaults to the empty set, which is the pre-fix behaviour; a test that
+    // cares about the derived set overrides it.
+    getPresetFeatures: vi.fn(() => Promise.resolve({ features: [] })),
+    getFirstRunState: vi.fn(() =>
+      Promise.resolve({
+        state: 'provisioned' as const,
+        location_id: 'loc-1',
+        owner_user_id: 'user-1',
+        mode: 'local' as const,
+        home_region: 'global',
+        tenant_id: null,
+      }),
+    ),
+    provisionDevice: vi.fn(() =>
+      Promise.resolve({
+        terminal_id: 'dev-1',
+        location_id: 'loc-1',
+        owner_user_id: 'user-1',
+        created: true,
+        mode: 'local' as const,
+        home_region: 'global',
+      }),
+    ),
     getEnabledFeatures: vi.fn(),
     // @deprecated kept for backward compat; new callers should use getUserPreferencesScoped
     getUserPreferences: vi.fn(),

@@ -262,7 +262,16 @@ if should_run paths; then
     # `FINDINGS[paths]+=…` there is discarded when the loop exits and the
     # check silently reports clean. Same invariant as
     # batch_validate_audit_dates above.
-    while read -r path; do
+    # ONE awk pass per skill emits `line-number <TAB> token`, reproducing the
+    # original `grep -oE` token set EXACTLY (same ERE, leftmost-longest, re-run
+    # over the residual of each line so one line can yield several tokens) --
+    # measured identical over the whole skills corpus: 701 unique tokens both
+    # ways, `diff` empty. The vendored-dependency skip is applied INSIDE awk,
+    # where the match offset is already known; doing it after the fact needed
+    # the line text and was the reason an earlier revision forked a `printf |
+    # grep` per line (~82ms on Windows, a 4-minute hang over ~30 skills).
+    while IFS=$'\t' read -r lineno path line; do
+      [ -z "$path" ] && continue
       case "$path" in
         # Build outputs and installed deps, bare or under a package dir. They exist on a dev
         # machine and never in a clean checkout, so without this the check flags them as drift
@@ -277,6 +286,35 @@ if should_run paths; then
       case "$path" in
         *[-.]|*...|*..) continue ;;
       esac
+      # Skip VENDORED-DEPENDENCY citations. A skill proving a claim about a
+      # third-party crate often quotes the cargo-registry path, whose first
+      # segment is "<crate>-<version>": `wry-0.55.1/src/android/main_pipe.rs`.
+      # The regex above cannot START a match at the '-' between crate name and
+      # version digits, so that citation is extracted as the bare token
+      # `src/android/main_pipe.rs`, which then hits the `src*` arm below and is
+      # reported as missing. That is a false positive, and it is not uniform
+      # drift: a citation written `tauri/src/manager/mod.rs` keeps its first
+      # segment and is never flagged, while the identical shape under a
+      # versioned crate name is. The line context, not the truncated token, is
+      # what tells the two apart -- a bare `src/...` token is indistinguishable
+      # from a real repo path, so this guard cannot live in the extraction (a
+      # token cannot carry the prefix) and has to read the line.
+      # This cannot mask genuine drift: a real repo path never carries a
+      # `-<digits>.<digits>.<digits>/` segment IMMEDIATELY before it, and the
+      # extractor still yields every NON-versioned path on the same line -- so
+      # `wry-0.55.1/src/lib.rs and src/does-not-exist.rs` keeps reporting the
+      # second path as missing. Only the version-prefixed token is dropped.
+      # NB: there is deliberately NO bash-side skip for the truncated sibling
+      # (`src/android/main_pipe.rs`) that a vendored citation used to leave behind.
+      # awk `continue`s the versioned token BEFORE printing, so that sibling is
+      # never emitted and there is nothing left here to swallow. A sentinel that
+      # dropped it by SHAPE (`*/*/*/*/*`) was tried and had to be removed: it was
+      # unconditional, so it also swallowed real 4+-slash repo paths that had no
+      # versioned token anywhere near them -- `crates/kasirmu-core/src/db/x.rs`
+      # and `ui/src/features/staff/x.tsx` were both silently missed, which is
+      # exactly the weakening this check must not have. Fix the mask in awk (where
+      # the vendored form is actually recognised), never by pattern-matching the
+      # token alone -- a truncated token is indistinguishable from a real path.
       if [ ! -e "$path" ]; then
         # only flag if the path looks like a project path
         case "$path" in
@@ -285,7 +323,29 @@ if should_run paths; then
             ;;
         esac
       fi
-    done < <(grep -oE '[a-zA-Z_.-]+(/[a-zA-Z0-9_.-]+){1,}' "$skill" 2>/dev/null | sort -u)
+    # AWK is not just the extractor, it is the CONTEXT TEST too, and that is the
+    # point: a bare `src/lib.rs` token is indistinguishable from a real repo path,
+    # so the vendored-dependency guard below needs the text that PRECEDED the match,
+    # not the token. awk knows that offset (`RSTART - 1`, relative to the residual
+    # it is scanning) and can answer it in the same single pass over the file -- a
+    # `printf | grep` inside the loop would fork per token (~82ms on Windows) and
+    # turned this check into a 4-minute hang. A token whose preceding text ends in
+    # `<name>-<digits>.<digits>.<digits>/` is the vendored form and is dropped in
+    # awk, before it ever reaches the skip/flag logic below.
+    done < <(awk '
+      {
+        line = $0
+        while (match(line, /[a-zA-Z_.-]+(\/[a-zA-Z0-9_.-]+)+/)) {
+          # `pre` is the text before the token INSIDE the residual being scanned,
+          # so it still contains the `<name>-<version>/` that lit up this line. A
+          # bare `src/...` token has no such prefix and falls through to print.
+          pre = substr(line, 1, RSTART - 1)
+          tok = substr(line, RSTART, RLENGTH)
+          line = substr(line, RSTART + RLENGTH)
+          if (pre ~ /[a-zA-Z0-9_.-]+-[0-9]+(\.[0-9]+)+\/$/) continue
+          print NR "\t" tok
+        }
+      }' "$skill" 2>/dev/null)
   done < <(find .agents/skills -name SKILL.md 2>/dev/null)
 fi
 

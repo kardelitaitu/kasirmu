@@ -4,6 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import LicenseSettings, { POLL_INTERVAL_MS } from '../LicenseSettings';
 import { getLicenseStatus, checkLicenseStatus } from '@/api/license';
+import { setShellKind } from '@/utils/shellKind';
 
 const mockAddToast = vi.fn();
 
@@ -884,6 +885,71 @@ describe('LicenseSettings', () => {
       render(<LicenseSettings />);
       await waitFor(() => {
         expect(screen.getByText('custom_tier')).toBeInTheDocument();
+      });
+    });
+  });
+
+  // ── Shell-gated subscription actions ───────────────────────
+  //
+  // pause_subscription[_scoped] and resume_subscription[_scoped] are
+  // registered on the desktop shell only, so the tablet must not offer the two
+  // buttons: a control that always fails is worse than an absent one, and the
+  // pause path PERSISTS the exit-survey answer (set_setting_scoped, which the
+  // tablet does register) before the pause invoke rejects — a retention signal
+  // for an action that never happened.
+  //
+  // The shell is switched through the same seam the entry points use
+  // (setShellKind), the way useAuthConnection.test.tsx and
+  // stepAccountCopy.test.tsx already do.
+  describe('Shell-gated subscription actions', () => {
+    afterEach(() => {
+      // Restored, so no later case can inherit the tablet shell.
+      setShellKind('desktop');
+    });
+
+    it('renders pause for an active licence on the desktop shell', async () => {
+      setShellKind('desktop');
+      vi.mocked(getLicenseStatus).mockResolvedValue(VALID_LICENSE_STATUS);
+      render(<LicenseSettings />);
+      await waitFor(() => {
+        expect(screen.getByText('Pause subscription')).toBeInTheDocument();
+      });
+    });
+
+    it('hides pause for an active licence on the tablet shell', async () => {
+      setShellKind('tablet');
+      vi.mocked(getLicenseStatus).mockResolvedValue(VALID_LICENSE_STATUS);
+      render(<LicenseSettings />);
+      // The screen still mounts and shows the subscription state...
+      await waitFor(() => {
+        expect(screen.getByText('Pro')).toBeInTheDocument();
+      });
+      // ...without the action that cannot run there.
+      expect(screen.queryByText('Pause subscription')).not.toBeInTheDocument();
+    });
+
+    it('hides resume for a paused licence on the tablet shell', async () => {
+      setShellKind('tablet');
+      vi.mocked(getLicenseStatus).mockResolvedValue({
+        ...VALID_LICENSE_STATUS,
+        payload: JSON.stringify(makePayload({ status: 'paused' })),
+      });
+      render(<LicenseSettings />);
+      await waitFor(() => {
+        expect(screen.getByText('Paused until')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Resume subscription')).not.toBeInTheDocument();
+    });
+
+    it('renders resume for a paused licence on the desktop shell', async () => {
+      setShellKind('desktop');
+      vi.mocked(getLicenseStatus).mockResolvedValue({
+        ...VALID_LICENSE_STATUS,
+        payload: JSON.stringify(makePayload({ status: 'paused' })),
+      });
+      render(<LicenseSettings />);
+      await waitFor(() => {
+        expect(screen.getByText('Resume subscription')).toBeInTheDocument();
       });
     });
   });

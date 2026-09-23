@@ -3,7 +3,9 @@ name: tdd
 description: Test-driven development workflow for kasir.mu — the 7-phase loop (Analyze → Find Weaknesses → Red/Green/Refactor → Verify → Journal → Update Docs → Commit), the fast TDD loop tooling (scripts/test-tdd.sh, [profile.tdd], nextest), and per-layer testing conventions. Use when fixing a bug, adding a feature test-first, or running a TDD cycle in any kasirmu-* crate, platform/*, modules/*, app, or ui/.
 ---
 
-<!-- Audit stamp: 2026-09-03 · DSH · status: ACCURATE (rev 2 — Rust test convention corrected in Phase 3 and the per-layer table: unit tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests (never inline in the production file — AGENTS.md rule); UI bundle names corrected en.ftl/id.ftl → per-feature <feature>.ftl/<feature>.id.ftl; push rule softened to match AGENTS.md (never push without an explicit direct user order — not "refuse even then"); 'audit/ numbered findings' reference removed (no such dir); pre-commit gate list updated to the six core gates + Go gate) · verified this pass: [profile.tdd] in workspace Cargo.toml, scripts/{test-tdd,test-changed,test-ui-changed,wtree-guard}.sh + scan-unwrap-panic.py, docs/guides/{api-reference,user-guide}.md, JOURNAL.md all exist -->
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: `grep -c '^# ──' .githooks/pre-commit` returns **7**, matching the "seven gates" claim and the enumerated list (LF normalization, staged bundle parity, FTL dedupe, migration column-type lint, PG drift guard, Go, FTL orphan lint). The version-lock claim reads `0.0.39`, which matches `Cargo.toml:37`. All 16 paths the file cites exist, including `scripts/{check.sh,test-tdd.sh,test-changed.sh,test-ui-changed.sh,run-pre-push.py,scan-unwrap-panic.py,verify-agents-mirrors.py,wtree-guard.sh}`, `docs/{guides/api-reference.md,guides/user-guide.md,records/JOURNAL.md,specs/_active/}`, `.github/workflows/attic/ci.yml.bak`, `crates/kasirmu-hal/src/drivers/mock.rs` and `platform/sync`. The `oz-*` naming drift the 18-09-26 audit found in the description and Phase 1 is confirmed repaired. · NOT re-measured: the TDD loop timings and the gate-by-gate runtime. -->
+
+<!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 2 — Rust test convention corrected in Phase 3 and the per-layer table: unit tests live in sibling *_tests.rs files wired via #[cfg(test)] #[path = ...] mod tests (never inline in the production file — AGENTS.md rule); UI bundle names corrected en.ftl/id.ftl → per-feature <feature>.ftl/<feature>.id.ftl; push rule softened to match AGENTS.md (never push without an explicit direct user order — not "refuse even then"); 'audit/ numbered findings' reference removed (no such dir); pre-commit gate list updated to the six core gates + Go gate) · verified this pass: [profile.tdd] in workspace Cargo.toml, scripts/{test-tdd,test-changed,test-ui-changed,wtree-guard}.sh + scan-unwrap-panic.py, docs/guides/{api-reference,user-guide}.md, JOURNAL.md all exist -->
 
 # TDD Workflow — Test-Driven Development for kasir.mu
 
@@ -135,7 +137,7 @@ Record the why, decisions, and remaining risks — while fresh.
 
 Sync anything the change affects.
 
-- The affected layer's README, `docs/guides/api-reference.md`, `docs/guides/user-guide.md`, examples, or the code's `///` doc comments.
+- The affected layer's README, `docs/guides/developer/api-reference.md`, `docs/guides/user/user-guide.md`, examples, or the code's `///` doc comments.
 - If the change touches a path/type/trait/convention a skill describes, run the drift guard:
   ```bash
   bash .agents/skills/skill-drift-guard/scripts/detect.sh
@@ -264,4 +266,4 @@ npm run check:all            # lint → typecheck → test → i18n → E2E (Doc
 
 ---
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 22-09-26 by Budak-Korporat

@@ -577,3 +577,312 @@ fn drift_pin_local_api_settings_keys_stay_manager_owned() {
         "platform-core mirrors this key by literal, so the mirror and the original must stay byte-identical"
     );
 }
+
+// ── C34: the embedded surface must not brick its own next boot ─────────
+
+/// THE HAZARD, END TO END. The store this surface serves IS the app's own
+/// file, and `check_tenant_integrity` refuses to boot when any `products`
+/// row carries a tenant other than `default`. A token minted over this very
+/// surface (the embedded `POST /api/v1/tokens` takes `tenant_id` from the
+/// body) could therefore stamp a row that makes the NEXT launch fail.
+///
+/// Asserts the outcome the guard exists for: the write is refused, no row is
+/// left behind, and the served database still passes the boot check.
+#[tokio::test]
+async fn foreign_tenant_write_is_refused_and_leaves_the_store_bootable() {
+    let tmp = temp_image_dir("c34-foreign");
+    let global = kasirmu_core::migrations::fresh_db();
+    global
+        .execute(
+            "UPDATE locations SET is_primary = 1 WHERE id = 'default'",
+            [],
+        )
+        .unwrap();
+    let manager =
+        platform_core::StoreDatabaseManager::new(tmp.clone(), kasirmu_core::migrations::ALL);
+    let (api_db, api_path) = open_api_store_connection(&manager, "default").unwrap();
+
+    let secret = "f".repeat(32);
+    let handle = start(
+        api_db.clone(),
+        api_path,
+        tmp.join("images"),
+        secret.clone(),
+        0,
+    )
+    .await
+    .unwrap();
+    let base = format!("http://127.0.0.1:{}", handle.port);
+
+    // A token carrying a NON-default tenant, minted with this surface's own
+    // secret - exactly what an operator script (or the embedded token
+    // endpoint's `tenant_id` body field) can produce.
+    let foreign =
+        kasirmu_api::auth::create_token("foreign", Some(1), Some("tenant-other"), Some(&secret))
+            .unwrap()
+            .token;
+    let client = reqwest::Client::new();
+    let refused = client
+        .post(format!("{base}/api/v1/products"))
+        .header("Authorization", format!("Bearer {foreign}"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({
+            "sku": "C34-FOREIGN", "name": "Foreign",
+            "price": {"minor_units": 100, "currency": "USD"}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        refused.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "a non-default tenant claim must not reach a write on the embedded surface"
+    );
+    assert_eq!(
+        refused
+            .headers()
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
+        Some("nosniff"),
+        "the refusal must carry the same security headers as every other response"
+    );
+    assert_eq!(
+        refused.json::<serde_json::Value>().await.unwrap()["error"].as_str(),
+        Some("foreign_tenant_write")
+    );
+
+    // Nothing was written: the row must not exist at all.
+    {
+        let store = api_db.lock().await;
+        let planted: i64 = store
+            .query_row(
+                "SELECT COUNT(*) FROM products WHERE sku = 'C34-FOREIGN'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(planted, 0, "the refused write must leave no row behind");
+
+        // THE POINT OF THE GUARD: the store the app boots from still passes
+        // its own tenant integrity check. Without the guard this row would
+        // carry tenant 'tenant-other' and the next launch would refuse to
+        // start.
+        assert!(
+            kasirmu_core::db::Store::new(&store)
+                .check_tenant_integrity()
+                .is_ok(),
+            "the served store must still pass the boot check after a refused foreign write"
+        );
+    }
+
+    // The guard is not a blunt instrument: the SAME request with a token
+    // carrying no tenant claim still writes, and lands as 'default'.
+    let plain = mint_token(&secret, "plain", Some(1)).unwrap().token;
+    let ok = client
+        .post(format!("{base}/api/v1/products"))
+        .header("Authorization", format!("Bearer {plain}"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({
+            "sku": "C34-OK", "name": "Fine",
+            "price": {"minor_units": 100, "currency": "USD"}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ok.status(), reqwest::StatusCode::CREATED);
+    {
+        let store = api_db.lock().await;
+        let tenant: String = store
+            .query_row(
+                "SELECT tenant_id FROM products WHERE sku = 'C34-OK'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tenant, "default");
+        assert!(
+            kasirmu_core::db::Store::new(&store)
+                .check_tenant_integrity()
+                .is_ok()
+        );
+    }
+
+    handle.stop_async().await;
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+/// A READ carrying a foreign claim cannot affect the next boot, so it keeps
+/// its exact behaviour - the guard gates writes only, and a GET must not
+/// start returning 403 to scripts that already send such a token.
+#[tokio::test]
+async fn foreign_tenant_read_is_not_gated() {
+    let dir = temp_image_dir("c34-read");
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
+    let secret = "g".repeat(32);
+    let handle = start(
+        db,
+        PathBuf::from(":memory:"),
+        dir.clone(),
+        secret.clone(),
+        0,
+    )
+    .await
+    .unwrap();
+    let base = format!("http://127.0.0.1:{}", handle.port);
+
+    let foreign =
+        kasirmu_api::auth::create_token("foreign", Some(1), Some("tenant-other"), Some(&secret))
+            .unwrap()
+            .token;
+    let resp = reqwest::Client::new()
+        .get(format!("{base}/api/v1/products"))
+        .header("Authorization", format!("Bearer {foreign}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "reads are not gated by the C34 boundary guard"
+    );
+
+    handle.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The empty-string claim is the case a naive "non-default" check would miss:
+/// the routes resolve the claim with `unwrap_or("default")`, which maps a
+/// MISSING claim to the accepted value but passes `Some("")` straight
+/// through - and `tenant_id = ''` is rejected by the boot check exactly as a
+/// named foreign tenant is. So the empty claim must be refused too.
+#[tokio::test]
+async fn empty_tenant_claim_is_also_refused() {
+    let dir = temp_image_dir("c34-empty");
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
+    let secret = "h".repeat(32);
+    let handle = start(
+        db,
+        PathBuf::from(":memory:"),
+        dir.clone(),
+        secret.clone(),
+        0,
+    )
+    .await
+    .unwrap();
+    let base = format!("http://127.0.0.1:{}", handle.port);
+
+    let empty = kasirmu_api::auth::create_token("empty", Some(1), Some(""), Some(&secret))
+        .unwrap()
+        .token;
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/api/v1/products"))
+        .header("Authorization", format!("Bearer {empty}"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({
+            "sku": "C34-EMPTY", "name": "Empty",
+            "price": {"minor_units": 100, "currency": "USD"}
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::FORBIDDEN,
+        "an empty tenant claim would stamp tenant_id = '' and brick the next boot"
+    );
+
+    handle.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// THE INVARIANT THE GUARD MUST NOT BLUNT. `check_tenant_integrity` is the
+/// boot check this whole ticket exists to protect, and it must still refuse a
+/// store that genuinely carries a foreign-tenant row - whatever put it there
+/// (a restore, a sync mishap, a build predating this guard). If the boundary
+/// guard ever became a second, weaker implementation of the check, this is
+/// what would catch it.
+#[test]
+fn tenant_integrity_still_refuses_a_genuinely_foreign_store() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = kasirmu_core::db::Store::new(&conn);
+    assert!(store.check_tenant_integrity().is_ok(), "clean store boots");
+
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, tenant_id, created_at, updated_at)
+         VALUES ('p-c34', 'C34-PLANTED', 'Foreign', 100, 'USD', 'tenant-other', '2026-01-01', '2026-01-01')",
+        [],
+    )
+    .unwrap();
+
+    let err = store.check_tenant_integrity().unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("foreign-tenant") && msg.contains("products"),
+        "the boot check must still refuse the foreign row: {msg}"
+    );
+}
+
+// ── C39: the trap is closed at the mint, not only fenced at the write ──
+
+/// END-TO-END ON THE REAL EMBEDDED SURFACE. The C34 guard refuses a foreign
+/// tenant at the WRITE; this proves the token that would carry it can no
+/// longer be obtained here at all. Both halves matter: without C39 the trap is
+/// merely fenced, and without C34 a token minted elsewhere (a restored store,
+/// a token from the cloud) would still reach the stamp.
+///
+/// The marker is inserted by this crate's own layer, so the assertion is
+/// against the assembled server - not against a handler called directly.
+#[tokio::test]
+async fn embedded_surface_refuses_a_caller_supplied_tenant_at_the_mint() {
+    let dir = temp_image_dir("c39-mint");
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
+    let secret = "k".repeat(32);
+    let handle = start(
+        db,
+        PathBuf::from(":memory:"),
+        dir.clone(),
+        secret.clone(),
+        0,
+    )
+    .await
+    .unwrap();
+    let base = format!("http://127.0.0.1:{}", handle.port);
+    let client = reqwest::Client::new();
+
+    // Before C39 this returned 200 and a token whose claim named another
+    // tenant - the value the C34 guard later has to catch on the write path.
+    let refused = client
+        .post(format!("{base}/api/v1/tokens"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({"label": "script", "tenant_id": "tenant-other"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        refused.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "the embedded mint must not issue a token scoped to another tenant"
+    );
+    assert_eq!(
+        refused.json::<serde_json::Value>().await.unwrap()["error"].as_str(),
+        Some("tenant_claim_not_supported")
+    );
+
+    // The surface still mints the tokens it is FOR - no tenant at all, which
+    // is exactly what the UI's `mint_token` sends.
+    let ok = client
+        .post(format!("{base}/api/v1/tokens"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({"label": "script"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        ok.status(),
+        reqwest::StatusCode::OK,
+        "an ordinary mint on this surface must keep working"
+    );
+
+    handle.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}

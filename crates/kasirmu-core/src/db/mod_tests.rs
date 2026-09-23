@@ -1,9 +1,9 @@
 //! Tests for the `Store` facade helpers in `db/mod.rs`.
 //!
-//! Covers the pure and query-level logic that previously had no coverage:
-//! `remove_destination_for_backup` (RUST-03 IO-error semantics), the online
-//! backup path, `check_integrity`, `check_tenant_integrity`, and the
-//! `row_to_product` row mapper.
+//! Covers the pure and query-level logic that previously had no coverage: the
+//! online backup path, `check_integrity`, `check_tenant_integrity`, and the
+//! `row_to_product` row mapper. Backup durability — atomic promotion and
+//! generation rotation — lives in the sibling `recovery_tests.rs`.
 
 use super::*;
 use crate::migrations;
@@ -15,45 +15,6 @@ fn fresh() -> Connection {
 
 fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
-}
-
-/* ── remove_destination_for_backup (RUST-03) ────────────────────── */
-
-#[test]
-fn remove_destination_ok_when_file_exists() {
-    let dir = std::env::temp_dir().join(format!("oz_rm_dst_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("backup.sqlite");
-    std::fs::write(&path, b"x").unwrap();
-
-    assert!(Store::remove_destination_for_backup(&path.to_string_lossy()).is_ok());
-    assert!(!path.exists(), "existing destination must be removed");
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn remove_destination_ok_when_missing() {
-    // A missing destination is the normal fresh-backup case — must NOT error.
-    let dir = std::env::temp_dir().join(format!("oz_rm_missing_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("never-existed.sqlite");
-
-    assert!(Store::remove_destination_for_backup(&path.to_string_lossy()).is_ok());
-    std::fs::remove_dir_all(&dir).unwrap();
-}
-
-#[test]
-fn remove_destination_propagates_non_notfound_errors() {
-    // A directory target is not a file: remove_file fails with a non-NotFound
-    // error, which must propagate (RUST-03: only missing files are acceptable).
-    let dir = std::env::temp_dir().join(format!("oz_rm_dir_{}", uuid::Uuid::now_v7()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let target = dir.join("backup.sqlite");
-    std::fs::create_dir_all(&target).unwrap();
-
-    let result = Store::remove_destination_for_backup(&target.to_string_lossy());
-    assert!(result.is_err(), "directory target must fail");
-    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 /* ── backup / repair_to ─────────────────────────────────────────── */

@@ -75,7 +75,7 @@ The pre-commit hook's fmt step was trigger-scoped but never work-scoped: it fire
 3. `.agents/AGENTS.md` mirror: same set (its condensed step list rewritten 8→7, "none of the eight run at commit time" → "none of the seven", "Steps 5 and 6"/"Step 7 (Go)" renumbered, §4 "step 7" → "step 5", stamp "10 pre-commit gates" → "7 (count corrected 2026-09-13)") + the removal note.
 4. Skills: `tdd`/`project-scaffold` "As of 0.0.37 there are eight:" → "seven" (fmt dropped from the enumeration, orphan now step 7, removal reason appended); `onboarding-guide` "runs eight steps" → "seven steps" with the fmt clause removed and removal note appended.
 5. `scripts/setup-dev.ps1` line 8: "Enable Git hooks (pre-commit fmt + lint)" → "pre-commit content gates; fmt moved to pre-push/CI on 2026-09-13". Line 155's generic quick-reference `cargo fmt` command left untouched.
-6. `docs/guides/ARCHITECTURE.md:277`: "pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`)" — a stale enumeration from before the hook was rebuilt — replaced with the live gate list and where fmt/clippy actually run.
+6. `docs/architecture/ARCHITECTURE.md:277`: "pre-commit quality gates (`cargo fmt + clippy + i18n lint + bundle parity`)" — a stale enumeration from before the hook was rebuilt — replaced with the live gate list and where fmt/clippy actually run.
 7. `scripts/gates.json` rust-fmt entry: verified already accurate (runners: check.sh + CI dev-ci.yml#cargo-check; no pre-commit claim) — no edit.
 8. Not edited (historical records, correct as records): `docs/plans/0.0.36-backlog.md` eight-step mentions, agent journals, `docs/archived/*`, audit-stamp history inside onboarding-guide.
 
@@ -4161,7 +4161,7 @@ Commit hygiene: 2/2 contract hunks, 1/4 editor hunks, 2/5 screen hunks (the agen
 
 **Problem:** the rounds-82–87 warehouse validation semantics lived only in the contract code. ADR #34's Apply-rejection list covered generic graph errors but nothing about stock flow, and its connector-vocabulary table still listed the long-stripped "Inventory Manager (`inventory`)" node with no Stock Room row — the rules had no durable home and the ADR contradicted the current node model.
 
-**Solution (docs-only, Verify + Commit):** added to `docs/decisions/2026-08-07-business-logic-topology-builder.md` — (1) the vocabulary table's Inventory Manager row became the Stock Room (`warehouse`) row with its real ports (`stock-in`/`transfer-in`, `stock-out`); (2) the section-2 paragraph and section-4 parent-child bullets now state a Stock Room's required input is an inbound stock-bearing edge; (3) a new "Warehouse stock-flow validation (hub-and-spoke)" block under section 5 pins all five rules: inbound-wire servicing (`warehouse-missing-stock-routing`, dismissible per diagram), at-capacity rejection with wireId, warehouse→warehouse transfer legality, cycle rejection for circular chains, and the Pro-tier gate + `warehouse-tier-limit` single-source contract. Every claim traces to the contract code (semantic matrix, capacity/servicing guards, tier cap).
+**Solution (docs-only, Verify + Commit):** added to `docs/decisions/2026-08-07-adr34-business-logic-topology-builder.md` — (1) the vocabulary table's Inventory Manager row became the Stock Room (`warehouse`) row with its real ports (`stock-in`/`transfer-in`, `stock-out`); (2) the section-2 paragraph and section-4 parent-child bullets now state a Stock Room's required input is an inbound stock-bearing edge; (3) a new "Warehouse stock-flow validation (hub-and-spoke)" block under section 5 pins all five rules: inbound-wire servicing (`warehouse-missing-stock-routing`, dismissible per diagram), at-capacity rejection with wireId, warehouse→warehouse transfer legality, cycle rejection for circular chains, and the Pro-tier gate + `warehouse-tier-limit` single-source contract. Every claim traces to the contract code (semantic matrix, capacity/servicing guards, tier cap).
 
 **Verified:** footer regex valid (`last audited 09-08-26 by buffy`); targeted checks only — the full drift-guard scan is heavy and the tree is shared, so I validated the edited file's footer directly. No code changes, no FTL changes.
 
@@ -11639,3 +11639,445 @@ and it must not land alone.
 **Commit:** one pathspec commit touching the two gate files, the two ledgers and this file together — the
 assertions ask for one deliberate pass, so splitting a const from its record would reproduce the exact
 failure mode the message describes. Never push without a direct user order.
+
+## 2026-09-22 — Absorb: the staff/role trash's five commands land on BOTH registration floors, and no ceiling and no ledger row moves (desktop-tauri/mobile-tauri/records)
+
+**Context:**
+The staff-management trash (90-day soft delete for staff members and custom roles) added five `_scoped`
+commands to each shell: `delete_staff_scoped`, `restore_staff_scoped` and `list_staff_trash_scoped` behind
+`staff:delete`, plus `restore_role_scoped` and `list_role_trash_scoped` behind `staff:manage_roles`. All five
+arrive ALREADY GATED, which is what makes them invisible to every leg of the registration ratchet except the
+floor — a gated name moves no ceiling, no class count and no ledger row.
+
+The floors are the one thing that had to move, and they move for the reason the pin's own message asks for:
+`REGISTERED_FLOOR` is an EQUALITY against the tree on both shells (`registration_gate_tests.rs:752` desktop,
+`:785` tablet), so 463 -> 468 and 339 -> 344 record what landed without approving it. On the tablet the floor
+is ALSO asserted equal to the generated ledger's total, so the const and the ledger can only move together —
+the same constraint the 09-20 pass recorded. Desktop's ledger total moved 463 -> 468 as well, because the
+generator was re-run in this pass rather than left to lag inside `REGISTERED_SLACK`.
+
+The measurement that says no debt moved: the two `DEBT_LEDGER` arrays render **74** rows on desktop and **94**
+on tablet before AND after regeneration. A gated addition cannot change either number, so the regeneration was
+read back rather than trusted (`drift_pin_generated_ledger_is_the_sweeps_own_output`, which in
+`KASIRMU_REGENERATE_GATE_LEDGER=1` mode writes the file and then re-parses it).
+
+The five names are also what `scripts/verify-ipc-parity.py` needs: it fails a registered `_scoped` command that
+no shipped UI file invokes, so the registrations and the Trash tab's `ui/src/api/staff.ts` wrappers land in the
+same feature, and the parity run in this pass is green with all five invoked.
+
+**Verification:**
+- `cargo test -p kasirmu-app --lib registration_gate` -> **14 passed; 0 failed**, exit 0.
+- `cargo test -p kasirmu-mobile --lib registration_gate` -> **10 passed; 0 failed**, exit 0.
+- Ledgers regenerated, not hand-edited: `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app -p kasirmu-mobile --lib drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture` -> "74 debt row(s), registered total 468" / "94 debt row(s), registered total 344"; the commit's diff of both generated files is the two `REGISTERED_TOTAL` lines and the authored history note above them, nothing else.
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0 (the same sweep cleared every strict-lint finding the newer clippy had raised across untouched crates, in `dbf14f8bb`).
+- UI: `npm run test` -> **606 files, 10311 passed**; `npm run typecheck` and `npm run lint` clean.
+- The trash row's layout was measured, not asserted: with the final day-count copy at 1280/768/390 the row never overflows and the Restore button stays 1px inside its content box. The first copy (`90 days left`) fitted; the rename to `'90 days before permanent deletion'` did NOT at 390px (row over by 4px, button 18px outside), which is why `.staff-mgmt-trash-days` lets that sentence wrap.
+
+**Commit:** one pathspec commit touching the two gate files, the two generated ledgers and this file together —
+the floor's own message asks for one deliberate pass, and splitting a const from its record is the failure mode
+that message exists to prevent. Never push without a direct user order.
+
+## 2026-09-22 — Repair: the command census and two topology fixtures measured a world ADR #56 §2.6 deleted (desktop-tauri/records)
+
+**Context:**
+`cargo test --workspace --all-features` was red at HEAD on four legs, none of them introduced by the trash
+feature itself and all of them invisible to `cargo test -p <crate> --lib` alone. Two are pins this pass moves
+deliberately; two are fixtures that describe a database shape §2.6 stopped producing.
+
+**The pins (moved, with the reason).** `apps/desktop-tauri/tests/gate_audit.rs` walks the shell's `src/commands`
+AND `crates/kasirmu-bridge/src` and pins, per module stem, how many gate calls it holds and which permission
+keys those calls name. One `staff.rs` in the bridge serves both shells, so the five trash commands moved the
+desktop row from (11 calls, four keys) to (16, six), and the tablet's shim row to
+`["STAFF_READ_IDENTITY", "STAFF_UPDATE"]`. Raising a pin records what landed; it does not approve it. Two
+more rows are not mine and were red before this pass: `build_integrity` (desktop) and `license` / `locations`
+(tablet) walk into the census as modules with 0 gate calls and no pin, which the census reports as
+`unpinned gates permissions on disk but is NOT in the pinned census`. They are pinned at their measured
+`(0, &[])` rather than skipped. `STAFF_READ_IDENTITY` was already measured in the bridge's caller-aware
+profile write and had no `permission_value()` arm at all — resolving it is what lets the key set be checked
+instead of merely carried.
+
+**The fixtures (not the assertions).** ADR #56 §2.6 moved the baseline seed (the `Default Store` location, the
+five `default-*` instances and the `BOOTSTRAP_FREE` subscription) out of the migration chain into
+`migrations::seed_provisioned_baseline`, which `provision_device` calls. `commands::topology::topology_command_tests`
+builds its databases with `migrations::run` / `fresh_db()` only, so both fixtures are now UNPROVISIONED:
+`tauri_save_topology_with_wires_roundtrips_fully` names `store_profile_id: "default"` and no longer finds that
+location (`unknown-branch-location`), and `apply_naming_a_foreign_store_records_which_database_receives_the_writes`
+lost the seeded free-tier row and the location count its entitlement refusal depended on — it sailed past the
+gate and died later on an instance FK. Both now call `seed_provisioned_baseline`, and the second also seeds
+the two store databases it can reach, because a store database is created by migrations only
+(`platform/core/src/database/manager.rs:116`). NO assertion changed: the second is a CHARACTERISATION test
+whose own comment says which world it observes, and the repair restores that world rather than redefining it.
+
+**Verification:**
+- `cargo test -p kasirmu-app --test gate_audit` -> **3 passed; 0 failed**, exit 0.
+- `cargo test -p kasirmu-app --lib` -> **158 passed; 0 failed**, exit 0 (155/3 before this pass).
+- `cargo test --workspace --all-features` -> green in full. Run with an isolated `CARGO_TARGET_DIR` because a running `kasirmu-app.exe` on this host holds the default target dir's binary and Windows refuses to replace it — that lock is an environment fact, not a test result, and it is why the first workspace run died with "failed to remove file ... kasirmu-app.exe" before executing a single test.
+- The registration floors moved with it: 463 -> 468 desktop, 339 -> 344 tablet, both ledgers regenerated (recorded in the entry above).
+
+**Commit:** one pathspec commit for the gate pins and the two fixtures, separate from the feature commits, so a
+red census can be blamed or exonerated on its own. Never push without a direct user order.
+
+
+## 2026-09-22 — Repair: the tablet's fixtures measured a world ADR #56 §2.6 deleted — 34 failures to 0 (mobile-tauri/records)
+
+**Context:**
+`cargo test -p kasirmu-mobile --lib` stood at **624 passed / 34 failed** at HEAD. Every earlier run in this
+session stopped at an earlier failing target, so the tablet's own damage was never reached — the same way the
+desktop's two topology casualties stayed hidden until the app crate was the only thing left to fail.
+
+All 34 share ONE cause: §2.6 moved the baseline seed — the `Default Store` location, the five `default-*`
+instances, the `default:default-legal-entity` legal entity and the `BOOTSTRAP_FREE` tenant_subscription row —
+out of the migration chain into `migrations::seed_provisioned_baseline`, which `provision_device` calls. Every
+tablet fixture builds its database with `fresh_db()` (or a store database, which `StoreDatabaseManager`
+creates by MIGRATIONS ONLY — `platform/core/src/database/manager.rs:116`), so every one of them is now
+UNPROVISIONED. The symptoms are four spellings of the same absence: `not found: location default`,
+`no primary location to resolve the entity from`, `Internal("default tenant subscription not found")`,
+`Invalid("User does not have access to this workspace instance")` — plus tier stamps that silently updated no
+row, leaving a fixture named `pro`/`premium`/`free` running as "no subscription".
+
+**Fixes — the fixtures rebuild the baseline where they create the database:**
+- 26 test bodies that drive a provisioned store call `seed_provisioned_baseline` right after `fresh_db()`.
+- The SHARED helpers do it once for all their callers: `testing.rs::pin_seeded_row` (the audit and staff
+  security-event families), `audit_tests::seeded_conn` and `staff_security_events_tests::seeded_conn` (whose
+  own tier stamp was the no-op), `auth_tests::set_tier`, `subscription_tests::seed_tier`, `history_state`,
+  and the three `flow_state` builders (regional, local_payment, receipt_format), which also seed the STORE
+  database the resolver actually reads.
+- `seeded_row_reaches_a_paid_tier` seeds too. It runs the product's two steps over the row
+  `seed_provisioned_baseline` writes (its own doc says so); with no row the predicate answered `false` for a
+  reason that has nothing to do with the signature, so every fork took its RELEASE arm while a debug build was
+  running and `pin_seeded_row` compared a real row against a phantom.
+
+**What was NOT weakened.** No assertion's expected value changed. Two preconditions were RESTORED to what the
+test names already describe: `content_write_fails_closed_without_a_linked_entity` now unlinks the entity the
+shared fixture links (its name is about the unlinked case), and
+`known_hazard_eod_header_and_payment_breakdown_use_different_day_boundaries` UPDATEs the seeded primary
+location instead of INSERTing a second primary — the unique partial index on `is_primary = 1` refuses one, and
+`tz_modifier` reads the row it updated or nothing at all.
+
+**Noted, not changed:** `apps/mobile-tauri/src/commands/testing.rs` is mounted without `#[cfg(test)]`
+(`commands/mod.rs:117`), so its fixture helpers — including the predicate this pass fixed — are compiled into
+the shell. That is pre-existing shape, and seeding inside that predicate is exactly its documented contract.
+
+**Verification:**
+- `cargo test -p kasirmu-mobile --lib` -> **658 passed; 0 failed**, exit 0 (was 624 / 34).
+- `cargo fmt --all -- --check` -> clean; every touched file was rustfmt'd.
+- `cargo test --workspace --all-features` + `cargo clippy --all-targets --all-features -- -D warnings` + the full
+  UI suite are re-run after this commit; the only known non-deterministic leg is
+  `pg_isolates_locations_by_tenant`, which races the cluster-wide role `oz_rest_probe` under one-process
+  parallelism and passes alone.
+
+**Commit:** one pathspec commit for the tablet fixtures, separate from the feature and from the desktop
+repairs, so a red tablet suite can be blamed or exonerated on its own. Never push without a direct user order.
+
+## 2026-09-22 — Absorb: `setup::get_preset_features` lands on the desktop floor, ceiling and ledger (desktop-tauri/records)
+
+**Context:**
+The desktop registration ratchet was red on four legs after a peer commit landed. Measured, not derived:
+`lib.rs` registers **469** names against a floor of 468; the sweep finds `setup::get_preset_features` ungated
+and NOT on the generated ledger; the debt ceiling is 74 against a measured **75**; and the ledger needs
+regenerating. Provenance is one commit: `6ac851dd4` (fix(setup): derive the terminal's feature set from the
+chosen store type). Nothing the staff/role trash landed moved these numbers — that pass was 463 -> 468 and its
+five commands arrived gated, recorded in the entry above.
+
+**The pass (the gate's own instructions, followed in one commit):**
+- `REGISTERED_FLOOR` 468 -> 469.
+- `DEBT_CEILING` 74 -> 75, with the RISE recorded here — which is what the ceiling pin asks of a rise.
+- `NO_SESSION_RESOLUTION` 47 -> 48: the new row is class 1, and `48 + 27 = 75` partitions the ceiling again.
+- Ledger regenerated through the generator (`KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app --lib
+  drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture`), which printed "75 debt row(s),
+  registered total 469" and re-reads its own output before passing.
+
+Class 1 is STRUCTURAL for this command rather than an omission being absorbed, and that is why the rise is
+defensible: `get_preset_features` answers with the store-type presets the SETUP WIZARD shows, and the wizard
+runs before any staff session exists — a `session_token` parameter would be a permission no caller could ever
+satisfy, the same class `setup::get_first_run_state`, `setup::provision_device`, `license::activate_license`
+and the three `desktop_link::*` rows have always occupied. Naming the provenance is deliberate: this pass
+records what landed and does not approve it.
+
+**Verification:**
+- `cargo test -p kasirmu-app --lib commands::registration_gate_tests` -> **14 passed; 0 failed**, exit 0 (was 10 passed / 4 failed).
+- The regeneration's own legs: `drift_pin_generated_ledger_is_the_sweeps_own_output` -> ok; `drift_pin_three_way_partition_is_complete_and_sums` -> ok; `drift_pin_debt_ceilings_only_shrink` -> ok; `drift_pin_registration_floor_is_met` -> ok.
+
+**Commit:** one pathspec commit touching the gate file, the generated ledger and this entry, because the floor's own message asks for one deliberate pass. Never push without a direct user order.
+
+
+## 2026-09-22 — Absorb: the same command lands on the tablet's ratchet, in the same pass (mobile-tauri/records)
+
+**Context:**
+The commit that reddened the desktop floor reddened the tablet's ledger, partition and ceiling legs too —
+`setup::get_preset_features` (`6ac851dd4`) is registered in BOTH shells. Measured on the tablet: 95 ungated
+against a ceiling of 94, the name absent from the generated ledger (`first row out of order: measured
+setup::get_preset_features, ledger setup::get_first_run_state`), and the class counts no longer partitioning
+the ceiling. The REASON is one reason and it is recorded in the entry above (the setup wizard reads the
+store-type presets before any staff session exists, so class 1 is structural for it); this entry records the
+tablet's own numbers so neither shell's record is a pointer into a file that holds only the other's.
+
+**The pass:** `REGISTERED_FLOOR` 344 -> 345; `DEBT_CEILING` 94 -> 95; `NO_SESSION_RESOLUTION` 50 -> 51
+(`51 + 44 = 95` partitions the ceiling; `RESOLVES_SESSION_NAMES_NO_PERMISSION` stays 44); ledger regenerated
+through the generator, which printed "95 debt row(s), registered total 345".
+
+**Verification:**
+- `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` -> **10 passed; 0 failed**, exit 0 (was 7 passed / 3 failed).
+- The four legs named in the failure: floor ok, partition ok, ceiling ok, generated-ledger ok.
+- `cargo test --workspace --all-features` is re-run after both halves land; the only leg that has failed
+  non-deterministically in this session is `kds_lan_live_offline_buffer_replay_respects_station_filter`, which
+  passes alone and was not touched here.
+
+**Commit:** its own pathspec commit immediately after the desktop half, because the two floors and the two
+ledgers may not drift apart on a command both shells register. Never push without a direct user order.
+
+
+## 2026-09-22 — Repair: an independent audit of the staff/role trash found two holes the tests did not, and both close at the source (core/records)
+
+**Context:**
+A read-only audit of the trash feature (five commits, no builds run) found three defects and a set of stale
+claims. Two are MAJOR and both were invisible to the tests that shipped with the feature, because each is a
+combination of two correct-looking halves:
+
+1. **A trashed role stayed ASSIGNABLE.** `get_role` deliberately does not filter `deleted_at` (the trash renders
+   trashed rows through `role_dto` -> `role_holder_count` -> `get_role`), so `create_user_in_tx` and
+   `update_user_in_tx` accepted a trashed `role_id` off the wire. `purge_expired_roles` refuses to delete a row
+   anything references, so one re-reference closed the window for ever — and the role kept granting while
+   `list_roles` hid it from every picker. An author-visible grant with no row left to revoke.
+2. **A closed window was still offered as restorable.** `list_trashed_roles` had no deadline predicate, so a row
+   past its 90 days that the purge had refused to delete came back from `list_role_trash_scoped` as a row the
+   Trash tab offered to Restore (rendered as `0 days before permanent deletion`).
+3. **A trashed member was still editable.** `update_user_in_tx` updated by id with no `deleted_at` guard, so a
+   crafted call could set `is_active = 1` on a trashed row — an ACTIVE account that both the login path and the
+   roster filter out, i.e. one nobody can see and nobody can revoke.
+
+**Fixes, each with the check that holds it:**
+- `Store::require_assignable_role` (private, `crates/kasirmu-core/src/db/staff.rs`) is the G-2 zombie guard
+  extended: the role must exist AND not be in the trash. Both write paths call it, so it is one guard rather
+  than two. Test: `a_trashed_role_cannot_be_assigned_to_an_account` — and it ends by proving the window can
+  still close, which is the property the hole was destroying.
+- `list_trashed_roles` now carries the purge's OWN cutoff as a predicate, so `>= cutoff` means RESTORABLE and
+  the two halves read the same boundary in opposite directions. `purge_expired_roles` was made to stop reading
+  through that view: doing so made the sweep a no-op that reported 0 while the expired rows stayed on disk.
+  That bug was introduced by the predicate and caught immediately by
+  `purge_expired_roles_removes_only_past_the_window`, which is the test that exists for it — the sweep now asks
+  the table for the expired set directly and keeps its in-transaction reference re-check. Tests:
+  `a_closed_window_role_is_not_listed_as_restorable`, plus the two above.
+- `update_user_in_tx`'s UPDATE gained `AND deleted_at IS NULL`; a trashed member answers NotFound to an edit,
+  and `restore_user` remains the door back. Test: `a_trashed_member_is_not_editable`.
+- Stale claims retired: the `staff:delete` registry DESCRIPTION (served by `list_permission_keys_scoped` into
+  the role editor, so it told an author that the key guards nothing), two audit stamps, the broken
+  `[Store::delete_role]` intra-doc link, three prose sites, and the payment-methods plan's citation of a
+  convention this feature retired. NOT edited:
+  `crates/kasirmu-core/migrations/20261010_role_trash.sql:8` still names `delete_role` — a migration's bytes are
+  checksummed, so its stale comment stays as the historical record rather than being "fixed" into drift.
+
+**Residual, recorded rather than fixed:** the delete evicts sessions from this PROCESS's in-memory store, and
+`resolve_session` checks only TTL and never re-reads the account, so a session held by another process against
+the same identity DB survives to its TTL. Unreachable in the single-instance desktop shell (the shell and the
+bridge share one `Arc` session map); it becomes real only if a second host ever shares that database.
+
+**Verification:**
+- `cargo test -p kasirmu-core --lib db::roles` -> **40 passed; 0 failed** (38 + 2 new); `db::staff` -> **65 passed** (64 + 1 new).
+- `cargo test -p kasirmu-bridge --lib staff` -> **126 passed; 0 failed** (the create/update paths the new guard sits on).
+- `cargo test -p kasirmu-app --lib` -> **158 passed; 0 failed**; `--test gate_audit` -> **3 passed; 0 failed**.
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0; `cargo fmt --all -- --check` -> clean.
+- `cargo nextest run --workspace --all-features` -> green (the runner `dev-ci.yml:251` uses).
+- NOT MINE, FOUND WHILE VERIFYING: `crates/kasirmu-api`'s `pg::tests::pg_isolates_locations_by_tenant` fails when
+  the whole crate runs in one process and passes when run alone (`cargo test -p kasirmu-api --lib pg::tests::pg_isolates_locations_by_tenant`).
+  It races the cluster-wide role `oz_rest_probe` against `pg_integration_rest_rls_non_owner` at
+  `pg_tests.rs:1633`, in the window the file's own comment describes. Pre-existing and unrelated to this work;
+  process-isolated execution (nextest) and the crate's serial path both pass. Recorded, not papered over.
+
+**Commit:** two commits — the core behaviour with its tests, and the stale-claim sweep — because the first is
+what a reviewer must read against the trash feature and the second is prose. Never push without a direct user
+order.
+
+## 2026-09-22 — Repair: the dev-mock answers get_preset_features, and the parity gate is green again (ui/records)
+
+**Context:**
+`scripts/verify-ipc-parity.py` failed the WHOLE gate on one command: the UI invokes `get_preset_features`
+(`ui/src/api/settings.ts:266`, from `ProvisioningFlow`'s submit path) and nothing under `ui/src/dev-mock/`
+registered a handler, so the browser preview returned null and the first-run flow rendered its failure path —
+while every test that mocked the wrapper stayed green. The command itself is sound: both shells register it and
+it reads the preset→features fact from its one owner (`crates/kasirmu-core/src/features.rs`). Repaired in the
+same pass: `crates/kasirmu-core/src/features_tests.rs:532` had been committed unformatted, so
+`cargo fmt --all -- --check` was red.
+
+**Fixes:**
+- `ui/src/dev-mock/handlers/system.ts`: a `get_preset_features` handler beside `get_enabled_features`, with
+  `MOCK_PRESET_FEATURE_KEYS` — the six slugs and their sorted kebab-case keys, extracted MECHANICALLY from
+  `FeatureRegistry::{simple_retail,restaurant,full_store,cafe,franchise,custom}` rather than retyped. An unknown
+  slug REJECTS (`unknown store preset: ...`), mirroring `kasirmu-bridge/src/setup.rs:231`; the flow catches
+  that and degrades to `[]` (`ProvisioningFlow.tsx:282-284`), so a mock that answered `[]` would erase the
+  difference between the degradation and a lost preset.
+- `ui/src/__tests__/dev-mock-preset-features.test.ts` (6 tests): payload shape; each slug's list; the sorted
+  order the payload promises; `custom` as an honest empty list rather than a missing table entry; the refusal;
+  and that every key is a real feature key. That last leg is load-bearing: the `get_enabled_features` handler
+  beside it answers `['sales','inventory',...]`, which are NOT feature keys, and this flow sends its answer to
+  `provision_device`.
+- `crates/kasirmu-core/src/features_tests.rs`: rustfmt only — one `assert!` wrapped, 4 lines of whitespace.
+
+**Verification:**
+- `python scripts/verify-ipc-parity.py` -> **IPC parity: OK**, exit 0.
+- `npm run test` (full UI suite) -> **604 files, 10301 passed**, exit 0.
+- `cargo test -p kasirmu-core --lib features` -> **83 passed; 0 failed**; `cargo fmt --all -- --check` -> clean;
+  `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0.
+
+**Commit:** two pathspec commits — the mock with its test, and the format alone — so the second reads as
+whitespace in another lane's file. Never push without a direct user order.
+
+## 2026-09-23 — Staff-management trash: phone-row layout, a preset-key guard, a bounded session revalidation (ui / kasirmu-core / kasirmu-bridge)
+
+**Context:** three follow-ups left by the trash review, run as parallel workstreams against one frozen tree.
+
+**Changes:**
+- `ui/src/features/staff/StaffManagementScreen.css` (the <=600px tier) plus a structural test: the trash row becomes a two-column grid — the who block spans both columns, then the days span sits in column 1 and `Restore` in column 2 as DIRECT children. Flex-wrap was rejected: it orphans the button and at 360px the days/button gap goes negative (-10px).
+- `ui/src/__tests__/StaffManagementScreen.test.tsx`: asserts the days span and the button are direct children of the row, because that structure is invisible to jsdom and moving either into the who block silently costs the button its right edge at phone widths.
+- `crates/kasirmu-core/src/features_tests.rs` (+252): `dev_mock_preset_feature_keys_match_this_crates_own_presets` compares the six preset slugs and their sorted feature keys in `ui/src/dev-mock/handlers/system.ts` against this crate's OWN `FeatureRegistry`, read through `include_str!`. The mock's `get_preset_features` answer feeds `provision_device`, so a key that drifts from the registry provisions a device the core would reject. The parser panics rather than skipping syntax it cannot read.
+- `crates/kasirmu-bridge/src/ctx.rs` + `session_revalidation_tests.rs` (new): closes the residual recorded in this file on 2026-09-22 — a session held by ANOTHER process survived to its TTL. `resolve_session`'s live branch now re-reads the account behind the token through one indexed `SELECT EXISTS(... deleted_at IS NULL AND is_active = 1)`, at most once per `ACCOUNT_REVALIDATION_WINDOW` (30s). The first resolve of a token only stamps the window (query-free: the token came from a login that already filters `deleted_at`/`is_active`, so it cannot be born revoked). A revoked account's session is removed and answers `InvalidSession`, byte-identical to the unknown/expired-token error. The read uses `try_lock`, never `blocking_lock` (it runs inside async command bodies); a busy or failing identity DB fails OPEN and does NOT consume the window, so the next resolve retries. State is a module-level `LazyLock<StdMutex<HashMap<(usize,String),...>>>` keyed by (identity-DB Arc address, token): the ctx is rebuilt per call, so a new field would have changed the struct at all three construction sites (desktop `authz.rs`, mobile `state.rs`, `testing.rs`). Warm-path cost: 0 queries inside the window, amortised 1 indexed SELECT per 30s per actively-resolving token, 0 for an idle token.
+- The two bridge comments that asserted `resolve_session` "checks only TTL and never re-reads the account" were made FALSE by that change and are corrected in place (`staff.rs` `delete_staff_scoped` doc, `staff_tests.rs`). The eviction closes the gap to zero on this host; the window covers the other hosts.
+
+**Correction of my own earlier claim:** I had recorded that at 390px the trash row "merely wraps and loses nothing". That was wrong. Re-measured against the pre-fix stylesheet with a real browser (`who` = identity block clientWidth, `nameOv` = name ink outside its box):
+- BEFORE at 390px: `who=0` and `nameOv=103/33/59` — the whole identity block collapses, its name paints 33-103px outside it across the days badge, and the identity line is 0px wide (invisible in the render) while still 18px tall. Rows 132/90/90px.
+- AFTER at 390px: `who=292`, `nameOv=0`, `subW=292`, name/days and days/button hit-tests 0, button inside its box, rows 124/103/103px.
+- At 768px and 1280px both stylesheets measure identically — no regression above the tier.
+My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that because a collapsed flex item reports no overflow of its own. The render settled it: the badge text is drawn straight through the name.
+
+**Verification:**
+- `cargo test --workspace --all-features` -> exit 0, **129 targets, 10096 passed, 0 failed** (includes the 3 new revalidation tests; bridge lib 1361 -> 1364).
+- `cargo clippy --all-targets --all-features -- -D warnings` -> exit 0, no warnings.
+- `cargo fmt --all -- --check` -> clean. It was RED first: R4 ran tests and clippy but not fmt, so `session_revalidation_tests.rs:63` landed unformatted in 92a098652. Fixed with `cargo fmt -p kasirmu-bridge` (never `--all`, which reformats other lanes' in-flight files) and committed separately.
+- `npm run test` (full UI suite) -> exit 0, **604 files, 10301 passed**, 24 skipped, 3 todo.
+- `cargo test -p kasirmu-core --lib features` -> **84 passed**; the preset-key guard was independently mutation-proved RED (mutating `tax-engine` in `system.ts` fails it), then restored byte-identically (SHA256 compared).
+- The revalidation guard was independently mutation-proved RED: deleting the `revalidate_account` call fails exactly the two revoke tests (1 passed; 2 failed), restored byte-identically, then 3/3 green.
+- Static gates, all on this tree: `generate-pg-migration.py --check` OK (127 tables, 158 indexes, 7 seed inserts); `verify-ipc-parity.py` -> IPC parity: OK; `verify-bundle-parity.py` -> 0 missing keys (4832 en / 4908 id); `dedupe-ftl.py` -> no duplicates; `verify-ftl-orphans.py --self-test` -> OK; `verify-migration-column-types.py` -> OK.
+
+**Recorded, not fixed:** `Store::get_user` deliberately does not filter `deleted_at` and `authorize_with` checks only `is_active`, so inside the revalidation window an already-resolved command from a just-trashed member still authorizes. That IS the bounded lag this design buys, not a separate hole; after the window the session is gone. No production signature changed, so no shell needed a follow-up.
+
+**Commits:** `2dea49ddb` (layout + its structural test), `61e8b0381` (preset-key guard), `92a098652` (revalidation + the two corrected comments + 3 tests), `0dcdbad0c` (format, alone). Never push without a direct user order.
+
+## 2026-09-23 — E2E: the staff trash round trip, and what two mutation proofs taught (ui/e2e)
+
+**Context:** the trash review left exactly one real hole — the SQL was proven against real SQLite and the unit tests were green, but no E2E spec had ever carried a member into the trash and back through the assembled app. The suite runs the real UI in a browser against the dev-mock IPC (`ui/e2e/helpers.ts`), so this needs no Rust backend, and both the desktop (Chromium) and tablet (WebKit) projects run it.
+
+**Spec:** `ui/e2e/staff-trash.spec.ts` (2 cases, 4 tests across the two projects):
+- the round trip — delete an inactive member through the confirmation dialog, see them leave the roster, reach the trash BY TAB and then again BY DEEP LINK, assert the freshly-started `90 days before permanent deletion` badge, restore, and prove they return INACTIVE (the power button offers restore; the row is deletable again);
+- the gate — an admin session gets a rendered tab strip WITHOUT the trash tab, and no route into it renders the trash panel, list or empty state.
+
+**Mutation-proved, both directions** (the discipline used for the preset-key guard and the revalidation guard):
+- forcing the screen's `canDeleteStaff` gate open FAILS the gate case;
+- making restore leave the member ACTIVE in the served list FAILS the round-trip case.
+
+**What the proofs taught — worth recording instead of hiding:**
+- Widening the `trash` ROUTE registration's permission to `staff:read` did NOT fail the gate case. The enforcement that actually holds is the screen's own `passesGate('manager','staff:delete',...)` (`StaffManagementScreen.tsx:112`), which drives both `showTrash` and the panel. The route declaration and the screen check are two INDEPENDENT statements of one rule, so the spec asserts the observable outcome (no trash for an admin) rather than either mechanism. The spec's header says so.
+- The first attempt at the restore mutation (returning `is_active: true` from the mock's restore handler) also did NOT fail the case, because the roster reads `MOCK_STAFF_ROWS`, not the handler's return value. Mutating the wrong layer proves nothing — the effective mutation had to flip the row the list actually serves. A red-proof that comes back green is a statement about the MUTATION, not about the test.
+
+**Verification:** spec `4 passed (14.5s)` across both projects; `npm run testid:check` OK; `npx eslint e2e/staff-trash.spec.ts` exit 0; `npm run typecheck` exit 0. A throwaway viewport-390 spec rendered the real app's trash tab (screenshot, dark theme) confirming the phone layout there rather than only in the synthetic harness; it was deleted after the run.
+
+**Still not covered by E2E:** the Rust backend (dev-mock IPC is not a live Tauri process — the SQL is proven by the Rust suites instead), the 90-day purge sweep, the role-trash half of the tab, and the Android shell (the tablet project is WebKit at a POS viewport, not the device WebView).
+
+**Commit:** `23d629649`.
+
+## 2026-09-23 — Staff management: a parallel audit round, and the defects it found (staff / bridge / core / ui)
+
+**Context:** the goal was 'continue the development of staff management, make sure everything works, spawn subagents'. Four subagents ran parallel audits with DISJOINT file ownership (UI surface, Rust surface, E2E role coverage, memo-overlap measurement) while the parent swept the surfaces none of them owned. That division is what found the defects below: each lane read code the others could not touch.
+
+**Defects found by the parent, each verified by reading the code and then RED-proved in the fix:**
+- QUOTA BYPASS on the INACTIVE -> ACTIVE transition. The tier cap was enforced only on CREATE (bridge `staff.rs` pre-check plus the W7-B post-insert veto in core `create_user`), while `count_staff_users` counts only `is_active = 1` non-owners. So on Free (limit 1): create A, deactivate A, create B, reactivate A = 2 active staff with every individual step allowed. Reachable from the product (the roster's power button -> `updateStaffScoped`). The fix needed THREE sites, not one: desktop delegates to the bridge, but the tablet FORKS `update_staff_scoped` (deliberately, for its `debug_upgrade` audit difference), so a bridge-only fix would have left the tablet bypassable.
+- DEV-MOCK IDENTITY SPLIT. The login seed and the roster were two hand-written tables that disagreed about the same five people: `staff-1` named the Staff member at login and the Owner on the roster, no roster row carried the id a session was minted with, and the seed called the auditor active while the roster called them inactive. Latent only because nothing compared the two (0 hits for `session.user_id` in the feature) — which is exactly why the first self-guard anyone adds would silently never match in the preview.
+- RESTORE IGNORED THE 90-DAY WINDOW. `staff.rs` stated 'a row past its deadline can never be read or restored', but only READ was enforced (the list purges then filters); `restore_user` / `restore_role` had no deadline predicate at all, so the guarantee held only as a side effect of a list having run. A trash page loaded at day 89 and clicked after the deadline restored an overdue row.
+
+**Defects found by the subagents:**
+- THE ROLES PANEL WAS STALE AFTER A ROLE RESTORE (found by the E2E lane in a live browser, fixed by the UI lane). The panel keeps its own role list and refreshed it only from a mount-keyed effect; the restore refreshed the SHELL's list, so the restored role was absent until a remount — the operator reads that as a failed restore and repeats it. The fix is a `refreshRoles` handle method called from one shared `refreshLiveLists`, which also closed THREE MORE instances of the same one-ring-short pattern in the same pass: the Roles stat tile after authoring, the shell list after a role restore, and the panel's `holder_count` after a staff create/edit.
+- THE MOCK'S LOGIN NEVER READ `is_active`. Invisible while the seed called everyone active; a live divergence the moment the identity fix made the auditor inactive, because the real command refuses an inactive account with the same uniform error a wrong PIN gets (`auth.rs:403`).
+- THE TABLET MEMO STACK OCCLUDED THE ROLE ROW'S DELETE BUTTON (found and measured by the layout lane, fixed by the parent). Measured at 1024x1366 with a full stack: the stack rect covered the authored 7th row's button (24 of 48 sampled points), the list did NOT overflow so no scroll position escaped, and the click could never land. At desktop the overlap is geometric but escapable by scrolling — so the passing desktop E2E was never evidence of no overlap.
+
+**A regression the parent introduced and then fixed:** making the auditor the inactive trash fixture cost the preview the ability to log in as the auditor AT ALL, and silently invalidated the documented `auditor / 1234` credential. The fixture is now its own dismissed identity (`staff-5` 'Former Auditor', id kept stable because the committed spec deletes that id) and the auditor is a sixth, ACTIVE identity (`staff-6`).
+
+**Verification (all by the parent unless noted):**
+- `cargo test` filters: core `db::staff` 68 (was 65), core `db::roles` 41 (was 40), bridge `staff` 130, mobile `staff` 54; `staff_integration` 25. `npm run test` 606 files / 10320 passed, exit 0.
+- RED proofs of the quota gate and the restore deadline, run by the parent: neutering the bridge arming FAILS 2 reactivation tests; neutering the deadline predicate FAILS the window test; both files restored byte-identically (SHA256 compared). The preset-key guard and the revalidation guard were proved the same way in the earlier entry.
+- RED proof of the roles-panel fix, run by the parent: reverting only the `refreshLiveLists` wiring FAILS `re-reads the Roles panel list after a restore, without remounting the panel`; restoring the hash PASSES it.
+- E2E `staff-trash.spec.ts`: 6 passed on BOTH projects (desktop Chromium + tablet WebKit), with two mutation proofs and a byte-identical mock restore; the parent re-ran and hash-matched the spec to the revision it committed.
+- The memo fix was proved with a throwaway probe rather than a claim: before, 24/48 sampled points intercepted and a trial click INTERCEPTED; after, scrolling the (now overflowing) region clears the row to 0/48 and the trial click is CLICKABLE. The full stack height was MEASURED (215px for 3 bubbles) because the first measurement offered (141px) was for 2 and would have under-reserved `MAX_STACK = 3`.
+
+**Two gate lessons worth keeping:**
+- `screenExtraction` reports a class the sheet references but the screen's markup cannot contain — as it should. The right device is the entry's `externalClasses`, NOT `EXTERNAL_CLASS_LEDGER`: that ledger is for values defined ONLY inside the declaring entry, and the parent's first attempt failed the case's second direction ('no exempt member without a matching violation') because the class lives in another sheet. `additionalTsx` would also have silenced it and was the wrong tool, because it broadens the sheet's used-set and weakens the dead-class rule.
+- `scripts/verify-quota-coverage.sh` scans `INSERT` statements only, which is precisely why an UPDATE-based reactivation door survived it. Extending it to activation doors is the durable fix for that class and is NOT done — recorded here rather than left implicit.
+
+**Recorded, not fixed (each with its reason):**
+- `update_user_pin` and the profile writer lack the `deleted_at` predicate their sibling has; both are unreachable for a trashed row because the guarded `update_user_in_tx` runs first in the same transaction. Defence in depth, deliberately not folded into the quota fix.
+- The quota veto is armed by the COMMAND layer, so an unarmed caller keeps the old behaviour. A core-level gate was tried and rejected: the veto reads the POST-update count, so at a tenant already over cap it would refuse an ordinary edit of an active member.
+- `count_staff_users` counts `users.role_id != OWNER` while authorization resolves ASSIGNMENT-first, so a divergent assignment can make the cap and the enforcement disagree. Pre-existing, out of scope.
+- `purge_expired_users` keeps `role_id` on the anonymised tombstone and `role_references_on` filters nothing, so a role held only by a tombstone can never be deleted. FK truth, not a bug, but a state with no exit.
+- The memo reserve is sized to a measured full stack (215px at 1024x1366); the stack's height is content-dependent, so a taller stack could still reach a row. It is gated on `body:has(.memo-stack)` so a session without memos pays no dead band.
+- Dead FTL keys in the staff pair (5 unreferenced in both locales; ~20 present only in `staff.id.ftl`), proved by exact-token grep. Removing them is a locale-cleanup decision with cross-file blast radius, and the orphan gate only blocks keys a commit ADDS or strands by removing a reference, so it does not force the call.
+- The Android/tablet shell is still unverified: no device attached and no AVD exists on this host. The tablet E2E project is WebKit at a POS viewport, not the device WebView.
+- Peer-owned reds seen and left alone: `ProvisioningFlow` `sr-only` (fixed by that lane mid-round), `payables_tests.rs` fmt, `platform/core/src/settings/typed.rs` clippy.
+
+**Commits:** `324c1a9cd` (one staff identity list), `f6dcb000e` (role-trash E2E), `30152281b` (mock login refuses an inactive account), `a950240ea` (Roles panel + stat tile refresh, four state-consistency fixes), `d45a78afe` (the dismissed fixture keeps every role loggable), `64a1740e8` (memo clearance for the tablet row), `2211f8da6` (quota reactivation door + restore deadline). Never push without a direct user order.
+
+**FOLLOW-UP ROUNDS (same day) — closing the loop on the audit above.**
+
+*A mutation audit of the staff UI, not a coverage sweep.* 44 mutations were applied to the feature source, each reverted inside `try/finally` and PROVED reverted by SHA256, with every feature-file hash unchanged at the end. 15 behaviours turned out to be UNPINNED — nothing failed when they were broken: the impersonation success toast and the `startImpersonation` record, the deactivated/deleted toast keys, `quotaBlocked` being cleared after a later success, both quota CTAs' pricing target, the workspace-unavailable notice, the trash retry button, three failure toasts, the create-success toast, `identityWithheld` reset on open, and the `#/roles` deep-link initializer. One test per behaviour, each red on its mutation and green on restore, committed as `f5b26ccb9`. Two were RED-proved independently by the parent (the quota-banner clear, chosen because it pins the parent's own fix, and the impersonation toast), so the method is validated rather than the table trusted. Two lessons from it: the deep-link case needed a `hash` ASSIGNMENT replaced by `history.replaceState`, because assigning `location.hash` fires `hashchange` and the listener masked the broken initializer; and a red suite in a shared checkout is not a finding until ownership is checked — nine RoleAuthoringPanel failures in one full-suite run were a concurrent mutation live at that moment, and the file passed 26/26 alone.
+
+*A false instruction in a device-test guide.* `docs/guides/platform/android-install-test.md` told a tester that the PIN step has a Submit button and that sub-4-digit PINs show `staff-login-pin-min-length`. Both are false: the PIN step has NO submit control (the only `type="submit"` is the username step's) because the pad auto-submits on the 4th digit, and that locale key is referenced nowhere in the code. A tester following the guide would have filed a FAIL against correct behaviour. Corrected, with the real line references (`945732893`).
+
+*Clippy, which nothing else in this repo will fix.* The gate ran in no live workflow, so its findings sat: 4 redundant `Ok(...?)` wrappers in `platform/core/src/settings/typed.rs` (`e4ae99df1`) and 2 collapsible guards in `crates/kasirmu-core/src/db/{mod.rs,refunds.rs}` (`9a66c166e`), each applied with clippy's OWN suggested edit, then reformatted. Clearing one crate's findings revealed the next crate's, which is the shape of this debt. Two traps were hit and handled: `cargo clippy --fix --allow-dirty` can rewrite OTHER agents' dirty files (two core test files showed as modified; their diffs were rustfmt-shaped and clippy itself reported fixing only the two files, so nothing of theirs was touched), and `rustfmt` on a `mod.rs` FOLLOWS THE MODULE TREE — which is why a peer's `purchase_orders.rs` appeared in a check of a different file, and why `cargo fmt -p <crate>` is unsafe here. The reflow was hand-applied to the two files instead.
+
+*Verification hygiene, learned the hard way twice.* `rustfmt --edition 2021` cannot parse this workspace's edition-2024 `let` chains and emits a full-file rewrite, so its diffs are meaningless; and piping a check through PowerShell's first-N lines had silently TRUNCATED a file list, so 'the only diff is X' was never established. Both errors pointed at code that was fine. Separately, running the full UI suite CONCURRENTLY with the E2E run and a cargo build produced 7 failures across 5 unrelated files — every staff file green, and the one failing file the parent owns passed 30/30 alone. Heavy gates are run one at a time from now on.
+
+**Still not closed at the time of writing:** the workspace-wide `cargo test` had 3 failing targets, all peer-owned (`gate_audit` census pin, cloud-server OpenAPI wire shape, `platform-sync` doctest `E0603`); workspace clippy and fmt were red only in peer files; the Android shell remains unverifiable (no device, no AVD); and the staff FTL dead keys (4 proven dead, plus one cited only by the corrected doc row) are left for a locale owner's call.
+
+
+**Workspace-gate blockers observed while verifying (all PEER-owned; recorded so the next reader attributes them without re-deriving):**
+- `cargo test --workspace --all-features` cannot COMPILE: `platform/sync/src/queue.rs` (dirty, in flight) added `origin_terminal_id` to `OfflineQueueItem` and two committed construction sites lag — `platform/sync/src/conflict.rs:162` and `crates/kasirmu-core/src/sync_client_tests.rs:354` (E0063). Nothing to do with staff.
+- `cargo clippy --all-targets --all-features -- -D warnings` findings, every one outside staff: `crates/kasirmu-core/src/db/mod.rs:406` (collapsible `if`, in `rotate_generations`, the snapshot backup path — committed by another lane) plus the same E0063; and `platform/core/src/settings/typed.rs` carries four `enclosing Ok and ? operator are unneeded` errors in the COMMITTED tree (clippy runs in no live workflow, so nothing surfaced them). Checked by listing every `-->` location the clippy run printed: none names a file this session touched.
+- `cargo fmt --all -- --check` diffs, none in staff: `apps/cloud-server/src/sync_store/pg.rs`, `crates/kasirmu-core/src/db/products_crud_tests.rs`, `crates/kasirmu-core/src/db/purchase_orders.rs`, `crates/kasirmu-plugin/src/manifest_tests.rs`, `platform/sync/src/queue_tests.rs`.
+- Staff scope IS green on the same tree: `npm run test` 606 files / 10320 passed; core `db::staff` 68, `db::roles` 41, bridge `staff` 130, mobile `staff` 54; `staff-trash.spec.ts` 6 passed on both projects.
+
+**Two process corrections, both worth more than the findings they produced:**
+- `rustfmt --edition 2021 --check <files>` printed DOZENS of diffs for the staff files and was WRONG. This workspace is edition 2024 and the staff code uses `let` chains, which rustfmt cannot parse on 2021 — a parse failure makes it emit a full-file rewrite. `cargo fmt`, which reads the edition, reports those files clean. Trusting the hand-rolled invocation would have sent me to 'fix' formatting that was already correct.
+- Piping a check through `Select-Object -First N` had silently TRUNCATED the file list in two earlier attributions of this same round, so 'the only diff is X' was never established. Both mistakes pointed the same way — at code that was fine — which is exactly the failure mode a verification step exists to prevent.
+
+## 2026-09-23 — Two workspace gates driven to green: clippy and fmt (repo)
+
+**Context:** the staff audit left three repo-wide gates red, and clippy is the one NOTHING else in this repo will fix — `dev-ci.yml` runs no clippy job, so a finding there ships silently. This round closed the two mechanical ones and left the third attributed.
+
+**CLIPPY: exit 0.** Five changes across four files, each applied to a file that was CLEAN (committed) at the time — the rule is that a dirty file means someone else is mid-edit and gets skipped and reported, which is what happened to `platform/sync/src/queue.rs` (an in-flight C3 feature, whose own transient compile errors also surfaced and then resolved when that lane finished).
+- `apps/desktop-tauri/src/state.rs`: two unused imports (`Path`, `Duration`).
+- THE CONSEQUENCE WORTH RECORDING: removing them broke the desktop test target, because `state_tests.rs` is a `#[path]` child module and its `use super::*` does NOT count as a use of the parent's imports — they had only ever been 'used' by the tests. The fix was to move the two imports into the file that actually uses them, not to re-add them to the parent and certainly not to silence the lint.
+- `apps/cloud-server/src/sync_store_tests.rs`: `let mut` that never needed `mut`.
+- `crates/kasirmu-bridge/src/data_tests.rs`: `assert_eq!(x, false, ..)` -> `assert!(!x, ..)`.
+
+**FMT: exit 0.** Two findings, both in committed files: an import order in `crates/kasirmu-core/src/db/purchase_orders.rs` and one unwrapped `assert!` in `crates/kasirmu-plugin/src/manifest_tests.rs`. `rustfmt --edition 2024` was run on those two paths ONLY, never `cargo fmt -p <crate>` — and the changed-file set was then verified by MTIME, because two other core test files are dirty with another lane's formatting work: they were last written 90 minutes earlier, so the formatter had not touched them.
+
+**Both gates were then re-run by the parent, not taken from the reports:** `CLIPPY_EXIT=0` and `FMT_EXIT=0`. Commits `b72d8d89a` (clippy, four files) and `8b9720d5a` (fmt, two files).
+
+**The quota guard now sees the door that was missed** (`4e0838f84`). `scripts/verify-quota-coverage.sh` scans INSERTs only, which is exactly why an UPDATE-based reactivation bypassed it. It gained a second narrow rule for `UPDATE users SET ... is_active = <truthy>`, graded on the SAME ladder (the existing verdicts were extracted into one `grade_site()` rather than duplicated), with file discovery widened so the rule is not blind to `bridge/staff.rs` (which gates an activation but holds no INSERT). The parent ran it: plain `sites: 19 covered: 12 known gaps: 3 violations: 4`; self-test `sites=5 covered=3 violations=2` with a gated activation reading GATED-IN-FN, an ungated one UNCOVERED, and a DEACTIVATION deliberately not a site at all. Measured correction from that run, which the subagent made against its own first draft: the real activation SQL lives only in `core/db/staff.rs::update_user_in_tx` and reads GATED-IN-CALLER, not GATED-IN-FN, because the gate lives in its callers. The 4 violations are PRE-EXISTING (proven by running HEAD's own script against the same tree: same four) and sit in the ADR-56 bootstrap path (`provision_device_inner`, `create_workspaces_in_tx`, `seed_provisioned_baseline`). The guard is wired into NO workflow, so this red is visible debt rather than a blocking gate — which is exactly what it is: four doors nobody has yet gated or excused.
+
+**Still open:** the workspace test run's peer-owned failing targets, the peers' in-flight files, the Android shell (no device, no AVD), and the dead staff FTL keys (four proven dead, plus one cited only by the corrected guide row).
+
+## 2026-09-23 — Staff management: final verification bundle (repo)
+
+Every gate re-run by the parent on a QUIET machine (one heavy job at a time):
+
+| Gate | Result |
+| --- | --- |
+| clippy `--all-targets --all-features -- -D warnings` | exit 0 |
+| fmt `--all -- --check` | exit 0 |
+| `cargo test --workspace --all-features --no-fail-fast` | 127 targets, 9825 passed / 0 failed; 2 targets failed, both PEER-owned |
+| `npm run test` (UI) | 606 files, 10352 passed, exit 0 |
+| `e2e/staff-trash.spec.ts` (Playwright) | 6 passed, desktop Chromium + tablet WebKit |
+| IPC parity / bundle parity / FTL dedupe / FTL orphans / PG drift / migration column types | all green (0 missing keys; 127 tables/158 indexes/7 seeds; 65 migration files) |
+
+**Neither remaining test failure is staff, and neither is a staff regression:** `desktop_command_census_matches_pin` reports 2 of 67 pinned rows disagreeing (`data` pin 6 vs source 7, `pos` pin 17 vs source 18) after another lane added commands, and cloud-server's `push_outcome_documented_schema_matches_serde_wire_shape` fails in that lane. The census pins were deliberately NOT bumped: the metric is not a raw registration count (the desktop shell registers 8 `data::` and 18 `pos::` commands while the census reports 7 and 18), so a blind arithmetic update would be precisely the UNdeliberate edit the pin's own message warns against (`Update every pin deliberately - the full set is the review signal`). It belongs to whoever added those commands.
+
+**A flake that was mine, not the code's:** an earlier full UI run reported 7 failures across 5 unrelated files (`AppShell`, `SettingsPage`, `TopologyRevisionBrowser`, `useNewTicketSound`, dev-mock auth contract). Every staff file was green, the one failing file this session owns passed 30/30 in isolation, and the same suite is now 10352/10352 with the machine quiet. The cause was running it CONCURRENTLY with the E2E run and a cargo build. Heavy gates run one at a time.
+
+**Left open deliberately, each with the decision it needs:** workspace-wide gates stay in motion while other lanes hold dirty files; the Android/tablet shell is unverified because no device is attached and no AVD exists on this host (the tablet E2E project is WebKit at a POS viewport, not the device WebView); the dead staff FTL keys (four referenced nowhere in either locale, plus one cited only by the guide row corrected above) need a locale owner's call; and `scripts/verify-quota-coverage.sh` reports 4 PRE-EXISTING violations in the ADR-56 bootstrap path (`provision_device_inner`, `create_workspaces_in_tx`, `seed_provisioned_baseline` x2) which likely deserve the same reasoned KNOWN-GAP treatment `seed_primary_store` already carries - but excusing a provisioning door is that lane's call, and the guard is wired into no workflow, so the red is visible debt rather than a blocking gate.
+
+
+
+
+
+
+
+
+

@@ -22,6 +22,15 @@ next: none here; CRY-1 remediation covers the encryption gap | perf: single-row 
 //! not empty. Reads may fail closed to `None`, but `write_user_profile` re-
 //! separates the states from the stored bytes (`StoredCipher`) so a view-then-
 //! save round trip can never NULL out a ciphertext a key restore would revive.
+//!
+//! INVARIANT (ADR #35 D6 write side): a value the caller was never permitted to
+//! READ is not a value they may be asked to re-supply. A view withholds a
+//! sensitive field by returning `None`, which is indistinguishable from an
+//! empty column, so a write from such a caller preserves the stored bytes
+//! instead of requiring the field or blanking it — see
+//! [`SensitiveWritePolicy`] and [`Store::write_user_profile_with`]. Without
+//! this, the only way past a required-field error was to type a value for a
+//! field the caller could not see, silently replacing it.
 
 use rusqlite::{OptionalExtension, params};
 
@@ -97,12 +106,22 @@ impl UserProfile {
         self.validate_with_preserved(false, false)
     }
 
-    /// `Self::validate` plus the write-path exemption for a field whose stored
-    /// ciphertext exists but cannot be decrypted (`national_id_kept` /
-    /// `pay_kept`). Such a field is *collected but unreadable* — it is not
-    /// missing, so a caller that round-tripped a failed read into `None` must
-    /// not be told the field is required, and its shape cannot be checked
-    /// because no plaintext exists to check. See `Store::write_user_profile`.
+    /// `Self::validate` plus the write-path exemption for a field this write
+    /// must not decide (`national_id_kept` / `pay_kept`). Two cases reach it,
+    /// and both mean "not supplied, and not missing":
+    ///
+    /// * the stored ciphertext exists but cannot be decrypted — a caller that
+    ///   round-tripped a failed read into `None` must not be told the field is
+    ///   required, and its shape cannot be checked because no plaintext exists
+    ///   to check;
+    /// * the caller was never permitted to read the field, so the `None` is
+    ///   the read path's withholding rather than an empty column. There is
+    ///   nothing to check shape against either, and no honest value to supply.
+    ///
+    /// See [`Store::write_user_profile_with`]. Plain [`Self::validate`]
+    /// (creation) passes `false` for both: a new account has no stored value
+    /// to preserve and no withholding, so every mandatory field must be
+    /// supplied outright.
     fn validate_with_preserved(
         &self,
         national_id_kept: bool,
@@ -301,6 +320,17 @@ pub struct ProfileView {
     pub hire_date: Option<String>,
     /// Whether all 8 required profile fields are present.
     pub is_complete: bool,
+    /// True when the viewer does NOT hold `staff:read_identity`, so
+    /// `national_id` and `tax_id` above are absent because they were
+    /// WITHHELD, not because the columns are empty.
+    ///
+    /// The distinction is the whole point of this field: a consumer that
+    /// cannot tell the two apart either demands a value the viewer was never
+    /// shown, or offers an empty box that looks like "unset" and invites a
+    /// blank write over a stored document. It exists here for the same reason
+    /// as `RoleHolderDto::has_assignment` — a null that means two things has
+    /// to say which one it is.
+    pub identity_withheld: bool,
 }
 
 /// Deterministic SHA-256 hex digest (national-id uniqueness hash).
@@ -348,7 +378,9 @@ enum StoredCipher {
     Absent,
     /// Ciphertext that decrypts to a usable value. The read path had its chance
     /// to show it, so a caller sending no value is clearing it on purpose.
-    Readable,
+    /// Carries the stored bytes so a write that must NOT clear it (a withheld
+    /// field, see [`SensitiveWritePolicy`]) can re-bind them verbatim.
+    Readable(String),
     /// Ciphertext present but unreadable (decrypt failed, or it decrypts to
     /// something that is not a value at all). Carries the stored bytes so the
     /// write can put them back verbatim.
@@ -376,24 +408,67 @@ impl StoredCipher {
             return Self::Absent;
         };
         match decrypt_profile_field(&stored) {
-            Ok(clear) if usable(&clear) => Self::Readable,
+            Ok(clear) if usable(&clear) => Self::Readable(stored),
             // A read failure is never evidence that a field is empty; the only
             // safe verdict for a present-but-unopenable seal.
             _ => Self::Unreadable(stored),
         }
     }
 
-    /// The stored bytes this write must leave byte-identical, if any.
+    /// The stored bytes this write must leave byte-identical because they
+    /// cannot be opened, if any.
+    ///
+    /// Deliberately NOT the same as [`Self::raw`]: a readable value that the
+    /// caller simply sent nothing for is a deliberate clear, and only the
+    /// unreadable case is unambiguously not a decision anyone made.
     fn preserve(&self) -> Option<&str> {
         match self {
             Self::Unreadable(raw) => Some(raw),
-            Self::Absent | Self::Readable => None,
+            Self::Absent | Self::Readable(_) => None,
+        }
+    }
+
+    /// The stored bytes, whatever state the column is in — what a write
+    /// re-binds to leave the column byte-identical. Callers gate this on a
+    /// policy or on unreadability; it never decides the question itself.
+    fn raw(&self) -> Option<&str> {
+        match self {
+            Self::Absent => None,
+            Self::Readable(raw) | Self::Unreadable(raw) => Some(raw),
         }
     }
 }
 
+/// What a caller-aware profile write must leave alone (ADR #35 D6).
+///
+/// Exists because a sensitive field can be absent from an update for a reason
+/// that is not a decision: the caller was never permitted to read it, so the
+/// read withheld it and they cannot honestly supply it back. Such a field has
+/// to be preserved rather than required (which forces an invented value) or
+/// blanked (which silently destroys the real one).
+///
+/// The policy is the *caller's* half of that judgement; the other half is read
+/// from the stored bytes, which can independently say "unreadable, keep it".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SensitiveWritePolicy {
+    /// Preserve the stored identity record — `national_id`, its uniqueness
+    /// hash, and the plaintext `national_id_type` / `tax_id` that go with it —
+    /// for any field the caller sent no value for. Set this when the editor
+    /// does not hold `staff:read_identity`.
+    pub keep_identity_record: bool,
+    /// Preserve the stored `monthly_take_home_minor` when the caller sent none.
+    ///
+    /// Set this by any surface that does not OWN payroll: leaving it unset
+    /// means an update that omits the field clears it, which is the right
+    /// semantic for the payroll surface that displays the amount and can clear
+    /// it deliberately, and the wrong one for a staff screen that never shows
+    /// it. Note this also lifts the field's required-ness, so a surface that
+    /// keeps the pay column must still collect it at creation.
+    pub keep_pay: bool,
+}
+
 /// The stored sensitive columns of one user row, read by
-/// [`Store::write_user_profile`] before it binds anything.
+/// [`Store::write_user_profile_with`] before it binds anything.
 struct StoredColumns {
     /// `national_id` (ciphertext).
     national_id: StoredCipher,
@@ -402,6 +477,13 @@ struct StoredColumns {
     national_id_hash: Option<String>,
     /// `monthly_take_home_minor` (ciphertext).
     pay: StoredCipher,
+    /// `national_id_type` (plaintext) — withheld with the national id, and
+    /// preserved with it so a caller who cannot read the document cannot
+    /// re-label it either.
+    national_id_type: Option<String>,
+    /// `tax_id` (plaintext, withheld under `staff:read_identity`). Plaintext,
+    /// so it needs no cipher handling — only the same preserve-on-withheld rule.
+    tax_id: Option<String>,
 }
 
 impl Store<'_> {
@@ -416,7 +498,8 @@ impl Store<'_> {
         let row = self
             .conn
             .query_row(
-                "SELECT national_id, national_id_hash, monthly_take_home_minor \
+                "SELECT national_id, national_id_hash, monthly_take_home_minor, \
+                 national_id_type, tax_id \
                  FROM users WHERE id = ?1",
                 params![user_id],
                 |r| {
@@ -424,15 +507,20 @@ impl Store<'_> {
                         r.get::<_, Option<String>>(0)?,
                         r.get::<_, Option<String>>(1)?,
                         r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                        r.get::<_, Option<String>>(4)?,
                     ))
                 },
             )
             .optional()?;
-        let (national_id, national_id_hash, pay) = row.unwrap_or_default();
+        let (national_id, national_id_hash, pay, national_id_type, tax_id) =
+            row.unwrap_or_default();
         Ok(StoredColumns {
             national_id: StoredCipher::classify(national_id),
             national_id_hash,
             pay: StoredCipher::classify_pay(pay),
+            national_id_type,
+            tax_id,
         })
     }
 }
@@ -605,60 +693,113 @@ impl Store<'_> {
         }
     }
 
-    /// The shared profile-column write: validates, encrypts the sensitive
-    /// fields (national id, monthly pay), records the national-id
-    /// uniqueness hash, and issues one UPDATE. Duplicate email / national
-    /// id surface as field-level conflicts via the unique indexes.
+    /// The shared profile-column write, with no caller to withhold anything
+    /// from: validates, encrypts the sensitive fields (national id, monthly
+    /// pay), records the national-id uniqueness hash, and issues one UPDATE.
+    /// Duplicate email / national id surface as field-level conflicts via the
+    /// unique indexes.
     ///
-    /// ## An unreadable column is never erased
-    ///
-    /// [`Store::get_user_profile`] fails closed, so a ciphertext that no longer
-    /// decrypts (the hardware-derived key moved: a `machine_id` flip after a
-    /// restore onto different hardware) reaches the caller as `None` — the same
-    /// shape as "the field is empty". A caller that round-trips such a view
-    /// straight back into a save must not turn that ambiguity into a write of
-    /// NULL over the stored bytes, because the ciphertext is still recoverable
-    /// if the key ever comes back. So the three states are re-separated here,
-    /// from the stored bytes rather than from anything the read path inferred:
-    ///
-    /// * caller sent a value → encrypt it (a value that failed to decrypt is
-    ///   never re-wrapped — only what the caller supplied is ever encrypted);
-    /// * caller sent nothing and the stored bytes are unreadable → re-bind the
-    ///   stored ciphertext (and its hash) so the column stays byte-identical,
-    ///   and accept the missing value in validation — the field is collected,
-    ///   merely not readable right now;
-    /// * caller sent nothing and the stored column is genuinely empty or
-    ///   decryptable → the write proceeds, so an empty field stays clearable
-    ///   and a readable field can still be replaced.
+    /// Use this from creation and from any path with no session — see
+    /// [`Store::write_user_profile_with`] for the caller-aware form, and
+    /// [`SensitiveWritePolicy`] for why a caller-aware write needs one.
     pub fn write_user_profile(
         &self,
         user_id: &str,
         profile: &UserProfile,
     ) -> Result<(), CoreError> {
+        self.write_user_profile_with(SensitiveWritePolicy::default(), user_id, profile)
+    }
+
+    /// The shared profile-column write on behalf of a known caller, governed by
+    /// `policy`.
+    ///
+    /// ## A column nobody could read is never erased, and never required
+    ///
+    /// Both read paths fail closed, so a sensitive column reaches an editor as
+    /// `None` in TWO different situations that look identical:
+    ///
+    /// * the stored ciphertext no longer decrypts (the hardware-derived key
+    ///   moved: a `machine_id` flip after a restore onto different hardware);
+    /// * the caller does not hold the field's read grant, so the view withheld
+    ///   it — see [`ProfileView::identity_withheld`].
+    ///
+    /// In both, the ciphertext may still be perfectly good, and a caller that
+    /// round-trips the view straight back into a save must not turn that
+    /// ambiguity into a write of NULL over it. The withheld case has a second
+    /// failure mode that the unreadable case does not: validation *required* the
+    /// field, so the only way to save at all was to type a value — replacing a
+    /// document the caller was never allowed to see with one they invented. So
+    /// the states are re-separated here, from the stored bytes rather than from
+    /// anything the read path inferred:
+    ///
+    /// * caller sent a value → encrypt it (a value that failed to decrypt is
+    ///   never re-wrapped — only what the caller supplied is ever encrypted);
+    /// * caller sent nothing and `policy` keeps the field, or the stored bytes
+    ///   are unreadable → re-bind the stored ciphertext (and its uniqueness
+    ///   hash) so the column stays byte-identical, and accept the missing value
+    ///   in validation — the field is collected, merely not this caller's to
+    ///   supply;
+    /// * caller sent nothing and `policy` does not keep the field → the field is
+    ///   the caller's to decide, so validation applies: a field that is
+    ///   mandatory at creation (national id, pay) is REFUSED when omitted, and
+    ///   an optional one (tax id, notes) is cleared. Neither is a preserve —
+    ///   which is exactly why a caller who was never shown the value needs the
+    ///   policy rather than this branch. Omitting is not a way to clear a
+    ///   mandatory field, and being asked to supply one is how the caller ends
+    ///   up inventing a document they cannot read.
+    ///
+    /// The identity record moves as a unit: `national_id_type` is preserved
+    /// with the national id it labels, and `tax_id` with them, so a caller who
+    /// cannot read the document cannot blank or re-label it either. A caller
+    /// who *does* supply a national id is writing the identity deliberately and
+    /// their type is taken as sent.
+    pub fn write_user_profile_with(
+        &self,
+        policy: SensitiveWritePolicy,
+        user_id: &str,
+        profile: &UserProfile,
+    ) -> Result<(), CoreError> {
         let stored = self.stored_sensitive_columns(user_id)?;
-        // A read failure is never evidence of an empty field: only an
-        // undecryptable stored value is kept, and it is kept byte-for-byte.
-        let keep_national_id =
-            profile.national_id.is_none() && stored.national_id.preserve().is_some();
-        let keep_pay = profile.monthly_take_home_minor.is_none() && stored.pay.preserve().is_some();
+        // A read failure is never evidence of an empty field, and a withheld
+        // read is not evidence of one either: the unreadable case is kept
+        // because nobody decided to clear it, the withheld case because the
+        // caller was never shown it. Both are kept byte-for-byte.
+        let keep_national_id = profile.national_id.is_none()
+            && (policy.keep_identity_record || stored.national_id.preserve().is_some());
+        let keep_pay = profile.monthly_take_home_minor.is_none()
+            && (policy.keep_pay || stored.pay.preserve().is_some());
         profile.validate_with_preserved(keep_national_id, keep_pay)?;
         let national_id_cipher = match profile.national_id.as_deref() {
             Some(plain) => Some(encrypt_profile_field(plain)?),
-            None if keep_national_id => stored.national_id.preserve().map(str::to_owned),
+            None if keep_national_id => stored.national_id.raw().map(str::to_owned),
             None => None,
         };
         let pay_cipher = match profile.monthly_take_home_minor {
             Some(pay) => Some(encrypt_profile_field(&pay.to_string())?),
-            None if keep_pay => stored.pay.preserve().map(str::to_owned),
+            None if keep_pay => stored.pay.raw().map(str::to_owned),
             None => None,
         };
         let national_id_hash = match profile.national_id.as_deref() {
             Some(plain) => Some(sha256_hex(plain)),
             // The hash is the uniqueness proof of the value still in the
-            // column, so it is preserved with it — dropping it would leave an
-            // unreadable national id able to collide silently.
+            // column, so it is preserved with it — dropping it would leave a
+            // preserved or unreadable national id able to collide silently.
             None if keep_national_id => stored.national_id_hash,
             None => None,
+        };
+        // The id's plaintext type travels with the id. A caller writing an id is
+        // writing the identity and their type is taken as sent; a caller being
+        // kept out of the id keeps the type that labels it, so the pair can
+        // never disagree about which document is stored.
+        let national_id_type = if policy.keep_identity_record && profile.national_id.is_none() {
+            stored.national_id_type
+        } else {
+            profile.national_id_type.clone()
+        };
+        let tax_id = if policy.keep_identity_record && profile.tax_id.is_none() {
+            stored.tax_id
+        } else {
+            profile.tax_id.clone()
         };
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let sql =
@@ -668,7 +809,7 @@ impl Store<'_> {
             params![
                 &profile.date_of_birth,
                 &profile.phone,
-                &profile.national_id_type,
+                &national_id_type,
                 national_id_cipher,
                 national_id_hash,
                 &profile.email,
@@ -680,7 +821,7 @@ impl Store<'_> {
                 &profile.address,
                 &profile.language,
                 &profile.avatar,
-                &profile.tax_id,
+                &tax_id,
                 &profile.national_id_expires_at,
                 &profile.emergency_contact_relationship,
                 &profile.hire_date,
@@ -735,9 +876,9 @@ impl Store<'_> {
         };
 
         let read_identity =
-            self.has_permission_quiet(viewer_user_id, permissions::STAFF_READ_IDENTITY)?;
+            self.holds_permission(viewer_user_id, permissions::STAFF_READ_IDENTITY)?;
         let read_payroll =
-            self.has_permission_quiet(viewer_user_id, permissions::STAFF_READ_PAYROLL)?;
+            self.holds_permission(viewer_user_id, permissions::STAFF_READ_PAYROLL)?;
 
         if read_identity {
             self.log_audit(&AuditEntry::new(
@@ -796,6 +937,12 @@ impl Store<'_> {
             emergency_contact_relationship: profile.emergency_contact_relationship,
             hire_date: profile.hire_date,
             is_complete,
+            // The two fields above that read as `None` here are `None` for
+            // exactly one reason each, and a writer has to be able to tell
+            // which — see the field's own doc. `national_id`/`tax_id` are the
+            // withheld pair; payroll is not editable from a staff screen at
+            // all, so it needs no marker here.
+            identity_withheld: !read_identity,
         }))
     }
 
@@ -882,7 +1029,13 @@ impl Store<'_> {
 
     /// Grant check that treats a denied verdict as `false` rather than an
     /// error (unknown viewer / missing grant both deny, fail closed).
-    fn has_permission_quiet(&self, user_id: &str, key: &str) -> Result<bool, CoreError> {
+    ///
+    /// Public because a *write* needs the same answer as a read: whether this
+    /// caller holds a sensitive read grant decides which columns their update
+    /// must preserve — see [`SensitiveWritePolicy`]. Answering it with
+    /// [`Store::require_permission`] at each call site would re-implement the
+    /// fail-closed mapping and eventually disagree with this one.
+    pub fn holds_permission(&self, user_id: &str, key: &str) -> Result<bool, CoreError> {
         match self.require_permission(user_id, key) {
             Ok(()) => Ok(true),
             Err(CoreError::PermissionDenied(_)) => Ok(false),

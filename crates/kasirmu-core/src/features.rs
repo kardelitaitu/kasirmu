@@ -413,6 +413,50 @@ impl FeatureRegistry {
     }
 }
 
+/// Resolve a store-type preset slug to its [`FeatureRegistry`].
+///
+/// The single owner of the preset→features fact. First-run provisioning asks
+/// the merchant for a store type and must turn that answer into the feature set
+/// the terminal starts with; doing that with a second copy of these lists is what
+/// `FeatureRegistry`'s preset constructors exist to prevent.
+///
+/// Returns `None` for a slug this build does not know. Callers decide whether
+/// that is fatal: `provision_device`'s contract is that an unknown preset must
+/// not strand a merchant at the first-run screen, so it degrades rather than
+/// refusing.
+pub fn preset_registry(slug: &str) -> Option<FeatureRegistry> {
+    Some(match slug {
+        "simple-retail" => FeatureRegistry::simple_retail(),
+        "restaurant" => FeatureRegistry::restaurant(),
+        "full-store" => FeatureRegistry::full_store(),
+        "cafe" => FeatureRegistry::cafe(),
+        "franchise" => FeatureRegistry::franchise(),
+        "custom" => FeatureRegistry::custom(),
+        _ => return None,
+    })
+}
+
+/// The kebab-case feature keys a store-type preset enables, **sorted**.
+///
+/// Thin wrapper over [`preset_registry`] for the IPC boundary, which speaks
+/// keys rather than a registry.
+///
+/// SORTED deliberately: [`FeatureRegistry::enabled_features`] documents itself
+/// as unordered (it iterates a hash set), so passing that order across IPC would
+/// hand the UI an array that differs between calls for the same preset. Nothing
+/// downstream depends on the order — `provision_device` enables each key in turn
+/// — but a stable payload is what lets a test or a log compare two of them.
+pub fn preset_feature_keys(slug: &str) -> Option<Vec<String>> {
+    preset_registry(slug).map(|registry| {
+        let mut keys: Vec<String> = registry
+            .enabled_features()
+            .map(|f| feature_key(f).to_string())
+            .collect();
+        keys.sort();
+        keys
+    })
+}
+
 // ── Settings-table helpers ──────────────────────────────────────────────
 
 /// Convert a [`Feature`] to its kebab-case settings key suffix.

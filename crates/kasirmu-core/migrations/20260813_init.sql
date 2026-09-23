@@ -1396,9 +1396,20 @@ INSERT OR IGNORE INTO currencies (code, numeric_code, name, minor_exponent, symb
     ('USD', '840', 'US Dollar',    2, '$'),
     ('IDR', '360', 'Indonesian Rupiah', 0, 'Rp');
 
--- Default store profile (from migration 025)
-INSERT OR IGNORE INTO store_profiles (id, name, is_primary)
-VALUES ('default', 'Default Store', 0);
+-- The seeded 'Default Store' profile was REMOVED here (ADR #56 §2.6 option C).
+-- It shipped a store no merchant chose, referenced by five workspace rows that
+-- likewise had no merchant. A store with no merchant should have no location and
+-- no workspaces, so the locations row is now created by provision_device inside
+-- the same transaction that writes the provisioning marker. The five workspaces
+-- and the BOOTSTRAP_FREE subscription below were removed with it — their removal
+-- is one change, not three, because the workspaces reference this row and cannot
+-- be left pointing at one that no longer exists.
+--
+-- §2.6 chose C (stop seeding, in place) over a new deleting migration because
+-- §1.7 records that no install base exists: the population a DELETE could not
+-- reach is empty. The window closes the first time a merchant's database is
+-- provisioned, which is why this lands with provision_device rather than after
+-- it.
 
 -- Loyalty tiers (from migration 031)
 INSERT OR IGNORE INTO loyalty_tiers (id, name, min_points, points_per_unit, earn_multiplier, colour, sort_order) VALUES
@@ -1498,20 +1509,17 @@ INSERT OR IGNORE INTO workspace_type_screens (type_key, screen_key, sort_order) 
     ('retail-pos', 'sales-history', 4),
     ('retail-pos', 'promotions', 5);
 
--- Default workspace instances (from migrations 060, 120, 121)
--- NOTE: retail-pos does NOT get a default instance because migration 128
--- (which adds retail-pos to workspaces) runs AFTER migration 121
--- (which creates instances from workspace_types). So only 5 instances.
-INSERT OR IGNORE INTO workspace_instances (id, type_key, store_id, name, description, colour, status, last_accessed_at) VALUES
-    ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-
--- Default tenant subscription (from migration 061)
-INSERT OR IGNORE INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_stores, max_pos_instances, allowed_types_json, signature)
-VALUES ('default', 'free', 'active', NULL, 1, 1, '["store-pos", "restaurant-pos", "admin"]', 'BOOTSTRAP_FREE');
+-- The five default workspace instances and the BOOTSTRAP_FREE subscription
+-- were REMOVED here (ADR #56 §2.6 option C). Both were fiction: a fresh install
+-- shipped five workspaces for a merchant who does not exist, all pointing at the
+-- 'Default Store' placeholder removed above, and a subscription row whose
+-- signature is KNOWN-INVALID by design (auth.rs verifies it before trusting the
+-- tier, and auth_tests.rs records that the migration seed never verified).
+--
+-- They are now created by provision_device's single transaction, alongside the
+-- location row they reference. The sentinel is retired rather than signed: a
+-- provisioned terminal gets a real signed subscription, and an unprovisioned one
+-- has no subscription row to verify.
 
 -- Default inventory locations (from migration 078)
 INSERT OR IGNORE INTO inventory_locations (id, name, type, description)

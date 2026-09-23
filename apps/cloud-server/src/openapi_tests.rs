@@ -355,6 +355,12 @@ fn test_full_router() -> axum::Router {
         midtrans_qris_acquirer: None,
         api_secret: Some("test-secret".into()),
         redis_url: None,
+        admin_email: "test-admin@kasir.mu".into(),
+        smtp_host: None,
+        smtp_port: 587,
+        smtp_user: None,
+        smtp_password: None,
+        smtp_from: "no-reply@kasir.mu".into(),
     };
     crate::build_router(
         state,

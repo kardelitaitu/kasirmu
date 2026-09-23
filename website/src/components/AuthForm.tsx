@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
-import OtpInput from './OtpInput';
+import OtpInput, { OTP_LABELS } from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
+import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 import { sameOriginPath } from '../lib/safe-next';
 
 /**
@@ -24,11 +26,14 @@ import { sameOriginPath } from '../lib/safe-next';
  */
 
 /**
- * Strings this island reads — itself, `PasswordField`, `PasswordStrength` and
- * `useAuth`. `login.astro` turns the list into the `labels` prop with
- * `labelMap`, so the browser gets these strings in the document instead of both
- * locale dictionaries in the JS bundle;
- * `src/__tests__/island-label-coverage.test.ts` keeps the list honest.
+ * Strings this island reads — itself, `PasswordField` and `PasswordStrength`.
+ * `login.astro` turns the list into the `labels` prop with `labelMap`, so the
+ * browser gets these strings in the document instead of both locale dictionaries
+ * in the JS bundle; `src/__tests__/island-label-coverage.test.ts` keeps the list
+ * honest.
+ *
+ * (This used to credit `useAuth`, a hook this island never imported; it was
+ * deleted when nothing was found to be importing it.)
  */
 export const AUTH_FORM_LABELS = [
   'login.backToEmail',
@@ -75,6 +80,7 @@ export const AUTH_FORM_LABELS = [
   'login.tabPassword',
   'login.title',
   'login.verify',
+  ...OTP_LABELS,
   ...PASSWORD_FIELD_LABELS,
   ...PASSWORD_STRENGTH_LABELS,
   'signup.errorExists',
@@ -109,6 +115,9 @@ function oauthReasonKey(reason: string): string {
 export default function AuthForm({ locale, labels, oauthReason }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // A config that lands after hydration must still reveal the form rather than
+  // leave the notice standing (see use-runtime-config.ts).
+  useRuntimeConfigArrival();
   const [view, setView] = useState<View>('login');
   const [mode, setMode] = useState<Mode>('otp');
   const [step, setStep] = useState<Step>('form');
@@ -163,7 +172,17 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
     // one-time code (hardening F1) so the real session token never appears
     // in a URL; the Worker consumes the code and sets the httpOnly cookie.
     const redirect = new URLSearchParams(window.location.search).get('redirect');
-    const token = sessionStorage.getItem('oz_session');
+    // Deliberate exception to the one-session-owner rule (src/lib/session.ts).
+    // This is not a "is the user signed in?" query — it is the token THIS login
+    // just minted, read immediately after the auth handler wrote it to
+    // sessionStorage (all three paths below do so right before calling this).
+    // Cookie-first resolution would be wrong here: the cookie can still hold an
+    // older identity (signing in as B while A's cookie is set), and the
+    // dashboard must receive the account that just authenticated, so the
+    // freshest token has to win. Pinned by auth-form.test.tsx — "uses the token
+    // this login just minted, not a cookie token" — which fails if this is
+    // rerouted through getSessionToken().
+    const token = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (redirect && token) {
       try {
         const u = new URL(redirect);
@@ -231,6 +250,32 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
     setError('');
   };
 
+  /**
+   * Arrow keys move between the two tabs, per the WAI-ARIA tabs pattern: Tab
+   * enters and leaves the list once (roving tabindex below) and the arrows move
+   * within it. Selection follows focus, so a keyboard reader gets the same
+   * switch a click would make, through the same `switchMode`.
+   */
+  const onTabKeys = (event: KeyboardEvent<HTMLDivElement>) => {
+    const order: Mode[] = ['otp', 'password'];
+    const index = order.indexOf(mode);
+    const next =
+      event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (index + 1) % order.length
+        : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+          ? (index - 1 + order.length) % order.length
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? order.length - 1
+              : -1;
+    if (next === -1) return;
+    event.preventDefault();
+    const target = order[next];
+    switchMode(target);
+    document.getElementById(`login-tab-${target}`)?.focus();
+  };
+
   const openReset = () => {
     setResetEmail(email || resetEmail);
     setResetStep('email');
@@ -252,10 +297,10 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('login failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorLogin'));
@@ -310,8 +355,8 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('verify-otp failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorVerify'));
@@ -363,8 +408,8 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       if (!res.ok) throw new Error('reset-password failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
-      sessionStorage.setItem('oz_email', resetEmail);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, resetEmail);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorReset'));
@@ -374,7 +419,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
   };
 
   const inputClass =
-    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent focus:ring-2 focus:ring-primary/30';
+    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
   const tabClass = (active: boolean) =>
     `rounded-md px-3 py-1.5 text-sm font-medium transition ${
@@ -444,6 +489,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="reset-otp-digit"
+              labels={labels}
             />
           </div>
           <PasswordField
@@ -497,6 +543,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="login-otp-digit"
+              labels={labels}
             />
           </div>
           {resendSuccess && (
@@ -581,7 +628,12 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
         </p>
       )}
 
-      {API && (
+      {/* mounted-gated: `API` is undefined during SSR (no build-time
+          PUBLIC_LICENSE_API_URL) but present on the client from the Worker's
+          runtime config. Rendering on `API` alone made the server omit this
+          block while the client rendered it — a React hydration mismatch that
+          discarded the server HTML (error #418) on every login page. */}
+      {mounted && API && (
         <>
           {/* An anchor, not a form: the Worker CSP sets form-action 'self', and this
               navigates to the licence host, which then redirects to Google. The
@@ -603,18 +655,44 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       <div
         role="tablist"
         aria-label={t(labels, 'login.title')}
+        onKeyDown={onTabKeys}
         className="mb-5 grid grid-cols-2 gap-1 rounded-lg bg-ink/10 p-1"
       >
-        <button type="button" role="tab" aria-selected={mode === 'otp'} onClick={() => switchMode('otp')} className={tabClass(mode === 'otp')}>
+        <button
+          type="button"
+          role="tab"
+          id="login-tab-otp"
+          aria-selected={mode === 'otp'}
+          // Only the selected tab claims the panel — the tab that is not
+          // showing it must not announce that it controls it.
+          aria-controls={mode === 'otp' ? 'login-tabpanel' : undefined}
+          tabIndex={mode === 'otp' ? 0 : -1}
+          onClick={() => switchMode('otp')}
+          className={tabClass(mode === 'otp')}
+        >
           {t(labels, 'login.tabEmailCode')}
         </button>
-        <button type="button" role="tab" aria-selected={mode === 'password'} onClick={() => switchMode('password')} className={tabClass(mode === 'password')}>
+        <button
+          type="button"
+          role="tab"
+          id="login-tab-password"
+          aria-selected={mode === 'password'}
+          aria-controls={mode === 'password' ? 'login-tabpanel' : undefined}
+          tabIndex={mode === 'password' ? 0 : -1}
+          onClick={() => switchMode('password')}
+          className={tabClass(mode === 'password')}
+        >
           {t(labels, 'login.tabPassword')}
         </button>
       </div>
 
-      {/* Min-height prevents layout shift when switching tabs (password is taller) */}
-      <div className="min-h-[320px]">
+      {/* One panel, renamed by aria-labelledby as the mode changes: the two tabs
+          render different forms in the same slot, and duplicating the branch
+          into two panels would hide the real state in two places. The claim on
+          it moves with the selection (see the tabs above), so at every moment
+          exactly one tab points at the panel that is on screen.
+          Min-height prevents layout shift when switching tabs (password is taller) */}
+      <div id="login-tabpanel" role="tabpanel" aria-labelledby={`login-tab-${mode}`} className="min-h-[320px]">
       {mode === 'password' ? (
         <form onSubmit={loginPassword} className="space-y-4" aria-label={t(labels, 'login.tabPassword')}>
           <label className="block">

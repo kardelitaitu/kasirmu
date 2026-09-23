@@ -10,19 +10,55 @@
  * The Worker-served production path is cookie-first.
  */
 
-/** sessionStorage key AuthForm uses (legacy v1 token storage). */
+/**
+ * The sessionStorage key for the session token — the ONLY place this string is
+ * spelled in production code.
+ *
+ * Every read and every write (the three auth flows in AuthForm, SignupForm's
+ * verification, logout cleanup) imports it from here. Before that it was
+ * declared twice and written as a literal at eight sites, so a reader and a
+ * writer could disagree about where the token lives — and one of those eight
+ * lived in a module an island no longer imported at all. `lib/__tests__/
+ * session.test.ts` bans a second spelling reappearing.
+ *
+ * The value is unchanged (`oz_session`): the retired v1 clients that still read
+ * it in a no-Worker dev session must keep finding it in the same place.
+ */
 export const SESSION_STORAGE_KEY = 'oz_session';
 
 /**
  * Resolve the current session token: prefer the httpOnly cookie via the
  * Worker's /__oz/session endpoint, falling back to sessionStorage when the
  * endpoint is absent (no-Worker dev) or returns no token.
+ *
+ * This is the SINGLE owner of session state. Every call site that needs to
+ * know whether a user is signed in — the checkout CTA gate, the header nav,
+ * the Midtrans path, the account portal — must go through this (or
+ * `hasSession` below) rather than reading sessionStorage directly, so a
+ * cookie-only session (sessionStorage cleared, a new tab, another tab) is
+ * recognized everywhere. Reading sessionStorage alone was the regression this
+ * module exists to prevent.
  */
+/** The in-flight session probe, shared so concurrent callers issue ONE request. */
+let inflightProbe: Promise<string | null> | null = null;
+
 export async function getSessionToken(): Promise<string | null> {
+  // The header resolves the session on load and again on astro:page-load, and
+  // the checkout CTA also asks — without this, a single page view fired two or
+  // three identical /__oz/session requests. Collapse them into one.
+  if (!inflightProbe) {
+    inflightProbe = probeSessionToken().finally(() => {
+      inflightProbe = null;
+    });
+  }
+  return inflightProbe;
+}
+
+async function probeSessionToken(): Promise<string | null> {
   try {
     const res = await fetch('/__oz/session');
     if (res.ok) {
-      const body = (await res.json()) as { token?: string };
+      const body = (await res.json()) as { token?: string | null };
       if (body.token) return body.token;
     }
   } catch {
@@ -35,5 +71,30 @@ export async function getSessionToken(): Promise<string | null> {
   }
 }
 
-/** The signed-in email cache key (used for checkout prefill). */
+/**
+ * Whether the user is signed in, cookie-first. Async because the httpOnly
+ * cookie is not readable from JS — the Worker's /__oz/session endpoint is the
+ * only way to see it. Callers must not substitute a synchronous
+ * sessionStorage read: that treats a new tab with a valid cookie as signed
+ * out (the bug this fixes).
+ */
+export async function hasSession(): Promise<boolean> {
+  // Boolean(), not `!== null`: an empty-string sessionStorage token is not a
+  // session (matches the old synchronous `Boolean(sessionStorage.get(...))`).
+  return Boolean(await getSessionToken());
+}
+
+/**
+ * The sessionStorage key for the cached signed-in email (checkout prefill) —
+ * like the token above, the ONLY place `oz_email` is spelled.
+ *
+ * Every site that touches it imports this: the three post-auth caches in
+ * AuthForm, SignupForm's verification, and paddle (the prefill read, the /me
+ * cache write, and the logout cleanup that must take the email with the token
+ * so the next account on the browser is not prefilled with the previous user's
+ * address). Before that it was declared twice — here and as `paddle.EMAIL_KEY`
+ * — and written as a literal at four more sites, so a writer and the reader
+ * could name different keys. `lib/__tests__/session.test.ts` bans a second
+ * spelling reappearing.
+ */
 export const EMAIL_STORAGE_KEY = 'oz_email';

@@ -1,6 +1,29 @@
 .eod-report {
   padding: var(--space-4);
   max-width: 75rem;
+  /* Restores the desktop placement `container-type` below would otherwise take
+     away: a layout-containment root is not stretched by `justify-self: normal`,
+     so without this the page would sit at its static position on a content slot
+     wider than 75rem instead of being centred in it. It changes nothing at or
+     below that width, where the clamped box fills its line box anyway. */
+  margin-inline: auto;
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose, the
+     same choice RetailPosScreen.css, KdsScreen.css, PosScreen.css,
+     SalesHistoryScreen.css and PaymentModal.css each record and for the same
+     reason: it sits inside the shell's named app-content container (the wrapper
+     between them is display: contents), so a named query would find nothing in
+     every mount that does not go through the shell (tests, e2e harness, this
+     screen rendered standalone). An unnamed query against the nearest container
+     is the same measurement inside the shell and stays correct outside it.
+
+     The COST, and what pays it: .eod-report already sets max-width: 75rem, and
+     container-type makes the element a layout containment root, which suppresses
+     the block-level justify-self: normal stretch — so without the margin-inline:
+     auto above, a content slot wider than 75rem would leave the page at its
+     static position instead of centred in the slot. The margin restores exactly
+     the pre-migration placement at that width and is a no-op below it. */
+  container-type: inline-size;
 }
 
 .eod-report-header {
@@ -194,7 +217,7 @@
   margin-bottom: var(--space-4);
 }
 
-@media (max-width: 800px) {
+@container (max-width: 800px) {
   .eod-report-columns {
     grid-template-columns: 1fr;
   }
@@ -442,7 +465,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 600px) {
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ─────────────────
+   What this sheet used to assume about the viewport, now stated against the box
+   it is actually laid out in: two width queries, both of them folded widths
+   rather than layout choices — .eod-report-columns at 800px and the shift table
+   / cash grid / active-shift row at 600px. They are the same two numbers,
+   measured on .eod-report's own inline-size (declared at the top of this
+   sheet), not on the window's.
+
+   The difference is the shell. Inside it, .eod-report is the content slot minus
+   the sidebar, so a 1280px desktop window hands this page well under 1280px and
+   a query written against the window would hold a two-up grid in a box that
+   cannot fit it. Outside it (tests, e2e harness, the screen rendered
+   standalone) .eod-report fills a block-level box and the two agree.
+
+   Desktop landscape — a content slot at or above 800px, the shell's own base
+   case — matches neither tier and renders exactly as before. */
+@container (max-width: 600px) {
   .eod-report-shift-cash-grid {
     grid-template-columns: repeat(2, 1fr);
   }

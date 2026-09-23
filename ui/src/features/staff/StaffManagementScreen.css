@@ -10,6 +10,19 @@
    strip below the fold. `min-height: 0` on the scrolling child is what lets
    it shrink instead of stretching the root. */
 .staff-mgmt {
+  /* ADR-0001 T2 / Slice 5: this page's own query container, measured on the box
+     the shell grants this screen — the whole window here, because the page is
+     registered `fullscreen` and no .app-content slot wraps it. UNNAMED on
+     purpose, the choice RetailPosScreen.css, PosScreen.css and KdsScreen.css
+     each record: the shell's slot does carry the name `app-content`, but the
+     only thing between it and this root is a display:contents wrapper, so a
+     named query would find no container in every mount that does not go through
+     the shell (tests, e2e harness, the screen rendered standalone). An unnamed
+     query against the nearest container is the same measurement inside the shell
+     and stays correct outside it. Any other `container-type: inline-size`
+     added inside .staff-mgmt would silently capture the tiers at the foot of
+     this sheet. */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -40,11 +53,12 @@
    button, which space-between cannot do. */
 .staff-mgmt-header {
   flex: 0 0 auto;
+  min-height: var(--topbar-height);
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-8);
+  padding: var(--space-2) var(--space-8);
   background: var(--color-bg-surface);
   border-bottom: 1px solid var(--color-border);
 }
@@ -68,55 +82,31 @@
   min-width: 0;
 }
 
-/* ── Tab strip ───────────────────────────────────────────────────── */
-
+/* ── Tab strip ─────────────────────────────────────────────────────
+   The strip itself is the shared segmented control (components/
+   SegmentedTabs.css — track, sliding thumb, button box and type). This rule is
+   only where THIS page puts it: the header is a 1fr auto 1fr grid, so the strip
+   has to say it centres itself in the middle column. Everything visual moved to
+   the shared sheet, and the fixed-width layout rule that used to sit here moved
+   with it — the thumb's geometry depends on the segments being equal columns. */
 .staff-tabs {
   justify-self: center;
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 3px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-}
-
-.staff-tab {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--touch-target-min);
-  padding: 0 var(--space-4);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-fg-secondary);
-  font-family: inherit;
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-}
-
-.staff-tab:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-fg);
-}
-
-.staff-tab--active {
-  background: var(--color-bg-elevated);
-  color: var(--color-fg);
-  font-weight: var(--font-weight-semibold);
-}
-
-.staff-tab:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
 }
 
 /* The only route back to the workspace picker on this sidebar-less page.
    Sized off the touch-target token rather than the neighbour at
    36px in AnalyticsScreen.css: this is a management screen operated on
-   terminals, and the token is the repo's stated minimum. */
+   terminals, and the token is the repo's stated minimum.
+
+   No border and no fill at rest. It used to carry
+   `border: 1px solid var(--color-border)` on `var(--color-bg-surface)` —
+   the very surface token its own header paints (.staff-mgmt-header above) —
+   so the fill was invisible against the bar and the only thing left to see
+   was a bare outlined square. A ghost square that fills on hover is the
+   resting style the KDS header's own back button uses (.kds-back-btn,
+   KdsScreen.css), which is the header shape this page already takes.
+   The :focus-visible ring below is untouched: for a keyboard user it is the
+   only cue this control has, and it is not the box that was reported. */
 .staff-mgmt-back-btn {
   display: inline-flex;
   align-items: center;
@@ -124,13 +114,13 @@
   width: var(--touch-target-min);
   height: var(--touch-target-min);
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--color-bg-surface);
+  background: transparent;
   color: var(--color-fg-secondary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--duration-150), color var(--duration-150);
 }
 
 .staff-mgmt-back-btn:hover {
@@ -148,8 +138,40 @@
 .staff-mgmt-main {
   flex: 1 1 auto;
   min-height: 0;
+  /* overflow-x is stated, not left to default: an `overflow-y: auto` beside a
+     `visible` overflow-x computes that axis to `auto`, so the panel slide below
+     would raise a horizontal scrollbar for the 300ms it is translated. */
+  overflow-x: hidden;
   overflow-y: auto;
   padding: var(--space-6) var(--space-8);
+}
+
+/*
+ * Clearance for the fixed memo stack.
+ *
+ * The stack (MemoBanner.css) is a SIBLING of this page under #root — the
+ * staff/roles/trash routes are fullscreen, so none of the three scoped
+ * --memo-bottom-inset overrides reaches it and it falls back to the :root
+ * default. This page's last row therefore lands under it, and at tablet
+ * portrait the list does NOT overflow, so there is no scroll position that
+ * escapes: measured at 1024x1366 with a full stack, the role row's Delete
+ * button sat 24 of 48 sampled points inside the stack and the click could
+ * never land.
+ *
+ * Reserving the stack's height inside this, the page's only scrolling region,
+ * is what lets the row scroll clear — the same mechanism that already saves
+ * the shorter desktop viewport, where the scroller does overflow.
+ *
+ * Gated on the stack's presence, so a session with no memos pays no dead band
+ * above the footer. A fourth --memo-bottom-inset override was measured and
+ * REJECTED for this: the inset moves the stack, but the occluder here is a
+ * page row rather than the pinned footer that value is derived from, and the
+ * settings 68px form still left 24 of 64 points intercepted.
+ */
+body:has(.memo-stack) .staff-mgmt-main {
+  /* The --space-6 gutter plus a full stack: MAX_STACK = 3 bubbles in
+     MemoBanner.tsx, measured at 215px at the 1024x1366 tablet profile. */
+  padding-bottom: calc(var(--space-6) + 215px);
 }
 
 /* Both tab panels live inside the one scrolling region above. */
@@ -165,6 +187,48 @@
    selector. */
 .staff-mgmt-tabpanel[hidden] {
   display: none;
+}
+
+/* The panel slide. The strip's thumb slides between segments
+   (SegmentedTabs.css, .segmented-tab-indicator), so the panel it swaps in
+   slides with it, entering from the side the thumb travelled towards. The
+   duration and easing are the thumb's own, so the two movements read as one.
+
+   This is the entire mechanism: no timer, no exiting state machine and no
+   unmount guard, because the panel that leaves is [hidden] in the SAME React
+   commit and its exit is never on screen to snap. Chromium drops a
+   display: none element's animation and starts it again when the element is
+   displayed — measured 2026-09-19: 0 animations while hidden, currentTime
+   back at 0 on every unhide — so clearing [hidden] replays this with no JS at
+   all. The direction class sits on BOTH panels and is inert on the hidden one. */
+@media (prefers-reduced-motion: no-preference) {
+  .staff-mgmt-tabpanel--from-right {
+    animation: staff-mgmt-panel-in-right var(--duration-300) var(--ease-out);
+  }
+  .staff-mgmt-tabpanel--from-left {
+    animation: staff-mgmt-panel-in-left var(--duration-300) var(--ease-out);
+  }
+
+  @keyframes staff-mgmt-panel-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(var(--space-6));
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes staff-mgmt-panel-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(calc(var(--space-6) * -1));
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 }
 
 /* ── Area 3: status footer (pinned) ──────────────────────────────── */
@@ -223,10 +287,6 @@
   pointer-events: none;
 }
 
-.staff-mgmt-loading-skeleton .staff-mgmt-table thead {
-  pointer-events: none;
-}
-
 /* ── Empty state ──────────────────────────────────────────────────── */
 
 .staff-mgmt-empty {
@@ -239,35 +299,302 @@
   color: var(--color-fg-secondary);
 }
 
-/* ── Table ────────────────────────────────────────────────────────── */
+/* ── Roster (stat row · toolbar · cards) ──────────────────────────── */
+/* Replaced the seven-column table. This screen is registered for BOTH shells
+   and seven columns of text do not survive on the tablet, so identity is
+   stated once per card (avatar · name · role · status) and the rest moves into
+   a labelled meta grid that reflows instead of dropping columns.
 
-.staff-mgmt-table-wrap {
-  overflow-x: auto;
+   No box-shadow anywhere here on purpose: the design language elevates with a
+   surface tone plus a hairline in dark mode, and a --shadow-* would also put
+   every one of these classes on the noise-dither ledger. */
+
+.staff-mgmt-roster {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.staff-mgmt-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-base);
+/* ── Stat row ─────────────────────────────────────────────────────── */
+
+.staff-mgmt-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-3);
 }
 
-.staff-mgmt-table th {
-  text-align: left;
-  padding: var(--space-2) var(--space-3);
+.staff-mgmt-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  /* The surface belongs to the tone, and every stat names one — so the fill and
+     its border have exactly one source (the modifiers below). The transparent
+     base border keeps the width constant, so a tinted tile cannot shift. */
+  border: 1px solid transparent;
+}
+
+.staff-mgmt-stat--neutral {
+  border-color: var(--color-border);
+  background: var(--color-bg-subtle);
+}
+
+.staff-mgmt-stat-value {
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-tight);
+}
+
+.staff-mgmt-stat-label {
+  font-size: var(--text-xs);
   font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
   color: var(--color-fg-secondary);
-  border-bottom: 2px solid var(--color-border);
+}
+
+/* One semantic tint per stat, at the design language's 8-10% fill and 20%
+   border. The number inherits the same colour, so it reads as the hero. */
+.staff-mgmt-stat--success {
+  background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-success) 20%, transparent);
+  color: var(--color-success);
+}
+
+.staff-mgmt-stat--muted {
+  background: color-mix(in srgb, var(--color-fg-secondary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-fg-secondary) 20%, transparent);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-stat--accent {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+  color: var(--color-accent);
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────── */
+
+.staff-mgmt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* The box belongs to the wrapper so the leading glyph sits inside the field;
+   the input itself is bare. Focus is shown on the wrapper's :focus-within so
+   the ring hugs the whole control rather than the inner text box. */
+.staff-mgmt-search-field {
+  flex: 1 1 14rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-input);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-search-field:focus-within {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+
+.staff-mgmt-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+
+.staff-mgmt-filters {
+  display: flex;
+  gap: var(--space-1);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.staff-mgmt-chip {
+  padding: var(--space-1) var(--space-3);
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-chip:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
+}
+
+.staff-mgmt-chip--on,
+.staff-mgmt-chip--on:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-fg);
+}
+
+.staff-mgmt-sort {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-input);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+
+.staff-mgmt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.staff-mgmt-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  transition:
+    border-color var(--duration-150) var(--ease-out),
+    transform var(--duration-150) var(--ease-out);
+}
+
+.staff-mgmt-card:hover {
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+}
+
+/* A deactivated member is still listed — searchable, restorable, and visibly
+   de-emphasised rather than removed. */
+.staff-mgmt-card--inactive {
+  opacity: 0.55;
+}
+
+.staff-mgmt-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.staff-mgmt-avatar {
+  flex-shrink: 0;
+  background-color: var(--color-bg-hover);
+}
+
+.staff-mgmt-card-who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-mgmt-card-name {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-bold);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.staff-mgmt-table td {
-  padding: var(--space-3) var(--space-3);
-  border-bottom: 1px solid var(--color-border);
-  vertical-align: middle;
+/* Status is a dot in the card's top-right corner. It is the last child of the
+   header row and aligns to that row's top, so a header that wraps to two lines
+   (a long role plus a warning badge) cannot drag it down.
+   The two states differ in SHAPE as well as hue — filled when active, a hollow
+   ring when not — because the design language forbids colour as the only
+   carrier, and the component carries the same word as its accessible name. */
+.staff-mgmt-status-dot {
+  flex-shrink: 0;
+  align-self: flex-start;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
 }
 
-.staff-mgmt-row--inactive {
-  opacity: 0.5;
+.staff-mgmt-status-dot--on {
+  background: var(--color-success);
+}
+
+.staff-mgmt-status-dot--off {
+  border: 2px solid var(--color-fg-secondary);
+}
+
+.staff-mgmt-meta {
+  display: grid;
+  /* Two columns: username beside phone on the first row, workspace beneath
+     them. Fixed rather than auto-fit, because the pairing is the design — a
+     third column appearing on a wide card would break it. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.staff-mgmt-meta-item {
+  min-width: 0;
+}
+
+/* The workspace spans both columns: a scoped member can list several keys, and
+   the value is the one that needs the room. */
+.staff-mgmt-meta-item--wide {
+  grid-column: 1 / -1;
+}
+
+.staff-mgmt-meta-item dt {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-meta-item dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-mgmt-mono {
+  font-family: var(--font-mono);
+}
+
+.staff-mgmt-card-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.staff-mgmt-no-matches {
+  margin: 0;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--color-fg-secondary);
 }
 
 /* ── Cell styles ──────────────────────────────────────────────────── */
@@ -283,65 +610,138 @@
   flex-shrink: 0;
 }
 
-.staff-mgmt-cell-username {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--color-fg-secondary);
-}
+/* ── Card actions ─────────────────────────────────────────────────── */
 
-.staff-mgmt-status-active {
-  color: var(--color-success);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--text-sm);
-}
-
-.staff-mgmt-status-inactive {
-  color: var(--color-fg-tertiary);
-  font-weight: var(--font-weight-medium);
-  font-size: var(--text-sm);
-}
-
-/* ── Actions ──────────────────────────────────────────────────────── */
-
-.staff-mgmt-cell-actions {
-  display: flex;
+/* STAFF-12: a 44px square touch target — the same floor the text action
+   buttons held before this became icon-only, and the shape this walker grades.
+   Every one is named by aria-label; a glyph alone is not a name. */
+.staff-mgmt-icon-btn {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-}
-
-.staff-mgmt-action-btn {
-  background: none;
-  border: 1px solid var(--color-border);
-  /* STAFF-12: ≥ 44px touch target on touch devices. */
-  padding: var(--space-2_5) var(--space-3);
+  justify-content: center;
+  width: 44px;
   min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  cursor: pointer;
+  background: none;
   color: var(--color-fg-secondary);
-  transition: all var(--duration-150) var(--ease-out);
+  cursor: pointer;
+  transition:
+    background var(--duration-150) var(--ease-out),
+    color var(--duration-150) var(--ease-out);
 }
 
-.staff-mgmt-action-btn:hover {
-  background: var(--color-bg-surface);
+.staff-mgmt-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg);
 }
 
-.staff-mgmt-action-btn--warn {
+.staff-mgmt-icon-btn--warn:hover {
   color: var(--color-danger);
   border-color: var(--color-danger-dim);
 }
 
-.staff-mgmt-action-btn--warn:hover {
-  background: var(--color-danger-bg);
-}
-
-.staff-mgmt-action-btn--restore {
+.staff-mgmt-icon-btn--restore:hover {
   color: var(--color-success);
   border-color: var(--color-success-dim);
 }
 
-.staff-mgmt-action-btn--restore:hover {
-  background: var(--color-success-bg);
+
+/* ── Trash (staff:delete · 90-day retention) ──────────────────────── */
+
+.staff-mgmt-trash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.staff-mgmt-trash-intro {
+  margin: 0;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-sm);
+}
+
+.staff-mgmt-trash-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.staff-mgmt-trash-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.staff-mgmt-trash-section-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  color: var(--color-fg-secondary);
+}
+
+.staff-mgmt-trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The days-left badge is the row's one urgency signal and the Restore button
+   is its one action, so the name block takes the slack. Measured against the
+   real sheet at 1280 / 768 / 390: the button's right edge stays 1px inside the
+   row's content box at every width, and the second line — username, or a role
+   description — is what ellipsises. Above the phone tier the display name may
+   also wrap to a second line when the row is narrow; below it the row is a grid
+   and the name keeps its own line (see the tier at the foot of this sheet). */
+.staff-mgmt-trash-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+}
+
+/* The day count is a SENTENCE, not a number, so it is the one child that cannot
+   simply shrink: beside the Restore button it needs 217px to hold one line, and
+   at a phone width less than that is left over. Above the 600px tier it stays a
+   one-line pill and the name block absorbs the slack. Below that tier the pill
+   is dropped and the sentence becomes a plain secondary line on its own row (see
+   the tier at the foot of this sheet): measured at 390px against the real sheet,
+   the pill there starves the name block to 0px and the name paints across it,
+   and even handed a full row to itself the pill still wraps to two lines. */
+.staff-mgmt-trash-days {
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+}
+
+.staff-mgmt-trash-who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.staff-mgmt-trash-name {
+  color: var(--color-fg);
+  font-weight: var(--font-weight-medium);
+}
+
+.staff-mgmt-trash-sub {
+  overflow: hidden;
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Form fields ──────────────────────────────────────────────────── */
@@ -418,6 +818,15 @@
   color: var(--color-danger);
   font-size: var(--text-sm);
   margin-top: var(--space-1);
+}
+
+/* ADR #35 D6: explains why an identity field is disabled (the caller holds no
+   staff:read_identity). Muted, not a warning colour — nothing is wrong. */
+.staff-mgmt-field-hint {
+  flex-basis: 100%;
+  color: var(--color-fg-secondary);
+  font-size: var(--text-sm);
+  margin: var(--space-1) 0 var(--space-3);
 }
 
 /* Role permission keys (0046) — read-only chips under the role selector */
@@ -731,3 +1140,112 @@
   color: var(--color-warning, var(--color-fg));
   margin-bottom: var(--space-1);
 }
+
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ─────────────────
+   This sheet carried no responsive rule at all, so every layout below was
+   sized for a full desktop window and nothing folded when the box shrank.
+   Measured against .staff-mgmt's own inline-size (declared at the top of this
+   sheet), not the window's. Widest tier first, so the narrower gate can still
+   be the one in force; desktop and landscape — a slot at or above 900px —
+   match neither tier and render exactly as before. Every rule here is
+   additive: all of it lives inside a max-width block. */
+
+@container (max-width: 900px) {
+  /* The header is a 1fr auto 1fr grid whose outer tracks are as wide as the
+     back button and the primary action. Measured with the box actually here:
+     the root padding alone (2x2rem) is 64px, the two 44px touch targets plus
+     one 0.75rem gap is ~100px, the Staff/Roles strip is ~120px, and "Add New
+     Role" at --text-base is ~120px. Holding the strip centred therefore needs
+     roughly 460px of CONTENT — under ~530px of box the grid has to take width
+     from the tab strip, and the segmented control's scroll viewport is what
+     pays for it: the labels are white-space: nowrap and the thumb geometry
+     depends on the columns staying equal, so a starved strip scrolls its second
+     tab out of reach instead of wrapping. Give the centre column its content
+     width and the two outer tracks the slack; a box that can hold the strip is
+     unaffected. */
+  .staff-mgmt-header {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  /* The roster toolbar wraps on its own, but a search field squeezed beside
+     the filter chips is unusable — give it the whole first row and let the
+     chips and the sort share the second. The card grid needs no tier of its
+     own: its minmax(19rem, 1fr) columns already collapse to one below ~640px,
+     which is the property that let the seven-column table's column-dropping
+     arithmetic go away with it. */
+  .staff-mgmt-search-field {
+    flex-basis: 100%;
+  }
+
+  /* The two notice banners are a label/CTA row (staff-limit-approaching-premium
+     plus its upgrade button) with no wrapping: below 900px the text column is
+     squeezed by a button that cannot shrink, and the sentence breaks into a
+     narrow stack. Let the row wrap instead — the button drops under the text
+     and the banner keeps both on screen. */
+  .staff-mgmt-approaching-banner,
+  .staff-mgmt-quota-banner {
+    flex-wrap: wrap;
+  }
+}
+
+@container (max-width: 600px) {
+  /* Every identity field in the add/edit drawer is .staff-mgmt-field--horizontal:
+     a 7rem (112px) pinned label beside its input, which is a full-width
+     min-content floor before the input gets a single pixel. A 360px box minus
+     the popup's own chrome leaves ~300px, i.e. under 190px of input — a PIN or
+     a phone number is clipped rather than wrapped. Below 600px the label stops
+     being a lane and sits above its field, so the input takes the full row. The
+     drawer is a portal to document.body (SettingsPopup.tsx), so it is not a
+     descendant of this root and its own sheet is out of this fence's reach:
+     the fields keep their shared class, and that class is what folds here. */
+  .staff-mgmt-field--horizontal {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .staff-mgmt-field--horizontal > .staff-mgmt-label {
+    min-width: 0;
+  }
+
+  /* The page's 2rem horizontal gutters are 64px of a 360px box. At 600px and
+     below the roster table and the status footer get that back; the vertical
+     rhythm is unchanged. The footer keeps its 2rem elsewhere — only this tier
+     narrows it, and it already wraps its segments. */
+  .staff-mgmt-main {
+    padding: var(--space-6) var(--space-4);
+  }
+
+  .staff-mgmt-footer {
+    padding: var(--space-1) var(--space-4);
+  }
+
+  /* The trash row's day count cannot stay a pill at this width. The sentence is
+     217px on one line, so beside the Restore button the pill wraps to two lines
+     and squeezes the name block to 0px — the name then paints straight across
+     the pill. Hand the identity its own full-width row and drop the pill's
+     chrome, so the day count reads as a plain line under the name and the button
+     keeps the second row's right edge. The text keeps the badge's --color-info,
+     because this line is still the row's one urgency signal — only the pill's
+     shape and fill go. Measured at 390px against the real sheet: every row
+     overflow 0 and the button 1px inside the content box. Above this tier
+     nothing changes: the pill holds one line and stays. */
+  .staff-mgmt-trash-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .staff-mgmt-trash-who {
+    grid-column: 1 / -1;
+  }
+
+  .staff-mgmt-trash-days {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-info);
+    font-size: var(--text-sm);
+    text-align: left;
+  }
+}
+

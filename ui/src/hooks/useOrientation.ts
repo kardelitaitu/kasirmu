@@ -78,6 +78,30 @@ function getScreenOrientation(): ScreenOrientationAPI | null {
 }
 
 /**
+ * Read the orientation predicate the CSS sheets actually lay out with.
+ *
+ * ADR-0001 (orientation & adaptive layout) T2: JS must not disagree with CSS,
+ * so `isLandscape` is the same `LANDSCAPE_QUERY` the sheets branch on.
+ * Comparing `innerWidth > innerHeight` instead lets the two drift apart on an
+ * Android soft keyboard: `adjustResize` shrinks `innerHeight` and can flip the
+ * comparison while the sheet is still laying out landscape.
+ *
+ * `matchMedia` is absent in some embedded hosts, so guard rather than
+ * require: the viewport comparison is the fallback for a host that cannot
+ * answer the query at all.
+ */
+function readIsLandscape(): boolean {
+  if (typeof window.matchMedia === 'function') {
+    try {
+      return window.matchMedia(LANDSCAPE_QUERY).matches;
+    } catch {
+      // Host threw from matchMedia — fall back to the viewport comparison.
+    }
+  }
+  return window.innerWidth > window.innerHeight;
+}
+
+/**
  * Hook that tracks screen orientation and provides lock/unlock control.
  *
  * On tablet POS screens, use:
@@ -97,7 +121,7 @@ export function useOrientation(
   const [supported, setSupported] = useState(false);
 
   const getOrientationState = useCallback((): OrientationState => {
-    const isLandscape = window.innerWidth > window.innerHeight;
+    const isLandscape = readIsLandscape();
     const screenOrientation = getScreenOrientation();
     const angle = screenOrientation?.angle ?? 0;
     return {
@@ -178,10 +202,10 @@ export function useOrientation(
     window.addEventListener('orientationchange', handleChange);
     window.addEventListener('resize', handleChange);
 
-    // The media query is an OPTIONAL extra trigger, not the source of truth:
-    // `isLandscape` stays derived from the live viewport so it cannot disagree
-    // with what CSS is actually laying out. Some embedded hosts and older
-    // jsdom builds have no `matchMedia` at all, so guard rather than require.
+    // The media query is an OPTIONAL extra trigger — `readIsLandscape` already
+    // owns the predicate, so this listener only makes a rotation re-render.
+    // Some embedded hosts and older jsdom builds have no `matchMedia` at all,
+    // so guard rather than require.
     let mql: MediaQueryList | null = null;
     if (typeof window.matchMedia === 'function') {
       mql = window.matchMedia(LANDSCAPE_QUERY);

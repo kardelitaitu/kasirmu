@@ -111,3 +111,36 @@ async fn store_earned_credential(
     kasirmu_bridge::sync::store_linked_terminal(&ctx, terminal).await?;
     Ok(())
 }
+
+/// Starts a device-code pairing session (ADR #56 §2.5 / §5 Q1).
+#[tauri::command]
+pub async fn start_device_pairing(
+    device_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::desktop_link::PairingSessionStart, AppError> {
+    let ctx = state.bridge_ctx();
+    let machine_id = kasirmu_bridge::license::get_machine_id(&ctx).await?;
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    let name = device_name.unwrap_or_else(|| "Desktop POS".to_string());
+    kasirmu_core::desktop_link::start_device_pairing(&base_url, &machine_id, &name)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Polls an active device-code pairing session (ADR #56 §2.5 / §5 Q1).
+#[tauri::command]
+pub async fn poll_device_pairing(
+    poll_token: String,
+    state: State<'_, AppState>,
+) -> Result<kasirmu_core::desktop_link::PairingPollResponse, AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    let resp = kasirmu_core::desktop_link::poll_device_pairing(&base_url, &poll_token)
+        .await
+        .map_err(AppError::from)?;
+    if resp.status == "claimed"
+        && let Some(ref terminal) = resp.terminal
+    {
+        store_earned_credential(&state, Some(terminal)).await?;
+    }
+    Ok(resp)
+}

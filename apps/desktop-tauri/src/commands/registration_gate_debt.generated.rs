@@ -20,6 +20,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("branding::pick_logo_file", "no_session_resolution"),
     ("data::get_backup_status", "no_session_resolution"),
     ("data::create_backup", "no_session_resolution"),
+    ("data::export_data_without_session", "no_session_resolution"),
     ("email::get_report_schedule", "no_session_resolution"),
     ("edc::edc_terminal_status", "no_session_resolution"),
     ("staff::bootstrap_owner", "no_session_resolution"),
@@ -85,13 +86,13 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
-    ("setup::complete_setup", "no_session_resolution"),
-    ("setup::dismiss_setup_wizard", "no_session_resolution"),
+    ("setup::get_preset_features", "no_session_resolution"),
+    ("setup::get_first_run_state", "no_session_resolution"),
+    ("setup::provision_device", "no_session_resolution"),
     (
         "browser::open_product_images_scoped",
         "resolves_session_names_no_permission",
     ),
-    ("setup::get_setup_status", "no_session_resolution"),
     ("security::get_key_rotation_info", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
@@ -109,6 +110,11 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "desktop_link::link_device_email_consume",
         "no_session_resolution",
     ),
+    (
+        "desktop_link::start_device_pairing",
+        "no_session_resolution",
+    ),
+    ("desktop_link::poll_device_pairing", "no_session_resolution"),
     ("license::get_machine_id", "no_session_resolution"),
     ("license::get_hardware_fingerprint", "no_session_resolution"),
     ("license::renew_license", "no_session_resolution"),
@@ -187,7 +193,10 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// replaced. Re-read 20-09-26: regenerated with the floor's raise to 458, then to 461 with
 /// the emailed-code pair's arrival — the floor moved in the same pass both times, because
 /// the generator writing this number does not move it.)
-pub const REGISTERED_TOTAL: usize = 461;
+/// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
+/// five gated commands. 74 debt rows before and after, which is the measurement saying they
+/// arrived already gated.)
+pub const REGISTERED_TOTAL: usize = 469;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
@@ -202,7 +211,12 @@ pub const REGISTERED_TOTAL: usize = 461;
 /// stored credentials, so a session permission would guard a door no session can reach —
 /// the same class `license::activate_license` has always occupied. Recorded in
 /// docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
-pub const DEBT_CEILING: usize = 72;
+/// 72 -> 74: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5 / §5 Q1).
+/// 74 -> 75: `setup::get_preset_features` (`6ac851dd4`), ungated by design — the setup wizard
+/// reads the store-type presets BEFORE any staff session exists, so a session permission
+/// would guard a door no session can reach. Same class as the `link_device_*` rows above, and
+/// the rise is recorded in docs/records/JOURNAL.md.
+pub const DEBT_CEILING: usize = 75;
 
 /// Names that never resolve a session at all.
 /// 42: `topology::load_topology` now resolves session (moved to class 2, mirroring
@@ -210,7 +224,11 @@ pub const DEBT_CEILING: usize = 72;
 /// 42 -> 45: the three `desktop_link::` rows above. This count is a pin the generator
 /// does not recompute, so it moved by hand in the same pass as the ceiling.
 /// `45 + 27 = 72` partitions `DEBT_CEILING` again.
-pub const NO_SESSION_RESOLUTION: usize = 45;
+/// 45 -> 47: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
+/// 47 -> 48: `setup::get_preset_features` — new debt at the ceiling's rise. This count is a pin
+/// the generator does not recompute, so it moves by hand in the same pass.
+/// `48 + 27 = 75` partitions `DEBT_CEILING`.
+pub const NO_SESSION_RESOLUTION: usize = 48;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;

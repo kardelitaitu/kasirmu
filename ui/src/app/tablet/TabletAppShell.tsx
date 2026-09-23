@@ -1,29 +1,76 @@
-import { useState, useEffect, useCallback, useRef, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, type ReactNode } from 'react';
+import { Localized } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import TabletAppLayout from './TabletAppLayout';
-import { completeSetup, dismissSetupWizard } from '@/api/settings';
 import { readBootGate } from '@/utils/boot-retry';
 import { useFeatures } from '@/hooks/useFeatures';
-import { getPage, isPageAccessible } from '@/registries/page-registry';
+import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
 import MemoBanner from '@/features/memo/MemoBanner';
-import type { WizardState } from '@/features/setup/SetupWizard';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
+import { useOrientation } from '@/hooks/useOrientation';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
-const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
+const LicenseActivationScreen = lazy(() => import('@/features/auth/LicenseActivationScreen'));
+const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const CreatePinScreen = lazy(() => import('@/features/auth/CreatePinScreen'));
 const SessionLockScreen = lazy(() => import('@/features/auth/SessionLockScreen'));
+const RevokedScreen = lazy(() => import('@/features/auth/RevokedScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
 const PosScreen = lazy(() => import('@/features/sales/PosScreen'));
 const KdsScreen = lazy(() => import('@/features/kds/KdsScreen'));
 const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceSettingsModal'));
+
+/**
+ * Apply a page's registry-declared `layout` to the rendered page (ADR-0001 Slice
+ * 1). Deliberately a second copy of the desktop shell's helper rather than an
+ * import: it is the consumer the ADR's T4 check looks for, and a test can pin
+ * each shell's own render tree without a shared module's behaviour moving under
+ * both. Keep the two in step when the contract changes.
+ *
+ * - absent / 'fluid' — the page adapts to the space it is given; the page node
+ *   itself is returned, so this branch adds no DOM.
+ * - 'landscape-locked' — render the page plus a rotation prompt while the
+ *   MEASURED viewport is portrait, as an overlay only. There is no lock to
+ *   request (see the shell comment above): the page stays mounted and usable in
+ *   either orientation, which is the usable portrait fallback the contract asks
+ *   for.
+ * - 'custom' — the page owns its layout; wrap it in the `data-layout="custom"`
+ *   marker CSS keys off instead of reaching into the page's contract.
+ */
+function renderPageLayout(
+  page: ReactNode,
+  layout: PageRegistration['layout'],
+  isLandscape: boolean,
+): ReactNode {
+  if (layout === 'landscape-locked' && !isLandscape) {
+    return (
+      <>
+        {page}
+        <div className="page-rotate-prompt" data-layout="landscape-locked" role="status">
+          <Localized id="layout-rotate-to-landscape">
+            <p>Rotate your device to landscape for the full layout.</p>
+          </Localized>
+        </div>
+      </>
+    );
+  }
+  if (layout === 'custom') {
+    return (
+      <div className="page-layout-custom" data-layout="custom">
+        {page}
+      </div>
+    );
+  }
+  return page;
+}
 
 /**
  * Tablet-optimised application shell.
@@ -48,15 +95,23 @@ export default function TabletAppShell() {
   // so a rotation re-lays-out without a React re-render. `useOrientation`
   // remains the mechanism for a STRUCTURAL orientation need — choosing a
   // different component tree, or a column count CSS cannot express — and this
-  // shell has none, so it does not call the hook. If a descendant ever needs
-  // one, call it there and consume `orientation.isLandscape`; do not re-add a
-  // lock.
+  // shell still calls it only to READ `orientation.isLandscape` for a page's
+  // declared `layout` (ADR-0001 Slice 1) — a structural need the registry makes
+  // reviewable data. It still never requests a lock. If a descendant develops a
+  // structural need of its own, call the hook there; do not re-add a lock.
   //
   // If the product decision is landscape-ONLY, the enforceable mechanism is the
   // Android manifest (`android:screenOrientation="sensorLandscape"` on
   // `.MainActivity`), not the Web API.
 
+  // The page-declared layout (ADR-0001 Slice 1) is read from the registry at the
+  // render site below; this is the measured viewport it is judged against, called
+  // unconditionally because hooks may not sit behind the early returns.
+  const { orientation } = useOrientation();
+
   const [loading, setLoading] = useState(true);
+  const [bootAllowed, setBootAllowed] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
   const [hasCompletedSetup, setHasCompletedSetup] = useState(false);
   // null = UNKNOWN. Mirrors AppShell's hasAnyUsers: `false` is the value that
   // opens CreatePinScreen, so a failed/absent has_users read must stay null
@@ -68,6 +123,7 @@ export default function TabletAppShell() {
   const [isLocked, setIsLocked] = useState(false);
   const { enabled, loaded: featuresLoaded } = useFeatures();
   const { session } = useAuth();
+  const { state: subscriptionState } = useSubscription();
   // ADR #4 Phase 3b: use WorkspaceContext for device-bound auto-boot.
   const {
     activeWorkspace,
@@ -113,10 +169,10 @@ export default function TabletAppShell() {
     return () => document.removeEventListener('keydown', handler);
   }, [activeWorkspace]);
 
-  // On mount, check if setup was already completed and whether any staff
-  // account exists. readBootGate runs the two reads in parallel with
-  // independent verdicts — one read's failure cannot forge the other's.
-  // Both reads are wrapped in the lost-response retry (boot-retry.ts): on
+  // On mount, check licence status, whether setup was already completed, and
+  // whether any staff account exists. readBootGate runs the three reads in parallel
+  // with independent verdicts — one read's failure cannot forge another's.
+  // All reads are wrapped in the lost-response retry (boot-retry.ts): on
   // Android, invokes issued while the backend is still initialising can be
   // answered into the void (Rust resolves; the response never reaches the
   // WebView), and without re-issuing the gate hung on the splash forever on
@@ -124,16 +180,23 @@ export default function TabletAppShell() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [setupRes, usersRes] = await readBootGate();
+      const [licenseRes, setupRes, usersRes] = await readBootGate();
       if (cancelled) return;
-      // A failed setup read pins to `false` (the wizard) — pinned by
-      // TabletAppShell.test.tsx as the safer failure direction: on a device
-      // whose setup state is unknown, the wizard is the only route forward.
-      setHasCompletedSetup(setupRes.ok ? setupRes.value.completed : false);
-      // Same unknown-is-not-no-users discipline as AppShell: a failed read
-      // leaves hasAnyUsers at null, which falls through to staff login.
-      // Only an answered `false` opens the owner bootstrap screen.
+
+      const setupCompleted = setupRes.ok && setupRes.value.state === 'provisioned';
+      setHasCompletedSetup(setupCompleted);
       setHasAnyUsers(usersRes.ok ? usersRes.value.has_users : null);
+
+      const licenceUsable =
+        licenseRes.ok && (licenseRes.value.isActive || licenseRes.value.status === 'gracePeriod');
+      const installExisting = usersRes.ok && usersRes.value.has_users;
+      setBootAllowed(licenceUsable || setupCompleted || installExisting);
+
+      if (licenseRes.ok && !licenceUsable && !setupCompleted && !installExisting) {
+        if (licenseRes.value.status !== 'missing') {
+          setLicenseError(licenseRes.value.message);
+        }
+      }
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -172,22 +235,6 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  const handleComplete = useCallback(async (state: WizardState) => {
-    await completeSetup({
-      preset: state.preset ?? 'custom',
-      features: Object.keys(state.features).filter(
-        (k) => state.features[k],
-      ),
-      default_currency: state.default_currency,
-    });
-    setHasCompletedSetup(true);
-  }, []);
-
-  const handleSkip = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
-    setHasCompletedSetup(true);
-  }, []);
-
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock
@@ -219,59 +266,58 @@ export default function TabletAppShell() {
     return <AppBootSplash />;
   }
 
-  // ── First-run setup runs BEFORE the login gate (ADR #41 §2.1) ─────
-  // The ADR is explicit. "State A: New / Uninitialized Device" — no local
-  // config yet — says "the application boots directly into the Setup Wizard
-  // (/setup)", and authentication happens *inside* onboarding (create a
-  // tenant, or connect an existing one). Only "State B: Registered /
-  // Enrolled Device" "boots directly to the Staff Login / Lock Screen".
-  // Testing `!session` first inverted that: every fresh device landed on
-  // StaffLoginScreen with the terminal unconfigured.
-  //
-  // Safe pre-login: the wizard's three commands are UNAUTHENTICATED by design
-  // (`kasirmu-bridge/src/setup.rs` — `get_setup_status`, `complete_setup` and
-  // `dismiss_setup_wizard` each take only `&BridgeCtx` and write the GLOBAL db
-  // via `lock_global()`; contrast `seed_default_roles_scoped` in the same file,
-  // which takes a session token and checks a permission). The wizard reads no
-  // auth/workspace context, and `onSkip` reaches login even if
-  // `dismissSetupWizard` fails, so this cannot trap the terminal.
-  //
-  // The desktop AppShell keeps the wizard after `!session`, and must: it runs two
-  // earlier pre-login gates the tablet historically could not — `!bootAllowed`
-  // (licence activation) and `hasUsers === false` (owner bootstrap). Licence
-  // activation remains desktop-only. Owner bootstrap now exists here too: the
-  // tablet registers `has_users` (bridge twin of the desktop door) and gates
-  // CreatePinScreen below — without it a completed wizard with zero users
-  // dead-ended on a login that could never succeed, because nothing on the
-  // tablet called `bootstrap_owner` (the one command that seeds roles).
-  //
-  // Known consequence of moving this branch, recorded so it is not rediscovered as
-  // a bug: the mount read's catch sets `hasCompletedSetup = false`, so a FAILED
-  // `get_setup_status` now reaches the wizard BEFORE login rather than after it.
-  // Both failure directions are recoverable and this one is the safer of the two —
-  // `onSkip` sets the flag regardless of whether `dismissSetupWizard` resolves, and
-  // on a genuinely fresh device the wizard is the only route forward, whereas login
-  // would be a dead end. The desktop instead treats an unknown read as "not
-  // first-run" (see the `has_users: unknown is not "no users"` note in AppShell.tsx)
-  // and falls through to login. The tablet's catch is pinned by two tests in
-  // TabletAppShell.test.tsx — a rejecting read with a session and a rejecting
-  // read without one — so changing it is a decision, not a cleanup.
+  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  // rather than the login screen. The merchant cannot log in but CAN
+  // export their data via the no-session twin (export_data_without_session).
+  if (subscriptionState === 'revoked') {
+    return (
+      <LazyBoundary>
+        <RevokedScreen />
+      </LazyBoundary>
+    );
+  }
+
+  // ADR #56 §5 Q2: converge tablet boot order with desktop licence activation gate.
+  // Activation must precede identity linking, store provisioning, and user login.
+  if (!bootAllowed) {
+    return (
+      <LazyBoundary>
+        <LicenseActivationScreen
+          initialError={licenseError}
+          onActivated={() => setBootAllowed(true)}
+        />
+      </LazyBoundary>
+    );
+  }
+
+  // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
+  // ADR #41 §2.1's "State A: New / Uninitialized Device" says the application
+  // boots directly into onboarding and authentication happens *inside* it.
+  // ADR #56 §2.3 keeps that ordering: the flow is store type -> owner -> one transaction.
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
-        <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setHasCompletedSetup(true)} />
+        <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
       </LazyBoundary>
     );
   }
 
   if (!session) {
-    // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false
-    // branch): the wizard configures the store but deliberately does not
-    // seed roles or users — that is `bootstrap_owner`'s job, and nothing on
-    // the tablet reached it before this branch existed. The result was a
-    // first-run dead end: a login screen with zero users, unrecoverable
-    // without adb. `null` (read failed / command absent) stays on login —
-    // unknown is not "no users".
+    // Owner bootstrap (mirrors the desktop AppShell's hasUsers === false branch).
+    //
+    // ADR #56 §2.2 made the owner part of the provisioning transaction, so on a
+    // provisioned terminal this branch should be UNREACHABLE — the flow above
+    // cannot set `hasCompletedSetup` without also creating the owner. It is kept
+    // deliberately:
+    //
+    // - it is the recoverable path for a terminal provisioned by an older
+    //   build, whose owner was created by this screen rather than by
+    //   `provision_device`, and
+    // - `hasAnyUsers === false` is an ANSWERED read, so reaching here means the
+    //   store really has no users and a login could never succeed.
+    //
+    // `null` (read failed / command absent) stays on login — unknown is not
+    // "no users".
     if (hasAnyUsers === false) {
       return (
         <LazyBoundary>
@@ -368,9 +414,13 @@ export default function TabletAppShell() {
           requiredPermission={pageRegistration?.requiredPermission}
         />
       ) : PageComponent ? (
-        <LazyBoundary>
-          <PageComponent />
-        </LazyBoundary>
+        renderPageLayout(
+          <LazyBoundary>
+            <PageComponent />
+          </LazyBoundary>,
+          pageRegistration!.layout,
+          orientation.isLandscape,
+        )
       ) : null}
       {/* The modal portals itself, so it does not matter which branch hosts it. */}
       {settingsModal}

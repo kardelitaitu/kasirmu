@@ -25,6 +25,11 @@ use crate::SyncError;
 pub struct PgTransport {
     pool: Pool,
     tenant_id: String,
+    /// C3 S5: this install's own terminal identity, when paired. Pulls
+    /// exclude rows carrying it, so a terminal is never handed back its own
+    /// pushes. `None` (an unpaired install, or a caller that never sets it)
+    /// leaves the pull unfiltered — exactly today's behaviour.
+    terminal_id: Option<String>,
 }
 
 /// Maximum rows returned per pull page (mirrors the HTTP server's 500).
@@ -83,19 +88,28 @@ fn decode_pull_cursor(cursor: Option<&str>) -> (Option<String>, Option<String>) 
 /// (`invalid input syntax`), and a cursor alone already encodes the exact
 /// resume point. (The HTTP server tolerates `''` because SQLite compares
 /// text; PG does not.)
+///
+/// C3 S5: every arm also excludes rows this terminal itself pushed. The
+/// clause is an ADDITION to the WHERE list only — the anchor, the cursor
+/// tiebreak, `ORDER BY` and `LIMIT` keep their exact semantics — and it is
+/// spelled as an "is the bound value NULL" disjunct so all four arms stay
+/// static SQL: a transport with no terminal identity (an unpaired install)
+/// binds SQL NULL, the first disjunct is true, and the pull is
+/// byte-identical to the unfiltered one. A NULL origin always matches — an
+/// unstamped or legacy row is "unknown origin", never "mine".
 fn build_pull_sql(since: Option<&str>, cursor: Option<&str>) -> &'static str {
     match (since, cursor) {
         (None, Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n           AND ($4::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $4)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
         }
         (Some(_), Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n           AND ($5::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $5)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $6"
         }
         (Some(_), None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND ($3::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $3)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
         }
         (None, None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $2"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND ($2::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> $2)\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
         }
     }
 }
@@ -205,6 +219,7 @@ impl PgTransport {
         Ok(Self {
             pool,
             tenant_id: tenant_id.to_owned(),
+            terminal_id: None,
         })
     }
 
@@ -221,7 +236,24 @@ impl PgTransport {
         Ok(Self {
             pool,
             tenant_id: tenant_id.to_owned(),
+            terminal_id: None,
         })
+    }
+
+    /// Declare this install's own terminal identity (C3 S5).
+    ///
+    /// A builder rather than a constructor parameter so
+    /// [`Self::new`]/[`Self::new_with_tls`] keep their arity — a caller
+    /// that never sets it keeps the unfiltered pull.
+    ///
+    /// `None` (the default, and what an unpaired install passes) means no
+    /// filter at all: every tenant row in the pull window is returned, and
+    /// the client-side self-origin skip remains the only guard. A NULL
+    /// origin in the row is never treated as this terminal.
+    #[must_use]
+    pub fn with_terminal_id(mut self, terminal_id: Option<String>) -> Self {
+        self.terminal_id = terminal_id;
+        self
     }
 
     /// Push pending items to the remote PostgreSQL database.
@@ -255,7 +287,8 @@ impl PgTransport {
                     created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')),
                     synced_at TEXT,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
-                    priority BIGINT NOT NULL DEFAULT 1
+                    priority BIGINT NOT NULL DEFAULT 1,
+                    origin_terminal_id TEXT
                 )",
             )
             .await
@@ -291,11 +324,12 @@ impl PgTransport {
                 &item.retry_count,
                 &item.last_error,
                 &item.tenant_id,
+                &item.origin_terminal_id,
             ];
             let result = tx
                 .execute(
-                    "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id)
-                     VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+                    "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id, origin_terminal_id)
+                     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
                      ON CONFLICT (id) DO NOTHING",
                     params,
                 )
@@ -471,6 +505,11 @@ impl PgTransport {
     ///
     /// When more pages exist, `next_cursor` carries a `"created_at|id"`
     /// composite cursor that the caller passes back on the next call.
+    ///
+    /// C3 S5: rows this transport's own [`Self::with_terminal_id`] identity
+    /// originated are excluded, so a terminal is never handed back its own
+    /// pushes. With no identity set the filter is inert and the row set is
+    /// byte-identical to the unfiltered pull.
     pub async fn pull_updates(
         &self,
         since: Option<&str>,
@@ -485,6 +524,9 @@ impl PgTransport {
         let (cursor_ts, cursor_id) = decode_pull_cursor(cursor);
         let limit = PG_PULL_FETCH_LIMIT;
         let tenant = self.tenant_id.clone();
+        // C3 S5: this install's own identity, or NULL when unpaired — the
+        // pull then returns every tenant row exactly as it does today.
+        let origin = self.terminal_id.clone();
 
         // RLS: scope the read to the tenant GUC too (covers a shared DB with
         // FORCEd RLS where the WHERE clause alone is not enough — the policy
@@ -526,7 +568,7 @@ impl PgTransport {
                 // composite (created_at, id) tiebreak.
                 tx.query(
                     build_pull_sql(Some(since), cursor),
-                    &[&tenant, &since, ts, cid, &limit],
+                    &[&tenant, &since, ts, cid, &origin, &limit],
                 )
                 .await
                 .map_err(|e| SyncError::Transport(format!("pg query failed: {e}")))?
@@ -534,19 +576,22 @@ impl PgTransport {
                 // Cursor without since: the SQL omits the `created_at >=`
                 // clause (PG rejects an empty-string cast to timestamptz),
                 // so bind only the tenant + 3-placeholder tiebreak + limit.
-                tx.query(build_pull_sql(None, cursor), &[&tenant, ts, cid, &limit])
-                    .await
-                    .map_err(|e| SyncError::Transport(format!("pg query failed: {e}")))?
+                tx.query(
+                    build_pull_sql(None, cursor),
+                    &[&tenant, ts, cid, &origin, &limit],
+                )
+                .await
+                .map_err(|e| SyncError::Transport(format!("pg query failed: {e}")))?
             }
         } else if let Some(since) = since {
             tx.query(
                 build_pull_sql(Some(since), None),
-                &[&tenant, &since, &limit],
+                &[&tenant, &since, &origin, &limit],
             )
             .await
             .map_err(|e| SyncError::Transport(format!("pg query failed: {e}")))?
         } else {
-            tx.query(build_pull_sql(None, None), &[&tenant, &limit])
+            tx.query(build_pull_sql(None, None), &[&tenant, &origin, &limit])
                 .await
                 .map_err(|e| SyncError::Transport(format!("pg query failed: {e}")))?
         };
@@ -574,6 +619,8 @@ impl PgTransport {
                     synced_at: row.get::<_, Option<String>>("synced_at"),
                     tenant_id: row.get("tenant_id"),
                     priority: kasirmu_core::offline::SyncPriority::Normal,
+                    // NULL stays NULL: "unknown origin", never a default.
+                    origin_terminal_id: row.get("origin_terminal_id"),
                 }
             })
             .collect();

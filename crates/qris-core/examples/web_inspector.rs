@@ -730,7 +730,7 @@ impl ParsedResponse {
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0];
         let b1 = if chunk.len() > 1 { chunk[1] } else { 0 };
@@ -863,45 +863,45 @@ async fn generate_handler(
         builder = builder.guid(guid);
     }
 
-    if let Some(pan) = req.merchant_pan {
-        if !pan.is_empty() {
-            builder = builder.merchant_pan(pan);
-        }
+    if let Some(pan) = req.merchant_pan
+        && !pan.is_empty()
+    {
+        builder = builder.merchant_pan(pan);
     }
 
-    if let Some(crit) = req.criteria {
-        if !crit.is_empty() {
-            builder = builder.criteria(crit);
-        }
+    if let Some(crit) = req.criteria
+        && !crit.is_empty()
+    {
+        builder = builder.criteria(crit);
     }
 
-    if let Some(postal) = req.postal_code {
-        if !postal.is_empty() {
-            builder = builder.postal_code(postal);
-        }
+    if let Some(postal) = req.postal_code
+        && !postal.is_empty()
+    {
+        builder = builder.postal_code(postal);
     }
 
-    if let Some(ref amount_str) = req.amount {
-        if !amount_str.is_empty() {
-            builder = builder.amount(amount_str);
-        }
+    if let Some(ref amount_str) = req.amount
+        && !amount_str.is_empty()
+    {
+        builder = builder.amount(amount_str);
     }
 
     // Handle Fee options: None, Fixed, Percent, Hybrid
     if let Some(fee) = req.fee {
         match fee.fee_type.as_str() {
             "fixed" => {
-                if let Some(f) = fee.fixed_fee {
-                    if !f.is_empty() {
-                        builder = builder.tip_fixed(f);
-                    }
+                if let Some(f) = fee.fixed_fee
+                    && !f.is_empty()
+                {
+                    builder = builder.tip_fixed(f);
                 }
             }
             "percent" => {
-                if let Some(p) = fee.percent_fee {
-                    if !p.is_empty() {
-                        builder = builder.tip_percent(p);
-                    }
+                if let Some(p) = fee.percent_fee
+                    && !p.is_empty()
+                {
+                    builder = builder.tip_percent(p);
                 }
             }
             "hybrid" => {
@@ -909,18 +909,15 @@ async fn generate_handler(
                 // e.g. 0.7% with min Rp 1,000.
                 if let (Some(amt), Some(pct_str), Some(min_str)) =
                     (&req.amount, &fee.percent_fee, &fee.min_amount)
-                {
-                    if let (Ok(base_amt), Ok(min_floor)) = (
+                    && let (Ok(base_amt), Ok(min_floor)) = (
                         qris_core::amount::parse_amount(amt),
                         qris_core::amount::parse_amount(min_str),
-                    ) {
-                        if let Ok(pct_calculated) =
-                            qris_core::amount::calculate_percentage_fee(base_amt, pct_str)
-                        {
-                            let effective = std::cmp::max(pct_calculated, min_floor);
-                            builder = builder.tip_fixed(effective.to_string());
-                        }
-                    }
+                    )
+                    && let Ok(pct_calculated) =
+                        qris_core::amount::calculate_percentage_fee(base_amt, pct_str)
+                {
+                    let effective = std::cmp::max(pct_calculated, min_floor);
+                    builder = builder.tip_fixed(effective.to_string());
                 }
             }
             _ => {}
@@ -929,25 +926,25 @@ async fn generate_handler(
 
     // Additional data (Tag 62)
     if let Some(ad) = req.additional_data {
-        if let Some(b) = ad.bill_number {
-            if !b.is_empty() {
-                builder = builder.bill_number(b);
-            }
+        if let Some(b) = ad.bill_number
+            && !b.is_empty()
+        {
+            builder = builder.bill_number(b);
         }
-        if let Some(t) = ad.terminal_label {
-            if !t.is_empty() {
-                builder = builder.terminal_label(t);
-            }
+        if let Some(t) = ad.terminal_label
+            && !t.is_empty()
+        {
+            builder = builder.terminal_label(t);
         }
-        if let Some(s) = ad.store_label {
-            if !s.is_empty() {
-                builder = builder.store_label(s);
-            }
+        if let Some(s) = ad.store_label
+            && !s.is_empty()
+        {
+            builder = builder.store_label(s);
         }
-        if let Some(r) = ad.reference_label {
-            if !r.is_empty() {
-                builder = builder.reference_label(r);
-            }
+        if let Some(r) = ad.reference_label
+            && !r.is_empty()
+        {
+            builder = builder.reference_label(r);
         }
     }
 

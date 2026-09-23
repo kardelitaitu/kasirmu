@@ -94,7 +94,25 @@ mod debt;
 /// first, then `link_device_email_request` / `link_device_email_consume` with the emailed
 /// code. Unlike the three `qris_auto` names the 453 step absorbed, these three are NOT
 /// gated, so the same pass moves a ceiling and the class counts in the ledger beside it.
-const REGISTERED_FLOOR: usize = 461;
+/// The 461 -> 463 step adds `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing` (ADR #56 §2.5).
+///
+/// The 463 -> 468 step is the staff/role TRASH (90-day soft delete): the three staff
+/// commands `delete_staff_scoped`, `restore_staff_scoped` and
+/// `list_staff_trash_scoped` behind `staff:delete`, plus `restore_role_scoped` and
+/// `list_role_trash_scoped` behind `staff:manage_roles`. All five arrive ALREADY
+/// GATED, so this pass moves no ceiling, no class count and no ledger row — which is
+/// exactly why this EQUALITY is the leg that had to move, and why it is the only leg
+/// in this file that could see the five land.
+///
+/// The 468 -> 469 step is **not this lane's**: `setup::get_preset_features` arrived with
+/// `6ac851dd4` (fix(setup): derive the terminal's feature set from the chosen store type),
+/// and it arrives UNGATED — the wizard reads the store-type presets before any session
+/// exists, the class `setup::get_first_run_state` and `setup::provision_device` have always
+/// occupied. So this step moves the floor, the debt ceiling and the class-1 count together
+/// and records the reason in docs/records/JOURNAL.md, which is what the ceiling pin asks of
+/// a RISE. The provenance is the point: this pass records what landed, it does not approve
+/// it.
+const REGISTERED_FLOOR: usize = 469;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

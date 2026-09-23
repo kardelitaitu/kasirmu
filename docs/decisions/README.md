@@ -58,8 +58,8 @@ implementation-status walkthrough.
 | 31 | [Decentralized UI Feature Module Registration](./2026-07-24-decentralized-ui-module-registration.md) | Accepted (2026-07-24) |
 | 32 | [DB Layer Extraction (R2) & Platform File Split (R5)](./2026-07-25-db-extraction-and-platform-split.md) | Proposed |
 | 33 | [Panic Policy & Production unwrap/expect Enforcement](./2026-08-03-panic-policy.md) | Implemented (2026-08-03) |
-| 34 | [Topology Editor as the Business Logic Builder](./2026-08-07-business-logic-topology-builder.md) | Proposed |
-| 44 | [Typed Connection Gating & Live Validation (Implementation)](./2026-08-08-adr34-typed-connection-gating.md) | Implemented (2026-08-08) |
+| 34 | [Topology Editor as the Business Logic Builder](./2026-08-07-adr34-business-logic-topology-builder.md) | Proposed |
+| 44 | [Typed Connection Gating & Live Validation (Implementation)](./2026-08-08-adr44-typed-connection-gating.md) | Implemented (2026-08-08) |
 | 35 | [RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data](./2026-08-11-adr35-rbac-role-assignments-user-profile.md) | Accepted (ratified 2026-08-11) |
 | 36 | [Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](./2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | [Product Popularity Index — Weighted Activity Score for Retail Sorting](./2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
@@ -72,7 +72,7 @@ implementation-status walkthrough.
 | 45 | [Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](./2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
 | 46 | [Topology Revision History, Change Notes, and Draft Restore](./2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted (2026-09-07) — Phase 1 complete (racing-publishes gate met), Phase 2 in progress (graph differ 51ad987f) |
 | 47 | [Scoped Authorization — Role Assignments with Explicit Scopes](./2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted (2026-09-07, sole-maintainer ruling — all five recommendations adopted: `role_assignments` table, single scoped choke point, downward-only inheritance, key-set custom roles, org-wide backfill) — assignment model built across slices (scope axis 94e8a100, scoped pairs 8c0ae0b4, staff UI 7f7d4ec4, choke-point gate 453c629f); gates §B entitlements, audit baseline, Phase 3 roles |
-| 48 | [Location Timezone Representation & as_of Semantics](./2026-09-09-timezone-representation.md) | Accepted (2026-09-09) |
+| 48 | [Location Timezone Representation & as_of Semantics](./2026-09-09-adr48-timezone-representation.md) | Accepted (2026-09-09) |
 | 49 | [Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](./2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
 | 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
@@ -83,6 +83,7 @@ implementation-status walkthrough.
 | 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — part implemented, part to build |
 | 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Proposed (2026-10-04) — mechanism largely implemented, one state to add |
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — nothing implemented |
+| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated |
 
 ## Research notes
 

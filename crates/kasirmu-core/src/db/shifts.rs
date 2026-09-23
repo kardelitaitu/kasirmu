@@ -2,11 +2,11 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 5)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: close_shift exemplary — all aggregation reads + final write in one tx, cash refunds subtracted from expected cash (documented false-positive fix), safe-drop payouts included, gross profit matches reporting-layer cost semantics; COR-27 LOW: open_shift COUNT-then-INSERT duplicate guard has NO partial unique index behind it (verified init.sql:1259-1263 — only plain indexes; inventory_shifts HAS idx_inv_shifts_active_per_user_location) — advisory-only, race-safe under single-connection mutex; hour labels in get_shift_report are UTC (COR-21 family, totals unaffected)
+findings: close_shift exemplary — all aggregation reads + final write in one tx, cash refunds subtracted from expected cash (documented false-positive fix), safe-drop payouts included, gross profit matches reporting-layer cost semantics; COR-27 LOW: FIXED (C18, slice P1.3) — open_shift's COUNT-then-INSERT duplicate guard now runs with the INSERT inside one `BEGIN IMMEDIATE` transaction, so two opens for the same user serialize on the write lock instead of both reading an empty count (the old shape was autocommit, where a WAL reader did not even block on the rival writer); still NO partial unique index behind it (verified init.sql:1259-1263 — only plain indexes; inventory_shifts HAS idx_inv_shifts_active_per_user_location), so a direct SQL writer remains unguarded; hour labels in get_shift_report are UTC (COR-21 family, totals unaffected)
 next: partial unique index on shifts(user_id) WHERE status='open' (COR-27) | perf: N/A
 */
 
-use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior, params};
 
 use crate::Shift;
 use crate::error::CoreError;
@@ -18,6 +18,17 @@ impl Store<'_> {
     ///
     /// Validates that the user exists and is active, and that there is no
     /// other open shift for the same user.
+    ///
+    /// COR-27 (C18, slice P1.3): the duplicate check and the `INSERT` are one
+    /// decision, so both run inside a single `BEGIN IMMEDIATE` transaction —
+    /// the shape [`Self::close_shift`] already uses in this file, and the
+    /// allocation idiom from `stock_counts.rs`. `IMMEDIATE` takes SQLite's
+    /// write reservation *before* the check, so two opens for the same user
+    /// serialize on the lock instead of both reading an empty count and then
+    /// inserting (the old autocommit check-then-act, where a WAL reader did
+    /// not even block on the rival writer). A refused open leaves no row: the
+    /// transaction is dropped and rolled back, so the shift row and its
+    /// opening float are written together or not at all.
     pub fn open_shift(
         &self,
         user_id: &str,
@@ -37,9 +48,13 @@ impl Store<'_> {
             });
         }
 
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let id = uuid::Uuid::now_v7().to_string();
+
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+
         // Verify the user exists and is active.
-        let active: bool = self
-            .conn
+        let active: bool = tx
             .query_row(
                 "SELECT is_active FROM users WHERE id = ?1",
                 params![user_id.trim()],
@@ -61,8 +76,9 @@ impl Store<'_> {
             });
         }
 
-        // Ensure no duplicate open shift for this user.
-        let open_count: i64 = self.conn.query_row(
+        // Ensure no duplicate open shift for this user — evaluated under the
+        // write lock taken above, so a rival open cannot overtake it.
+        let open_count: i64 = tx.query_row(
             "SELECT COUNT(*) FROM shifts WHERE user_id = ?1 AND status = 'open'",
             params![user_id.trim()],
             |row| row.get(0),
@@ -74,14 +90,13 @@ impl Store<'_> {
             });
         }
 
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let id = uuid::Uuid::now_v7().to_string();
-
-        self.conn.execute(
+        tx.execute(
             "INSERT INTO shifts (id, user_id, terminal_id, opening_balance_minor, opened_at, created_at, updated_at, status)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open')",
             params![id, user_id.trim(), terminal_id, opening_balance_minor, now, now, now],
         )?;
+
+        tx.commit()?;
 
         self.get_shift(&id)?.ok_or_else(|| CoreError::NotFound {
             entity: "shift",
@@ -106,7 +121,7 @@ impl Store<'_> {
     ) -> Result<Shift, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // Verify the shift exists and is open.
         let shift: Shift = {

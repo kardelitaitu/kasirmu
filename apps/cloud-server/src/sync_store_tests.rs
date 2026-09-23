@@ -84,6 +84,7 @@ fn sample_item(id: &str) -> OfflineQueueItem {
         created_at: "2026-01-01T00:00:00Z".into(),
         synced_at: None,
         priority: SyncPriority::Normal,
+        origin_terminal_id: None,
     }
 }
 
@@ -122,7 +123,7 @@ async fn sqlite_backend_push_pull_plan_snapshot_roundtrip() {
 
     // Pull returns the one accepted item.
     let items = store
-        .pull_items("tenant-a", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-a", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
@@ -242,7 +243,7 @@ async fn sqlite_push_batch_matches_per_item_semantics() {
 
     // Pull confirms exactly the accepted rows landed.
     let pulled = store
-        .pull_items("tenant-b", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-b", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     let mut ids: Vec<_> = pulled.iter().map(|i| i.id.as_str()).collect();
@@ -298,6 +299,9 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
 
     let mut item = sample_item(&format!("pg-item-{tenant}"));
     item.tenant_id = tenant.clone();
+    // C3 S2: the Postgres arm must carry the origin through its INSERT, its
+    // SELECT list and its row decode, exactly as the SQLite arm does.
+    item.origin_terminal_id = Some("pg-terminal-abc".into());
     assert!(matches!(
         store.push_item(&item, &tenant).await.unwrap(),
         PushOutcome::Accepted
@@ -308,12 +312,17 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     ));
 
     let items = store
-        .pull_items(&tenant, Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items(&tenant, None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, format!("pg-item-{tenant}"));
     assert_eq!(items[0].tenant_id, tenant);
+    assert_eq!(
+        items[0].origin_terminal_id.as_deref(),
+        Some("pg-terminal-abc"),
+        "the Postgres INSERT/SELECT must carry the origin, or it vanishes here"
+    );
 
     assert_eq!(store.pending_count(&tenant).await, 1);
     assert!(store.distinct_tenant_count().await >= 1);
@@ -704,7 +713,7 @@ async fn sqlite_push_batch_commits_atomically_and_rejects_dups() {
     assert!(matches!(outcomes[2], PushOutcome::Accepted));
 
     let pulled = store
-        .pull_items("tenant-cs3", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-cs3", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     let mut ids: Vec<_> = pulled.iter().map(|i| i.id.as_str()).collect();
@@ -1383,4 +1392,283 @@ async fn sqlite_resolve_conflict_records_the_decision_once() {
             .await
             .unwrap()
     );
+}
+/// C3 S2: the origin must survive the SERVER round trip — push into the
+/// offline_queue table, pull it back out. This is the assertion the slice
+/// exists for: a column dropped from the server INSERT list makes the value
+/// round-trip locally and vanish at the server, which is silent.
+#[tokio::test]
+async fn sqlite_backend_push_pull_carries_the_origin_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Case 1: an item built by the REAL local producer on the CLIENT database,
+    // then pushed into the server database — the actual topology, so a column
+    // the client writes and the server drops cannot hide. (The origin is set
+    // directly because the producer does not write a real one until slice S3.)
+    let with_origin = {
+        let client = fresh_db();
+        let client = client.lock().await;
+        let mut item = kasirmu_core::Store::new(&client)
+            .enqueue_offline_scoped(
+                "complete_sale",
+                r#"{"total":100}"#,
+                "tenant-a",
+                SyncPriority::Critical,
+            )
+            .unwrap();
+        item.origin_terminal_id = Some("terminal-abc".into());
+        item.created_at = "2026-01-01T00:00:00Z".into();
+        item
+    };
+    assert!(matches!(
+        store.push_item(&with_origin, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    // Case 2: an item WITHOUT one must come back None — never a default.
+    let without_origin = OfflineQueueItem {
+        origin_terminal_id: None,
+        ..sample_item("origin-unset")
+    };
+    assert!(matches!(
+        store.push_item(&without_origin, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    let items = store
+        .pull_items("tenant-a", None, Some("2026-01-01T00:00:00Z"), None, 501)
+        .await
+        .unwrap();
+    assert_eq!(items.len(), 2);
+
+    let set = items.iter().find(|i| i.id == with_origin.id).unwrap();
+    assert_eq!(
+        set.origin_terminal_id.as_deref(),
+        Some("terminal-abc"),
+        "the server INSERT must carry the origin column, or it vanishes here"
+    );
+
+    let unset = items.iter().find(|i| i.id == "origin-unset").unwrap();
+    assert_eq!(unset.origin_terminal_id, None);
+
+    // The stored value is NULL, not an empty string.
+    let stored: Option<String> = {
+        let conn = conn.lock().await;
+        conn.query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params!["origin-unset"],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(stored, None, "an unset origin must be SQL NULL");
+}
+
+/// C3 S2: the per-item FALLBACK INSERT in `sync_store.rs` is a second,
+/// separate column list from the multirow fast path. It only runs when the
+/// fast path's statement fails, so nothing else exercises it — and a column
+/// dropped there would silently lose the origin for exactly the batches that
+/// took the fallback.
+///
+/// A trigger that raises on ONE id makes the multirow statement fail, so the
+/// batch drops to the per-item loop, and the surviving items prove the
+/// fallback carries the origin column.
+#[tokio::test]
+async fn sqlite_push_batch_fallback_carries_the_origin_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Poison exactly one id: the multirow statement fails, the fallback runs.
+    {
+        let conn = conn.lock().await;
+        conn.execute_batch(
+            "CREATE TRIGGER poison_one BEFORE INSERT ON offline_queue
+             WHEN NEW.id = 'fallback-poison'
+             BEGIN SELECT RAISE(ABORT, 'poisoned for the fallback test'); END;",
+        )
+        .unwrap();
+    }
+
+    let batch = vec![
+        OfflineQueueItem {
+            origin_terminal_id: Some("fallback-terminal".into()),
+            ..sample_item("fallback-ok")
+        },
+        sample_item("fallback-poison"),
+    ];
+    let outcomes = store.push_batch(&batch, "tenant-fallback").await.unwrap();
+    assert_eq!(outcomes.len(), 2);
+    assert!(matches!(outcomes[0], PushOutcome::Accepted));
+    assert!(matches!(&outcomes[1], PushOutcome::Rejected { .. }));
+
+    let pulled = store
+        .pull_items(
+            "tenant-fallback",
+            None,
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
+        .await
+        .unwrap();
+    assert_eq!(pulled.len(), 1, "only the unpoisoned item lands");
+    assert_eq!(
+        pulled[0].origin_terminal_id.as_deref(),
+        Some("fallback-terminal"),
+        "the per-item fallback INSERT must carry the origin column too"
+    );
+}
+/// C3 S5: the pull must never hand a terminal back its own pushes, and a
+/// caller with no terminal identity must be unaffected.
+///
+/// Three cases, all through the store seam the handler uses:
+///
+/// - pulling as terminal A does NOT return the row A originated;
+/// - the same row IS returned when pulling as terminal B;
+/// - a pull with no identity returns everything, exactly as before.
+///
+/// The NULL-origin case is asserted alongside: an unstamped or legacy row is
+/// never suppressed, whichever identity asks.
+#[tokio::test]
+async fn sqlite_pull_excludes_rows_originated_by_the_calling_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let mut mine = sample_item("origin-mine");
+    mine.tenant_id = "tenant-origin".into();
+    mine.origin_terminal_id = Some("terminal-A".into());
+    let mut theirs = sample_item("origin-theirs");
+    theirs.tenant_id = "tenant-origin".into();
+    theirs.origin_terminal_id = Some("terminal-B".into());
+    // NULL origin: unstamped or legacy — always returned, to everyone.
+    let mut legacy = sample_item("origin-legacy");
+    legacy.tenant_id = "tenant-origin".into();
+    legacy.origin_terminal_id = None;
+
+    for item in [&mine, &theirs, &legacy] {
+        assert!(matches!(
+            store.push_item(item, "tenant-origin").await.unwrap(),
+            PushOutcome::Accepted
+        ));
+    }
+
+    let pull = |origin: Option<&'static str>| {
+        let store = store.clone();
+        async move {
+            store
+                .pull_items(
+                    "tenant-origin",
+                    origin,
+                    Some("2026-01-01T00:00:00Z"),
+                    None,
+                    501,
+                )
+                .await
+                .unwrap()
+        }
+    };
+
+    // Case 1: pulling AS terminal A must not return A's own row.
+    let as_a = pull(Some("terminal-A")).await;
+    let ids: Vec<&str> = as_a.iter().map(|i| i.id.as_str()).collect();
+    assert!(
+        !ids.contains(&"origin-mine"),
+        "terminal A must not be handed back its own push, got: {ids:?}"
+    );
+    assert!(ids.contains(&"origin-theirs"), "B's row still travels");
+    assert!(
+        ids.contains(&"origin-legacy"),
+        "NULL origin is never suppressed"
+    );
+
+    // Case 2: the SAME row IS returned when pulling as terminal B.
+    let as_b = pull(Some("terminal-B")).await;
+    let ids: Vec<&str> = as_b.iter().map(|i| i.id.as_str()).collect();
+    assert!(
+        ids.contains(&"origin-mine"),
+        "A's row must reach B — the filter is per-caller, not global: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&"origin-theirs"),
+        "B is filtered from its own row"
+    );
+
+    // Case 3: no terminal identity — today's behaviour, every row.
+    let as_admin = pull(None).await;
+    let mut ids: Vec<&str> = as_admin.iter().map(|i| i.id.as_str()).collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        vec!["origin-legacy", "origin-mine", "origin-theirs"],
+        "an admin-minted token (no terminal identity) sees everything"
+    );
+}
+
+/// C3 S5: the filter is present in ALL THREE pull query shapes — the
+/// cursor page, the since page and the bare page each carry it, and the
+/// placeholder renumbering leaves the anchor / tiebreak / LIMIT semantics
+/// intact (a shifted placeholder would silently drop the tenant scope).
+#[tokio::test]
+async fn sqlite_pull_filter_applies_to_all_three_query_shapes() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let mut mine = sample_item("shape-mine");
+    mine.tenant_id = "tenant-shapes".into();
+    mine.origin_terminal_id = Some("terminal-A".into());
+    mine.created_at = "2026-01-01T00:00:00Z".into();
+    let mut theirs = sample_item("shape-theirs");
+    theirs.tenant_id = "tenant-shapes".into();
+    theirs.origin_terminal_id = Some("terminal-B".into());
+    theirs.created_at = "2026-01-02T00:00:00Z".into();
+    for item in [&mine, &theirs] {
+        assert!(matches!(
+            store.push_item(item, "tenant-shapes").await.unwrap(),
+            PushOutcome::Accepted
+        ));
+    }
+
+    // since + cursor shape: resume from the anchor, id tiebreak.
+    let cursor_page = store
+        .pull_items(
+            "tenant-shapes",
+            Some("terminal-A"),
+            Some("2026-01-01T00:00:00Z"),
+            Some(("2026-01-01T00:00:00Z", "shape-mine")),
+            501,
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = cursor_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "cursor shape keeps the filter");
+
+    // since-only shape.
+    let since_page = store
+        .pull_items(
+            "tenant-shapes",
+            Some("terminal-A"),
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = since_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "since shape keeps the filter");
+
+    // bare shape (no since, no cursor).
+    let bare_page = store
+        .pull_items("tenant-shapes", Some("terminal-A"), None, None, 501)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = bare_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "bare shape keeps the filter");
+
+    // LIMIT still bounds the page (501 fetch limit, two rows total here).
+    let limited = store
+        .pull_items("tenant-shapes", None, None, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(limited.len(), 1, "LIMIT semantics are untouched");
 }

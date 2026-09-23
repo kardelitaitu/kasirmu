@@ -32,7 +32,7 @@ export const SITE = 'https://kasir.mu';
  * removing a slug from this list consciously re-indexes that page — and the
  * invariant test flags the half-state.
  */
-export const NON_PUBLIC_PAGES = ['account', 'login', 'signup', 'enterprise-trial'] as const;
+export const NON_PUBLIC_PAGES = ['account', 'login', 'signup', 'enterprise-trial', 'pair'] as const;
 
 /** True when a page URL's last path segment is a non-public slug. */
 export function isNonPublic(url: string): boolean {

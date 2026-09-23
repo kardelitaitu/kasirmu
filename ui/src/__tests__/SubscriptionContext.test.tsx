@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { SubscriptionProvider, useSubscription, useAdminGate } from '@/contexts/SubscriptionContext';
+import { SubscriptionProvider, useSubscription, useAdminGate, usePreExpiryReauth } from '@/contexts/SubscriptionContext';
 import type { SubscriptionCapabilities } from '@/api/subscription';
 
 // ── Opt out of the global SubscriptionContext stub ─────────────────────
@@ -194,4 +194,67 @@ describe('SubscriptionProvider', () => {
       }
     });
   });
+
+  describe('usePreExpiryReauth (ADR #58 §2.3)', () => {
+    it('returns false for free tier', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        tier: 'free',
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+      });
+      const { result } = renderHook(() => usePreExpiryReauth(), { wrapper });
+      await waitFor(() => expect(result.current.isPreExpiryWindow).toBe(false));
+      expect(result.current.daysRemaining).toBe(0);
+    });
+
+    it('returns false when expiresAt is null', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        tier: 'pro',
+        expiresAt: null,
+      });
+      const { result } = renderHook(() => usePreExpiryReauth(), { wrapper });
+      await waitFor(() => expect(result.current.isPreExpiryWindow).toBe(false));
+      expect(result.current.daysRemaining).toBe(0);
+    });
+
+    it('returns false outside the 3-day window', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        tier: 'pro',
+        expiresAt: new Date(Date.now() + 10 * 86400000).toISOString(),
+      });
+      const { result } = renderHook(() => usePreExpiryReauth(), { wrapper });
+      await waitFor(() => expect(result.current.isPreExpiryWindow).toBe(false));
+      expect(result.current.daysRemaining).toBe(0);
+    });
+
+    it('returns true and positive daysRemaining inside the 3-day window', async () => {
+      const targetExpiry = new Date(Date.now() + 2 * 86400000).toISOString();
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        tier: 'pro',
+        state: 'active',
+        expiresAt: targetExpiry,
+      });
+      const { result } = renderHook(() => usePreExpiryReauth(), { wrapper });
+      await waitFor(() => expect(result.current.isPreExpiryWindow).toBe(true));
+      expect(result.current.daysRemaining).toBeGreaterThanOrEqual(1);
+      expect(result.current.daysRemaining).toBeLessThanOrEqual(3);
+      expect(result.current.expiresAt).toBe(targetExpiry);
+    });
+
+    it('returns false past expiry', async () => {
+      mocks.getSubscriptionCapabilities.mockResolvedValue({
+        ...caps,
+        tier: 'pro',
+        state: 'grace',
+        expiresAt: new Date(Date.now() - 86400000).toISOString(),
+      });
+      const { result } = renderHook(() => usePreExpiryReauth(), { wrapper });
+      await waitFor(() => expect(result.current.isPreExpiryWindow).toBe(false));
+      expect(result.current.daysRemaining).toBe(0);
+    });
+  });
 });
+

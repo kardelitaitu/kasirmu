@@ -12,8 +12,12 @@ fn long_ago() -> String {
     "2000-01-01T00:00:00.000Z".to_string()
 }
 
+/// A provisioned store. See `migrations::seed_provisioned_baseline` for why
+/// the baseline rows are seeded here rather than shipped by the migration
+/// (ADR #56 §2.6).
 fn store() -> Store<'static> {
     let conn = crate::migrations::fresh_db();
+    crate::migrations::seed_provisioned_baseline(&conn);
     let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
     Store::new(conn)
 }

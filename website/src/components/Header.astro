@@ -1,24 +1,40 @@
 ---
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { labelMap, t } from '../i18n';
+import type { SearchDoc } from '../lib/search-index';
 import LocaleSwitcher from './LocaleSwitcher.astro';
 import ThemeToggle from './ThemeToggle.astro';
 import SearchTrigger from './SearchTrigger';
 import { SEARCH_LABELS } from './SearchModal';
 
-const locale = Astro.currentLocale ?? 'en';
+interface Props {
+  /**
+   * The locale the page resolved. `Base` passes it, so a page that overrides
+   * the locale (the locale-less 404 does) gets a header in the same language as
+   * its own copy — otherwise `Astro.currentLocale` on a non-prefixed route
+   * falls back to the site default and the document ships an English <h1>
+   * inside Indonesian chrome. Locale-prefixed pages pass the same value they
+   * would have derived, so this is a no-op for them.
+   */
+  locale?: string;
+  /**
+   * This locale's docs, as the quick-search modal searches them. Built by the
+   * docs layer with `toSearchDocs()` (see the docs routes) and passed down
+   * through `DocsLayout` / the docs hub.
+   *
+   * The prop's presence IS the docs-ness signal: omit it — as every non-docs
+   * page does — and the header renders the trigger's empty slot instead, so the
+   * payload only ever ships on docs pages and this component owns no rule about
+   * what a docs page is. It used to read the collection itself, which put that
+   * rule here.
+   */
+  searchDocs?: SearchDoc[];
+}
+const { searchDocs } = Astro.props;
+const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 // The search island's strings travel with the document, so the browser never
 // loads a locale dictionary (see src/i18n/labels.ts).
 const searchLabels = labelMap(locale, SEARCH_LABELS);
-const isDocs = Astro.url.pathname.includes('/docs');
-const nav = [
-  { href: getRelativeLocaleUrl(locale, '/'), label: t(locale, 'nav.home') },
-  { href: getRelativeLocaleUrl(locale, 'features'), label: t(locale, 'nav.features') },
-  { href: getRelativeLocaleUrl(locale, 'pricing'), label: t(locale, 'nav.pricing') },
-  { href: getRelativeLocaleUrl(locale, 'download'), label: t(locale, 'nav.download') },
-  { href: getRelativeLocaleUrl(locale, 'support'), label: t(locale, 'nav.support') },
-  { href: getRelativeLocaleUrl(locale, 'docs'), label: t(locale, 'nav.docs') },
-];
 const home = getRelativeLocaleUrl(locale, '/');
 const login = getRelativeLocaleUrl(locale, 'login');
 ---
@@ -39,12 +55,17 @@ const login = getRelativeLocaleUrl(locale, 'login');
         <span class="nav-underline absolute -bottom-1 left-0 h-0.5 w-0 bg-primary rounded-full transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
       </a>
 
-      {/* Solutions dropdown */}
-      <div class="group relative">
+      {/* Solutions disclosure. Hover opens it for pointers; Enter, Space and
+           click open it for everyone — see initSolutionsDisclosure() in
+           src/lib/header-nav.ts. It used to open on `group-hover:` alone, which
+           left its eight destinations unreachable without a mouse. */}
+      <div class="group relative" data-solutions>
         <button
           type="button"
-          class="nav-link flex items-center gap-1 text-sm text-muted transition-colors duration-200 group-hover:text-ink focus:outline-none"
+          data-solutions-trigger
+          class="nav-link flex items-center gap-1 text-sm text-muted transition-colors duration-200 group-hover:text-ink"
           aria-expanded="false"
+          aria-controls="solutions-panel"
           aria-haspopup="true"
         >
           <span>{t(locale, 'nav.solutions')}</span>
@@ -62,8 +83,15 @@ const login = getRelativeLocaleUrl(locale, 'login');
           </svg>
         </button>
 
-        {/* Dropdown panel */}
-        <div class="invisible absolute left-1/2 top-full z-50 mt-2 w-[560px] -translate-x-1/2 opacity-0 transition-all duration-200 ease-out group-hover:visible group-hover:opacity-100">
+        {/* Dropdown panel. Its visibility is owned by the disclosure script
+             (which swaps `invisible`/`visible` and the opacity pair), NOT by
+             `group-hover:` — with a single owner `aria-expanded` can never
+             disagree with what is on screen. */}
+        <div
+          id="solutions-panel"
+          data-solutions-panel
+          class="invisible absolute left-1/2 top-full z-50 mt-2 w-[560px] -translate-x-1/2 opacity-0 transition-all duration-200 ease-out"
+        >
           <div class="rounded-2xl border border-ink/10 bg-surface p-5 shadow-2xl backdrop-blur-lg">
             <div class="grid grid-cols-2 gap-6">
               {/* Column 1: By Industry */}
@@ -274,18 +302,25 @@ const login = getRelativeLocaleUrl(locale, 'login');
         <span class="nav-underline absolute -bottom-1 left-0 h-0.5 w-0 bg-primary rounded-full transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
       </a>
     </nav>
-    <!-- The search trigger only exists on docs pages, but its slot is always
-         rendered: without the spacer the whole cluster (theme toggle, locale
-         switcher, login button) visibly shifts sideways when you navigate
-         between docs and the rest of the site. h-9 w-9 matches the trigger
-         button exactly — and matches ThemeToggle, which is the same box — so
-         the reserved area is the same width as the real thing. SearchModal
-         portals to document.body and returns null while closed, so the
-         trigger's only layout footprint really is that 36px square. -->
+    <!-- The search trigger only exists where a page hands the header a docs
+         payload, but its slot is always rendered: without the spacer the whole
+         cluster (theme toggle, locale switcher, login button) visibly shifts
+         sideways when you navigate between docs and the rest of the site.
+         h-9 w-9 matches the trigger button exactly — and matches ThemeToggle,
+         which is the same box — so the reserved area is the same width as the
+         real thing. SearchModal portals to document.body and returns null while
+         closed, so the trigger's only layout footprint really is that 36px
+         square. -->
     <div class="flex items-center gap-2.5">
-      {isDocs ? <SearchTrigger client:load locale={locale} labels={searchLabels} /> : <span class="h-9 w-9" aria-hidden="true"></span>}
-      <ThemeToggle />
-      <LocaleSwitcher />
+      {
+        searchDocs ? (
+          <SearchTrigger client:load locale={locale} labels={searchLabels} docs={searchDocs} />
+        ) : (
+          <span class="h-9 w-9" aria-hidden="true" />
+        )
+      }
+      <ThemeToggle locale={locale} />
+      <LocaleSwitcher locale={locale} />
       <a
         href={login}
         data-auth-nav
@@ -419,33 +454,13 @@ const login = getRelativeLocaleUrl(locale, 'login');
   </div>
 </header>
 
+<!--
+  The auth-nav logic lives in src/lib/header-nav.ts and resolves session state
+  cookie-first through src/lib/session.ts (the single owner). It is imported
+  rather than inlined so a call site cannot read sessionStorage directly and
+  regress a cookie-only session back to "Sign in".
+-->
 <script>
-  function updateAuthNav() {
-    const isAuth = Boolean(sessionStorage.getItem('oz_session'));
-    const loginLinks = document.querySelectorAll<HTMLAnchorElement>('[data-auth-nav]');
-    loginLinks.forEach((link) => {
-      const loc = link.getAttribute('data-locale') || 'en';
-      if (isAuth) {
-        link.href = `/${loc}/account`;
-        link.textContent = link.getAttribute('data-account-text') || 'Account';
-      } else {
-        link.href = `/${loc}/login`;
-        link.textContent = link.getAttribute('data-login-text') || 'Sign in';
-      }
-    });
-  }
-
-  // Update on initial load, after SPA page swap, and on storage change
-  updateAuthNav();
-  document.addEventListener('astro:page-load', updateAuthNav);
-  document.addEventListener('astro:after-swap', updateAuthNav);
-  window.addEventListener('storage', updateAuthNav);
-
-  document.addEventListener('click', (e) => {
-    const link = (e.target as HTMLElement)?.closest('details.group a');
-    if (link) {
-      const details = link.closest('details');
-      if (details) details.removeAttribute('open');
-    }
-  });
+  import { initHeaderNav } from '../lib/header-nav';
+  initHeaderNav();
 </script>

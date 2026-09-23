@@ -7,7 +7,10 @@ import { getRelativeLocaleUrl } from "astro:i18n";
 import { t } from "../../i18n";
 
 const locale = Astro.currentLocale ?? "en";
-const pageTitle = locale === "id" ? "Perbandingan kasir.mu vs Aplikasi Kasir Lain" : "kasir.mu vs Other POS Apps Compared";
+// The whole document title, brand included — see the note in cara.astro. The
+// page name already says "kasir.mu", so a second, prefixed mention would read
+// as "kasir.mu — Perbandingan kasir.mu vs …" in a search result.
+const pageTitle = t(locale, "perbandingan.title");
 const pricingHref = getRelativeLocaleUrl(locale, "pricing");
 const downloadHref = getRelativeLocaleUrl(locale, "download");
 
@@ -70,7 +73,7 @@ const rivals: Rival[] = [
 ];
 ---
 
-<Base title={`kasir.mu — ${pageTitle}`} description={t(locale, "pageDesc.perbandingan")}>
+<Base title={pageTitle} description={t(locale, "pageDesc.perbandingan")}>
   <section class="mx-auto max-w-4xl px-4 py-16">
     <div data-reveal class="text-center">
       <h1 class="text-4xl font-bold sm:text-5xl">{pageTitle}</h1>
@@ -94,7 +97,7 @@ const rivals: Rival[] = [
           <tr class="border-t border-ink/10 bg-primary/[0.03]">
             <td class="px-5 py-4 font-bold">kasir.mu</td>
             <td class="px-5 py-4">{locale === "id" ? "Rp0 – Rp49rb/bln (Gratis selamanya tersedia)" : "Rp0 – Rp49k/mo (Free forever available)"}</td>
-            <td class="px-5 py-4">{locale === "id" ? "100% offline-first, QRIS semua paket" : "100% offline-first, QRIS on every plan"}</td>
+            <td class="px-5 py-4">{locale === "id" ? "100% jalan tanpa internet, QRIS di semua paket" : "Works 100% without internet, QRIS on every plan"}</td>
           </tr>
           {rivals.map((r) => (
             <tr class="border-t border-ink/10">

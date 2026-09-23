@@ -61,6 +61,26 @@ export interface PageRegistration {
   icon?: React.ReactNode;
   /** When true, the page renders fullscreen without sidebar or topbar. */
   fullscreen?: boolean;
+  /**
+   * Declared layout preference for this page (ADR-0001, tier T3 escape hatch).
+   *
+   * The page declares what it structurally needs; the registry is the one place that
+   * records it and the shell is the one place that reads it — so a structural
+   * orientation need is reviewable data in a diff rather than a `useOrientation`
+   * call buried in a component.
+   *
+   * - 'fluid' (default) — the page adapts to the space the shell grants via
+   *   container queries (T2). Declaring it explicitly is redundant: the default is
+   *   the **absence** of this field.
+   * - 'landscape-locked' — the page genuinely needs a different structural tree in
+   *   landscape (e.g. the POS register). The shell may prompt for rotation but must
+   *   still render a usable portrait fallback.
+   * - 'custom' — the page owns its layout contract outside T1/T2.
+   *
+   * Only pages that cannot be expressed through T2 should set this. T4 enforcement
+   * fails a registration whose declared layout no call site consumes.
+   */
+  layout?: 'fluid' | 'landscape-locked' | 'custom';
 }
 
 // ── Registry ───────────────────────────────────────────────────────

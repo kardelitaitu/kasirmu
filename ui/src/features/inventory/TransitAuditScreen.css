@@ -1,4 +1,11 @@
 .transit-audit-container {
+  /* ADR-0001 T2 / Slice 5: this screen's own unnamed query container, measured on
+     the box the shell grants it — not the viewport. Unnamed on purpose: the only
+     thing between this class and the shell's named app-content container is a
+     display:contents wrapper, so a named query matches nothing in test/e2e mounts.
+     Desktop base case renders exactly as before; every fold lives in the
+     max-width tiers at the bottom of this sheet. */
+  container-type: inline-size;
   padding: var(--space-6);
   color: var(--color-fg-primary);
   font-family: var(--font-sans);
@@ -126,4 +133,49 @@
   padding: var(--space-12);
   color: var(--neutral-600);
   font-size: var(--text-base);
+}
+
+/* ── Narrow content slot (ADR-0001 Slice 5, container queries) ─────── */
+
+/* Widest-first, measured against .transit-audit-container's own inline-size.
+
+   This sheet's fixed-px assumptions, folded below:
+   - .transit-meta: repeat(auto-fit, minmax(150px, 1fr)) — four cells floor at
+     150px each; below ~640px of slot the last cell drops to one cramped column
+     narrower than its own content, and the container's own 2×1rem padding eats
+     32px on top.
+   - .transit-lines-table: border-collapse table with 0.5/0.75rem cell padding —
+     already scrolls nowhere and wraps nowhere, so on a narrow slot the Product
+     column, the only long-string cell, is the one that must give.
+
+   Desktop/landscape base case matches neither tier and renders exactly as
+   before: every rule here is additive and inside a max-width block. */
+@container (max-width: 640px) {
+  /* 4 meta cells × 150px floor + 2×0.75rem auto-fit gaps > a 640px slot minus
+     the container's 2×1rem padding, so auto-fit would drop the fourth cell into
+     a one-off single column. Pin one column so all four meta fields stack in the
+     same order instead of 3-up + 1 orphan. */
+  .transit-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container (max-width: 480px) {
+  /* At 480px of slot the fixed-px table no longer fits: three columns with
+     0.5/0.75rem cell padding leave the Product column, the only long-string
+     cell, under ~90px. Table-layout fixed lets the row wrap its long strings
+     (word-break) instead of overflowing the card; the SKU and Qty columns
+     pin to content width and keep their alignment. The container padding
+     drops from 2×1rem to 2×0.75rem so the table stops fighting the chrome. */
+  .transit-audit-container {
+    padding: var(--space-3);
+  }
+  .transit-lines-table {
+    table-layout: fixed;
+    word-break: break-word;
+  }
+  .transit-lines-table th,
+  .transit-lines-table td {
+    word-break: break-word;
+  }
 }

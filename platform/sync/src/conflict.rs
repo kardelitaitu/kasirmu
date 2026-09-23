@@ -173,6 +173,9 @@ pub fn resolve_stock_crdt(local: &OfflineQueueItem, remote: &OfflineQueueItem) -
         synced_at: None,
         tenant_id: local.tenant_id.clone(),
         priority: local.priority,
+        // The merged item is the local mutation, so it keeps the local
+        // origin; C3 reads it to recognise a terminal's own push.
+        origin_terminal_id: local.origin_terminal_id.clone(),
     };
 
     ResolvedItem {

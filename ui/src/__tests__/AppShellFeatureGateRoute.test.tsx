@@ -131,12 +131,16 @@ vi.mock('@/features/memo/MemoBanner', () => ({
 vi.mock('@/api/license', () => ({
   getLicenseStatus: vi.fn(() => Promise.resolve({ is_active: true, payload: null })),
   activateLicense: vi.fn(),
+  // StatusBar's auth-pill poll (co-consumer of this module): `useAuthConnection`
+  // reads this key on mount, and a mock missing it takes the shell down.
+  testAuthConnection: vi.fn(() =>
+    Promise.resolve({ ok: true, status: 'Connected', latencyMs: 10 }),
+  ),
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true })),
-  completeSetup: vi.fn(),
-  dismissSetupWizard: vi.fn(),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
+  provisionDevice: vi.fn(),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>
     Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),

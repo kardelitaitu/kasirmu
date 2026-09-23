@@ -74,8 +74,27 @@ export function frontmatterUpdated(absPath) {
  * Newest commit date per repo-relative path. The log is newest-first, so the
  * first sighting of a path wins. Returns an empty map when git is unavailable
  * or the clone is shallow — see the header note.
+ *
+ * MEMOIZED PER REPO. Each call reads a full `git log --name-only` over the
+ * whole history, which on this repository is thousands of commits; without a
+ * cache, callers that ask twice pay twice, and the test suite asked four times
+ * — slow enough (≈1.2 s per call) to trip vitest's 5 s per-test timeout
+ * whenever the machine was busy. The answer cannot change under a build, so it
+ * is computed once per process and reused. Laziness is preserved: nothing runs
+ * until the first call.
  */
+const gitDatesCache = new Map();
+
 export function gitDatesByPath(repo = REPO) {
+  const cached = gitDatesCache.get(repo);
+  if (cached) return cached;
+  const result = readGitDates(repo);
+  gitDatesCache.set(repo, result);
+  return result;
+}
+
+/** The uncached read behind `gitDatesByPath` — never call this directly. */
+function readGitDates(repo) {
   const git = (args) =>
     execFileSync('git', ['-C', repo, ...args], {
       encoding: 'utf8',

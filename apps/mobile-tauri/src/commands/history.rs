@@ -209,48 +209,29 @@ pub async fn export_eod_report(state: State<'_, AppState>) -> Result<EodReport, 
     let daily = store.export_daily_summary()?;
     let hourly = store.export_sales_by_hour()?;
 
-    // Payment breakdown.
-    let mut stmt = db.prepare(
-        "SELECT payment_method, COUNT(*) AS cnt, SUM(total_minor) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'completed'
-         GROUP BY payment_method
-         ORDER BY tot DESC",
-    )?;
-    let payment_rows: Vec<PaymentBreakdown> = stmt
-        .query_map([], |row| {
-            Ok(PaymentBreakdown {
-                method: row
-                    .get::<_, Option<String>>("payment_method")?
-                    .unwrap_or_else(|| "Unknown".into()),
-                count: row.get("cnt")?,
-                total: row.get("tot")?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(stmt);
+    // C5b: every money figure below comes from a Store query that shares ONE
+    // day definition with export_daily_summary above - the store-local business
+    // date (REP-03), completed sales only. They used to be built here from bare
+    // date(created_at) = date('now') clauses, which is the UTC day even for a
+    // +07:00 store, so the header and the body of one sheet could describe two
+    // different days. Mirrors the desktop bridge (C5).
+    let breakdown = store.export_eod_breakdown()?;
+    let voids = store.export_eod_voids()?;
 
-    // Void stats.
-    let mut void_stmt = db.prepare(
-        "SELECT COUNT(*) AS cnt, COALESCE(SUM(total_minor), 0) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'voided'",
-    )?;
-    let void_row: (i64, i64) = void_stmt.query_row([], |row| {
-        Ok((row.get::<_, i64>("cnt")?, row.get::<_, i64>("tot")?))
-    })?;
-    drop(void_stmt);
+    // Payment breakdown - the same rows the totals are summed from.
+    let payment_rows: Vec<PaymentBreakdown> = breakdown
+        .iter()
+        .map(|r| PaymentBreakdown {
+            method: r.payment_method.clone(),
+            count: r.sale_count,
+            total: r.total_minor,
+        })
+        .collect();
 
-    // Discount stats.
-    let mut discount_stmt = db.prepare(
-        "SELECT COUNT(*) AS cnt, COALESCE(SUM(total_minor), 0) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'completed' AND discount_percent > 0",
-    )?;
-    let discount_row: (i64, i64) = discount_stmt.query_row([], |row| {
-        Ok((row.get::<_, i64>("cnt")?, row.get::<_, i64>("tot")?))
-    })?;
-    drop(discount_stmt);
+    // Discount stats - a slice of the same completed sales, so discount_total
+    // is bounded by total_revenue by construction.
+    let discount_count: i64 = breakdown.iter().map(|r| r.discount_count).sum();
+    let discount_total: i64 = breakdown.iter().map(|r| r.discount_total_minor).sum();
 
     let total_sales = daily.len() as i64;
     let total_revenue: i64 = daily.iter().map(|r| r.total_minor).sum();
@@ -266,10 +247,10 @@ pub async fn export_eod_report(state: State<'_, AppState>) -> Result<EodReport, 
         total_revenue,
         currency,
         payment_breakdown: payment_rows,
-        void_count: void_row.0,
-        void_total: void_row.1,
-        discount_count: discount_row.0,
-        discount_total: discount_row.1,
+        void_count: voids.void_count,
+        void_total: voids.void_total_minor,
+        discount_count,
+        discount_total,
         hourly_breakdown: hourly,
     })
 }
@@ -430,48 +411,29 @@ pub async fn export_eod_report_scoped(
     let daily = store.export_daily_summary()?;
     let hourly = store.export_sales_by_hour()?;
 
-    // Payment breakdown.
-    let mut stmt = db.prepare(
-        "SELECT payment_method, COUNT(*) AS cnt, SUM(total_minor) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'completed'
-         GROUP BY payment_method
-         ORDER BY tot DESC",
-    )?;
-    let payment_rows: Vec<PaymentBreakdown> = stmt
-        .query_map([], |row| {
-            Ok(PaymentBreakdown {
-                method: row
-                    .get::<_, Option<String>>("payment_method")?
-                    .unwrap_or_else(|| "Unknown".into()),
-                count: row.get("cnt")?,
-                total: row.get("tot")?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(stmt);
+    // C5b: every money figure below comes from a Store query that shares ONE
+    // day definition with export_daily_summary above - the store-local business
+    // date (REP-03), completed sales only. They used to be built here from bare
+    // date(created_at) = date('now') clauses, which is the UTC day even for a
+    // +07:00 store, so the header and the body of one sheet could describe two
+    // different days. Mirrors the desktop bridge (C5).
+    let breakdown = store.export_eod_breakdown()?;
+    let voids = store.export_eod_voids()?;
 
-    // Void stats.
-    let mut void_stmt = db.prepare(
-        "SELECT COUNT(*) AS cnt, COALESCE(SUM(total_minor), 0) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'voided'",
-    )?;
-    let void_row: (i64, i64) = void_stmt.query_row([], |row| {
-        Ok((row.get::<_, i64>("cnt")?, row.get::<_, i64>("tot")?))
-    })?;
-    drop(void_stmt);
+    // Payment breakdown - the same rows the totals are summed from.
+    let payment_rows: Vec<PaymentBreakdown> = breakdown
+        .iter()
+        .map(|r| PaymentBreakdown {
+            method: r.payment_method.clone(),
+            count: r.sale_count,
+            total: r.total_minor,
+        })
+        .collect();
 
-    // Discount stats.
-    let mut discount_stmt = db.prepare(
-        "SELECT COUNT(*) AS cnt, COALESCE(SUM(total_minor), 0) AS tot
-         FROM sales
-         WHERE date(created_at) = date('now') AND status = 'completed' AND discount_percent > 0",
-    )?;
-    let discount_row: (i64, i64) = discount_stmt.query_row([], |row| {
-        Ok((row.get::<_, i64>("cnt")?, row.get::<_, i64>("tot")?))
-    })?;
-    drop(discount_stmt);
+    // Discount stats - a slice of the same completed sales, so discount_total
+    // is bounded by total_revenue by construction.
+    let discount_count: i64 = breakdown.iter().map(|r| r.discount_count).sum();
+    let discount_total: i64 = breakdown.iter().map(|r| r.discount_total_minor).sum();
 
     let total_sales = daily.len() as i64;
     let total_revenue: i64 = daily.iter().map(|r| r.total_minor).sum();
@@ -487,10 +449,10 @@ pub async fn export_eod_report_scoped(
         total_revenue,
         currency,
         payment_breakdown: payment_rows,
-        void_count: void_row.0,
-        void_total: void_row.1,
-        discount_count: discount_row.0,
-        discount_total: discount_row.1,
+        void_count: voids.void_count,
+        void_total: voids.void_total_minor,
+        discount_count,
+        discount_total,
         hourly_breakdown: hourly,
     })
 }

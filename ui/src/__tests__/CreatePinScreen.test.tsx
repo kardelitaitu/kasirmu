@@ -70,6 +70,72 @@ function clickSubmit() {
   fireEvent.click(screen.getByRole('button', { name: /create owner account/i }));
 }
 
+// ── Field-scoped invalid marks ──────────────────────────────────────
+//
+// The banner names the RULE ("All fields are required") but never said which
+// input broke it, and no input carried aria-invalid — so a screen-reader user
+// got a message with no control attached to it.
+
+describe('CreatePinScreen — a rejected submit marks the offending fields', () => {
+  it('marks only the empty field when one is missing', () => {
+    renderScreen();
+    fillField('Display Name', '   '); // the only empty one
+    fillField('Username', 'owner');
+    fillField('PIN', '1234');
+    fillField('Confirm PIN', '1234');
+    clickSubmit();
+
+    expect(screen.getByLabelText('Display Name')).toHaveAttribute('aria-invalid', 'true');
+    // The fields that were fine must NOT be accused.
+    expect(screen.getByLabelText('Username')).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByLabelText('PIN')).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByLabelText('Confirm PIN')).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('marks every empty field when several are missing', () => {
+    renderScreen();
+    fillField('Display Name', '   ');
+    fillField('Username', '   ');
+    fillField('PIN', '   ');
+    fillField('Confirm PIN', '1234');
+    clickSubmit();
+
+    expect(screen.getByLabelText('Display Name')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Username')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('PIN')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('marks both PIN fields on a mismatch, since either could be the typo', () => {
+    renderScreen();
+    fillAllFields({ 'Confirm PIN': '9999' });
+    clickSubmit();
+
+    expect(screen.getByLabelText('PIN')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Confirm PIN')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Display Name')).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('drops a field mark as soon as the user edits it', () => {
+    // A mark that outlives the failure tells a user their corrected value is
+    // still wrong; nothing re-runs validation on its own.
+    renderScreen();
+    fillAllFields({ 'Confirm PIN': '9999' });
+    clickSubmit();
+    const pin = screen.getByLabelText('PIN');
+    const confirm = screen.getByLabelText('Confirm PIN');
+    expect(pin).toHaveAttribute('aria-invalid', 'true');
+
+    fillField('Confirm PIN', '1234');
+
+    expect(confirm).not.toHaveAttribute('aria-invalid');
+    // Editing one field clears only its own mark.
+    fillAllFields({ 'Confirm PIN': '9999' });
+    clickSubmit();
+    fillField('PIN', '4321');
+    expect(pin).not.toHaveAttribute('aria-invalid');
+    expect(confirm).toHaveAttribute('aria-invalid', 'true');
+  });
+});
 describe('CreatePinScreen', () => {
   describe('validation', () => {
     it('shows error when all fields are whitespace-only', () => {

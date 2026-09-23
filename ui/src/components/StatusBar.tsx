@@ -163,6 +163,14 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
     if (s.state === 'checking') {
       return requiredLocalized(l10n, 'statusbar-checking-msg', { name });
     }
+    // "Never configured" is its own message, not the offline one. The probe
+    // answers it distinctly (test_sync_connection returns
+    // "No server URL configured" with no latency) and the hook carries that
+    // distinction into its own state; rendering it as Offline told the
+    // operator a server was down when none had ever been set up.
+    if (s.state === 'unconfigured') {
+      return requiredLocalized(l10n, 'statusbar-sync-unconfigured-msg', { name });
+    }
     if (s.state === 'disconnected') {
       return requiredLocalized(l10n, 'statusbar-offline-msg', { name });
     }

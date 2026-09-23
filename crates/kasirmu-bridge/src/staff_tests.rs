@@ -142,6 +142,11 @@ fn staff_member_dto_debug() {
         id: "u1".into(),
         username: "jdoe".into(),
         display_name: "John Doe".into(),
+        avatar: None,
+        phone: None,
+        // Live rows never carry a trash stamp; the trash read sets it after
+        // the fact, which is how the screen tells the two lists apart.
+        deleted_at: None,
         role_id: "r1".into(),
         role_name: "Manager".into(),
         is_active: true,
@@ -160,6 +165,9 @@ fn staff_member_dto_serialize() {
         id: "u2".into(),
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
+        avatar: Some("abcdef0123456789".into()),
+        phone: Some("+14155550123".into()),
+        deleted_at: None,
         role_id: "r2".into(),
         role_name: "Cashier".into(),
         is_active: false,
@@ -170,6 +178,10 @@ fn staff_member_dto_serialize() {
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["username"], "asmith");
     assert_eq!(json["is_active"], false);
+    // The list carries each member's avatar hash as a plain string so the
+    // roster can render a photo; null is the "no photo" case, not an omission.
+    assert_eq!(json["avatar"], "abcdef0123456789");
+    assert_eq!(json["phone"], "+14155550123");
 }
 
 // ── RoleDto ─────────────────────────────────────────────────────────
@@ -181,6 +193,7 @@ fn role_dto_debug() {
         name: "Admin".into(),
         description: "Full access".into(),
         permissions: vec![],
+        deleted_at: None,
         // preset-guard fields (7948344e): a preset-owned builtin row with
         // no references — the common default shape.
         is_builtin: true,
@@ -199,6 +212,7 @@ fn role_dto_serialize() {
         name: "Viewer".into(),
         description: String::new(),
         permissions: vec![],
+        deleted_at: None,
         is_builtin: false,
         reference_count: 0,
         holder_count: 0,
@@ -1545,4 +1559,421 @@ async fn update_staff_scoped_allows_manager_updating_staff() {
     assert_eq!(result.username, "cashier");
     assert_eq!(result.display_name, "Updated Cashier");
     assert_eq!(result.role_id, "role-lite");
+}
+
+// ── C1.1: the staff cap's REACTIVATION door ─────────────────────────
+//
+// `create_staff_scoped` caps active team members; switching a member back ON
+// adds exactly the same row to exactly the same count, so it walks the same
+// gate. These fixtures seed the state the create leg produces with SQL (the
+// established shape in this file) so the reactivation gate is pinned without
+// depending on the seeded licence row: the count is what the gate reads.
+//
+// The product sequence this closes is deactivate -> create -> reactivate. Each
+// step is individually allowed — deactivating frees the slot and creating fills
+// it — and only the last one exceeds the plan.
+
+/// A second staff member, inactive, so a reactivation has a target while the
+/// cap is already full.
+fn insert_inactive_staff(conn: &rusqlite::Connection, id: &str) {
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES (?1, ?1, 'hash', 'Dana', 'role-lite', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        rusqlite::params![id],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn scoped_update_staff_reactivation_blocked_at_free_tier_staff_limit() {
+    // Free allows 1 active staff and the owner is exempt. `user-cashier` is
+    // active (count 1, at the cap); `user-dana` is inactive, which is what a
+    // deactivate-then-create round leaves behind. Reactivating dana is the
+    // over-cap write and must be refused with the SAME error create returns.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    insert_inactive_staff(&conn, "user-dana");
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    let err = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-dana".into(),
+            username: "user-dana".into(),
+            display_name: "Dana".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        &ctx,
+    )
+    .await
+    .expect_err("reactivating on a full Free plan must be refused");
+    match err {
+        BridgeError::Core { sub_kind, message } => {
+            assert!(matches!(
+                sub_kind,
+                kasirmu_core::CoreErrorKind::SubscriptionLimitExceeded
+            ));
+            assert!(message.contains("allows maximum 1 staff users"));
+        }
+        other => panic!("expected subscription-limit error, got {other:?}"),
+    }
+
+    // Nothing moved: the refused reactivation must not have activated the row.
+    let db = ctx.lock_global().await;
+    assert!(
+        !Store::new(&db)
+            .get_user("user-dana")
+            .unwrap()
+            .expect("dana")
+            .is_active
+    );
+    assert_eq!(Store::new(&db).count_staff_users().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn scoped_update_staff_reactivation_allowed_with_headroom() {
+    // The fix must not over-block: with room on the plan the same call
+    // succeeds, which is what makes the refusal above a cap verdict rather
+    // than a blanket refusal of reactivations.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    insert_inactive_staff(&conn, "user-dana");
+    // Plus allows 5 staff; only the cashier is active.
+    seed_subscription_tier(&conn, "plus");
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    let result = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-dana".into(),
+            username: "user-dana".into(),
+            display_name: "Dana".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        &ctx,
+    )
+    .await;
+    let dto = match result {
+        Ok(dto) => dto,
+        // Release: the seeded Plus row carries the bootstrap sentinel and does
+        // not verify, so the gate refuses at the signature before the cap is
+        // consulted and there is no DTO to read.
+        Err(err) if !seeded_row_reaches_a_paid_tier() => {
+            let _ = err;
+            return;
+        }
+        Err(err) => panic!("reactivating under the cap must succeed: {err:?}"),
+    };
+    assert!(dto.is_active);
+    let db = ctx.lock_global().await;
+    assert_eq!(Store::new(&db).count_staff_users().unwrap(), 2);
+}
+
+#[tokio::test]
+async fn scoped_update_staff_edit_of_an_active_member_is_not_blocked_at_the_cap() {
+    // Requirement that keeps the fix usable: an edit of an already-active
+    // member does not grow the counted set, so a plan at its cap must still
+    // accept it. Only the INACTIVE -> ACTIVE transition is gated.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    // user-cashier is active and the Free plan (limit 1) is already full.
+    let dto = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier Renamed".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        &ctx,
+    )
+    .await
+    .expect("an active member's edit must not be refused at the cap");
+    assert_eq!(dto.display_name, "Cashier Renamed");
+    assert!(dto.is_active);
+
+    // And a deactivation at the cap is likewise accepted — it shrinks the set.
+    let dto = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier Renamed".into(),
+            role_id: "role-lite".into(),
+            is_active: false,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        &ctx,
+    )
+    .await
+    .expect("deactivating must not be refused at the cap");
+    assert!(!dto.is_active);
+}
+
+#[tokio::test]
+async fn scoped_update_staff_reactivation_after_restore_is_refused_at_the_cap() {
+    // The trash leg: a restore correctly returns the member INACTIVE, so the
+    // reactivation that follows is the step that has to be gated. Restoring
+    // and then switching back on must not be a way around the cap.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    delete_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .expect("an inactive member may be trashed");
+    let restored = restore_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .expect("an in-window restore must succeed");
+    assert!(
+        !restored.is_active,
+        "restore returns the member inactive — that is the invariant that makes the next step the gated one"
+    );
+
+    // Fill the Free slot with a different active member.
+    let db = ctx.lock_global().await;
+    Store::new(&db)
+        .create_user("dana", "hash", "Dana", "role-lite")
+        .unwrap();
+    assert_eq!(Store::new(&db).count_staff_users().unwrap(), 1);
+    drop(db);
+
+    let err = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        &ctx,
+    )
+    .await
+    .expect_err("reactivating after a restore on a full plan must be refused");
+    assert!(
+        matches!(
+            &err,
+            BridgeError::Core {
+                sub_kind: kasirmu_core::CoreErrorKind::SubscriptionLimitExceeded,
+                ..
+            }
+        ),
+        "expected the subscription-limit error, got {err:?}"
+    );
+}
+
+// ── Trash: soft delete, 90-day retention ────────────────────────────
+//
+// Called in the BRIDGE shape (ctx first) rather than through a
+// `desktop_shaped` adapter: those adapters exist so the relocated desktop
+// call sites read byte-identically, and these commands have no desktop
+// predecessor. The shell shims are thin enough to read against the
+// signature directly.
+
+/// A second session for a caller other than the one `scoped_state_with_token`
+/// seeded, so one caller can be denied what the other is granted.
+fn insert_session(bridge: &TestBridge, token: &str, user_id: &str, role_id: &str) {
+    bridge.sessions().write().unwrap().insert(
+        token.into(),
+        SessionContext::new(
+            user_id.into(),
+            role_id.into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+}
+
+/// Put the seeded cashier in the state deletion requires (inactive).
+fn deactivate_cashier(conn: &rusqlite::Connection) {
+    conn.execute(
+        "UPDATE users SET is_active = 0 WHERE id = 'user-cashier'",
+        [],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_requires_staff_delete() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    // role-lite carries sales:view only, so the cashier holds no staff:delete.
+    insert_session(&bridge, "cashier-token", "user-cashier", "role-lite");
+    let ctx = bridge.ctx();
+
+    let denied = delete_staff_scoped(&ctx, "user-owner", "cashier-token").await;
+    assert!(matches!(denied, Err(BridgeError::PermissionDenied(_))));
+    // And nothing moved: a denied command must not have deleted as a side effect.
+    assert!(
+        list_staff_trash_scoped(&ctx, "owner-token")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_refuses_a_member_who_is_still_active() {
+    // soft_delete_user owns this rule; the command must not paper over it with
+    // a friendlier error, and the UI only offers the action on an inactive card
+    // for the same reason.
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    let err = delete_staff_scoped(&ctx, "user-cashier", "owner-token").await;
+    // The typed Validation reaches the wire as a Core error carrying its
+    // message, so the words core chose are what a caller can assert against.
+    assert!(
+        matches!(
+            &err,
+            Err(BridgeError::Core { message, .. }) if message.contains("deactivate this member")
+        ),
+        "expected the active-account refusal, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn scoped_delete_staff_trashes_the_member_and_ends_their_session() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    insert_session(&bridge, "cashier-token", "user-cashier", "role-lite");
+    let ctx = bridge.ctx();
+
+    delete_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+
+    // Off the roster and in the trash, carrying the instant it entered.
+    let roster = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
+    assert!(roster.iter().all(|m| m.id != "user-cashier"));
+    let trash = list_staff_trash_scoped(&ctx, "owner-token").await.unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, "user-cashier");
+    assert!(trash[0].deleted_at.is_some());
+    assert!(!trash[0].is_active);
+
+    // The eviction ends the member's access on THIS host at once, rather than
+    // at the next 30s account revalidation.
+    assert!(matches!(
+        ctx.resolve_session("cashier-token"),
+        Err(BridgeError::InvalidSession)
+    ));
+    // The caller who did the deleting keeps their own session.
+    assert!(ctx.resolve_session("owner-token").is_ok());
+}
+
+#[tokio::test]
+async fn scoped_restore_staff_returns_them_inactive() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    deactivate_cashier(&conn);
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+    delete_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+
+    let restored = restore_staff_scoped(&ctx, "user-cashier", "owner-token")
+        .await
+        .unwrap();
+    // Back on the roster INACTIVE — restoring must not re-grant access.
+    assert!(!restored.is_active);
+    assert!(restored.deleted_at.is_none());
+    let roster = list_staff_scoped("owner-token".into(), &ctx).await.unwrap();
+    assert!(roster.iter().any(|m| m.id == "user-cashier"));
+    assert!(
+        list_staff_trash_scoped(&ctx, "owner-token")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn scoped_role_trash_round_trip_keeps_the_row_restorable() {
+    let conn = crate::testing::temp_conn();
+    seed_global_users(&conn);
+    // An authored role nothing references: soft_delete_role refuses a preset id
+    // and any role a holder still points at, which is what keeps the trash safe
+    // to purge by DELETE.
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-temp', 'Temp', 'throwaway', '[]',
+                 '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let bridge =
+        scoped_state_with_token(conn, "owner-token", "user-owner", "role-owner", "store-a");
+    let ctx = bridge.ctx();
+
+    crate::staff::delete_role_scoped(&ctx, "role-temp", "owner-token")
+        .await
+        .unwrap();
+    assert!(
+        list_roles_scoped("owner-token".into(), &ctx)
+            .await
+            .unwrap()
+            .iter()
+            .all(|r| r.id != "role-temp")
+    );
+    let trash = list_role_trash_scoped(&ctx, "owner-token").await.unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, "role-temp");
+    assert!(trash[0].deleted_at.is_some());
+
+    let restored = restore_role_scoped(&ctx, "role-temp", "owner-token")
+        .await
+        .unwrap();
+    assert_eq!(restored.id, "role-temp");
+    assert!(restored.deleted_at.is_none());
+    assert!(
+        list_roles_scoped("owner-token".into(), &ctx)
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.id == "role-temp")
+    );
 }

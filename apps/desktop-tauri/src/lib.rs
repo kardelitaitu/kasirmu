@@ -42,6 +42,12 @@ pub mod lan_server;
 /// merchants run their own scripts against this register. Off by
 /// default; enabled via Settings → Local API.
 pub mod local_api;
+/// Boot-time consumer of a pending restore request (C8, slice S4a).
+///
+/// Runs from the setup closure below, BEFORE [`state::AppState::new`] opens the
+/// database — the only moment a restore swap is safe, because nothing has yet
+/// cloned the connection into the detached daemons that cannot be forced closed.
+mod recovery;
 /// Global application state (DB, kernel, sync daemon, registry).
 pub mod state;
 
@@ -108,6 +114,50 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── Pending restore request (C8, slice S4a) ───────────────────
+            // Consumed BEFORE `AppState::new` below, which opens the database
+            // and runs migrations. This is the only moment the swap is safe:
+            // the live `Arc<Mutex<Connection>>` is cloned into daemons spawned
+            // detached with no handle registry, so a later in-process swap
+            // would fight every one of them.
+            //
+            // A failed recovery must never become a failure to start. The
+            // module returns an outcome rather than an error, every outcome is
+            // logged here, and a refusal leaves the request in place for an
+            // operator while the app boots on the existing database.
+            match state::resolve_db_path(app.handle()) {
+                Ok(db_path) => match recovery::consume_pending_restore(&db_path) {
+                    recovery::Outcome::NothingPending => {}
+                    recovery::Outcome::AlreadyClaimed => {
+                        tracing::warn!(
+                            db = %db_path.display(),
+                            "a restore request is pending but another boot holds the lock; leaving it alone"
+                        );
+                    }
+                    recovery::Outcome::Restored { candidate, snapshot } => {
+                        tracing::info!(
+                            db = %db_path.display(),
+                            candidate = %candidate.display(),
+                            snapshot = %snapshot.display(),
+                            "pending restore request consumed — the database was replaced before it was opened"
+                        );
+                    }
+                    recovery::Outcome::Refused { reason } => {
+                        tracing::error!(
+                            db = %db_path.display(),
+                            reason = %reason,
+                            "a pending restore request was refused; booting on the existing database and leaving the request in place"
+                        );
+                    }
+                },
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        "cannot resolve the database path to check for a pending restore request; booting normally"
+                    );
+                }
+            }
+
             let state = AppState::new(app.handle())
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
@@ -916,6 +966,7 @@ pub fn run() {
             commands::data::create_backup,
             commands::data::create_backup_scoped,
             commands::data::export_data,
+            commands::data::export_data_without_session,
             commands::data::import_preview,
             commands::email::send_test_report,
             commands::email::get_report_schedule,
@@ -934,6 +985,11 @@ pub fn run() {
             commands::staff::update_role_scoped,
             commands::staff::delete_role_scoped,
             commands::staff::list_role_holders_scoped,
+            commands::staff::delete_staff_scoped,
+            commands::staff::restore_staff_scoped,
+            commands::staff::list_staff_trash_scoped,
+            commands::staff::restore_role_scoped,
+            commands::staff::list_role_trash_scoped,
             commands::staff::create_staff_scoped,
             commands::staff::update_staff_scoped,
             commands::staff::get_staff_profile_scoped,
@@ -1085,8 +1141,9 @@ pub fn run() {
             // registration; see review finding F-004.
             commands::settings::set_setting,
             commands::setup::get_enabled_features,
-            commands::setup::complete_setup,
-            commands::setup::dismiss_setup_wizard,
+            commands::setup::get_preset_features,
+            commands::setup::get_first_run_state,
+            commands::setup::provision_device,
             commands::products::list_products_scoped,
             commands::products::list_warehouse_products_at_location,
             commands::products::create_product_scoped,
@@ -1113,7 +1170,6 @@ pub fn run() {
             commands::promotions::apply_promotion_scoped,
             commands::promotions::get_sale_promotions_scoped,
             commands::setup::seed_default_roles_scoped,
-            commands::setup::get_setup_status,
             commands::tax::list_tax_rates_scoped,
             commands::tax::list_tax_rate_rounding_modes_scoped,
             commands::tax::create_tax_rate_scoped,
@@ -1206,6 +1262,8 @@ pub fn run() {
             commands::desktop_link::link_device_google,
         commands::desktop_link::link_device_email_request,
         commands::desktop_link::link_device_email_consume,
+        commands::desktop_link::start_device_pairing,
+        commands::desktop_link::poll_device_pairing,
         commands::license::get_machine_id,
             commands::license::get_machine_id_scoped,
             commands::license::get_hardware_fingerprint,

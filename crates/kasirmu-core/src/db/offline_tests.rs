@@ -3,8 +3,17 @@ use crate::inventory::{CANONICAL_DEFAULT_LOCATION_UUID, LocationId};
 use crate::migrations;
 use rusqlite::Connection;
 
+/// A provisioned store database.
+///
+/// ADR #56 §2.6 stopped the baseline migration seeding the `Default Store`
+/// location, the five `default-*` workspaces and the BOOTSTRAP_FREE
+/// subscription — `provision_device` creates them now, in one transaction.
+/// These tests exercise layers BELOW provisioning, so they run against what
+/// provisioning produces. See `migrations::seed_provisioned_baseline`.
 fn fresh() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
@@ -243,6 +252,100 @@ fn mark_offline_synced_sets_timestamp() {
     let item = all.into_iter().find(|i| i.id == "oq-2").unwrap();
     assert_eq!(item.status, OfflineQueueStatus::Synced);
     assert!(item.synced_at.is_some(), "synced_at should be populated");
+}
+
+// ── Guarded transition (compare-and-set) ────────────────────────
+
+/// The marking must JOIN a caller-owned transaction, never open its own.
+///
+/// SQLite has no nested `BEGIN`, and the semantic is the audit-log one: an
+/// action whose transaction rolled back did not happen, so the queue row
+/// must not read `synced` afterwards. If `mark_offline_synced` opened (or
+/// autocommitted) its own transaction, the rollback below would leave the
+/// row `synced` and this test would fail — which is the point.
+#[test]
+fn mark_offline_synced_joins_caller_transaction() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).mark_offline_synced("oq-1").unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+/// A second mark of an already-synced row must not touch it.
+///
+/// `oq-3` is seeded `synced` with a FIXED `synced_at`. A blind
+/// `UPDATE ... WHERE id = ?1` matches the row and rewrites `synced_at` to
+/// now, so the timestamp assertion below fails against the pre-CAS code.
+#[test]
+fn mark_offline_synced_is_noop_for_already_synced_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    // Idempotent by contract: `mark_offline_synced_is_idempotent` in
+    // platform/sync requires a repeat call to be Ok, not an error.
+    store(&conn).mark_offline_synced("oq-3").unwrap();
+
+    let (status, synced_at): (String, String) = conn
+        .query_row(
+            "SELECT status, synced_at FROM offline_queue WHERE id = 'oq-3'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "synced");
+    assert_eq!(
+        synced_at, "2025-01-01T11:01:00.000Z",
+        "a repeat mark must not re-stamp an already-synced row"
+    );
+}
+
+/// A dead-lettered row must never be resurrected into `synced`.
+///
+/// This is the data-losing case: `failed` is terminal (push-side failed
+/// items are not requeued), so letting a stale caller flip it to `synced`
+/// would erase the only record that the mutation never landed. `oq-4` is
+/// seeded `failed` with a retry count and an error; a blind update flips it,
+/// so every assertion here fails against the pre-CAS code.
+#[test]
+fn mark_offline_synced_refuses_to_resurrect_dead_lettered_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    store(&conn).mark_offline_synced("oq-4").unwrap();
+
+    let (status, retry_count, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-4'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry_count, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
 }
 
 // ── Mark failed ─────────────────────────────────────────────────
@@ -1245,5 +1348,232 @@ fn rolled_back_settlement_enqueues_nothing() {
     assert!(
         !s.has_pending_outbox_row_for_sale("complete_sale", &id)
             .unwrap()
+    );
+}
+// ── C3 S2: the origin terminal and the effect key ───────────────
+
+/// The origin must survive the local round trip: enqueued into the row and
+/// read back by every SELECT shape, including the receipt writers.
+///
+/// The whole point of slice S2 is that the value is not merely held in the
+/// struct — a dropped column in any INSERT/SELECT pair would make it
+/// round-trip locally and vanish at the next hop.
+#[test]
+fn offline_item_origin_round_trips_through_the_row() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    // A fresh item has no recorded origin — None, never a default.
+    assert_eq!(item.origin_terminal_id, None);
+
+    item.origin_terminal_id = Some("terminal-abc".into());
+    conn.execute(
+        "UPDATE offline_queue SET origin_terminal_id = ?1 WHERE id = ?2",
+        params!["terminal-abc", item.id],
+    )
+    .unwrap();
+
+    // Read back through the tenant-scoped pending list the push path uses.
+    let read = s.list_pending_offline_for_tenant("default").unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].origin_terminal_id.as_deref(), Some("terminal-abc"));
+
+    // And through the all-items list, the other SELECT shape.
+    let all = s.list_all_offline().unwrap();
+    assert_eq!(all[0].origin_terminal_id.as_deref(), Some("terminal-abc"));
+}
+
+/// An item whose origin is never set must come back `None`, and the column
+/// must be SQL NULL — not an empty string, and not a default.
+#[test]
+fn offline_item_without_origin_reads_back_none_and_stays_null() {
+    let conn = fresh();
+    let s = store(&conn);
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(item.origin_terminal_id, None);
+
+    let read = s.list_pending_offline_for_tenant("default").unwrap();
+    assert_eq!(read[0].origin_terminal_id, None);
+
+    // The stored value is NULL, not "". A default or an empty string here
+    // would defeat the future reader, which must tell "unknown" from a
+    // terminal id that happens to be blank.
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, None, "an unset origin must be SQL NULL");
+}
+
+/// C3 S5a — THE PRODUCER SIDE. With a paired terminal, an enqueue stamps
+/// THIS install's id, which is the only thing that makes the skip gate in
+/// `platform/sync/src/queue.rs` fire. Without this, that gate is dormant and
+/// a terminal re-applies its own pushed sale — the double deduction.
+#[test]
+fn enqueue_stamps_the_paired_terminal_id_as_origin() {
+    let conn = fresh();
+    let s = store(&conn);
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-42").unwrap();
+
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(
+        item.origin_terminal_id.as_deref(),
+        Some("term-42"),
+        "the enqueued item carries this install's terminal id"
+    );
+
+    // The ROW's value, not merely the struct's — a column dropped from the
+    // INSERT would round-trip in memory and vanish at the next hop.
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("term-42"));
+}
+
+/// The sale settlement writes through `enqueue_offline_in_tx`, so the stamp
+/// must reach THAT INSERT too: a miss here would leave the gate dormant for
+/// exactly the mutation the double deduction was observed on.
+#[test]
+fn enqueue_in_tx_stamps_the_paired_terminal_id_as_origin() {
+    let conn = fresh();
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-tx").unwrap();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-1\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("term-tx"));
+}
+
+/// The whole point, end to end on the real settlement door: the outbox row a
+/// completed sale leaves behind must name the terminal that produced it.
+#[test]
+fn settled_sale_outbox_row_carries_this_install_as_origin() {
+    let conn = fresh();
+    seed_item(&conn, "ORIGIN-A", 5);
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-door").unwrap();
+    let s = store(&conn);
+    let sale = sale_with_one_line("ORIGIN-A", 1, 500);
+
+    s.complete_sale_deduction(&sale, None, &[split(500, None)], "user-a", None)
+        .unwrap();
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored.as_deref(),
+        Some("term-door"),
+        "the outbox row names the terminal that produced the sale"
+    );
+}
+
+/// An UNPAIRED install must behave exactly as it does today: no id, no stamp,
+/// SQL NULL. A guess here would make the gate suppress a legitimate deduction.
+#[test]
+fn enqueue_without_a_paired_terminal_leaves_the_origin_null() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(item.origin_terminal_id, None);
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, None, "an unpaired install writes SQL NULL");
+}
+
+/// The receipt writers must carry the effect key through the same
+/// INSERT/SELECT pair, and an absent effect must stay NULL.
+#[test]
+fn applied_receipt_records_the_effect_key() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // A caller that knows the effect records it.
+    s.mark_remote_item_applied_with_effect("item-1", "complete_sale", Some("effect-1"))
+        .unwrap();
+    // A caller that does not passes None — and that must be NULL, which the
+    // PARTIAL index deliberately ignores so these rows cannot collide.
+    s.mark_remote_item_applied("item-2", "complete_sale")
+        .unwrap();
+
+    let key: Option<String> = conn
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            params!["item-1"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(key.as_deref(), Some("effect-1"));
+
+    let absent: Option<String> = conn
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            params!["item-2"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(absent, None, "an unrecorded effect must be SQL NULL");
+
+    // The effect is constrained once by the PARTIAL unique index. The writer
+    // is `INSERT OR IGNORE`, so a repeated effect key is absorbed (Ok) rather
+    // than raised — what must hold is that no second row lands.
+    s.mark_remote_item_applied_with_effect("item-3", "complete_sale", Some("effect-1"))
+        .unwrap();
+    let effect_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sync_applied_items WHERE effect_key = ?1",
+            params!["effect-1"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(effect_rows, 1, "one effect must be recorded exactly once");
+
+    // The NULL effect keys are deliberately NOT constrained by the partial
+    // index, so a second caller that records no effect still lands.
+    s.mark_remote_item_applied("item-4", "complete_sale")
+        .unwrap();
+    let null_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sync_applied_items WHERE effect_key IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        null_rows, 2,
+        "NULL effects must not collide with each other"
     );
 }

@@ -85,29 +85,18 @@ pub use kasirmu_bridge::settings::{
 // absent means "leave the stored mode alone", because the restaurant POS card
 // sends ten of the eleven (T4-2 in `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md`).
 
-// ── Get receipt settings ──────────────────────────────────
+// ── Get receipt settings: the unscoped door is RETIRED (C17) ─────
+//
+// `get_receipt_settings` used to sit here as class-1 debt — a registered door
+// that resolved no session at all. Its session-scoped twin below was already
+// registered, no shipped UI file named the unscoped door (`ui/src/api/settings.ts`
+// calls only `get_receipt_settings_scoped`), and the IPC parity gate listed it
+// under `tablet-unrequested` as named by neither side. It was removed by
+// DELETION, the same move T11 made for `settings::set_hardware_settings` and
+// C17 slice 1 made for the three unscoped branding setters: the ratchet pays
+// debt by retiring the door, not by excusing it.
 
-#[command]
-/// Get receipt settings.
-///
-/// ADR #49: the body is the bridge's, and this delegation is a pure identity
-/// rather than a merge. `kasirmu_bridge::settings::get_receipt_settings` locks
-/// `ctx.db` — which `AppState::bridge_ctx` binds to this same `state.db` — and
-/// calls the same `run_get_receipt_settings` in the same order, and the bridge
-/// documents its twin as "gate-free exactly as in the shell". So delegating adds
-/// no gate and removes none. `run_get_receipt_settings` stays below as this
-/// suite's seam, because 25 of this file's 50 tests drive the `run_*` helpers
-/// rather than the doors (measured 2026-09-16, not carried over).
-pub async fn get_receipt_settings(
-    state: State<'_, AppState>,
-) -> Result<ReceiptSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::settings::get_receipt_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
-/// Business logic for `get_receipt_settings` (extracted for testing). The body
+/// Business logic for the receipt-settings reads (extracted for testing). The body
 /// is the bridge's; what is tablet-specific is the error type, converted by the
 /// `From<BridgeError> for AppError` seam in `authz.rs` that landed with T1.
 fn run_get_receipt_settings(conn: &rusqlite::Connection) -> Result<ReceiptSettingsDto, AppError> {
@@ -132,23 +121,14 @@ fn run_set_receipt_settings(
 // `StoreSettingsDto` comes from `kasirmu_bridge::settings`; its six camelCase keys
 // are pinned by `wire_pin_store_settings_carries_every_key_the_renderer_declares`.
 
-// ── Get store settings ────────────────────────────────────────
+// ── Get store settings: the unscoped door is RETIRED (C17) ───────
+//
+// Same retirement as `get_receipt_settings` above, in the same pass: the
+// session-scoped twin below was already registered and no shipped UI file named
+// this one (`ui/src/api/settings.ts` calls only `get_store_settings_scoped`).
+// It was class-1 debt whose only measurable effect was to hold the ceiling up.
 
-#[command]
-/// Get store settings.
-///
-/// ADR #49: the body is the bridge's, and as with `get_receipt_settings` the
-/// delegation is a pure identity — same `ctx.db` (bound to this `state.db`),
-/// same `run_get_store_settings`, same order, and the bridge's twin is
-/// documented "gate-free exactly as in the shell".
-pub async fn get_store_settings(state: State<'_, AppState>) -> Result<StoreSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::settings::get_store_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
-
-/// Business logic for `get_store_settings` (extracted for testing).
+/// Business logic for the store-settings reads (extracted for testing).
 fn run_get_store_settings(conn: &rusqlite::Connection) -> Result<StoreSettingsDto, AppError> {
     Ok(kasirmu_bridge::settings::run_get_store_settings(conn)?)
 }
@@ -169,21 +149,10 @@ fn run_set_store_settings(
 //
 // `CreditSettingsDto` comes from `kasirmu_bridge::settings`.
 
-#[command]
-/// Get credit settings.
-///
-/// ADR #49: the body is the bridge's. Its twin
-/// `kasirmu_bridge::settings::get_credit_settings` is documented there as
-/// "gate-free exactly as in the shell", so delegating adds no gate and removes
-/// none — what stood here was a byte-identical second copy of that body.
-pub async fn get_credit_settings(
-    state: State<'_, AppState>,
-) -> Result<CreditSettingsDto, AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::settings::get_credit_settings(&ctx)
-        .await
-        .map_err(Into::into)
-}
+// The unscoped `get_credit_settings` that sat here is RETIRED (C17 slice 2),
+// by the same deletion as its two siblings above: `get_credit_settings_scoped`
+// was already registered, derives identity from the session, and is the only
+// form `ui/src/api/settings.ts` names.
 
 // ── Credit sale DTO ──────────────────────────────────────────────
 //

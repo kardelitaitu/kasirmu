@@ -7,7 +7,7 @@
  * workspace name map for the table column), the row actions (edit → drawer,
  * deactivate/restore with the STAFF-10 confirm, impersonation) and the tier
  * cap banner. The heavy UI subtrees live in `components/`:
- * - `StaffListTable` — the staff table.
+ * - `StaffRoster` — the stat row, filter toolbar and member cards.
  * - `StaffDetailDrawer` — the add/edit modal: identity + PIN fields, the
  *   five-role taxonomy selector with permission chips, the ADR #35 D6
  *   profile fieldset, and the embedded `RoleAssignmentMatrix`.
@@ -26,7 +26,9 @@ import {
   listStaffScoped,
   listRolesScoped,
   updateStaffScoped,
+  deleteStaffScoped,
   impersonateUserScoped,
+  isStaffQuotaLimitError,
   type StaffMemberDto,
   type RoleDto,
 } from '@/api/staff';
@@ -49,15 +51,27 @@ import { hasGrantedPermission, passesGate } from '@/registries/page-registry';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { StaffListTable } from './components/StaffListTable';
+import { StaffRoster } from './components/StaffRoster';
+import { StaffTrashPanel } from './components/StaffTrashPanel';
 import { StaffDetailDrawer } from './components/StaffDetailDrawer';
 import { StaffManagementFooter } from './components/StaffManagementFooter';
 import RoleAuthoringPanel, { type RoleAuthoringPanelHandle } from './components/RoleAuthoringPanel';
 import { StaffTabs } from './components/StaffTabs';
-import { STAFF_TAB_IDS, type StaffTab } from './components/staffTabsModel';
+import { STAFF_TAB_IDS, STAFF_TAB_ORDER, type StaffTab } from './components/staffTabsModel';
 import './StaffManagementScreen.css';
 
 // ── Component ───────────────────────────────────────────────────────
+
+/**
+ * The panel slide classes, spelled out rather than interpolated from `slideFrom`.
+ * screenExtraction.test.ts walks this file for the literal class name to prove
+ * every rule in the stylesheet is reachable, and an interpolated suffix is
+ * invisible to that walk — the two rules then read as dead classes.
+ */
+const PANEL_SLIDE_CLASS: Record<'left' | 'right', string> = {
+  right: 'staff-mgmt-tabpanel--from-right',
+  left: 'staff-mgmt-tabpanel--from-left',
+};
 
 /** Staff management screen — manage user accounts, roles, PIN codes, and workspace assignments. */
 export default function StaffManagementScreen() {
@@ -89,6 +103,19 @@ export default function StaffManagementScreen() {
     session?.role_name,
     session?.permissions,
   );
+  /**
+   * The Trash tab, gated the same way — `passesGate` with the role and
+   * permission the `trash` route registration declares. `staff:delete` is
+   * owner-only by preset, so in practice this is the Owner; a custom role that
+   * carries the key reaches it too, which is why the gate is a permission and
+   * not a role-name comparison.
+   */
+  const canDeleteStaff = passesGate(
+    'manager',
+    'staff:delete',
+    session?.role_name,
+    session?.permissions,
+  );
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [roles, setRoles] = useState<RoleDto[]>([]);
   /**
@@ -108,6 +135,22 @@ export default function StaffManagementScreen() {
   const [confirmTarget, setConfirmTarget] = useState<StaffMemberDto | null>(null);
   /** STAFF-10: true while the confirmed deactivation request is in flight. */
   const [deactivating, setDeactivating] = useState(false);
+  /** The inactive member awaiting deletion confirmation. */
+  const [deleteTarget, setDeleteTarget] = useState<StaffMemberDto | null>(null);
+  /** True while the confirmed delete request is in flight. */
+  const [deleting, setDeleting] = useState(false);
+  /**
+   * C1.1: the last reactivation was refused by the tier's staff-user limit.
+   *
+   * The cap is enforced on the inactive -> active transition as well as on
+   * create (core `update_user_in_tx` vetoes the post-update count), so this
+   * branch is REACHABLE from the roster's power button. It gets the treatment
+   * the drawer's create form already gives the identical rejection — the
+   * localized quota message plus an upgrade CTA — rather than the generic
+   * save-failed toast, which would tell the operator nothing about why an
+   * account they can see refuses to switch on.
+   */
+  const [quotaBlocked, setQuotaBlocked] = useState(false);
   const [showModal, setShowModal] = useState(false);
   /** The member the drawer edits; `null` while it creates. */
   const [editingMember, setEditingMember] = useState<StaffMemberDto | null>(null);
@@ -176,27 +219,59 @@ export default function StaffManagementScreen() {
     // deep link) opens on Staff. The query is stripped because a route hash
     // may carry one — AppShell does the same before matching a page.
     const route = window.location.hash.replace(/^#\//, '').split('?')[0];
-    return route === 'roles' ? 'roles' : 'staff';
+    if (route === 'roles') return 'roles';
+    // The trash route's own gate is re-checked here: a deep link cannot open a
+    // tab the header would not render.
+    return route === 'trash' && canDeleteStaff ? 'trash' : 'staff';
   });
 
-  const selectTab = useCallback((tab: StaffTab) => {
+  /**
+   * Where the panel now being shown slides in from, or null while the page has
+   * not switched yet — the first paint must not slide. Set with the tab, in the
+   * one place that changes it, so a tab click and a browser Back agree on the
+   * direction: the panel follows the thumb, which travels right when the tab
+   * moves right along STAFF_TAB_ORDER.
+   */
+  const [slideFrom, setSlideFrom] = useState<'left' | 'right' | null>(null);
+
+  /**
+   * The tab the last change moved away from. A ref rather than state: it is a
+   * read of the PREVIOUS value at change time, and holding it in state would
+   * make the direction lag the panel it describes by a render.
+   */
+  const previousTabRef = useRef<StaffTab>(activeTab);
+
+  /** The single path a tab change takes, so click and hashchange cannot drift. */
+  const changeTab = useCallback((tab: StaffTab) => {
+    const from = previousTabRef.current;
+    if (from !== tab) {
+      setSlideFrom(
+        STAFF_TAB_ORDER.indexOf(tab) > STAFF_TAB_ORDER.indexOf(from) ? 'right' : 'left',
+      );
+      previousTabRef.current = tab;
+    }
     setActiveTab(tab);
+  }, []);
+
+  const selectTab = useCallback((tab: StaffTab) => {
+    changeTab(tab);
     // Keep the URL honest so each tab stays deep-linkable and the browser's
     // back button moves between them. AppShell's own hashchange listener
     // resolves the route from this hash, finding the same component.
     window.location.hash = `#/${tab}`;
-  }, []);
+  }, [changeTab]);
 
   // Back/forward and external deep links land here: AppShell maps the route,
   // this keeps the tab in step with it.
   useEffect(() => {
     const syncTabFromHash = () => {
       const route = window.location.hash.replace(/^#\//, '').split('?')[0];
-      if (route === 'staff' || route === 'roles') setActiveTab(route);
+      if (route === 'staff' || route === 'roles') changeTab(route);
+      if (route === 'trash' && canDeleteStaff) changeTab(route);
     };
     window.addEventListener('hashchange', syncTabFromHash);
     return () => window.removeEventListener('hashchange', syncTabFromHash);
-  }, []);
+  }, [changeTab, canDeleteStaff]);
 
   // The roles panel is mounted on first visit and then kept: it fetches the
   // role list, the permission-key registry and per-row holders, and re-issuing
@@ -231,6 +306,32 @@ export default function StaffManagementScreen() {
     setShowModal(false);
   }, []);
 
+  /**
+   * Reload BOTH live lists after a mutation.
+   *
+   * They live in two places, and this is the one ring that is easy to miss: the
+   * shell's own `staff`/`roles` (the roster, the drawer and the "Roles" stat
+   * tile) and the Roles panel's PRIVATE role list — the panel keeps its own
+   * because the two tabs share one component and re-issuing the role list, the
+   * permission registry and every expanded holder page on each tab click is
+   * work nobody asked for. A mutation that reloads only the shell therefore
+   * leaves the Roles tab showing the list from before it, which is the worst
+   * kind of wrong: a restore reads as a restore that FAILED (so the operator
+   * restores twice), and a new member leaves the role's holder count short.
+   *
+   * Every mutation that can change a role or a holder goes through here:
+   * - a Trash restore (staff or role) revives a row into the live lists;
+   * - the detail drawer's create/edit changes who holds what, and so the
+   *   `holder_count` the panel prints on each role row.
+   *
+   * `refreshRoles` is a no-op until the panel has been mounted, and the first
+   * visit fetches anyway, so this is safe for a session that never opened it.
+   */
+  const refreshLiveLists = useCallback(() => {
+    void rolesPanelRef.current?.refreshRoles();
+    void load();
+  }, [load]);
+
   // ── Deactivate / Reactivate ────────────────────────────────────
 
   const performActivate = useCallback(async (member: StaffMemberDto) => {
@@ -252,9 +353,14 @@ export default function StaffManagementScreen() {
           ? l10n.getString('staff-toast-deactivated', { name: member.display_name })
           : l10n.getString('staff-toast-restored', { name: member.display_name }),
       });
+      setQuotaBlocked(false);
       await load();
-    } catch {
-      addToast({ message: l10n.getString('staff-error-save-failed'), type: 'error' });
+    } catch (err) {
+      if (isStaffQuotaLimitError(err)) {
+        setQuotaBlocked(true);
+      } else {
+        addToast({ message: l10n.getString('staff-error-save-failed'), type: 'error' });
+      }
     }
   }, [load, sessionToken, addToast, l10n]);
 
@@ -303,7 +409,50 @@ export default function StaffManagementScreen() {
     setConfirmTarget(null);
   }, [deactivating]);
 
+  // ── Delete (staff:delete, 90-day trash) ────────────────────────
+  //
+  // Only reachable for an inactive member, but the confirmation is still
+  // explicit: the member leaves every list the moment this returns, and the
+  // only way back is the Trash tab.
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    if (!sessionToken) {
+      addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteStaffScoped(sessionToken, deleteTarget.id);
+      addToast({
+        type: 'success',
+        message: l10n.getString('staff-toast-deleted', { name: deleteTarget.display_name }),
+      });
+      setDeleteTarget(null);
+      await load();
+    } catch {
+      addToast({ message: l10n.getString('staff-delete-failed'), type: 'error' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, sessionToken, addToast, l10n, load]);
+
+  const cancelDelete = useCallback(() => {
+    if (deleting) return;
+    setDeleteTarget(null);
+  }, [deleting]);
+
   // ── Render ─────────────────────────────────────────────────────
+
+  // The slide direction rides on BOTH panels: only one is ever displayed, so the
+  // class is inert on the other, and whichever is revealed reads it. See the
+  // animation's note in StaffManagementScreen.css for why no timer is involved.
+  // ONE line on purpose: resolveComposedClassNames (screenExtraction.test.ts)
+  // credits the right-hand side of the ASSIGNING line only, so splitting this
+  // ternary makes 'staff-mgmt-tabpanel' read as a dead class. The map is read
+  // through a template interpolation, which is how the two --from-* names are
+  // reached as well.
+  const panelClass = slideFrom ? `staff-mgmt-tabpanel ${PANEL_SLIDE_CLASS[slideFrom]}` : 'staff-mgmt-tabpanel';
 
   return (
     <div className="staff-mgmt" onContextMenu={(e) => e.preventDefault()}>
@@ -314,35 +463,41 @@ export default function StaffManagementScreen() {
               button is the only in-page route to the workspace picker, and it
               sits outside every load branch below so a failed or slow staff
               load can never strand the operator on a sidebar-less page. */}
-          <button
-            type="button"
+          <Button
+            unstyled
             className="staff-mgmt-back-btn"
             onClick={goToWorkspacePicker}
             aria-label={l10n.getString('staff-back-aria')}
+            data-testid="staff-back-btn"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18" aria-hidden="true">
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         {/* Centre column, KDS-header style. No h1: the tab names the view, and
             a heading repeating the active tab is noise — the panel is
             announced through aria-labelledby instead. */}
-        <StaffTabs activeTab={activeTab} onSelectTab={selectTab} showRoles={canManageRoles} />
+        <StaffTabs
+          activeTab={activeTab}
+          onSelectTab={selectTab}
+          showRoles={canManageRoles}
+          showTrash={canDeleteStaff}
+        />
 
         <div className="staff-mgmt-header-actions">
           {/* One action slot, two jobs: the create affordance belongs to
               whichever tab is showing. Roles is gated on the grant that gates
               its route, so a staff-only manager never sees the button. */}
-          {activeTab === 'roles' && canManageRoles ? (
+          {activeTab === 'trash' ? null : activeTab === 'roles' && canManageRoles ? (
             <Localized id="role-create">
-              <Button onClick={() => rolesPanelRef.current?.openCreate()}>Add New Role</Button>
+              <Button onClick={() => rolesPanelRef.current?.openCreate()} data-testid="staff-add-role-btn">Add New Role</Button>
             </Localized>
           ) : (
             <Localized id="staff-add-button">
-              <Button onClick={openCreate}>Add Staff</Button>
+              <Button onClick={openCreate} data-testid="staff-add-btn">Add Staff</Button>
             </Localized>
           )}
         </div>
@@ -357,7 +512,7 @@ export default function StaffManagementScreen() {
           button with it. */}
       <div className="staff-mgmt-main">
         <div
-          className="staff-mgmt-tabpanel"
+          className={panelClass}
           id={STAFF_TAB_IDS.staff.panel}
           role="tabpanel"
           aria-labelledby={STAFF_TAB_IDS.staff.tab}
@@ -367,8 +522,20 @@ export default function StaffManagementScreen() {
           {atProStaffCap && (
             <div className="staff-mgmt-approaching-banner" role="note">
               <span>{l10n.getString('staff-limit-approaching-premium')}</span>
-              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')}>
+              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'premium')} data-testid="staff-quota-upgrade-btn">
                 {l10n.getString('staff-limit-approaching-premium-cta')}
+              </Button>
+            </div>
+          )}
+
+          {/* C1.1: a REFUSED REACTIVATION — the same message and the same
+              escape route the drawer shows when a create hits the cap, because
+              it is the same fact. */}
+          {quotaBlocked && (
+            <div className="staff-mgmt-quota-banner" role="alert" data-testid="staff-quota-blocked-banner">
+              <span>{l10n.getString('staff-error-quota-limit')}</span>
+              <Button variant="primary" size="sm" onClick={() => openUpgradePricingPage(locale, 'plus')} data-testid="staff-quota-blocked-upgrade-btn">
+                {l10n.getString('staff-upgrade-cta')}
               </Button>
             </div>
           )}
@@ -377,7 +544,7 @@ export default function StaffManagementScreen() {
             <Card shadow="sm">
               <div className="staff-mgmt-load-error" role="alert">
                 <p className="staff-mgmt-load-error-message">{loadError}</p>
-                <Button onClick={() => load()} variant="secondary">
+                <Button onClick={() => load()} variant="secondary" data-testid="staff-retry-btn">
                   <Localized id="staff-retry"><span>Retry</span></Localized>
                 </Button>
               </div>
@@ -387,27 +554,19 @@ export default function StaffManagementScreen() {
               {/* No header mimic here: the real header is rendered above for
                   every branch, so a second one would duplicate the tab strip
                   and the actions while the list loads. */}
-              <div className="staff-mgmt-table-wrap">
-                <table className="staff-mgmt-table">
-                  <thead>
-                    <tr>
-                      {['Role', 'Workspace', 'Name', 'Username', 'Status', ''].map((_, i) => (
-                        <th key={i}><Skeleton variant="text" width="4rem" /></th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>{Array.from({ length: 4 }).map((_, r) => (
-                      <tr key={r}>
-                        <td><Skeleton variant="block" width="5rem" height="1.25rem" style={{ borderRadius: 'var(--radius-full)' }} /></td>
-                        <td><Skeleton variant="text" width="6rem" /></td>
-                        <td><Skeleton variant="text" width="7rem" /></td>
-                        <td><Skeleton variant="text" width="4rem" /></td>
-                        <td><Skeleton variant="text" width="3.5rem" /></td>
-                        <td><Skeleton variant="block" width="5rem" height="1.5rem" /></td>
-                      </tr>
-                    ))}
-</tbody>
-                </table>
+              {/* The shapes mirror the roster it stands in for — stat tiles, the
+                  toolbar, then the cards — so the swap from skeleton to data
+                  does not jump. */}
+              <div className="staff-mgmt-stats">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="block" width="100%" height="4.5rem" style={{ borderRadius: 'var(--radius-lg)' }} />
+                ))}
+              </div>
+              <Skeleton variant="block" width="100%" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+              <div className="staff-mgmt-grid">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} variant="block" width="100%" height="11rem" style={{ borderRadius: 'var(--radius-xl)' }} />
+                ))}
               </div>
             </div>
           ) : staff.length === 0 ? (
@@ -416,18 +575,20 @@ export default function StaffManagementScreen() {
                 <EmptyState
                   icon={<NoStaffIcon />}
                   title={requiredLocalized(l10n, 'staff-empty')}
-                  action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate }}
+                  action={{ label: requiredLocalized(l10n, 'staff-empty-cta'), onClick: openCreate, testId: 'staff-empty-cta' }}
                 />
               </div>
             </Card>
           ) : (
-            <StaffListTable
+            <StaffRoster
               staff={staff}
+              roleCount={roles.length}
               workspaceNameMap={workspaceNameMap}
               workspacesUnavailable={workspacesUnavailable}
               canImpersonate={canImpersonate}
               onEdit={openEdit}
               onToggleActive={toggleActive}
+              onDelete={canDeleteStaff ? setDeleteTarget : undefined}
               onImpersonate={handleImpersonate}
             />
           )}
@@ -438,14 +599,39 @@ export default function StaffManagementScreen() {
             (see rolesPanelMounted). */}
         {canManageRoles && (
           <div
-            className="staff-mgmt-tabpanel"
+            className={panelClass}
             id={STAFF_TAB_IDS.roles.panel}
             role="tabpanel"
             aria-labelledby={STAFF_TAB_IDS.roles.tab}
             hidden={activeTab !== 'roles'}
           >
             {(rolesPanelMounted || activeTab === 'roles') && (
-              <RoleAuthoringPanel active={activeTab === 'roles'} handleRef={rolesPanelRef} />
+              <RoleAuthoringPanel
+                active={activeTab === 'roles'}
+                handleRef={rolesPanelRef}
+                // The panel owns its own role list, but the "Roles" stat tile
+                // reads the SHELL's — reloaded here so authoring a role cannot
+                // leave the tile counting the list as it was before the save.
+                onRolesChanged={refreshLiveLists}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Rendered whenever its tab exists so aria-controls resolves. The
+            panel inside mounts only WHILE active: a trash list is worth showing
+            fresh, and this route's reads are the ones that run the retention
+            sweep, so entering the tab is what enforces the window. */}
+        {canDeleteStaff && (
+          <div
+            className={panelClass}
+            id={STAFF_TAB_IDS.trash.panel}
+            role="tabpanel"
+            aria-labelledby={STAFF_TAB_IDS.trash.tab}
+            hidden={activeTab !== 'trash'}
+          >
+            {activeTab === 'trash' && (
+              <StaffTrashPanel canManageRoles={canManageRoles} onRestored={refreshLiveLists} />
             )}
           </div>
         )}
@@ -454,12 +640,7 @@ export default function StaffManagementScreen() {
       {/* ── Status footer ───────────────────────────────────────────
           Fullscreen routes lose the app's own StatusBar (AppLayout mounts
           it), so the page carries its own. */}
-      <StaffManagementFooter
-        totalCount={staff.length}
-        activeCount={staff.filter((member) => member.is_active).length}
-        roleCount={roles.length}
-        loadedAt={loadedAt}
-      />
+      <StaffManagementFooter loadedAt={loadedAt} />
 
       {/* ── Add/Edit Drawer ─────────────────────────────────────── */}
       <StaffDetailDrawer
@@ -467,7 +648,7 @@ export default function StaffManagementScreen() {
         member={editingMember}
         roles={roles}
         onClose={closeModal}
-        onSaved={load}
+        onSaved={refreshLiveLists}
       />
 
       {/* ── Deactivate Confirmation (STAFF-10) ─────────────────── */}
@@ -481,6 +662,19 @@ export default function StaffManagementScreen() {
         loading={deactivating}
         confirmLabel={l10n.getString('staff-deactivate-confirm-confirm')}
         cancelLabel={l10n.getString('staff-deactivate-confirm-cancel')}
+      />
+
+      {/* ── Delete Confirmation (staff:delete) ──────────────────── */}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onCancel={cancelDelete}
+        onConfirm={() => void confirmDelete()}
+        title={l10n.getString('staff-delete-confirm-title')}
+        message={l10n.getString('staff-delete-confirm-body', { name: deleteTarget?.display_name ?? '' })}
+        variant="danger"
+        loading={deleting}
+        confirmLabel={l10n.getString('staff-delete-confirm-confirm')}
+        cancelLabel={l10n.getString('staff-delete-confirm-cancel')}
       />
     </div>
   );

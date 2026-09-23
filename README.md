@@ -194,7 +194,7 @@ cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script
 cd apps/desktop-tauri && cargo tauri dev
 ```
 
-See [docs/guides/QUICKSTART.md](./docs/guides/QUICKSTART.md) for detailed setup instructions.
+See [docs/guides/developer/QUICKSTART.md](./docs/guides/developer/QUICKSTART.md) for detailed setup instructions.
 
 ---
 
@@ -246,7 +246,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Where we are: v0.0.39 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
+**Where we are: v0.0.39 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/product/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
 
 | Phase (ROADMAP) | State | What's real | What's still open |
 |---|---|---|---|
@@ -261,7 +261,7 @@ Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings
 
 Latest release: **v0.0.39** (on branch `0.0.39`).
 
-See [ROADMAP.md](./docs/guides/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/guides/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
+See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "meta": {
-    "description": "Aplikasi kasir offline-first yang ringan dan mudah untuk kafe, restoran, dan ritel. Gratis, jalan di Android, tablet, dan Windows walau tanpa internet."
+    "description": "Aplikasi kasir ringan dan mudah untuk kafe, restoran, dan ritel — tetap jalan tanpa internet. Gratis, dan bisa dipakai di Android, tablet, maupun Windows."
   },
   "nav": {
     "home": "Beranda",
@@ -34,10 +34,11 @@
     "theme": "Ganti tema",
     "language": "Bahasa",
     "homeAria": "Beranda kasir.mu",
-    "mainNav": "Navigasi utama"
+    "mainNav": "Navigasi utama",
+    "skipToContent": "Lewati ke konten"
   },
   "pageDesc": {
-    "features": "Kasir offline-first: penjualan, shift, dan stok yang tetap berjalan tanpa koneksi sama sekali.",
+    "features": "Kasir yang tetap jalan tanpa internet: penjualan, shift, dan stok berjalan penuh walau koneksi mati.",
     "pricing": "Lima paket — Gratis selamanya, Plus, Pro, Premium, dan Enterprise. Tahunan = 2 bulan gratis.",
     "download": "Unduh aplikasi kasir gratis untuk Windows — ringan dan mudah dipasang. Android dan tablet segera hadir.",
     "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
@@ -47,7 +48,8 @@
     "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
     "privacy": "Bagaimana kasir.mu mengumpulkan, menggunakan, dan melindungi data Anda.",
     "terms": "Ketentuan yang mengatur penggunaan kasir.mu Anda.",
-    "signup": "Buat akun kasir.mu Anda — buat kata sandi dan verifikasi email."
+    "signup": "Buat akun kasir.mu Anda — buat kata sandi dan verifikasi email.",
+    "pair": "Hubungkan terminal POS tablet ke akun kasir.mu Anda."
   },
   "support": {
     "title": "Dukungan",
@@ -103,7 +105,7 @@
       },
       {
         "q": "Apakah kasir.mu sama dengan kasirmu atau kasir mu?",
-        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya aplikasi kasir offline-first ini."
+        "a": "Ya, sama. kasir.mu juga sering ditulis kasirmu atau kasir mu — semuanya nama lain dari aplikasi kasir ini."
       }
     ]
   },
@@ -111,6 +113,23 @@
     "title": "Dokumentasi",
     "onThisPage": "Di halaman ini",
     "updated": "Diperbarui",
+    "copyCode": "Salin",
+    "copiedCode": "✓ Tersalin",
+    "copyCodeLabel": "Salin kode ke papan klip",
+    "nextStep": {
+      "title": "Siap mulai?",
+      "body": "Unduh aplikasinya gratis, atau lihat paketnya dulu.",
+      "download": "Unduh kasir.mu",
+      "pricing": "Lihat paket & harga"
+    },
+    "feedback": {
+      "question": "Apakah halaman ini bermanfaat?",
+      "hint": "Bantu kami menyempurnakan dokumentasi kasir.mu",
+      "thanksYes": "Terima kasih atas masukannya!",
+      "thanksNo": "Terima kasih, kami akan terus menyempurnakannya.",
+      "yes": "Ya",
+      "no": "Belum"
+    },
     "categories": {
       "gettingStarted": "Memulai",
       "guides": "Panduan",
@@ -143,11 +162,13 @@
     }
   },
   "hero": {
+    "badge": "Tidak didanai Y Combinator",
     "title": "Aplikasi Kasir yang Ringan, Mudah, dan Gratis",
-    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua dengan inti offline-first ultra-ringan, tanpa biaya per-fitur tersembunyi.",
+    "subtitle": "Sistem POS kelas korporasi yang tetap murah: jalan di Android, tablet, dan PC tua, ringan, dan tetap jualan tanpa internet — tanpa biaya tambahan yang tersembunyi.",
     "ctaPrimary": "Unduh Gratis",
     "ctaSecondary": "Lihat Harga",
     "carousel": {
+    "label": "Tangkapan layar aplikasi kasir.mu",
       "restaurant": "Restoran",
       "retail": "Ritel",
       "kitchen": "Dapur",
@@ -169,87 +190,87 @@
     "subtitle": "Fitur unggulan yang dirancang untuk transaksi super cepat, operasional tanpa henti meski offline, dan siap berkembang bersama bisnis Anda.",
     "items": [
       {
-        "title": "Offline-First",
+        "title": "Bisa Dipakai Offline",
         "description": "Penjualan, kasir, dan stok tetap bekerja 100% tanpa koneksi internet. Transaksi dan data Anda tidak pernah hilang."
       },
       {
-        "title": "No Hardware Barrier",
+        "title": "Tanpa Perangkat Mahal",
         "description": "Dibangun dengan stack teknologi state-of-the-art (Rust & SQLite tertanam) yang sangat ringan dan efisien. Berjalan mulus pada PC, tablet, maupun hardware kasir spesifikasi paling rendah."
       },
       {
-        "title": "Multi-Store & Multi-Terminal",
+        "title": "Multi-Toko & Multi-Kasir",
         "description": "Kelola banyak cabang toko, register kasir, dan gudang dalam satu topologi terpadu dengan sinkronisasi instan."
       },
       {
-        "title": "Advanced Reports & Analytics",
+        "title": "Laporan & Analitik Lengkap",
         "description": "Wawasan mendalam seputar tren penjualan, produk terlaris, analisis jam sibuk (rush-hour), dan margin laba bersih."
       },
       {
-        "title": "E-Wallets & Native QRIS",
+        "title": "QRIS & Dompet Digital",
         "description": "Terima pembayaran QRIS langsung di layar dan berbagai dompet digital tanpa perlu sewa perangkat EDC tambahan."
       },
       {
-        "title": "Debit & Credit Card",
+        "title": "Kartu Debit & Kredit",
         "description": "Integrasi mulus dengan terminal EDC dan payment gateway modern untuk kartu chip, contactless, dan gesek."
       },
       {
-        "title": "Whitelabel",
+        "title": "Whitelabel (Merek Sendiri)",
         "description": "Kustomisasi penuh untuk logo bisnis, header struk belanja, dan format cetak kasir Anda mulai dari paket Premium, tanpa perlu kontrak Enterprise khusus."
       },
       {
-        "title": "Lua Scripting",
+        "title": "Skrip Otomatis (Lua)",
         "description": "Mesin skrip Lua tertanam untuk fleksibilitas tanpa batas: logika diskon bertingkat, promo happy hour, BOGO, dan aturan pajak kustom."
       },
       {
-        "title": "Full Audit Logging & Shift",
+        "title": "Audit Lengkap & Shift Kasir",
         "description": "Catatan riwayat lengkap dan anti-manipulasi untuk setiap pembukaan laci kas, void, pembatalan, dan pergantian shift kasir."
       }
     ],
     "comparisonTitle": "kasir.mu vs POS Cloud Konvensional",
-    "comparisonSubtitle": "Lihat mengapa arsitektur offline-first dan paket all-inclusive membuat kasir.mu unggul jauh.",
-    "comparisonOzPos": "kasir.mu",
+    "comparisonSubtitle": "Lihat mengapa kasir.mu tetap jualan tanpa internet dan semua fiturnya sudah termasuk — bukan dijual terpisah.",
+    "comparisonKasirMu": "kasir.mu",
     "comparisonOthers": "POS Lainnya",
     "comparisonHeaderFeature": "Fitur & Kapabilitas",
     "comparisonRows": [
       {
         "feature": "Keandalan Saat Internet Mati",
-        "ozPos": "100% Berjalan Penuh (Local SQLite di tiap perangkat)",
+        "kasirMu": "100% Berjalan Penuh (Local SQLite di tiap perangkat)",
         "others": "Macet / Transaksi gagal saat offline",
         "highlight": true
       },
       {
         "feature": "Efisiensi Hardware",
-        "ozPos": "SOTA Rust engine — lancar di hardware termurah & hemat RAM",
+        "kasirMu": "Dibuat dengan Rust — lancar di perangkat termurah & hemat RAM",
         "others": "Aplikasi web berat, butuh hardware mahal",
         "highlight": false
       },
       {
-        "feature": "Kitchen Display System (KDS)",
-        "ozPos": "Sudah termasuk gratis di browser & tablet",
+        "feature": "Layar Dapur (KDS)",
+        "kasirMu": "Jalan di browser & tablet — 2 layar di paket Pro",
         "others": "Biaya add-on mahal per-layar / bulan",
         "highlight": true
       },
       {
         "feature": "Multi-Toko & Gudang",
-        "ozPos": "Tersedia langsung di paket reguler",
+        "kasirMu": "Tersedia langsung di paket reguler",
         "others": "Terkunci di paket Enterprise jutaan rupiah",
         "highlight": false
       },
       {
         "feature": "Kustomisasi Aturan Bisnis",
-        "ozPos": "Mesin Skrip Lua bebas atur promo kustom",
+        "kasirMu": "Mesin Skrip Lua bebas atur promo kustom",
         "others": "Kaku, harus menunggu vendor update",
         "highlight": true
       },
       {
         "feature": "Audit Trail & Fraud Prevention",
-        "ozPos": "Full audit logging tamper-evident untuk tiap aksi kasir",
+        "kasirMu": "Full audit logging tamper-evident untuk tiap aksi kasir",
         "others": "Laporan dasar tanpa log aksi sensitif",
         "highlight": false
       },
       {
         "feature": "Struktur Biaya",
-        "ozPos": "Transparan & bayar sesuai skala, bukan mengunci fitur",
+        "kasirMu": "Transparan & bayar sesuai skala, bukan mengunci fitur",
         "others": "Banyak biaya tersembunyi per-fitur tambahan",
         "highlight": false
       }
@@ -267,7 +288,7 @@
   },
   "pricingPage": {
     "title": "Harga",
-    "subtitle": "Setiap paket mencakup inti offline-first penuh. Tingkatkan untuk lebih banyak toko, register, dan otomatisasi.",
+    "subtitle": "Setiap paket bisa dipakai penuh tanpa internet. Tingkatkan untuk lebih banyak toko, register, dan otomatisasi.",
     "trust1": "Garansi uang kembali 30 hari",
     "trust2": "Batalkan kapan saja",
     "note": "Lisensi satu kali (perpetual) belum tersedia — lihat peta jalan.",
@@ -299,6 +320,21 @@
     "note": "Unduhan rilis dipublikasikan di GitHub Releases.",
     "releaseLink": "Lihat GitHub Releases",
     "comingSoon": "Segera hadir",
+    "stepsTitle": "Mulai Berjualan dalam 3 Langkah Mudah",
+    "steps": [
+      {
+        "title": "Unduh & Pasang",
+        "body": "Unduh paket instalasi sesuai sistem operasi komputer kasir Anda."
+      },
+      {
+        "title": "Masukkan Kunci Lisensi",
+        "body": "Buka aplikasi dan tempelkan kunci lisensi dari dashboard akun Anda."
+      },
+      {
+        "title": "Siap Digunakan Offline",
+        "body": "Mulai catat transaksi secara instan, tanpa takut koneksi internet putus."
+      }
+    ],
     "trialCallout": "Anda datang dari halaman kafe/restoran — kunci trial Anda membuka trial Pro 14 hari.",
     "trialCalloutEnterprise": "Referensi — kunci trial Anda membuka trial Pro 30 hari."
   },
@@ -357,6 +393,7 @@
     "error": "Tidak dapat memuat akun Anda. Silakan coba lagi.",
     "license": "Lisensi",
     "licenseKey": "Kunci",
+    "methodUnlinked": "{provider} diputuskan. Kode email Anda tetap berfungsi.",
     "tier": "Paket",
     "status": "Status",
     "expires": "Berakhir",
@@ -401,6 +438,7 @@
     "downloadApp": "Unduh aplikasi",
     "activationGuide": "Panduan aktivasi",
     "contactSupport": "Hubungi bantuan",
+    "deviceRevoked": "Terminal {machine} dicabut. Tidak dapat masuk lagi.",
     "devices": "Terminal Terdaftar",
     "devicesHint": "Terminal yang diotorisasi dengan kunci lisensi ini. Kelola mesin kasir aktif.",
     "signInMethods": "Metode masuk",
@@ -417,18 +455,39 @@
     "terminalCountLive": "{count} terminal",
     "unbindHint": "Untuk migrasi ke perangkat baru, masukkan kunci lisensi Anda ke aplikasi terminal kasir.mu yang baru.",
     "revokeDevice": "Cabut",
+    "registerTerminal": "Hubungkan terminal",
     "billingInvoices": "Tagihan & Kuitansi",
     "billingInvoicesHint": "Lihat kuitansi transaksi dan riwayat faktur pajak untuk akun Anda.",
     "viewReceipts": "Akses Portal Tagihan & Kuitansi",
     "invoiceNote": "Butuh faktur pajak perusahaan resmi? Hubungi sales@kasir.mu dengan detail NPWP perusahaan Anda.",
     "invoiceSubject": "Permintaan Faktur - {email}"
   },
+  "cara": {
+    "title": "Cara Pakai kasir.mu: Panduan Langkah demi Langkah"
+  },
+  "perbandingan": {
+    "title": "Perbandingan kasir.mu vs Aplikasi Kasir Lain"
+  },
   "footer": {
     "rights": "Hak cipta dilindungi.",
     "privacy": "Privasi",
     "terms": "Ketentuan",
     "legal": "Legal",
-    "business": "Jenis bisnis"
+    "sitemap": "Peta situs",
+    "col": {
+      "product": "Produk",
+      "solutions": "Solusi Kasir",
+      "business": "Jenis bisnis",
+      "help": "Bantuan"
+    },
+    "link": {
+      "kasirGratis": "Kasir Gratis",
+      "kasirMurah": "Kasir Murah",
+      "kasirQris": "Kasir QRIS",
+      "kasirAndroid": "Kasir Android",
+      "cara": "Cara Pakai",
+      "perbandingan": "Perbandingan"
+    }
   },
   "legal": {
     "privacyTitle": "Kebijakan Privasi",
@@ -470,14 +529,20 @@
     "confirmLabel": "Konfirmasi kata sandi",
     "confirmPlaceholder": "Masukkan ulang kata sandi",
     "mismatch": "Kata sandi tidak cocok",
+    "matchStatusLabel": "Kata sandi cocok",
     "show": "Tampilkan kata sandi",
     "hide": "Sembunyikan kata sandi"
+  },
+  "otp": {
+    "groupLabel": "Kode verifikasi sekali pakai",
+    "digit": "Digit {n} dari {total}"
   },
   "signup": {
     "title": "Buat akun Anda",
     "subtitle": "Buat kata sandi dan verifikasi email Anda dengan kode yang kami kirim.",
     "email": "Email",
     "emailPlaceholder": "anda@contoh.com",
+    "validEmailLabel": "Email valid",
     "password": "Kata sandi",
     "passwordPlaceholder": "Buat kata sandi",
     "createAccount": "Buat akun",
@@ -531,6 +596,14 @@
         {
           "q": "Bagaimana jika internet mati saat bayar QRIS?",
           "a": "Transaksi tercatat lokal dan direkonsiliasi saat koneksi kembali — kasir tidak pernah terblokir."
+        },
+        {
+          "q": "Apakah perlu mesin EDC atau kerja sama bank?",
+          "a": "Tidak perlu perangkat tambahan: QRIS jalan dari layar kasir atau tablet. QR dinamis dibuat per transaksi lewat Midtrans, atau Anda bisa menampilkan stiker QRIS toko sendiri."
+        },
+        {
+          "q": "Bagaimana tahu pembayarannya benar-benar masuk?",
+          "a": "QR dinamis dipolling sampai setelmennya kembali, lalu dicocokkan ke transaksi itu. Untuk QR statis, referensinya dicatat dan server merekonsiliasi untuk struk."
         }
       ]
     },
@@ -538,12 +611,12 @@
       "title": "Aplikasi Kasir Gratis untuk Warung, Kafe, dan Toko",
       "description": "Paket kasir gratis selamanya: satu toko, satu register, riwayat 3 bulan. Ringan, mudah dipakai, jalan offline — tanpa kartu kredit.",
       "h1": "Kasir Gratis, Selamanya",
-      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir offline-first yang ringan dan mudah — satu toko, satu register, riwayat 3 bulan.",
+      "lede": "Mulai jualan hari ini tanpa bayar sepeser pun. Paket Gratis kasir.mu memberi Anda aplikasi kasir ringan dan mudah yang tetap jualan tanpa internet — satu toko, satu register, riwayat 3 bulan.",
       "points": [
         "Rp0 selamanya — tanpa kartu kredit, tanpa masa trial yang tiba-tiba berakhir",
         "Ringan: berjalan mulus di HP, tablet, dan PC tua",
         "Mudah: kasir bisa jualan dalam 3 langkah tanpa pelatihan",
-        "Offline-first: tetap jualan saat internet mati"
+        "Tanpa internet: tetap jualan saat internet mati"
       ],
       "limitsTitle": "Batas paket Gratis",
       "limits": "Satu toko, satu register, riwayat 3 bulan. Butuh lebih — multi-terminal, gudang, laporan terjadwal? Lihat paket Plus, Pro, dan Premium.",
@@ -561,14 +634,28 @@
         {
           "q": "Apa yang terjadi setelah riwayat 3 bulan?",
           "a": "Data lama diarsipkan; upgrade ke paket berbayar untuk riwayat lebih panjang dan laporan terjadwal."
+        },
+        {
+          "q": "Apakah paket Gratis butuh akun atau kartu?",
+          "a": "Tidak perlu keduanya. Paket Gratis dimulai pada peluncuran pertama, tanpa kunci lisensi dan tanpa kartu. Akun hanya diperlukan untuk paket berbayar dan sinkron cloud, yang belum termasuk di paket Gratis."
+        },
+        {
+          "q": "Bisa naik paket tanpa memasang ulang?",
+          "a": "Bisa. Naik atau turun paket hanya mengganti kunci lisensi, bukan pemasangan, dan tambahan toko, register, serta riwayat langsung tersedia."
         }
+      ],
+      "howTitle": "Mulai jualan dalam tiga langkah",
+      "how": [
+        "Unduh penginstal Windows dan jalankan — pemasangan hanya untuk akun pengguna Anda sendiri, jadi tidak butuh hak administrator.",
+        "Buka aplikasi dan isi nama usaha serta mata uang bawaan; keduanya bisa diubah kapan saja di pengaturan.",
+        "Langsung catat penjualan: paket Gratis dimulai pada peluncuran pertama — satu toko, satu register, satu workspace gudang, dan riwayat penjualan 3 bulan."
       ]
     },
     "murah": {
       "title": "Aplikasi Kasir Murah: Mulai Rp0, Plus Rp49rb per Bulan",
       "description": "Harga kasir transparan: Gratis Rp0, Plus Rp49rb, Pro Rp99rb per bulan. Tanpa biaya per-fitur tersembunyi — murah untuk warung sampai restoran.",
       "h1": "Kasir Murah Tanpa Biaya Tersembunyi",
-      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah termasuk inti offline-first, QRIS, dan audit trail — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
+      "lede": "Mulai gratis, naik kelas saat siap. Setiap paket kasir.mu sudah bisa jualan tanpa internet, lengkap dengan QRIS dan jejak audit — yang membedakan hanya kapasitas, bukan fitur yang dikunci.",
       "tiersTitle": "Tiga langkah harga",
       "tiers": [
         "Gratis — Rp0 selamanya: satu toko, satu register",
@@ -589,12 +676,26 @@
         },
         {
           "q": "Apakah ada biaya per-fitur atau per register tersembunyi?",
-          "a": "Tidak. Harga per paket, transparan — fitur inti seperti offline-first, QRIS, dan audit trail ada di semua paket."
+          "a": "Tidak. Harga per paket, transparan — fitur inti seperti jualan tanpa internet, QRIS, dan jejak audit ada di semua paket."
         },
         {
           "q": "Apakah ada diskon tahunan?",
           "a": "Ya — bayar tahunan sama dengan 2 bulan gratis."
+        },
+        {
+          "q": "Apakah paket lebih murah mengurangi fitur?",
+          "a": "Tidak. Semua paket memuat fitur intinya — penjualan, QRIS, shift, stok, dan antrean offline — yang berbeda hanya kapasitas: jumlah toko, register, gudang, riwayat, dan layar."
+        },
+        {
+          "q": "Bagaimana pembayarannya?",
+          "a": "Pelanggan Indonesia membayar dalam rupiah lewat Midtrans (QRIS, transfer bank, atau e-wallet); negara lain membayar dengan kartu dalam dolar AS lewat Paddle."
         }
+      ],
+      "howTitle": "Cara naik paket",
+      "how": [
+        "Mulai dari paket Gratis: satu toko, satu register, riwayat 3 bulan, tanpa kartu.",
+        "Pilih paket di halaman harga — bayar tahunan sama dengan dua bulan gratis.",
+        "Tempel kunci lisensi di aplikasi. Kapasitas tambahannya langsung tersedia; tidak ada pemasangan ulang."
       ]
     },
     "android": {
@@ -605,7 +706,7 @@
       "points": [
         "Ringan: dirancang untuk HP dan tablet Android murah dengan RAM kecil",
         "Mudah: tombol besar, alur 3 langkah, tanpa pelatihan khusus",
-        "Offline-first: tetap jualan di gudang atau area tanpa sinyal",
+        "Tanpa internet: tetap jualan di gudang atau area tanpa sinyal",
         "Tablet-optimized: layout responsif dari desktop hingga portrait"
       ],
       "statusTitle": "Status hari ini",
@@ -624,15 +725,30 @@
         {
           "q": "Apakah bisa dipakai di HP kasir touchscreen?",
           "a": "Ya. Target sentuh mengikuti standar 44px dan layout beradaptasi ke layar kecil."
+        },
+        {
+          "q": "Apakah aplikasi Android juga jalan offline?",
+          "a": "Ya. Inti yang sama berjalan di semua platform, jadi tablet atau ponsel tetap bisa jualan saat koneksi putus dan mengejar ketertinggalan saat kembali."
+        },
+        {
+          "q": "Apa yang dibutuhkan tabletnya?",
+          "a": "Android 7.0 Nougat atau lebih baru, dengan RAM 4 GB dan ruang kosong 1 GB disarankan. Tablet adalah layar kasir yang dituju."
         }
       ]
     }
   },
   "vertical": {
-    "positioning": "kasir.mu — kasir native QRIS dengan keandalan offline-first, harga untuk pasar Indonesia.",
+    "positioning": "kasir.mu — kasir native QRIS yang andal tanpa internet, harga untuk pasar Indonesia.",
     "whyTitle": "Mengapa kasir.mu untuk bisnis Anda?",
     "otherTitle": "Dibuat untuk jenis bisnis Anda",
     "otherSubtitle": "kasir.mu menyesuaikan cara Anda berjualan — pilih industri Anda.",
+    "dayTitle": "Satu hari dengan kasir.mu",
+    "hardwareTitle": "Kompatibel dengan Perangkat Keras Standar Kasir",
+    "hardware": [
+      "Printer Thermal 58/80mm (ESC/POS)",
+      "Scanner Barcode 1D / 2D QR",
+      "Laci Kasir RJ-11"
+    ],
     "ctaSecondary": "Unduh gratis",
     "bundleCta": "Plus + KDS — Paket Restaurant Starter",
     "kafe": {
@@ -657,7 +773,7 @@
           "description": "Hingga 5 register per toko dengan menu dan stok yang sama."
         },
         {
-          "title": "Offline-first",
+          "title": "Tanpa internet",
           "description": "Tetap terima pesanan dan cetak struk meski Wi-Fi bermasalah."
         }
       ],
@@ -665,6 +781,30 @@
         "Kasir native QRIS — pelanggan Anda sudah terbiasa membayar dengan QR.",
         "Instalasi hitungan menit; tim Anda langsung paham cara pakainya.",
         "Berfungsi tanpa internet — tidak ada penjualan yang hilang saat gangguan."
+      ],
+      "day": [
+        "Buka shift saat staf masuk. Penjualan tiap kasir masuk ke shift-nya sendiri, jadi hitungan laci per orang, bukan per hari.",
+        "Terima pesanan di kasir, kirim ke Layar Dapur, dan tetap melayani saat pesanan dibuat.",
+        "Lihat dasbor pagi: penjualan kemarin, produk terlaris, dan berapa banyak yang masuk tunai versus QRIS.",
+        "Tutup tiap shift saat berakhir. Laporan Akhir Hari memecah hari per jam, jadi jadwal staf berikutnya mengikuti jam sibuk, bukan menebak."
+      ],
+      "faq": [
+        {
+          "q": "Apakah Layar Dapur langganan tambahan?",
+          "a": "Layar Dapur berjalan di browser atau tablet, dan paket Pro sudah termasuk 2 layar. Di paket Plus tersedia lewat bundle Restaurant Starter, dan Premium tanpa batas layar."
+        },
+        {
+          "q": "Bagaimana kalau Wi-Fi kafe mati?",
+          "a": "Tetap jalan. Pesanan, pembayaran, dan pergerakan stok disimpan lebih dulu di perangkat dan mengantre saat offline; begitu koneksi kembali, antrean tersinkron berurutan dan semua register diperbarui."
+        },
+        {
+          "q": "Bisa coba fitur berbayarnya dulu?",
+          "a": "Bisa — datang dari halaman ini ke halaman unduh memberi Anda kunci trial yang membuka 14 hari paket Pro."
+        },
+        {
+          "q": "Bagaimana melihat jam tersibuk?",
+          "a": "Laporan Akhir Hari menampilkan penjualan per jam bersama rincian pembayaran dan rekonsiliasi tunai, jadi jadwal staf bisa mengikuti data."
+        }
       ]
     },
     "minimarket": {
@@ -687,7 +827,7 @@
           "description": "Kelola stok lintas hingga 3 gudang dalam satu ruang kerja."
         },
         {
-          "title": "Offline-first",
+          "title": "Tanpa internet",
           "description": "Tetap scan dan jualan saat gangguan — data tersinkron saat kembali online."
         }
       ],
@@ -695,6 +835,30 @@
         "Tidak ada lagi stok kosong atau salah belanja — lihat produk yang bergerak cepat.",
         "QRIS di kasir tanpa perangkat tambahan.",
         "Cadangan cloud agar data tidak pernah hilang."
+      ],
+      "day": [
+        "Scan sambil jalan. Barcode membuat satu keranjang penuh selesai sekali lewat, dan stok berkurang otomatis tiap barang terjual.",
+        "Isi ulang rak dan koreksi stok dalam dua langkah: pilih produk, pilih alasan — isi ulang, koreksi stok opname, retur pelanggan, rusak, penghapusan, transfer — lalu masukkan perubahannya.",
+        "Hitung rak saat shift malam dan catat koreksinya di bawah opname itu, jadi selisih yang ketahuan minggu depan tetap bisa dijelaskan.",
+        "Tutup shift, lalu baca Laporan Stok: stok, ambang, harga, biaya, margin, dan nilai stok per produk, siap dicetak atau diekspor."
+      ],
+      "faq": [
+        {
+          "q": "Bagaimana tahu stok hampir habis?",
+          "a": "Atur ambang stok rendah per produk per lokasi, dengan cadangan Global untuk sisanya, dan tiap ambang bisa dinyalakan atau dimatikan. Produk di bawah ambang ditandai supaya pengisian ulang tidak menebak."
+        },
+        {
+          "q": "Bagaimana memindahkan stok antara toko dan gudang?",
+          "a": "Lewat transfer tercatat: asal, tujuan, jumlah, dan waktu kirim. Barang tetap berstatus transit sampai tiba, transit yang terlambat ditandai, dan transfer yang keliru bisa dibalik sehingga stok kembali ke asalnya."
+        },
+        {
+          "q": "Bisa menerima kiriman pemasok?",
+          "a": "Bisa. Simpan data pemasok, buat pesanan pembelian, lalu tekan Terima saat kiriman datang — jumlah yang diterima masuk ke stok otomatis."
+        },
+        {
+          "q": "Apakah stok toko dan gudang satu angka?",
+          "a": "Tidak. Stok dilacak per produk per lokasi — register atau gudang — dan setiap register melayani dari lokasi yang ditetapkan, jadi kedua angka tetap terpisah dan keduanya terlihat."
+        }
       ]
     },
     "warung": {
@@ -724,7 +888,31 @@
       "benefits": [
         "Cukup sederhana untuk warung — tanpa perlu pelatihan.",
         "Lacak produk yang laris agar stok lebih cerdas.",
-        "Offline-first: jangan pernah kehilangan penjualan saat gangguan."
+        "Tanpa internet: jangan pernah kehilangan penjualan saat gangguan."
+      ],
+      "day": [
+        "Buka shift dengan uang yang sudah ada di laci. Saldo awal opsional — isi saja, dan hitungan tutup nanti langsung cocok.",
+        "Jualan cukup beberapa ketukan. Scanner barcode tetap didukung, tapi warung biasanya menjual dua puluh barang yang sama, jadi mengetik harga lebih cepat. Kembalian dihitung otomatis.",
+        "Biarkan pelanggan bayar QRIS saat tidak membawa tunai. Kode QR memuat nominal persisnya, dan setelmennnya dicocokkan kembali ke transaksi itu.",
+        "Tutup dengan uang yang dihitung. kasir.mu membandingkan dengan jumlah seharusnya, menandai selisihnya Lebih atau Kurang, dan Laporan Akhir Hari bisa dicetak atau diekspor."
+      ],
+      "faq": [
+        {
+          "q": "Bagaimana kalau internet mati?",
+          "a": "Tidak ada yang berhenti. Semua transaksi, event shift, dan perubahan stok ditulis lebih dulu ke perangkat. Saat offline semuanya menunggu di antrean dan mengalir ke cloud sesuai urutan begitu koneksi kembali, dan tiap item tercatat pending, synced, atau failed — tidak ada yang hilang diam-diam."
+        },
+        {
+          "q": "Apakah perlu scanner barcode atau mesin kasir khusus?",
+          "a": "Tidak. kasir.mu jalan di PC Windows atau tablet yang sudah Anda punya, dan printer struknya printer biasa 58/80mm (ESC/POS). Scanner barcode dan laci kasir RJ-11 tetap bisa dipakai kalau sudah ada."
+        },
+        {
+          "q": "Bisa terima QRIS?",
+          "a": "Bisa, di semua paket termasuk Gratis. Tampilkan QR dinamis dengan nominal persisnya, atau pakai stiker QRIS toko Anda sendiri dan catat referensinya untuk struk."
+        },
+        {
+          "q": "Bagaimana cara melihat hasil penjualan hari ini?",
+          "a": "Tutup shift, lalu Laporan Akhir Hari merangkumnya: pendapatan, void dan diskon, rincian pembayaran, rekonsiliasi tunai, dan penjualan per jam — bisa dicetak atau diekspor."
+        }
       ]
     },
     "restoran": {
@@ -764,6 +952,30 @@
         "Tagihan terpisah atau gabung per meja tanpa drama di kasir.",
         "Pembayaran QRIS statis + dinamis yang sudah dipakai pelanggan Anda.",
         "Tetap terima pesanan saat Wi-Fi restoran mati — sinkron saat online."
+      ],
+      "day": [
+        "Mulai shift dengan uang di laci dan catatan siapa yang menjaganya.",
+        "Catat pesanan meja per kategori menu dan kirim ke dapur — Layar Dapur jalan di browser atau tablet, tanpa layar khusus yang harus dibeli.",
+        "Perbaiki kesalahan secara terbuka. Setiap void, refund, dan penarikan tunai mencatat siapa pelakunya dan di terminal mana.",
+        "Tutup dengan angka: rincian pembayaran per metode, penjualan per jam, dan hitungan tunai yang harus cocok sebelum register ditutup untuk malam itu."
+      ],
+      "faq": [
+        {
+          "q": "Bisa dua terminal menerima pesanan bersamaan?",
+          "a": "Bisa. Setiap terminal menyimpan database lokalnya sendiri, jadi tidak saling menunggu, dan keduanya bertemu begitu terhubung ke cloud."
+        },
+        {
+          "q": "Pesanan yang salah tetap masuk pembukuan?",
+          "a": "Masuk sebagai void. Void dan refund tercatat dengan pengguna, terminal, dan alasannya, jadi laporan hari itu menunjukkan apa yang terjual dan apa yang dibatalkan."
+        },
+        {
+          "q": "Bagaimana kalau Wi-Fi restoran sering putus?",
+          "a": "Pesanan dan pembayaran ditulis lokal lebih dulu dan mengantre saat offline. Begitu koneksi kembali, antrean tersinkron berurutan dan terminal diperbarui — koneksi putus tidak pernah memblokir meja."
+        },
+        {
+          "q": "Bisa memisahkan tagihan atau memindahkan meja?",
+          "a": "Bisa: tagihan dapat dipisah atau digabung per tamu dan dipindahkan antar meja, dan analitik mencatat berapa meja yang ditangani tiap pelayan."
+        }
       ]
     },
     "warehouse": {
@@ -786,7 +998,7 @@
           "description": "Workspace inventaris khusus untuk penyedia logistik yang menyimpan dan memilih stok atas nama klien."
         },
         {
-          "title": "Inti Offline-First",
+          "title": "Inti tanpa internet",
           "description": "Lakukan stok opname, audit, dan penerimaan tanpa internet — tidak ada data hilang saat jaringan mati."
         }
       ],
@@ -794,6 +1006,30 @@
         "Mode pergudangan khusus untuk pusat pemenuhan pesanan dan depo stok.",
         "Jejak audit lengkap untuk setiap penyesuaian rak, pengiriman, dan penerimaan.",
         "Keandalan SQLite lokal — tetap scan palet meski di gudang berdinding baja tanpa sinyal."
+      ],
+      "day": [
+        "Pindahkan palet lewat transfer tercatat: asal, tujuan, jumlah, dan waktu kirim, dengan transit yang terlambat ditandai sebelum palet benar-benar hilang.",
+        "Balik transfer yang salah lokasi dan stok kembali ke asalnya.",
+        "Jaga hitungan tetap jujur — setiap penyesuaian, baik isi ulang, koreksi opname, rusak, maupun penghapusan, menulis entri buku besar berisi siapa, kapan, dan mengapa.",
+        "Ketahui nilai barang Anda: Laporan Stok memberi stok, ambang, harga, biaya, margin, dan nilai stok per produk, bisa dicetak atau diekspor CSV."
+      ],
+      "faq": [
+        {
+          "q": "Bisa kerja tanpa internet?",
+          "a": "Bisa. Pergerakan stok ditulis lebih dulu ke database lokal dan mengantre saat offline; begitu koneksi kembali, semuanya tersinkron berurutan dan tiap item tercatat pending, synced, atau failed."
+        },
+        {
+          "q": "Bagaimana melihat barang yang masih di jalan?",
+          "a": "Transfer dalam transit diaudit dengan asal, tujuan, jumlah, dan waktu kirim, dan yang terlambat ditandai supaya bisa ditelusuri sebelum jadi kerugian."
+        },
+        {
+          "q": "Siapa yang boleh mengubah stok?",
+          "a": "Peran yang menentukan. Staf bisa menjual tapi tidak menyesuaikan stok, manajer bisa menyesuaikan, transfer, dan opname, dan auditor bisa membaca inventaris serta laporan tanpa mengubah apa pun."
+        },
+        {
+          "q": "Bisa mengekspor angka stoknya?",
+          "a": "Laporan Stok bisa dicetak atau diekspor CSV, lengkap dengan kolom stok, ambang, harga, biaya, margin, dan nilai stok per produk."
+        }
       ]
     }
   },
@@ -810,7 +1046,31 @@
     "successMessage": "Salin kunci di bawah dan tempel ke aplikasi kasir.mu saat diminta untuk mengaktifkan. Trial Anda mencakup toko, staf, dan semua jenis workspace tanpa batas selama 30 hari.",
     "yourKeyLabel": "Kunci Lisensi Anda",
     "copyButton": "Salin",
+    "copiedButton": "Tersalin!",
+    "invalidCode": "Masukkan kode persetujuan yang valid (minimal 8 karakter).",
+    "invalidEmail": "Masukkan alamat email yang valid.",
+    "processing": "Memproses…",
+    "requestFailed": "Gagal meminta uji coba. Silakan coba lagi.",
     "nextSteps": "Langkah berikutnya: Buka kasir.mu, tempel kunci ini bersama email Anda, dan mulai menggunakan fitur Enterprise segera.",
     "downloadButton": "Unduh kasir.mu"
+  },
+  "pair": {
+    "title": "Hubungkan tablet",
+    "subtitle": "Konfirmasi kode pairing yang tampil di tablet untuk menghubungkannya ke akun Anda.",
+    "codeLabel": "Kode pairing",
+    "claimButton": "Hubungkan perangkat ini",
+    "claiming": "Menghubungkan…",
+    "successTitle": "Tablet terhubung!",
+    "successHint": "Tablet Anda akan terhubung secara otomatis dalam beberapa detik.",
+    "goToAccount": "Buka akun",
+    "anonTitle": "Masuk untuk melanjutkan",
+    "anonHint": "Anda harus masuk untuk mengklaim kode pairing ini.",
+    "signIn": "Masuk",
+    "errorExpired": "Kode pairing ini telah kedaluwarsa. Buat kode baru di tablet lalu coba lagi.",
+    "errorUsed": "Kode pairing ini sudah pernah digunakan.",
+    "errorInvalid": "Kode pairing tidak valid. Silakan periksa kembali kode di tablet Anda.",
+    "errorNetwork": "Tidak dapat menghubungi server. Periksa koneksi internet Anda dan coba lagi.",
+    "noCode": "Kode pairing tidak ditemukan. Buka halaman ini dengan memindai kode QR di tablet Anda.",
+    "notConfigured": "Layanan pairing saat ini tidak tersedia."
   }
 }

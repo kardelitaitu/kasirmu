@@ -6,7 +6,8 @@
 //! existed was `create_role` only, so a role could be minted but never
 //! corrected or retired — the authoring half of the feature.
 //!
-//! Key items: [`Store::update_role`], [`Store::delete_role`], and
+//! Key items: [`Store::update_role`], [`Store::soft_delete_role`] (the role's
+//! half of the trash), [`Store::restore_role`], and
 //! [`Store::role_reference_counts`].
 //!
 //! Invariants:
@@ -24,13 +25,17 @@
 //!   happens inside the same transaction.
 //!
 //! All four operations live here, so role CRUD has exactly one rule set:
-//! [`Store::create_role`], [`Store::update_role`], [`Store::delete_role`] and
-//! [`Store::role_reference_counts`]. A fifth write, `seed_default_roles`,
+//! [`Store::create_role`], [`Store::update_role`], [`Store::soft_delete_role`]
+//! (plus the trash's `restore_role`, `list_trashed_roles` and
+//! `purge_expired_roles`) and [`Store::role_reference_counts`]. A fifth write,
+//! `seed_default_roles`,
 //! deliberately stays in [`super::staff`] — it is the preset upsert this
 //! module exists to keep callers away from, and it does not route through
 //! any of these four.
 
 use rusqlite::{Connection, OptionalExtension, params};
+
+use super::staff::{TRASH_RETENTION_DAYS, TrashedRole};
 
 use crate::error::CoreError;
 use crate::{Role, Store};
@@ -207,7 +212,7 @@ impl Store<'_> {
     ///
     /// Preset ids are refused — see [`Store::reject_builtin_role_id`]. This is
     /// the create-side half of the rule [`Store::update_role`] and
-    /// [`Store::delete_role`] already enforce: `seed_default_roles` upserts
+    /// [`Store::soft_delete_role`] already enforce: `seed_default_roles` upserts
     /// every `RolePreset` id and overwrites its grants, so a row minted at one
     /// of those ids before the first seed is silently destroyed by it later,
     /// with no error to trace. The production caller generates
@@ -475,7 +480,7 @@ impl Store<'_> {
     ///
     /// [`CoreError::Validation`] for a preset id or a still-referenced
     /// role; [`CoreError::NotFound`] when no such role.
-    pub fn delete_role(&self, id: &str) -> Result<(), CoreError> {
+    pub fn soft_delete_role(&self, id: &str) -> Result<(), CoreError> {
         Self::reject_builtin_role_id(id)?;
 
         let tx = self.conn.unchecked_transaction()?;
@@ -504,9 +509,134 @@ impl Store<'_> {
                 ),
             });
         }
-        tx.execute("DELETE FROM roles WHERE id = ?1", params![id])?;
+        // The row is STAMPED, not removed. Every guard above ran first, so a
+        // trashed role is one nothing references — which is also what makes the
+        // eventual purge a real DELETE (see `purge_expired_roles`).
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = tx.execute(
+            "UPDATE roles SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, id],
+        )?;
+        if rows == 0 {
+            return Err(CoreError::Validation {
+                field: "deleted_at",
+                message: "this role is already in the trash".to_owned(),
+            });
+        }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Take a custom role back out of the trash.
+    ///
+    /// A row past its retention window is refused with the same
+    /// [`CoreError::NotFound`] an absent or already-purged row gets, and the
+    /// cutoff mirrors [`Store::purge_expired_roles`] exactly — the same
+    /// `TRASH_RETENTION_DAYS`, the same strict-before comparison — so a role is
+    /// restorable precisely when the sweep has not yet claimed it. Without the
+    /// predicate the window held only as a side effect of the purge having
+    /// run: the sweep rides the trash read, so a list taken inside the window
+    /// and a restore clicked after it would resurrect a row the window had
+    /// closed. See [`Store::restore_user`](crate::db::staff) for the same
+    /// reasoning on the staff half.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NotFound`] when no such role, when it is not in the trash
+    /// to begin with, or when its window has closed — a restore is not a way to
+    /// prove a role exists.
+    pub fn restore_role(&self, id: &str) -> Result<Role, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE roles SET deleted_at = NULL, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NOT NULL AND deleted_at >= ?3",
+            params![now, id, cutoff],
+        )?;
+        if rows == 0 {
+            return Err(CoreError::NotFound {
+                entity: "role",
+                id: id.to_owned(),
+            });
+        }
+        self.get_role(id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "role",
+            id: id.to_owned(),
+        })
+    }
+
+    /// The custom roles currently in the trash, newest first.
+    ///
+    /// RESTORABLE rows only: the same cutoff the purge compares against is a
+    /// predicate here, so a window that has closed is never listed as if it had
+    /// time left. The purge runs immediately before this read in the same command,
+    /// which is what makes the two consistent — a row that survives the purge
+    /// either has time left or is one the purge refused to delete because
+    /// something still references it, and neither is restorable-and-hidden.
+    pub fn list_trashed_roles(&self) -> Result<Vec<TrashedRole>, CoreError> {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, description, permissions, created_at, updated_at, deleted_at \
+             FROM roles WHERE deleted_at IS NOT NULL AND deleted_at >= ?1 ORDER BY deleted_at DESC",
+        )?;
+        let rows = stmt.query_map([&cutoff], |row| {
+            Ok(TrashedRole {
+                role: Role {
+                    id: row.get("id")?,
+                    name: row.get("name")?,
+                    description: row.get("description")?,
+                    permissions: row.get("permissions")?,
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                },
+                deleted_at: row.get("deleted_at")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Remove trashed roles whose retention window has closed.
+    ///
+    /// THE ONE ROLE PATH THAT REALLY DELETES, and the reason it may: a role
+    /// carries no personal data, and `soft_delete_role` only trashes a role
+    /// after `role_references_on` proved nothing names it — so removing the row
+    /// strands nothing and erases nobody. The staff half cannot do this
+    /// (`purge_expired_users` anonymises instead) because shifts, stock
+    /// transactions and audit rows must keep resolving to a person.
+    ///
+    /// The reference check is repeated here anyway, inside the same
+    /// transaction as the delete: the guard held at trash time, and this is the
+    /// second door, not a copy of the first.
+    ///
+    /// Deliberately NOT through the RESTORABLE read: `list_trashed_roles` excludes a
+    /// closed window, which is precisely the set this sweep exists to delete. Reading
+    /// it here made the purge report 0 and delete nothing while the expired rows
+    /// stayed on disk, so the sweep asks the table for the expired set directly.
+    /// Fixed-width RFC 3339 millis, so comparing the strings compares the instants —
+    /// the clock check in SQL's own vocabulary, and the same boundary the read uses.
+    pub fn purge_expired_roles(&self) -> Result<usize, CoreError> {
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let expired: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM roles WHERE deleted_at IS NOT NULL AND deleted_at < ?1")?;
+            let rows = stmt.query_map([&cutoff], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+        let tx = self.conn.unchecked_transaction()?;
+        let mut removed = 0usize;
+        for id in expired {
+            if !Self::role_references_on(&tx, &id)?.is_empty() {
+                continue;
+            }
+            removed += tx.execute("DELETE FROM roles WHERE id = ?1", params![id])?;
+        }
+        tx.commit()?;
+        Ok(removed)
     }
 }
 

@@ -1019,9 +1019,11 @@ fn decision_pin_no_stored_ciphertext_names_the_key_that_produced_it() {
     assert_ne!(a, b, "repeated bytes for identical input would be a header");
 }
 
-/// Spawned by the branch pin below with `OZ_MASTER_KEY` set, so both
-/// derivations can be observed without mutating this process environment
-/// underneath the other cases.
+/// Spawned by the branch-tolerance pin below with `OZ_MASTER_KEY` set, so a
+/// process holding the master key can be asked about a row written without
+/// it. Reports four facts in one line: which derivation the child selected,
+/// what the parent's row decrypted TO (or that it refused it), and a row the
+/// child writes under the master key for the parent to try.
 #[test]
 #[ignore = "child probe: run by the branch pin with OZ_MASTER_KEY injected"]
 fn decision_pin_child_probe_under_master_key() {
@@ -1030,20 +1032,33 @@ fn decision_pin_child_probe_under_master_key() {
         return;
     };
     let active = kasirmu_core::crypto::master_key_derivation_active();
-    let refused = kasirmu_core::crypto::decrypt_sync_api_key(&ct).is_err();
+    let opened = match kasirmu_core::crypto::decrypt_sync_api_key(&ct) {
+        Ok(plaintext) => format!("read={plaintext}"),
+        Err(_) => "refused=true".to_string(),
+    };
     let ours = kasirmu_core::crypto::encrypt_sync_api_key(SENTINEL).expect("child encrypts");
-    println!("OZ-PIN active={active} refused={refused} ct={ours}");
+    println!("OZ-PIN active={active} {opened} ct={ours}");
 }
 
-/// The consequence the shape pin only describes: a row made under one branch
-/// does not decrypt under the other, and the two rows are the same kind of
-/// object — so which branch made a row is not recoverable from the row.
+/// The inverse of what this pin used to assert: a row written WITHOUT a
+/// master key is still readable by a process that has one, while a row
+/// written WITH a master key still fails in a process that does not.
+/// Tolerance is one-directional — "any key works" would make the first
+/// assertion meaningless and is explicitly refused below.
+///
+/// Nothing about the envelope changed to make this possible (the shape pin
+/// above is untouched and still green): this is read tolerance, not
+/// versioning. It is what lets a database written under the static
+/// derivation survive a master key appearing, and it says nothing about a
+/// row that has already been rewrapped.
 #[test]
-fn decision_pin_portable_ciphertext_is_refused_under_the_other_branch() {
+fn decision_pin_reads_are_branch_tolerant() {
     assert!(
         !kasirmu_core::crypto::master_key_derivation_active(),
         "this case assumes the suite runs with OZ_MASTER_KEY unset; if it is set, both processes are on the same branch and the comparison proves nothing"
     );
+    // The parent writes a row under the static derivation, exactly as a
+    // database in the field would have before any master key existed.
     let portable = kasirmu_core::crypto::encrypt_sync_api_key(SENTINEL).unwrap();
     assert_eq!(
         kasirmu_core::crypto::decrypt_sync_api_key(&portable).unwrap(),
@@ -1073,10 +1088,13 @@ fn decision_pin_portable_ciphertext_is_refused_under_the_other_branch() {
         .unwrap_or_else(|| panic!("child printed no probe line; stdout: {stdout}"));
     assert!(line.contains("active=true"), "{line}");
     assert!(
-        line.contains("refused=true"),
-        "DECISION PIN BROKEN: the child, running under OZ_MASTER_KEY, decrypted a row written by the portable static derivation ({line}). Either the envelope now says which key made it — in which case this pin is obsolete — or reading became branch-tolerant, which changes what a half-finished rewrap would do. Known limitation, pinned not endorsed."
+        line.contains(&format!("read={SENTINEL}")),
+        "the child, running under OZ_MASTER_KEY, did not decrypt a row written by the legacy static derivation ({line}). A master key appearing must not orphan a database written without it."
     );
 
+    // The reverse must still FAIL: this process holds no master key, so a
+    // row the child wrote under one is unreadable here. If this ever passes,
+    // the reader accepts any key and the assertion above proves nothing.
     let master = line
         .split("ct=")
         .nth(1)
@@ -1085,11 +1103,12 @@ fn decision_pin_portable_ciphertext_is_refused_under_the_other_branch() {
         .to_string();
     assert!(
         kasirmu_core::crypto::decrypt_sync_api_key(&master).is_err(),
-        "DECISION PIN BROKEN: a row written under OZ_MASTER_KEY decrypted here, where that key is not set: {master}"
+        "a row written under OZ_MASTER_KEY decrypted in a process where that key is not set: {master}"
     );
 
-    // And the two rows are indistinguishable AS OBJECTS: same budget, same
-    // alphabet. That is the undecidability, and it is what a sweep faces.
+    // And the two rows are still indistinguishable AS OBJECTS: same budget,
+    // same alphabet, no key identifier anywhere — which is why the tolerance
+    // had to be built out of decryption attempts and not out of a marker.
     let p = envelope(&portable);
     let m = envelope(&master);
     assert_eq!(p.len(), m.len(), "both are nonce(12)+payload+tag(16)");

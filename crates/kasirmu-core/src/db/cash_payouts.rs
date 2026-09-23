@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: validates amount>0 and open shift; COR-28 INFO: open-shift check is outside the insert (TOCTOU — a concurrently closed shift can still receive a payout; advisory class, low stakes)
+findings: validates amount>0 and open shift; COR-28 INFO: FIXED (C18, slice P1.2) — the INSERT is now a compare-and-set inside one transaction (`status = 'open'` evaluated at write time), so a shift closed between the pre-read and the write yields zero rows and is refused with the same closed-shift error instead of accepting cash against a closed drawer
 next: none | perf: N/A
 */
 
@@ -31,7 +31,9 @@ impl Store<'_> {
             });
         }
 
-        // Verify the shift exists and is open.
+        // Fast-path rejection of the two caller-visible failures (missing
+        // shift, already-closed shift), with the precise error — the same
+        // shape as `void_sale`.
         let shift = self
             .get_shift(shift_id)?
             .ok_or_else(|| CoreError::NotFound {
@@ -48,11 +50,28 @@ impl Store<'_> {
         let payout = CashPayout::new(shift_id, amount_minor, reason);
         let now = &payout.created_at;
 
-        self.conn.execute(
+        // COR-28 (C18): the check above reads OUTSIDE this transaction, so a
+        // concurrent close can land between the read and the write and let
+        // cash leave the drawer against a closed shift. The INSERT is
+        // therefore a compare-and-set: `status = 'open'` is evaluated at
+        // write time inside the transaction, so a shift that closed in that
+        // window yields zero rows and is refused with the same closed-shift
+        // error (the `void_sale` shape, sales_lifecycle.rs).
+        let tx = self.conn.unchecked_transaction()?;
+        let rows = tx.execute(
             "INSERT INTO cash_payouts (id, shift_id, amount_minor, reason, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+             SELECT ?1, ?2, ?3, ?4, ?5
+             WHERE EXISTS (SELECT 1 FROM shifts WHERE id = ?2 AND status = 'open')",
             params![payout.id, shift_id, amount_minor, reason, now],
         )?;
+        if rows == 0 {
+            tx.rollback()?;
+            return Err(CoreError::Validation {
+                field: "status",
+                message: "cannot add payout to a closed shift".into(),
+            });
+        }
+        tx.commit()?;
 
         Ok(payout)
     }

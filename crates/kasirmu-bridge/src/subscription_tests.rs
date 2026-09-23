@@ -5,11 +5,14 @@ use crate::testing::{
     seeded_row_reaches_a_paid_tier, seeded_row_verdict_for_tier,
 };
 use kasirmu_core::availability::AvailabilityReason;
-use kasirmu_core::migrations;
 use kasirmu_core::subscription::TenantSubscription;
 
+/// A provisioned store, via the shared harness so the seeded baseline
+/// (ADR #56 §2.6: location, legal entity, workspace instances, BOOTSTRAP_FREE
+/// subscription) is present. Calling `migrations::fresh_db()` directly would
+/// skip that seed and make every fail-closed arm pass for the wrong reason.
 fn fresh_db() -> rusqlite::Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 fn seed_tier(conn: &rusqlite::Connection, tier_key: &str) {

@@ -11,6 +11,9 @@ fn staff_member_dto_debug() {
         id: "u1".into(),
         username: "jdoe".into(),
         display_name: "John Doe".into(),
+        avatar: None,
+        phone: None,
+        deleted_at: None,
         role_id: "r1".into(),
         role_name: "Manager".into(),
         is_active: true,
@@ -30,6 +33,9 @@ fn staff_member_dto_serialize() {
         id: "u2".into(),
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
+        avatar: None,
+        phone: None,
+        deleted_at: None,
         role_id: "r2".into(),
         role_name: "Cashier".into(),
         is_active: false,
@@ -52,6 +58,7 @@ fn role_dto_debug() {
         name: "Admin".into(),
         description: "Full access".into(),
         permissions: vec![],
+        deleted_at: None,
         // preset-guard fields (7948344e): a preset-owned builtin row with
         // no references — the common default shape.
         is_builtin: true,
@@ -71,6 +78,7 @@ fn role_dto_serialize() {
         name: "Viewer".into(),
         description: String::new(),
         permissions: vec![],
+        deleted_at: None,
         is_builtin: false,
         reference_count: 0,
         holder_count: 0,
@@ -734,4 +742,150 @@ async fn scoped_update_staff_rolls_back_user_and_assignment_on_late_failure() {
         workspace_keys, 0,
         "no workspace dimension row may survive the rollback"
     );
+}
+
+// ── C1.1: the staff cap's REACTIVATION door (tablet copy) ───────────
+//
+// The tablet's `update_staff_scoped` is a FORK, not a delegate (see the
+// command's own doc: the desktop's recorder passes `debug_upgrade = true` and
+// the tablet's passes `false`), so the bridge's reactivation gate does not
+// reach this shell. These fixtures pin the tablet's own copy — a bridge test
+// cannot, because the tablet never calls that function.
+
+/// A second staff member, inactive, so a reactivation has a target while the
+/// cap is already full.
+fn insert_inactive_staff(conn: &rusqlite::Connection, id: &str) {
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES (?1, ?1, 'hash', 'Dana', 'role-lite', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        rusqlite::params![id],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn scoped_update_staff_reactivation_blocked_at_free_tier_staff_limit() {
+    // Free allows 1 active staff and the owner is exempt. `user-cashier` is
+    // active (count 1, at the cap); `user-dana` is inactive — the state a
+    // deactivate-then-create round leaves behind. Reactivating dana is the
+    // over-cap write and must be refused with the SAME error create returns.
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'),
+            ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    insert_inactive_staff(&conn, "user-dana");
+    let app = build_app(scoped_state_with_token(
+        conn,
+        "owner-token",
+        "user-owner",
+        "role-owner",
+        "store-a",
+    ));
+
+    let result = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-dana".into(),
+            username: "user-dana".into(),
+            display_name: "Dana".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        app.state(),
+    )
+    .await;
+    match result {
+        Err(AppError::Core { sub_kind, message }) => {
+            assert!(matches!(
+                sub_kind,
+                kasirmu_core::CoreErrorKind::SubscriptionLimitExceeded
+            ));
+            assert!(message.contains("allows maximum 1 staff users"));
+        }
+        other => panic!("expected subscription-limit error, got {other:?}"),
+    }
+
+    // Nothing moved: the refused reactivation must not have activated the row.
+    let state = app.state::<AppState>();
+    let db = state.db.lock().await;
+    let active: bool = db
+        .query_row(
+            "SELECT is_active FROM users WHERE id = 'user-dana'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(!active, "the over-cap reactivation must not persist");
+    assert_eq!(Store::new(&db).count_staff_users().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn scoped_update_staff_edit_of_an_active_member_is_not_blocked_at_the_cap() {
+    // The tablet's half of the requirement that keeps the fix usable: an edit
+    // of an already-active member does not grow the counted set, so a plan at
+    // its cap must still accept it — as must a deactivation.
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-lite', 'Lite', 'Limited', '[\"sales:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES
+            ('user-owner', 'owner', 'hash', 'Owner', 'role-owner', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z'),
+            ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-lite', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    let app = build_app(scoped_state_with_token(
+        conn,
+        "owner-token",
+        "user-owner",
+        "role-owner",
+        "store-a",
+    ));
+
+    let dto = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier Renamed".into(),
+            role_id: "role-lite".into(),
+            is_active: true,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        app.state(),
+    )
+    .await
+    .expect("an active member's edit must not be refused at the cap");
+    assert_eq!(dto.display_name, "Cashier Renamed");
+
+    let dto = update_staff_scoped(
+        "owner-token".into(),
+        UpdateStaffScopedArgs {
+            id: "user-cashier".into(),
+            username: "cashier".into(),
+            display_name: "Cashier Renamed".into(),
+            role_id: "role-lite".into(),
+            is_active: false,
+            pin: None,
+            profile: None,
+            assignment: None,
+        },
+        app.state(),
+    )
+    .await
+    .expect("deactivating must not be refused at the cap");
+    assert!(!dto.is_active);
 }

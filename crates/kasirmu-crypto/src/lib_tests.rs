@@ -280,6 +280,50 @@ fn accessor_agrees_with_the_reader_the_derivation_uses() {
     );
 }
 
+// ── Branch-tolerant reads ───────────────────────────────────────────
+
+/// A row is accepted under whichever candidate key authenticates it, and
+/// the try order does not decide the answer: the legacy key first or last
+/// both open a legacy row. Exercised with explicit key lists rather than
+/// through `candidate_keys`, which reads `OZ_MASTER_KEY` and would race
+/// the other cases in this binary.
+#[test]
+fn decrypt_with_candidates_accepts_any_authenticating_key() {
+    let legacy = derive_static_key(PROFILE_AT_REST_DOMAIN);
+    let master = hmac_key(&[0x11u8; 32], PROFILE_AT_REST_DOMAIN);
+    let row = encrypt("profile-secret", &legacy).unwrap();
+
+    // The slice's whole point: the master branch can still read a row the
+    // legacy branch wrote, in either position of the candidate list.
+    assert_eq!(
+        decrypt_with_candidates(&row, &[legacy, master]).unwrap(),
+        "profile-secret"
+    );
+    assert_eq!(
+        decrypt_with_candidates(&row, &[master, legacy]).unwrap(),
+        "profile-secret"
+    );
+    // ... and tolerance is not 'any key works': a list without the key that
+    // wrote the row still fails.
+    assert!(decrypt_with_candidates(&row, &[master]).is_err());
+    assert!(
+        decrypt_with_candidates(&row, &[hmac_key(&[0x22u8; 32], PROFILE_AT_REST_DOMAIN)]).is_err()
+    );
+}
+
+/// With no usable `OZ_MASTER_KEY` there is exactly one candidate, so a
+/// read stays byte-for-byte the single-key decrypt it was.
+#[test]
+fn candidate_keys_is_single_when_no_master_key_is_set() {
+    if master_key_from_env().is_some() {
+        return; // ambient master key: the two-candidate case is covered above
+    }
+    assert_eq!(
+        candidate_keys(PROFILE_AT_REST_DOMAIN, derive_static_key),
+        vec![derive_static_key(PROFILE_AT_REST_DOMAIN)]
+    );
+}
+
 /// The flag tracks the key the portable families actually derive - a selection
 /// report, not a security assertion.
 #[test]

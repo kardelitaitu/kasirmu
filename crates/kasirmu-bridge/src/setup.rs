@@ -6,7 +6,8 @@
 //! `BridgeError::`. Settings keys, transaction boundaries, gate order and
 //! log lines are byte-identical to the original command bodies.
 
-use kasirmu_core::{FeatureRegistry, Settings, Store, features};
+use kasirmu_core::db::provisioning::{LocationKind, ProvisioningMode, ProvisioningRecord};
+use kasirmu_core::{Settings, Store};
 use serde::{Deserialize, Serialize};
 
 use crate::ctx::BridgeCtx;
@@ -41,6 +42,146 @@ pub struct SetupStatus {
     pub preset: Option<String>,
 }
 
+// ── Provisioning (ADR #56 §2.1/§2.2) ────────────────────────────────
+
+/// The first-run state of one terminal, as the shell reads it.
+///
+/// A tagged enum rather than a boolean pair: the two states are mutually
+/// exclusive at the type level, so a shell cannot render "provisioned" and
+/// "unprovisioned" at once, and there is no third value a partial read could
+/// invent. `state` is the tag; the payload carries what a provisioned terminal
+/// needs to route (its location, owner and region).
+#[derive(Debug, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum FirstRunStateDto {
+    /// No provisioning row for this terminal — run the provisioning flow.
+    Unprovisioned,
+    /// A row exists; the session decides which screen renders.
+    Provisioned {
+        /// The location this terminal belongs to.
+        location_id: Option<String>,
+        /// The bootstrapped owner.
+        owner_user_id: Option<String>,
+        /// `local` or `linked` (ADR #56 §2.4).
+        mode: String,
+        /// Residency mirror — which deployment holds this tenant's data.
+        home_region: String,
+        /// The licence server's tenant id; `null` on a `local` install.
+        tenant_id: Option<String>,
+    },
+}
+
+impl FirstRunStateDto {
+    /// The unprovisioned state, for a terminal with no row.
+    #[must_use]
+    pub fn unprovisioned() -> Self {
+        Self::Unprovisioned
+    }
+
+    /// Project a stored record into the wire shape.
+    #[must_use]
+    pub fn provisioned(rec: &ProvisioningRecord) -> Self {
+        Self::Provisioned {
+            location_id: rec.location_id.clone(),
+            owner_user_id: rec.owner_user_id.clone(),
+            mode: rec.mode.as_str().to_owned(),
+            home_region: rec.home_region.clone(),
+            tenant_id: rec.tenant_id.clone(),
+        }
+    }
+}
+
+/// What `provision_device` created, for the shell to route with.
+#[derive(Debug, Serialize)]
+pub struct ProvisionDeviceResultDto {
+    /// The terminal this record belongs to.
+    pub terminal_id: String,
+    /// The location provisioning created.
+    pub location_id: String,
+    /// The owner provisioning created.
+    pub owner_user_id: String,
+    /// True on a fresh provision, false when an existing row was replayed.
+    ///
+    /// The shell distinguishes "welcome" from "already set up" on this rather
+    /// than by comparing rows, so a retry is visibly a retry.
+    pub created: bool,
+    /// `local` or `linked`.
+    pub mode: String,
+    /// Residency mirror.
+    pub home_region: String,
+}
+
+impl From<&kasirmu_core::db::provisioning::ProvisionDeviceResult> for ProvisionDeviceResultDto {
+    fn from(r: &kasirmu_core::db::provisioning::ProvisionDeviceResult) -> Self {
+        Self {
+            terminal_id: r.record.terminal_id.clone(),
+            location_id: r.location_id.clone(),
+            owner_user_id: r.owner_user_id.clone(),
+            created: r.created,
+            mode: r.record.mode.as_str().to_owned(),
+            home_region: r.record.home_region.clone(),
+        }
+    }
+}
+
+impl From<ProvisionDeviceArgs> for kasirmu_core::db::provisioning::ProvisionDeviceArgs {
+    fn from(a: ProvisionDeviceArgs) -> Self {
+        Self {
+            terminal_id: a.terminal_id,
+            location_name: a.location_name,
+            currency: a.currency,
+            timezone: a.timezone,
+            owner_username: a.owner_username,
+            owner_display_name: a.owner_display_name,
+            owner_pin: a.owner_pin,
+            preset: a.preset,
+            features: a.features,
+            location_kind: a.location_kind,
+            mode: a.mode,
+            tenant_id: a.tenant_id,
+            device_credential_id: a.device_credential_id,
+        }
+    }
+}
+
+/// The wire shape for `provision_device` (ADR #56 §2.1/§2.2).
+///
+/// Deserialized from the shell, then converted into the core args. Kept as its
+/// own type so the IPC contract can stay `serde`-friendly (a `local` install
+/// sends no `tenant_id`) while the core type keeps every field explicit.
+#[derive(Debug, Deserialize)]
+pub struct ProvisionDeviceArgs {
+    /// `terminals.device_id` — this device.
+    pub terminal_id: String,
+    /// The location's display name.
+    pub location_name: String,
+    /// ISO-4217 currency.
+    pub currency: String,
+    /// IANA timezone.
+    pub timezone: String,
+    /// Owner login name.
+    pub owner_username: String,
+    /// Owner display name.
+    pub owner_display_name: String,
+    /// Owner PIN (>= 4 characters).
+    pub owner_pin: String,
+    /// Store-type preset (`simple-retail`, `restaurant`, ...).
+    pub preset: String,
+    /// Enabled feature keys for that preset.
+    #[serde(default)]
+    pub features: Vec<String>,
+    /// `retail` or `restaurant` — selects the workspace topology.
+    pub location_kind: LocationKind,
+    /// `local` or `linked`.
+    pub mode: ProvisioningMode,
+    /// The licence server's tenant id; required for `linked`.
+    #[serde(default)]
+    pub tenant_id: Option<String>,
+    /// The device credential; required for `linked`.
+    #[serde(default)]
+    pub device_credential_id: Option<String>,
+}
+
 // ── Response types ───────────────────────────────────────────────────
 
 /// The enabled feature keys returned by `get_enabled_features`.
@@ -70,92 +211,173 @@ pub async fn get_enabled_features(
     Ok(EnabledFeaturesResult { features })
 }
 
-/// Persist the chosen preset and features, then mark setup as complete.
+/// Return the feature keys a store-type preset enables.
 ///
-/// Called by the front-end when the user clicks "Complete Setup" on
-/// the last step of the wizard.
-pub async fn complete_setup(
-    ctx: &BridgeCtx<'_>,
-    args: CompleteSetupArgs,
-) -> Result<(), BridgeError> {
-    let db = ctx.lock_global().await;
-
-    // Convert feature key strings → Feature enum variants.
-    let mut registry = FeatureRegistry::new();
-    for key in &args.features {
-        if let Some(feat) = features::feature_from_key(key) {
-            registry.enable(feat);
-        } else {
-            tracing::warn!(feature = %key, "unknown feature key in setup, skipping");
-        }
-    }
-
-    // Save features + preset + completed flag in a single transaction.
-    let tx = db.unchecked_transaction()?;
-    {
-        let store = Store::new(&tx);
-
-        // 1. Seed built-in roles (idempotent — skips existing).
-        store.seed_default_roles()?;
-
-        // 2. Persist features.
-        // RUST-08: write feature rows directly into the outer transaction.
-        // `store.save_features` -> Settings::set_batch opens its OWN
-        // unchecked_transaction, which would be a nested BEGIN inside the
-        // tx above ("cannot start a transaction within a transaction") —
-        // same class as the CLI-1 / import_data fixes.
-        for (key, value) in registry.to_settings_rows() {
-            Settings::set(&tx, &key, &value)?;
-        }
-
-        // 3. Prune stale feature rows that are no longer enabled.
-        Settings::prune_stale_features(&tx, &registry)?;
-
-        // 4. Save the preset name.
-        Settings::set(
-            &tx,
-            kasirmu_core::settings::keys::STORE_PRESET,
-            &args.preset,
-        )?;
-
-        // 5. Mark setup as complete.
-        Settings::set(&tx, kasirmu_core::settings::keys::SETUP_COMPLETE, "1")?;
-
-        // 6. Set default currency.
-        Settings::set_default_currency(&tx, &args.default_currency)?;
-
-        // 7. Dismiss the wizard so it doesn't show on next launch.
-        Settings::set(
-            &tx,
-            kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
-            "false",
-        )?;
-    }
-    tx.commit()?;
-
-    tracing::info!(
-        preset = %args.preset,
-        feature_count = %args.features.len(),
-        "setup wizard completed"
-    );
-
-    Ok(())
+/// First-run provisioning asks the merchant for a store type (`ProvisioningFlow`
+/// step 1) and must send the resulting feature set to `provision_device`. The
+/// preset→features fact lives in `kasirmu_core::features::preset_feature_keys`;
+/// this exposes it so the UI does not carry a second copy of the lists — which
+/// is exactly the drift `ProvisionDeviceArgs::preset`'s own doc warns against.
+///
+/// No session is required: the flow calls this BEFORE any account exists, the
+/// same pre-session position as `get_first_run_state`. The answer is a static
+/// table rather than tenant state, so there is nothing to authorise.
+pub async fn get_preset_features(
+    _ctx: &BridgeCtx<'_>,
+    preset: String,
+) -> Result<EnabledFeaturesResult, BridgeError> {
+    kasirmu_core::features::preset_feature_keys(&preset)
+        .map(|features| EnabledFeaturesResult { features })
+        .ok_or_else(|| BridgeError::Invalid(format!("unknown store preset: {preset}")))
 }
 
-/// Returns whether the setup wizard has been completed.
+// ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `complete_setup` was REMOVED here. It wrote exactly the two booleans §2.1
+// retires (steps 5 and 7 below, `SETUP_COMPLETE` and `SHOW_SETUP_WIZARD`), and
+// once both shells' first-run path calls `provision_device` nothing invoked it:
+// the wizard that used to call it is no longer on the critical path (§2.3).
+//
+// The effective content it persisted is NOT lost — `provision_device` step 5
+// writes the feature rows, the preset and the default currency from the same
+// statement list, inside the transaction that also creates the location and
+// the owner. What is gone is the pair of writes that let a terminal claim to
+// be set up without being provisioned.
+
+/// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// The front-end calls this on mount to decide whether to render
-/// the wizard or the main application.
-pub async fn get_setup_status(ctx: &BridgeCtx<'_>) -> Result<SetupStatus, BridgeError> {
+/// Replaces `get_setup_status`. The old read reported a BOOLEAN derived from
+/// the `show_setup_wizard` dismissal key, which a failed read could forge in
+/// either direction — that is why the shells carried a boot-retry workaround
+/// for a lost IPC response. This returns the provisioning row instead: an
+/// unreadable database yields no row, and no row means unprovisioned, so a
+/// retry is an ordinary idempotent re-read rather than a guess.
+///
+/// The shell renders from this: `unprovisioned` runs the provisioning flow,
+/// `provisioned` routes to a session (or the login screen when there is none).
+///
+/// # The runtime legacy backfill, and why it lives HERE
+///
+/// `20261008_provisioning_legacy_backfill.sql` writes the missing row from SQL,
+/// keyed on `terminals.device_id` — the only SQL-readable spelling of the
+/// hostname. A legacy install that never registered a terminal row has no such
+/// spelling, so that migration is inert for it and an already-set-up device
+/// re-enters onboarding on every boot. `terminal_id` HERE is that hostname
+/// (`get_device_id`), so the same rule can be applied where the SQL could not:
+/// a terminal with no row whose legacy signal proves the pre-#56 wizard
+/// completed gets its row written now, and reads as provisioned immediately.
+///
+/// The predicate is the migration's, and it is deliberately the same three
+/// facts: the key exists, its value is exactly `"false"`, and nothing else. A
+/// MISSING key or any other value leaves the device `Unprovisioned` — a forged
+/// row would silently skip onboarding for a genuinely new device, which is
+/// strictly worse than the bug this closes.
+///
+/// The write is `Store::provision_terminal`, which returns the existing row
+/// unchanged when one exists (an `INSERT` guarded by a read, in the same
+/// connection), so this is idempotent and can never overwrite or duplicate.
+///
+/// The row is shaped exactly as the migration's: `mode = 'local'`, `home_region
+/// = 'global'` (§Q6), and NULL tenant / owner / device — the legacy install had
+/// no licence-server tenant, no SQL-provable owner identity and no credential,
+/// so claiming any of them would be a guess. `location_id` is carried only
+/// when the device's own `terminals` row resolves it AND the `locations` row
+/// still exists, mirroring the migration's correlated subquery that yields NULL
+/// rather than a dangling id.
+pub async fn get_first_run_state(
+    ctx: &BridgeCtx<'_>,
+    terminal_id: &str,
+) -> Result<FirstRunStateDto, BridgeError> {
     let db = ctx.lock_global().await;
+    let store = Store::new(&db);
 
-    let completed = Settings::get(&db, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)?
-        .map(|v| v == "false")
-        .unwrap_or(false);
+    Ok(match store.get_provisioning(terminal_id)? {
+        None => match backfill_legacy_provisioning(&store, terminal_id)? {
+            Some(rec) => FirstRunStateDto::provisioned(&rec),
+            None => FirstRunStateDto::unprovisioned(),
+        },
+        Some(rec) => FirstRunStateDto::provisioned(&rec),
+    })
+}
 
-    let preset = Settings::get(&db, kasirmu_core::settings::keys::STORE_PRESET)?;
+/// Write the provisioning row a legacy (pre-ADR-#56) install is missing.
+///
+/// Returns the stored record when the legacy signal proves the retired wizard
+/// completed this device's setup, and `None` in every other case — including
+/// the one that matters most: a device with no `store.show_setup_wizard` key,
+/// which is every fresh ADR-#56 install (`provision_device` deliberately does
+/// not write that key, and no migration seeds one).
+///
+/// Only `"false"` counts. That exact value was written by the two retired
+/// commands — `complete_setup` step 7 and `dismiss_setup_wizard` — and by
+/// nothing else, so it is a legacy-ONLY fact; `"true"` is the wizard's "show me"
+/// state and is not a completion.
+fn backfill_legacy_provisioning(
+    store: &Store<'_>,
+    terminal_id: &str,
+) -> Result<Option<ProvisioningRecord>, BridgeError> {
+    let completed = Settings::get(store.conn, kasirmu_core::settings::keys::SHOW_SETUP_WIZARD)?
+        .is_some_and(|v| v == "false");
+    if !completed {
+        return Ok(None);
+    }
 
-    Ok(SetupStatus { completed, preset })
+    // The location binding, and only when it still RESOLVES. `provisioning.location_id`
+    // is a FOREIGN KEY, so a stale binding must yield NULL rather than a dangling
+    // id — the same guard the migration's correlated subquery applies.
+    let bound = match store.get_terminal_by_device_id(terminal_id)? {
+        Some(t) => store
+            .get_terminal_bound_location(&t.id)?
+            .filter(|id| store.get_location_profile(id).ok().flatten().is_some()),
+        None => None,
+    };
+
+    let (record, created) = store.provision_terminal(&ProvisioningRecord {
+        terminal_id: terminal_id.to_owned(),
+        tenant_id: None,
+        location_id: bound,
+        owner_user_id: None,
+        device_id: None,
+        mode: ProvisioningMode::Local,
+        home_region: kasirmu_core::regional::DEFAULT_REGION.to_string(),
+        provisioned_at: String::new(),
+    })?;
+
+    if created {
+        tracing::info!(
+            terminal_id = %record.terminal_id,
+            "legacy setup backfilled a provisioning row at boot"
+        );
+    }
+    Ok(Some(record))
+}
+
+/// Provision one terminal in a single idempotent transaction (ADR #56 §2.2).
+///
+/// The one command that replaces the wizard's completion path. It creates the
+/// location, the workspaces that point at it, the owner, the feature rows and
+/// the provisioning marker together, or none of them: the marker is written
+/// last, so "setup completed but nothing provisioned" — the state the wizard's
+/// Skip button reaches today — becomes unrepresentable rather than guarded.
+///
+/// Idempotent by construction. A retry after a crash, a lost Android IPC
+/// response or a re-polled pairing claim returns the existing row and creates
+/// nothing, so the same device can never mint two terminals or two owners.
+pub async fn provision_device(
+    ctx: &BridgeCtx<'_>,
+    args: ProvisionDeviceArgs,
+) -> Result<ProvisionDeviceResultDto, BridgeError> {
+    let db = ctx.lock_global().await;
+    let result = kasirmu_core::db::provisioning::provision_device(&db, &args.into())?;
+
+    tracing::info!(
+        terminal_id = %result.record.terminal_id,
+        created = result.created,
+        mode = %result.record.mode.as_str(),
+        "terminal provisioned"
+    );
+
+    Ok(ProvisionDeviceResultDto::from(&result))
 }
 
 /// Requires the `staff:manage_roles` permission.
@@ -182,20 +404,14 @@ pub async fn seed_default_roles_scoped(
     Ok(count)
 }
 
-/// Dismiss the setup wizard without enabling any features.
-///
-/// Called when the user clicks "Skip setup". Only writes the
-/// `show_setup_wizard = false` flag — no preset or features are saved.
-pub async fn dismiss_setup_wizard(ctx: &BridgeCtx<'_>) -> Result<(), BridgeError> {
-    let db = ctx.lock_global().await;
-    Settings::set(
-        &db,
-        kasirmu_core::settings::keys::SHOW_SETUP_WIZARD,
-        "false",
-    )?;
-    tracing::info!("setup wizard dismissed (skip)");
-    Ok(())
-}
+// ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `dismiss_setup_wizard` and `get_setup_status` were REMOVED here — see the
+// provisioning surface above for what replaced them. Both served the three
+// booleans §2.1 retires: the Skip escape hatch that marked setup complete
+// while provisioning nothing (§1.5: a trapdoor, not an exit), and the
+// `completed` read derived from the same key, which a failed read could forge
+// in either direction (§1.4).
 
 #[cfg(test)]
 #[path = "setup_tests.rs"]

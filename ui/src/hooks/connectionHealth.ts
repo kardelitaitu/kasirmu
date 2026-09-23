@@ -20,10 +20,23 @@
  * a service is never reported `unknown` by a probe, because probing is what
  * ends the uncertainty. Keeping them distinct means "we have not asked yet"
  * can never be drawn the same colour as "we asked and got nothing back".
+ *
+ * `unconfigured` is likewise the UI's own state, and it exists for the same
+ * reason one level down: the sync probe distinguishes "this device has no
+ * server URL at all" (its `status` says so, `latency_ms` is absent) from "a
+ * configured server did not answer". Before this member existed both answers
+ * collapsed into `disconnected`, so a tablet that had never been configured
+ * drew the same red pill as a server that was down — and read as a network
+ * outage to the person debugging it.
  */
 
 /** The health of a service as the indicators render it. */
-export type ConnectionHealth = 'checking' | 'connected' | 'degraded' | 'disconnected';
+export type ConnectionHealth =
+  | 'checking'
+  | 'connected'
+  | 'degraded'
+  | 'disconnected'
+  | 'unconfigured';
 
 /** Visual tone for an indicator dot. */
 export type StatusTone = 'good' | 'warn' | 'bad' | 'checking';
@@ -47,6 +60,15 @@ export function toneForHealth(state: ConnectionHealth, latencyMs: number | null)
     case 'checking':
       return 'checking';
     case 'degraded':
+      return 'warn';
+    case 'unconfigured':
+      // NOT `bad`. Red says "the service you rely on has stopped answering",
+      // and that is exactly the misreading this state removes: nothing was
+      // ever set up, so there is no working service being reported as broken
+      // and no outage to go looking for. It is not `good` either — sync is
+      // genuinely not running and a green dot would hide that. `warn` is the
+      // same answer `degraded` gets above, and for the same reason: draw the
+      // operator's eye without telling them to stop trading.
       return 'warn';
     case 'disconnected':
       return 'bad';
@@ -73,6 +95,11 @@ export function toneForBinaryHealth(state: ConnectionHealth): StatusTone {
       return 'warn';
     case 'connected':
       return 'good';
+    case 'unconfigured':
+      // Same reasoning as `toneForHealth`: an unconfigured service is not a
+      // failing one. This arm is what a payment pill would use the day it
+      // stops folding "no gateway configured" into `disconnected`.
+      return 'warn';
     case 'disconnected':
       return 'bad';
   }
@@ -84,6 +111,29 @@ export function toneForBinaryHealth(state: ConnectionHealth): StatusTone {
  * dev-mock. `fromWireHealth` is the single place that translates it.
  */
 export type WireHealth = 'operational' | 'degraded' | 'unavailable' | 'unknown';
+
+/**
+ * The `status` string both shells' `test_sync_connection` answers when the
+ * device has no sync server URL at all (mobile-tauri commands/sync.rs:123 and
+ * :399, bridge sync.rs:422/483/518). It is the probe's OWN signal, which is
+ * the only thing that separates "never configured" from "configured and
+ * unreachable" — both arrive as `ok: false`.
+ */
+export const SYNC_NOT_CONFIGURED_STATUS = 'No server URL configured';
+
+/**
+ * True when a sync probe's answer means "this device was never configured"
+ * rather than "the configured server did not answer".
+ *
+ * Matching the status string and not merely `ok === false` is the point: a
+ * real ping failure also answers `ok: false` with no latency (`ping_server`'s
+ * transport-error and sync-http-disabled branches both carry `latency_ms:
+ * None`), so a latency test alone would relabel genuine outages as
+ * configuration gaps — the same class of lie in the opposite direction.
+ */
+export function isSyncUnconfigured(status: string, ok: boolean): boolean {
+  return !ok && status === SYNC_NOT_CONFIGURED_STATUS;
+}
 
 /**
  * Translate a probe's health field into an indicator state.

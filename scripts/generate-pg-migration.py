@@ -27,7 +27,13 @@ migrations — the drift the loyalty work exposed):
      deterministic
    * triggers → hand-written plpgsql from TRIGGER_MAP; every dumped
      trigger needs an entry and every entry must be live (fail closed
-     both ways — the ERR-10 stale-exemption discipline)
+     both ways — the ERR-10 stale-exemption discipline). That membership
+     check is NAME-ONLY: it proves each port EXISTS, never that it MEANS
+     the same thing as the SQLite trigger it mirrors. C43 added the
+     TRIGGER_VERIFICATION gate (declared test + body digest) as the
+     compensating control; for the six older ports the named test pins
+     the SQLite trigger rather than executing the plpgsql, and that
+     residual gap is stated on that table rather than implied away.
    * RLS appendix → curated RLS_TABLES list (enabling RLS is a policy
      decision: the write path must populate tenant_id); the generator
      fails if an entry loses its table or column, and lists tenant_id
@@ -65,6 +71,7 @@ hook runs it whenever a migration file or this script is staged.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 import sys
@@ -128,6 +135,31 @@ HEADER = """\
 # Hand-written Postgres equivalents of the SQLite triggers, keyed by
 # trigger name. The generator fails closed if the dumped set and this
 # map ever disagree (missing port OR stale entry).
+#
+# WHAT THIS MAP'S GATE DOES AND DOES NOT PROVE (C43). The membership
+# check below compares trigger NAMES ONLY — it never reads a body and
+# never compares the SQLite `WHEN` clause against the plpgsql `IF`. So
+# it proves the port EXISTS, not that it MEANS the same thing; a body
+# mutated to a divergent predicate used to leave --check printing ok.
+# `TRIGGER_VERIFICATION` (below) is the compensating control, and it is
+# deliberately NOT a plpgsql parser:
+#
+#   * `verified_by` names the test that pins the predicate this port must
+#     match. Generation FAILS when that file does not exist, so a port
+#     cannot be added without naming its evidence.
+#   * `body_sha256` pins the port body. Any edit to a body without
+#     re-recording its digest fails generation, which turns a silent
+#     divergence into an explicit, reviewable act.
+#
+# Neither field is a semantic proof, and this comment is the honest
+# statement of that: the digest is a change detector (it forces
+# re-acknowledgement, and it can be re-pinned), and `verified_by` is only
+# as strong as the named test. For the C42 port
+# (stock_summary_qty_nonnegative_*) the named test EXECUTES the plpgsql
+# against real PostgreSQL. For the six older ports the named test pins
+# the SQLITE trigger's behaviour — a compensating control, NOT PG
+# execution; that gap is real and is recorded here rather than implied
+# away by a green gate.
 TRIGGER_MAP: dict[str, str] = {
     # Retention carve-out (migration 20260920, todo-global-saas-2.md P1):
     # the sweep deletes expired rows through the same
@@ -143,7 +175,13 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'audit_log entries are immutable: DELETE not allowed';
     END IF;
-    RETURN NULL;
+    -- RETURN OLD, NOT NULL (C44). A row-level BEFORE DELETE trigger that
+    -- returns NULL CANCELS the delete. The SQLite original is a WHEN-clause
+    -- trigger, and a false WHEN means the body never runs and the DELETE
+    -- PROCEEDS -- so NULL here made the retention sweep delete nothing while
+    -- reporting success: a compliance failure that raises no error anywhere.
+    -- Caught only by executing the port against real PostgreSQL.
+    RETURN OLD;
 END;
 $$;
 
@@ -212,7 +250,178 @@ CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair
 CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair_update
     AFTER UPDATE OF scope_type, scope_id ON assignments
     FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();""",
+    # C10b / owner decision D11: the CONDITIONAL negative-stock backstop on
+    # `stock_summary`, ported from
+    # `20261012_stock_summary_qty_nonnegative.sql`. The predicate is identical:
+    # refuse a negative qty only when the location IS bound and none of its
+    # bindings opts into `allow_negative_stock`. The `EXISTS` guard is what
+    # keeps an UNBOUND location writable, which the SQLite side needs too
+    # (`deactivate_inventory_location_with_negative_stock_errors` seeds a
+    # negative at a location with no binding). Postgres shares one function
+    # between both arms, exactly as the SQLite file needs two triggers: an
+    # INSERT arm and an UPDATE arm, because the `INSERT ... ON CONFLICT DO
+    # UPDATE` shape both writers use fires only the latter once the row exists.
+    "stock_summary_qty_nonnegative_insert": """\
+CREATE OR REPLACE FUNCTION stock_summary_qty_nonnegative_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.qty < 0
+       AND EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+       )
+       AND NOT EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+              AND w.allow_negative_stock = 1
+       )
+    THEN
+        RAISE EXCEPTION 'negative stock requires allow_negative_stock on the location binding';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_insert
+    BEFORE INSERT ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();""",
+    "stock_summary_qty_nonnegative_update": """\
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
+    BEFORE UPDATE ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();""",
 }
+
+# Compensating control for the NAME-ONLY membership check above (C43).
+#
+# `verified_by` — the test that pins the predicate this port must match. The
+#   path is resolved from the repo root and MUST exist, so a port cannot be
+#   added without naming its evidence.
+# `body_sha256` — sha256 of the port body, newline-normalized. Any edit to a
+#   body without re-recording its digest fails generation.
+#
+# AS OF C44, ALL SEVEN ENTRIES NAME A TEST THAT EXECUTES THE PORT against a
+# real throwaway PostgreSQL database:
+#   * stock_summary_qty_nonnegative_* -> apps/cloud-server/tests/pg_stock_guard.rs
+#     (C42: all three predicate cases).
+#   * the other six -> apps/cloud-server/tests/pg_trigger_ports.rs (C44: both
+#     directions where conditional).
+# C44 was worth doing rather than declaring: executing the six found a real
+# divergence in audit_log_immutable_delete, whose port returned NULL from a
+# BEFORE DELETE trigger — which CANCELS the delete — while the SQLite
+# WHEN-clause original lets it through when the sweep marker is present. The
+# retention sweep therefore deleted nothing and reported success. The body
+# digest could not have caught it: the body was wrong from the day it was
+# written, and a digest only detects CHANGE.
+#
+# The residual limit stands: `verified_by` is only as strong as the named
+# test, and no field here compares plpgsql semantics to SQL. A NEW port is
+# covered the moment it names an executing test; a body that is wrong AND
+# whose test does not actually exercise the predicate still passes.
+TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
+    "audit_log_immutable_delete": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); both directions (refused without the sweep marker, the row actually DELETED with it)",
+        "body_sha256": "63cbde37094ca88e69b88112e62766d6196e1610d69c8d7658899c2645764029",
+    },
+    "audit_log_immutable_update": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); unconditional refusal, incl. under the sweep marker",
+        "body_sha256": "889d995af65ea2656ad2a7713f5abaa081d980445c467b7eb469cc5822976757",
+    },
+    "loyalty_tiers_validate_insert": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid accepted, six invalid shapes refused",
+        "body_sha256": "cbe5d469ef17abe21b3d127e0c334320b4acc2dad45f6e3f6cc92df67313251d",
+    },
+    "loyalty_tiers_validate_update": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid update accepted, invalid refused",
+        "body_sha256": "590edd3ea39682af1e3ba60ea9ba894bb7dbf66d7420cf83639724fe94ea115f",
+    },
+    "trg_assignments_scope_id_pair": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); two valid shapes accepted, two invalid refused",
+        "body_sha256": "021fccd42df444737cd25bb99b3fcca42a5191d6da385bd10b92bd4b833ab3a2",
+    },
+    "trg_assignments_scope_id_pair_update": {
+        "verified_by": "apps/cloud-server/tests/pg_trigger_ports.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C44); valid transition accepted, both invalid refused",
+        "body_sha256": "5bf43fc06622c13ffde841a33fd94fd6ca62504c573785c892223055459ba822",
+    },
+    "stock_summary_qty_nonnegative_insert": {
+        "verified_by": "apps/cloud-server/tests/pg_stock_guard.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C42), all three predicate cases",
+        "body_sha256": "de2dbc9691b7ce8f1116a4dde18804c879f2da2085e3a49bf42caa9414343a2c",
+    },
+    "stock_summary_qty_nonnegative_update": {
+        "verified_by": "apps/cloud-server/tests/pg_stock_guard.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C42), all three predicate cases",
+        "body_sha256": "e9026abf057aa52281d38685ed9b10ae80d57370b9e7b671e23b53227b6446e3",
+    },
+}
+
+# Data statements a SQLite migration performs BEFORE a DDL statement that would
+# otherwise fail on the un-repaired rows (C38).
+#
+# WHY THIS LIST EXISTS. The generator rebuilds the PG schema from the FINAL
+# SQLite state: it re-emits tables, indexes, triggers and seeds, and it drops
+# every DML statement in the migration chain (measured: the generated file
+# contains ZERO UPDATE statements, while seven migrations carry one). That is
+# correct for a statement that only converges rows the final schema already
+# implies — but WRONG for a migration whose UPDATE exists to make a following
+# DDL statement applicable. 20261011_open_shift_uniqueness.sql closes every open
+# shift but the newest for a user BEFORE creating idx_shifts_open_per_user, and
+# its own header says why the halves must travel together: "the index without
+# its reconciliation is exactly the startup-bricking shape this file exists to
+# prevent". The PG twin carried the bare index, so a PostgreSQL database holding
+# two open shifts for one user failed at init.
+#
+# WHY NOT TRANSLATE THE DML GENERICALLY. SQLite DML does not port mechanically
+# (strftime, GLOB, row-value comparisons all differ), and a half-working
+# translation fails in exactly the way this list exists to prevent. An explicit,
+# declared, digest-pinned entry keeps the port hand-written and reviewable —
+# the same discipline TRIGGER_MAP uses.
+#
+# SHAPE: (index_name, sql, verified_by, body_sha256).
+#   * index_name    — the index this reconciliation must run BEFORE. It must
+#                     name an index the generator actually emits, so a stale
+#                     entry fails generation instead of emitting a statement
+#                     nothing depends on.
+#   * sql           — the hand-written Postgres reconciliation.
+#   * verified_by   — the test that EXECUTES it against real PostgreSQL.
+#                     Generation FAILS when the path does not exist, so a
+#                     reconciliation cannot be added without naming its
+#                     evidence (the C43/C44 rule).
+#   * body_sha256   — pins the statement, so an edit cannot ride along silently.
+#
+# The SQL is wrapped in a to_regclass guard by render_pre_index_reconciliations,
+# so it is a no-op on a fresh database (where the table does not exist yet at
+# this point) and effective on one that already holds the offending rows.
+PRE_INDEX_RECONCILIATIONS: list[dict[str, str]] = [
+    {
+        "index_name": "idx_shifts_open_per_user",
+        "sql": """\
+UPDATE shifts
+   SET status = 'closed',
+       closed_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+       closing_balance_minor = NULL,
+       expected_cash_minor = NULL,
+       cash_difference_minor = NULL,
+       notes = CASE WHEN notes = ''
+                    THEN 'auto-closed: duplicate open shift (COR-27 reconciliation)'
+                    ELSE notes || ' | auto-closed: duplicate open shift (COR-27 reconciliation)' END,
+       updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+ WHERE status = 'open'
+   AND EXISTS (
+       SELECT 1 FROM shifts newer
+        WHERE newer.user_id = shifts.user_id
+          AND newer.status = 'open'
+          AND (newer.opened_at, newer.id) > (shifts.opened_at, shifts.id)
+   );""",
+        "verified_by": "apps/cloud-server/tests/pg_init_reconciliation.rs",
+        "body_sha256": "d706e0a43cc96278c4d11f5d8e3127d2600c64f18a4ffd0d70ff8a45549c643b",
+    },
+]
 
 # Seed timestamps younger than this are "now"-derived (the migration run
 # just stamped them) and re-emitted as the PG now-expression; older
@@ -450,6 +659,132 @@ def check_rls_coverage(
         )
 
 
+def check_trigger_verification(
+    ports: dict[str, str],
+    verification: dict[str, dict[str, str]],
+    root: Path,
+) -> None:
+    """Fail closed when a trigger port carries no live verification.
+
+    The membership check in render() compares trigger NAMES only, so it
+    proves a port EXISTS and never that it MEANS the same thing. This gate is
+    the compensating control, and it is deliberately not a plpgsql parser:
+
+    1. every port must declare verified_by - a test path that EXISTS - so a
+       port cannot be added without naming the evidence that pins it;
+    2. every port must pin body_sha256 matching its current body, so an edit
+       to a body cannot ride along silently: it fails generation until the
+       author re-records the digest, which makes the change explicit and
+       reviewable rather than invisible.
+
+    Neither is a semantic proof. The digest is a change detector (and can be
+    re-pinned); verified_by is only as strong as the named test. Both are
+    stated in the TRIGGER_VERIFICATION comment rather than implied away.
+    """
+    undeclared = sorted(set(ports) - set(verification))
+    if undeclared:
+        raise SystemExit(
+            "error: trigger ports with no verification entry (declare "
+            "verified_by - the test that pins the predicate - and "
+            "body_sha256 in TRIGGER_VERIFICATION): " + ", ".join(undeclared)
+        )
+    stale = sorted(set(verification) - set(ports))
+    if stale:
+        raise SystemExit(
+            "error: stale TRIGGER_VERIFICATION entries (no such port - "
+            "delete the entry): " + ", ".join(stale)
+        )
+
+    problems: list[str] = []
+    for name in sorted(ports):
+        entry = verification[name]
+        test_path = entry.get("verified_by", "")
+        if not test_path:
+            problems.append(f"{name}: no verified_by")
+        elif not (root / test_path).is_file():
+            problems.append(
+                f"{name}: verified_by names a missing test: {test_path}")
+        declared = entry.get("body_sha256", "")
+        actual = hashlib.sha256(
+            ports[name].replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()
+        if declared != actual:
+            problems.append(
+                f"{name}: body changed (declared {declared[:12]}, actual "
+                f"{actual[:12]}) - re-record body_sha256 in TRIGGER_VERIFICATION "
+                "after confirming the port still matches the SQLite predicate"
+            )
+    if problems:
+        raise SystemExit(
+            "error: trigger verification failed (the membership check proves "
+            "presence only, never semantics):\n  - " + "\n  - ".join(problems)
+        )
+
+
+def _self_test_trigger_gate() -> None:
+    """Exercise the verification gate fail directions on synthetic sets."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "a_test.rs").write_text("// stand-in", encoding="utf-8")
+        body = "CREATE OR REPLACE TRIGGER t ..."
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        good = {"t": {"verified_by": "a_test.rs", "body_sha256": digest}}
+        # The passing direction must actually pass.
+        check_trigger_verification({"t": body}, good, root)
+
+        failures = [
+            ({"t": body}, {}, "port with no verification entry"),
+            ({"t": body, "u": body}, good, "port missing from verification"),
+            ({"t": body}, {"t": good["t"], "ghost": good["t"]}, "verification entry with no port"),
+            ({"t": body}, {"t": {"verified_by": "", "body_sha256": digest}}, "blank verified_by"),
+            ({"t": body}, {"t": {"verified_by": "nope.rs", "body_sha256": digest}}, "verified_by names a missing test"),
+            ({"t": body}, {"t": {"verified_by": "a_test.rs", "body_sha256": "0" * 64}}, "body digest mismatch (the C43 mutation case)"),
+        ]
+        for ports, verification, case in failures:
+            try:
+                check_trigger_verification(ports, verification, root)
+            except SystemExit:
+                continue
+            raise SystemExit(
+                f"error: trigger verification gate self-test: {case} did not fail")
+    print("ok: trigger verification gate self-test (fail-closed in both directions)")
+
+
+def _self_test_pre_index_gate() -> None:
+    """Exercise the pre-index reconciliation gate fail directions."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "a_test.rs").write_text("// stand-in", encoding="utf-8")
+        sql = "UPDATE shifts SET status = 'closed';"
+        digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+        good = [{"index_name": "idx_x", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}]
+        # The passing direction must actually pass, and an empty list is legal.
+        check_pre_index_reconciliations(good, {"idx_x"}, root)
+        check_pre_index_reconciliations([], set(), root)
+
+        failures = [
+            ([{"index_name": "", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}], {"idx_x"}, "entry with no index_name"),
+            ([{**good[0], "index_name": "idx_ghost"}], {"idx_x"}, "stale entry naming an unemitted index"),
+            ([{**good[0], "verified_by": ""}], {"idx_x"}, "blank verified_by"),
+            ([{**good[0], "verified_by": "nope.rs"}], {"idx_x"}, "verified_by names a missing test"),
+            ([{**good[0], "body_sha256": "0" * 64}], {"idx_x"}, "reconciliation digest mismatch"),
+            ([good[0], good[0]], {"idx_x"}, "duplicate entry for one index"),
+        ]
+        for entries, emitted, case in failures:
+            try:
+                check_pre_index_reconciliations(entries, emitted, root)
+            except SystemExit:
+                continue
+            raise SystemExit(
+                f"error: pre-index reconciliation gate self-test: {case} did not fail"
+            )
+    print("ok: pre-index reconciliation gate self-test (fail-closed in both directions)")
+
+
 def _self_test_rls_gate() -> None:
     """Exercise the coverage gate's fail directions on synthetic sets."""
     check_rls_coverage({"a", "b"}, {"a"}, {"b": "pending write path"})
@@ -479,15 +814,11 @@ RLS_TABLES = [
     "edc_terminals",
     "entity_index_cursors",
     "entity_index_tombstones",
-    "media_assets",
-    "media_thumbnails",
     "memo_locations",
     "memo_recipients",
     "memos",
     "midtrans_transactions",
     "offline_queue",
-    "payment_gateways",
-    "payment_settlements",
     "product_activity",
     "product_bundles",
     "product_taxes",
@@ -508,7 +839,6 @@ RLS_TABLES = [
     "tenant_subscription",
     "users",
     "locations",
-    "user_location_access",
 ]
 
 # Deliberate non-coverage: every tenant_id-bearing table that is NOT in
@@ -548,6 +878,20 @@ RLS_EXEMPT = {
         "no PG write path audited; desktop-local image references — "
         "cover when its cloud sync path lands"
     ),
+    "media_assets": (
+        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
+        "the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a "
+        "fail-fast stub (create_media_asset returns PLANNED) and the image "
+        "GC loop only DELETEs. RLS is an isolation guarantee only where the "
+        "write path stamps tenant_id, so there is nothing for a policy to "
+        "gate yet — move back to RLS_TABLES when the media pipeline writes it"
+    ),
+    "media_thumbnails": (
+        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
+        "the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a "
+        "fail-fast stub and the image GC loop only DELETEs. Nothing to gate "
+        "until the media pipeline persists thumbnails"
+    ),
     "legal_entities": (
         "§G slice pending the cloud-sync decision; local CRUD paths "
         "exist but no PG write path is audited yet"
@@ -555,6 +899,20 @@ RLS_EXEMPT = {
     "memo_revisions": (
         "append-only revision history with no PG write path at all "
         "(pg.rs never touches it) — nothing for a policy to gate"
+    ),
+    "payment_gateways": (
+        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
+        "the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs "
+        "is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's "
+        "DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD "
+        "lands"
+    ),
+    "payment_settlements": (
+        "no writer anywhere in the repo — no INSERT/UPDATE exists outside "
+        "the CREATE TABLE in 20260825_payment_infra.sql; "
+        "db/payment_settlements.rs is a fail-fast stub (record_settlement "
+        "returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing "
+        "to gate until the reconciliation job writes it"
     ),
     "payable_payments": (
         "no PG write path yet; desktop-local AP settlement history — "
@@ -581,6 +939,24 @@ RLS_EXEMPT = {
     "webhook_endpoints": (
         "no PG write path audited; cover when the admin surface "
         "writes it on PG"
+    ),
+    "user_location_access": (
+        "no writer anywhere in the repo — no production INSERT/UPDATE exists; "
+        "the only INSERTs are test fixtures (db/locations_tests.rs, "
+        "db/workspaces_tests.rs) and no dynamically built statement names it. "
+        "Every production reference is a read: the multi-store check in "
+        "db/workspaces_instances.rs only SELECTs, and the REST surface grants "
+        "but never writes. RLS is an isolation guarantee only where the write "
+        "path stamps tenant_id, so there is nothing for a policy to gate yet — "
+        "move back to RLS_TABLES when user-location assignment CRUD lands"
+    ),
+    "provisioning": (
+        "ADR #56 first-run record; written only by the desktop/tablet "
+        "provision_device transaction against the LOCAL store DB, and never "
+        "synced to PG. It records which server holds this tenant's data, so "
+        "replicating it into the shared cloud schema would put one install's "
+        "routing fact in every other tenant's reach for no read that exists. "
+        "Cover if provisioning ever moves cloud-side"
     ),
 }
 
@@ -837,6 +1213,97 @@ def render_reconciliation(
     return RECONCILE_TEMPLATE.replace("__ROWS__", rows)
 
 
+def check_pre_index_reconciliations(
+    entries: list[dict[str, str]],
+    emitted_indexes: set[str],
+    root: Path,
+) -> None:
+    """Fail closed when a pre-index reconciliation is undeclared or unverified.
+
+    The generator drops every DML statement in the migration chain, so a
+    reconciliation that makes a following DDL statement applicable must be
+    declared here explicitly. This gate enforces the declaration the way
+    check_trigger_verification enforces the trigger ports: a named test that
+    EXISTS (so the reconciliation cannot be added without evidence) and a body
+    digest (so an edit cannot ride along silently). It also fails a stale entry
+    naming an index the generator does not emit, which would otherwise place a
+    statement nothing depends on.
+    """
+    if not entries:
+        return
+    problems: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        name = entry.get("index_name", "")
+        if not name:
+            problems.append("entry with no index_name")
+            continue
+        if name in seen:
+            problems.append(f"{name}: duplicate entry")
+        seen.add(name)
+        if name not in emitted_indexes:
+            problems.append(
+                f"{name}: names an index the generator does not emit (stale entry)"
+            )
+        test_path = entry.get("verified_by", "")
+        if not test_path:
+            problems.append(f"{name}: no verified_by")
+        elif not (root / test_path).is_file():
+            problems.append(f"{name}: verified_by names a missing test: {test_path}")
+        declared = entry.get("body_sha256", "")
+        actual = hashlib.sha256(
+            entry.get("sql", "").replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()
+        if declared != actual:
+            problems.append(
+                f"{name}: reconciliation changed (declared {declared[:12]}, actual "
+                f"{actual[:12]}) — re-record body_sha256 in "
+                "PRE_INDEX_RECONCILIATIONS after confirming it still matches the "
+                "SQLite migration"
+            )
+    if problems:
+        raise SystemExit(
+            "error: pre-index reconciliation failed (a dropped DML statement that "
+            "a DDL statement depends on bricks PG init):\n  - " + "\n  - ".join(problems)
+        )
+
+
+def render_pre_index_reconciliations(index_tables: dict[str, str]) -> str:
+    """Emit each declared reconciliation, guarded, immediately before its index.
+
+    The guard is to_regclass: on a fresh database the table does not exist at
+    this point in the script (the CREATE TABLE comes later, because these
+    statements run before the DDL), so the whole block is a no-op and the
+    index is created normally. On a database that already holds the rows, the
+    reconciliation runs first and the index creation below cannot fail.
+    """
+    if not PRE_INDEX_RECONCILIATIONS:
+        return ""
+    lines = [
+        "-- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────",
+        "-- DML the SQLite chain performs before a DDL statement that would",
+        "-- otherwise fail on the un-repaired rows. The generator cannot translate",
+        "-- SQLite DML in general, so each one is hand-written, declared and",
+        "-- digest-pinned above. Each is guarded on its table existing, so it is a",
+        "-- no-op on a fresh database.",
+    ]
+    for entry in PRE_INDEX_RECONCILIATIONS:
+        lines.append("")
+        table = index_tables[entry["index_name"]]
+        lines.append(f"-- before: {entry['index_name']} (on {table})")
+        lines.append("DO $oz_pre_index$")
+        lines.append("BEGIN")
+        lines.append(
+            f"    IF to_regclass('public.{table}') IS NOT NULL THEN"
+        )
+        for stmt_line in entry["sql"].splitlines():
+            lines.append("        " + stmt_line if stmt_line else "")
+        lines.append("    END IF;")
+        lines.append("END")
+        lines.append("$oz_pre_index$;")
+    return "\n".join(lines)
+
+
 def render_obsolete_indexes() -> str:
     """Guarded DROPs for indexes a later SQLite migration removed."""
     lines = [
@@ -866,6 +1333,9 @@ def render() -> tuple[str, int, int, int, list[str]]:
     indexes: list[str] = []
     unique_by_table: dict[str, list[str]] = defaultdict(list)
     skipped: list[str] = []
+    # C38: every emitted index name -> the table it belongs to, so a declared
+    # pre-index reconciliation can guard on its table existing.
+    index_tables: dict[str, str] = {}
     for name, tbl, sql in db.execute(
         "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' "
         "AND sql IS NOT NULL ORDER BY name"
@@ -883,6 +1353,7 @@ def render() -> tuple[str, int, int, int, list[str]]:
         # their columns (composite FKs target them, and PG validates at
         # CREATE TABLE time) — emit each table's unique indexes directly
         # after that table in the topological loop.
+        index_tables[name] = tbl
         if s.upper().startswith("CREATE UNIQUE INDEX"):
             unique_by_table[tbl].append(s)
         else:
@@ -904,6 +1375,12 @@ def render() -> tuple[str, int, int, int, list[str]]:
             parts.append(f"stale TRIGGER_MAP entries: {', '.join(stale)}")
         raise SystemExit("error: trigger parity broken — " + "; ".join(parts))
 
+    # C43: the membership check above is NAME-ONLY and can never prove the port
+    # means the same thing as the SQLite trigger it mirrors. This is the
+    # compensating control — declared evidence plus a body digest.
+    check_trigger_verification(TRIGGER_MAP, TRIGGER_VERIFICATION, ROOT)
+    check_pre_index_reconciliations(PRE_INDEX_RECONCILIATIONS, set(index_tables), ROOT)
+
     ordered_names = [name for name, _, _ in ordered]
     seeds = dump_seeds(db, ordered_names)
     specs = pg_column_specs(db, ordered_names)
@@ -920,6 +1397,12 @@ def render() -> tuple[str, int, int, int, list[str]]:
     out.extend([render_obsolete_indexes(), ""])
     out.extend([render_evolution_ops(table_renames, column_renames), ""])
     out.extend([render_reconciliation(specs), ""])
+    # C38: a declared reconciliation must run BEFORE the DDL that creates its
+    # index, and the index is emitted with its table in the topological loop
+    # below — so this block precedes the whole DDL section.
+    pre_index = render_pre_index_reconciliations(index_tables)
+    if pre_index:
+        out.extend([pre_index, ""])
     for name, _refs, stmt in ordered:
         out.extend([stmt, ""])
         for idx in unique_by_table.get(name, []):
@@ -939,6 +1422,8 @@ def main(argv: list[str]) -> int:
     check = "--check" in argv
     if "--self-test" in argv:
         _self_test_rls_gate()
+        _self_test_trigger_gate()
+        _self_test_pre_index_gate()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 

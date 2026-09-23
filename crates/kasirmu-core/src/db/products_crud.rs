@@ -10,6 +10,8 @@
 //! Invariants: SKU uniqueness per tenant; money fields are i64 minor
 //! units; writes run inside transactions; version CAS returns Conflict.
 use super::*;
+use rusqlite::{Transaction, TransactionBehavior};
+
 use crate::downgrade::QuotaDimension;
 use crate::subscription::SubscriptionTier;
 
@@ -551,79 +553,82 @@ impl Store<'_> {
             })?
             .to_owned();
 
-        let rows = if let Some(ver) = expected_version {
-            self.conn.execute(
-                "UPDATE products
-                 SET name = ?1, price_minor = ?2, currency = ?3,
-                     category_id = ?4, barcode = ?5, updated_at = ?6,
-                     product_type = COALESCE(?7, product_type),
-                     price_updated_at = CASE WHEN price_minor <> ?2 OR currency <> ?3 THEN ?6 ELSE price_updated_at END,
-                     version = version + 1
-                 WHERE sku = ?8 AND version = ?9",
-                params![
-                    name.trim(),
-                    price.minor_units,
-                    cur_str,
-                    category_id,
-                    barcode,
-                    now,
-                    product_type,
-                    sku,
-                    ver,
-                ],
-            )?
-        } else {
-            self.conn.execute(
-                "UPDATE products
-                 SET name = ?1, price_minor = ?2, currency = ?3,
-                     category_id = ?4, barcode = ?5, updated_at = ?6,
-                     product_type = COALESCE(?7, product_type),
-                     price_updated_at = CASE WHEN price_minor <> ?2 OR currency <> ?3 THEN ?6 ELSE price_updated_at END,
-                     version = version + 1
-                 WHERE sku = ?8",
-                params![
-                    name.trim(),
-                    price.minor_units,
-                    cur_str,
-                    category_id,
-                    barcode,
-                    now,
-                    product_type,
-                    sku,
-                ],
-            )?
-        };
+        // C18 (slice P1.8): the CAS predicate, the UPDATE and the zero-row
+        // diagnosis are ONE unit. Before this, the UPDATE was a bare
+        // autocommit statement and the "conflict or not-found?" read ran on a
+        // different snapshot, so the error the caller got could describe a row
+        // state that no longer existed. `BEGIN IMMEDIATE` takes the write lock
+        // before the UPDATE runs, so a competing writer cannot land inside the
+        // window, and the row left behind is always one caller's intent in
+        // full — never a blend of two.
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+
+        // One statement, not two mutually exclusive arms: a NULL
+        // `expected_version` disables the CAS predicate, a value turns it into
+        // `version = ?9`. Same semantics, one SQL path to keep atomic.
+        let rows = tx.execute(
+            "UPDATE products
+             SET name = ?1, price_minor = ?2, currency = ?3,
+                 category_id = ?4, barcode = ?5, updated_at = ?6,
+                 product_type = COALESCE(?7, product_type),
+                 price_updated_at = CASE WHEN price_minor <> ?2 OR currency <> ?3 THEN ?6 ELSE price_updated_at END,
+                 version = version + 1
+             WHERE sku = ?8 AND (?9 IS NULL OR version = ?9)",
+            params![
+                name.trim(),
+                price.minor_units,
+                cur_str,
+                category_id,
+                barcode,
+                now,
+                product_type,
+                sku,
+                expected_version,
+            ],
+        )?;
 
         if rows == 0 {
+            // Nothing was written on this path — both arms are the single
+            // UPDATE above — so the rollback only releases the write lock now
+            // instead of at drop.
             if expected_version.is_some() {
-                // Determine if it's a version conflict or a not-found.
-                let exists: bool = self.conn.query_row(
+                let exists: bool = tx.query_row(
                     "SELECT COUNT(*) > 0 FROM products WHERE sku = ?1",
                     params![sku],
                     |r| r.get(0),
                 )?;
                 if exists {
+                    tx.rollback()?;
                     return Err(CoreError::Conflict {
                         entity: "product",
                         field: "version",
                     });
                 }
             }
+            tx.rollback()?;
             return Err(CoreError::NotFound {
                 entity: "product",
                 id: sku.to_owned(),
             });
         }
 
+        // The read-back belongs inside the transaction too: outside it, a
+        // competing writer could land between the UPDATE and this SELECT and
+        // the caller would be handed a row this call did not write. Inside,
+        // the returned `Product` is provably the one committed above.
+        let product = {
+            let mut stmt = tx.prepare(
+                "SELECT id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at, price_updated_at, track_serial, product_type, version, cost_minor, brand, rack_location, notes, unit, is_active, default_supplier_id, popularity_score, image_hash
+                 FROM products WHERE sku = ?1",
+            )?;
+            stmt.query_row(params![sku], row_to_product)?
+        };
+        tx.commit()?;
+
         if let Some(cache) = &self.cache {
             cache.invalidate_product(sku);
         }
 
-        let mut stmt = self.conn.prepare(
-            "SELECT id, sku, name, price_minor, currency, category_id, barcode, created_at, updated_at, price_updated_at, track_serial, product_type, version, cost_minor, brand, rack_location, notes, unit, is_active, default_supplier_id, popularity_score, image_hash
-             FROM products WHERE sku = ?1",
-        )?;
-        let product = stmt.query_row(params![sku], row_to_product)?;
         Ok(product)
     }
 
@@ -735,3 +740,7 @@ impl Store<'_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "products_crud_tests.rs"]
+mod tests;

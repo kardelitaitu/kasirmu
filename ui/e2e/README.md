@@ -1,10 +1,30 @@
 # E2E Test Suite
 
-<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · The CI Pipeline section described the e2e job in .github/workflows/ci.yml in present tense. ci.yml is retired (ci.yml.bak, by 23c96330 on 09-02), e2e-pr.yml likewise, and neither live workflow contains an e2e job: dev-ci.yml's jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy and release.yml's are release-validate, release-build, release-publish. AGENTS.md already states the consequence - E2E, a11y, security and nightly are not enforced in CI - so the README contradicted a rule the repo itself documents, and the practical effect is that a red E2E suite produces no artifact and no failure signal anywhere in CI. Steps kept verbatim as the shape of a run with the local equivalent named (npm run e2e from ui/, plus scripts/check.sh), and step 5 relabelled CI-only because a local run writes traces to the Playwright output dir rather than uploading with 7-day retention. · Everything else on the page re-confirmed: workers 4 local / 2 CI matches e2e/playwright.config.ts, storageState per-worker auth caching is real in fixtures.ts, and the spec-file table's filenames exist under ui/e2e/. · Found while sweeping every live doc for claims about CI jobs that do not exist, after CONTRIBUTING.md (bd7fddae3) turned out to contain one my own 08-09-26 audit had stamped as accurate. Same sweep also produced one near-miss I did NOT report: signpath-onboarding.md:211 points at a release-build job, and release-build is genuinely live in release.yml - checking job membership against the file, not against a remembered list, is the only reason that one stayed out of the fix list. -->
+<!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (1 finding) · The CI Pipeline section described the e2e job in .github/workflows/ci.yml in present tense. ci.yml is retired (ci.yml.bak, by 23c96330 on 09-02), e2e-pr.yml likewise, and neither live workflow contains an e2e job: dev-ci.yml's jobs are changes, website, cargo-check, cargo-nextest, ui-test, i18n, ci-docs-drift, static-gates, release-readiness, northflank-deploy and release.yml's are release-validate, release-build, release-publish. AGENTS.md already states the consequence - E2E, a11y, security and nightly are not enforced in CI - so the README contradicted a rule the repo itself documents, and the practical effect is that a red E2E suite produces no artifact and no failure signal anywhere in CI. Steps kept verbatim as the shape of a run with the local equivalent named (npm run e2e from ui/, plus scripts/check.sh), and step 5 relabelled CI-only because a local run writes traces to the Playwright output dir rather than uploading with 7-day retention. · Everything else on the page re-confirmed: workers 4 local / 2 CI matches e2e/playwright.config.ts, storageState per-worker auth caching is real in fixtures.ts, and the spec-file table's filenames exist under ui/e2e/. (fixtures.ts was later deleted as dead code on 2026-09-22, 46fd79d19 — no spec or config imported it; see the note under Test Isolation.) · Found while sweeping every live doc for claims about CI jobs that do not exist, after CONTRIBUTING.md (bd7fddae3) turned out to contain one my own 08-09-26 audit had stamped as accurate. Same sweep also produced one near-miss I did NOT report: signpath-onboarding.md:211 points at a release-build job, and release-build is genuinely live in release.yml - checking job membership against the file, not against a remembered list, is the only reason that one stayed out of the fix list. -->
 
 Playwright-based end-to-end tests for OZ-POS. Tests run against the Vite
 dev server with mocked Tauri IPC (`dev-mock/tauri-api.ts`) — no Rust backend
 required.
+
+## Dev-server port: the suite owns its own (1421), never 1420
+
+An E2E run starts its **own** Vite on `E2E_PORT` (default **1421**) and kills only
+the PID it spawned. It never probes for or adopts a server it did not start, and
+never kills by port.
+
+Why this matters in a shared checkout: port **1420** is the Tauri desktop `devUrl`
+contract (`apps/desktop-tauri/tauri.conf.json`) used by the human-facing
+`npm run dev`. When the suite shared that port it would adopt another session's
+dev server and then tear it down mid-run, producing
+`page.goto: Could not connect to server` on every test after the first batch —
+and an E2E cleanup could kill a sibling session's server outright.
+
+- Running the suite while something already holds 1421 now fails **loudly** with
+exit 3 (`Port 1421 is already in use … refusing to adopt`) — 0 tests executed,
+never a silent attach.
+- To run two E2E passes concurrently, give one its own port:
+  `E2E_PORT=1431 npm run e2e:ui`.
+- `npm run dev` and `cargo tauri dev` are unaffected: they stay on 1420.
 
 ## Quick Start
 
@@ -74,8 +94,24 @@ CSS contract is documented in each spec file's header comment.
 Each test file is fully isolated:
 - `page.goto('/')` resets the dev-mock state
 - No shared mutable state between tests
-- `storageState` in `fixtures.ts` provides per-worker auth caching
 - `workers: 4` (local) or `workers: 2` (CI) runs tests in parallel
+
+⚠️ **Auth caching has NOT been per-worker, and this claim was wrong.** This line
+used to read “`storageState` in `fixtures.ts` provides per-worker auth caching”.
+It does not: `fixtures.ts` used ONE shared path (`.e2e-auth.json`) that every
+worker read at context creation and wrote after logging in. With 4 workers those
+reads and writes interleave, so a worker can read a half-written session, fail
+its “already logged in?” probe, log in again and clobber the file. That is the
+mechanism behind the flake where the same code produced 0 failures in one full
+run and 32 in the next.
+
+Fixing it means giving each worker its own auth path (keyed on `workerIndex`,
+and on the project, since desktop and tablet share a worker pool). Verify with
+TWO consecutive full runs — a single green run is weak evidence for a flake fix.
+
+> `fixtures.ts` itself is gone: deleted 2026-09-22 (46fd79d19) as dead code —
+> no spec or config imported it, per-worker auth lives in the specs' own
+> `loginAs` helper (helpers.ts). The history above is kept as-is.
 
 ### CI Pipeline — retired; nothing runs E2E in CI
 
@@ -145,6 +181,18 @@ npm run e2e -- e2e/auth.spec.ts
 The runner detects Docker availability gracefully — if Docker is not
 installed or the daemon isn't running, it skips the Docker services
 and runs only the Playwright tests against the Vite dev server.
+
+### `--ui-only` derives its spec list from disk
+
+`npm run e2e:ui` used to carry a hand-maintained array of 10 spec paths. The
+directory held 29, so **17 specs silently never ran** and a green run said
+nothing about the gap. It now reads the directory and excludes only
+`api.spec.ts`, so adding a spec file is enough to make it run.
+
+The table under “Spec Files” below is a partial, dated snapshot from 2026-09-09
+and was already incomplete when written — treat the directory as the authority:
+`ls ui/e2e/*.spec.ts`. The reason to prefer the directory is the bug above: a
+curated list cannot notice what it omits.
 
 ## Writing New Tests
 

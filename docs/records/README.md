@@ -36,22 +36,22 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 31 | module-system | [ADR #31: Decentralized UI Feature Module Registration](../decisions/2026-07-24-decentralized-ui-module-registration.md) | Accepted (2026-07-24) |
 | 32 | database | [ADR #32: DB Layer Extraction (R2) & Platform File Split (R5)](../decisions/2026-07-25-db-extraction-and-platform-split.md) | Proposed |
 | 33 | architecture | [ADR #33: Panic Policy & Production unwrap/expect Enforcement](../decisions/2026-08-03-panic-policy.md) | Implemented (2026-08-03) |
-| 34 | topology | [ADR #34: Topology Editor as the Business Logic Builder](../decisions/2026-08-07-business-logic-topology-builder.md) | Proposed |
+| 34 | topology | [ADR #34: Topology Editor as the Business Logic Builder](../decisions/2026-08-07-adr34-business-logic-topology-builder.md) | Proposed |
 | 35 | staff | [ADR #35: RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data](../decisions/2026-08-11-adr35-rbac-role-assignments-user-profile.md) | Accepted (ratified 2026-08-11; implementation sequence in D9) |
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | products | [ADR #38: Retail POS Row Context Menu — View Product Images in Browser](../decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
+| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/_active/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
 | 40 | topology | [ADR #40: Multi-Terminal Peer Model](../decisions/2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBA…](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | website | [ADR #42: Website Admin Dashboard & User Dashboard (Subdomain Architecture)](../decisions/2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions) |
 | 43 | ui | [ADR #43 – React‑only UI decision](../decisions/2026-07-24-react-only-decision.md) | Accepted (2026-07-24) |
 | 43 | cloud | [ADR #43: Cloud Sync Performance & Scale-Out Roadmap](../decisions/2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md) | Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02) |
-| 44 | topology | [ADR #44: Typed Connection Gating & Live Validation (Implementation)](../decisions/2026-08-08-adr34-typed-connection-gating.md) | Implemented (2026-08-08) |
+| 44 | topology | [ADR #44: Typed Connection Gating & Live Validation (Implementation)](../decisions/2026-08-08-adr44-typed-connection-gating.md) | Implemented (2026-08-08) |
 | 45 | topology | [ADR #45: Topology Semantic Contract v2 — Endpoint Predicates, Kind Registry, Deliberate Cold Start, and Theme Parity](../decisions/2026-09-02-adr45-topology-semantic-contract-v2.md) | Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration function, §4.3 ordering rule + backend parity implemented (2026-09-02); §4.2 UI swap and §4.3 checklist UI proposed |
 | 46 | topology | [ADR #46: Topology Revision History, Change Notes, and Draft Restore](../decisions/2026-09-07-adr46-topology-revision-history-and-restore.md) | Accepted — phased; Phase 1 complete (racing-publishes gate met per 9b9a1d8a; change-note 8ce2c805, immutable revision 313157be, deflate 93e519cd), Phase 2 in progress (graph differ 51ad987f) |
 | 47 | authorization | [ADR #47: Scoped Authorization — Role Assignments with Explicit Scopes](../decisions/2026-09-07-adr47-scoped-authorization-assignments.md) | Accepted — ruled 2026-09-07 (all five recommendations adopted) |
-| 48 | regional | [ADR #48: Location Timezone Representation & as_of Semantics](../decisions/2026-09-09-timezone-representation.md) | Accepted (2026-09-09) |
+| 48 | regional | [ADR #48: Location Timezone Representation & as_of Semantics](../decisions/2026-09-09-adr48-timezone-representation.md) | Accepted (2026-09-09) |
 | 49 | desktop-client | [ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge](../decisions/2026-09-11-adr49-headless-command-bridge.md) | Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started |
 | 50 | sync | [ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)](../decisions/2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | settings | [ADR #51: Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](../decisions/2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
@@ -59,6 +59,10 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 53 | architecture | [ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer](../decisions/2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction |
 | 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 | 55 | security | [ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](../decisions/2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped |
+| 56 | topology | [ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the mu…](../decisions/2026-10-04-adr56-first-run-provisioning.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.6 and the local tier of §2.3/§2.4 are IMPLEMENTED; §2.3's identify leg, §2.5 pairing and §5 Q2's tablet licence gate are NOT |
+| 57 | security | [ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side…](../decisions/2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location signals are not |
+| 58 | licensing | [ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](../decisions/2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along and the per-device renewal refusal are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product, and §2.3's window ships as a UI poll gate rather than the session obligation its pseudocode specifies |
+| 59 | topology | [ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and…](../decisions/2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not |
 
 ### Research Notes
 
@@ -100,6 +104,10 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
 | general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
 | ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](2026-09-15-frontend-architecture-todo-appraisal.md) | — |
+| general | [Android shell audit — 2026-09-20](2026-09-20-audit-android-shell.md) | — |
+| subscription | [Licence rate-limit collapse — 2026-09-21](2026-09-21-license-ratelimit-collapse.md) | — |
+| release | [Migration init-script drift bricked startup — 2026-09-21](2026-09-21-migration-init-drift-bricked-startup.md) | — |
+| ui | [Driving the tablet UI — the method that works, and the blind one that does not — 2026-09-21](2026-09-21-tablet-ui-driving-method.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |

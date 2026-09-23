@@ -73,6 +73,12 @@ fn verdict_rejects_unknown_keys_fail_closed() {
 #[test]
 fn verdict_resolves_fail_closed_like_the_tablet_caps_command() {
     let conn = fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     for key in [
         "supports_qris",
         "supports_analytics",
@@ -141,6 +147,9 @@ fn seed_scoped_manager(conn: &Connection) {
 #[test]
 fn verdict_scope_mirrors_the_desktop_verdict_on_the_same_assignment() {
     let conn = fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is UNPROVISIONED, so the premium stamp below would update no
+    // row and the tier axis would silently fall back to fail-closed.
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     conn.execute(
         "UPDATE tenant_subscription SET tier_key = 'premium' WHERE tenant_id = 'default'",
         [],
@@ -251,6 +260,14 @@ fn over_quota_report_seam_returns_the_effective_tier() {
 
 /// Set the tenant tier (mirror of the desktop test helper).
 fn seed_tier(conn: &Connection, tier_key: &str) {
+    // ADR #56 §2.6: `fresh_db()` is UNPROVISIONED, so this UPDATE would stamp no row and the
+    // fixture would run as "no subscription" while its name says which tier it drives.
+    if kasirmu_core::subscription::TenantSubscription::load(conn, "default")
+        .unwrap()
+        .is_none()
+    {
+        kasirmu_core::migrations::seed_provisioned_baseline(conn);
+    }
     conn.execute(
         "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
         [tier_key],

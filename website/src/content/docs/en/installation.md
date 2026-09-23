@@ -3,7 +3,7 @@ title: Installation
 description: Install kasir.mu on Windows, macOS, or Linux.
 category: gettingStarted
 order: 2
-updated: "2026-08-17"
+updated: "2026-09-23"
 ---
 
 ## System requirements
@@ -27,11 +27,11 @@ WebView2 runtime, which ships with Windows 10 and 11.
 
 ## Download and install
 
-Download the installer from the
-[releases page](https://github.com/kardelitaitu/oz-pos/releases). No account
-is required.
+Download it from the [download page](../../download/) — no account is required.
+The installers themselves are published on
+[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
 
-**Windows** — run `OZ-POS_<version>_x64-setup.exe` (or the `.msi`) and follow
+**Windows** — run `kasir.mu_<version>_x64-setup.exe` (or the `.msi`) and follow
 the prompts. It installs for your user account and adds a kasir.mu entry to
 the Start menu.
 

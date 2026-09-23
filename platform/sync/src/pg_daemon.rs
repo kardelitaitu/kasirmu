@@ -276,9 +276,36 @@ impl PgSyncDaemon {
                         .filter(|s| !s.is_empty())
                         .or_else(|| pending.first().map(|i| i.tenant_id.clone()))
                         .unwrap_or_else(|| "default".into());
+                    // C3 S5: this install's own identity, read here in the
+                    // existing blocking config phase (alongside the tenant
+                    // read above) rather than as a query on the pull path.
+                    // The pull then excludes rows this terminal pushed, so a
+                    // terminal is never handed back its own work — the
+                    // server-side half of the self-origin gate, which matters
+                    // because the daemons apply against this global database
+                    // while checkout wrote a per-store one.
+                    //
+                    // `None` is the UNPAIRED INSTALL: no filter, every tenant
+                    // row returned, exactly today's behaviour. A lookup error
+                    // also degrades to None here — the filter is defence in
+                    // depth behind the per-effect receipt, so a failed read
+                    // must not stop the daemon from syncing at all.
+                    let sync_terminal_id = Settings::get_sync_terminal_id(&conn)
+                        .ok()
+                        .flatten()
+                        .filter(|s| !s.is_empty());
 
                     if !host.is_empty() && !dbname.is_empty() {
-                        Some((host, port, dbname, user, password, tenant_id, require_tls))
+                        Some((
+                            host,
+                            port,
+                            dbname,
+                            user,
+                            password,
+                            tenant_id,
+                            require_tls,
+                            sync_terminal_id,
+                        ))
                     } else {
                         None
                     }
@@ -304,7 +331,7 @@ impl PgSyncDaemon {
         let mut sync_error: Option<String> = None;
 
         let pg_transport = pg_config.as_ref().and_then(
-            |(host, port, dbname, user, password, tenant_id, require_tls)| {
+            |(host, port, dbname, user, password, tenant_id, require_tls, sync_terminal_id)| {
                 let port_u16: u16 = port.parse().unwrap_or(5432);
                 PgTransport::new_with_tls(
                     host,
@@ -316,6 +343,8 @@ impl PgSyncDaemon {
                     *require_tls,
                 )
                 .ok()
+                // An unpaired install carries None → the pull stays unfiltered.
+                .map(|transport| transport.with_terminal_id(sync_terminal_id.clone()))
             },
         );
 

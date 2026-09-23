@@ -3553,12 +3553,14 @@ name = "kasirmu-hal"
 version = "0.0.39"
 dependencies = [
  "async-trait",
+ "hex",
  "jni 0.21.1",
  "kasirmu-core",
  "rusb",
  "serde",
  "serde_json",
  "serialport",
+ "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
 ]

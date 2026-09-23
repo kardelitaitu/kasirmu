@@ -108,7 +108,73 @@ mod debt;
 /// todo-tablet-dialog-content-uri.md). It is a Gated ADR #49 shim over `kasirmu_bridge`,
 /// so it moves no ceiling and no ledger row — purely a surface-count increase, exactly
 /// like the seven file-picker shims. Raising this records what landed; it does not approve it.
-const REGISTERED_FLOOR: usize = 333;
+///
+/// The ADR #56 §2.1/§2.2 step (333 -> 335) is the provisioning pass, and it is TWO for a
+/// reason worth keeping visible: `setup::get_first_run_state` and `setup::provision_device`
+/// replace the retired `setup::get_setup_status` and `setup::dismiss_setup_wizard`. All four
+/// are `no_session_resolution`, and that is the point rather than an oversight: provisioning
+/// creates the FIRST owner, so it must run before any session can exist — the same property
+/// `setup::complete_setup` has had since it was registered. Both new commands are therefore
+/// carried on the debt ledger deliberately, not by omission. The net debt movement is +2
+/// (two rows in, two rows out); the ceiling rise below records what landed and does not
+/// approve it.
+///
+/// The ADR #56 §2.2 retirement step (335 -> 334) is the FIRST time this floor has
+/// moved DOWN, and it moved for the reason the ratchet exists to make visible:
+/// the ledger showed `complete_setup` and `dismiss_setup_wizard` as DEBT that
+/// nothing could ever gate, because both wrote the two booleans §2.1 retires.
+/// Deleting them is how the debt is PAID rather than excused, so the floor
+/// shrinks by one — `get_first_run_state` and `provision_device` replaced them
+/// two-for-two on the surface, and one of the three retired doors
+/// (`get_setup_status`) had no successor at all.
+///
+/// The ADR #57 §2.1 step (334 -> 336) moves it UP by two, and the reason is the
+/// honest one for a registration gate: `health::get_build_fingerprint` is a new
+/// door that takes NO session, so it is carried on the ledger as
+/// `no_session_resolution` rather than being gated. That is deliberate, not an
+/// oversight — the command reports this installation's own APK signing
+/// certificate, which is a property of the public build and needs no authority
+/// to read, and the tablet's licence surface must be diagnosable BEFORE a session
+/// exists (the same property `get_device_id` and `get_local_ip` beside it have).
+/// The ADR #56 §2.5 pairing step (337 -> 339) adds `desktop_link::start_device_pairing`
+/// and `desktop_link::poll_device_pairing` for tablet device-code pairing.
+///
+/// The 339 -> 344 step is the staff/role TRASH (90-day soft delete), the same five
+/// gated commands the desktop shell gained: `delete_staff_scoped`,
+/// `restore_staff_scoped` and `list_staff_trash_scoped` behind `staff:delete`,
+/// plus `restore_role_scoped` and `list_role_trash_scoped` behind
+/// `staff:manage_roles`. Nothing lands on the ledger, so this step moves the floor
+/// and the ledger's measured total together and leaves every ceiling alone.
+///
+/// The 344 -> 345 step is **not this lane's**: `setup::get_preset_features` arrived with
+/// `6ac851dd4` (the desktop half of the same commit) and lands here on the SAME pass that
+/// absorbed it on the desktop — floor 345, ceiling 95, class 1 51, ledger regenerated. Its
+/// reason is recorded in docs/records/JOURNAL.md with the desktop entry; this line exists so
+/// the two shells' floors cannot drift apart on a command both of them register.
+///
+/// The 345 -> 342 step is C17 (2026-09-22), the first floor move for a RETIREMENT since the
+/// ADR #56 §2.2 step: the three unscoped branding setters left `lib.rs` because the UI had
+/// already stopped naming them (`ui/src/api/branding.ts` calls only the `_scoped` twins), so
+/// the shell kept the doors that derive identity from the session and dropped the ones that
+/// took it on faith — the same move T11 made for `settings::set_hardware_settings`. Their
+/// three ledger rows left with them and the ceiling and class-1 count fell by three.
+///
+/// The 342 -> 339 step is C17 slice 2 (2026-09-23), the same move one slice later: the
+/// tablet's three ungated settings READS — `settings::get_receipt_settings`,
+/// `get_store_settings` and `get_credit_settings` — left `lib.rs` because no shipped
+/// UI file named them (`ui/src/api/settings.ts` calls only the `_scoped` twins, and
+/// the IPC parity gate printed all three under `tablet-unrequested` as "named by
+/// neither side"). Their three ledger rows left with them, so the floor, `DEBT_CEILING`
+/// and the class-1 count all fell by three.
+///
+/// `settings::get_hardware_settings` was the FOURTH name in the inventory's slice and
+/// is deliberately NOT retired here. `ui/src/hooks/useTerminalHardware.ts:240` still
+/// calls it on the no-session branch (`sessionToken ? … : await getHardwareSettings()`),
+/// and the hook coerces a null token to `''` at `:221`, so the arm is reachable and
+/// deleting the door would break a live renderer path. It is carried as its own item
+/// (C17b): retire that fallback arm first, then delete the command and its row in a
+/// slice whose acceptance proves hardware settings still resolve WITH a session.
+const REGISTERED_FLOOR: usize = 339;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
@@ -1267,7 +1333,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
                 let first = after.chars().next().unwrap_or('x');
                 if first == DOUBLE_QUOTE || first == SINGLE_QUOTE {
                     literal += 1;
-                } else if !inside_allowed {
+                } else if computed_name_is_an_offender(&rel, inside_allowed) {
                     offenders.push(format!("{}:{}", rel, i + 1));
                 }
                 rest = &rest[hit + 7..];
@@ -1284,6 +1350,87 @@ fn drift_pin_no_computed_command_names_in_ui() {
     );
 }
 
+/// Is this file test scaffolding rather than production source?
+///
+/// Ported from the desktop twin (`apps/desktop-tauri/src/commands/registration_gate_tests.rs`,
+/// `counts_as_test_scaffold`), which this tablet copy never received. Without it this sweep
+/// read `ui/src/__tests__/dev-mock-dto-conformance.test.ts` as production source and went
+/// red on a table-driven mock harness - a test file handing a command name through, which is
+/// what a mock is for, not a screen assembling one.
+///
+/// Grounded in the extractor both gates exist to agree with, so this is a rule and not a
+/// convenience: `scripts/verify-ipc-parity.py` names seven production roots (`UI_SCAN_DIRS`,
+/// :83) and its walks drop any `__tests__` path (:149 for the command extractor, :274 for the
+/// second pass). The parity surface is production source only, so a test file cannot skew it
+/// in either direction and is not what the computed-name ban protects.
+///
+/// A COMPONENT test, never a substring: only a whole `__tests__` component is scaffolding,
+/// so `ui/src/foo__tests__bar/Screen.tsx` is still production source.
+fn counts_as_test_scaffold(rel: &str) -> bool {
+    rel.split('/').any(|part| part == "__tests__")
+}
+
+/// Does a computed-name site in this file make it an offender?
+///
+/// Production source only, and never a file already on the toleration list. Mirrors
+/// `computed_name_is_an_offender` in the desktop twin. The two halves differ for the reason
+/// the desktop copy documents at length: the hazard is production UI assembling a name the
+/// parity extractor cannot see, whereas a mock or a test harness passing one through is not
+/// that. Collapsing the halves would turn the scaffold tolerance into a blanket exemption
+/// for every test file, which is the outcome the tolerance exists to avoid.
+fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
+    !inside_allowed && !counts_as_test_scaffold(rel)
+}
+
+/// The scaffold tolerance in BOTH directions, because one direction alone is a blanket
+/// exemption with a test that agrees with it.
+///
+/// The tolerating direction is the file that made this gate red. The catching direction is
+/// the one that keeps the port honest: a computed name in PRODUCTION UI must still land in
+/// the offender list. `ui/src/utils/logged-invoke.ts` is the right witness because the
+/// desktop copy tolerates it BY NAME in its `TOLERATED_FORWARDS` list - so it is caught by
+/// RULE here and excused by LIST there, and the two decisions must stay distinguishable.
+#[test]
+fn the_scaffold_tolerance_tolerates_a_test_harness_and_still_catches_production_ui() {
+    // -- Tolerating direction: the offender that made this leg red is scaffolding. --
+    let harness = "ui/src/__tests__/dev-mock-dto-conformance.test.ts";
+    assert!(
+        counts_as_test_scaffold(harness),
+        "a whole __tests__ component is test scaffolding, not production source: {harness}"
+    );
+    assert!(
+        !computed_name_is_an_offender(harness, false),
+        "a table-driven mock harness builds the name at runtime by design; it must not offend"
+    );
+
+    // -- Catching direction: the same computed name in production source still offends. --
+    let production = "ui/src/utils/logged-invoke.ts";
+    assert!(
+        !counts_as_test_scaffold(production),
+        "production source is not scaffolding: {production}"
+    );
+    assert!(
+        computed_name_is_an_offender(production, false),
+        "a computed name in production UI must still land in the offender list: {production}"
+    );
+
+    // -- The two reasons stay separable: a file on the toleration list is excused by THAT
+    // list, not silently reclassified as scaffolding. --
+    assert!(
+        !computed_name_is_an_offender(production, true),
+        "an allow-listed file is tolerated by the list"
+    );
+    assert!(
+        !counts_as_test_scaffold(production),
+        "and the list did not make it scaffolding, so the reasons remain distinguishable"
+    );
+
+    // -- Component, never substring: a name that merely CONTAINS the marker is not scaffold. --
+    assert!(
+        !counts_as_test_scaffold("ui/src/foo__tests__bar/Screen.tsx"),
+        "only a whole __tests__ component is scaffolding; a substring match would tolerate production files this rule must not"
+    );
+}
 /// Report only — prints and exits zero, by design.
 ///
 /// ui/src/__tests__/api-security-contract.test.ts and

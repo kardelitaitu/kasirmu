@@ -36,6 +36,14 @@ pub(super) fn build_cloud_schemas() -> Value {
                     "type": "boolean",
                     "description": "Which portable at-rest key derivation this process selected: true = master-key path, false = legacy static path. Reports the derivation only: no key material is exposed, and false means this process is not using a master key, not that no such variable was set.",
                     "example": false
+                },
+                // Whether PostgreSQL row-level security actually applies to
+                // this process's connection. See 'HealthResponse' in main.rs.
+                "rls_posture": {
+                    "type": "string",
+                    "description": "Whether tenant isolation (PostgreSQL row-level security) is in force on the connection this process uses: 'enforced' (all protected tenant tables FORCEd, role not a superuser), 'bypassed_by_superuser', 'bypassed_by_owner_role' (no table FORCEd), 'partially_enforced', 'no_protected_tables' (schema not applied here), 'not_applicable' (SQLite), or 'unknown' (catalog unreadable). A report only: the policies being present is not the same claim as their being effective.",
+                    "enum": ["enforced", "bypassed_by_superuser", "bypassed_by_owner_role", "partially_enforced", "no_protected_tables", "not_applicable", "unknown"],
+                    "example": "bypassed_by_owner_role"
                 }
             }
         },
@@ -83,7 +91,11 @@ pub(super) fn build_cloud_schemas() -> Value {
                 "tenant_id": { "type": "string", "description": "Owning tenant; defaults to \"default\" when omitted. The server overrides it from the JWT claims, so a client-supplied value is ignored", "default": "default" },
                 "created_at": { "type": "string", "description": "ISO-8601 creation timestamp", "example": "2026-09-11T12:34:56.789Z" },
                 "synced_at": { "type": ["string", "null"], "description": "ISO-8601 sync timestamp; serialised as null until the item is applied" },
-                "priority": { "type": "string", "enum": ["Critical", "Normal", "Low"], "description": "Sync priority tier (P-2). Serialised as the variant name — capitalised, NOT snake_case — and defaulted to Normal when omitted", "default": "Normal" }
+                "priority": { "type": "string", "enum": ["Critical", "Normal", "Low"], "description": "Sync priority tier (P-2). Serialised as the variant name — capitalised, NOT snake_case — and defaulted to Normal when omitted", "default": "Normal" },
+                // Nullable on purpose: a pre-existing row has no recorded origin,
+                // and null means unknown — never an empty string. See
+                // `20261007_sync_origin_and_effect_key.sql`.
+                "origin_terminal_id": { "type": ["string", "null"], "description": "Terminal that originated this mutation, when its producer knew it; serialised as null when unknown. Consumers must treat null as not proven self-originated, never as not self-originated" }
             }
         },
         "SyncPushRequest": {

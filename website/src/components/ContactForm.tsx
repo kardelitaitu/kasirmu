@@ -2,17 +2,35 @@ import { useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
 
 /**
- * Support contact form. Posts { name, email, message } as JSON to
- * PUBLIC_CONTACT_ENDPOINT — the license server's future /api/v1/web/contact
- * route, which will forward the message to the Discord channel. The webhook
- * URL must never be exposed to the browser, so the site only ever talks to
- * the endpoint.
+ * Support contact form. Posts { name, email, message } as JSON to the
+ * configured contact endpoint — the route that forwards the message to the
+ * Discord channel. The webhook URL must never be exposed to the browser, so
+ * the site only ever talks to that route.
  *
- * When the endpoint is unset the form degrades to a mailto: link with the
- * entered fields pre-filled, so the UI stays fully usable.
+ * When no endpoint is configured the form does NOT post: it reports the
+ * failure and offers a mailto: link with the entered fields pre-filled, so the
+ * UI stays fully usable. That is what `.env.example` promises for an empty
+ * `PUBLIC_CONTACT_ENDPOINT`, and the Worker advertises the runtime value in
+ * `/__oz/runtime-config.js` (`contactEndpoint`) so a deployment can move it
+ * without a rebuild. This used to be a hardcoded relative `/api/contact`, which
+ * ignored both and POSTed into a 404 on any host without the Worker's route;
+ * measured 2026-09-23 against a build with no endpoint configured.
  */
-const API = '/api/contact';
 const SUPPORT_EMAIL = 'support@kasir.mu';
+
+/**
+ * The contact route this deployment actually has: the Worker's runtime value
+ * first, then the build-time PUBLIC_CONTACT_ENDPOINT, else nothing.
+ *
+ * Read at submit time, not at module scope: the runtime config script is
+ * deferred, so a value read while the module loads would miss it.
+ */
+function contactEndpoint(): string | undefined {
+  const runtime = typeof window !== 'undefined' ? window.__OZ_CONFIG__?.contactEndpoint : undefined;
+  if (runtime) return runtime;
+  const built = import.meta.env.PUBLIC_CONTACT_ENDPOINT as string | undefined;
+  return built?.trim() ? built.trim() : undefined;
+}
 
 interface Props {
   /** Strings this form reads; `support.astro` builds it with `labelMap`. */
@@ -44,7 +62,7 @@ export default function ContactForm({ labels }: Props) {
   const [status, setStatus] = useState<Status>('idle');
 
   const inputClass =
-    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
+    'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
   const labelClass = 'mb-1 block text-sm text-muted';
 
   const submit = async (e: { preventDefault(): void }) => {
@@ -56,10 +74,16 @@ export default function ContactForm({ labels }: Props) {
     }
     setStatus('sending');
 
-
+    const endpoint = contactEndpoint();
+    if (!endpoint) {
+      // No route on this deployment: skip a request that can only 404 and put
+      // the mailto fallback in front of the visitor immediately.
+      setStatus('error');
+      return;
+    }
 
     try {
-      const res = await fetch(API, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

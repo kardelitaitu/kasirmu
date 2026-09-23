@@ -1,7 +1,11 @@
 use super::*;
 
+/// A provisioned store. See `migrations::seed_provisioned_baseline` for why
+/// the baseline rows are seeded here rather than shipped by the migration
+/// (ADR #56 §2.6).
 fn store() -> crate::db::Store<'static> {
     let conn = crate::migrations::fresh_db();
+    crate::migrations::seed_provisioned_baseline(&conn);
     let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
     crate::db::Store::new(conn)
 }

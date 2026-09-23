@@ -2,17 +2,21 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { FOOTER_COLUMNS, FOOTER_LINKS } from '../../lib/footer-nav.ts';
 
 /**
- * Tests for Footer.astro link integrity.
+ * Tests for Footer.astro: the sitemap it renders, and the language it renders
+ * it in.
  *
- * Footer renders sitemap columns (features/pricing/download, 5 business
- * verticals, docs/support) plus 2 legal links, all driven by
- * `getRelativeLocaleUrl`. A broken href or missing i18n key sends users
- * to 404s on revenue-critical pages.
- *
- * Strategy: read the raw .astro source and verify the link structure is
- * correct and all target pages exist on disk.
+ * Two jobs. First, link integrity — a wrong href or a missing page sends users
+ * to 404s on revenue-critical pages, and every target is checked against the
+ * pages on disk. Second, LOCALIZATION, which is what this file gained after the
+ * footer shipped hard-coded Indonesian link text ("Fitur", "Harga", "Unduh",
+ * "Warung", …) with no locale branch at all: every English page rendered an
+ * Indonesian sitemap under English column headings. The footer now renders
+ * `t(locale, key)` from the shared `FOOTER_COLUMNS` data, so these tests assert
+ * over that data — the slugs, the keys, and whether the two locales actually
+ * read differently — instead of re-typing the markup.
  */
 
 const FOOTER_SRC = readFileSync(
@@ -20,175 +24,159 @@ const FOOTER_SRC = readFileSync(
   'utf-8',
 );
 
-// ─── Link structure tests ────────────────────────────────────────────
+const enJson = JSON.parse(
+  readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'en.json'), 'utf-8'),
+);
+const idJson = JSON.parse(
+  readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'id.json'), 'utf-8'),
+);
 
-describe('Footer link structure', () => {
+const DICTS = { en: enJson, id: idJson } as const;
+const LOCALES = ['en', 'id'] as const;
+
+/** Resolve a dotted i18n key against a dictionary; undefined when absent. */
+function resolve(dict: Record<string, unknown>, key: string): unknown {
+  return key
+    .split('.')
+    .reduce<unknown>(
+      (acc, part) => (acc as Record<string, unknown> | undefined)?.[part],
+      dict,
+    );
+}
+
+/** Every i18n key the footer renders: four headings, sixteen links, one nav name. */
+const COPY_KEYS = [
+  'footer.sitemap',
+  ...FOOTER_COLUMNS.map((column) => column.heading),
+  ...FOOTER_LINKS.map((link) => link.label),
+];
+
+// ─── Sitemap data ────────────────────────────────────────────────────
+
+describe('footer sitemap data', () => {
+  it('has four columns and sixteen links', () => {
+    expect(FOOTER_COLUMNS).toHaveLength(4);
+    expect(FOOTER_LINKS).toHaveLength(16);
+  });
+
+  it('has no duplicate slug (two links to one page read as a broken column)', () => {
+    const slugs = FOOTER_LINKS.map((link) => link.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
+  it('covers the product, solutions, business and help groupings', () => {
+    for (const slug of [
+      'features',
+      'pricing',
+      'download',
+      'kasir-gratis',
+      'kasir-murah',
+      'kasir-qris',
+      'aplikasi-kasir-android',
+      'warung',
+      'cafe',
+      'restaurant',
+      'minimarket',
+      'warehouse',
+      'docs',
+      'support',
+      'cara',
+      'perbandingan',
+    ]) {
+      expect(FOOTER_LINKS.map((link) => link.slug), `missing ${slug}`).toContain(slug);
+    }
+  });
+
+  it('renders each link through getRelativeLocaleUrl and the footer-link class', () => {
+    // The render is a single loop over the data, so the href must come from the
+    // slug rather than a literal that could point at the wrong locale.
+    expect(FOOTER_SRC).toContain('getRelativeLocaleUrl(locale, link.slug)');
+    expect(FOOTER_SRC).toContain('class="footer-link relative w-fit');
+    expect(FOOTER_SRC).toContain('{t(locale, link.label)}');
+    expect(FOOTER_SRC).toContain('FOOTER_COLUMNS');
+  });
+
   it('renders 2 legal links (privacy and terms)', () => {
     expect(FOOTER_SRC).toContain("'legal/privacy'");
     expect(FOOTER_SRC).toContain("'legal/terms'");
   });
-
-  it('renders the sitemap columns', () => {
-    for (const slug of ['features', 'pricing', 'download', 'kasir-gratis', 'kasir-murah', 'kasir-qris', 'aplikasi-kasir-android', 'warung', 'cafe', 'restaurant', 'minimarket', 'warehouse', 'docs', 'support', 'cara', 'perbandingan']) {
-      expect(FOOTER_SRC).toContain(`'${slug}'`);
-    }
-  });
-
-  it('uses getRelativeLocaleUrl for navigation links', () => {
-    const matches = FOOTER_SRC.match(/getRelativeLocaleUrl\(/g);
-    expect(matches).toHaveLength(18);
-  });
-
-  it('has aria-label on the legal nav', () => {
-    expect(FOOTER_SRC).toContain("aria-label={t(locale, 'footer.legal')}");
-  });
-
-  it('has aria-label on the sitemap nav', () => {
-    expect(FOOTER_SRC).toContain('aria-label="Sitemap"');
-  });
-
-  it('has footer-link class on navigation links', () => {
-    const footerLinkMatches = FOOTER_SRC.match(/class="footer-link/g);
-    expect(footerLinkMatches).toHaveLength(18);
-  });
 });
 
-// ─── Target page existence tests ─────────────────────────────────────
+// ─── Target pages exist ──────────────────────────────────────────────
 
-describe('Footer link targets exist', () => {
+describe('footer link targets exist', () => {
   const pagesDir = join(import.meta.dirname, '..', '..', 'pages', '[locale]');
 
-  it('cafe page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'cafe.astro'))).not.toThrow();
-  });
-
-  it('minimarket page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'minimarket.astro'))).not.toThrow();
-  });
-
-  it('warung page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'warung.astro'))).not.toThrow();
-  });
-
-  it('restaurant page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'restaurant.astro'))).not.toThrow();
-  });
-
-  it('warehouse page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'warehouse.astro'))).not.toThrow();
-  });
-
-  it('features page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'features.astro'))).not.toThrow();
-  });
-
-  it('pricing page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'pricing.astro'))).not.toThrow();
-  });
-
-  it('download page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'download.astro'))).not.toThrow();
-  });
-
-  it('support page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'support.astro'))).not.toThrow();
+  it.each(FOOTER_LINKS.map((link) => link.slug))('%s page exists', (slug) => {
+    const candidates = [join(pagesDir, `${slug}.astro`), join(pagesDir, slug, 'index.astro')];
+    const found = candidates.some((path) => {
+      try {
+        readFileSync(path);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    expect(found, `no page for footer slug "${slug}"`).toBe(true);
   });
 
   it('docs hub page exists', () => {
     expect(() => readFileSync(join(pagesDir, 'docs', 'index.astro'))).not.toThrow();
   });
 
-  it('kasir-gratis landing page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'kasir-gratis.astro'))).not.toThrow();
-  });
-
-  it('kasir-murah landing page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'kasir-murah.astro'))).not.toThrow();
-  });
-
-  it('kasir-qris landing page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'kasir-qris.astro'))).not.toThrow();
-  });
-
-  it('aplikasi-kasir-android landing page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'aplikasi-kasir-android.astro'))).not.toThrow();
-  });
-
-  it('cara hub page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'cara.astro'))).not.toThrow();
-  });
-
-  it('perbandingan hub page exists', () => {
-    expect(() => readFileSync(join(pagesDir, 'perbandingan.astro'))).not.toThrow();
-  });
-
-  it('legal/privacy page exists', () => {
+  it('legal pages exist', () => {
     expect(() => readFileSync(join(pagesDir, 'legal', 'privacy.astro'))).not.toThrow();
-  });
-
-  it('legal/terms page exists', () => {
     expect(() => readFileSync(join(pagesDir, 'legal', 'terms.astro'))).not.toThrow();
   });
 });
 
-// ─── i18n key tests ──────────────────────────────────────────────────
+// ─── Localization ────────────────────────────────────────────────────
 
-describe('Footer i18n keys', () => {
-  const enJson = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'en.json'), 'utf-8'),
-  );
-  const idJson = JSON.parse(
-    readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'id.json'), 'utf-8'),
-  );
-
-  it('en footer has all required keys', () => {
-    expect(enJson.footer).toBeDefined();
-    expect(enJson.footer.rights).toBeTruthy();
-    expect(enJson.footer.privacy).toBeTruthy();
-    expect(enJson.footer.terms).toBeTruthy();
-    expect(enJson.footer.legal).toBeTruthy();
-    expect(enJson.footer.business).toBeTruthy();
-  });
-
-  it('id footer has all required keys', () => {
-    expect(idJson.footer).toBeDefined();
-    expect(idJson.footer.rights).toBeTruthy();
-    expect(idJson.footer.privacy).toBeTruthy();
-    expect(idJson.footer.terms).toBeTruthy();
-    expect(idJson.footer.legal).toBeTruthy();
-    expect(idJson.footer.business).toBeTruthy();
-  });
-
-  it('en footer vertical labels are non-empty', () => {
-    const verticalKeys = ['kafe', 'minimarket', 'warung', 'restoran'] as const;
-    for (const key of verticalKeys) {
-      expect(enJson.vertical[key].label).toBeTruthy();
+describe('footer copy is localized', () => {
+  it('defines every rendered key in both dictionaries', () => {
+    for (const locale of LOCALES) {
+      for (const key of COPY_KEYS) {
+        const value = resolve(DICTS[locale], key);
+        expect(typeof value, `${locale} ${key} must be a string`).toBe('string');
+        expect(String(value).trim(), `${locale} ${key} must not be empty`).not.toBe('');
+      }
     }
   });
 
-  it('id footer vertical labels are non-empty', () => {
-    const verticalKeys = ['kafe', 'minimarket', 'warung', 'restoran'] as const;
-    for (const key of verticalKeys) {
-      expect(idJson.vertical[key].label).toBeTruthy();
+  it('never falls back to the key itself (an unresolved label is the bug this pins)', () => {
+    for (const locale of LOCALES) {
+      for (const key of COPY_KEYS) {
+        expect(resolve(DICTS[locale], key), `${locale} ${key}`).not.toBe(key);
+      }
     }
   });
 
-  it('en and id have the same footer keys', () => {
-    const enKeys = Object.keys(enJson.footer).sort();
-    const idKeys = Object.keys(idJson.footer).sort();
-    expect(idKeys).toEqual(enKeys);
+  it('shares no label between the locales', () => {
+    // The regression this catches: the footer rendering one language for every
+    // locale — which it did, in Indonesian, until the label keys landed. An
+    // empty list is the expectation; if a future label is deliberately the same
+    // in both languages (a proper noun, say), name it here explicitly rather
+    // than loosening the assertion to a count.
+    const shared = COPY_KEYS.filter((key) => resolve(enJson, key) === resolve(idJson, key));
+    expect(shared).toEqual([]);
   });
 
-  it('en and id vertical labels differ (translated)', () => {
-    const verticalKeys = ['kafe', 'minimarket', 'warung', 'restoran'] as const;
-    const differences = verticalKeys.filter(
-      (key) => enJson.vertical[key].label !== idJson.vertical[key].label,
-    );
-    expect(differences.length).toBeGreaterThanOrEqual(1);
+  it('keeps localized column headings (they were inline ternaries before)', () => {
+    expect(FOOTER_SRC).not.toContain("locale === 'id' ?");
+    expect(FOOTER_SRC).toContain("{t(locale, column.heading)}");
+    expect(enJson.footer.col.business).toBe('Business types');
+    expect(idJson.footer.col.business).toBe('Jenis bisnis');
+  });
+
+  it('localizes the sitemap nav accessible name', () => {
+    expect(FOOTER_SRC).toContain("aria-label={t(locale, 'footer.sitemap')}");
+    expect(enJson.footer.sitemap).toBe('Sitemap');
+    expect(idJson.footer.sitemap).toBeTruthy();
+    expect(enJson.footer.sitemap).not.toBe(idJson.footer.sitemap);
   });
 });
 
-// ─── Copyright year test ─────────────────────────────────────────────
+// ─── Copyright & socials ─────────────────────────────────────────────
 
 describe('Footer copyright', () => {
   it('uses dynamic year via Date constructor', () => {

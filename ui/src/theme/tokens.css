@@ -275,6 +275,39 @@
   --touch-target-min: 44px;
   --touch-target-comfortable: 48px;
 
+  /* ── Shell chrome heights ───────────────────────────────────
+   * The desktop status bar's height, single-sourced here so a sibling
+   * layout rule can read it (custom properties inherit DOWNWARD only,
+   * so a value declared on .app-statusbar itself would be invisible to
+   * .app-layout — the ancestor that needs it for the memo-stack bottom
+   * inset: --memo-bottom-inset = "shell's own bottom chrome height +
+   * --space-6", the clearance the fixed .memo-stack sits above). The
+   * value is chrome geometry, not theme: it is deliberately NOT
+   * restated in the light/dark blocks (see the inset note below — a
+   * restated token reads as a second source of truth). */
+  --statusbar-height: 28px;
+
+  /* The top bar's height, single-sourced for the same reason: the settings
+   * hub's top bar and the staff management header are two different sheets
+   * that must render ONE bar height, and neither may drift when the touch
+   * floor changes. Derived, not invented: --touch-target-min is the tallest
+   * mandatory child either bar hosts, both carry --space-2 vertical padding,
+   * and both carry a 1px bottom border. Chrome geometry, not theme — so it
+   * is deliberately NOT restated in the light/dark blocks. */
+  --topbar-height: calc(var(--touch-target-min) + 2 * var(--space-2) + 1px);
+
+  /* The memo stack's bottom clearance, DEFAULT value. Each SHELL overrides
+   * this on its own layout root as "its own bottom chrome height +
+   * --space-6" (the desktop shell: AppLayout.css's .app-layout uses
+   * calc(var(--statusbar-height) + var(--space-6)); the tablet shell owns
+   * its own copy). The default is the chrome-free value: on fullscreen
+   * branches (POS/KDS) there is no shell ancestor to inherit an override
+   * from, so the stack keeps its historic 24px gutter. MemoBanner.css
+   * consumes it as bottom: var(--memo-bottom-inset, var(--space-6)) — the
+   * var() fallback and this default agree, so the fallback never masks a
+   * missing declaration. Chrome geometry, not theme: :root only. */
+  --memo-bottom-inset: var(--space-6);
+
   /* ── Z-index ──────────────────────────────────────────────── */
   --z-base:      0;
   --z-dropdown:  100;

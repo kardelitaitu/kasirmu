@@ -106,6 +106,17 @@
   font-family: var(--font-sans);
   overflow: hidden;
   user-select: none;
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose: it sits
+     inside the shell's named `app-content` container, and the only thing between
+     them is a display:contents wrapper, so a named query would find nothing in
+     every mount that does not go through the shell (tests, e2e harness, KDS
+     rendered standalone — see .kds-workspace below). An unnamed query against
+     the nearest container is the same measurement inside the shell and stays
+     correct outside it. Any other `container-type: inline-size` added inside
+     .kds would silently capture these rules — now a live concern, where before
+     there was nothing to capture. */
+  container-type: inline-size;
 }
 
 /* Light theme: all the dark-only white-alpha tokens flip to dark. */
@@ -1808,6 +1819,76 @@
 .kds-columns { }
 .kds-column { }
 
+/* ── Narrow-container tier (ADR-0001 T2 / Slice 5) ──────────────────
+   The board is a flex ROW of equal columns, and nothing here ever said what
+   happens when the space it is granted gets narrower than the columns need.
+   Measured against .kds's own inline-size (declared at the top of this sheet):
+   900px is where three columns stop holding a card's readable content — the
+   ticket number, the age chip, the item name and the action buttons are laid
+   out on one line each (the .kds-card-header / .kds-card-footer rules later in
+   this sheet), which is a fixed-px budget no rule enforced. Below it the board
+   folds from `row` to `column`: the buckets stack, and each one keeps the full
+   width. BOTH SELECTORS ARE REQUIRED — `.kds-main.completed-view` is two
+   classes, so a bare `.kds-main` alone would not out-rank it.
+
+   `flex: 1` on the columns STAYS: in a column-direction flex container it now
+   means "share the height", which is the same even distribution as before.
+   `align-items: flex-start` switches axis with `flex-direction`, so it is reset
+   to `stretch` — otherwise a column would size to its content and the cards
+   would no longer take the full width.
+
+   The first tier must stay ABOVE Tier 2's 640px, or the narrower tier could
+   never match: a `max-width` query matched at 639px would match at 700px too.
+
+   Desktop landscape (a content slot >= 900px) renders exactly as before; a
+   desktop window dragged into portrait simply reports a narrower box, which is
+   the whole point of keying on the container rather than on the window. */
+@container (max-width: 900px) {
+  .kds-main,
+  .kds-main.completed-view {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* ── Very narrow tier: a strict 1-column board, viewport property only ──
+   Two columns of kitchen cards in a 640px box is not a layout, it is two
+   slivers — the tickets carry a status colour, an age and two action buttons
+   at a fixed minimum width (`--kds-font-xs` numerals plus 40px icon buttons),
+   and a 320px column cannot hold them side by side. So the board is ONE column
+   and pays for it with scrolling, which is how the board already behaves on a
+   kitchen display anyway.
+
+   This rule restates `flex: 1` from `.kds-main > .kds-col` on purpose: `flex`
+   resolves to `flex-grow` at equal specificity, and a grow of 1 in a
+   column-direction container would divide the height into three 640px-tall
+   slices — the exact opposite of the scroll this tier needs. `flex: 0 0 auto`
+   lets each bucket size to its own content.
+
+   This is the whole of the "shed fixed-px columns" half, and it is this small
+   because almost nothing here WAS a fixed-px column: the board is flex, not
+   grid, and the sheet's fixed px are control geometry (a 40px icon button, a
+   44px switch), not layout lanes. The one column-shaped thing that does not
+   fold here is the board's own headers — .kds-header is `1fr auto 1fr` and
+   .kds-column-header is `space-between` — as the ADR's T3 escape hatch: a
+   screen that needs a different structural TREE declares it in its page
+   registration, which a stylesheet cannot do.
+
+   And the same caveat the precedent sheet records: `100vw` below is a viewport
+   unit, so this one rule keys on the viewport and is NOT container-correct in
+   a shell narrower than the window. Keeping it is the choice; pretending
+   otherwise is not. */
+@container (max-width: 640px) {
+  .kds-main > .kds-col,
+  .kds-main.completed-view > .kds-col {
+    flex: 0 0 auto;
+  }
+  /* A stacked 120px tier would push every bucket out of view. */
+  .kds-main {
+    flex-wrap: nowrap;
+  }
+}
+
 /* ── Completed view + bucket headers (Phase 5) ───────────────────── */
 .kds-main.completed-view {
   display: flex;
@@ -2177,6 +2258,36 @@
 
 .kds-workspace .kds {
   flex: 1;
+}
+
+/* ── Standalone mount: the workspace IS the container ────────────────
+   .kds-workspace is what AppShell renders when KDS is mounted standalone,
+   and the story is told in two halves that must both be read from here:
+
+   WHY THIS RULE EXISTS. `.kds` above declares `container-type: inline-size`,
+   and that declaration is UNCONDITIONAL — so on this mount it measures the box
+   .kds-workspace gives it AND the wrapper keeps its default `display: block`,
+   because nothing on this mount sets `display: contents` (the shell's wrapper
+   does; this one does not). A block-level `.kds` would therefore become the
+   nearest container for the tiers above and measure .kds-workspace's width
+   minus its own scrollbar — an 8-15px error at two thresholds, invisible until
+   the day a real display lands within one wheel-click of 900 or 640.
+
+   WHY THE ELEMENT STILL MEASURES THE WINDOW. These two rules together make
+   `.kds-workspace` the container AND make `.kds` a block rather than a
+   container: it is the ONLY viewport-sized mount in this sheet (height 100vh),
+   which is the same box the old viewport-width assumption used to read, so the
+   behaviour every non-shell mount had is preserved rather than guessed at.
+
+   WHY IT IS LAST IN THE SHEET. It is a property block, and the walker suites
+   grade cascade order (`docs/frontend/css-verification.md`): the last rule
+   wins, and this one is written to win. */
+.kds-workspace {
+  container-type: inline-size;
+}
+
+.kds-workspace .kds {
+  container-type: normal;
 }
 
 /* ── Visible keyboard focus across the whole screen ───────────────── */

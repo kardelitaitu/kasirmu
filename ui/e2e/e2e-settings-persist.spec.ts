@@ -4,24 +4,28 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
 /**
  * E2E Critical Path #3: Settings Change → Persistence
  *
- * Full end-to-end workflow: navigate to Settings → open Appearance →
- * change a setting (card size) → navigate to another section →
- * return to Appearance → verify the setting persisted.
+ * Full end-to-end workflow: navigate to Settings → open Business Defaults →
+ * change a receipt setting → navigate to another section → return → verify
+ * the setting persisted.
+ *
+ * The settings hub was redesigned into a flat 14-page IA
+ * (SettingsNavTree.NAV_ITEMS). There is no Appearance or Receipt page any
+ * more: receipt settings live in the "Receipt format" card on the
+ * Business Defaults screen (screens/ReceiptFormatSettingsCard.tsx), which
+ * edits the layout half (workspace layer, via set_receipt_layout_scoped)
+ * and the statutory-content half (legal-entity layer, via
+ * set_receipt_content_scoped).
  *
  * CSS contract:
  *   [data-testid="settings-sidebar"] — sidebar navigation
  *   .settings-nav-item              — sidebar nav items
  *   .settings-nav-item--active      — active nav item
- *   .settings-section-title         — section heading
- *   .settings-card-size-current     — current card size display
- *   .settings-card-size-decrease    — decrease card size button
- *   .settings-card-size-increase    — increase card size button
- *   .settings-card-size-input       — card size input field
- *   .settings-font-size-select      — font size select
- *   .settings-font-smoothing-select — font smoothing select
- *   .receipt-section                — Receipt settings section
- *   .receipt-paper-width-select     — paper width dropdown
- *   .receipt-currency-toggle        — show currency toggle
+ *   .settings-screen-placeholder-title — screen heading
+ *   .settings-section-title         — card heading ("Receipt format")
+ *   #rcptfmt-paper-width-label      — paper-width input label
+ *   #rcptfmt-footer-text-label      — statutory footer-text input label
+ *   .rcptfmt-save                   — card save button
+ *   .rcptfmt-status                 — card saved status
  */
 
 test.describe('Critical Path: Settings Persistence', () => {
@@ -31,90 +35,48 @@ test.describe('Critical Path: Settings Persistence', () => {
   });
 
   test('change receipt paper width, navigate away, return, verify persisted', async ({ page }) => {
-    // ── Step 1: Navigate to Settings → Receipt section ──────────────
+    // ── Step 1: Navigate to Settings → Business Defaults ────────────
     await page.evaluate(() => { window.location.hash = '#/settings'; });
 
     // Wait for settings sidebar.
     const sidebar = page.locator('[data-testid="settings-sidebar"]');
     await expect(sidebar).toBeVisible({ timeout: 10_000 });
 
-    // Navigate to Receipt section — every nav item is always visible in the
-    // flat sidebar, so click it directly.
-    const receiptNav = page.locator('.settings-nav-item').filter({ hasText: 'Receipt' });
-    await expect(receiptNav).toBeVisible({ timeout: 3_000 });
-    await receiptNav.click();
+    const businessNav = page.locator('.settings-nav-item').filter({ hasText: 'Business Defaults' });
+    await expect(businessNav).toBeVisible({ timeout: 3_000 });
+    await businessNav.click();
 
-    // Verify Receipt section heading.
-    const receiptHeading = page.locator('.settings-section-title').filter({ hasText: /Receipt|Receipt Settings/i });
-    await expect(receiptHeading.first()).toBeVisible({ timeout: 5_000 });
+    // Verify the Business Defaults screen heading.
+    await expect(
+      page.locator('.settings-screen-placeholder-title').filter({ hasText: 'Business Defaults' }),
+    ).toBeVisible({ timeout: 5_000 });
 
-    // ── Step 2: Change paper width (if a select exists) ─────────────
-    const paperWidthSelect = page.locator('.receipt-paper-width-select, select[name="paperWidth"], select[aria-label*="paper"]').first();
-    const selectExists = await paperWidthSelect.isVisible({ timeout: 3_000 }).catch(() => false);
+    // ── Step 2: Change the receipt paper width ──────────────────────
+    const paperWidth = page.locator('input[aria-labelledby="rcptfmt-paper-width-label"]');
+    await expect(paperWidth).toBeVisible({ timeout: 10_000 });
 
-    let changedValue = '';
+    const currentValue = await paperWidth.inputValue();
+    const changedValue = currentValue === '58' ? '80' : '58';
+    await paperWidth.fill(changedValue);
+    expect(await paperWidth.inputValue()).toBe(changedValue);
 
-    if (selectExists) {
-      // Read current value.
-      const currentValue = await paperWidthSelect.inputValue();
+    // Persist it through the card's own save (the layout write).
+    await page.getByRole('button', { name: 'Save receipt format' }).click();
+    await expect(page.locator('.rcptfmt-status')).toContainText('Receipt format saved.', { timeout: 5_000 });
 
-      // Pick a different option.
-      const options = await paperWidthSelect.locator('option').all();
-      for (const opt of options) {
-        const val = await opt.getAttribute('value');
-        if (val && val !== currentValue) {
-          await paperWidthSelect.selectOption(val);
-          changedValue = val;
-          break;
-        }
-      }
+    // ── Step 3: Navigate to a different section ─────────────────────
+    await page.locator('.settings-nav-item').filter({ hasText: 'General' }).click();
+    await expect(
+      page.locator('.settings-screen-placeholder-title').filter({ hasText: 'General' }),
+    ).toBeVisible({ timeout: 5_000 });
 
-      expect(changedValue).toBeTruthy();
-    } else {
-      // ── Step 2b: Alternative — change card size in Appearance ──────
-      // If no paper width select, try Appearance card size instead.
-      const appearanceNav = page.locator('.settings-nav-item').filter({ hasText: 'Appearance' });
-      await expect(appearanceNav).toBeVisible({ timeout: 3_000 });
-      await appearanceNav.click();
+    // ── Step 4: Return to Business Defaults ─────────────────────────
+    await page.locator('.settings-nav-item').filter({ hasText: 'Business Defaults' }).click();
 
-      await expect(page.locator('.settings-section-title').first()).toBeVisible({ timeout: 5_000 });
-
-      // Click increase card size button to trigger change.
-      const increaseBtn = page.locator('.settings-card-size-increase, button[aria-label*="Increase"]').first();
-      if (await increaseBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await increaseBtn.click();
-        changedValue = 'increased';
-      }
-
-      expect(changedValue).toBeTruthy();
-    }
-
-    // ── Step 3: Navigate to a different section ──────────────────────
-    const generalNav = page.locator('.settings-nav-item').filter({ hasText: 'General' });
-    await expect(generalNav).toBeVisible({ timeout: 3_000 });
-    await generalNav.click();
-
-    // Verify General section loaded.
-    const generalHeading = page.locator('.settings-section-title').filter({ hasText: /General|Store/i });
-    await expect(generalHeading.first()).toBeVisible({ timeout: 5_000 });
-
-    // ── Step 4: Return to the original section ──────────────────────
-    if (selectExists) {
-      // Return to Receipt.
-      await page.locator('.settings-nav-item').filter({ hasText: 'Receipt' }).click();
-
-      // Verify the select still shows the changed value.
-      const paperSelectAfter = page.locator('.receipt-paper-width-select, select[name="paperWidth"]').first();
-      await expect(paperSelectAfter).toBeVisible({ timeout: 5_000 });
-      const valueAfter = await paperSelectAfter.inputValue();
-      expect(valueAfter).toBe(changedValue);
-    } else {
-      // Return to Appearance.
-      await page.locator('.settings-nav-item').filter({ hasText: 'Appearance' }).click();
-
-      // Verify the card size value persisted (mock dev-mock returns same state).
-      await expect(page.locator('.settings-section-title').first()).toBeVisible({ timeout: 5_000 });
-    }
+    // The card re-reads the persisted value on mount — it must match.
+    const paperWidthAfter = page.locator('input[aria-labelledby="rcptfmt-paper-width-label"]');
+    await expect(paperWidthAfter).toBeVisible({ timeout: 10_000 });
+    expect(await paperWidthAfter.inputValue()).toBe(changedValue);
 
     // ── Step 5: Verify no crash ─────────────────────────────────────
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0, { timeout: 3_000 });
@@ -123,48 +85,48 @@ test.describe('Critical Path: Settings Persistence', () => {
     await expect(page.locator('[data-testid="settings-sidebar"]')).toBeVisible({ timeout: 3_000 });
   });
 
-  test('change store name in General section survives navigation', async ({ page }) => {
-    // ── Step 1: Navigate to Settings ────────────────────────────────
-    await page.evaluate(() => { window.location.hash = '#/settings' });
+  test('change statutory receipt footer, navigate away, return, verify persisted', async ({ page }) => {
+    // ── Step 1: Navigate to Settings → Business Defaults ────────────
+    await page.evaluate(() => { window.location.hash = '#/settings'; });
 
     await expect(page.locator('[data-testid="settings-sidebar"]')).toBeVisible({ timeout: 10_000 });
 
-    // General should be active by default.
-    const generalNav = page.locator('.settings-nav-item--active').filter({ hasText: 'General' });
-    await expect(generalNav).toBeVisible({ timeout: 3_000 });
+    await page.locator('.settings-nav-item').filter({ hasText: 'Business Defaults' }).click();
+    await expect(
+      page.locator('.settings-screen-placeholder-title').filter({ hasText: 'Business Defaults' }),
+    ).toBeVisible({ timeout: 5_000 });
 
-    // ── Step 2: Find the store name input and change it ─────────────
-    // Target the General-section field by id — `#root input[type="text"]`
-    // would match the sidebar SEARCH box first (it precedes the content in
-    // the DOM), and typing into it filters the nav tree and hides Receipt.
-    const storeNameInput = page.locator('#settings-field-store-name');
-    await expect(storeNameInput).toBeVisible({ timeout: 5_000 });
+    // ── Step 2: Change the statutory footer text ────────────────────
+    const footerText = page.locator('input[aria-labelledby="rcptfmt-footer-text-label"]');
+    await expect(footerText).toBeVisible({ timeout: 10_000 });
 
-    const originalValue = await storeNameInput.inputValue();
-    const newName = `E2E Test Store ${Date.now()}`;
-    await storeNameInput.clear();
-    await storeNameInput.fill(newName);
+    const originalValue = await footerText.inputValue();
+    const newValue = `E2E footer ${Date.now()}`;
+    await footerText.fill(newValue);
+    expect(await footerText.inputValue()).toBe(newValue);
 
-    const enteredValue = await storeNameInput.inputValue();
-    expect(enteredValue).toBe(newName);
+    // Persist it through the card's own save (the statutory-content write).
+    await page.getByRole('button', { name: 'Save statutory content' }).click();
+    await expect(page.locator('.rcptfmt-status')).toContainText('Statutory content saved.', { timeout: 5_000 });
 
-    // ── Step 3: Navigate away ──────────────────────────────────────
-    const receiptNav = page.locator('.settings-nav-item').filter({ hasText: 'Receipt' });
-    await expect(receiptNav).toBeVisible({ timeout: 3_000 });
-    await receiptNav.click();
-
-    // ── Step 4: Navigate back ──────────────────────────────────────
+    // ── Step 3: Navigate away ───────────────────────────────────────
     await page.locator('.settings-nav-item').filter({ hasText: 'General' }).click();
+    await expect(
+      page.locator('.settings-screen-placeholder-title').filter({ hasText: 'General' }),
+    ).toBeVisible({ timeout: 5_000 });
 
-    // ── Step 5: Verify store name persisted (dirty state kept the value) ──
-    const storeInputAfter = page.locator('#settings-field-store-name');
-    await expect(storeInputAfter).toBeVisible({ timeout: 5_000 });
-    const valueAfter = await storeInputAfter.inputValue();
-    expect(valueAfter).toBe(newName);
+    // ── Step 4: Navigate back ───────────────────────────────────────
+    await page.locator('.settings-nav-item').filter({ hasText: 'Business Defaults' }).click();
 
-    // ── Step 6: Restore original value ──────────────────────────────
-    await storeInputAfter.clear();
-    await storeInputAfter.fill(originalValue);
+    // ── Step 5: Verify the footer text persisted ────────────────────
+    const footerTextAfter = page.locator('input[aria-labelledby="rcptfmt-footer-text-label"]');
+    await expect(footerTextAfter).toBeVisible({ timeout: 10_000 });
+    expect(await footerTextAfter.inputValue()).toBe(newValue);
+
+    // ── Step 6: Restore the original value ──────────────────────────
+    await footerTextAfter.fill(originalValue);
+    await page.getByRole('button', { name: 'Save statutory content' }).click();
+    await expect(page.locator('.rcptfmt-status')).toContainText('Statutory content saved.', { timeout: 5_000 });
 
     // Verify no crash.
     await expect(page.locator('[class*="error-boundary"]')).toHaveCount(0, { timeout: 3_000 });

@@ -22,6 +22,7 @@ fn make_item(created_at: &str, action: &str) -> OfflineQueueItem {
         synced_at: None,
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
+        origin_terminal_id: None,
     }
 }
 
@@ -47,6 +48,7 @@ fn make_item_with_version(
         synced_at: None,
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
+        origin_terminal_id: None,
     }
 }
 
@@ -72,6 +74,7 @@ fn make_stock_item(created_at: &str, action: &str, delta: i64, sku: &str) -> Off
         synced_at: None,
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
+        origin_terminal_id: None,
     }
 }
 

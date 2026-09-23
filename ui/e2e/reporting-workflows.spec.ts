@@ -82,9 +82,12 @@ test.describe('Reporting Screens', () => {
     // KPI summary cards (products, revenue, margin, rate) must render.
     await expect(page.locator('.menu-eng-kpis')).toBeVisible({ timeout: 5_000 });
 
-    // Quadrant summary cards or table must render (mock returns empty — loading state).
-    const hasQuadrantCards = await page.locator('.menu-eng-quadrant-cards').isVisible({ timeout: 3_000 });
-    const hasTable = await page.locator('.menu-eng-table').isVisible({ timeout: 3_000 });
-    expect(hasQuadrantCards || hasTable).toBe(true);
+    // Quadrant summary cards must render. toBeVisible() auto-waits: the
+    // menu-engineering data arrives via async IPC, so the screen may still be
+    // in its Spinner state (which also carries .menu-eng) when this line runs.
+    // The dev-mock always returns 6 restaurant rows, so the table renders too
+    // — no empty-state fallback is needed.
+    await expect(page.locator('.menu-eng-quadrant-cards')).toBeVisible({ timeout: SCREEN_TIMEOUT });
+    await expect(page.locator('.menu-eng-table')).toBeVisible({ timeout: 5_000 });
   });
 });

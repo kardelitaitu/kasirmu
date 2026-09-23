@@ -21,7 +21,7 @@ next: none for the guard path | perf: N/A
 
 use std::collections::HashMap;
 
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::money::Currency;
@@ -62,8 +62,11 @@ impl Store<'_> {
 
         // COR-25: the guard reads and the refund writes share one
         // transaction, so the check-then-act window is closed against any
-        // other writer on another connection (e.g. sync replay).
-        let tx = self.conn.unchecked_transaction()?;
+        // other writer on another connection (e.g. sync replay). IMMEDIATE,
+        // not DEFERRED: the guard is a read and the refund is a write, so a
+        // deferred BEGIN that loses the race fails with SQLITE_BUSY_SNAPSHOT
+        // instead of waiting out the busy_timeout at BEGIN.
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         // ── 0. Over-refund guard ──────────────────────────────────
         // A sale may be refunded AT MOST its original total. The sale stays
@@ -71,15 +74,24 @@ impl Store<'_> {
         // this check the same sale could be refunded unlimited times and
         // stock credited each time. Reject when the cumulative refunded
         // amount plus this refund would exceed the sale's total.
-        let (sale_total, sale_currency, sale_customer_id, sale_base_total): (
+        let (sale_total, sale_currency, sale_customer_id, sale_base_total, sale_tenant): (
             i64,
             String,
             Option<String>,
             Option<i64>,
+            Option<String>,
         ) = match tx.query_row(
-            "SELECT total_minor, currency, customer_id, base_total_minor FROM sales WHERE id = ?1",
+            "SELECT total_minor, currency, customer_id, base_total_minor, tenant_id FROM sales WHERE id = ?1",
             params![refund.sale_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         ) {
             Ok(pair) => pair,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -336,10 +348,21 @@ impl Store<'_> {
         }
 
         // ── 1. Persist refund + lines ──────────────────────────────
+        // TENANT: copied verbatim from the SALE row read in step 0 — the same
+        // source the outbox helper and every other refund-adjacent writer
+        // resolves a tenant from, and the tenant the sync arm will re-read on
+        // the receiving terminal. Not a literal and not a second lookup:
+        // `refunds.tenant_id` is NOT NULL DEFAULT 'default' and is RLS-covered
+        // in PostgreSQL (scripts/generate-pg-migration.py RLS_TABLES), so a
+        // hardcoded value files a multi-store refund under the wrong tenant.
+        // The value is bound as read, never substituted: a sale with no tenant
+        // (unreachable — `sales.tenant_id` is NOT NULL too) binds NULL and the
+        // column's own NOT NULL constraint refuses the row, rather than the
+        // refund silently becoming 'default'.
         tx.execute(
-            "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![refund.id, refund.sale_id, refund.total.minor_units, cur_str, refund.reason, refund.note, refund.processed_by, refund.created_at],
+            "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at, tenant_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![refund.id, refund.sale_id, refund.total.minor_units, cur_str, refund.reason, refund.note, refund.processed_by, refund.created_at, sale_tenant],
         )?;
 
         for line in &refund.lines {
@@ -356,6 +379,19 @@ impl Store<'_> {
                         line.unit_price.minor_units, line.line_total.minor_units, line_cur, line.created_at],
             )?;
         }
+
+        // ── 1b. TRANSACTIONAL OUTBOX (C4 S2, the producer) ──────────
+        // The sync row for this refund is written HERE, inside the refund
+        // transaction, after the refunds header and its lines and BEFORE the
+        // stock credit. Sync for sales/refunds is outbox-only - push reads
+        // `list_pending_offline` and nothing else, and no reconciliation
+        // sweep exists - so a refund made on one terminal was never pushed at
+        // all until this seat existed: the pull-side `refund_sale` arm was
+        // unreachable. The earlier seat (before the credit, not before
+        // `tx.commit()`) is what makes the rollback property testable: the
+        // credit path can still fail (a line absent from
+        // `deduction_locations`), and it must take the queue row down with it.
+        Store::enqueue_refund_outbox_in_tx(&tx, refund)?;
 
         // ── 2. Read deduction_locations from the sale ──────────────
         let deduction_locations_json: Option<String> = match tx.query_row(
@@ -403,31 +439,28 @@ impl Store<'_> {
         }
 
         // ── 2c. CRM-06: reverse lifetime spend (base currency) ────
-        // The completion hook accrues spend in base currency; the refund
-        // converts its amount at the rate recorded on the sale
-        // (refund_base = refund_total × base_total / total, integer
-        // round-half-up — no floats on money). Floors at zero: legacy
-        // customers accrued nothing during the projection-gap window.
-        if let Some(customer_id) = sale_customer_id.as_deref() {
-            let refund_base = match (sale_base_total, sale_total) {
-                (Some(base), t) if t > 0 && base != t => {
-                    let num = i128::from(refund.total.minor_units) * i128::from(base);
-                    let den = i128::from(t);
-                    ((num * 2 + den) / (den * 2)) as i64
-                }
-                _ => refund.total.minor_units,
-            };
-            if let Err(e) = tx.execute(
-                "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
-                 updated_at = ?2 WHERE id = ?3",
-                params![refund_base, refund.created_at, customer_id],
-            ) {
-                tracing::warn!(
-                    "customer spend reversal failed for sale {} (refund {}): {e}",
-                    refund.sale_id,
-                    refund.id
-                );
-            }
+        // The ONE writer of this effect is
+        // [`reverse_customer_spend_on_refund`], called here on the
+        // originator and by the sync lane's remote `refund_sale` arm, so
+        // one refund cannot leave two different customer totals depending
+        // on which terminal applied it. Same non-fatal policy as step 2b:
+        // a customer row that cannot be updated must not roll back money
+        // and stock already credited.
+        if let Some(customer_id) = sale_customer_id.as_deref()
+            && let Err(e) = reverse_customer_spend_on_refund(
+                &tx,
+                customer_id,
+                refund.total.minor_units,
+                sale_total,
+                sale_base_total,
+                &refund.created_at,
+            )
+        {
+            tracing::warn!(
+                "customer spend reversal failed for sale {} (refund {}): {e}",
+                refund.sale_id,
+                refund.id
+            );
         }
 
         // ── 3. Write audit log inside the same transaction ─────────
@@ -946,6 +979,56 @@ impl Store<'_> {
             created_at: row.get("created_at")?,
         })
     }
+}
+
+/// CRM-06: reverse the customer's lifetime spend for a refund — the ONE
+/// writer of this money value.
+///
+/// The completion hook accrues spend in BASE currency, so the refund
+/// converts its amount at the rate recorded on the sale:
+/// `refund_base = refund_total × base_total / total`, integer round-half-up
+/// in i128 (no float ever touches money). The update floors at zero
+/// (`MAX(..., 0)`) for legacy customers who accrued nothing during the
+/// projection-gap window. A legacy sale with no recorded base total — or one
+/// whose base total equals its total, i.e. no conversion to make — reverses
+/// the raw refund total.
+///
+/// Public because it is the ONE writer of this effect: the local refund path
+/// ([Store::create_refund], step 2c) and the sync lane's remote
+/// `refund_sale` arm (`platform-sync`, `queue.rs`) both call it, so one
+/// refund cannot leave two different customer totals depending on which
+/// terminal applied it. A caller reaching it without a refunds row of its own
+/// is still replay-safe, because both callers apply it only after the
+/// refunds row exists — that row is what the replay probe reads.
+///
+/// Runs on the CALLER's connection/transaction — like
+/// [`crate::db::loyalty::reverse_loyalty_on_refund`] this must commit or
+/// roll back atomically with the refund row itself. The caller owns the
+/// failure policy: `create_refund` and the sync arm both log and continue,
+/// because a customer row that cannot be updated must not roll back money
+/// and stock already credited.
+pub fn reverse_customer_spend_on_refund(
+    conn: &rusqlite::Connection,
+    customer_id: &str,
+    refund_total_minor: i64,
+    sale_total_minor: i64,
+    sale_base_total_minor: Option<i64>,
+    at: &str,
+) -> Result<(), CoreError> {
+    let refund_base = match (sale_base_total_minor, sale_total_minor) {
+        (Some(base), total) if total > 0 && base != total => {
+            let num = i128::from(refund_total_minor) * i128::from(base);
+            let den = i128::from(total);
+            ((num * 2 + den) / (den * 2)) as i64
+        }
+        _ => refund_total_minor,
+    };
+    conn.execute(
+        "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
+         updated_at = ?2 WHERE id = ?3",
+        params![refund_base, at, customer_id],
+    )?;
+    Ok(())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

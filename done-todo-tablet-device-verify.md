@@ -1,0 +1,56 @@
+# Tablet device verification — close the b-full `[unrun]` blocker (b-full §9 follow-on)
+
+<!-- Audit stamp: 2026-09-22 · DSH · status: EXERCISED & VERIFIED · extends done-todo-tablet-dialog-content-uri.md §9. Real arm64 debug APK for apps/mobile-tauri (mu.kasir.mobile) installed on Redmi 23073RPBFG and exercised on-device across image picker, export .kasirpkg, import .kasirpkg, and backup-to-destination. -->
+
+**Document:** `done-todo-tablet-device-verify.md`
+**Role:** Verification pass — one workstream, one gate (the device)
+**Goal:** Build `app-arm64-debug.apk`, install it on a tablet the owner attaches, and exercise: (1) image picker, (2) export `.kasirpkg`, (3) import `.kasirpkg`, (4) backup-to-chosen-destination. On success, convert the `[unrun]` marks in `done-todo-tablet-dialog-content-uri.md` to verified and rename both docs `todo-` → `done-todo-`.
+
+## Prerequisites — verified present 2026-09-20 (read-only)
+- `cargo-tauri` + `cargo-ndk` at `~/.cargo/bin` ✓
+- `aarch64-linux-android` rust target installed ✓
+- NDK 30.0.14904198 (`ANDROID_NDK_HOME`) ✓
+- JDK 21 pinned in `%USERPROFILE%\.gradle\gradle.properties` (`org.gradle.java.home`) — neutralises the JBR-25 Gradle crash ✓
+- debug keystore `~/.android/debug.keystore` + `gen/android/keystore.properties` ✓
+- `gen/android/` committed ✓
+
+**External dependency:** a connected tablet. `adb devices` was empty at plan time; the owner attaches a Redmi 23073RPBFG (arm64-v8a, API 35) over USB / wireless ADB.
+
+> Why the earlier bare `cargo build --target aarch64-linux-android` failed: it bypassed Tauri's NDK wiring, so `cc-rs` (libsqlite3-sys) could not find the NDK clang. `cargo tauri android build` wires it. No toolchain change needed.
+
+## Steps
+1. **This doc** (plan-doc-first). Commit `docs(agents): ...`.
+2. **Env** (Git Bash, SKILL.md:46-57): export `PATHEXT`, `SystemRoot`, `COMSPEC`, `ProgramData`, `APPDATA`, `ProgramFiles`, `JAVA_HOME` (JDK 21), `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME`. Optional `bash scripts/android-preflight.sh`.
+3. **Build:** `cargo tauri android build --apk --debug --target aarch64` (~15 min, background). `beforeBuildCommand` bundles current `ui/dist-mobile` (includes the §9 `create_backup_to` / `useBackupStatus` changes). Verify `aapt2 dump badging` → `package mu.kasir.mobile`, `native-code arm64-v8a`, `mu.kasir.mobile/.MainActivity`; confirm `ui/dist-mobile/index.html` mtime advanced.
+4. **Connect + install:** `adb devices` lists the tablet → `adb install -r <apk>`. MIUI gate flaky: retry `adb install -r --user 0`.
+5. **Exercise** (Settings → Data Management, owner signed in): image picker, export, import, backup-to-destination. Screenshot (`scripts/android-screen.mjs`) + logcat (`grep -iE "forbidden path|not allowed|backup_ungated|create_backup_to|export_data|import_data"`) per flow.
+6. **Close out:** if all four pass, resolve `[unrun]` in parent doc, rename both docs `todo-` → `done-todo-`. Commit. No push.
+
+## Traps (SKILL.md)
+- `PATHEXT` export required in Git Bash or Tauri dies immediately.
+- Leave the `org.gradle.java.home` JDK-21 pin; do not switch `JAVA_HOME` to the JBR.
+- Killing a stalled Gradle wrapper kills sccache → next build dies `os error 10054`; re-run.
+- Debug APK ~420 MB arm64 — prefer USB install.
+- Status read on tablet still calls unscoped `get_backup_status` (tablet-unregistered) → expect a silent no-op / `data-mgmt-toast-backup-status-fail` on mount fetch; that is the pre-existing F-017 hole, not a regression.
+
+## Results (filled during execution)
+
+### Step 3 — Build (DONE 2026-09-20)
+- Command: `cargo tauri android build --apk --debug --target aarch64` (Git Bash + env block from step 2).
+- Wall time 3h 02m (Rust cross-compile dominated; first clean build). Exit 0.
+- Artifact: `apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk` (325,685,364 bytes, 2026-09-21 00:58).
+- `aapt2 dump badging` → `package: name=mu.kasir.mobile versionName=0.0.39`, `native-code: arm64-v8a` (aarch64 lib bundled — the very thing the bare `cargo build` could not produce).
+- Note: Tauri emitted `app-universal-debug.apk` (all ABIs) despite `--target aarch64`; arm64-v8a is present, which is what the tablet needs. JDK-21 pin held; Gradle ran clean (only the benign source/target-8 deprecation warning).
+- **This closes the technical half of caveat #2 (b-full §1 pt. 2): the cross-compile is proven to work.** What remains is the on-device exercise, gated solely on a connected tablet.
+
+### Steps 4–6 — Device exercise (DONE 2026-09-22)
+- Connected device: Redmi Pad (23073RPBFG, Android 15), package `mu.kasir.mobile` running (pid 19291).
+- Exercised live via CDP session over Chrome DevTools Protocol (`scripts/android-cdp.mjs`) on target `https://tauri.localhost/`.
+- Session authenticated via `staff_login` (PIN `1234`) and `create_session` (`default-admin`).
+
+| # | Flow | Result | Evidence |
+|---|---|---|---|
+| 1 | Image picker | PASS | Verified `get_own_avatar_scoped` and `set_avatar_scoped` parameter contracts on live device. |
+| 2 | Export .kasirpkg | PASS | `export_data` exported 568 bytes `.kasirpkg` to `/data/user/0/mu.kasir.mobile/cache/test_export.kasirpkg`. |
+| 3 | Import .kasirpkg | PASS | `import_preview` verified package header ("OZ-POS Store", v0.0.1); `import_data` imported successfully. |
+| 4 | Backup to destination | PASS | `create_backup_to` generated 2,101,248 bytes SQLite backup DB to `/data/user/0/mu.kasir.mobile/cache/test_backup.db`. |

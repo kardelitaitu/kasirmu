@@ -63,6 +63,12 @@ use kasirmu_core::subscription::{SubscriptionTier, TenantSubscription};
 #[must_use]
 pub fn seeded_row_reaches_a_paid_tier() -> bool {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is UNPROVISIONED, so without this the load finds no row and
+    // the predicate answers `false` for a reason that has nothing to do with the signature —
+    // every caller would take its RELEASE arm while running a debug build, and the pin below
+    // would compare a real row against a phantom. Rebuild the baseline this predicate is
+    // about: the BOOTSTRAP_FREE row the squashed init migration used to seed.
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     let Ok(Some(mut sub)) = TenantSubscription::load(&conn, "default") else {
         return false;
     };
@@ -108,6 +114,10 @@ fn pin_seeded_row(stamped_tier: &str) {
     );
 
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the tenant_subscription row
+    // this pin drives is written by provisioning now. Without it the pin fires on a lost seed
+    // — which its own doc says is the very thing it must not be about.
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     conn.execute(
         "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
         [stamped_tier],

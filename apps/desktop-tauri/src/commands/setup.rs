@@ -16,7 +16,7 @@ use tauri::State;
 use crate::error::AppError;
 use crate::state::AppState;
 
-pub use kasirmu_bridge::setup::{CompleteSetupArgs, EnabledFeaturesResult, SetupStatus};
+pub use kasirmu_bridge::setup::EnabledFeaturesResult;
 
 // ── Commands ─────────────────────────────────────────────────────────
 
@@ -34,29 +34,63 @@ pub async fn get_enabled_features(
         .map_err(Into::into)
 }
 
-/// Persist the chosen preset and features, then mark setup as complete.
+/// Return the feature keys a store-type preset enables.
 ///
-/// Called by the front-end when the user clicks "Complete Setup" on
-/// the last step of the wizard.
+/// The first-run flow asks the merchant for a store type and must then send the
+/// resulting feature set to `provision_device`. This reads that set from the one
+/// owner of the fact (`kasirmu_core::features::preset_feature_keys`) so the UI
+/// carries no second copy of the lists.
 #[tauri::command]
-pub async fn complete_setup(
+pub async fn get_preset_features(
     state: State<'_, AppState>,
-    args: CompleteSetupArgs,
-) -> Result<(), AppError> {
+    preset: String,
+) -> Result<EnabledFeaturesResult, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::complete_setup(&ctx, args)
+    kasirmu_bridge::setup::get_preset_features(&ctx, preset)
         .await
         .map_err(Into::into)
 }
 
-/// Returns whether the setup wizard has been completed.
+// ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
+//
+// `complete_setup` was REMOVED here with its bridge twin. It wrote the two
+// booleans §2.1 retires (`SETUP_COMPLETE`, `SHOW_SETUP_WIZARD`), and nothing
+// called it once the first-run path became `provision_device` (§2.3).
+//
+// `get_setup_status` and `dismiss_setup_wizard` were REMOVED here. Both
+// existed to serve the three booleans §2.1 retires: the dismissal key a
+// failed read could forge in either direction, and the Skip escape hatch that
+// marked setup complete while provisioning nothing.
+//
+// Their replacement is `get_first_run_state` above, which reads the
+// provisioning row instead of a boolean.
+
+/// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// The front-end calls this on mount to decide whether to render
-/// the wizard or the main application.
+/// Replaces [`get_setup_status`]'s boolean: a provisioning row cannot be forged
+/// by a failed read, because an unreadable database yields no row.
 #[tauri::command]
-pub async fn get_setup_status(state: State<'_, AppState>) -> Result<SetupStatus, AppError> {
+pub async fn get_first_run_state(
+    state: State<'_, AppState>,
+    terminal_id: String,
+) -> Result<kasirmu_bridge::setup::FirstRunStateDto, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::get_setup_status(&ctx)
+    kasirmu_bridge::setup::get_first_run_state(&ctx, &terminal_id)
+        .await
+        .map_err(Into::into)
+}
+
+/// Provision this terminal in one idempotent transaction (ADR #56 §2.2).
+///
+/// Creates the location, the workspaces, the owner, the features and the
+/// provisioning marker together, or none of them.
+#[tauri::command]
+pub async fn provision_device(
+    state: State<'_, AppState>,
+    args: kasirmu_bridge::setup::ProvisionDeviceArgs,
+) -> Result<kasirmu_bridge::setup::ProvisionDeviceResultDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::setup::provision_device(&ctx, args)
         .await
         .map_err(Into::into)
 }
@@ -69,18 +103,6 @@ pub async fn seed_default_roles_scoped(
 ) -> Result<usize, AppError> {
     let ctx = state.bridge_ctx();
     kasirmu_bridge::setup::seed_default_roles_scoped(&ctx, &session_token)
-        .await
-        .map_err(Into::into)
-}
-
-/// Dismiss the setup wizard without enabling any features.
-///
-/// Called when the user clicks "Skip setup". Only writes the
-/// `show_setup_wizard = false` flag — no preset or features are saved.
-#[tauri::command]
-pub async fn dismiss_setup_wizard(state: State<'_, AppState>) -> Result<(), AppError> {
-    let ctx = state.bridge_ctx();
-    kasirmu_bridge::setup::dismiss_setup_wizard(&ctx)
         .await
         .map_err(Into::into)
 }

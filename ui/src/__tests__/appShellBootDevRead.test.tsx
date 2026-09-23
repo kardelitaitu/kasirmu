@@ -54,9 +54,8 @@ vi.mock('@/api/license', () => ({
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true, preset: 'store-pos' })),
-  completeSetup: vi.fn(() => Promise.resolve()),
-  dismissSetupWizard: vi.fn(() => Promise.resolve()),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
+  provisionDevice: vi.fn(() => Promise.resolve()),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>
     Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
@@ -83,8 +82,8 @@ vi.mock('@/features/auth/CreatePinScreen', () => ({
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen" />,
 }));
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard" />,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow" />,
 }));
 vi.mock('@/features/workspaces/WorkspaceHome', () => ({
   default: () => <div data-testid="workspace-home" />,

@@ -32,12 +32,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "resolves_session_names_no_permission",
     ),
     ("branding::get_brand_settings", "no_session_resolution"),
-    (
-        "branding::set_brand_primary_colour",
-        "no_session_resolution",
-    ),
-    ("branding::set_brand_logo_path", "no_session_resolution"),
-    ("branding::set_brand_store_name", "no_session_resolution"),
     ("staff::bootstrap_owner", "no_session_resolution"),
     (
         "subscription::get_subscription_capabilities",
@@ -47,6 +41,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("currencies::currency_info", "no_session_resolution"),
     ("currencies::get_default_currency", "no_session_resolution"),
     ("currencies::set_default_currency", "no_session_resolution"),
+    ("data::export_data_without_session", "no_session_resolution"),
     ("features::list_all_features", "no_session_resolution"),
     (
         "features::list_all_features_scoped",
@@ -56,6 +51,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("health::version", "no_session_resolution"),
     ("health::get_device_id", "no_session_resolution"),
     ("health::get_local_ip", "no_session_resolution"),
+    ("health::get_build_fingerprint", "no_session_resolution"),
     (
         "pos::add_line_scoped",
         "resolves_session_names_no_permission",
@@ -82,9 +78,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("history::export_daily_summary", "no_session_resolution"),
     ("history::export_sales_by_hour", "no_session_resolution"),
     ("history::export_eod_report", "no_session_resolution"),
-    ("settings::get_receipt_settings", "no_session_resolution"),
-    ("settings::get_store_settings", "no_session_resolution"),
-    ("settings::get_credit_settings", "no_session_resolution"),
     ("settings::get_hardware_settings", "no_session_resolution"),
     (
         "settings::get_user_preferences_scoped",
@@ -98,8 +91,9 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
     ("settings::gateway_status", "no_session_resolution"),
     ("settings::set_setting", "no_session_resolution"),
     ("setup::get_enabled_features", "no_session_resolution"),
-    ("setup::complete_setup", "no_session_resolution"),
-    ("setup::dismiss_setup_wizard", "no_session_resolution"),
+    ("setup::get_preset_features", "no_session_resolution"),
+    ("setup::get_first_run_state", "no_session_resolution"),
+    ("setup::provision_device", "no_session_resolution"),
     ("desktop_link::link_device_google", "no_session_resolution"),
     (
         "desktop_link::link_device_email_request",
@@ -109,8 +103,12 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "desktop_link::link_device_email_consume",
         "no_session_resolution",
     ),
+    (
+        "desktop_link::start_device_pairing",
+        "no_session_resolution",
+    ),
+    ("desktop_link::poll_device_pairing", "no_session_resolution"),
     ("browser::open_product_images", "no_session_resolution"),
-    ("setup::get_setup_status", "no_session_resolution"),
     ("workspaces::list_workspaces", "no_session_resolution"),
     (
         "workspaces::list_workspace_screens",
@@ -163,6 +161,8 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "hardware::discover_hardware_scoped",
         "resolves_session_names_no_permission",
     ),
+    ("license::get_license_status", "no_session_resolution"),
+    ("license::check_license_status", "no_session_resolution"),
     (
         "offline::enqueue_offline_scoped",
         "resolves_session_names_no_permission",
@@ -255,7 +255,16 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// (Re-read 20-09-26: 324, and the floor was raised to it in the same pass as the
 /// ceilings below. The generator writing this number does not move the floor, so the
 /// two are only ever equal in a pass that touches both files.)
-pub const REGISTERED_TOTAL: usize = 333;
+/// Re-read 22-09-26: 344, with the floor raised to it in the same pass for the staff/role
+/// trash's five gated commands — 94 debt rows before and after.)
+/// Re-read 22-09-26 (C17): 342, with the floor lowered to it in the same pass that retired
+/// the three unscoped branding setters — 92 debt rows, down from 95.)
+/// Re-read 23-09-26 (C17 slice 2): 339, floor lowered to it in the pass that retired the
+/// three unscoped settings READS (`settings::get_receipt_settings`, `get_store_settings`,
+/// `get_credit_settings`) — 89 debt rows, down from 92. The fourth name of that inventory
+/// slice, `settings::get_hardware_settings`, is NOT retired: a live renderer arm still
+/// calls it (see `registration_gate_tests.rs`'s floor comment and C17b).
+pub const REGISTERED_TOTAL: usize = 339;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 ///
@@ -308,6 +317,26 @@ pub const REGISTERED_TOTAL: usize = 333;
 /// Nothing else in that pass moved the count: the seven commands registered
 /// alongside it (`data::*`, `avatars::*` writes, `products_images::*`) are all
 /// `Gated` shims over `kasirmu-bridge` and added no rows.
+/// 91 -> 92 with `data::export_data_without_session` (ADR #58 §4a Q-A option 3):
+/// ungated local twin for revoked tenants, mirroring desktop registration.
+/// 92 -> 94 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`
+/// (ADR #56 §2.5 / §5 Q1): device-code pairing runs before any staff account exists.
+/// 94 -> 95 with `setup::get_preset_features` (`6ac851dd4`): the setup wizard reads the
+/// store-type presets BEFORE any staff session exists, the class the `desktop_link::*` and
+/// `setup::provision_device` rows above already occupy. Recorded in docs/records/JOURNAL.md.
+/// 95 -> 92 with C17 (2026-09-22): the three unscoped branding setters shed their rows by
+/// DELETION, the same move T11 made for `settings::set_hardware_settings`. Their
+/// session-scoped twins were already registered and the UI had already moved to them
+/// (`ui/src/api/branding.ts:32,39,46`), so all three were class-1 rows whose only effect
+/// was to hold this ceiling up. The floor moves with them (three registrations fewer); the
+/// class-2 count does not.
+/// 92 -> 89 with C17 slice 2 (2026-09-23): the three unscoped settings READS shed their rows
+/// the same way — by DELETION. `settings::get_receipt_settings`, `get_store_settings` and
+/// `get_credit_settings` had no shipped-UI caller (the IPC parity gate listed all three under
+/// `tablet-unrequested` as named by neither side; `ui/src/api/settings.ts` calls only the
+/// `_scoped` twins), so each was a class-1 row whose only effect was to hold this ceiling up.
+/// The floor moves with them (three registrations fewer); class 2 does not.
+/// `settings::get_hardware_settings` stays: it is class-1 debt with a live caller.
 pub const DEBT_CEILING: usize = 89;
 
 /// Lowered from 89 by T11: `settings::set_hardware_settings` shed its row by deletion,
@@ -328,10 +357,31 @@ pub const DEBT_CEILING: usize = 89;
 /// a pre-auth bootstrap query cannot resolve a session, so class 1 is where it
 /// belongs. The other class did not move (see `DEBT_CEILING` above for why the
 /// seven commands registered beside it added nothing).
+/// 45 -> 47 with `setup::get_first_run_state` and `setup::provision_device`
+/// (ADR #56 §2.1/§2.2): both replace retired doors, both are class 1, and
+/// class 1 is STRUCTURAL for them rather than an omission. Provisioning creates
+/// the FIRST owner, so it must be reachable before any session exists — the
+/// same property `setup::complete_setup` has carried since it was registered.
+/// Their two predecessors (`setup::get_setup_status` and
+/// `setup::dismiss_setup_wizard`) left the ledger in the same pass.
+/// 47 -> 48 with `data::export_data_without_session` (ADR #58 §4a Q-A option 3).
+/// 48 -> 50 with `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
+/// 50 -> 51 with `setup::get_preset_features`. This count is a pin the generator does not
+/// recompute, so it moves by hand in the same pass that raised the ceiling: `51 + 44 = 95`.
+/// 51 -> 48 with C17 (2026-09-22): the three retired unscoped branding setters were all in
+/// this class, so it falls by the same three and the sum keeps holding: `48 + 44 = 92`.
+/// 48 -> 45 with C17 slice 2 (2026-09-23): the three retired unscoped settings reads were all
+/// in this class, so it falls by the same three and the sum keeps holding: `45 + 44 = 89`.
 pub const NO_SESSION_RESOLUTION: usize = 45;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 /// 45 + 44 = 89 = `DEBT_CEILING`, as the class counts must sum to the ledger.
+/// 47 + 44 = 91 after the ADR #56 provisioning pass (two rows in, two out).
+/// 48 + 44 = 92 after adding data::export_data_without_session.
+/// 50 + 44 = 94 after adding pairing commands (ADR #56 §2.5).
+/// 51 + 44 = 95 after `setup::get_preset_features` joined class 1.
+/// 48 + 44 = 92 after C17 retired the three unscoped branding setters (class 1 only).
+/// 45 + 44 = 89 after C17 slice 2 retired the three unscoped settings reads (class 1 only).
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 44;
 
 /// Registered names whose wrapper body the generator could not find (must be 0).

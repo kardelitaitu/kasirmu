@@ -32,25 +32,28 @@
 
   <div class="tabbar">
     <div class="tabbar-inner" role="tablist">
-      <button class="tab active" role="tab" data-tab="colors" type="button" data-testid="nav-tab-colors">Color Palette</button>
-      <button class="tab" role="tab" data-tab="buttons" type="button" data-testid="nav-tab-buttons">Buttons</button>
-      <button class="tab" role="tab" data-tab="typography" type="button" data-testid="nav-tab-typography">Typography</button>
-      <button class="tab" role="tab" data-tab="spacing" type="button" data-testid="nav-tab-spacing">Spacing &amp; Layout</button>
-      <button class="tab" role="tab" data-tab="icons" type="button" data-testid="nav-tab-icons">Icons</button>
-      <button class="tab" role="tab" data-tab="elements" type="button" data-testid="nav-tab-elements">Elements</button>
-      <button class="tab" role="tab" data-tab="components" type="button" data-testid="nav-tab-components">Components</button>
-      <button class="tab" role="tab" data-tab="feedback" type="button" data-testid="nav-tab-feedback">Feedback</button>
-      <button class="tab" role="tab" data-tab="forms" type="button" data-testid="nav-tab-forms">Forms</button>
-      <button class="tab" role="tab" data-tab="audit" type="button" data-testid="nav-tab-audit">Audit</button>
+      <!-- The ARIA wiring below is repeated by app.js at runtime (it owns the
+           active state); shipping it statically means a reader without JS —
+           and a crawler — gets the same structure the script builds. -->
+      <button class="tab active" role="tab" id="tab-colors" aria-selected="true" aria-controls="panel-colors" data-tab="colors" type="button" data-testid="nav-tab-colors">Color Palette</button>
+      <button class="tab" role="tab" id="tab-buttons" aria-selected="false" aria-controls="panel-buttons" data-tab="buttons" type="button" data-testid="nav-tab-buttons">Buttons</button>
+      <button class="tab" role="tab" id="tab-typography" aria-selected="false" aria-controls="panel-typography" data-tab="typography" type="button" data-testid="nav-tab-typography">Typography</button>
+      <button class="tab" role="tab" id="tab-spacing" aria-selected="false" aria-controls="panel-spacing" data-tab="spacing" type="button" data-testid="nav-tab-spacing">Spacing &amp; Layout</button>
+      <button class="tab" role="tab" id="tab-icons" aria-selected="false" aria-controls="panel-icons" data-tab="icons" type="button" data-testid="nav-tab-icons">Icons</button>
+      <button class="tab" role="tab" id="tab-elements" aria-selected="false" aria-controls="panel-elements" data-tab="elements" type="button" data-testid="nav-tab-elements">Elements</button>
+      <button class="tab" role="tab" id="tab-components" aria-selected="false" aria-controls="panel-components" data-tab="components" type="button" data-testid="nav-tab-components">Components</button>
+      <button class="tab" role="tab" id="tab-feedback" aria-selected="false" aria-controls="panel-feedback" data-tab="feedback" type="button" data-testid="nav-tab-feedback">Feedback</button>
+      <button class="tab" role="tab" id="tab-forms" aria-selected="false" aria-controls="panel-forms" data-tab="forms" type="button" data-testid="nav-tab-forms">Forms</button>
+      <button class="tab" role="tab" id="tab-audit" aria-selected="false" aria-controls="panel-audit" data-tab="audit" type="button" data-testid="nav-tab-audit">Audit</button>
     </div>
   </div>
   </div><!-- .site-header -->
 
   <!-- ── PAGE CONTENT ────────────────────────────── -->
-  <div class="page-content">
+  <main class="page-content">
 
     <!-- ════ COLOR PALETTE ════════════════════════════ -->
-    <div class="tab-panel active" id="panel-colors">
+    <div class="tab-panel active" id="panel-colors" role="tabpanel" aria-labelledby="tab-colors">
       <div class="tab-header">
         <h2>Color Palette</h2>
         <p>Core tokens for backgrounds, text, borders, and semantic states. All values are defined as CSS custom properties for easy theming.</p>
@@ -299,7 +302,7 @@
     </div>
 
     <!-- ════ BUTTONS ═══════════════════════════════════ -->
-    <div class="tab-panel" id="panel-buttons">
+    <div class="tab-panel" id="panel-buttons" role="tabpanel" aria-labelledby="tab-buttons">
       <div class="tab-header">
         <h2>Buttons</h2>
         <p>Complete button system — sizes, variants, icon combos, and interactive states.</p>
@@ -586,7 +589,7 @@
     </div>
 
     <!-- ════ TYPOGRAPHY ═══════════════════════════════ -->
-    <div class="tab-panel" id="panel-typography">
+    <div class="tab-panel" id="panel-typography" role="tabpanel" aria-labelledby="tab-typography">
       <div class="tab-header">
         <h2>Typography</h2>
         <p>Type scale, weights, and usage guidelines for the design system.</p>
@@ -724,7 +727,7 @@
     </div>
 
     <!-- ════ SPACING & LAYOUT ═════════════════════════ -->
-    <div class="tab-panel" id="panel-spacing">
+    <div class="tab-panel" id="panel-spacing" role="tabpanel" aria-labelledby="tab-spacing">
       <div class="tab-header">
         <h2>Spacing &amp; Layout</h2>
         <p>Consistent spacing scale, border radii, and elevation tokens.</p>
@@ -881,7 +884,7 @@
     </div>
 
     <!-- ════ ICONS ═════════════════════════════════════ -->
-    <div class="tab-panel" id="panel-icons">
+    <div class="tab-panel" id="panel-icons" role="tabpanel" aria-labelledby="tab-icons">
       <div class="tab-header">
         <h2>Icons</h2>
         <p>Icon system guidelines — sizes, stroke weights, and usage patterns.</p>
@@ -1053,7 +1056,7 @@
     </div>
 
     <!-- ════ ELEMENTS ═══════════════════════════════════ -->
-    <div class="tab-panel" id="panel-elements">
+    <div class="tab-panel" id="panel-elements" role="tabpanel" aria-labelledby="tab-elements">
       <div class="tab-header">
         <h2>Elements</h2>
         <p>How to wrap element groups using modern flex layouts, rem-based padding, and percentage-based widths.</p>
@@ -1237,7 +1240,7 @@
     </div>
 
     <!-- ════ COMPONENTS ════════════════════════════════ -->
-    <div class="tab-panel" id="panel-components">
+    <div class="tab-panel" id="panel-components" role="tabpanel" aria-labelledby="tab-components">
       <div class="tab-header">
         <h2>Components</h2>
         <p>Reusable UI patterns — cards, modals, tooltips, alerts, and badges built on the brand token system.</p>
@@ -1489,7 +1492,7 @@
     </div>
 
     <!-- ════ FORMS ═════════════════════════════════════ -->
-    <div class="tab-panel" id="panel-forms">
+    <div class="tab-panel" id="panel-forms" role="tabpanel" aria-labelledby="tab-forms">
       <div class="tab-header">
         <h2>Forms</h2>
         <p>Form element guidelines — toggle switches, inputs, selects, checkboxes, sliders, and validation states.</p>
@@ -1503,18 +1506,18 @@
           <div style="display:flex; flex-direction:column; gap:12px; max-width:360px">
             <!-- OFF state -->
             <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:var(--ghost-bg); border-radius:var(--r-sm)">
-              <span style="font-size:13px; font-weight:600; color:var(--text)">Dark mode</span>
+              <span id="demo-toggle-1-label" style="font-size:13px; font-weight:600; color:var(--text)">Dark mode</span>
               <span style="position:relative; display:inline-block; width:2.5rem; height:1.375rem; flex-shrink:0">
-                <input type="checkbox" role="switch" id="demo-toggle-1" data-testid="dl-toggle-dark-mode" style="opacity:0; width:0; height:0; position:absolute">
+                <input type="checkbox" role="switch" id="demo-toggle-1" aria-labelledby="demo-toggle-1-label" data-testid="dl-toggle-dark-mode" style="opacity:0; width:0; height:0; position:absolute">
                 <label for="demo-toggle-1" class="toggle-track" style="position:absolute; inset:0; border-radius:999px; cursor:pointer; transition:background 0.2s"></label>
                 <label for="demo-toggle-1" class="toggle-knob" style="position:absolute; width:1.125rem; height:1.125rem; left:0.125rem; bottom:0.125rem; background:#fff; border-radius:50%; cursor:pointer; box-shadow:var(--shadow-sm); transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1), background 0.2s"></label>
               </span>
             </div>
             <!-- ON state (forced) -->
             <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem; background:var(--ghost-bg); border-radius:var(--r-sm)">
-              <span style="font-size:13px; font-weight:600; color:var(--text)">Sound enabled</span>
+              <span id="demo-toggle-2-label" style="font-size:13px; font-weight:600; color:var(--text)">Sound enabled</span>
               <span style="position:relative; display:inline-block; width:2.5rem; height:1.375rem; flex-shrink:0">
-                <input type="checkbox" role="switch" id="demo-toggle-2" data-testid="dl-toggle-sound" checked style="opacity:0; width:0; height:0; position:absolute">
+                <input type="checkbox" role="switch" id="demo-toggle-2" aria-labelledby="demo-toggle-2-label" data-testid="dl-toggle-sound" checked style="opacity:0; width:0; height:0; position:absolute">
                 <label for="demo-toggle-2" class="toggle-track" style="position:absolute; inset:0; border-radius:999px; cursor:pointer; transition:background 0.2s"></label>
                 <label for="demo-toggle-2" class="toggle-knob" style="position:absolute; width:1.125rem; height:1.125rem; left:0.125rem; bottom:0.125rem; background:#fff; border-radius:50%; cursor:pointer; box-shadow:var(--shadow-sm); transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1), background 0.2s"></label>
               </span>
@@ -1785,7 +1788,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     </div>
 
     <!-- ════ MOTION & FEEDBACK ══════════════════════════ -->
-    <div class="tab-panel" id="panel-feedback">
+    <div class="tab-panel" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback">
       <div class="tab-header">
         <h2>Motion &amp; Feedback</h2>
         <p>Universal interaction rule: every action has a <strong>before</strong>, a <strong>feedback</strong>, and an <strong>after</strong> — so every action is confirmable by the visuals alone.</p>
@@ -2040,7 +2043,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
           <h4 style="font-size:14px; font-weight:700; margin-bottom:4px">Error Feedback — Shake</h4>
           <p class="note note--first-lg">Invalid actions shake the control and flag it red. The shake is the <em>feedback</em>; the red state is the <em>after</em>.</p>
           <div style="display:flex; flex-direction:column; gap:10px; max-width:400px">
-            <input type="text" id="demo-error-input" placeholder="Type 'ok' to succeed" data-testid="dl-fb-error-input" class="input-field">
+            <input type="text" id="demo-error-input" aria-label="Type 'ok' to succeed" placeholder="Type 'ok' to succeed" data-testid="dl-fb-error-input" class="input-field">
             <button class="btn btn--primary btn--md" type="button" id="demo-error-btn" data-testid="dl-fb-validate" style="align-self:flex-start">Validate</button>
           </div>
         </div>
@@ -2212,7 +2215,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
     </div>
 
     <!-- ════ AUDIT ═══════════════════════════════════════ -->
-    <div class="tab-panel" id="panel-audit">
+    <div class="tab-panel" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit">
       <div class="tab-header">
         <h2>Audit</h2>
         <p>Every interactive element carries a <code style="font-family:var(--font-mono); color:var(--primary)">data-testid</code> with an easy-to-understand name — the contract between the UI and automated tests.</p>
@@ -2286,9 +2289,9 @@ await expect(page.getByTestId(&#39;<span class="cb-testid">dl-comp-start-order</
           <p class="note note--first">A settings-toggle-slider from the Forms tab. The id lives on the real <code style="font-family:var(--font-mono)">&lt;input&gt;</code>, not the decorative labels. Click it.</p>
           <div class="audit-demo">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex:1; max-width:320px; padding:0.75rem 1rem; background:var(--bg-surface); border:1px solid var(--border); border-radius:var(--r-sm)">
-              <span style="font-size:13px; font-weight:600; color:var(--text)">Sound enabled</span>
+              <span id="audit-sound-label" style="font-size:13px; font-weight:600; color:var(--text)">Sound enabled</span>
               <span style="position:relative; display:inline-block; width:2.5rem; height:1.375rem; flex-shrink:0">
-                <input type="checkbox" role="switch" id="audit-sound" data-testid="dl-toggle-sound" style="opacity:0; width:0; height:0; position:absolute">
+                <input type="checkbox" role="switch" id="audit-sound" aria-labelledby="audit-sound-label" data-testid="dl-toggle-sound" style="opacity:0; width:0; height:0; position:absolute">
                 <label for="audit-sound" class="toggle-track" style="position:absolute; inset:0; border-radius:999px; cursor:pointer; transition:background 0.2s"></label>
                 <label for="audit-sound" class="toggle-knob" style="position:absolute; width:1.125rem; height:1.125rem; left:0.125rem; bottom:0.125rem; background:#fff; border-radius:50%; cursor:pointer; box-shadow:var(--shadow-sm); transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1), background 0.2s"></label>
               </span>
@@ -2332,7 +2335,7 @@ await expect(page.getByTestId(&#39;<span class="cb-testid">dl-comp-start-order</
       </section>
     </div>
 
-  </div>
+  </main>
 
 <script src="app.js"></script>
 

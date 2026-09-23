@@ -84,5 +84,20 @@ CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID}" \
 npx wrangler deploy "${WRANGLER_ARGS[@]}"
 
 echo ""
+
+# ── Verify ───────────────────────────────────────────────────────────
+# `wrangler deploy` reports success even when it has just replaced the zone's
+# route set with the `routes` array in wrangler.toml — which on 2026-09-23
+# deleted the apex kasir.mu/* route it did not name, and the site answered 522
+# on every URL while the Worker itself was healthy. The guard fetches one
+# origin per declared route, so a route that did not survive the deploy fails
+# the deploy. Set SKIP_VERIFY=1 to skip it (e.g. when deploying to a host that
+# is not publicly resolvable yet).
+if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
+  echo "🔎  Verifying the deployed routes answer…"
+  node "$WEBSITE_DIR/scripts/verify-deploy.mjs"
+  echo ""
+fi
+
 echo "✅  Deploy complete!"
 echo "    View at: https://dash.cloudflare.com/${CLOUDFLARE_ACCOUNT_ID}/workers/services/view/oz-pos"

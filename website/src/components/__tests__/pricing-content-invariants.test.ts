@@ -150,8 +150,42 @@ describe('tier shape invariants', () => {
     expect(enLabels).toContain('Warehouse workspaces');
     expect(idLabels).toContain('1 lokasi');
     expect(idLabels).toContain('Lokasi');
-    expect(idLabels).toContain('1 workspace gudang');
-    expect(idLabels).toContain('Workspace gudang');
+    expect(idLabels).toContain('1 ruang kerja gudang');
+    expect(idLabels).toContain('Ruang kerja gudang');
+  });
+
+  it('names the Indonesian tiers in the app\u2019s own vocabulary, not the English loanwords', () => {
+    // The id tier copy said "workspace" and "Display Dapur" while the app and
+    // the docs say "ruang kerja" (shared.id.ftl nav-switch-workspace, docs/id/
+    // workspaces.md) and "Layar Dapur (KDS)" (docs/id/stores.md). One product
+    // noun, one spelling — these are the terms, pinned positively, with the
+    // borrowings that deliberately stay for evidence: "register" (the docs'
+    // own word for a cashier terminal) and "Memo" (shared.id.ftl memos-title,
+    // the product's own name for it in both languages).
+    const idLabels = [
+      ...idPricing.flatMap((tier) => tier.features.map((feature) => feature.label)),
+      ...featureRowsFor('id').map((row) => row.label),
+    ];
+    expect(idLabels).toContain('Ruang kerja gudang');
+    expect(idLabels).toContain('Layar Dapur (KDS)');
+    expect(idLabels).toContain('Kartu debit & kredit (Stripe)');
+    expect(idLabels).toContain('Memo');
+    expect(idLabels).toContain('2 register');
+    expect(idLabels.some((label) => /workspace/i.test(label))).toBe(false);
+    expect(idLabels.some((label) => /display dapur/i.test(label))).toBe(false);
+    expect(idLabels.some((label) => /^kartu stripe$/i.test(label))).toBe(false);
+  });
+
+  it('spells whitelabel the same way on every id surface', () => {
+    // The Premium card said "Branding whitelabel" while the Enterprise card
+    // said "Branding white-label" for the same feature, two rows apart.
+    const idLabels = [
+      ...idPricing.flatMap((tier) => tier.features.map((feature) => feature.label)),
+      ...featureRowsFor('id').map((row) => row.label),
+    ];
+    const whitelabel = idLabels.filter((label) => /white-?label/i.test(label));
+    expect(whitelabel.length).toBeGreaterThan(0);
+    expect(whitelabel.every((label) => !label.includes('white-label'))).toBe(true);
   });
 
   it('Memo is Pro+ (card and comparison table agree, both locales)', () => {
@@ -250,8 +284,8 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   const MATRIX_ID: { label: string; values: Record<TierKey, string | number> }[] = [
     { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
     { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-    { label: 'Workspace gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-    { label: 'Layar Display Dapur', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Ruang kerja gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Layar Dapur (KDS)', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
     { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
     { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },
     { label: 'Riwayat penjualan', values: { free: '3 bulan', plus: '1 tahun', pro: '5 tahun', premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },

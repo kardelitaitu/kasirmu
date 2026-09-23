@@ -427,6 +427,176 @@ fn describe_pg_error(e: &tokio_postgres::Error) -> String {
     parts.join("; ")
 }
 
+// ── Tenant isolation (RLS) posture ─────────────────────────────────────────
+
+/// The facts that decide whether row-level security is actually in force on a
+/// connection.
+///
+/// Gathered from the live schema by [`rls_facts`]; the decision itself is
+/// [`RlsPosture::from_facts`], which is pure and therefore testable without a
+/// database.
+///
+/// Why this exists: the generated schema
+/// (`crates/kasirmu-core/migrations/20260813_init.pg.sql`) enables row-level
+/// security and creates a `tenant_isolation` policy on every protected tenant
+/// table, but it never sets `FORCE ROW LEVEL SECURITY`. Two roles therefore
+/// bypass those policies entirely - a superuser (always, even where FORCE is
+/// set) and the table owner (unless FORCE is set). Nothing at runtime said so.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RlsFacts {
+    /// The effective role of the connection (`current_user`).
+    pub role: String,
+    /// Whether that role has the superuser attribute (`pg_roles.rolsuper`).
+    pub is_superuser: bool,
+    /// How many protected tenant tables have `relforcerowsecurity` set.
+    pub forced_tables: u32,
+    /// How many tables carry the `tenant_isolation` policy at all.
+    pub protected_tables: u32,
+}
+
+/// Verdict on whether tenant isolation is in force for a connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RlsPosture {
+    /// No table in this database carries the `tenant_isolation` policy, so
+    /// there is nothing to enforce (schema not applied, or wrong database).
+    NoProtectedTables,
+    /// Every protected table is FORCEd and the role is not a superuser.
+    Enforced {
+        /// Number of protected tables covered.
+        tables: u32,
+    },
+    /// The role is a PostgreSQL superuser, which bypasses row-level security
+    /// even on FORCEd tables.
+    BypassedBySuperuser {
+        /// Number of protected tables whose policies are therefore inert.
+        tables: u32,
+    },
+    /// No protected table is FORCEd, so a role that owns them bypasses its own
+    /// policies.
+    BypassedByOwnerRole {
+        /// Number of protected tables left bypassable.
+        total: u32,
+    },
+    /// Some protected tables are FORCEd and some are not.
+    PartiallyEnforced {
+        /// Protected tables with FORCE set.
+        forced: u32,
+        /// Protected tables in total.
+        total: u32,
+    },
+}
+
+impl RlsPosture {
+    /// Decide the posture from gathered facts. Pure - no database, no I/O.
+    pub fn from_facts(facts: &RlsFacts) -> Self {
+        let total = facts.protected_tables;
+        if total == 0 {
+            return Self::NoProtectedTables;
+        }
+        // A superuser bypasses row-level security even where FORCE is set, so
+        // this test comes first: FORCE cannot override it.
+        if facts.is_superuser {
+            return Self::BypassedBySuperuser { tables: total };
+        }
+        if facts.forced_tables >= total {
+            Self::Enforced { tables: total }
+        } else if facts.forced_tables == 0 {
+            Self::BypassedByOwnerRole { total }
+        } else {
+            Self::PartiallyEnforced {
+                forced: facts.forced_tables,
+                total,
+            }
+        }
+    }
+
+    /// Whether tenant isolation actually applies to this connection.
+    pub fn is_enforced(&self) -> bool {
+        matches!(self, Self::Enforced { .. })
+    }
+
+    /// Stable lowercase identifier for the verdict, as published on `/health`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NoProtectedTables => "no_protected_tables",
+            Self::Enforced { .. } => "enforced",
+            Self::BypassedBySuperuser { .. } => "bypassed_by_superuser",
+            Self::BypassedByOwnerRole { .. } => "bypassed_by_owner_role",
+            Self::PartiallyEnforced { .. } => "partially_enforced",
+        }
+    }
+
+    /// Operator-facing explanation, naming the role and the counts.
+    pub fn message(&self, role: &str) -> String {
+        match self {
+            Self::NoProtectedTables => "tenant isolation: no table in this database carries the \
+                 tenant_isolation policy - the generated schema is not applied here, so there \
+                 is nothing to enforce"
+                .to_string(),
+            Self::Enforced { tables } => format!(
+                "tenant isolation ENFORCED: all {tables} protected tenant tables have FORCE ROW \
+                 LEVEL SECURITY and role {role:?} is not a superuser"
+            ),
+            Self::BypassedBySuperuser { tables } => format!(
+                "tenant isolation BYPASSED: role {role:?} is a PostgreSQL superuser - superusers \
+                 bypass row-level security even on FORCEd tables, so all {tables} tenant_isolation \
+                 policies are inert"
+            ),
+            Self::BypassedByOwnerRole { total } => format!(
+                "tenant isolation NOT ENFORCED: none of the {total} protected tenant tables has \
+                 FORCE ROW LEVEL SECURITY, so role {role:?} bypasses its own policies wherever it \
+                 owns the table - run scripts/rls-cutover.sql"
+            ),
+            Self::PartiallyEnforced { forced, total } => format!(
+                "tenant isolation PARTIALLY ENFORCED: only {forced} of {total} protected tenant \
+                 tables have FORCE ROW LEVEL SECURITY - the remaining {} stay bypassable by their \
+                 owner",
+                total.saturating_sub(*forced)
+            ),
+        }
+    }
+}
+
+/// SQL that gathers the [`RlsFacts`] for the connection it runs on.
+///
+/// One round trip, one row, always. The protected set is derived from
+/// `pg_policies` rather than from a Rust constant, so it follows the generated
+/// schema instead of drifting away from it; `relforcerowsecurity` is then only
+/// consulted for tables that actually carry the `tenant_isolation` policy.
+const RLS_FACTS_SQL: &str = "\
+SELECT
+    current_user::text,
+    COALESCE((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false),
+    COUNT(*) FILTER (WHERE c.relforcerowsecurity),
+    COUNT(*)
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = 'public'
+  AND c.relkind = 'r'
+  AND EXISTS (
+      SELECT 1 FROM pg_policies p
+      WHERE p.schemaname = n.nspname
+        AND p.tablename = c.relname
+        AND p.policyname = 'tenant_isolation'
+  )";
+
+/// Read the tenant-isolation facts from the live schema on `client`.
+///
+/// The caller supplies the client so a path that already holds one (the health
+/// handler) does not take a second connection from the pool.
+pub async fn rls_facts(client: &deadpool_postgres::Client) -> Result<RlsFacts, DbError> {
+    let row = client
+        .query_one(RLS_FACTS_SQL, &[])
+        .await
+        .map_err(|e| DbError::Connection(describe_pg_error(&e)))?;
+    Ok(RlsFacts {
+        role: row.get(0),
+        is_superuser: row.get(1),
+        forced_tables: u32::try_from(row.get::<_, i64>(2)).unwrap_or(0),
+        protected_tables: u32::try_from(row.get::<_, i64>(3)).unwrap_or(0),
+    })
+}
+
 /// Errors that can occur during database setup.
 #[derive(Debug, thiserror::Error)]
 pub enum DbError {
@@ -460,3 +630,7 @@ pub enum DbError {
 #[cfg(test)]
 #[path = "db_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "db_rls_tests.rs"]
+mod rls_tests;

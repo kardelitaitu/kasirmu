@@ -103,6 +103,14 @@ const KNOWN_NOISE_SELECTORS = [
   '.status-indicator.offline',
   '.fastpin-card',
   '.qris-container',
+  // ADR #56 pairing surfaces (Licence activation + Provisioning): a mode tab,
+  // a subtab and both QR wrappers. Wired to ::after in components.css main
+  // list + both @media parity blocks; each anchors via position:relative in
+  // its own feature sheet.
+  '.license-mode-tab.active',
+  '.provisioning-subtab.active',
+  '.license-pairing-qr-wrapper',
+  '.provisioning-qr-wrapper',
   '.store-switcher-dropdown',
   '.create-pin-card',
   '.custom-context-menu',
@@ -191,6 +199,13 @@ const KNOWN_NOISE_SELECTORS = [
   // to ::after in components.css (main list + both @media parity blocks).
   '.restaurant-sidebar',
   '.pos-cart-course-dropdown',
+  // T3 rotate prompt (cbf4557f2): the panel is a DIRECT CHILD of the overlay in
+  // both shells, so the child selector itself carries --shadow-xl and has to be
+  // named — the desktop rule in app/AppLayout.css and the tablet twin in
+  // app/tablet/tablet.css. Both are wired to ::after in components.css (main
+  // list + both @media parity blocks).
+  '.page-rotate-prompt > *',
+  '.tablet-shell .page-rotate-prompt > *',
 ];
 
 /** CSS selectors that are exempt from noise-dither even though they use --shadow-* */

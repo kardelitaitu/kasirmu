@@ -8,12 +8,19 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  * ticket interaction (status advance), and layout switching (Focus/Metro).
  *
  * CSS contract (KdsScreen.tsx + KdsTicketCard.tsx + layout components):
- *   .kds                       — container (role="region")
+ *   .kds                       — container (role="region", name "Kitchen
+ *                                Display System" — kds-screen-aria)
  *   .kds-header                — header bar
- *   .kds-title                 — "Kitchen Display" heading
- *   .kds-order-count           — order count badge (e.g. "3 orders")
- *   .kds-header-right          — settings + layout switcher area
+ *   .kds-header-left           — back button + filter control
+ *   .kds-tabs / .kds-tab       — Open/Completed tablist; .kds-tab-count is
+ *                                the per-tab order count
+ *   .kds-header-right          — shift + device area
  *   .kds-columns               — Kanban three-column grid
+ *
+ * RETARGETED: the standalone title/order-count block was removed when the
+ * header was split into KdsHeaderLeft / KdsHeaderTabs / KdsHeaderRight.
+ * There is no .kds-title and no .kds-order-count any more — the screen
+ * name is the region's accessible name and the counts live on the tabs.
  *   .kds-column                — individual status column
  *   .kds-column--pending       — pending column
  *   .kds-column--preparing     — preparing column
@@ -41,23 +48,24 @@ test.describe('Kitchen Display System', () => {
   // ── E2E: KDS screen renders with title, columns, and order count ──
 
   test('loads with title, 3 columns, and non-zero order count', async ({ page }) => {
-    await expect(page.locator('.kds')).toBeVisible({ timeout: TIMEOUT });
+    // The screen name is the container's accessible name.
+    const region = page.getByRole('region', { name: 'Kitchen Display System' });
+    await expect(region).toBeVisible({ timeout: TIMEOUT });
 
-    // Title and header.
-    await expect(page.locator('.kds-title')).toBeVisible();
-    await expect(page.locator('.kds-title')).toContainText('Kitchen', { timeout: 5_000 });
+    // Header and its three columns.
     await expect(page.locator('.kds-header')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.kds-header-left')).toBeVisible({ timeout: 3_000 });
 
-    // Order count must be visible and non-zero (dev-mock returns 3 orders).
-    await expect(page.locator('.kds-order-count')).toBeVisible({ timeout: 5_000 });
-    const countText = await page.locator('.kds-order-count').textContent();
+    // Order count: the Open tab prints the board's order count.
+    const openTabCount = page.locator('.kds-tab-count').first();
+    await expect(openTabCount).toBeVisible({ timeout: 5_000 });
+    const countText = await openTabCount.textContent();
     expect(countText).toBeTruthy();
     const countMatch = countText!.match(/\d+/);
     expect(countMatch).not.toBeNull();
     expect(parseInt(countMatch![0], 10)).toBeGreaterThanOrEqual(1);
 
-    // Header right area (settings + layout switcher) must be present.
+    // Header right area (shift + device) must be present.
     await expect(page.locator('.kds-header-right')).toBeVisible({ timeout: 5_000 });
 
     // Kanban: 3 columns (pending, preparing, ready).

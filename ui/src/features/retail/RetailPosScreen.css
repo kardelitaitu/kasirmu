@@ -283,6 +283,17 @@
   min-height: 0;
 }
 
+/* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+   the shell grants this screen — not the viewport. It is an extra, unnamed
+   container nested INSIDE the shell's named app-content one, so the rules below
+   keep working when .retail-pos is mounted outside the app shell (transparent
+   wrapper, no measurement lost). A named app-content query would not match in
+   the harness/e2e/standalone mounts, because the only thing between .retail-pos
+   and app-content is a display:contents wrapper. */
+.retail-pos {
+  container-type: inline-size;
+}
+
 /* ── Left panel: product grid ──────────────────────────────── */
 
 .retail-products {
@@ -2962,6 +2973,101 @@
 .retail-cart-th-subtotal { width: 80px; }
 .retail-cart-th-actions { width: 24px; }
 
+/* ── Narrow-container tier (ADR-0001 T2 / Slice 5) ────────────────
+   Replaces the viewport-width assumption this page's layout used to carry
+   implicitly. The product table gives its columns fixed px widths (see the
+   block above) on the promise that the pane never gets narrower than they
+   need — a promise no rule enforced. Measured against .retail-pos's own
+   inline-size (declared at the top of this sheet), 880px is where the grid
+   pane left over by a minimum-width cart can still hold those columns.
+   Below it the two columns that are a nicety rather than the line fold
+   away: the leading SKU cell and the trailing total. The cart's own width
+   is unchanged — it is set inline from JS (RetailCartPanel) and is out of
+   this sheet's reach.
+
+   Why not `container-name: app-content`: the shell's .app-content-inner
+   does carry that name (ui/src/app/AppLayout.css), but the only wrapper
+   between it and .retail-pos renders with display:contents, so in every
+   mount that does not go through the shell (tests, e2e harness, the screen
+   rendered standalone) a named query would find no container and match
+   nothing. An unnamed query against the nearest container — .retail-pos —
+   is the same measurement inside the shell and stays correct outside it.
+   Desktop landscape (a content slot >= 880px) renders exactly as before. */
+@container (max-width: 880px) {
+  .retail-cart-table-inner th:nth-child(2),
+  .retail-cart-table-inner td:nth-child(2),
+  .retail-cart-table-inner th:nth-child(5),
+  .retail-cart-table-inner td:nth-child(5) {
+    display: none;
+  }
+
+  .retail-col-sku {
+    display: none;
+  }
+}
+
+/* ── Narrow-shell tier (ADR-0001 T2 / Slice 5) ────────────────────
+   The shell hands this page slots down to 640px (the narrow-shell case),
+   which the 880px tier above does not reach: between 640px and 880px the
+   page had NO rule of its own, so it rendered its wide layout in a box it
+   was never measured against. A 640px box matches the 880px tier too, so
+   nothing that tier already sheds (the SKU lane, the trailing cart total)
+   is repeated here — this tier adds only what is NEW at this width.
+
+   1. THE GRID PANE IS ONE LANE, AND THE TABLE IS SIZED, NOT HOPED. The
+   cart is a fixed 280px here: it is set inline from JS (RetailCartPanel)
+   and clampRetailCartWidth floors at RETAIL_CART_WIDTH_MIN (280px) and
+   caps at half the window (320px at 640px), so 280px is what the pane
+   gets — leaving ~360px for the product grid. The default visible columns
+   are sku+stock+name+price, but the column menu can turn any of the nine
+   on, and each carries a fixed px width (barcode 120, category 130, brand
+   110, rack 90, notes up to 200). `table-layout: fixed` is what makes the
+   pane deterministic: the table divides its own width across the declared
+   lanes instead of letting one of them push the action buttons out of the
+   row. The one lane with no declared width is the name — the lane that
+   must survive — so it is clipped rather than allowed to paint over the
+   price beside it. The stock lane leaves the table because at this width
+   it is the least lossy thing to shed: it is a badge with no control in
+   it, still in the column menu, still in the edit dialog, and the price
+   stays because it is the number the row exists to show.
+
+   2. WHAT CANNOT FOLD WRAPS. The two control rows are flex with no wrap
+   and the fn bar is a 14-button strip: in a 640px box they clipped
+   whatever did not fit instead of losing it to a scroll container.
+   Wrapping costs a line of height and keeps every control reachable. The
+   two horizontal strips that already scroll (the category bar, the cart
+   table) are deliberately untouched.
+
+   Desktop landscape (a content slot >= 880px) renders exactly as before. */
+@container (max-width: 640px) {
+  .retail-product-table {
+    table-layout: fixed;
+  }
+
+  /* Fixed layout sizes the name lane to whatever is left; without a clip
+     a long name would paint over the price lane rather than end. */
+  .retail-col-name {
+    overflow: hidden;
+  }
+
+  .retail-col-stock {
+    display: none;
+  }
+
+  /* Any custom column set wider than the pane scrolls instead of losing its
+     right edge: .retail-grid carries overflow-y only, so an over-wide table
+     is clipped today. */
+  .retail-grid {
+    overflow-x: auto;
+  }
+
+  .retail-search-bar,
+  .retail-cart-actions,
+  .retail-fn-bar {
+    flex-wrap: wrap;
+  }
+}
+
 /* Cart line name row (product name + course chip + modifier badge) */
 .retail-cart-line-name {
   display: flex;
@@ -3522,7 +3628,7 @@
 /* ── Customer search panel (RetailModals.tsx:545-583) ──────────────────
  * Nine class names the customer-search markup has always carried and that
  * no sheet in ui/src defined -- verified by walking extractUsedClassNames
- * over features/retail/*.tsx against extractClassSelectors over every .css
+ * over features/retail (tsx files) against extractClassSelectors over every .css
  * under ui/src (41 names came back undefined tree-wide; these are the 11 in
  * this family). Insertions only: nothing above this line was touched, and
  * every rule lands at end-of-file so each base sits BEFORE its own modifier

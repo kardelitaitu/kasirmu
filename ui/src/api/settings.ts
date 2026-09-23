@@ -145,32 +145,99 @@ export const getHardwareSettingsScoped = (sessionToken: string): Promise<Hardwar
 export const setHardwareSettingsScoped = (sessionToken: string, args: HardwareSettingsDto): Promise<void> =>
   loggedInvoke<void>('set_hardware_settings_scoped', { sessionToken, args });
 
-// ── Setup Wizard ─────────────────────────────────────────────────
+// ── First-run provisioning ───────────────────────────────────────
 
-/** Arguments for completing the initial setup wizard. */
-export interface CompleteSetupArgs {
+/** Which onboarding tier produced this terminal (ADR #56 §2.4). */
+export type ProvisioningMode = 'local' | 'linked';
+
+/** Whether a location trades as a shop or a restaurant (ADR #56 §2.3). */
+export type LocationKind = 'retail' | 'restaurant';
+
+/**
+ * A store-type preset the first-run flow can ask for (ADR #56 §2.3).
+ *
+ * Moved here from `features/setup/SetupWizard.tsx` when that component was retired:
+ * `ProvisioningFlow` is the live owner of this union, and the six slugs are the
+ * ones `kasirmu_core::features::preset_registry` resolves. Keeping the type beside
+ * the request shape it travels with means a slug the backend does not know is a
+ * change in one file rather than two.
+ */
+export type Preset =
+  | 'simple-retail'
+  | 'restaurant'
+  | 'full-store'
+  | 'cafe'
+  | 'franchise'
+  | 'custom';
+
+/**
+ * The first-run state of one terminal (ADR #56 §2.1).
+ *
+ * A tagged union rather than a boolean: the two states are mutually exclusive at the type level, so
+ * a component cannot render both, and there is no third value a partial read could invent. This
+ * replaces `SetupStatus`/`getSetupStatus` — a boolean a failed read could forge, which is why the
+ * shells carried a boot-retry workaround for a lost IPC response.
+ */
+export type FirstRunState =
+  | { state: 'unprovisioned' }
+  | {
+      state: 'provisioned';
+      location_id: string | null;
+      owner_user_id: string | null;
+      mode: ProvisioningMode;
+      home_region: string;
+      tenant_id: string | null;
+    };
+
+/** Arguments for provisioning this terminal (ADR #56 §2.1/§2.2). */
+export interface ProvisionDeviceArgs {
+  terminal_id: string;
+  location_name: string;
+  currency: string;
+  timezone: string;
+  owner_username: string;
+  owner_display_name: string;
+  owner_pin: string;
   preset: string;
   features: string[];
-  default_currency?: string;
+  location_kind: LocationKind;
+  mode: ProvisioningMode;
+  tenant_id?: string | null;
+  device_credential_id?: string | null;
 }
 
-/** Whether the initial setup wizard has been completed. */
-export interface SetupStatus {
-  completed: boolean;
-  preset: string | null;
+/** What provisioning created, so the shell can route with it. */
+export interface ProvisionDeviceResult {
+  terminal_id: string;
+  location_id: string;
+  owner_user_id: string;
+  /** True on a fresh provision, false when an existing row was replayed. */
+  created: boolean;
+  mode: ProvisioningMode;
+  home_region: string;
 }
 
-/** Complete the initial setup wizard with a preset and enabled features. */
-export const completeSetup = (args: CompleteSetupArgs): Promise<void> =>
-  loggedInvoke<void>('complete_setup', { args });
+// `completeSetup` / `CompleteSetupArgs` were REMOVED with the command itself
+// (ADR #56 §2.2/§2.3): it wrote the two booleans §2.1 retires, and nothing
+// called it once both shells' first-run path became `provisionDevice`.
 
-/** Dismiss the setup wizard without completing it. */
-export const dismissSetupWizard = (): Promise<void> =>
-  loggedInvoke<void>('dismiss_setup_wizard');
+/**
+ * Read this terminal's first-run state (ADR #56 §2.1).
+ *
+ * Replaces `getSetupStatus`. The shell renders the provisioning flow on `unprovisioned` and routes
+ * to a session (or the login screen) on `provisioned`.
+ */
+export const getFirstRunState = (terminalId: string): Promise<FirstRunState> =>
+  loggedInvoke<FirstRunState>('get_first_run_state', { terminalId });
 
-/** Get the current setup wizard completion status. */
-export const getSetupStatus = (): Promise<SetupStatus> =>
-  loggedInvoke<SetupStatus>('get_setup_status');
+/**
+ * Provision this terminal in one idempotent transaction (ADR #56 §2.2).
+ *
+ * Creates the location, the workspaces that point at it, the owner, the features and the marker
+ * together, or none of them. A retry returns the existing row and creates nothing.
+ */
+export const provisionDevice = (args: ProvisionDeviceArgs): Promise<ProvisionDeviceResult> =>
+  loggedInvoke<ProvisionDeviceResult>('provision_device', { args });
 
 /** Seed default roles for the store resolved from a session token. Returns the number of roles created. ADR #7. */
 export const seedDefaultRolesScoped = (sessionToken: string): Promise<number> =>
@@ -186,6 +253,18 @@ export interface EnabledFeaturesResult {
 /** Get the list of enabled feature flags. */
 export const getEnabledFeatures = (): Promise<EnabledFeaturesResult> =>
   loggedInvoke<EnabledFeaturesResult>('get_enabled_features');
+
+/**
+ * Get the feature keys a store-type preset enables.
+ *
+ * The preset→features fact has exactly one owner
+ * (`kasirmu_core::features::preset_feature_keys`); this reads it rather than
+ * letting the UI keep a second copy of the lists, which is the drift
+ * `ProvisionDeviceArgs.preset`'s own doc warns against. Called by the first-run
+ * flow BEFORE a session exists, so it resolves no session.
+ */
+export const getPresetFeatures = (preset: string): Promise<EnabledFeaturesResult> =>
+  loggedInvoke<EnabledFeaturesResult>('get_preset_features', { preset });
 
 // ── User Preferences ─────────────────────────────────────────
 

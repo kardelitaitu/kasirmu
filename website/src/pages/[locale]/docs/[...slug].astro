@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import DocsLayout from '../../../layouts/DocsLayout.astro';
+import { toSearchDocs } from '../../../lib/search-index';
 import { locales } from '../../../i18n';
 
 export async function getStaticPaths() {
@@ -19,12 +20,16 @@ const { doc } = Astro.props;
 const locale = Astro.params.locale ?? 'en';
 const { Content, headings } = await render(doc);
 
-const allDocs = (await getCollection('docs')).filter((d) => d.id.startsWith(`${locale}/`));
+const allDocs = await getCollection('docs');
+const localeDocs = allDocs.filter((d) => d.id.startsWith(`${locale}/`));
+// This route is what makes a docs page a docs page, so it is what builds the
+// header's search payload — see `toSearchDocs` (the single owner of the rule).
+const searchDocs = toSearchDocs(allDocs, locale);
 const categoryOrder = ['gettingStarted', 'guides', 'reference'];
 const entries = categoryOrder
   .map((category) => ({
     category,
-    docs: allDocs
+    docs: localeDocs
       .filter((d) => d.data.category === category)
       .sort((a, b) => a.data.order - b.data.order)
       .map((d) => ({ slug: d.id.slice(locale.length + 1), title: d.data.title, order: d.data.order })),
@@ -40,6 +45,7 @@ const entries = categoryOrder
   entries={entries}
   currentSlug={doc.id.slice(locale.length + 1)}
   headings={headings}
+  searchDocs={searchDocs}
 >
   <Content />
 </DocsLayout>

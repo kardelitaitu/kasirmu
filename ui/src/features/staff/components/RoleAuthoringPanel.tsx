@@ -169,15 +169,37 @@ export interface RoleAuthoringPanelProps {
    * in the signature.
    */
   handleRef: RefObject<RoleAuthoringPanelHandle>;
+  /**
+   * Fired after a role is created, edited or deleted, so the SHELL can reload
+   * the role list it renders the "Roles" stat tile from. The panel keeps its
+   * own copy (it re-reads on every save), but the tile reads the shell's — and
+   * without this the tile keeps showing the pre-save count after an author
+   * action, which is the number an operator reads when they switch back to the
+   * Staff tab. Same shape as the Trash tab's `onRestored`.
+   */
+  onRolesChanged?: (() => void) | undefined;
 }
 
-/** The one thing the shell drives from outside this panel. */
+/** The things the shell drives from outside this panel. */
 export interface RoleAuthoringPanelHandle {
   /** Open the editor in create mode — the header's "Add New Role" action. */
   openCreate: () => void;
+  /**
+   * Re-read this panel's own role list.
+   *
+   * The panel keeps its list rather than taking the shell's (the two tabs share
+   * ONE component so a tab switch does not remount it, and re-issuing the role
+   * list, the permission registry and every expanded holder page on each click
+   * is work nobody asked for). The cost of that choice is that a mutation
+   * OUTSIDE this panel — a role restored from the Trash tab — leaves the list
+   * stale until a remount, which reads to the operator as a restore that
+   * failed. So the shell refreshes it on exactly the event that invalidates it,
+   * beside the `load()` it already runs for its own lists.
+   */
+  refreshRoles: () => Promise<void>;
 }
 
-function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
+function RoleAuthoringPanel({ active, handleRef, onRolesChanged }: RoleAuthoringPanelProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
   const { addToast } = useToast();
@@ -240,7 +262,11 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
   // the shell reaches in through the handle prop rather than hoisting the
   // editor's state up to it. `openEditor` only calls setters, so the handle
   // never reads a stale render.
-  useImperativeHandle(handleRef, () => ({ openCreate: () => openEditor(null) }), [openEditor]);
+  useImperativeHandle(
+    handleRef,
+    () => ({ openCreate: () => openEditor(null), refreshRoles: refresh }),
+    [openEditor, refresh],
+  );
 
   // Grouped by family so the picker reads as capabilities rather than an
   // 85-key wall.
@@ -344,6 +370,7 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
       addToast({ message: l10n.getString('role-saved', { name: name.trim() }), type: 'success' });
       closeEditor();
       await refresh();
+      onRolesChanged?.();
     } catch (e) {
       // The backend owns the rules (preset id, unregistered key, duplicate
       // name); surfacing its message beats guessing one here.
@@ -363,6 +390,7 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
       if (editingId === target.id) closeEditor();
       addToast({ message: l10n.getString('role-deleted', { name: target.name }), type: 'success' });
       await refresh();
+      onRolesChanged?.();
     } catch (e) {
       setError(l10nErrorMessage(e, l10n));
     }
@@ -429,16 +457,17 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
                   </Localized>
                 </p>
                 <div className="role-holders">
-                  <button
-                    type="button"
+                  <Button
+                    unstyled
                     className="role-holders-toggle"
                     aria-expanded={holdersOpen}
                     onClick={() => void toggleHolders(role)}
-                    aria-label={l10n.getString('role-holders-aria', { name: role.name })}>
+                    aria-label={l10n.getString('role-holders-aria', { name: role.name })}
+                    data-testid={`staff-role-holders-${role.id}`}>
                     <Localized id="role-holders-toggle">
                       <span>Holders</span>
                     </Localized>
-                  </button>
+                  </Button>
                   {/* Only ever the authoritative total from a completed read.
                       role.reference_count is a different number on purpose
                       (it spans four FK tables and answers deletion, not
@@ -520,14 +549,15 @@ function RoleAuthoringPanel({ active, handleRef }: RoleAuthoringPanelProps) {
                       them, so an accepted edit would be silently reverted. */}
                   {!role.is_builtin && (
                     <>
-                      <Button variant="ghost" onClick={() => openEditor(role)} aria-label={l10n.getString('role-edit-aria', { name: role.name })}>
+                      <Button variant="ghost" onClick={() => openEditor(role)} aria-label={l10n.getString('role-edit-aria', { name: role.name })} data-testid={`staff-role-edit-${role.id}`}>
                         <Localized id="role-edit">Edit</Localized>
                       </Button>
                       <Button
                         variant="ghost"
                         disabled={role.reference_count > 0}
                         onClick={() => setPendingDelete(role)}
-                        aria-label={l10n.getString('role-delete-aria', { name: role.name })}>
+                        aria-label={l10n.getString('role-delete-aria', { name: role.name })}
+                        data-testid={`staff-role-delete-${role.id}`}>
                         <Localized id="role-delete">Delete</Localized>
                       </Button>
                       {/* Three cases, because these are two different kinds

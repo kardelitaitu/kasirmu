@@ -7,16 +7,17 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  * Tests the admin settings page with deterministic assertions.
  * All `if` guards removed — tests hard-fail on regressions.
  *
- * CSS contract (SettingsPage.tsx):
+ * CSS contract (SettingsPage.tsx / SettingsNavTree.tsx / screens/registry.ts):
  *   [data-testid="settings-sidebar"] — sidebar navigation
  *   .settings-nav-item              — each nav item
  *   .settings-nav-item--active      — the currently active nav item
- *   .settings-section-title         — section heading in main content
+ *   .settings-screen-placeholder-title — section heading in main content
  *
- * Sidebar nav items (NAV_ITEMS):
- *   General, Appearance, Receipt, Cloud Sync, About,
- *   Features, Data, Staff, Terminals, Stores, Audit Log,
- *   Offline Queue, Shifts, Tax Rates, License, Exchange Rates, Promotions
+ * Sidebar nav items (SettingsNavTree.NAV_ITEMS — the flat 14-page IA):
+ *   General, License & Subscription, Devices & Connectivity,
+ *   Business Defaults, Features & Modules, Security & Account,
+ *   Data & Sync, Data Management, Sync Status, Sync Conflicts,
+ *   Offline Queue, Tax Configuration, Exchange Rates, System Diagnostics
  */
 
 test.describe('Settings Change', () => {
@@ -58,40 +59,45 @@ test.describe('Settings Change', () => {
     // Wait for sidebar.
     await expect(page.locator('[data-testid="settings-sidebar"]')).toBeVisible({ timeout: 10_000 });
 
-    // Click "Appearance" in the sidebar (hard assertion — must exist).
-    const appearanceNav = page.locator('.settings-nav-item').filter({ hasText: 'Appearance' });
-    await expect(appearanceNav).toBeVisible({ timeout: 3_000 });
-    await appearanceNav.click();
+    // The hub opens on General. Click "Business Defaults" (hard assertion —
+    // must exist) so navigation demonstrably changes the heading.
+    const businessNav = page.locator('.settings-nav-item').filter({ hasText: 'Business Defaults' });
+    await expect(businessNav).toBeVisible({ timeout: 3_000 });
+    await businessNav.click();
 
-    // The Appearance section heading is "Display" (from Localized id="settings-section-display").
-    const appearanceHeading = page.locator('.settings-section-title').filter({ hasText: 'Display' });
-    await expect(appearanceHeading.first()).toBeVisible({ timeout: 5_000 });
+    // The Business Defaults screen heading is its own title (Localized
+    // id="settings-nav-business-defaults"), rendered as the screen h1.
+    const businessHeading = page.locator('.settings-screen-placeholder-title').filter({ hasText: 'Business Defaults' });
+    await expect(businessHeading.first()).toBeVisible({ timeout: 5_000 });
 
-    // "Appearance" nav item should now be active.
-    await expect(appearanceNav).toHaveClass(/settings-nav-item--active/);
+    // "Business Defaults" nav item should now be active.
+    await expect(businessNav).toHaveClass(/settings-nav-item--active/);
   });
 
-  // ── Bonus: Navigate to Cloud Sync section ───────────────────
+  // ── Bonus: Navigate to the Data & Sync section ──────────────
 
-  test('navigating to Cloud Sync shows sync settings', async ({ page }) => {
+  test('navigating to Data & Sync shows sync settings', async ({ page }) => {
     await page.evaluate(() => {
       window.location.hash = '#/settings';
     });
 
     await expect(page.locator('[data-testid="settings-sidebar"]')).toBeVisible({ timeout: 10_000 });
 
-    // Click "Cloud Sync" nav item.
-    const syncNav = page.locator('.settings-nav-item').filter({ hasText: 'Cloud Sync' });
+    // Click the "Data & Sync" nav item (the redesigned label for the sync
+    // section; NAV_ITEMS.key = 'data-sync').
+    const syncNav = page.locator('.settings-nav-item').filter({ hasText: 'Data & Sync' });
     await expect(syncNav).toBeVisible({ timeout: 3_000 });
     await syncNav.click();
 
-    // The Cloud Sync section heading should be visible.
-    const syncHeading = page.locator('.settings-section-title').filter({ hasText: 'Cloud Sync' });
+    // The Data & Sync section heading should be visible.
+    const syncHeading = page.locator('.settings-screen-placeholder-title').filter({ hasText: 'Data & Sync' });
     await expect(syncHeading.first()).toBeVisible({ timeout: 5_000 });
 
-    // Cloud Sync section must render sync-related content.
-    // The sync heading itself confirms the section loaded correctly.
-    await expect(syncHeading.first()).toContainText('Cloud Sync');
+    // The section heading itself confirms the section loaded correctly.
+    await expect(syncHeading.first()).toContainText('Data & Sync');
+
+    // ...and the nav item is the active one.
+    await expect(syncNav).toHaveClass(/settings-nav-item--active/);
   });
 
   // ── E2E-22: Dirty-state guard (input edit survives navigation) ─

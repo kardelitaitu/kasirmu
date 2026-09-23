@@ -353,26 +353,10 @@
 
 /* ── Warehouse POS console (v2) ─────────────────────────────── */
 
+/* The strip itself is the shared segmented control (components/
+   SegmentedTabs.css). This rule is only where this screen puts it. */
 .warehouse-mode-tabs {
-  display: flex;
-  gap: var(--space-2);
   margin-bottom: var(--space-4);
-}
-
-.warehouse-mode-tab {
-  padding: var(--space-2) var(--space-5);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-surface);
-  color: var(--color-fg);
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.warehouse-mode-tab--active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: var(--color-pos-on-primary);
 }
 
 .warehouse-scan-row {

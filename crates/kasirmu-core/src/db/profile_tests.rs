@@ -763,13 +763,24 @@ fn stored_cipher_classification_separates_undecryptable_from_empty() {
         StoredCipher::Absent
     );
     assert_eq!(StoredCipher::Absent.preserve(), None);
-    // Decryptable: the caller saw the value, so it is not protected either.
-    let sealed = encrypt_profile_field("123456789").unwrap();
     assert_eq!(
-        StoredCipher::classify(Some(sealed.clone())),
-        StoredCipher::Readable
+        StoredCipher::Absent.raw(),
+        None,
+        "nothing stored is nothing to re-bind"
     );
-    assert_eq!(StoredCipher::Readable.preserve(), None);
+    // Decryptable: the caller saw the value, so a permitted clear still clears.
+    // The raw bytes stay recoverable all the same, which is what a WITHHELD
+    // write re-binds — a caller who was never shown the value must not erase
+    // it. `preserve()` and `raw()` disagreeing here IS the distinction.
+    let sealed = encrypt_profile_field("123456789").unwrap();
+    let readable = StoredCipher::classify(Some(sealed.clone()));
+    assert_eq!(readable, StoredCipher::Readable(sealed.clone()));
+    assert_eq!(readable.preserve(), None, "readable and omitted is a clear");
+    assert_eq!(
+        readable.raw(),
+        Some(sealed.as_str()),
+        "but the bytes are still there to preserve"
+    );
     // Undecryptable: protected, and preserved VERBATIM.
     assert_eq!(
         StoredCipher::classify(Some("garbage".into())),
@@ -779,23 +790,33 @@ fn stored_cipher_classification_separates_undecryptable_from_empty() {
         StoredCipher::Unreadable("garbage".into()).preserve(),
         Some("garbage")
     );
+    assert_eq!(
+        StoredCipher::Unreadable("garbage".into()).raw(),
+        Some("garbage"),
+        "an unopenable seal is preserved by the same accessor"
+    );
     // Pay: a ciphertext of the empty string is empty, not unreadable; a
     // ciphertext of a non-number is unreadable (it never reached the caller).
     let empty_seal = encrypt_profile_field("").unwrap();
     assert_eq!(
-        StoredCipher::classify_pay(Some(empty_seal)),
-        StoredCipher::Readable
+        StoredCipher::classify_pay(Some(empty_seal.clone())),
+        StoredCipher::Readable(empty_seal)
     );
+    let pay_seal = encrypt_profile_field("5000000").unwrap();
     assert_eq!(
-        StoredCipher::classify_pay(Some(encrypt_profile_field("5000000").unwrap())),
-        StoredCipher::Readable
+        StoredCipher::classify_pay(Some(pay_seal.clone())),
+        StoredCipher::Readable(pay_seal)
     );
     // (Bound once: the seal is nonce-randomised, so two encryptions of the
     // same text are different ciphertexts.)
     let junk_seal = encrypt_profile_field("not-a-number").unwrap();
     assert_eq!(
         StoredCipher::classify_pay(Some(junk_seal.clone())),
-        StoredCipher::Unreadable(junk_seal)
+        StoredCipher::Unreadable(junk_seal.clone())
+    );
+    assert_eq!(
+        StoredCipher::Unreadable(junk_seal.clone()).raw(),
+        Some(junk_seal.as_str())
     );
     assert_eq!(
         StoredCipher::classify_pay(Some("garbage".into())).preserve(),
@@ -1034,5 +1055,269 @@ fn avatar_write_to_an_unknown_user_is_not_found() {
         store.get_user_avatar("no-such-user").unwrap(),
         None,
         "an unknown user reads as 'no photo', which is what the caller renders"
+    );
+}
+
+// ── ADR #35 D6 write side: a withheld field is preserved, not demanded ─────
+//
+// The read withholds national_id / tax_id without `staff:read_identity`, which
+// is indistinguishable from an empty column. Before the policy existed the
+// write treated that `None` as "supply it": validation demanded the field, so
+// the ONLY way an editor without the grant could save anything was to type a
+// value for a document they were not allowed to read — silently replacing the
+// stored one. These cases pin the fix in both directions: a withheld field
+// survives an omitted save, and a readable field the caller deliberately
+// omits is still a clear.
+
+/// The plaintext columns that travel with the national id, as stored.
+fn stored_identity_labels(
+    conn: &rusqlite::Connection,
+    user_id: &str,
+) -> (Option<String>, Option<String>) {
+    conn.query_row(
+        "SELECT national_id_type, tax_id FROM users WHERE id = ?1",
+        params![user_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .unwrap()
+}
+
+/// A complete profile that also carries a tax id, so preservation of the
+/// identity RECORD (not just the two encrypted columns) is observable.
+fn complete_profile_with_tax_id() -> UserProfile {
+    UserProfile {
+        tax_id: Some("99-1234567".into()),
+        national_id_expires_at: Some("2030-01-01".into()),
+        ..complete_profile()
+    }
+}
+
+#[test]
+fn view_reports_identity_withheld_rather_than_empty() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-target", &["sales:view"]);
+    insert_role(&conn, "role-nogrant", &["staff:read"]);
+    insert_role(&conn, "role-grant", &["staff:read", "staff:read_identity"]);
+    let store = Store::new(&conn);
+    let target = store
+        .create_user_with_profile(
+            "target",
+            "h",
+            "T",
+            "role-target",
+            &complete_profile_with_tax_id(),
+            None,
+        )
+        .unwrap();
+    let nogrant = store
+        .create_user("nogrant", "h", "N", "role-nogrant")
+        .unwrap();
+    let granted = store
+        .create_user("granted", "h", "G", "role-grant")
+        .unwrap();
+
+    let withheld = store
+        .get_user_profile_viewed_by(&nogrant.id, &target.id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        withheld.identity_withheld,
+        "a viewer without staff:read_identity must be told the fields were withheld"
+    );
+    assert!(withheld.national_id.is_none() && withheld.tax_id.is_none());
+
+    let visible = store
+        .get_user_profile_viewed_by(&granted.id, &target.id)
+        .unwrap()
+        .unwrap();
+    assert!(
+        !visible.identity_withheld,
+        "the grant means the fields are genuinely present, not withheld"
+    );
+    assert_eq!(visible.tax_id.as_deref(), Some("99-1234567"));
+}
+
+#[test]
+fn withheld_identity_survives_a_save_that_omits_it() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-target", &["sales:view"]);
+    insert_role(&conn, "role-nogrant", &["staff:read"]);
+    let store = Store::new(&conn);
+    let target = store
+        .create_user_with_profile(
+            "target",
+            "h",
+            "T",
+            "role-target",
+            &complete_profile_with_tax_id(),
+            None,
+        )
+        .unwrap();
+    // The viewer is the editor here, exactly as update_staff_scoped resolves it.
+    let editor = store
+        .create_user("editor", "h", "E", "role-nogrant")
+        .unwrap();
+
+    let before_seals = stored_seals(&conn, &target.id);
+    let before_labels = stored_identity_labels(&conn, &target.id);
+
+    // What the edit form sends: the identity fields are absent (the form
+    // disables them and the read gave it nothing), everything else is edited.
+    let mut submitted = complete_profile();
+    submitted.national_id = None;
+    submitted.tax_id = None;
+    submitted.monthly_take_home_minor = None;
+    submitted.email = Some("alice.new@example.com".into());
+
+    // Without the policy this write is REFUSED — that is the bug: the only way
+    // to save was to invent an identity value.
+    assert!(
+        store.update_user_profile(&target.id, &submitted).is_err(),
+        "the plain write still requires the fields, which is why the policy exists"
+    );
+    assert_eq!(
+        stored_seals(&conn, &target.id),
+        before_seals,
+        "a refused write must not have moved anything"
+    );
+
+    let policy = SensitiveWritePolicy {
+        keep_identity_record: !store
+            .holds_permission(&editor.id, crate::permissions::STAFF_READ_IDENTITY)
+            .unwrap(),
+        keep_pay: true,
+    };
+    assert!(
+        policy.keep_identity_record,
+        "the editor holds no identity grant"
+    );
+    store
+        .write_user_profile_with(policy, &target.id, &submitted)
+        .expect("a withheld identity must not block the save");
+
+    // The withheld record is byte-identical, and the id's labels went with it.
+    assert_eq!(
+        stored_seals(&conn, &target.id),
+        before_seals,
+        "the withheld ciphertext and its hash must not move"
+    );
+    assert_eq!(
+        stored_identity_labels(&conn, &target.id),
+        before_labels,
+        "the tax id and national-id type travel with the id"
+    );
+    // ... while the field the editor DOES own still changes, so the policy is
+    // not simply "this caller may change nothing".
+    let loaded = store.get_user_profile(&target.id).unwrap().unwrap();
+    assert_eq!(loaded.email.as_deref(), Some("alice.new@example.com"));
+    assert_eq!(
+        loaded.national_id.as_deref(),
+        Some("123456789"),
+        "the stored document is still readable to a granted reader"
+    );
+    assert_eq!(loaded.tax_id.as_deref(), Some("99-1234567"));
+    assert_eq!(loaded.national_id_type.as_deref(), Some("ssn"));
+    assert_eq!(loaded.monthly_take_home_minor, Some(5_000_000));
+}
+
+#[test]
+fn keep_pay_lifts_requiredness_and_preserves_the_amount() {
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["staff:read", "staff:read_identity"]);
+    let store = Store::new(&conn);
+    let user = store
+        .create_user_with_profile("alice", "h", "A", "role-viewer", &complete_profile(), None)
+        .unwrap();
+    let before = stored_seals(&conn, &user.id);
+
+    // Pay is mandatory at creation, so an update that omits it is refused by
+    // default — that is what broke every edit once the staff form stopped
+    // collecting it (the payroll surface owns the field afterwards).
+    let mut submitted = complete_profile();
+    submitted.monthly_take_home_minor = None;
+    assert!(
+        store.update_user_profile(&user.id, &submitted).is_err(),
+        "without keep_pay the field is still required"
+    );
+
+    store
+        .write_user_profile_with(
+            SensitiveWritePolicy {
+                keep_identity_record: false,
+                keep_pay: true,
+            },
+            &user.id,
+            &submitted,
+        )
+        .expect("keep_pay must accept the omission");
+
+    let after = stored_seals(&conn, &user.id);
+    assert_eq!(after.2, before.2, "the stored pay seal is byte-identical");
+    assert_eq!(
+        store
+            .get_user_profile(&user.id)
+            .unwrap()
+            .unwrap()
+            .monthly_take_home_minor,
+        Some(5_000_000),
+        "the amount is untouched, not cleared"
+    );
+}
+
+#[test]
+fn without_the_policy_an_omitted_field_is_required_or_cleared() {
+    // The guard on the other direction, and the precise shape of the old bug.
+    // Two opposite things used to happen to a field the editor could not see,
+    // and neither was "leave it alone":
+    //
+    // * a MANDATORY field (national id, pay) was REFUSED — so an editor without
+    //   the read grant had no way to save at all without inventing a value;
+    // * an OPTIONAL field (tax id) was silently CLEARED, because a withheld
+    //   `None` and a deliberate clear are the same bytes on the wire.
+    //
+    // The withheld policy is what turns both into "preserved", so this case
+    // pins that it is the policy — not the write path in general — doing it.
+    let conn = migrations::fresh_db();
+    insert_role(&conn, "role-viewer", &["staff:read", "staff:read_identity"]);
+    let store = Store::new(&conn);
+    let user = store
+        .create_user_with_profile(
+            "alice",
+            "h",
+            "A",
+            "role-viewer",
+            &complete_profile_with_tax_id(),
+            None,
+        )
+        .unwrap();
+
+    // Mandatory omitted → refused, so nothing moved (no partial write either).
+    let mut omitted_required = complete_profile_with_tax_id();
+    omitted_required.national_id = None;
+    let before = stored_seals(&conn, &user.id);
+    assert!(
+        store
+            .update_user_profile(&user.id, &omitted_required)
+            .is_err(),
+        "a mandatory identity field omitted is a validation error, not a clear"
+    );
+    assert_eq!(
+        stored_seals(&conn, &user.id),
+        before,
+        "a refused write leaves the record untouched"
+    );
+
+    // Optional omitted → cleared, which is exactly the data loss the withheld
+    // policy prevents for a caller who was never shown the value.
+    let mut omitted_optional = complete_profile_with_tax_id();
+    omitted_optional.tax_id = None;
+    store
+        .update_user_profile(&user.id, &omitted_optional)
+        .unwrap();
+    assert_eq!(
+        stored_identity_labels(&conn, &user.id),
+        (Some("ssn".into()), None),
+        "an optional field is still cleared by an omission, so an OPTIONAL \
+         withheld field needs the policy just as much as a mandatory one"
     );
 }

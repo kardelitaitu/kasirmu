@@ -3,6 +3,7 @@ import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBar from '@/components/StatusBar';
 import { staffLogin } from '@/api/staff';
+import { classifyRetry } from '@/utils/app-error';
 import { getVersion } from '@/api/system';
 import { Localized, useLocalization } from '@fluent/react';
 import './SessionLockScreen.css';
@@ -144,9 +145,11 @@ export default function SessionLockScreen({
         onUnlock();
       } catch (err) {
         const errObj = err as Record<string, unknown> | null;
-        const msg = errObj?.['message'] as string
-          ?? l10n.getString('session-lock-invalid-pin');
-        setError(msg);
+        // Raw is kept for parseRateLimitSeconds below (parsing is not displaying);
+        // what reaches the screen goes through classifyRetry, so a transport
+        // failure shows localized copy instead of its internal text.
+        const msg = errObj?.['message'] as string ?? l10n.getString('session-lock-invalid-pin');
+        setError(classifyRetry(err) === 'retryable' ? l10n.getString('staff-login-error-connection') : msg);
         setPin([]);
 
         // Increment local attempt counter (defense-in-depth).
@@ -243,11 +246,23 @@ export default function SessionLockScreen({
 
           {/* ── Top bar: PIN dots (same band, same role as the login PIN step) ── */}
           <div className="session-lock-top-bar">
-            <div className="session-lock-pin-dots" aria-label={requiredLocalized(l10n, 'session-lock-pin-aria', { length: String(pin.length), max: String(MAX_PIN_LENGTH) })}>
+            <div
+              className="session-lock-pin-dots"
+              aria-label={requiredLocalized(l10n, 'session-lock-pin-aria', { length: String(pin.length), max: String(MAX_PIN_LENGTH) })}
+              /* The error banner below is the announcement; this marks the FIELD
+                 the user has to retry, so the failure stays attached to the
+                 control instead of only to a transient notice. The shake is a
+                 CSS class and a screen reader cannot perceive it. */
+              aria-invalid={error ? true : undefined}
+            >
               {Array.from({ length: MAX_PIN_LENGTH }, (_, i) => (
                 <span
                   key={i}
                   className={`session-lock-pin-dot ${i < pin.length ? 'session-lock-pin-dot--filled' : ''}`}
+                  /* The row carries the count in its own label, so the four dots
+                     are decorative. Without this a reader announces the row and
+                     then four unlabelled elements inside it. */
+                  aria-hidden="true"
                 />
               ))}
             </div>

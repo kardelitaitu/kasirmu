@@ -158,6 +158,10 @@ temp-*
 # Underscore variant: the dash-only patterns above let temp_check.ps1 through.
 temp_*
 *.tmp
+# Dot-prefixed scratch from agent runs: .tmp-build/, .tmp-apk-verify/, .tmp-28-a.txt.
+# Matches at any depth and covers files as well as directories, which is what lets
+# the one-off .tmp-28-*.txt entries below be deleted rather than kept beside it.
+.tmp-*
 /temp.go
 /tmp/
 # PR body scratch, written by the pr-create-pull-request skill each cycle.
@@ -218,10 +222,6 @@ ui-coder-21-journal.md
 ui-coder-22-journal.md
 ui-coder-23-journal.md
 ui-coder-24-journal.md
-.tmp-28-a.txt
-.tmp-28-b.txt
-.tmp-28-call.txt
-.tmp-28-cluster.txt
 ui-coder-25-journal.md
 ui-coder-26-journal.md
 ui-coder-27-journal.md
@@ -285,3 +285,4 @@ manager-journal.md
 # directory removes both the status noise and the false findings, through the
 # checker's existing git-ignored skip rather than a new rule of its own.
 /.codebuddy/
+/.tmp

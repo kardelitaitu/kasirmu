@@ -555,14 +555,38 @@ impl Store<'_> {
     }
 
     /// Update the status of a sale, validating the state machine transition.
+    ///
+    /// C18 (P1.1): the write is a **compare-and-set**. The status is read
+    /// first, the transition is validated against what was read, and the
+    /// `UPDATE` then carries `AND status = ?observed` — so the write lands
+    /// only if the row still holds the status this call decided against.
+    ///
+    /// The previous shape read the status and then issued an *unconditional*
+    /// `UPDATE … WHERE id = ?` in autocommit, so a transition that landed in
+    /// that window was silently overwritten — and the `rows == 0` conflict
+    /// branch below was therefore unreachable for a status race, the one
+    /// thing it existed to catch. The predicate is what makes that branch
+    /// mean what it says; this is the `void_sale` shape
+    /// (`sales_lifecycle.rs`), applied where the tablet's `complete_sale`
+    /// lane reaches it (`create_sale` + two transitions).
+    ///
+    /// Why the read stays outside the transaction: it has to observe the
+    /// status *before* a concurrent writer commits, or there is no race left
+    /// to detect. A read taken inside the write transaction observes the
+    /// already-serialized value instead — the predicate then always matches
+    /// and a moved row surfaces as a `Validation` (invalid transition) or,
+    /// under WAL, as `DatabaseBusy` when the deferred transaction loses the
+    /// upgrade. Both were measured against
+    /// `a_transition_that_lost_the_race_reports_the_conflict`; neither is
+    /// the conflict. The transaction below is the file's own invariant
+    /// ("all writes run in explicit transactions"), which the autocommit
+    /// `execute` this replaces was violating.
     pub fn update_sale_status(&self, id: &str, to: SaleStatus) -> Result<Sale, CoreError> {
-        let result = self.conn.query_row(
+        let current_str = match self.conn.query_row(
             "SELECT status FROM sales WHERE id = ?1",
             params![id],
             |row| row.get::<_, String>(0),
-        );
-
-        let current_str = match result {
+        ) {
             Ok(s) => s,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
                 return Err(CoreError::NotFound {
@@ -588,16 +612,26 @@ impl Store<'_> {
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let status_str = to.as_stored_str();
-        let rows = self.conn.execute(
-            "UPDATE sales SET status = ?1, updated_at = ?2, version = version + 1 WHERE id = ?3",
-            params![status_str, now, id],
+
+        // One explicit transaction for the write, per this file's invariant.
+        // The CAS is what closes the race: `status = ?4` is evaluated at
+        // write time, so a row another transition moved between the read
+        // above and this statement matches zero rows and is reported as a
+        // conflict instead of being silently overwritten.
+        let tx = self.conn.unchecked_transaction()?;
+        let rows = tx.execute(
+            "UPDATE sales SET status = ?1, updated_at = ?2, version = version + 1
+             WHERE id = ?3 AND status = ?4",
+            params![status_str, now, id, current_str],
         )?;
         if rows == 0 {
+            tx.rollback()?;
             return Err(CoreError::Conflict {
                 entity: "sale",
                 field: "version",
             });
         }
+        tx.commit()?;
 
         self.get_sale(id)?.ok_or_else(|| CoreError::NotFound {
             entity: "sale",
@@ -605,3 +639,7 @@ impl Store<'_> {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sales_crud_tests.rs"]
+mod tests;

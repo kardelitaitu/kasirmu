@@ -492,16 +492,18 @@ fn multiple_users_with_same_role() {
     assert_eq!(cashiers.len(), 3, "all three users should have role-staff");
 }
 
-// ── User: Delete does not affect role ─────────────────────────────────
+// ── User: trashing does not affect role ───────────────────────────────
 
 #[test]
-fn delete_user_does_not_affect_role() {
+fn soft_delete_does_not_affect_role() {
     let conn = setup();
     seed_users(&conn);
     let s = store(&conn);
 
-    // Delete a user.
-    s.delete_user("user-1").unwrap();
+    // Deactivate (the delete policy), then move the member to the trash.
+    conn.execute("UPDATE users SET is_active = 0 WHERE id = 'user-1'", [])
+        .unwrap();
+    s.soft_delete_user("user-1").unwrap();
 
     // The role should still exist.
     let role = s.get_role("role-staff").unwrap().unwrap();

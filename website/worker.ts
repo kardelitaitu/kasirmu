@@ -3,8 +3,13 @@
  *
  * Hostname routing:
  *   kasir.mu          → marketing site (static assets, runtime config, contact form)
+ *   www.kasir.mu      → 301 to the apex (alias with no content of its own)
  *   dashboard.kasir.mu → user dashboard (auth-gated, placeholder for now)
  *   admin.kasir.mu     → admin panel (auth-gated, placeholder for now)
+ *
+ * Any plain-http request is 301'd (308 for non-GET) to the same host over https
+ * before anything else, because the zone's `always_use_https` setting is off and
+ * the same pages were otherwise served over both schemes.
  *
  * Auth gate (ADR #42):
  *   Dashboard subdomains check for an httpOnly `oz_session` cookie. If missing:
@@ -46,6 +51,17 @@ interface Env {
 }
 
 const RUNTIME_CONFIG_PATH = '/__oz/runtime-config.js';
+/**
+ * The event the config script dispatches once `window.__OZ_CONFIG__` is set.
+ *
+ * This is the contract that lets an island hear about a URL that arrived AFTER
+ * it rendered: the script is deferred, but the island's own module is fetched
+ * in parallel and can hydrate first, and a plain read of the global never
+ * learns better. Mirrors RUNTIME_CONFIG_EVENT in src/lib/runtime-config.ts —
+ * the Worker stays import-free, and worker.test.ts imports the shared constant
+ * and fails if these two ever disagree.
+ */
+const RUNTIME_CONFIG_EVENT = 'oz:runtime-config';
 const SESSION_PATH = '/__oz/session';
 const LOGOUT_PATH = '/__oz/logout';
 /** Health-tab platform logs — proxied to Northflank with the NF_API_KEY secret. */
@@ -77,6 +93,19 @@ const CUSTOMER_DASHBOARD_HOST = 'dashboard.kasir.mu';
 
 /** Marketing site domain — no auth required. */
 const MARKETING_HOST = 'kasir.mu';
+
+/**
+ * The `www.` alias of the marketing host. It is NOT a host of its own: the zone
+ * carries it as a proxied CNAME to the apex, whose DNS points at a dummy origin
+ * (192.0.2.1), so the only thing serving that name is this Worker's route. With
+ * the route missing — as it was until 2026-09-23 — every www request fell
+ * through to that non-existent origin and answered 522, while the site's own
+ * canonicals, hreflang and sitemap all name the apex. Hence: permanent redirect
+ * to the canonical host, path and query preserved, and nothing else that "www"
+ * could stand for (no subdomain gate, no separate robots.txt — robots.txt is
+ * per-authority, so a 301 to the apex hands the crawler the apex's own file).
+ */
+const WWW_HOST = 'www.kasir.mu';
 
 /**
  * Every host that is NOT the marketing host. Each needs its own robots.txt:
@@ -245,6 +274,46 @@ export default {
     const url = new URL(request.url);
     const hostname = url.hostname;
 
+    // ── Canonical origin: https on the apex ──────────────────────────
+    // Two things a request must be to reach content, both answered in ONE hop
+    // rather than as a chain:
+    //   http://<host>/…        → https://<same host>/…   (the scheme is not a
+    //                            content decision, and the same page over http
+    //                            is duplicate content on an insecure scheme)
+    //   https://www.kasir.mu/… → https://kasir.mu/…      (the alias owns no
+    //                            content of its own — see WWW_HOST)
+    // The host is preserved for everything that is not www, so
+    // http://admin.kasir.mu/settings lands back on the admin host, not on the
+    // marketing site.
+    //
+    // Must come first: every later branch (robots.txt, the dashboard redirect,
+    // the admin gate) assumes a host and scheme that own their own content.
+    // MEASURED 2026-09-23 before this: http://kasir.mu/en/ answered 200
+    // (CF-Cache-Status HIT, no Strict-Transport-Security), and the zone's
+    // `always_use_https` setting reads "off", so the redirect cannot be assumed
+    // from the edge. www answered 522 on every path.
+    const canonicalHost = hostname === WWW_HOST ? MARKETING_HOST : hostname;
+    if (url.protocol !== 'https:' || hostname !== canonicalHost) {
+      // B24: single-slash, same rule as the exchange redirect below. A path like
+      // '//evil.com' would otherwise make the Location header protocol-relative
+      // and turn the canonical redirect into an OPEN REDIRECT.
+      const path = '/' + url.pathname.replace(/^[/\\]+/, '');
+      // 301 for the methods a crawler uses; 308 for the rest so an API POST is
+      // not silently replayed as a GET by the redirect itself (a 301 on POST is
+      // allowed to become a GET, which would turn /api/contact into a 405).
+      const method = request.method.toUpperCase();
+      const status = method === 'GET' || method === 'HEAD' ? 301 : 308;
+      return new Response(null, {
+        status,
+        headers: {
+          Location: `https://${canonicalHost}${path}${url.search}`,
+          // A permanent canonical redirect is meant to be cached; nothing here
+          // varies per visitor.
+          'Cache-Control': 'public, max-age=3600',
+        },
+      });
+    }
+
     // ── Crawler policy on the auth subdomains (R3) ────────────────────
     // robots.txt is per-authority: kasir.mu/robots.txt governs nothing on
     // admin.kasir.mu or dashboard.kasir.mu, and neither can inherit it.
@@ -380,15 +449,13 @@ export default {
       // Step 1b: The dashboard SPA calls /__oz/session to obtain the JWT
       // from the httpOnly cookie (so it can authenticate to the license API
       // with a Bearer header). Same-origin, so the token never leaks to
-      // third-party JS. Requires the cookie; a missing cookie here is 401.
+      // third-party JS. A missing cookie returns 200 {token:null} rather
+      // than 401: this endpoint is a session QUERY (the header asks it on
+      // every page), and a 401 here is logged by the browser as a console
+      // error for every signed-out visitor. Callers already treat a missing
+      // `token` as signed-out.
       if (url.pathname === SESSION_PATH) {
-        if (!sessionCookie) {
-          return new Response(JSON.stringify({ error: 'not signed in' }), {
-            status: 401,
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-          });
-        }
-        return new Response(JSON.stringify({ token: sessionCookie }), {
+        return new Response(JSON.stringify({ token: sessionCookie ?? null }), {
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
         });
       }
@@ -835,13 +902,9 @@ export default {
     // header without ever holding the token in JS-readable storage.
     if (url.pathname === SESSION_PATH) {
       const sessionCookie = getCookieWithLegacy(request.headers, COOKIE_NAME, LEGACY_COOKIE_NAME);
-      if (!sessionCookie) {
-        return new Response(JSON.stringify({ error: 'not signed in' }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-        });
-      }
-      return new Response(JSON.stringify({ token: sessionCookie }), {
+      // 200 {token:null} when signed out — see the dashboard-host note above:
+      // a 401 here would be a console error on every page of the site.
+      return new Response(JSON.stringify({ token: sessionCookie ?? null }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
       });
     }
@@ -868,7 +931,7 @@ export default {
       const body = `window.__OZ_CONFIG__=${JSON.stringify({
         licenseApiUrl: env.LICENSE_API_URL ?? null,
         contactEndpoint: '/api/contact',
-      })};`;
+      })};window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}));`;
       return new Response(body, {
         headers: {
           'Content-Type': 'application/javascript; charset=utf-8',

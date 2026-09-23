@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, type ReactNode } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,32 +7,35 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useIdleTimer } from '@/hooks/useIdleTimer';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useFullscreen } from '@/hooks/useFullscreen';
+import { useOrientation } from '@/hooks/useOrientation';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { isCommandModifier } from '@/utils/keyboard-modifier';
-import AppLayout, { type AppRoute } from './AppLayout';
-import { completeSetup, dismissSetupWizard, getSetupStatus } from '@/api/settings';
+import AppLayout, { type AppRoute, isSidebarOverlayPresented } from './AppLayout';
+import { getFirstRunState } from '@/api/settings';
+import { getDeviceId } from '@/api/system';
 import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
-import { getPage, isPageAccessible } from '@/registries/page-registry';
+import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
-import type { WizardState } from '@/features/setup/SetupWizard';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
 import LicenseActivationScreen from '@/features/auth/LicenseActivationScreen';
 import CreatePinScreen from '@/features/auth/CreatePinScreen';
 import SessionLockScreen from '@/features/auth/SessionLockScreen';
+import RevokedScreen from '@/features/auth/RevokedScreen';
 import MemoBanner from '@/features/memo/MemoBanner';
 import { Badge, type BadgeVariant } from '@/components/Badge';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 
 // ── PERF-01: workspace/flow screens load on demand ────────────────
 // These screens are only reachable after login, so each is code-split
 // into its own chunk (Suspense boundary: LazyBoundary at render sites).
-const SetupWizard = lazy(() => import('@/features/setup/SetupWizard'));
+const ProvisioningFlow = lazy(() => import('@/features/setup/ProvisioningFlow'));
 const StaffLoginScreen = lazy(() => import('@/features/auth/StaffLoginScreen'));
 const WorkspaceHome = lazy(() => import('@/features/workspaces/WorkspaceHome'));
 const RetailPosScreen = lazy(() => import('@/features/retail/RetailPosScreen'));
@@ -46,6 +49,9 @@ const WorkspaceSettingsModal = lazy(() => import('@/features/settings/WorkspaceS
 // picker even with a modal open, so a stuck overlay can never trap the
 // operator. It consumes the event so no other Escape listener reacts to the
 // same key (KEY-05); the topmost modal owns plain Escape while it is open.
+// The portrait sidebar overlay is one step ABOVE this handler for plain
+// Escape: while it is presented it takes the key first and closes itself
+// (AppLayout's scrim effect), so this handler defers to it — see the guard.
 function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
   useEffect(() => {
     if (!active) return;
@@ -56,7 +62,18 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
         if (isCommandModifier(e) && e.shiftKey) {
           consumeShortcut(e);
           onBack();
-        } else if (!e.defaultPrevented && !isAnyAriaModalOpen() && active !== 'restaurant-pos') {
+        } else if (
+          !e.defaultPrevented &&
+          // The portrait sidebar overlay, while it is presented, is the FIRST
+          // Escape owner: AppLayout listens on `document` in the CAPTURE phase
+          // and consumes the key, so this branch is normally skipped by
+          // `defaultPrevented` above. Asking explicitly states the contract
+          // rather than resting on listener order alone — and it closes the tick
+          // where the overlay is painted but its effect has not yet attached.
+          !isSidebarOverlayPresented() &&
+          !isAnyAriaModalOpen() &&
+          active !== 'restaurant-pos'
+        ) {
           consumeShortcut(e);
           onBack();
         }
@@ -121,6 +138,10 @@ export default function AppShell() {
   const { goToWorkspacePicker } = useWorkspaceNav();
   const { isKdsKiosk } = useTerminalProfile(sessionToken ?? undefined);
   const { addToast } = useToast();
+  // ADR #58 §2.6: subscription state needed to gate the revoked screen before
+  // the boot-allowed check. `revoked` lands here when the ride-along daemon
+  // has written and cached a revocation verdict from the licence server.
+  const { state: subscriptionState } = useSubscription();
   // Stable ref so the mount effect below can call addToast without
   // listing it as a dependency (which would cause the effect to re-run
   // whenever the toast context re-creates its callback reference, resetting
@@ -227,7 +248,10 @@ export default function AppShell() {
       try {
         const [licenseRes, setupRes, usersRes] = await Promise.all([
           settle('get_license_status', getLicenseStatus()),
-          settle('get_setup_status', getSetupStatus()),
+          settle(
+            'get_first_run_state',
+            getDeviceId().then((terminalId) => getFirstRunState(terminalId)),
+          ),
           settle('has_users', hasUsers()),
         ]);
         if (cancelled) return;
@@ -239,8 +263,12 @@ export default function AppShell() {
         // null falls through to StaffLoginScreen (see the !session branch).
         if (usersRes.ok) setHasAnyUsers(usersRes.value.has_users);
 
-        // ── setup: true ONLY from a read that answered `completed` ────
-        const setupCompleted = setupRes.ok && setupRes.value.completed;
+        // ── provisioning: true ONLY from a read that answered `provisioned` ──
+        // ADR #56 §2.1: the row replaces the `setup.completed` boolean. A failed
+        // read leaves the state unprovisioned, which routes to the first-run
+        // flow rather than forging "already set up" — and because the answer is
+        // a row rather than a flag, an unreadable database cannot invent one.
+        const setupCompleted = setupRes.ok && setupRes.value.state === 'provisioned';
         if (setupCompleted) setSetupKnownComplete(true);
 
         // ── the licence verdict (the truth claim) ────────────────────
@@ -359,29 +387,13 @@ export default function AppShell() {
     return () => window.removeEventListener('hashchange', syncFromHash);
   }, []);
 
-  const handleComplete = useCallback(async (state: WizardState) => {
-    await completeSetup({
-      preset: state.preset ?? 'custom',
-      features: Object.keys(state.features).filter(
-        (k) => state.features[k],
-      ),
-      default_currency: state.default_currency,
-    });
-    setSetupKnownComplete(true);
-  }, []);
-
-  const handleSkip = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
-    setSetupKnownComplete(true);
-  }, []);
-
   /**
    * Called when the activation flow finishes (license activated + owner
-   * account created). Marks setup as dismissed so the wizard is not
-   * shown — users land directly on the workspace picker.
+   * account created). The activation flow has already written the owner and
+   * the licence, so this only reflects that locally — it no longer writes a
+   * dismissal flag.
    */
   const handleActivationComplete = useCallback(() => {
-    dismissSetupWizard().catch(console.error);
     // Real evidence this time: the activation flow only calls back after
     // activateLicense succeeded, so the licence flag is earned, not assumed.
     setSetupKnownComplete(true);
@@ -465,6 +477,20 @@ export default function AppShell() {
     { enabled: activeWorkspace !== 'store-pos' },
   );
 
+  // ── Page-declared layout (ADR-0001 Slice 1) ───────────────────
+  //
+  // The registry records what a page structurally needs; the shell is the one
+  // place that reads it. Called unconditionally here — hooks may not sit behind
+  // the early returns above, and the value it feeds is read further down at the
+  // registry render site.
+  //
+  // No lock request: `landscape-locked` is a declaration that the page needs the
+  // landscape tree, not a promise the host can keep (the Android WebView ignores
+  // `screen.orientation.lock` — see TabletAppShell). The rotation prompt is
+  // therefore derived from the MEASURED viewport, and the portrait fallback
+  // renders either way.
+  const { orientation } = useOrientation();
+
   // ── Escape key navigates back to workspace picker ────────────
 
   const handleBackToPicker = useCallback(() => {
@@ -504,6 +530,13 @@ export default function AppShell() {
     // stage-1 splash from index.html while the license + setup IPC
     // round-trips resolve. Replaces the former bare-text gate.
     return <AppBootSplash />;
+  }
+
+  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  // rather than the re-activation or login screen. The merchant cannot log in
+  // but CAN export their data via the no-session twin (export_data_without_session).
+  if (subscriptionState === 'revoked') {
+    return <RevokedScreen />;
   }
 
   if (!bootAllowed) {
@@ -550,7 +583,7 @@ export default function AppShell() {
       <>
         {bootBadges}
         <LazyBoundary>
-          <SetupWizard onComplete={handleComplete} onSkip={handleSkip} onLaunch={() => setSetupKnownComplete(true)} />
+          <ProvisioningFlow onProvisioned={() => setSetupKnownComplete(true)} />
         </LazyBoundary>
       </>
     );
@@ -714,9 +747,13 @@ export default function AppShell() {
       <>
         {!isCustomerKiosk && <MemoBanner />}
         {bootBadges}
-        <LazyBoundary>
-          <PageComponent />
-        </LazyBoundary>
+        {renderPageLayout(
+          <LazyBoundary>
+            <PageComponent />
+          </LazyBoundary>,
+          pageRegistration.layout,
+          orientation.isLandscape,
+        )}
       </>
     ) : null;
   }
@@ -739,14 +776,63 @@ export default function AppShell() {
             requiredPermission={pageRegistration!.requiredPermission}
           />
         ) : PageComponent ? (
-          <LazyBoundary>
-            <PageComponent />
-          </LazyBoundary>
+          renderPageLayout(
+            <LazyBoundary>
+              <PageComponent />
+            </LazyBoundary>,
+            pageRegistration!.layout,
+            orientation.isLandscape,
+          )
         ) : null}
       </AppLayout>
       {settingsModal}
     </>
   );
+}
+
+/**
+ * Apply a page's registry-declared `layout` to the rendered page (ADR-0001, tier
+ * T3). The registry records the structural need; this is the consumer T4 checks
+ * for. Both shells call it, so one registration behaves the same on either.
+ *
+ * - absent / 'fluid' — the page adapts to the space it is given (T2 container
+ *   queries). Returning the page node itself, not a wrapper around it, is what
+ *   keeps this branch a no-op instead of a new DOM layer.
+ * - 'landscape-locked' — the page needs a different structural tree in landscape.
+ *   The shell cannot enforce orientation (the Android WebView has no
+ *   `screen.orientation.lock`), so this renders the same page plus a rotation
+ *   prompt, and only while the MEASURED viewport is portrait: a prompt that
+ *   cannot clear would be worse than no prompt. The page stays mounted and usable
+ *   either way — the prompt is an overlay, never a gate.
+ * - 'custom' — the page owns its layout contract outside T1/T2, so the shell
+ *   renders it as-is inside the `data-layout="custom"` marker CSS keys off
+ *   instead of reaching into the page's own contract.
+ */
+function renderPageLayout(
+  page: ReactNode,
+  layout: PageRegistration['layout'],
+  isLandscape: boolean,
+): ReactNode {
+  if (layout === 'landscape-locked' && !isLandscape) {
+    return (
+      <>
+        {page}
+        <div className="page-rotate-prompt" data-layout="landscape-locked" role="status">
+          <Localized id="layout-rotate-to-landscape">
+            <p>Rotate your device to landscape for the full layout.</p>
+          </Localized>
+        </div>
+      </>
+    );
+  }
+  if (layout === 'custom') {
+    return (
+      <div className="page-layout-custom" data-layout="custom">
+        {page}
+      </div>
+    );
+  }
+  return page;
 }
 
 /**

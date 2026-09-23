@@ -175,6 +175,8 @@
 }
 
 .tablet-shell .app-content-inner {
+  container-type: inline-size;
+  container-name: app-content;
   min-height: 100%;
   padding: var(--tablet-spacing);
 }
@@ -323,6 +325,28 @@
   padding-right: var(--inset-right);
 }
 
+/* ── Memo stack bottom clearance ───────────────────── */
+/* The tablet shell's override of the memo stack's bottom offset
+   (MemoBanner.css consumes `bottom: var(--memo-bottom-inset,
+   var(--space-6))`). Deliberately its OWN block, separate from the
+   inset-carrying shell body above: setupWizardLandscape.test.ts pins
+   that body to exactly top/left/right insets and NO --inset-bottom —
+   the bar owns the bottom inset as its own padding (L97) — so this
+   chrome-height sum must not join it.
+
+   The bar is the bottom chrome this shell parks under the stack:
+   nav height + the bar's own --inset-bottom padding + the same
+   --space-6 clearance the chrome-free fallback uses. At a flat
+   --space-6 the stack painted 40px over the bar's tabs (64 + inset vs
+   24). Custom properties inherit downward, so every surface mounted
+   inside this shell — including MemoBanner's fixed stack, which is a
+   DOM descendant — clears the bar instead of covering it. */
+.tablet-shell {
+  --memo-bottom-inset: calc(
+    var(--tablet-bottom-nav-height) + var(--inset-bottom) + var(--space-6)
+  );
+}
+
 /* ── Scrollbar styling for touch ──────────────────── */
 .tablet-shell ::-webkit-scrollbar {
   width: 6px;
@@ -353,3 +377,97 @@
   user-select: text;
   -webkit-user-select: text;
 }
+
+/* ── T3: declared page layouts (ADR-0001 Slice 1b) ──────────────────────
+ * The tablet entry (ui/src/main.mobile.tsx + TabletAppLayout.tsx) loads
+ * theme (css) and this sheet — NOT AppLayout.css — so the shell's two
+ * layout-marker rules need their tablet copy here, exactly as .skip-to-content
+ * above already does. The desktop twin lives at the same rules in
+ * ui/src/app/AppLayout.css; keep the pair in step.
+ *
+ * .page-rotate-prompt — the portrait fallback for a page registering
+ * layout="landscape-locked". An overlay, never a gate: the page underneath
+ * stays mounted and usable. Fixed so it survives the page scrolling, and the
+ * extra bottom padding keeps the panel clear of this shell's bottom tab bar.
+ *
+ * That clearance is the bar's ACTUAL occupied height, and the bar's height is
+ * a COMPOSITION of two tokens: `--tablet-bottom-nav-height` (L92-93) plus the
+ * `--inset-bottom` the bar adds as its own padding (L97). This rule used to
+ * pad by `--tablet-tap-target` (48px) instead, which was wrong twice over:
+ * the tap target sizes a CONTROL, not chrome — the bar is 64px before any
+ * inset — and it omitted the inset entirely. So on a notched device with a
+ * system tab bar the panel overlapped the bar by
+ * (nav-height - tap-target) + inset-bottom. */
+.tablet-shell .page-rotate-prompt {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--tablet-bottom-nav-height) + var(--inset-bottom));
+  background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.tablet-shell .page-rotate-prompt > * {
+  pointer-events: auto;
+  max-width: 32ch;
+  margin: 0;
+  padding: var(--tablet-spacing, var(--space-4)) var(--space-5);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--tablet-radius, var(--radius-lg));
+  box-shadow: var(--shadow-xl);
+  font-size: var(--tablet-font-lg, var(--text-lg));
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+
+/* .page-layout-custom — the marker for a page that owns its layout contract
+ * outside T1/T2 (registry layout: 'custom'). The shell only tags it; the page
+ * keeps its own rules. */
+.tablet-shell .page-layout-custom {
+  display: block;
+}
+
+/* ── T1: portrait — verified portrait-safe, no structural change ────────
+ * ADR-0001 Slice 3 / T1. Slice 1 shipped the bottom tab bar as the tablet's
+ * only nav (TabletAppLayout.tsx renders the bar, NOT `.app-sidebar`, which
+ * rule 64 above hides), and Slice 2 made the content slot a query container.
+ * Nothing in this shell was ever keyed to `landscape`, so this block asserts
+ * the portrait contract and carries the measurement that says it already
+ * holds. It deliberately declares NO property: a rule that restated a height
+ * or a padding here would be a second source of truth for values the
+ * declarations below/above already own.
+ *
+ * Portrait fits the three load-bearing pieces:
+ *   1. Tab bar — a swipeable strip in a 64px box:
+ *      `--tablet-bottom-nav-height`, `min-height` (L92-93), `flex: 0 0 auto`
+ *      on the nav wrapper (L117-119), `overflow-x: auto` plus
+ *      `justify-content: safe center` (L91, L99) so a 13-tab admin set scrolls
+ *      rather than compresses to the 48px tap floor. Portrait is where that
+ *      matters most: the same tab set has strictly LESS width than in
+ *      landscape (1097 vs 686 at the field device's aspect ratio).
+ *   2. 64px bar height — a fixed token, never a viewport fraction, so it is
+ *      orientation-independent by construction.
+ *   3. `--inset-bottom` — applied ONCE, by the bar (L97), while the shell sizes
+ *      itself to `100dvh` with `box-sizing: border-box` and owns only top/left/
+ *      right (L321-326). Because the shell subtracts the insets from its own
+ *      height instead of re-asserting `100dvh` from inside, portrait does not
+ *      reintroduce the 742px-in-a-686px-viewport overflow documented at
+ *      L303-320 — that defect was caused by re-asserting a viewport unit, which
+ *      nothing portrait-specific here does.
+ *
+ * Desktop is untouched: `.tablet-shell` is a separate entry (index.mobile.html
+ * / main.mobile.tsx) and this selector cannot match the desktop shell.
+ * ──────────────────────────────────────────────────────────────────── */
+@media (orientation: portrait) {
+  .tablet-shell .app-layout {
+    /* Portrait contract asserted, not restated — see header. */
+  }
+}
+

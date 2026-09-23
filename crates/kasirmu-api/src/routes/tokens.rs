@@ -15,7 +15,7 @@ next: none | perf: N/A
 //! keeps working without extra configuration.
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::State,
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
@@ -25,6 +25,25 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::auth::ApiTokenClaims;
 use crate::auth::TokenResponse;
+
+/// A request marker the SINGLE-TENANT embedder inserts so this route knows
+/// which surface it is serving (C39).
+///
+/// The house shape is the one `AppState::allow_terminal_credentials` already
+/// sets: the SURFACE declares what it allows and the route honours it. The
+/// embedded local API serves exactly one store, so a caller-supplied
+/// `tenant_id` names a tenant that surface can never honour - and one the
+/// desktop boot check would later reject (see the C34 boundary guard).
+///
+/// WHY AN EXTENSION AND NOT A FIELD ON `AppState`. `AppState` is built as a
+/// struct literal by ~20 sites, nearly all of them test files outside this
+/// change; a new field would break them or force a sweep of files the change
+/// has no business touching. A request extension is inserted by the
+/// embedder's own layer, cannot be set by an HTTP client (unlike a sentinel
+/// header), and is ABSENT on every other surface - so the cloud path is
+/// untouched by construction rather than by a branch that could drift.
+#[derive(Clone, Copy, Debug)]
+pub struct SingleTenantSurface;
 
 /// Request body for creating a new API token.
 #[derive(Deserialize)]
@@ -164,6 +183,7 @@ pub fn require_admin_write(
 pub async fn create_token_handler(
     State(state): State<AppState>,
     headers: HeaderMap,
+    single_tenant: Option<Extension<SingleTenantSurface>>,
     Json(body): Json<CreateTokenRequest>,
 ) -> impl IntoResponse {
     // ADR sync-auth-hardening P3: terminal client-credentials path. A
@@ -253,6 +273,42 @@ pub async fn create_token_handler(
         return (
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "invalid_admin_key"})),
+        )
+            .into_response();
+    }
+
+    // C39: the embedded (single-tenant) surface REFUSES a caller-supplied
+    // tenant rather than dropping it.
+    //
+    // WHY REFUSE AND NOT IGNORE. Dropping the claim would mint a token whose
+    // scope silently differs from what the caller asked for: a script that
+    // sent `tenant_id: "acme"` would receive a `default`-scoped token and
+    // believe it holds acme scope. Every later request would then be judged
+    // against a tenant the caller never agreed to - a silent authority
+    // mismatch, which is worse than an error because nothing surfaces it.
+    // A refusal names the problem at the only moment the caller can act on
+    // it, and it is the shape this surface already uses for the sibling
+    // restriction (`terminal_credentials_disabled`, 400).
+    //
+    // An ABSENT claim and an explicit `"default"` are both accepted: the
+    // former is every UI-minted token (`mint_token` passes no tenant) and the
+    // latter is the one value this surface can actually honour. Only a
+    // DIFFERENT tenant is refused - which is exactly the set the C34 boundary
+    // guard would later block on the write path, caught one step earlier.
+    if single_tenant.is_some()
+        && let Some(tenant) = body.tenant_id.as_deref()
+        && tenant != "default"
+    {
+        tracing::warn!(
+            tenant = %tenant,
+            "local API: refused a token request naming a tenant - this surface serves a single store"
+        );
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "tenant_claim_not_supported",
+                "message": "this local API serves a single store; a token cannot be scoped to another tenant",
+            })),
         )
             .into_response();
     }

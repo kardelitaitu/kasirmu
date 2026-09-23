@@ -23,8 +23,16 @@ serialport = { workspace = true }
 # Android-only: the Bluetooth SPP transport reaches the Java stack over JNI
 # (transport/bt_android.rs is cfg(target_os = "android") and never compiles
 # into the desktop shells).
+#
+# hex/sha2 join it for the ADR #57 §2.1 signing-certificate fingerprint
+# (transport/apk_signature.rs), which hashes the DER certificate. They are
+# gated to Android alongside `jni` rather than promoted to the shared
+# dependency list: no desktop path needs them, so the desktop build stays
+# byte-identical.
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

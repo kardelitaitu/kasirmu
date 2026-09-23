@@ -19,7 +19,7 @@ import { t, type Labels } from '../i18n/labels';
  * password.* i18n keys or supply form-specific ones.
  */
 const inputClass =
-  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
+  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
 /**
  * Keys this field reads. Owned here because this is the component that reads
@@ -30,6 +30,7 @@ export const PASSWORD_FIELD_LABELS = [
   'password.confirmLabel',
   'password.confirmPlaceholder',
   'password.hide',
+  'password.matchStatusLabel',
   'password.mismatch',
   'password.show',
 ] as const;
@@ -116,7 +117,7 @@ export default function PasswordField({
               className={`${inputClass} pr-10`}
             />
             {match && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label="Passwords match">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label={t(labels, 'password.matchStatusLabel')}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3.5 8 6.5 11 12.5 5" />
                 </svg>

@@ -269,6 +269,11 @@ name = "modules-terminal"
 version = "*"
 expression = "LicenseRef-OZ-POS-Proprietary"
 license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
+[[licenses.clarify]]
+name = "qris-core"
+version = "*"
+expression = "LicenseRef-OZ-POS-Proprietary"
+license-files = [{ path = "../../LICENSE", hash = 0x137696cf }]
 
 [advisories]
 # Keep yanked crates visible but non-blocking (default is already warn).

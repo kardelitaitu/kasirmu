@@ -6,7 +6,7 @@ findings: MSL-4 FIXED here — earn_points and redeem_points now maintain custom
 next: none | perf: projection UPDATE is one indexed row per mutation
 */
 
-use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::loyalty::{LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction};
@@ -460,7 +460,7 @@ impl Store<'_> {
 
         let txn_id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let tx = self.conn.unchecked_transaction()?;
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
         if let Err(error) = tx.execute(
             "INSERT INTO loyalty_transactions (id, account_id, sale_id, points, txn_type, description, created_at)
@@ -882,7 +882,14 @@ pub(crate) fn earn_points_with_conn(
 /// Runs on the CALLER's connection/transaction — like
 /// [`earn_points_with_conn`] this must commit or roll back atomically
 /// with the refund row itself.
-pub(crate) fn reverse_loyalty_on_refund(
+///
+/// Public because it is the ONE writer of the loyalty-points reversal:
+/// the local refund path (`db::refunds`) and the sync lane's remote
+/// `refund_sale` arm (`platform-sync`) both call it, so the same refund
+/// cannot reverse different points depending on which terminal applies
+/// it. A caller reaching it without a refunds row of its own is still
+/// replay-safe: the deterministic key above absorbs the second apply.
+pub fn reverse_loyalty_on_refund(
     conn: &rusqlite::Connection,
     sale_id: &str,
     refund_id: &str,

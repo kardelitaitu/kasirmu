@@ -7,7 +7,8 @@ next: none | perf: N/A
 //! Command implementations for the `oz` CLI.
 //!
 //! Subcommand handlers live in per-family modules (`db`, `backup`,
-//! `catalog`, `product`, `sale`, `customer`, `user`, `kasirpkg`); this
+//! `catalog`, `product`, `sale`, `customer`, `user`, `kasirpkg`,
+//! `credential_deltas`, `stock_variance`); this
 //! module owns database opening, the clap dispatch entry point, and the
 //! re-exports that keep the sibling `commands_tests.rs` family-wide.
 
@@ -27,6 +28,7 @@ pub(crate) mod db;
 pub(crate) mod kasirpkg;
 pub(crate) mod product;
 pub(crate) mod sale;
+pub(crate) mod stock_variance;
 pub(crate) mod user;
 
 // Family re-exports: the dispatch below and `commands_tests.rs` (which
@@ -40,6 +42,7 @@ pub(crate) use db::*;
 pub(crate) use kasirpkg::*;
 pub(crate) use product::*;
 pub(crate) use sale::*;
+pub(crate) use stock_variance::*;
 pub(crate) use user::*;
 
 // Re-exported in turn by the `use super::*` in `commands_tests.rs`.
@@ -96,10 +99,12 @@ pub fn run() -> Result<()> {
     // credential-deltas is refused a path it would have to create BEFORE the
     // open: a report computed against a freshly created empty file is not a clean
     // database, it is a lie about one. See open_store_for_credential_deltas.
-    let conn = if matches!(cli.command, Some(Command::CredentialDeltas(_))) {
-        open_store_for_credential_deltas(&cli.db)?
-    } else {
-        open_db(&cli.db)?
+    let conn = match cli.command {
+        Some(Command::CredentialDeltas(_)) => open_store_for_credential_deltas(&cli.db)?,
+        // A variance report over a file the command just created would read as a
+        // clean ledger. Same footgun, same guard — see open_store_for_stock_variance.
+        Some(Command::StockVariance(_)) => open_store_for_stock_variance(&cli.db)?,
+        _ => open_db(&cli.db)?,
     };
 
     match cli.command {
@@ -126,6 +131,7 @@ pub fn run() -> Result<()> {
         }) => run_import_kasirpkg(&conn, &input, &password, dry_run),
         Some(Command::SeedDemo(args)) => run_seed_demo(&conn, &args),
         Some(Command::CredentialDeltas(args)) => run_credential_deltas(&conn, &args),
+        Some(Command::StockVariance(args)) => run_stock_variance(&conn, &args),
         None => {
             let mut cmd = Cli::command();
             cmd.print_help()?;

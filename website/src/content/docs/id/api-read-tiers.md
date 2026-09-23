@@ -9,7 +9,7 @@ updated: "2026-09-01"
 ## Ikhtisar
 
 Setiap JWT dapat membawa klaim `permissions` — daftar kunci
-[registri izin](/id/docs/user-roles) yang membatasi akses GET.
+[registri izin](/id/docs/user-roles/) yang membatasi akses GET.
 Token tanpa klaim ini tetap memiliki akses **baca penuh** (kompatibel
 mundur — integrasi yang ada tetap berfungsi seperti sebelumnya).
 
@@ -137,7 +137,7 @@ digunakan oleh tingkat akses:
 - `audit:view`
 
 Kembangkan sistem dengan menambahkan kunci di sini — jangan dengan
-menciptakan taksonomi paralel. Lihat [panduan peran pengguna](/id/docs/user-roles)
+menciptakan taksonomi paralel. Lihat [panduan peran pengguna](/id/docs/user-roles/)
 untuk registri lengkap.
 
 ## Pertanyaan?

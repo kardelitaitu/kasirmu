@@ -262,6 +262,12 @@ async fn create_session_rejects_unknown_user() {
 #[tokio::test]
 async fn create_session_allows_real_owner() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_owner(&conn);
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))
@@ -296,6 +302,12 @@ async fn create_session_denies_tier_disallowed_workspace_type() {
     // allows only store-pos / restaurant-pos / admin — `kds` is NOT entitled.
     // Role access alone (verify_instance_access) must not be enough.
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_owner(&conn);
     let app = tauri::test::mock_builder()
         .manage(AppState::for_test_with_conn(conn))
@@ -336,6 +348,12 @@ async fn create_session_rejects_tampered_subscription_signature() {
     // tier/allowed-types are honored. A tampered row (forged pro tier with
     // kds allowed, invalid signature) must fail closed.
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     conn.execute(
         "UPDATE tenant_subscription
          SET tier_key = 'pro',
@@ -392,6 +410,15 @@ async fn create_session_rejects_tampered_subscription_signature() {
 /// `signed_payload` only, never `tier_key`, so this keeps the row loaded and
 /// changes only the projected tier.
 fn set_tier(conn: &rusqlite::Connection, tier_key: &str) {
+    // ADR #56 §2.6 moved the baseline out of the migration chain, so a `fresh_db()` has NO
+    // tenant_subscription row and this UPDATE would silently stamp nothing — leaving the
+    // fixture testing "no subscription" while its name says pro / premium / free.
+    if kasirmu_core::subscription::TenantSubscription::load(conn, "default")
+        .unwrap()
+        .is_none()
+    {
+        kasirmu_core::migrations::seed_provisioned_baseline(conn);
+    }
     conn.execute(
         "UPDATE tenant_subscription SET tier_key = ?1 WHERE tenant_id = 'default'",
         [tier_key],
@@ -714,6 +741,12 @@ async fn l194_list_organizations_excludes_other_tenant() {
 #[tokio::test]
 async fn l194_create_session_org_wide_user_gets_label() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -776,6 +809,12 @@ async fn l194_create_session_org_denied_without_assignment_coverage() {
 #[tokio::test]
 async fn l194_switch_organization_old_token_dead() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -834,6 +873,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
     // so an investigator can answer "who entered which org" without
     // parsing the details blob.
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     // A paid tier: the tablet records on paid tiers only (its helper passes
     // debug_upgrade=false, so a Free row would be skipped, not recorded).
     set_tier(&conn, "premium");
@@ -889,6 +934,12 @@ async fn l194_switch_organization_records_an_org_switch_event() {
 #[tokio::test]
 async fn l194_switch_organization_wrong_pin_keeps_old_token() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -934,6 +985,12 @@ async fn l194_switch_organization_wrong_pin_keeps_old_token() {
 #[tokio::test]
 async fn l194_switch_organization_enumerated_list_only() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -975,6 +1032,12 @@ async fn l194_switch_organization_enumerated_list_only() {
 #[tokio::test]
 async fn l194_switch_organization_requires_assignment_coverage() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     seed_legal_entity(&conn, "default", "org-b", "Bravo Co");
     let (app, uid) = l194_app_with(conn, Some("org-a"));
@@ -1017,6 +1080,12 @@ async fn l194_switch_organization_requires_assignment_coverage() {
 #[tokio::test]
 async fn l194_switch_organization_no_grant_carryover() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -1052,6 +1121,12 @@ async fn l194_switch_organization_no_grant_carryover() {
 #[tokio::test]
 async fn l194_switch_organization_rejects_tampered_db() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 
@@ -1104,6 +1179,12 @@ async fn l194_switch_organization_rejects_tampered_db() {
 #[tokio::test]
 async fn l194_switch_organization_happy_path_returns_label_and_token() {
     let conn = migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     seed_legal_entity(&conn, "default", "org-a", "Alpha Co");
     let (app, uid) = l194_app_with(conn, None);
 

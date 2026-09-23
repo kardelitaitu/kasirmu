@@ -48,6 +48,13 @@
   height: 100dvh;
   overflow: hidden;
   background: var(--color-bg);
+  /* Shell bottom-chrome clearance for the fixed .memo-stack (MemoBanner.css):
+   * this shell's bottom chrome is the StatusBar, so the stack sits above
+   * statusbar-height + the historic --space-6 gutter. Custom properties
+   * inherit downward, so declaring it on the layout root reaches the
+   * stack wherever the shell renders it. Fullscreen branches (POS/KDS)
+   * have no .app-layout ancestor and keep the :root default. */
+  --memo-bottom-inset: calc(var(--statusbar-height) + var(--space-6));
 }
 
 .app-layout-body {
@@ -69,6 +76,14 @@
     1px 0 4px -2px var(--app-sidebar-shadow-2, rgba(0, 0, 0, 0.04));
   z-index: var(--z-sticky);
   transition: width var(--duration-300) var(--ease-out), min-width var(--duration-300) var(--ease-out);
+}
+
+/* T1 scrim. Rendered by AppLayout.tsx only while the sidebar is expanded, but it
+ * paints ONLY in the portrait branch below (ADR-0001 Slice 3 / T1): in landscape
+ * and at 1024px+ the sidebar is a persistent lane, so a scrim there would dim the
+ * page for nothing. display:none is the base state, not a fallback. */
+.app-sidebar-scrim {
+  display: none;
 }
 
 .app-sidebar.collapsed {
@@ -503,6 +518,8 @@
 }
 
 .app-content-inner {
+  container-type: inline-size;
+  container-name: app-content;
   min-height: 100%;
   display: flex;
   flex-direction: column;
@@ -554,9 +571,163 @@
   }
 }
 
+/* ── T3: declared page layouts (ADR-0001 Slice 1b) ──────────────────────
+ * Two classes are the shell's half of the registry's declared \`layout\` field
+ * (ui/src/registries/page-registry/index.ts). Both shells render the same two
+ * nodes, so both rules live in THIS sheet — the desktop entry imports it
+ * (ui/src/main.tsx) and the tablet entry imports it too (ui/src/main.mobile.tsx
+ * loads theme (css) + this? no: TabletAppLayout imports tablet.css, and
+ * AppLayout.css arrives with main.tsx on desktop. tablet.css carries the
+ * tablet's own copy of these two rules, exactly as it already does for
+ * .skip-to-content).
+ *
+ * .page-rotate-prompt — the portrait fallback for a page whose registration
+ * declares 'landscape-locked'. It is an OVERLAY, never a gate: the page stays
+ * mounted, scrollable and usable underneath (see renderPageLayout's contract in
+ * AppShell.tsx), so the panel sits at the bottom of the content slot and is
+ * pointer-transparent except for its own box. Fixed (not absolute) on purpose:
+ * the prompt must stay visible while the PAGE underneath scrolls. It replaces
+ * the old bare <p> text, which a tablet rendered nearly invisible flush
+ * against the page content.
+ *
+ * No bottom clearance is reserved here: THIS shell has no bottom tab bar, so
+ * the extra padding is the tablet copy's job (tablet.css). The desktop shell's
+ * only bottom chrome is the .app-statusbar strip (height:
+ * var(--statusbar-height), StatusBar.css), which
+ * is a sibling of .app-layout-body (AppLayout.tsx:146 vs :324) and therefore
+ * OUTSIDE the scroll area — the panel is vertically centred over the whole
+ * viewport and nothing in the content slot is hidden behind it.
+ *
+ * Backdrop: --color-bg-overlay (the scrim of every modal in the tree) at 70%,
+ * sized in vh/vw so it also covers the shell on a phone-sized viewport. */
+.page-rotate-prompt {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* `padding-bottom` used to be `calc(var(--space-4) + var(--tablet-tap-target,
+     var(--space-12)))` — a TABLET token (48px), defined only by the tablet
+     shell's own root block (tablet.css:14), borrowed here to "clear the tablet's
+     bottom tab bar". It was wrong on both counts: the desktop shell renders no
+     tab bar at all, and the token is undefined on desktop, so it silently
+     resolved to its `--space-12` fallback and reserved 48px of phantom space
+     under a panel that has nothing beneath it. The desktop shell has no bottom
+     chrome inside the scroll area, so the plain `--space-4` above is the whole
+     contract and the tablet twin in tablet.css owns the bar clearance. */
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--color-bg-overlay) 70%, transparent);
+  z-index: var(--z-overlay);
+  pointer-events: none;
+}
+
+.page-rotate-prompt > * {
+  pointer-events: auto;
+  max-width: 32ch;
+  margin: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-bg-elevated);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-snug);
+  text-align: center;
+}
+
+/* .page-layout-custom — the marker for a page that owns its layout contract
+ * outside T1/T2 (registry layout: 'custom'). The shell only tags it; the page
+ * keeps its own rules. Stated so the class is not read as unstyled drift. */
+.page-layout-custom {
+  display: block;
+}
+
 /* Tablet portrait: full-width */
 @media (max-width: 768px) {
   .app-header {
     padding: 0 var(--space-2);
   }
 }
+
+/* ── T1: portrait — the sidebar becomes an overlay ──────────────────────
+ * ADR-0001 Slice 3 / T1. Orientation is the SHELL's decision, and this sheet is
+ * one of the two sheets licensed to declare it (the other is
+ * ui/src/app/tablet/tablet.css) — see the fence in
+ * ui/src/__tests__/orientationAdaptiveWalker.test.ts and the reference branch at
+ * ui/src/features/setup/SetupWizard.css:625, which this block mirrors in shape.
+ *
+ * What it does: portrait gives width to the nav that landscape gives to the
+ * content, so below 1024px the sidebar stops being a lane and becomes an
+ * overlay pane. The gate is deliberately the SAME `max-width: 1023px` the
+ * width block above uses, so at every width there is exactly one shell
+ * geometry — a second, competing threshold written in `rem` would let a
+ * 1023.5px viewport take the overlay branch while the icon-rail rules above
+ * stayed inert. The `orientation` half of the query exists because the ADR
+ * asks for orientation to be a declared input, not because it changes the
+ * outcome at a touch-screen aspect ratio.
+ *
+ * The 64px rail is PRESERVED, not replaced: the same 220px/60px collapsed
+ * widths and 220px overlay width. Collapsed = persistent rail, expanded =
+ * overlay over the content (position: absolute; z-index above .app-content,
+ * under the topbar). Overflow comes from the box, not from a rule: `.app-sidebar`
+ * carries `min-width: 220px` and flex items are `min-width: auto`, so an
+ * absolutely-positioned 220px pane overflows `.app-layout-body` (both are
+ * already `overflow`-default and `position`-default here).
+ *
+ * The horizontal rail from the width block above still applies at 1024px+ in
+ * portrait, unchanged: it keys on width, this keys on width AND portrait.
+ *
+ * Desktop stays resizable: this only claims widths below 1024px, and on a
+ * resizable desktop window `orientation` follows the window's own box, so
+ * dragging the window narrow in portrait rotates the shell the same way a
+ * device does.
+ * ──────────────────────────────────────────────────────────────────── */
+@media (orientation: portrait) and (max-width: 1023px) {
+  .app-sidebar {
+    flex: 0 0 auto;
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  /* Collapsed: the icon rail stays in flow, so the content keeps its lane. */
+  .app-sidebar.collapsed {
+    position: relative;
+  }
+
+  /* Expanded: the pane leaves the flow and floats over the content. */
+  .app-sidebar:not(.collapsed) {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    min-width: 220px;
+    flex-direction: column;
+    z-index: var(--z-sticky);
+  }
+
+  /* The dismissal surface: clicking it collapses the sidebar, i.e. closes the
+   * overlay. z-index is --z-dropdown (100), deliberately BELOW the pane's
+   * --z-sticky (200) — DOM order alone would put it under the aside, but an
+   * explicit lower z-index keeps it under even if a later rule stacks the pane.
+   * No ancestor in the chain is positioned, so `inset: 0` resolves against the
+   * initial containing block — the SAME box the absolute pane above resolves
+   * against, so scrim and pane share one geometry (viewport-wide dim, 220px pane). */
+  .app-sidebar-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-bg-overlay) 40%, transparent);
+    z-index: var(--z-dropdown);
+  }
+
+  /* The overlay needs a scrim's worth of separation from the page beneath. */
+  .app-sidebar:not(.collapsed) .app-sidebar-section-header,
+  .app-sidebar:not(.collapsed) .app-nav-item {
+    justify-content: flex-start;
+    padding: var(--space-2) var(--space-3);
+  }
+}
+

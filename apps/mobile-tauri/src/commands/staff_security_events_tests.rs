@@ -34,6 +34,10 @@ fn profile() -> ProfileArgs {
 /// Global DB with an owner, on a tier with staff-quota headroom.
 fn seeded_conn(tier_key: &str) -> rusqlite::Connection {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: a migrated-only DB is UNPROVISIONED, so the tier stamp below would
+    // silently update no row and every fixture would run as "no subscription" while its name
+    // says which tier it drives. Rebuild the baseline the migration chain used to seed.
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();

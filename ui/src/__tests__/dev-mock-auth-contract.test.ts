@@ -47,7 +47,12 @@ describe('dev-mock auth contract (audit-open-findings picker ticket parity)', ()
       args: { username: 'owner', pin: '1234' },
     })) as unknown as StaffLoginResult;
 
-    expect(result.session.user_id).toBe('owner-1');
+    // 'staff-1', not 'owner-1': the session's user_id must be an id
+    // `list_staff_scoped` actually serves, so a preview's own identity can be
+    // matched against its own roster row. The old value was the seed's private
+    // id, which named the Owner here and the Staff member on the roster —
+    // see dev-mock-staff-identity.test.ts for the invariant.
+    expect(result.session.user_id).toBe('staff-1');
     expect(typeof result.picker_ticket).toBe('string');
     expect(result.picker_ticket.length).toBeGreaterThan(0);
     expect(result.picker_ticket).toMatch(/^mock-picker-/);
@@ -243,7 +248,7 @@ describe('dev-mock delegates to a real Tauri webview (production regression)', (
     })) as unknown as StaffLoginResult;
 
     expect(fakeInternalsInvoke).not.toHaveBeenCalled();
-    expect(result.session.user_id).toBe('owner-1');
+    expect(result.session.user_id).toBe('staff-1');
   });
 
   it('convertFileSrc and isTauri reflect the webview state', () => {
@@ -646,5 +651,98 @@ describe('dev-mock lockout + shift-history persistence (restart parity)', () => 
     })) as unknown as Array<Record<string, unknown>>;
     expect(shifts.length).toBe(1);
     expect(shifts[0]!['id']).toBe('shift-seed-1');
+  });
+});
+
+// ── The first-run owner-bootstrap seam (has_users) ─────────────────────
+//
+// `CreatePinScreen` is reached only when the shell reads `has_users: false`,
+// and the mock answered a hardcoded `true` — so the screen had no browser
+// coverage at all. `?nousers=1` is the opt-in that opens it. The DEFAULT is the
+// load-bearing half of this contract: a dev preview that silently reported no
+// accounts would drop every developer into first-run bootstrap.
+describe('dev-mock has_users seam', () => {
+  function setSearch(search: string): void {
+    window.history.replaceState({}, '', search === '' ? '/index.html' : `/index.html${search}`);
+  }
+
+  afterEach(() => setSearch(''));
+
+  it('answers true by default, so a normal dev preview keeps its seeded owner', async () => {
+    setSearch('');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(true);
+  });
+
+  it('answers true for any other query string', async () => {
+    setSearch('?unprovisioned=1');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(true);
+  });
+
+  it('answers false only under ?nousers=1, opening owner bootstrap', async () => {
+    setSearch('?nousers=1');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(false);
+  });
+
+  it('reads the flag at CALL time, not at module load', async () => {
+    // A test must be able to navigate first and invoke after — capturing the
+    // flag at import time would freeze the answer of whichever page loaded first.
+    setSearch('');
+    const first = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(first.has_users).toBe(true);
+
+    setSearch('?nousers=1');
+    const second = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(second.has_users).toBe(false);
+  });
+});
+
+// ── Native dialog commands (tauri-plugin-dialog) ───────────────────────
+//
+// The real plugin invokes these two IPC commands. With no handler the mock
+// returned `null` for both, and every caller reads null as "the user cancelled" —
+// so four flows (export, import, backup, image-pick) returned early in silence.
+// Measured 2026-09-23: pressing "Export my data" on a revoked account did nothing
+// at all — no error, no toast, no page error.
+//
+// Asserting NON-NULL is the point: a handler that returned null would satisfy a
+// "is registered" check while leaving the original defect in place.
+describe('dev-mock native dialog commands', () => {
+  it('answers a chosen path for save, so callers get past the dialog', async () => {
+    const chosen = await invoke('plugin:dialog|save', { options: {} });
+    expect(typeof chosen).toBe('string');
+    expect(chosen as string).not.toHaveLength(0);
+  });
+
+  it('answers a chosen path for open', async () => {
+    const chosen = await invoke('plugin:dialog|open', { options: {} });
+    expect(typeof chosen).toBe('string');
+    expect(chosen as string).not.toHaveLength(0);
+  });
+});
+
+// ── start_device_pairing must match the Rust struct ────────────────────
+//
+// Field-for-field with `PairingSessionStart` (kasirmu-core/src/desktop_link.rs:38):
+// code, poll_token, expires_at, qr_url. This mock previously answered `base_url`
+// + `qr_payload` — fields that do not exist on the real struct — so `qr_url` was
+// undefined and the pairing instructions rendered the raw Fluent pattern
+// "…or visit {$url}" on both screens that show a pairing code. Fluent reports an
+// unknown variable by echoing the pattern, so the damage was silent.
+//
+// Asserting the FIELD NAMES, not merely that the call resolves: a DTO that answers
+// with the wrong shape still "works" for every caller that reads the fields it has.
+describe('dev-mock start_device_pairing contract', () => {
+  it('answers exactly the fields the Rust struct declares', async () => {
+    const session = (await invoke('start_device_pairing', {})) as unknown as Record<string, unknown>;
+    expect(Object.keys(session).sort()).toEqual(['code', 'expires_at', 'poll_token', 'qr_url']);
+  });
+
+  it('carries a non-empty qr_url, which is what the UI interpolates', async () => {
+    const session = (await invoke('start_device_pairing', {})) as unknown as { qr_url: string };
+    expect(typeof session.qr_url).toBe('string');
+    expect(session.qr_url.length).toBeGreaterThan(0);
   });
 });

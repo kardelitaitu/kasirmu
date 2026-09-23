@@ -1,6 +1,6 @@
 # kasirmu-core
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (12 findings) · SUPERSEDES the 2026-08-31 stamp, whose fix is carried forward: it added the missing promotion_engine row (PROMO-3 discount engine, compute_discount / compute_discount_unscoped). · RECONCILED the module table against src/*.rs: 67 rows, 0 dead, 2 modules deliberately unlisted (lib, features_proptests). Repaired: store_profile -> location_profile (the store→location rename, 10260a035 + c9d0ec95f on 2026-09-06), and 10 modules that exist and were absent from the crate's own README — availability, downgrade, entitlements, legal_entity, memo, payable, regional, service_health, sync_auth, sync_pull. Two of those absences matter more than a missing row: entitlements.rs is now the single read model where tier, quota, add-on grant and the dev Free→Premium upgrade resolve (the consolidation landed 2026-09-08 in 1b3e71798), and downgrade.rs holds the QuotaDimension enum that docs/guides/subscription-tiers.md documents enforcement for. A reader learning the crate from its README would not find either. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (12 findings) · SUPERSEDES the 2026-08-31 stamp, whose fix is carried forward: it added the missing promotion_engine row (PROMO-3 discount engine, compute_discount / compute_discount_unscoped). · RECONCILED the module table against src/*.rs: 67 rows, 0 dead, 2 modules deliberately unlisted (lib, features_proptests). Repaired: store_profile -> location_profile (the store→location rename, 10260a035 + c9d0ec95f on 2026-09-06), and 10 modules that exist and were absent from the crate's own README — availability, downgrade, entitlements, legal_entity, memo, payable, regional, service_health, sync_auth, sync_pull. Two of those absences matter more than a missing row: entitlements.rs is now the single read model where tier, quota, add-on grant and the dev Free→Premium upgrade resolve (the consolidation landed 2026-09-08 in 1b3e71798), and downgrade.rs holds the QuotaDimension enum that docs/guides/user/subscription-tiers.md documents enforcement for. A reader learning the crate from its README would not find either. -->
 
 Domain models, SQLite persistence, and migrations for OZ-POS. Every other crate builds on types defined here.
 
@@ -20,7 +20,7 @@ Domain models, SQLite persistence, and migrations for OZ-POS. Every other crate 
 | `customer` | `Customer` — customer records |
 | `db` | `Store` — all CRUD methods (products, sales, customers, staff, tax_rates, audit, features, currencies, exchange_rates, held_carts, barcode lookup) |
 | `downgrade` | Downgrade assessment — which existing resources exceed a lower tier’s quota |
-| `entitlements` | Entitlements read model — the single place tier, quota, add-on grant and the dev Free→Premium upgrade resolve (see docs/guides/subscription-tiers.md) |
+| `entitlements` | Entitlements read model — the single place tier, quota, add-on grant and the dev Free→Premium upgrade resolve (see docs/guides/user/subscription-tiers.md) |
 | `error` | `CoreError` — `thiserror`-based, `#[non_exhaustive]` |
 | `events` | Domain event types |
 | `export` | Export helpers |

@@ -44,14 +44,15 @@ pub(super) fn sqlite_push_batch_multirow(
 
     for chunk in items.chunks(MULTIROW_CHUNK) {
         let n = chunk.len();
-        let values = vec!["(?,?,?,?,?,?,?,?,?)"; n].join(",");
+        let values = vec!["(?,?,?,?,?,?,?,?,?,?)"; n].join(",");
         let sql = format!(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-             last_error, created_at, synced_at, tenant_id) VALUES {values} \
+             last_error, created_at, synced_at, tenant_id, origin_terminal_id) \
+             VALUES {values} \
              ON CONFLICT (id) DO NOTHING RETURNING id"
         );
 
-        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(n * 9);
+        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(n * 10);
         for item in chunk {
             params.push(rusqlite::types::Value::Text(item.id.clone()));
             params.push(rusqlite::types::Value::Text(item.action.clone()));
@@ -68,6 +69,11 @@ pub(super) fn sqlite_push_batch_multirow(
                 None => rusqlite::types::Value::Null,
             });
             params.push(rusqlite::types::Value::Text(tenant_id.to_string()));
+            // NULL stays NULL — an unset origin is "unknown", not "".
+            params.push(match &item.origin_terminal_id {
+                Some(o) => rusqlite::types::Value::Text(o.clone()),
+                None => rusqlite::types::Value::Null,
+            });
         }
 
         let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
@@ -109,51 +115,92 @@ pub(super) fn sqlite_push_batch_multirow(
 // handlers (sync_api.rs). Behaviour — including SYNC-10's fail-loud row
 // decode and the metric increment — is preserved exactly.
 
+/// Build the SQLite origin-filter clause for placeholder number `n`.
+///
+/// C3 S5: a pull must never hand a terminal back its own pushes, so the pull
+/// SELECT additionally excludes rows whose origin is the caller. The clause
+/// is a pure ADDITION to the WHERE list and nothing else — the anchor, the
+/// cursor tiebreak, `ORDER BY` and `LIMIT` keep their exact semantics.
+///
+/// It is spelled as an "is the bound value NULL" disjunct rather than being
+/// omitted when the identity is absent, so each of the three shapes stays a
+/// single prepared statement: a caller with no terminal identity (an
+/// admin-minted token, an unpaired install) binds SQL NULL, the first
+/// disjunct is true, and the row set is byte-identical to the unfiltered
+/// pull. A NULL origin always matches — an unstamped or legacy row is
+/// "unknown origin", never "mine", and is never suppressed.
+fn sqlite_origin_filter(n: u8) -> String {
+    format!(" AND (?{n} IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> ?{n})")
+}
+
 /// Pull rows via SQLite, preserving the three query shapes (cursor / since /
 /// bare) and the fail-loud row decode (SYNC-10).
+///
+/// `origin_terminal_id` is the caller's own terminal identity, taken from the
+/// verified token claims. Rows it originated are excluded from the pull;
+/// `None` reproduces the unfiltered pull exactly.
 pub(super) fn sqlite_pull_items(
     conn: &Connection,
     tenant_id: &str,
+    origin_terminal_id: Option<&str>,
     since: Option<&str>,
     cursor: Option<(&str, &str)>,
     limit: i64,
 ) -> Result<Vec<OfflineQueueItem>, String> {
     const SELECT: &str = "SELECT id, action, payload, status, retry_count, last_error, \
-                          created_at, synced_at, tenant_id, priority FROM offline_queue";
+                          created_at, synced_at, tenant_id, priority, origin_terminal_id \
+                          FROM offline_queue";
 
     let rows: Vec<rusqlite::Result<OfflineQueueItem>> = if let Some((ts, cid)) = cursor {
+        let origin = sqlite_origin_filter(5);
         let mut stmt = conn
             .prepare(&format!(
                 "{SELECT} WHERE tenant_id = ?1 AND created_at >= ?2 \
-                 AND (created_at > ?3 OR (created_at = ?3 AND id > ?4)) \
-                 ORDER BY created_at ASC, id ASC LIMIT ?5"
+                 AND (created_at > ?3 OR (created_at = ?3 AND id > ?4)){origin} \
+                 ORDER BY created_at ASC, id ASC LIMIT ?6"
             ))
             .map_err(|e| e.to_string())?;
         stmt.query_map(
-            params![tenant_id, since.unwrap_or(""), ts, cid, limit],
+            params![
+                tenant_id,
+                since.unwrap_or(""),
+                ts,
+                cid,
+                origin_terminal_id,
+                limit
+            ],
             sqlite_row_to_item,
         )
         .map_err(|e| e.to_string())?
         .collect()
     } else if let Some(since) = since {
+        let origin = sqlite_origin_filter(3);
         let mut stmt = conn
             .prepare(&format!(
-                "{SELECT} WHERE created_at >= ?1 AND tenant_id = ?2 \
+                "{SELECT} WHERE created_at >= ?1 AND tenant_id = ?2{origin} \
+                 ORDER BY created_at ASC, id ASC LIMIT ?4"
+            ))
+            .map_err(|e| e.to_string())?;
+        stmt.query_map(
+            params![since, tenant_id, origin_terminal_id, limit],
+            sqlite_row_to_item,
+        )
+        .map_err(|e| e.to_string())?
+        .collect()
+    } else {
+        let origin = sqlite_origin_filter(2);
+        let mut stmt = conn
+            .prepare(&format!(
+                "{SELECT} WHERE tenant_id = ?1{origin} \
                  ORDER BY created_at ASC, id ASC LIMIT ?3"
             ))
             .map_err(|e| e.to_string())?;
-        stmt.query_map(params![since, tenant_id, limit], sqlite_row_to_item)
-            .map_err(|e| e.to_string())?
-            .collect()
-    } else {
-        let mut stmt = conn
-            .prepare(&format!(
-                "{SELECT} WHERE tenant_id = ?1 ORDER BY created_at ASC, id ASC LIMIT ?2"
-            ))
-            .map_err(|e| e.to_string())?;
-        stmt.query_map(params![tenant_id, limit], sqlite_row_to_item)
-            .map_err(|e| e.to_string())?
-            .collect()
+        stmt.query_map(
+            params![tenant_id, origin_terminal_id, limit],
+            sqlite_row_to_item,
+        )
+        .map_err(|e| e.to_string())?
+        .collect()
     };
 
     sqlite_collect_pull_rows(rows.into_iter(), tenant_id)
@@ -196,6 +243,8 @@ fn sqlite_row_to_item(row: &rusqlite::Row) -> rusqlite::Result<OfflineQueueItem>
             .get::<_, i32>("priority")
             .map(SyncPriority::from)
             .unwrap_or(SyncPriority::Normal),
+        // NULL stays NULL: "unknown origin", never a default.
+        origin_terminal_id: row.get("origin_terminal_id")?,
     })
 }
 

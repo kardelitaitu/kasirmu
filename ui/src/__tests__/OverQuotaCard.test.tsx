@@ -31,6 +31,7 @@ import sharedFtl from '@/locales/shared.ftl?raw';
 import OverQuotaCard from '@/features/settings/OverQuotaCard';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
+import { setShellKind } from '@/utils/shellKind';
 import type { QuotaUsageRow, OverQuotaMarkerRow } from '@/api/subscription';
 
 const { invokeMock, reportHandler } = vi.hoisted(() => {
@@ -476,5 +477,77 @@ describe('OverQuotaCard', () => {
     expect(screen.getByTestId('over-quota-remedy-note')).not.toHaveTextContent(
       'unknown store:',
     );
+  });
+
+  // ── Shell-gated remediation actions ────────────────────────
+  //
+  // suspend_surplus_workspace_instances_scoped and
+  // recover_workspace_instances_scoped are registered on the desktop shell
+  // only, so the tablet renders the assessment without the two actions. The
+  // store-level block AND the per-location row buttons are both gated; a
+  // per-location row that kept its buttons would be the same always-failing
+  // control in a smaller container.
+  describe('Shell-gated remediation actions', () => {
+    afterEach(() => {
+      // Restored, so no later case can inherit the tablet shell.
+      setShellKind('desktop');
+    });
+
+    const ghostMarker: OverQuotaMarkerRow = {
+      resourceId: 'store-7',
+      resourceType: 'warehouse',
+      dimension: 'warehouses',
+      severity: 'at',
+      limit: 1,
+      current: 1,
+      markedAt: '2026-09-09T00:00:00.000Z',
+    };
+
+    function renderRemediable() {
+      reportHandler.set(() =>
+        Promise.resolve(reportWith([row('locations', 5, 1)], [ghostMarker])),
+      );
+      return renderWithProvidersSync(<OverQuotaCard />, settingsFtl, sharedFtl);
+    }
+
+    it('offers both remedies on the desktop shell', async () => {
+      setShellKind('desktop');
+      renderRemediable();
+      await waitFor(() => {
+        expect(screen.getByTestId('over-quota-locations')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('over-quota-remedy')).toBeInTheDocument();
+      expect(screen.getByTestId('over-quota-remedy-suspend')).toBeInTheDocument();
+      expect(screen.getByTestId('over-quota-remedy-recover')).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId('over-quota-location-row')).getByRole('button', {
+          name: 'Suspend surplus',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('hides the store-level remedies on the tablet shell but keeps the assessment', async () => {
+      setShellKind('tablet');
+      renderRemediable();
+      await waitFor(() => {
+        expect(screen.getByTestId('over-quota-locations')).toBeInTheDocument();
+      });
+      // The assessment the tablet CAN read is still there...
+      expect(screen.getByTestId('over-quota-remedy')).toBeInTheDocument();
+      // ...with no action that cannot run.
+      expect(screen.queryByTestId('over-quota-remedy-suspend')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('over-quota-remedy-recover')).not.toBeInTheDocument();
+    });
+
+    it('hides the per-location row buttons on the tablet shell', async () => {
+      setShellKind('tablet');
+      renderRemediable();
+      await waitFor(() => {
+        expect(screen.getByTestId('over-quota-location-row')).toBeInTheDocument();
+      });
+      expect(
+        within(screen.getByTestId('over-quota-location-row')).queryByRole('button'),
+      ).toBeNull();
+    });
   });
 });

@@ -5,6 +5,7 @@ import DataManagementScreen from '@/features/settings/DataManagementScreen';
 import { HARNESS_SESSION_TOKEN } from '@/__tests__/test-utils/harnessDefaults';
 // Overridden per-test through vi.mocked, the pattern ui/src/test-setup.ts:136 documents.
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { isTabletShell } from '@/utils/shellKind';
 
 // ── Shared mocks ─────────────────────────────────────────────────
 
@@ -21,6 +22,12 @@ const mockImportPreview = vi.fn();
 const mockImportData = vi.fn();
 const mockPickExportPath = vi.fn();
 const mockPickImportFile = vi.fn();
+// The tablet's own backup door. Without these two exports the mocked module has no such
+// name, so the tablet cases below would throw "No createBackupTo export is defined on the
+// @/api/data mock" instead of asserting which command ran -- the same hard error the
+// getBackupStatusScoped note below records.
+const mockPickBackupPath = vi.fn();
+const mockCreateBackupTo = vi.fn();
 
 vi.mock('@/api/data', () => ({
   getBackupStatus: () => mockGetBackupStatus(),
@@ -40,6 +47,16 @@ vi.mock('@/api/data', () => ({
   importData: (filePath: string, password: string) => mockImportData(filePath, password),
   pickExportPath: () => mockPickExportPath(),
   pickImportFile: () => mockPickImportFile(),
+  pickBackupPath: () => mockPickBackupPath(),
+  createBackupTo: (token: string, path: string) => mockCreateBackupTo(token, path),
+}));
+
+// Which shell is rendering. Mocked rather than driven through setShellKind because the
+// module holds one non-reactive value per bundle (utils/shellKind.ts:14) and the real
+// default is 'desktop', so a default of `false` here reproduces today's behaviour for
+// every case above and lets the tablet cases below flip it per-test.
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: vi.fn().mockReturnValue(false),
 }));
 
 const mockAddToast = vi.fn();
@@ -110,7 +127,12 @@ beforeEach(() => {
   });
   mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
   mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
+  mockPickBackupPath.mockResolvedValue('/cache/backup-1.db');
+  mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', sizeBytes: 12_582_912 });
   mockAddToast.mockReturnValue(undefined);
+  // Default the shell to desktop: clearAllMocks does not reset a mockReturnValue, so a
+  // tablet case below would otherwise leak its shell into every later test.
+  vi.mocked(isTabletShell).mockReturnValue(false);
 });
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -359,6 +381,107 @@ describe('DataManagement — Backup with NO session token (known hazard, not a g
         mockCreateBackupScoped,
         "expected create_backup_scoped NOT to run; a call there means DATA_EXPORT was checked",
       ).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useWorkspace).mockReturnValue(harnessWorkspace);
+    }
+  });
+});
+
+// ── TABLET: never ask for a name the tablet does not register ──────────────
+//
+// `get_backup_status` / `get_backup_status_scoped` are DESKTOP-registered only
+// (apps/desktop-tauri/src/commands/data.rs:33/:133, lib.rs:964-965). apps/mobile-tauri
+// defines and registers neither, so on the tablet shell the invoke rejects with an
+// unknown-command error, the catch fires a spurious failure toast, and the panel claims
+// a failed read on every mount. These cases fail if that call ever comes back.
+//
+// They are mock-level by necessity -- a unit test cannot load a second Tauri binary --
+// so the mocks are the tablet's real surface: `pickBackupPath` and `createBackupTo`
+// are the only two names this file exposes that the tablet registers
+// (apps/mobile-tauri/src/lib.rs:651).
+describe('DataManagement — Backup on the TABLET shell', () => {
+  const tabletWith = (sessionToken: string | null) => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    const harnessWorkspace = useWorkspace();
+    vi.mocked(useWorkspace).mockReturnValue({ ...harnessWorkspace, sessionToken });
+    return harnessWorkspace;
+  };
+
+  // One case per token state rather than a loop in one test: each render must unmount
+  // before the next, and two mounted screens make getByText('Backup') ambiguous.
+  it.each([
+    ['a session token', HARNESS_SESSION_TOKEN],
+    ['no session token', null],
+  ])('does NOT invoke get_backup_status or its scoped twin with %s', async (_label, token) => {
+    vi.clearAllMocks();
+    mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
+    mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
+    const harnessWorkspace = tabletWith(token);
+    try {
+      render(<DataManagementScreen />);
+      await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+      // The regression this pins: on the tablet the hook used to run
+      // `getBackupStatus()` / `getBackupStatusScoped()` -- names that exist only in the
+      // desktop binary -- so the invoke rejected and the catch reported a failure the
+      // operator could do nothing about.
+      expect(
+        mockGetBackupStatusScoped,
+        'the tablet registers no get_backup_status_scoped; this call is an unknown command there',
+      ).not.toHaveBeenCalled();
+      expect(
+        mockGetBackupStatus,
+        'the tablet registers no get_backup_status; this call is an unknown command there',
+      ).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useWorkspace).mockReturnValue(harnessWorkspace);
+    }
+  });
+
+  it('renders the honest not-answered state, never the "Never" compliance claim', async () => {
+    vi.clearAllMocks();
+    mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
+    mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
+    const harnessWorkspace = tabletWith(HARNESS_SESSION_TOKEN);
+    try {
+      render(<DataManagementScreen />);
+      await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+      await clickTab('Backup');
+      await waitFor(() => {
+        // `undefined` = the read never answered. BackupSection renders the failure
+        // string for it, NOT 'data-mgmt-backup-never' -- which would assert that this
+        // store has no snapshot, a claim no tablet command can support.
+        expect(screen.getByText('data-mgmt-toast-backup-status-fail')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('data-mgmt-backup-never')).not.toBeInTheDocument();
+    } finally {
+      vi.mocked(useWorkspace).mockReturnValue(harnessWorkspace);
+    }
+  });
+
+  it('takes a backup through create_backup_to and never through the desktop pair', async () => {
+    const user = userEvent.setup();
+    vi.clearAllMocks();
+    mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
+    mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
+    mockPickBackupPath.mockResolvedValue('/cache/backup-1.db');
+    mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', sizeBytes: 12_582_912 });
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    const harnessWorkspace = tabletWith(HARNESS_SESSION_TOKEN);
+    try {
+      render(<DataManagementScreen />);
+      await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
+      await clickTab('Backup');
+      await waitFor(() => expect(screen.getByText('Create backup now')).toBeInTheDocument());
+      await user.click(screen.getByText('Create backup now'));
+      await waitFor(() => {
+        expect(mockCreateBackupTo).toHaveBeenCalledWith(HARNESS_SESSION_TOKEN, '/cache/backup-1.db');
+      });
+      // The two desktop names are unregistered on the tablet for the same reason the
+      // status read is: create_backup writes to default_backup_path, which on Android
+      // is private storage the operator cannot open.
+      expect(mockCreateBackup).not.toHaveBeenCalled();
+      expect(mockCreateBackupScoped).not.toHaveBeenCalled();
     } finally {
       vi.mocked(useWorkspace).mockReturnValue(harnessWorkspace);
     }

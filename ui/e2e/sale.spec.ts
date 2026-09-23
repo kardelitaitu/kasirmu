@@ -378,8 +378,10 @@ test.describe('Payment Methods', () => {
     await expect(page.locator('.payment-qris-section')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.payment-qris-description')).toBeVisible({ timeout: 3_000 });
 
-    // "Pay with QR" button must be enabled.
-    const payQrBtn = page.locator('.payment-qris-btn');
+    // "Pay with QR" button must be enabled. Two buttons carry the
+    // .payment-qris-btn class now (static + dynamic QR), so target the
+    // static one by its accessible name.
+    const payQrBtn = page.getByRole('button', { name: 'Pay with QR', exact: true });
     await expect(payQrBtn).toBeVisible({ timeout: 3_000 });
     await expect(payQrBtn).toBeEnabled();
 

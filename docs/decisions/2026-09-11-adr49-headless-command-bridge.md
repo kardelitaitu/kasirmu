@@ -12,7 +12,7 @@ status: Accepted (2026-09-11) — implemented for the desktop shell; tablet clie
 **Tags:** architecture, tauri, ipc, desktop-client, oz-bridge, testing, error-handling
 
 > **Cite this record by filename, not by number.** `docs/decisions/README.md` documents
-> that `#43` is claimed by two files, and `2026-08-08-adr34-typed-connection-gating.md`
+> that `#43` is claimed by two files, and `2026-08-08-adr44-typed-connection-gating.md`
 > carries `num: 44` in its front matter. Filename-plus-number is the only safe form here.
 
 ---

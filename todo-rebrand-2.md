@@ -322,7 +322,7 @@ platform/sync/src/crdt/          platform/sync/tests/
 ### Step 2: Update hard-coded URLs (code commits after the move)
 
 **Commit:** `chore(config): update GitHub repo URLs to kasirmu/kasir.mu`
-**Pathspec:** `Cargo.toml README.md CHANGELOG.md apps/desktop-client/tauri.conf.json install/README.md install/install.sh install/uninstall.sh install/win/README.md install/win/install.ps1 install/win/uninstall.ps1 website/src/pages/[locale]/download.astro website/src/content/docs/en/installation.md website/src/content/docs/id/installation.md docs/guides/QUICKSTART.md docs/guides/android-install-test.md docs/guides/ios-build-guide.md docs/guides/ios-install-test.md docs/guides/linux-launch-test.md docs/decisions/2026-07-16-desktop-app-updater.md docs/decisions/2026-07-16-release-automation.md`
+**Pathspec:** `Cargo.toml README.md CHANGELOG.md apps/desktop-client/tauri.conf.json install/README.md install/install.sh install/uninstall.sh install/win/README.md install/win/install.ps1 install/win/uninstall.ps1 website/src/pages/[locale]/download.astro website/src/content/docs/en/installation.md website/src/content/docs/id/installation.md docs/guides/developer/QUICKSTART.md docs/guides/platform/android-install-test.md docs/guides/platform/ios-build-guide.md docs/guides/platform/ios-install-test.md docs/guides/platform/linux-launch-test.md docs/decisions/2026-07-16-desktop-app-updater.md docs/decisions/2026-07-16-release-automation.md`
 
 > **The original pathspec said "(list all files below explicitly)" and then listed only `Cargo.toml`,
 > `README.md`, `CHANGELOG.md`, `tauri.conf.json` and the `docs/` guides — omitting the two surfaces
@@ -353,19 +353,19 @@ platform/sync/src/crdt/          platform/sync/tests/
 - [ ] `install/uninstall.sh:15`, `install/win/uninstall.ps1:14` — uninstall one-liners
 - [ ] `install/README.md:3,20,25` and `install/win/README.md:3,14,49` — documented install commands (the `:3` audit stamps additionally assert that the URL "matches git remote", so they need re-stating, not just re-writing)
 
-#### `docs/guides/QUICKSTART.md:54`
+#### `docs/guides/developer/QUICKSTART.md:54`
 - [ ] `git clone https://github.com/kardelitaitu/oz-pos.git` → new URL
 
-#### `docs/guides/android-install-test.md:5,634,635`
+#### `docs/guides/platform/android-install-test.md:5,634,635`
 - [ ] All GitHub tree/blob links
 
-#### `docs/guides/ios-build-guide.md:20`
+#### `docs/guides/platform/ios-build-guide.md:20`
 - [ ] GitHub blob link
 
-#### `docs/guides/ios-install-test.md:19,713`
+#### `docs/guides/platform/ios-install-test.md:19,713`
 - [ ] All GitHub tree/blob links
 
-#### `docs/guides/linux-launch-test.md:6,487`
+#### `docs/guides/platform/linux-launch-test.md:6,487`
 - [ ] GitHub blob/config links
 
 #### `docs/decisions/2026-07-16-desktop-app-updater.md:48,142,150,160`

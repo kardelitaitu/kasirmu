@@ -1,5 +1,9 @@
-/*
-  # Security headers for Cloudflare Pages (website-plan.md §11).
+# Security headers for Cloudflare Pages (website-plan.md §11).
+  #
+  # NOTE: no leading `/*` block here. It used to open the file, contain only
+  # comments, and declare no headers — Cloudflare rejected it (wrangler:
+  # "Found 1 invalid header rule ... No headers specified") while still parsing
+  # the real rules below it. The global headers live on the final `/*` rule.
   #
   # CSP notes:
   # - 'unsafe-inline' for script-src is required by the two tiny inline

@@ -120,6 +120,7 @@ export function ConfirmDialog({
         onClick={onCancel}
         disabled={loading}
         aria-label={cancelLabel ?? l10n.getString('cancel')}
+        data-testid="confirm-dialog-cancel"
       >
         {cancelLabel ? (
           cancelLabel
@@ -134,6 +135,7 @@ export function ConfirmDialog({
         disabled={disabled || loading}
         loading={loading}
         aria-label={confirmLabel ?? l10n.getString('confirm')}
+        data-testid="confirm-dialog-confirm"
       >
         {confirmLabel ? (
           confirmLabel

@@ -51,8 +51,12 @@ pub mod inventory_counts;
 pub mod kds;
 /// Organization/Tenant Legal Entity commands.
 pub mod legal_entities;
+/// Read-only licence commands (the tablet's half of the licence surface).
+pub mod license;
 /// Local payment method commands (slice 6).
 pub mod local_payment;
+/// Location commands — the tablet's primary-location read (settings hub).
+pub mod locations;
 /// Loyalty / rewards commands.
 pub mod loyalty;
 /// Memo read/consumer commands (list/acknowledge).

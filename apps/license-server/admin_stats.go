@@ -251,7 +251,14 @@ func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		// Active devices (tenant_machines without revoked_at).
-		activeDevices := countRecordsByFilter(app, "tenant_machines", "revoked_at IS NULL")
+		//
+		// Corrected 2026-09-22: this read `revoked_at IS NULL`, which is SQL but
+		// NOT PocketBase filter syntax — the parser rejects it with "expected a
+		// sign operator, got IS". countRecordsByFilter swallows the error and
+		// returns 0, so this statistic reported ZERO active devices on every
+		// dashboard load, silently, and no test had seeded a machine to notice.
+		// `= null` is the correct spelling.
+		activeDevices := countRecordsByFilter(app, "tenant_machines", "revoked_at = null")
 
 		// Trial → paid rate (approximate: trial tenant → active subscription).
 		// Query subscriptions that were once trials (is_trial = true) and
@@ -572,19 +579,66 @@ func handleAdminStats(app core.App) func(e *core.RequestEvent) error {
 		}
 
 		// ── Needs-attention items (alert panel) ──────────────────────
-		// Three actionable conditions for the operator, in priority order:
-		// 1) grace_period subscriptions (payment failed / past due),
-		// 2) expired subscriptions whose license key is still active
+		// Five actionable conditions for the operator. ORDER IS SEVERITY, not
+		// chronology, and that matters because the list is capped (see the `>= 20`
+		// guards): a tamper finding must not be pushed off the panel by a backlog of
+		// billing rows. Order:
+		// 1) build-integrity violations (ADR #57 §2.4) — security, highest severity,
+		// 2) over-quota devices (ADR #57 §2.4) — a bypassed local gate,
+		// 3) grace_period subscriptions (payment failed / past due),
+		// 4) expired subscriptions whose license key is still active
 		//    (un-revoked key — someone keeps using a dead plan),
-		// 3) refunds/chargebacks in the last 30 days.
+		// 5) refunds/chargebacks in the last 30 days.
+		//
+		// Items 1 and 2 REUSE the alert scanner's own detection functions rather
+		// than re-deriving the conditions here. That is deliberate: the panel and
+		// the daily email are two views of one rule, and two implementations of it
+		// would eventually disagree about which tenant is violating.
 		type attentionItem struct {
-			Type   string `json:"type"` // grace_period | expired_active | refund
+			Type   string `json:"type"` // grace_period | expired_active | refund | integrity_mismatch | integrity_unknown_persistent | pos_over_quota
 			Email  string `json:"email"`
 			Tier   string `json:"tier,omitempty"`
 			Detail string `json:"detail"`
 			At     string `json:"at"` // date the condition was noticed
 		}
 		needsAttention := make([]attentionItem, 0)
+		noticeDate := now.Format("2006-01-02")
+
+		// 1. Build-integrity violations (ADR #57 §2.4/§2.5). Same collector the
+		//    daily scanner uses, so the panel cannot disagree with the email.
+		//    A mismatch is positive evidence of a re-signed APK; a persistent
+		//    `unknown` is unreadable reporting, which may equally be OUR bug — the
+		//    Detail text keeps the two distinguishable, as §Q4 requires.
+		intMismatches, intUnknowns, intErr := collectBuildIntegrityFindings(app, now)
+		if intErr != nil {
+			log.Printf("admin stats: build-integrity scan failed: %v", intErr)
+		}
+		for _, f := range append(intMismatches, intUnknowns...) {
+			if len(needsAttention) >= 20 {
+				break
+			}
+			needsAttention = append(needsAttention, attentionItem{
+				Type:   "integrity_" + f.condition,
+				Email:  f.email,
+				Detail: fmt.Sprintf("%d report(s) across %d device(s)", f.reports, len(f.devices)),
+				At:     noticeDate,
+			})
+		}
+
+		// 2. Over-quota devices (ADR #57 §2.4, the device axis). Also the scanner's
+		//    function, for the same reason.
+		for _, q := range findTenantsOverPosQuota(app) {
+			if len(needsAttention) >= 20 {
+				break
+			}
+			needsAttention = append(needsAttention, attentionItem{
+				Type:   "pos_over_quota",
+				Email:  q.email,
+				Tier:   q.tierKey,
+				Detail: fmt.Sprintf("%d active device(s), cap %d", q.active, q.cap),
+				At:     noticeDate,
+			})
+		}
 
 		// 1. Grace-period subscriptions (payment failed).
 		graceSubs, _ := app.FindRecordsByFilter("subscriptions",

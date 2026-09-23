@@ -15,10 +15,12 @@ import { loginAs, selectWorkspace, WORKSPACES } from './helpers';
  *   .workspace-card-name    — card name heading
  *   .workspace-card--disabled — disabled card
  *   .session-lock-card      — session lock card
+ *   #session-lock-pin-pad   — PIN keypad inside the card
  *   .session-lock-pad-key   — PIN keypad key
  *   .kds                    — KDS screen container
- *   .kds-title              — KDS heading
- *   .kds-order-count        — order count badge
+ *   [role="region"][aria-label="Kitchen Display System"] — KDS region
+ *   .kds-tabs               — Open/Completed tablist
+ *   .kds-column-header      — per-column title + order count
  *   [data-testid="audit-log-table"] — audit log container
  */
 
@@ -99,7 +101,12 @@ test.describe('Session Lock', () => {
     // Verify lock card content.
     await expect(page.locator('.session-lock-time')).toBeVisible();
     await expect(page.locator('.session-lock-date')).toBeVisible();
-    await expect(page.locator('.session-lock-sub')).toContainText('Enter PIN');
+
+    // The card must host the PIN pad, so it can actually be unlocked from
+    // here (the pad is the card's main area — SessionLockScreen.tsx:260-270).
+    const pinPad = page.locator('.session-lock-card #session-lock-pin-pad');
+    await expect(pinPad).toBeVisible();
+    await expect(pinPad).toHaveAttribute('aria-label', 'PIN pad');
 
     // Enter PIN to unlock.
     for (const digit of '1234') {
@@ -111,6 +118,42 @@ test.describe('Session Lock', () => {
     // Workspace home should reappear after unlock.
     await expect(page.locator('.workspace-home')).toBeVisible({ timeout: 10_000 });
   });
+
+  // ── E2E-27b: a rejected unlock marks the PIN row ────────────────
+  //
+  // The test above covers the SUCCESS path only. This exercises the failure,
+  // which is where the field-marking fix landed: the screen already announced
+  // the error (the notice carries role=alert), but nothing marked the row the
+  // user has to retry, and the shake is a CSS class a screen reader cannot
+  // perceive. Runs in a real browser so the mark is proven to survive the
+  // actual React commit and the transition, not just jsdom.
+
+  test('a rejected unlock marks the PIN row invalid until the user retries', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('auto-lock-minutes', '0.25');
+    });
+    await loginAs(page, 'owner', '1234');
+
+    const lockCard = page.locator('.session-lock-card');
+    await expect(lockCard).toBeVisible({ timeout: 20_000 });
+
+    const pinDots = page.locator('.session-lock-pin-dots');
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+
+    // A wrong PIN of the same length, so the screen attempts rather than waits.
+    for (const digit of '9999') {
+      await page.locator('.session-lock-pad-key').filter({ hasText: digit }).click();
+      await page.waitForTimeout(80);
+    }
+
+    await expect(pinDots).toHaveAttribute('aria-invalid', 'true', { timeout: 10_000 });
+
+    // Clears as soon as the user starts retrying, so a fresh attempt is not
+    // announced as already wrong.
+    await page.locator('.session-lock-pad-key').filter({ hasText: '1' }).click();
+    await expect(pinDots).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
 });
 
 // ── E2E-28: KDS ticket board ─────────────────────────────────
@@ -121,26 +164,34 @@ test.describe('KDS Ticket Board', () => {
     await selectWorkspace(page, WORKSPACES.KDS);
   });
 
-  test('KDS screen renders with title and order count', async ({ page }) => {
+  test('KDS screen renders with its region, tabs and order counts', async ({ page }) => {
     // Wait for KDS container.
     await page.waitForSelector('.kds', { timeout: 10_000 });
 
-    // Title must be visible.
-    await expect(page.locator('.kds-title')).toBeVisible();
-    await expect(page.locator('.kds-title')).toContainText('Kitchen Display');
+    // The board is a landmark region named after the screen
+    // (Localized id="kds-screen-aria" → "Kitchen Display System").
+    const region = page.getByRole('region', { name: 'Kitchen Display System' });
+    await expect(region).toBeVisible();
 
-    // Order count must show 0 (mock returns empty orders).
-    const orderCount = page.locator('.kds-order-count');
-    await expect(orderCount).toBeVisible({ timeout: 5_000 });
+    // The Open/Completed switcher is a tablist (id="kds-tablist-aria" →
+    // "View orders"), with both tabs rendered.
+    const tabs = region.getByRole('tablist', { name: 'View orders' });
+    await expect(tabs).toBeVisible();
+    await expect(tabs.getByRole('tab', { name: /^Open/ })).toBeVisible();
+    await expect(tabs.getByRole('tab', { name: 'Completed' })).toBeVisible();
 
-    // KDS layout switcher should be present.
-    const headerRight = page.locator('.kds-header-right');
-    await expect(headerRight).toBeVisible();
+    // The board prints one column per kitchen stage; the first column is
+    // Pending and carries the seeded order count ("Pending N orders" —
+    // column title + kds-column-count).
+    const pendingColumn = page.locator('.kds-column-header').filter({ hasText: 'Pending' });
+    await expect(pendingColumn).toBeVisible({ timeout: 5_000 });
+    await expect(pendingColumn).toContainText(/\d+ orders?/);
 
-    // No error state.
-    const errorEl = page.locator('.kds-error');
-    const hasError = await errorEl.isVisible().catch(() => false);
-    expect(hasError).toBe(false);
+    // KDS layout controls should be present.
+    await expect(page.locator('.kds-header-right')).toBeVisible();
+
+    // No error banner (it is only rendered on a failed KDS operation).
+    await expect(page.locator('.kds-error-banner')).toHaveCount(0);
   });
 });
 

@@ -13,8 +13,33 @@ fn fresh() -> (Store<'static>, String) {
          INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
          VALUES ('user-1', 'alice', 'hash', 'Alice', 'role-test', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
     ).unwrap();
+    seed_location_and_instances(conn);
 
     (store, "user-1".into())
+}
+
+/// Seed one location and the five workspace instances that used to ship in the
+/// baseline migration.
+///
+/// ADR #56 §2.6 removed those rows: a store with no merchant should have no
+/// location and no workspaces, and `provision_device` now creates both in one
+/// transaction. These tests exercise the workspace layer against a provisioned
+/// store, so the fixture reproduces what provisioning produces — the same rows,
+/// minus the fiction that they existed before a merchant did.
+///
+/// Kept as one helper so the five ids stay identical across every test in this
+/// file; several assert on them by name.
+fn seed_location_and_instances(conn: &rusqlite::Connection) {
+    conn.execute_batch(
+        "INSERT INTO locations (id, name, is_primary) VALUES ('default', 'Default Store', 1);
+         INSERT INTO workspace_instances (id, type_key, location_id, name, description, colour, status, last_accessed_at) VALUES
+            ('default-restaurant-pos', 'restaurant-pos', 'default', 'Restaurant POS', 'Cashier terminal for restaurant ordering', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-store-pos', 'store-pos', 'default', 'Store POS', 'Cashier terminal for retail', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-warehouse', 'warehouse', 'default', 'Warehouse', 'Product and stock management', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-admin', 'admin', 'default', 'Admin', 'System administration', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            ('default-kds', 'kds', 'default', 'Kitchen Display', 'Kitchen order queue display', NULL, 'active', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));"
+    )
+    .unwrap();
 }
 
 /// A subscription with the EMPTY quota block — workspace-type

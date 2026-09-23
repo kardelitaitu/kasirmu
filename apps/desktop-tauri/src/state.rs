@@ -35,7 +35,7 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //! | `tokio::sync::Mutex` | Every async-accessible field (`db`, `kernel`, `plugins`, `scanner_cancel`, `terminal_id`) | `.lock().await` is required in Tauri command handlers; calling `.lock()` on `std::sync::Mutex` from async code blocks the tokio worker thread. |
 //! | `std::sync::RwLock` | `session_store`, `kds_queue_cache` (both behind `Arc`) | Accessed from both sync (`resolve_session`, `create_session`) and async (`session cleanup daemon`) code. `tokio::sync::RwLock::read()` would panic if called from sync context without a blocking wrapper. Keep `std::sync::RwLock` and wrap async access with `tokio::task::spawn_blocking` when necessary. `kds_queue_cache` is the same shape for a sharper reason: its reader is the LAN `KdsQueueProvider`, a plain `Fn()` running synchronously inside the per-peer accept task — no await is possible there. |
 //! | `std::sync::mpsc` | `inventory_pubsub_shutdown` only | Used from `Drop` which is sync-only. Tokio channels don't implement `Sync` and would require an async `Drop` bound. |
-//! | `Arc<AtomicBool>` | Plugin reload flag | Lock-free flag set by the `notify` callback (sync) and consumed by the tokio loop (async). Correct by design — no `.lock()` at all. |
+//! | `Arc<AtomicU64>` | Plugin change-refusal counter | Lock-free counter set by the `notify` callback (sync) and read by the UI (async). Correct by design — no `.lock()` at all. |
 //!
 //! **Rule of thumb:** When adding a new field to `AppState`, default to
 //! `tokio::sync::Mutex` unless the field is accessed exclusively from
@@ -43,11 +43,10 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //! `std::sync::Mutex`, document why in the field's doc comment.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use kasirmu_security::mask::mask_token;
 
@@ -102,11 +101,18 @@ pub struct AppState {
     pub plugins: Arc<Mutex<Option<PluginManager>>>,
 
     /// Plugin file watcher (kept alive to prevent dropping).
+    ///
+    /// It no longer reloads anything: it only sets [`Self::plugin_change_refused`]
+    /// so the shell can surface that an unverified on-disk change was ignored (C2).
     pub plugin_watcher: Option<notify::RecommendedWatcher>,
 
-    /// Join handle for the plugin hot-reload background task. Aborted on
-    /// [`AppState::drop`] to stop the loop gracefully (M-5).
-    pub plugin_hot_reload_task: Option<tokio::task::JoinHandle<()>>,
+    /// Set by the plugin watcher when a plugin file changes on disk.
+    ///
+    /// The change is NEVER applied to the live manager — a running process that
+    /// can write a `.lua` file into the plugins directory must not obtain
+    /// in-process execution. The flag makes the refusal visible instead of
+    /// silent; the pending set is picked up on the next restart.
+    pub plugin_change_refused: Arc<AtomicU64>,
 
     /// Background sync daemon. Started during app setup via
     /// [`SyncDaemon::start`](platform_sync::daemon::SyncDaemon::start).
@@ -335,15 +341,14 @@ impl AppState {
                 },
             )));
 
-        // Start plugin hot-reload file watcher (M-5).
-        let (plugin_watcher, plugin_hot_reload_task) = if let Some(dir) = plugins_dir.as_ref() {
-            if dir.exists() {
-                start_plugin_watcher(plugins.clone(), dir.clone())
-            } else {
-                (None, None)
+        // Start the plugin change watcher (C2). It refuses rather than reloads:
+        // a changed plugin set is never swapped into the live runtime.
+        let plugin_change_refused = Arc::new(AtomicU64::new(0));
+        let plugin_watcher = match plugins_dir.as_ref() {
+            Some(dir) if dir.exists() => {
+                start_plugin_watcher(plugin_change_refused.clone(), dir.clone())
             }
-        } else {
-            (None, None)
+            _ => None,
         };
 
         // ── Kernel shutdown channel (M-2) ────────────────────────────
@@ -368,7 +373,7 @@ impl AppState {
             kernel: Mutex::new(Kernel::new()),
             plugins,
             plugin_watcher,
-            plugin_hot_reload_task,
+            plugin_change_refused,
             sync_daemon: SyncDaemon::new(),
             pg_sync_daemon: PgSyncDaemon::new(),
             cache,
@@ -683,78 +688,76 @@ impl AppState {
     }
 }
 
-/// Start a background file watcher that hot-reloads plugins when
-/// `.lua` or `plugin.toml` files change in `plugins_dir`.
+/// Watch `plugins_dir` for changes and REFUSE to apply them (C2).
 ///
-/// Returns a tuple of (file watcher, task join handle). The join handle
-/// should be stored and aborted during [`Drop`] to stop the loop
-/// gracefully (M-5).
+/// This function used to hot-reload: a `.lua` file appearing in the plugins
+/// directory was compiled and run in-process within about a second, with no
+/// verification of the bytes at all. Any process running as the same user could
+/// therefore reach in-process execution by writing one file.
+///
+/// It now records the change in `refused` and stops. The live
+/// [`PluginManager`] is never touched, so a plugin already running keeps
+/// serving the exact set it was loaded with — the content hash recorded at load
+/// time still describes it. The change takes effect on the next restart, which
+/// is an explicit operator action; there is no silent swap and no new IPC
+/// surface to invent, because the shell exposes no plugin command at all.
+///
+/// `refused` counts observed change events so the shell can surface a loud,
+/// visible refusal rather than ignoring the edit silently.
 fn start_plugin_watcher(
-    plugins: Arc<Mutex<Option<PluginManager>>>,
+    refused: Arc<AtomicU64>,
     plugins_dir: PathBuf,
-) -> (
-    Option<notify::RecommendedWatcher>,
-    Option<tokio::task::JoinHandle<()>>,
-) {
-    let reload_flag = Arc::new(AtomicBool::new(false));
-    let flag_clone = reload_flag.clone();
-
+) -> Option<notify::RecommendedWatcher> {
+    // The closure owns a copy: `plugins_dir` is still needed for the watch call
+    // below and the log line, and it is a small path, not a hot loop.
+    let watched = plugins_dir.clone();
     let mut watcher = match notify::RecommendedWatcher::new(
-        move |_res: Result<notify::Event, notify::Error>| {
-            flag_clone.store(true, Ordering::SeqCst);
+        move |res: Result<notify::Event, notify::Error>| {
+            let count = refused.fetch_add(1, Ordering::SeqCst) + 1;
+            match res {
+                Ok(event) => tracing::error!(
+                    ?event,
+                    dir = %watched.display(),
+                    refusals = count,
+                    "plugin change REFUSED: the plugin host does not hot-swap an unverified \
+                     plugin set. The running plugins are unchanged; restart the app to load \
+                     the new set."
+                ),
+                Err(e) => tracing::error!(
+                    error = %e,
+                    dir = %watched.display(),
+                    refusals = count,
+                    "plugin watcher error"
+                ),
+            }
         },
         notify::Config::default(),
     ) {
         Ok(w) => w,
         Err(e) => {
             tracing::warn!(error = %e, "failed to create plugin file watcher");
-            return (None, None);
+            return None;
         }
     };
 
     if let Err(e) = watcher.watch(&plugins_dir, notify::RecursiveMode::Recursive) {
         tracing::warn!(error = %e, "failed to watch plugins directory");
-        return (None, None);
+        return None;
     }
 
-    tracing::info!(dir = %plugins_dir.display(), "plugin hot-reload watcher started");
-
-    let handle = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            if reload_flag.swap(false, Ordering::SeqCst) {
-                tracing::info!("plugin change detected, hot-reloading…");
-                reload_plugins(&plugins, &plugins_dir).await;
-            }
-        }
-    });
-
-    (Some(watcher), Some(handle))
+    tracing::info!(
+        dir = %plugins_dir.display(),
+        "plugin watcher started — changes are refused, not hot-reloaded"
+    );
+    Some(watcher)
 }
 
-/// Rebuild the plugin manager from `plugins_dir`, replacing the shared
-/// handle only on success.
+/// Resolve the live database path, running the one-time data-dir migration.
 ///
-/// Last-known-good rollback (PLG-07): if the reload fails (invalid manifest,
-/// unsafe script path, etc.) the previous runtime is kept untouched so a
-/// broken edit can never take the plugin subsystem down.
-async fn reload_plugins(plugins: &Arc<Mutex<Option<PluginManager>>>, plugins_dir: &Path) {
-    let mut guard = plugins.lock().await;
-    match PluginManager::new(plugins_dir) {
-        Ok(pm) => {
-            *guard = Some(pm);
-            tracing::info!("plugins hot-reloaded successfully");
-        }
-        Err(e) => {
-            tracing::error!(
-                error = %e,
-                "failed to hot-reload plugins, keeping old runtime"
-            );
-        }
-    }
-}
-
-fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+/// `pub(crate)` because the setup closure calls this BEFORE `AppState::new` to
+/// check for a pending restore request; `AppState::new` itself resolves the same
+/// path through here, so both agree on one location.
+pub(crate) fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
         .app_data_dir()
@@ -787,12 +790,6 @@ impl Drop for AppState {
         // requests against a half-stopped backend.
         if let Some(handle) = self.local_api.try_lock().ok().and_then(|mut g| g.take()) {
             handle.stop();
-        }
-
-        // Abort the plugin hot-reload background task (M-5).
-        if let Some(handle) = self.plugin_hot_reload_task.take() {
-            handle.abort();
-            tracing::info!("plugin hot-reload task cancelled");
         }
 
         // Signal kernel shutdown (M-2). This tells any kernel command
@@ -854,7 +851,7 @@ impl AppState {
             kernel: Mutex::new(Kernel::new()),
             plugins: Arc::new(Mutex::new(None)),
             plugin_watcher: None,
-            plugin_hot_reload_task: None,
+            plugin_change_refused: Arc::new(AtomicU64::new(0)),
             sync_daemon: SyncDaemon::new(),
             pg_sync_daemon: PgSyncDaemon::new(),
             cache: kasirmu_core::cache::create_cache("redis://127.0.0.1/", 300),

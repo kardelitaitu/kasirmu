@@ -3,6 +3,8 @@ name: deploy-cloudflare
 description: Deploy, verify and rotate credentials for the kasir.mu marketing site and website Worker on Cloudflare (Astro static build in website/, worker.ts, the dashboard/admin routes, the runtime LICENSE_API_URL config, the CF_API_KEY Worker secret, and the Cloudflare API token). Use when asked to deploy the website, publish the site, run wrangler, change the licence-server URL the site talks to, verify what is live on kasir.mu, or rotate an expired/rejected Cloudflare token. This is a MANUAL deploy — no workflow ships the site.
 ---
 
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all six paths the file cites exist — `scripts/wrangler-deploy.sh`, `website/worker.ts`, `website/wrangler.toml`, `website/public/_headers`, `website/node_modules`. The `oz-pos` Worker name is NOT rebrand drift: the file states plainly that `oz-pos` is the Cloudflare Worker's name while the brand is `kasir.mu`, and the string is allow-listed in the drift guard's crate-prefix check, so it was deliberately left alone. The `v0.0.39` tag in the example commands matches the workspace version lock at `Cargo.toml:37`. · NOT re-measured (would need live Cloudflare credentials or a deploy): the `wrangler` CLI behaviours, the secret-rotation steps, and the claim that a deploy actually lands. No network call or deploy was attempted during this audit. -->
+
 # Deploying the kasir.mu website to Cloudflare
 
 The site is an Astro static build in `website/` served from a Cloudflare Worker named
@@ -194,4 +196,4 @@ to the environment is not the same as binding a bucket.
 8. **Deploying from the repo root.** No config is picked up there; the command silently targets
    the wrong project or fails.
 
-> last audited 21-09-26 by Buffy
+> last audited 22-09-26 by Budak-Korporat

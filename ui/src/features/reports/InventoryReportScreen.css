@@ -1,5 +1,20 @@
 .inventory-report {
   padding: var(--space-4);
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose, the
+     same choice PosScreen.css, RetailPosScreen.css, EodReportScreen.css and
+     TransitAuditScreen.css each record and for the same reason: the shell's slot
+     carries the name `app-content` (AppLayout.css:515, tablet.css:179), but a
+     named query would find no container at all in every mount that does not go
+     through the shell (tests, e2e harness, the screen rendered standalone),
+     while an unnamed query against the nearest container is the same
+     measurement inside the shell and stays correct outside it.
+     No `margin-inline: auto` companion here, unlike EodReportScreen.css: that
+     sheet needed one because container-type suppressed its block-level stretch
+     under a `max-width`. This root declares no max-width and is stretched
+     either way — as a flex item of .app-content-inner (AppLayout.css:522)
+     inside the shell, and as a block-level box outside it. */
+  container-type: inline-size;
 }
 
 /* ── Loading skeleton ───────────────────────────────────────── */
@@ -7,6 +22,14 @@
 .inventory-report-loading-skeleton {
   padding: var(--space-4);
   pointer-events: none;
+  /* The same screen root in its loading state, and therefore the same
+     measurement: this state renders the identical
+     .inventory-report-table-header / .inventory-report-row grid
+     (InventoryReportScreen.tsx:122-133), so without its own container those
+     tiers would resolve against the shell's ANCESTOR container and measure a
+     box this screen does not own. Both roots carry the `var(--space-4)`
+     padding the tier arithmetic below assumes, so the two agree. */
+  container-type: inline-size;
 }
 
 .inventory-report-header {
@@ -143,4 +166,143 @@
 
 .inventory-report-empty p {
   margin: 0;
+}
+
+/* ── Narrow-container tiers (ADR-0001 T2 / Slice 5) ────────────────
+   This sheet declares no `@media` and, before this block, no `@container`
+   either — so the page was not merely un-tuned on a narrow slot, it had no rule
+   that could react to its box at all. What is folded here is the table's own
+   fixed-px geometry: the only surface on this page whose shape depends on the
+   box rather than on its own content.
+
+   WHAT IS MEASURED. Both roots (`.inventory-report`,
+   `.inventory-report-loading-skeleton`) declare `container-type: inline-size`,
+   so these tiers measure the CONTAINER'S CONTENT BOX: the root's own
+   `padding: var(--space-4)` (16px per side) is already excluded from the queried
+   width, not subtracted again below. The card adds nothing —
+   `.inventory-report-table-card` overrides the Card component's `--padding-md`
+   with `padding: 0`, and `.card-body` carries no padding — so the header and
+   every row span the queried width exactly.
+
+   The header and the rows share one three-lane grid, identical in both:
+
+     7.5rem  = 120px   SKU      (--text-xs = 0.625rem, `--font-mono`)
+     1fr               Product  (the only lane whose content length is unbounded)
+     6.25rem = 100px   Qty      (--text-sm, `--font-mono`, right-aligned)
+     gap: var(--space-2) = 8px x2
+     padding: var(--space-3) var(--space-4) = 12px / 16px per side
+
+   so a row's fixed chrome is 120 + 100 + 2x8 + 2x16 = 268px and the Product
+   lane is whatever is left. Two of those lanes are far wider than the content
+   they hold: "SKU-0001" is about 48px at 10px mono inside 120px, and a
+   four-digit quantity about 24px inside 100px. The loading state says the same
+   thing independently — its row skeletons reserve 4rem (64px) for the SKU and
+   7rem (112px) for the product name (InventoryReportScreen.tsx:129-131) — so
+   7rem is the Product lane the design itself draws, and it is the floor used
+   below.
+
+   WHY THE ROW CLIPS RATHER THAN SCROLLS. A `1fr` track is `minmax(auto, 1fr)`,
+   and `auto` there resolves to the ITEM's minimum, which for a grid item
+   defaults to `min-width: auto` = min-content. So the Product lane will not
+   shrink below the longest word of a product name: the row grows wider than its
+   card, and `.inventory-report-table-card` sets `overflow: hidden` — the
+   overflow is CLIPPED, not scrollable, and the lane that falls off the right
+   edge is the last one, Qty, the number this report exists to show. At 380px of
+   queried width the Product lane is 380 - 268 = 112px, exactly the skeleton's
+   own reservation; below that the lane is narrower than what the loading state
+   itself draws, and a longer name's min-content is what decides when the clip
+   actually starts.
+
+   TIER 1 — 380px, the row. 268px of fixed chrome plus the 7rem the loading
+   state reserves = 380px, the exact queried width at which the Product lane
+   stops matching the design. Two changes, because either alone is half a fix.
+   `min-width: 0` on the name drops the `min-width: auto` floor so the `1fr`
+   track can shrink and the text wrap — that is what removes the clip; and
+   `overflow-wrap: anywhere` is what makes an unbroken token (a SKU-shaped
+   product name) wrap rather than spill, the same idiom TransitAuditScreen.css
+   uses for its narrow-tier table. The lane rebalance then stops the name from
+   being squeezed while 120px of lane sits under a 48px SKU: SKU 7.5rem -> 5rem
+   (80px) and Qty 6.25rem -> 4.5rem (72px), both still 1.6x and 3x their
+   content, returning 68px. Fixed chrome becomes 80 + 72 + 16 + 32 = 200px, so
+   the Product lane is 180px at 380 and 120px at the 336px tier. Nothing is
+   hidden, so the header, the rows and the loading skeleton keep the same three
+   lanes and stay on one grid — which is why this is not a `display: none`:
+   the header's three cells are bare `<span>`s with no class of their own
+   (InventoryReportScreen.tsx:182-190), so a per-lane hide can only reach the
+   ROW and would leave the header and the skeleton holding three cells against a
+   two-cell row.
+
+   TIER 2 — 336px, the header controls. A second, independent run overflows
+   below 380px. `.inventory-report-controls` is a label, a fixed 4.5rem (72px)
+   input and two `size="md"` buttons, and `.btn` carries `white-space: nowrap`
+   — so nothing in the run can shrink. At --text-sm the label "Threshold" is
+   about 54px; at --text-base the buttons are about 69px ("Print") and 104px
+   ("Export CSV"), each 2x16px padding plus a 1px transparent border; three
+   `var(--space-2)` gaps add 24px. The run is therefore about 323px, and
+   `.inventory-report-controls` declares no `flex-wrap` — so below that it
+   overflows the line it was given, and `.app-content`'s `overflow-x: hidden`
+   (AppLayout.css:509) clips the last button rather than scrolling to it. 336 is
+   that 323px estimate rounded up to the next `var(--space-4)` (16px) step, so
+   the wrap is already in force before the run reaches its own minimum instead of
+   engaging exactly on it.
+
+   THE NARROW SHELL, measured rather than assumed. In a 640px tablet shell the
+   queried box is 640 - 2x16 (`.tablet-shell .app-content-inner`,
+   tablet.css:177-182, `padding: var(--tablet-spacing)` = 1rem) - 2x16 (this
+   root) = 576px, so neither tier matches there and the page renders its wide
+   layout — deliberately. At 576px the Product lane has 576 - 268 = 308px, well
+   above the 112px floor, and the controls have 576px for a 323px run: there is
+   nothing to fold at the tablet's own narrow case. These tiers claim only the
+   boxes below it (a phone-sized viewport, where the shell hands the page about
+   296px). Both sit below the shell's own narrow tier (AppLayout.css:527,
+   `max-width: 1023px`) and are declared widest-first, so the 336px block can
+   still match inside the 380px one.
+
+   Desktop / landscape base case — a content slot at or above 380px, which
+   includes every desktop window this app ships (minWidth 960,
+   apps/desktop-tauri/tauri.conf.json) — matches neither tier and renders
+   EXACTLY as before: every rule below is additive and inside a `max-width`
+   block, and no declaration outside these two blocks changed. */
+
+@container (max-width: 380px) {
+  /* 268px of fixed chrome (120 SKU + 100 Qty + 2x8 gap + 2x16 padding) plus the
+     7rem the loading state reserves for the product name = 380px, the exact
+     queried width at which the Product lane starves. */
+  .inventory-report-table-header,
+  .inventory-report-row {
+    /* SKU 120 -> 80px and Qty 100 -> 72px: both still comfortably above the
+       ~48px and ~24px their content needs. Fixed chrome becomes 200px, which
+       returns 68px to the Product lane. */
+    grid-template-columns: 5rem 1fr 4.5rem;
+  }
+
+  /* `1fr` floors at the name's min-content width, which is what forces the row
+     wider than the card and lets `overflow: hidden` clip the Qty lane.
+     `min-width: 0` drops that floor so the track shrinks and the name wraps;
+     it is meaningful on the Product lane only, because the other two are fixed
+     tracks that cannot shrink either way. */
+  .inventory-report-name {
+    min-width: 0;
+  }
+
+  /* Both text lanes hold unbroken tokens (a SKU, a product name) and neither can
+     be relied on to contain a space. Wrapping them at any character is what
+     stops the token spilling past its track — and the SKU needs this on its own
+     account, since its 5rem track above is fixed and its content is not. */
+  .inventory-report-sku,
+  .inventory-report-name {
+    overflow-wrap: anywhere;
+  }
+}
+
+@container (max-width: 336px) {
+  /* The controls' ~323px unbreakable run (label ~54 + input 72 + Print ~69 +
+     Export CSV ~104 + three 8px gaps), against a box that the header's own
+     `flex-wrap: wrap` has already given its own line. Without this the run
+     overflows that line and `.app-content`'s `overflow-x: hidden` clips the
+     Export CSV button. 336 = the 323px estimate rounded up to the next
+     var(--space-4) step. */
+  .inventory-report-controls {
+    flex-wrap: wrap;
+  }
 }

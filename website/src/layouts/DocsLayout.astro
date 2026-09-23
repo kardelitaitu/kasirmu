@@ -3,7 +3,9 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import DocSidebar, { type CategoryGroup } from '../components/DocSidebar.astro';
 import SiteHead from '../components/SiteHead.astro';
+import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../i18n';
+import type { SearchDoc } from '../lib/search-index';
 import '../styles/global.css';
 
 interface Heading {
@@ -20,17 +22,45 @@ interface Props {
   entries: CategoryGroup[];
   currentSlug?: string;
   headings?: Heading[];
+  /**
+   * This locale's docs for the header's quick-search modal, built by the docs
+   * route that renders this layout (`toSearchDocs`). Forwarded verbatim — the
+   * docs-ness rule stays with the routes, so this layout owns no data fetch.
+   */
+  searchDocs?: SearchDoc[];
 }
 
-const { locale, title, description, updated, entries, currentSlug, headings } = Astro.props;
+const { locale, title, description, updated, entries, currentSlug, headings, searchDocs } = Astro.props;
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
 const docDesc = description ?? t(locale, 'docs.title');
+// The copy button is built by the inline script below, and an `is:inline`
+// script is never bundled — it cannot import the dictionaries, so its three
+// strings arrive as vars (the same route index.astro uses for the language
+// key). Spelled here rather than in English inside the script: the button is
+// visible text on every /id/docs/* page.
+const copyCode = t(locale, 'docs.copyCode');
+const copiedCode = t(locale, 'docs.copiedCode');
+const copyCodeLabel = t(locale, 'docs.copyCodeLabel');
+// The feedback acknowledgement is written into the DOM on click, so it was two
+// inline `isId ? … : 'Thanks…'` ternaries — the last copy on this page still
+// spelled out in the script instead of the dictionaries.
+const feedbackThanksYes = t(locale, 'docs.feedback.thanksYes');
+const feedbackThanksNo = t(locale, 'docs.feedback.thanksNo');
+// Where a reader goes after reading a doc. The docs are the site's most
+// search-aligned content — people arrive from "how do I …" queries — but until
+// this block every article ended with the feedback widget and no route into the
+// product: of the 36 docs pages, 30 linked to no commercial page at all in the
+// body (only the site-wide header and footer did). Both links are locale-relative
+// so an /en/ doc can never send an English reader to the Indonesian download
+// page, and `check:seo` asserts that per page.
+const downloadHref = getRelativeLocaleUrl(locale, 'download');
+const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
 ---
 
 <!doctype html>
 <html lang={locale}>
   <head>
-    <SiteHead title={title} titleTag={`${title} — ${t(locale, 'docs.title')}`} description={docDesc} locale={locale} runtimeConfig={false}>
+    <SiteHead title={title} titleTag={`${title} — ${t(locale, 'docs.title')}`} description={docDesc} locale={locale} runtimeConfig={false} ogType="article" articleUpdatedAt={updated}>
       <script type="application/ld+json" is:inline set:html={JSON.stringify({
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
@@ -46,13 +76,31 @@ const docDesc = description ?? t(locale, 'docs.title');
         "headline": title,
         "description": docDesc,
         "inLanguage": locale,
+        // image, publisher and mainEntityOfPage are part of Google's Article
+        // guidance; without them the Article block was incomplete and the
+        // docs pages could not qualify for an article rich result.
+        "image": new URL('/og-image.png', Astro.site).toString(),
+        "mainEntityOfPage": new URL(Astro.url.pathname, Astro.site).toString(),
         ...(updated ? { "dateModified": updated } : {}),
-        "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" }
+        "author": { "@type": "Organization", "name": "kasir.mu", "url": "https://kasir.mu" },
+        "publisher": {
+          "@type": "Organization",
+          "name": "kasir.mu",
+          "logo": { "@type": "ImageObject", "url": new URL('/og-image.png', Astro.site).toString() }
+        }
       })} />
     </SiteHead>
   </head>
   <body class="flex min-h-screen flex-col bg text-ink antialiased">
-    <Header />
+    <!-- Skip link — see Base.astro. On docs pages the sidebar adds ~18 more
+         tab stops before the article, so this matters most here. -->
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-on-primary"
+    >
+      {t(locale, 'nav.skipToContent')}
+    </a>
+    <Header locale={locale} searchDocs={searchDocs} />
 
     <!-- Mobile sidebar (collapsible) -->
     <details class="border-b border-ink/5 md:hidden">
@@ -71,7 +119,7 @@ const docDesc = description ?? t(locale, 'docs.title');
         <DocSidebar locale={locale} entries={entries} currentSlug={currentSlug} />
       </aside>
 
-      <main class="min-w-0 flex-1 px-4 py-10 sm:px-8">
+      <main id="main" class="min-w-0 flex-1 px-4 py-10 sm:px-8">
         <article class="docs-content mx-auto max-w-3xl">
           <h1 class="text-3xl font-bold">{title}</h1>
           {description && <p class="mt-3 text-muted">{description}</p>}
@@ -84,11 +132,34 @@ const docDesc = description ?? t(locale, 'docs.title');
             <slot />
           </div>
 
+          <!-- Next step: the two pages that continue the job this article
+               started. Kept inside <article> so it is part of the document
+               body for both a reader and a crawler, and rendered from the
+               dictionary so it is in the page's own language. -->
+          <div class="mt-12 rounded-xl border border-accent/30 bg-surface/60 p-6">
+            <p class="text-sm font-semibold text-ink">{t(locale, 'docs.nextStep.title')}</p>
+            <p class="mt-1 text-xs text-muted">{t(locale, 'docs.nextStep.body')}</p>
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+              <a
+                href={downloadHref}
+                class="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-primary transition hover:opacity-90"
+              >
+                {t(locale, 'docs.nextStep.download')}
+              </a>
+              <a
+                href={pricingHref}
+                class="rounded-md border border-ink/15 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink/5"
+              >
+                {t(locale, 'docs.nextStep.pricing')}
+              </a>
+            </div>
+          </div>
+
           <!-- Doc Page Helpful Feedback Widget -->
           <div class="mt-12 rounded-xl border border-ink/10 bg-surface/50 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
-              <p class="text-sm font-medium text-ink">{locale === 'id' ? 'Apakah halaman ini bermanfaat?' : 'Was this page helpful?'}</p>
-              <p class="text-xs text-muted mt-0.5">{locale === 'id' ? 'Bantu kami menyempurnakan dokumentasi kasir.mu' : 'Help us improve the kasir.mu documentation'}</p>
+              <p class="text-sm font-medium text-ink">{t(locale, 'docs.feedback.question')}</p>
+              <p class="text-xs text-muted mt-0.5">{t(locale, 'docs.feedback.hint')}</p>
             </div>
             <div class="flex items-center gap-2" data-doc-feedback-wrap>
               <button
@@ -96,14 +167,14 @@ const docDesc = description ?? t(locale, 'docs.title');
                 data-doc-feedback-yes
                 class="rounded-md border border-ink/10 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-ink/5"
               >
-                👍 {locale === 'id' ? 'Ya' : 'Yes'}
+                👍 {t(locale, 'docs.feedback.yes')}
               </button>
               <button
                 type="button"
                 data-doc-feedback-no
                 class="rounded-md border border-ink/10 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition hover:bg-ink/5"
               >
-                👎 {locale === 'id' ? 'Belum' : 'No'}
+                👎 {t(locale, 'docs.feedback.no')}
               </button>
             </div>
           </div>
@@ -137,9 +208,12 @@ const docDesc = description ?? t(locale, 'docs.title');
       }
     </div>
 
-    <Footer />
+    <Footer locale={locale} />
 
-    <script is:inline>
+    <script
+      is:inline
+      define:vars={{ copyCode, copiedCode, copyCodeLabel, feedbackThanksYes, feedbackThanksNo }}
+    >
       (() => {
         const setupDocsFeatures = () => {
           // 1. Copy code buttons on pre blocks
@@ -153,16 +227,16 @@ const docDesc = description ?? t(locale, 'docs.title');
             const btn = document.createElement('button');
             btn.className = 'copy-code-btn';
             btn.type = 'button';
-            btn.textContent = 'Copy';
-            btn.setAttribute('aria-label', 'Copy code to clipboard');
+            btn.textContent = copyCode;
+            btn.setAttribute('aria-label', copyCodeLabel);
             btn.addEventListener('click', async () => {
               const code = pre.querySelector('code')?.innerText || pre.innerText;
               try {
                 await navigator.clipboard.writeText(code);
-                btn.textContent = '✓ Copied';
+                btn.textContent = copiedCode;
                 btn.classList.add('text-green-500');
                 setTimeout(() => {
-                  btn.textContent = 'Copy';
+                  btn.textContent = copyCode;
                   btn.classList.remove('text-green-500');
                 }, 2000);
               } catch {}
@@ -198,12 +272,11 @@ const docDesc = description ?? t(locale, 'docs.title');
           const btnYes = document.querySelector('[data-doc-feedback-yes]');
           const btnNo = document.querySelector('[data-doc-feedback-no]');
           if (fbWrap && btnYes && btnNo) {
-            const isId = document.documentElement.lang === 'id';
             btnYes.addEventListener('click', () => {
-              fbWrap.innerHTML = '<span class="text-xs font-semibold text-green-500">✓ ' + (isId ? 'Terima kasih atas masukannya!' : 'Thanks for your feedback!') + '</span>';
+              fbWrap.innerHTML = '<span class="text-xs font-semibold text-green-500">✓ ' + feedbackThanksYes + '</span>';
             });
             btnNo.addEventListener('click', () => {
-              fbWrap.innerHTML = '<span class="text-xs font-semibold text-muted">' + (isId ? 'Terima kasih, kami akan terus menyempurnakannya.' : 'Thanks, we will improve it!') + '</span>';
+              fbWrap.innerHTML = '<span class="text-xs font-semibold text-muted">' + feedbackThanksNo + '</span>';
             });
           }
         };

@@ -3,7 +3,6 @@
 use super::*;
 use crate::testing::TestBridge;
 use kasirmu_core::db::receipt_formats::ReceiptSource;
-use kasirmu_core::migrations;
 use kasirmu_core::session::SessionContext;
 
 fn seed_owner(conn: &rusqlite::Connection) {
@@ -39,7 +38,7 @@ fn owner_session(bridge: &TestBridge, token: &str) {
 
 #[tokio::test]
 async fn read_falls_back_to_legacy_keys_with_legacy_provenance() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = flow_state(conn);
     owner_session(&bridge, "owner-tok");
@@ -73,7 +72,7 @@ async fn read_falls_back_to_legacy_keys_with_legacy_provenance() {
 
 #[tokio::test]
 async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = flow_state(conn);
     owner_session(&bridge, "owner-tok");
@@ -110,7 +109,7 @@ async fn layout_write_scopes_to_the_store_location_and_readback_agrees() {
 
 #[tokio::test]
 async fn layout_write_rejects_nonsense_width_as_validation() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = flow_state(conn);
     owner_session(&bridge, "owner-tok");
@@ -146,7 +145,7 @@ async fn layout_write_rejects_nonsense_width_as_validation() {
 
 #[tokio::test]
 async fn denies_staff_without_settings_edit() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();
@@ -196,7 +195,7 @@ async fn denies_staff_without_settings_edit() {
 
 #[tokio::test]
 async fn content_write_targets_the_linked_entity_and_readback_agrees() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = flow_state(conn);
     owner_session(&bridge, "owner-tok");
@@ -245,10 +244,27 @@ async fn content_write_targets_the_linked_entity_and_readback_agrees() {
 
 #[tokio::test]
 async fn content_write_fails_closed_without_a_linked_entity() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let bridge = flow_state(conn);
     owner_session(&bridge, "owner-tok");
+
+    // The provisioned baseline ships a primary location WITH a linked legal
+    // entity (ADR #56 §2.6: provisioning creates both together), so the
+    // orphan state this test is about no longer occurs by default — it must be
+    // constructed. Detach the entity and unset the primary flag: the write path
+    // resolves content through the primary location's entity, so with neither
+    // it has nothing to write to and must fail closed rather than invent one.
+    {
+        let store_conn = bridge.db_manager().open_store("default").unwrap();
+        let guard = store_conn.lock().unwrap();
+        guard
+            .execute(
+                "UPDATE locations SET legal_entity_id = NULL, is_primary = 0",
+                [],
+            )
+            .unwrap();
+    }
 
     let result = set_receipt_content_scoped(
         &bridge.ctx(),

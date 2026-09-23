@@ -18,6 +18,7 @@
  */
 
 import { licenseApiUrl } from '../lib/runtime-config';
+import { getSessionToken } from '../lib/session';
 
 declare global {
   interface Window {
@@ -34,8 +35,6 @@ declare global {
     };
   }
 }
-
-const API = licenseApiUrl();
 
 /** Called once when the Snap overlay closes, with whether the payment succeeded. */
 export type OnSnapClosed = (completed: boolean) => void;
@@ -89,9 +88,22 @@ export async function openMidtransCheckout(
   onClosed?: OnSnapClosed,
   bundle?: string,
 ): Promise<void> {
-  const token = window.sessionStorage.getItem('oz_session');
-  if (!token || !API) throw new Error('midtrans not configured');
-  const res = await fetch(`${API}/api/v1/midtrans/snap`, {
+  // Cookie-first via the single session owner (session.ts): a signed-in user
+  // whose sessionStorage is empty (new tab, cookie-only login) must still be
+  // able to open the Midtrans overlay. Reading sessionStorage directly here
+  // made the id-locale checkout fail outright for those users.
+  const token = await getSessionToken();
+  // Resolved per call, NOT at module scope. `licenseApiUrl()` reads
+  // window.__OZ_CONFIG__, which /__oz/runtime-config.js can assign *after* this
+  // module has been evaluated (the script is deferred); a module-scope capture
+  // then freezes the pre-config answer (undefined) and the click throws
+  // 'midtrans not configured' without issuing a request. MEASURED 2026-09-23 on
+  // a build of this tree with the config script delayed 1s: the account
+  // dashboard rendered correctly and this button sent nothing, while the same
+  // build with the config present POSTed to the runtime host.
+  const api = licenseApiUrl();
+  if (!token || !api) throw new Error('midtrans not configured');
+  const res = await fetch(`${api}/api/v1/midtrans/snap`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

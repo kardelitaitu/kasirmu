@@ -273,7 +273,7 @@ const SCREENS: ScreenEntry[] = [
     // The Agent 3 extraction moved the table/drawer/assignment JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
     additionalTsx: [
-      'staff/components/StaffListTable.tsx',
+      'staff/components/StaffRoster.tsx',
       'staff/components/StaffDetailDrawer.tsx',
       'staff/components/RoleAssignmentMatrix.tsx',
       // The status footer renders staff-mgmt-footer* styled by this sheet.
@@ -282,20 +282,32 @@ const SCREENS: ScreenEntry[] = [
       'staff/components/StaffManagementFooter.tsx',
       // The header tab strip renders staff-tabs / staff-tab*, also styled here.
       'staff/components/StaffTabs.tsx',
+      // The Trash tab's panel renders staff-mgmt-trash* from the same sheet.
+      'staff/components/StaffTrashPanel.tsx',
     ],
+    // The sheet gates ONE rule on the memo stack's presence — see the
+    // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
+    // SIBLING of this page under #root, so its class can never appear in this
+    // screen's markup.
+    externalClasses: ['memo-stack'],
   },
 
   // ── Setup ─────────────────────────────────────────────
   {
-    name: 'SetupWizard',
-    tsx: 'setup/SetupWizard.tsx',
-    // `StepAccount.tsx` shares this sheet, so the used-class walk has to read it.
-    // `lsp-root` lives in `components/LiveSetupPreview.css`, but the wizard sheet names it
-    // inside a `:has()` — so it belongs to a child component, which is what externalClasses
-    // is for (the dead-class walk reads this file's TSX, not the child's).
-    css: ['setup/SetupWizard.css'],
-    additionalTsx: ['setup/components/StepAccount.tsx'],
-    externalClasses: ['lsp-root'],
+    // First-run provisioning (ADR #56 §2.3). Its own sheet rather than a reuse
+    // of SetupWizard.css: the flow replaces the wizard on the unprovisioned
+    // path, and the two have different geometry (the wizard is a multi-step
+    // frame, this is one card).
+    name: 'ProvisioningFlow',
+    tsx: 'setup/ProvisioningFlow.tsx',
+    css: ['setup/ProvisioningFlow.css'],
+    // Cited, not muted: the tablet email/code fields take their accessible
+    // names from visually-hidden <label>s, so this screen names `.sr-only`,
+    // which is defined in theme/components.css and imported by both entry
+    // points (main.tsx:7 desktop, main.mobile.tsx:20 tablet). Same treatment as
+    // KdsScreen and SettingsSelect above — a real dependency on a global
+    // utility sheet, not a class this feature's own sheet should have to own.
+    parentCss: ['../theme/components.css'],
   },
 
   // ── Customers ─────────────────────────────────────────

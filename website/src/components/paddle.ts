@@ -30,7 +30,7 @@
  */
 
 import { licenseApiUrl } from '../lib/runtime-config';
-import { getSessionToken } from '../lib/session';
+import { EMAIL_STORAGE_KEY, getSessionToken, SESSION_STORAGE_KEY } from '../lib/session';
 
 /** Event payload handed to Paddle.Initialize's eventCallback (v2). */
 export interface PaddleEvent {
@@ -86,11 +86,11 @@ function paddleEventCallback(event: PaddleEvent): void {
 const TOKEN = import.meta.env.PUBLIC_PADDLE_CLIENT_TOKEN as string | undefined;
 const ENVIRONMENT =
   (import.meta.env.PUBLIC_PADDLE_ENVIRONMENT as string | undefined) === 'sandbox' ? 'sandbox' : 'production';
-const API = licenseApiUrl();
 
-/** sessionStorage keys shared with AuthForm / AccountView. */
-export const SESSION_KEY = 'oz_session';
-export const EMAIL_KEY = 'oz_email';
+// Neither storage key is declared here. `SESSION_STORAGE_KEY` and
+// `EMAIL_STORAGE_KEY` both live in lib/session.ts — the single owner of session
+// state — and this module imports them like every other call site, so the key a
+// logout clears cannot drift from the key a login wrote.
 
 /**
  * Placeholder ids (`pri_placeholder_…`) are used in the pricing content
@@ -188,21 +188,23 @@ export async function openPaddleCheckout(
  */
 export function clearSession(): void {
   try {
-    window.sessionStorage.removeItem(SESSION_KEY);
-    window.sessionStorage.removeItem(EMAIL_KEY);
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    window.sessionStorage.removeItem(EMAIL_STORAGE_KEY);
   } catch {
     // Storage unavailable (private mode) — nothing to clear.
   }
 }
 
-/** True when a session token is present (signed in). */
-export function hasSession(): boolean {
-  try {
-    return Boolean(window.sessionStorage.getItem(SESSION_KEY));
-  } catch {
-    return false; // storage unavailable (private mode) — treat as signed out
-  }
-}
+/**
+ * Whether the user is signed in, cookie-first.
+ *
+ * Re-exported from session.ts — the SINGLE owner of session state — so every
+ * caller (the checkout CTA gate, the header nav) resolves the same way. Never
+ * read sessionStorage here: it is per-tab, so a session that lives only in the
+ * httpOnly cookie (a new tab, or another tab after login) would be reported as
+ * signed out.
+ */
+export { hasSession } from '../lib/session';
 
 /**
  * The signed-in user's email: cached in sessionStorage (set by AuthForm
@@ -216,17 +218,23 @@ export function hasSession(): boolean {
  */
 export async function getSessionEmail(): Promise<string | null> {
   try {
-    const cached = window.sessionStorage.getItem(EMAIL_KEY);
+    const cached = window.sessionStorage.getItem(EMAIL_STORAGE_KEY);
     if (cached) return cached;
     const token = await getSessionToken();
-    if (!token || !API) return null;
-    const res = await fetch(`${API}/api/v1/web/me`, {
+    // Resolved per call, NOT at module scope: `licenseApiUrl()` reads
+    // window.__OZ_CONFIG__, which /__oz/runtime-config.js can assign after this
+    // module is evaluated (the script is deferred). A module-scope capture would
+    // freeze the pre-config undefined and silently skip the fetch, prefilling
+    // checkout with no email — the same late-config failure midtrans.ts had.
+    const api = licenseApiUrl();
+    if (!token || !api) return null;
+    const res = await fetch(`${api}/api/v1/web/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { tenant?: { email?: string } };
     const email = data.tenant?.email ?? null;
-    if (email) window.sessionStorage.setItem(EMAIL_KEY, email);
+    if (email) window.sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
     return email;
   } catch {
     return null;

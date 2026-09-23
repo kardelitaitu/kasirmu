@@ -7,8 +7,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 fn state() -> AppState {
+    let db = kasirmu_core::migrations::fresh_db();
+    kasirmu_core::migrations::seed_provisioned_baseline(&db);
     AppState {
-        db: Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
+        db: Arc::new(Mutex::new(db)),
         pg: None,
         admin_key: None,
         api_secret: String::new(),

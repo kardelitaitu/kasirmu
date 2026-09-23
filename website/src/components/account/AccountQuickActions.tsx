@@ -14,7 +14,18 @@ export default function AccountQuickActions({ locale, labels }: Props) {
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.quickActions')}>
       <h2 className="text-lg font-semibold">{t(labels, 'account.quickActions')}</h2>
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <a
+          href={`/${locale}/pair`}
+          className="flex flex-col items-center justify-center gap-2 rounded-lg border border-ink/10 bg-surface p-4 text-center transition hover:border-accent hover:shadow-sm"
+        >
+          <svg className="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+            <line x1="8" y1="21" x2="16" y2="21" />
+            <line x1="12" y1="17" x2="12" y2="21" />
+          </svg>
+          <span className="text-sm font-semibold text-ink">{t(labels, 'account.registerTerminal')}</span>
+        </a>
         <a
           href={`/${locale}/download`}
           className="flex flex-col items-center justify-center gap-2 rounded-lg border border-ink/10 bg-surface p-4 text-center transition hover:border-accent hover:shadow-sm"

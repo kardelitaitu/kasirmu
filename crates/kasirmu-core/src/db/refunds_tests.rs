@@ -1904,3 +1904,220 @@ fn a_deduction_entry_with_no_qty_understates_the_bound_and_refuses_the_refund() 
         .unwrap();
     assert_eq!(movements, 0, "and a refusal moves no stock");
 }
+
+/// The refund ROW must carry the SALE's tenant. `refunds.tenant_id` is
+/// RLS-covered in PostgreSQL (scripts/generate-pg-migration.py RLS_TABLES), so
+/// a refund left at the column DEFAULT is either invisible to its own tenant or
+/// visible to another one. The tenant is READ from the sale, never a literal.
+#[test]
+fn create_refund_stamps_the_sale_tenant_on_the_refund_row() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    conn.execute(
+        "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "customer changed mind",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    let refund_id = refund.id.clone();
+    s.create_refund(&refund).unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT tenant_id FROM refunds WHERE id = ?1",
+            rusqlite::params![refund_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored, "store-9",
+        "the refund row carries the SALE's tenant, not the column DEFAULT"
+    );
+}
+
+/// The same sale read drives both the refund row and its outbox row: one
+/// source, so the row on this terminal and the tenant the queue is filed under
+/// cannot disagree.
+#[test]
+fn the_refund_row_and_its_outbox_row_share_one_tenant() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    conn.execute(
+        "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "customer changed mind",
+        "",
+        "user-1",
+        vec![RefundLine::new(
+            "ref-sl-1",
+            "COFFEE",
+            2,
+            price(350),
+            price(700),
+        )],
+    );
+    let refund_id = refund.id.clone();
+    s.create_refund(&refund).unwrap();
+
+    let (row_tenant, queue_tenant): (String, String) = conn
+        .query_row(
+            "SELECT (SELECT tenant_id FROM refunds WHERE id = ?1),
+                    (SELECT tenant_id FROM offline_queue WHERE action = 'refund_sale')",
+            rusqlite::params![refund_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row_tenant, "store-9");
+    assert_eq!(row_tenant, queue_tenant, "one source, one tenant");
+}
+
+// ── C4 S2: the refund producer (transactional outbox) ───────────
+
+/// The queue row for one committed refund, keyed on the refund id the
+/// pull-side arm is idempotent on.
+fn refund_outbox_rows(conn: &Connection, refund_id: &str) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM offline_queue WHERE action = 'refund_sale' AND instr(payload, ?1) > 0",
+        rusqlite::params![format!("\"id\":\"{refund_id}\"")],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// A committed refund must leave EXACTLY ONE queue row, carrying the
+/// `refund_sale` action, the refund id, the sale id, and the tenant read from
+/// the SALE row (the same read now stamps `refunds.tenant_id`; see
+/// [create_refund_stamps_the_sale_tenant_on_the_refund_row]). Without this
+/// seat the pull-side `refund_sale` arm had no producer at all: a refund made
+/// on one terminal was never pushed.
+#[test]
+fn committed_refund_writes_one_refund_sale_outbox_row() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    // The refund is filed under the SALE's tenant, so give the sale a real one.
+    conn.execute(
+        "UPDATE sales SET tenant_id = 'store-9' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("ref-sl-1", "COFFEE", 2, price(350), price(700));
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(700),
+        "customer changed mind",
+        "note-1",
+        "user-1",
+        vec![line],
+    );
+    let refund_id = refund.id.clone();
+    s.create_refund(&refund).unwrap();
+
+    assert_eq!(
+        refund_outbox_rows(&conn, &refund_id),
+        1,
+        "a committed refund writes exactly one queue row"
+    );
+    let (action, payload, tenant, status, priority): (String, String, String, String, i32) = conn
+        .query_row(
+            "SELECT action, payload, tenant_id, status, priority FROM offline_queue
+             WHERE action = 'refund_sale'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(action, "refund_sale");
+    assert_eq!(status, "pending");
+    assert_eq!(priority, 0, "Critical: money must propagate first");
+    assert_eq!(tenant, "store-9", "tenant read from the sale row");
+
+    // The payload is the shape the pull-side arm parses, and it carries the
+    // identity that arm is idempotent on. `origin` is deliberately absent:
+    // the enqueue helper stamps the origin column itself.
+    let v: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert_eq!(v["id"], serde_json::json!(refund_id));
+    assert_eq!(v["sale_id"], serde_json::json!("ref-sale-1"));
+    assert_eq!(v["total_minor"], serde_json::json!(700));
+    assert_eq!(v["currency"], serde_json::json!("USD"));
+    assert_eq!(v["reason"], serde_json::json!("customer changed mind"));
+    assert_eq!(v["note"], serde_json::json!("note-1"));
+    assert_eq!(v["processed_by"], serde_json::json!("user-1"));
+    assert!(v["created_at"].is_string());
+    assert_eq!(v["lines"].as_array().unwrap().len(), 1);
+    let line_v = &v["lines"][0];
+    assert_eq!(line_v["sale_line_id"], serde_json::json!("ref-sl-1"));
+    assert_eq!(line_v["sku"], serde_json::json!("COFFEE"));
+    assert_eq!(line_v["qty"], serde_json::json!(2));
+    assert_eq!(line_v["unit_minor"], serde_json::json!(350));
+    assert_eq!(line_v["line_minor"], serde_json::json!(700));
+    assert_eq!(line_v["currency"], serde_json::json!("USD"));
+    assert!(line_v["id"].is_string());
+    assert!(
+        v.get("origin").is_none(),
+        "the enqueue helper stamps the origin, the payload must not carry one"
+    );
+}
+
+/// The rollback proof, and it is only possible because the enqueue sits BEFORE
+/// the stock credit: a refund line absent from `deduction_locations` fails the
+/// credit pass, the whole transaction rolls back, and the queue row already
+/// written inside it must be gone with the refund. A queue row for a
+/// rolled-back refund is a refund the terminal never made, pushed to every
+/// other terminal.
+#[test]
+fn rolled_back_refund_writes_no_outbox_row() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+    // A real sale_lines row this sale's deduction_locations JSON does NOT
+    // list: the quantity/identity guards pass, the credit pass refuses.
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('non-existent-sl', 'ref-sale-1', 'COFFEE', 1, 350, 350, 'USD', 9)",
+        [],
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let line = RefundLine::new("non-existent-sl", "COFFEE", 1, price(350), price(350));
+    let refund = Refund::new("ref-sale-1", price(350), "test", "", "user-1", vec![line]);
+    let refund_id = refund.id.clone();
+    let err = s.create_refund(&refund).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { field, .. } if field == "deduction_locations"));
+
+    assert_eq!(
+        refund_outbox_rows(&conn, &refund_id),
+        0,
+        "a rolled-back refund must leave no outbox row"
+    );
+    let refunds: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM refunds WHERE id = ?1",
+            rusqlite::params![&refund_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(refunds, 0, "and no refund row - the two die together");
+}

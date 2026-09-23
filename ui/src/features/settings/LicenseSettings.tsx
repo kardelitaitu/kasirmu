@@ -7,6 +7,7 @@ import ExitSurveyModal from '@/components/ExitSurveyModal';
 import { useToast } from '@/components/Toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { isTabletShell } from '@/utils/shellKind';
 import './LicenseSettings.css';
 import OverQuotaCard from './OverQuotaCard';
 
@@ -77,12 +78,55 @@ export const POLL_INTERVAL_MS = 300_000;
 /** Maximum consecutive failures before showing offline indicator. */
 const MAX_POLL_FAILURES = 3;
 
+/** The ADR #58 §2.3 re-authentication window: 3 days before `expires_at`. */
+export const REAUTH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the licence poll may run for this payload (ADR #58 §2.3 / §4a Q-B
+ * option B).
+ *
+ * The rule from §2.3, arm for arm:
+ *
+ * - **Free tier** → never poll. There is no expiry to approach and nothing to
+ *   revoke; the tier is the floor.
+ * - **No/unparseable `expires_at`** → never poll. §2.3's `NULL` arm: a
+ *   perpetual or lifetime licence has no window for the 3 days to precede, and
+ *   a malformed timestamp must fail open rather than manufacture an obligation.
+ * - **Outside the last 3 days** → never poll. The device operates on its
+ *   locally stored signed subscription.
+ * - **Inside the last 3 days** → poll. Re-authentication is owed.
+ *
+ * **Why gate at all.** The poll is the only live revocation path for a
+ * connected device until the daemon ride-along shipped
+ * (`platform/sync/src/daemon_tick.rs` `run_license_ride_along`), so the
+ * daemon now carries that duty on its own 60–120s cadence for every
+ * configured terminal — including one whose Settings screen is closed. Gating
+ * this in-screen poll then costs no revocation latency while removing load
+ * that scaled with *screens left open* rather than with tenants near renewal.
+ *
+ * Exported for the unit test; not part of the component's public API.
+ */
+export function shouldPollLicense(
+  payload: Pick<LicensePayload, 'tier_key' | 'expires_at'> | null,
+  nowMs: number,
+): boolean {
+  if (!payload) return false;
+  if (payload.tier_key === 'free') return false;
+  const expiresAt = Date.parse(payload.expires_at);
+  if (Number.isNaN(expiresAt)) return false;
+  return nowMs >= expiresAt - REAUTH_WINDOW_MS;
+}
+
 /** License settings section — displays tier, expiry, grace period, and quotas. */
 export default function LicenseSettings() {
   const { l10n } = useLocalization();
   const l10nRef = useRef(l10n);
   l10nRef.current = l10n;
   const { addToast } = useToast();
+  // Pause/resume are billing actions and both commands are registered on the
+  // desktop shell only, so the tablet renders the subscription state without the
+  // two buttons. Read once, like the other shell checks.
+  const actionsAvailable = !isTabletShell();
   // This screen is rendered from SettingsPage (:824), inside WorkspaceProvider, so a session
   // exists. The token was not previously in scope here at all -- which is why both subscription
   // actions were reaching the unscoped, unchecked commands.
@@ -205,10 +249,15 @@ export default function LicenseSettings() {
   // Initial load.
   useEffect(() => { load(); }, [load]);
 
-  // Start polling after initial load succeeds and user has a payload.
-  // Polling only begins once payload is set (license activated).
+  // Start polling after initial load succeeds and user has a payload, and
+  // only inside the §2.3 re-authentication window (see shouldPollLicense).
+  //
+  // Below the window there is no timer armed at all: the screen keeps whatever
+  // the initial load returned and the user can press Refresh for an immediate
+  // check. The daemon ride-along covers revocation for a closed screen.
   useEffect(() => {
     if (!payload) return;
+    if (!shouldPollLicense(payload, Date.now())) return;
 
     // Fire first poll immediately.
     void pollTick();
@@ -345,9 +394,60 @@ export default function LicenseSettings() {
   }
 
   // ── Main render ─────────────────────────────────────────────
+  const now = Date.now();
+  const expiresAtMs = payload ? Date.parse(payload.expires_at) : NaN;
+  const isPreExpiry =
+    payload !== null &&
+    payload.tier_key !== 'free' &&
+    payload.status === 'active' &&
+    !Number.isNaN(expiresAtMs) &&
+    now >= expiresAtMs - REAUTH_WINDOW_MS &&
+    now < expiresAtMs;
+  const preExpiryDaysRemaining = isPreExpiry
+    ? Math.max(1, Math.ceil((expiresAtMs - now) / (24 * 60 * 60 * 1000)))
+    : 0;
+
   return (
     <Card shadow="sm" header={<Localized id="settings-section-license"><h2 className="settings-section-title">License</h2></Localized>}>
       <div className="settings-form settings-license-section" role="region" aria-label={l10n.getString('settings-section-license')}>
+
+        {/* ── Pre-expiry re-authentication prompt (ADR #58 §2.3) ── */}
+        {isPreExpiry && (
+          <div
+            className="settings-license-reauth-banner"
+            role="alert"
+            data-testid="license-reauth-banner"
+          >
+            <div className="settings-license-reauth-content">
+              <span className="settings-license-reauth-title">
+                <Localized id="settings-license-reauth-banner-title">
+                  <span>Subscription Renewal Check Required</span>
+                </Localized>
+              </span>
+              <span className="settings-license-reauth-desc">
+                <Localized
+                  id="settings-license-reauth-banner-desc"
+                  vars={{ days: preExpiryDaysRemaining }}
+                >
+                  <span>
+                    Your subscription expires in {preExpiryDaysRemaining} days. Connect to the internet to re-authenticate with the license server.
+                  </span>
+                </Localized>
+              </span>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={checkingServer}
+              onClick={handleRefresh}
+              aria-label={l10n.getString('settings-license-reauth-action')}
+            >
+              <Localized id="settings-license-reauth-action">
+                <span>Verify Online Now</span>
+              </Localized>
+            </Button>
+          </div>
+        )}
 
         {/* ── Subscription details from local payload ── */}
         <div className="settings-license-row">
@@ -506,7 +606,7 @@ export default function LicenseSettings() {
         )}
 
         {/* ── C3.3: Pause / Resume subscription ── */}
-        {payload.status === 'active' && (
+        {actionsAvailable && payload.status === 'active' && (
           <div className="settings-license-row settings-license-row--actions">
             <span className="settings-license-label">
               <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
@@ -527,34 +627,34 @@ export default function LicenseSettings() {
           </div>
         )}
         {payload.status === 'paused' && (
-          <>
-            <div className="settings-license-row settings-license-row--warning">
-              <span className="settings-license-label">
-                <Localized id="settings-license-paused-until"><span>Paused until</span></Localized>
-              </span>
-              <span className="settings-license-value settings-license-value--warning">
-                {formatDate(serverStatus?.expiresAt ?? payload.expires_at, [...l10n.bundles][0]?.locales[0] ?? 'en-US')}
-              </span>
-            </div>
-            <div className="settings-license-row settings-license-row--actions">
-              <span className="settings-license-label">
-                <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
-              </span>
-              <span className="settings-license-value">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  loading={resuming}
-                  onClick={handleResume}
-                  aria-label={l10n.getString('settings-license-resume-aria')}
-                >
-                  <Localized id="settings-license-resume-subscription">
-                    <span>Resume subscription</span>
-                  </Localized>
-                </Button>
-              </span>
-            </div>
-          </>
+          <div className="settings-license-row settings-license-row--warning">
+            <span className="settings-license-label">
+              <Localized id="settings-license-paused-until"><span>Paused until</span></Localized>
+            </span>
+            <span className="settings-license-value settings-license-value--warning">
+              {formatDate(serverStatus?.expiresAt ?? payload.expires_at, [...l10n.bundles][0]?.locales[0] ?? 'en-US')}
+            </span>
+          </div>
+        )}
+        {actionsAvailable && payload.status === 'paused' && (
+          <div className="settings-license-row settings-license-row--actions">
+            <span className="settings-license-label">
+              <Localized id="settings-license-subscription-actions"><span>Subscription</span></Localized>
+            </span>
+            <span className="settings-license-value">
+              <Button
+                variant="primary"
+                size="sm"
+                loading={resuming}
+                onClick={handleResume}
+                aria-label={l10n.getString('settings-license-resume-aria')}
+              >
+                <Localized id="settings-license-resume-subscription">
+                  <span>Resume subscription</span>
+                </Localized>
+              </Button>
+            </span>
+          </div>
         )}
       </div>
 

@@ -248,24 +248,214 @@ fn update_role_conflicts_on_a_taken_name() {
         .expect("a no-op rename must pass");
 }
 
-// ── delete_role ────────────────────────────────────────────────────────
+// ── soft_delete_role (the trash) ────────────────────────────────────────────────────────
 
 #[test]
-fn delete_role_removes_an_unreferenced_authored_role() {
+fn soft_delete_role_trashes_an_unreferenced_authored_role() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     insert_authored_role(&conn, "[]");
     assert!(store(&conn).get_role(AUTHORED).unwrap().is_some());
 
-    store(&conn).delete_role(AUTHORED).unwrap();
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    // Kept, not removed: the row surviving is what lets a restore read it back
+    // inside the window. It leaves every LIVE surface at once instead.
     assert!(
-        store(&conn).get_role(AUTHORED).unwrap().is_none(),
-        "the row is gone"
+        store(&conn).get_role(AUTHORED).unwrap().is_some(),
+        "the row is kept so the trash can read it back"
+    );
+    assert!(
+        store(&conn)
+            .list_roles()
+            .unwrap()
+            .iter()
+            .all(|r| r.id != AUTHORED)
+    );
+    let trashed = store(&conn).list_trashed_roles().unwrap();
+    assert_eq!(trashed.len(), 1);
+    assert_eq!(trashed[0].role.id, AUTHORED);
+}
+
+#[test]
+fn soft_delete_role_is_refused_twice() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+    // A second trashing must not silently restart the retention clock.
+    let err = store(&conn).soft_delete_role(AUTHORED).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { field, .. } if field == "deleted_at"));
+}
+
+#[test]
+fn restore_role_returns_it_to_the_live_list() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    let restored = store(&conn).restore_role(AUTHORED).unwrap();
+    assert_eq!(restored.id, AUTHORED);
+    assert!(
+        store(&conn)
+            .list_roles()
+            .unwrap()
+            .iter()
+            .any(|r| r.id == AUTHORED)
+    );
+    assert!(store(&conn).list_trashed_roles().unwrap().is_empty());
+    // Restoring something that is not in the trash is NotFound, not a silent
+    // success: the trash is not a way to prove a role exists.
+    assert!(matches!(
+        store(&conn).restore_role("nope").unwrap_err(),
+        CoreError::NotFound { .. }
+    ));
+}
+
+#[test]
+fn restore_role_refuses_a_role_whose_window_has_closed() {
+    // Same structural guarantee as the staff half (see
+    // `staff_tests::restore_refuses_a_member_whose_window_has_closed`): the
+    // purge rides the trash read, so a restore that arrives after the deadline
+    // but before any list must still be refused. Aged directly, NOT purged —
+    // the row is on disk and would otherwise be restorable.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    let stale = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 10))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![stale, AUTHORED],
+    )
+    .unwrap();
+
+    let err = store(&conn)
+        .restore_role(AUTHORED)
+        .expect_err("a closed window must not be restorable");
+    assert!(
+        matches!(err, CoreError::NotFound { .. }),
+        "expected NotFound, the same answer an absent role gets, got {err:?}"
+    );
+    // Still trashed, and still absent from the live list.
+    let deleted: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM roles WHERE id = ?1",
+            params![AUTHORED],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted.is_some());
+    assert!(
+        store(&conn)
+            .list_roles()
+            .unwrap()
+            .iter()
+            .all(|r| r.id != AUTHORED)
     );
 }
 
 #[test]
-fn delete_role_refuses_every_builtin_preset_id() {
+fn purge_expired_roles_removes_only_past_the_window() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    // Inside the window: untouched.
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 0);
+    assert_eq!(store(&conn).list_trashed_roles().unwrap().len(), 1);
+
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![old, AUTHORED],
+    )
+    .unwrap();
+
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 1);
+    // Unlike the staff purge, this one really deletes: a role carries no
+    // personal data, and the delete guard proved nothing references it.
+    assert!(store(&conn).get_role(AUTHORED).unwrap().is_none());
+    assert!(store(&conn).list_trashed_roles().unwrap().is_empty());
+}
+
+#[test]
+fn a_closed_window_role_is_not_listed_as_restorable() {
+    // The purge REFUSES to delete a row something still references, so a window can
+    // close with the row on disk. The read must not offer it: restorable is the one
+    // word a caller acts on, and a row past its deadline is not. This is the pair to
+    // purge_expired_roles_removes_only_past_the_window above — one pins the sweep,
+    // this pins the read the Trash tab is fed by.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![old, AUTHORED],
+    )
+    .unwrap();
+
+    assert!(
+        store(&conn).list_trashed_roles().unwrap().is_empty(),
+        "a window that has closed must not be listed as if it still had time"
+    );
+    // And the sweep still reaches it — the read's predicate is a VIEW, not a lock.
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 1);
+}
+
+#[test]
+fn a_trashed_role_cannot_be_assigned_to_an_account() {
+    // The hole this closes: a trashed role stayed assignable, and every re-reference
+    // makes purge_expired_roles refuse the row for ever — the window never closes, and
+    // the role keeps granting while list_roles hides it from every picker.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    let err = store(&conn)
+        .create_user("late", "pin-hash", "Late Starter", AUTHORED)
+        .expect_err("a trashed role must not be assignable");
+    assert!(
+        matches!(&err, CoreError::Validation { field, message }
+            if *field == "role_id" && message.contains("is in the trash")),
+        "expected the trash refusal, got {err:?}"
+    );
+
+    // The same door from the update side: rebinding a live account onto it.
+    store(&conn)
+        .create_user("live", "pin-hash", "Live User", "role-staff")
+        .unwrap();
+    let err = store(&conn)
+        .update_user("live", "live", "Live User", AUTHORED, true)
+        .expect_err("rebinding onto a trashed role must be refused too");
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "role_id"),
+        "expected the trash refusal, got {err:?}"
+    );
+
+    // Which is what keeps the window closable: nothing references it, so the sweep
+    // can still delete it once the window closes.
+    let old = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 1))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![old, AUTHORED],
+    )
+    .unwrap();
+    assert_eq!(store(&conn).purge_expired_roles().unwrap(), 1);
+}
+
+#[test]
+fn soft_delete_role_refuses_every_builtin_preset_id() {
     // Deleting a preset would not just lose a row: users hold these ids,
     // and `authorize_with` fails closed on an unresolvable role, so the
     // effect would be silent loss of access rather than an error.
@@ -273,7 +463,7 @@ fn delete_role_refuses_every_builtin_preset_id() {
     store(&conn).seed_default_roles().unwrap();
     let s = store(&conn);
     for preset in platform_core::rbac::ROLE_PRESETS {
-        let err = s.delete_role(preset.id).expect_err(&format!(
+        let err = s.soft_delete_role(preset.id).expect_err(&format!(
             "{} is a preset and must not be deletable",
             preset.id
         ));
@@ -289,14 +479,14 @@ fn delete_role_refuses_every_builtin_preset_id() {
 }
 
 #[test]
-fn delete_role_refuses_a_role_still_held_by_a_user() {
+fn soft_delete_role_refuses_a_role_still_held_by_a_user() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     insert_authored_role(&conn, "[]");
     insert_user_with_role(&conn, "holder", AUTHORED);
 
     let err = store(&conn)
-        .delete_role(AUTHORED)
+        .soft_delete_role(AUTHORED)
         .expect_err("a role in use cannot be dropped from under its holder");
     let CoreError::Validation { message, .. } = err else {
         panic!("expected a typed Validation error, got {err:?}");
@@ -309,7 +499,7 @@ fn delete_role_refuses_a_role_still_held_by_a_user() {
 }
 
 #[test]
-fn delete_role_refuses_a_role_named_only_by_an_assignment() {
+fn soft_delete_role_refuses_a_role_named_only_by_an_assignment() {
     // `assignments.role_id` is an independent referrer. It cannot be
     // demonstrated by deleting the user — that row cascades away with them
     // (the first draft of this test assumed otherwise and correctly failed)
@@ -335,7 +525,10 @@ fn delete_role_refuses_a_role_named_only_by_an_assignment() {
         "the assignment is the only referrer; users.role_id points at Owner"
     );
     assert!(
-        matches!(s.delete_role(AUTHORED), Err(CoreError::Validation { .. })),
+        matches!(
+            s.soft_delete_role(AUTHORED),
+            Err(CoreError::Validation { .. })
+        ),
         "and that alone still blocks the delete"
     );
     assert!(
@@ -345,12 +538,12 @@ fn delete_role_refuses_a_role_named_only_by_an_assignment() {
 }
 
 #[test]
-fn delete_role_reports_missing_role_as_not_found() {
+fn soft_delete_role_reports_missing_role_as_not_found() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     assert!(
         matches!(
-            store(&conn).delete_role("role-nope"),
+            store(&conn).soft_delete_role("role-nope"),
             Err(CoreError::NotFound { .. })
         ),
         "deleting nothing reports that there was nothing, not success"
@@ -365,19 +558,25 @@ fn reference_counts_agree_with_the_delete_decision() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     insert_authored_role(&conn, "[]");
+    insert_user_with_role(&conn, "holder", AUTHORED);
 
     let s = store(&conn);
-    assert!(s.role_reference_counts(AUTHORED).unwrap().is_empty());
-    s.delete_role(AUTHORED)
-        .expect("no referrers, so the delete succeeds");
-
-    insert_authored_role(&conn, "[]");
-    insert_user_with_role(&conn, "holder", AUTHORED);
+    // Referenced: the numbers say so, and the delete agrees.
     assert!(!s.role_reference_counts(AUTHORED).unwrap().is_empty());
     assert!(
-        s.delete_role(AUTHORED).is_err(),
+        s.soft_delete_role(AUTHORED).is_err(),
         "referrers present, so the delete is refused"
     );
+
+    // Unreferenced: the numbers say so, and the delete agrees. The row cannot
+    // be re-inserted to prove this — a soft delete KEEPS it, which is the whole
+    // point of the trash — so the referrer is removed instead and the order
+    // reversed. Both directions of the pairing are still covered.
+    conn.execute("DELETE FROM users WHERE id = 'holder'", [])
+        .unwrap();
+    assert!(s.role_reference_counts(AUTHORED).unwrap().is_empty());
+    s.soft_delete_role(AUTHORED)
+        .expect("no referrers, so the delete succeeds");
 }
 
 // ── The two referrer tables nothing inserted into ─────────────────────
@@ -385,7 +584,7 @@ fn reference_counts_agree_with_the_delete_decision() {
 // ROLE_REFERRERS names four tables. The tests above reach two of them
 // (users, assignments); role_workspace_types and role_workspaces appear
 // nowhere in this file, so nothing pins that the delete guard sees them.
-// Dropping either entry from the array would let delete_role clear its
+// Dropping either entry from the array would let soft_delete_role clear its
 // own pre-check and then hit a bare FK constraint violation — exactly the
 // failure the guard exists to turn into "reassign these rows first" — and
 // every test here would stay green.
@@ -404,7 +603,7 @@ fn seed_workspace_dimension(conn: &Connection) {
 }
 
 #[test]
-fn delete_role_refuses_a_role_named_only_by_a_workspace_type() {
+fn soft_delete_role_refuses_a_role_named_only_by_a_workspace_type() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     insert_authored_role(&conn, "[]");
@@ -422,7 +621,7 @@ fn delete_role_refuses_a_role_named_only_by_a_workspace_type() {
         "the workspace-type grant is a referrer in its own right"
     );
     let err = s
-        .delete_role(AUTHORED)
+        .soft_delete_role(AUTHORED)
         .expect_err("a role still granting a workspace type is in use");
     let CoreError::Validation { message, .. } = err else {
         panic!("expected a typed Validation error, got {err:?}");
@@ -435,7 +634,7 @@ fn delete_role_refuses_a_role_named_only_by_a_workspace_type() {
 }
 
 #[test]
-fn delete_role_refuses_a_role_named_only_by_a_workspace() {
+fn soft_delete_role_refuses_a_role_named_only_by_a_workspace() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
     insert_authored_role(&conn, "[]");
@@ -453,7 +652,7 @@ fn delete_role_refuses_a_role_named_only_by_a_workspace() {
         "and so is the per-workspace grant, which is a different table"
     );
     let err = s
-        .delete_role(AUTHORED)
+        .soft_delete_role(AUTHORED)
         .expect_err("a role still bound to a workspace is in use");
     let CoreError::Validation { message, .. } = err else {
         panic!("expected a typed Validation error, got {err:?}");
@@ -513,7 +712,7 @@ fn role_reference_counts_enumerates_every_referrer_table_in_declared_order() {
     );
 
     let err = s
-        .delete_role(AUTHORED)
+        .soft_delete_role(AUTHORED)
         .expect_err("a role referenced anywhere cannot be dropped");
     let CoreError::Validation { message, .. } = err else {
         panic!("expected a typed Validation error, got {err:?}");
@@ -535,7 +734,7 @@ fn role_reference_counts_enumerates_every_referrer_table_in_declared_order() {
 
 #[test]
 fn create_role_refuses_every_builtin_preset_id() {
-    // The create-side half of the guard update_role and delete_role already
+    // The create-side half of the guard update_role and soft_delete_role already
     // had. Deliberately run on an UNSEEDED database: with no preset rows
     // present, the primary-key constraint cannot be what stops these writes,
     // so a refusal here can only come from the guard.

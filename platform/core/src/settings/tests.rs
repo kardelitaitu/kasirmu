@@ -1767,91 +1767,147 @@ fn legacy_plaintext_lan_server_psk_reads_back_unchanged() {
     );
 }
 
-// Half two — the same tolerance, seen from the other side. A value that IS
-// ciphertext-shaped and merely FAILS authentication is indistinguishable, at
-// this call site, from the legacy rows above. So it comes back as garbage.
+// Half two — the same tolerance, seen from the other side, as of C1 slice S1.5
+// (typed.rs:334/361/437/553/639). A value that IS ciphertext-shaped and merely
+// FAILS authentication is no longer handed back as if it were the secret: the
+// five getters now fail closed, because that value is not the credential and
+// passing it on put base64 in an SMTP client, a sync request or a PostgreSQL
+// connection with no error anywhere. The error names the setting key and never
+// the value.
 //
-// THESE FIVE TESTS PIN A KNOWN HAZARD. They are not an endorsement of it: the
-// behaviour they assert is wrong, and the intent to change it is already
-// recorded in this crate's own audit header, typed.rs:6-7 ("next: surface
-// decrypt failures"). They are written so the hazard cannot be tightened
-// silently and cannot be tightened wrongly either — a guard that turns every
-// decrypt failure into an error BREAKS half one, because on this path "never
-// encrypted" and "tampered" look the same. Landing the fix therefore needs
-// the shape gate the smtp family already uses (kasirmu-crypto lib.rs:216-223),
-// not a bare `.unwrap_or` removed.
+// Half one is untouched and is the reason the gate is the shape predicate
+// rather than a bare `.unwrap_or` removed: "never encrypted" (not ciphertext
+// shape) still reads back byte for byte, because on this path a value with no
+// ciphertext shape is a legitimate pre-encryption row, not tampering.
 
 #[test]
-fn known_hazard_sync_api_key_hands_back_shaped_undecryptable_bytes() {
+fn fail_closed_sync_api_key_rejects_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
     assert!(
         kasirmu_crypto::decrypt_sync_api_key(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
-    assert_eq!(
-        Settings::get_sync_api_key(&conn).unwrap(),
-        Some(SHAPED_UNDECRYPTABLE.into()),
-        "PIN OF KNOWN HAZARD (typed.rs:334): a tampered sync key is handed to          the caller as if it were the secret, silently"
+    let err = Settings::get_sync_api_key(&conn)
+        .expect_err("a tampered sync key must not reach the caller as the secret");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::SYNC_API_KEY),
+        "the error must name the setting key: {msg}"
+    );
+    assert!(
+        !msg.contains(SHAPED_UNDECRYPTABLE),
+        "the error must never carry the value: {msg}"
     );
 }
 
 #[test]
-fn known_hazard_sync_terminal_secret_hands_back_shaped_undecryptable_bytes() {
+fn fail_closed_sync_terminal_secret_rejects_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::SYNC_TERMINAL_SECRET, SHAPED_UNDECRYPTABLE);
     assert!(
         kasirmu_crypto::decrypt_sync_terminal_secret(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
-    assert_eq!(
-        Settings::get_sync_terminal_secret(&conn).unwrap(),
-        Some(SHAPED_UNDECRYPTABLE.into()),
-        "PIN OF KNOWN HAZARD (typed.rs:361): a tampered device secret is          signed with as if it were the secret, silently"
+    let err = Settings::get_sync_terminal_secret(&conn)
+        .expect_err("a tampered device secret must not be signed with as if it were the secret");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::SYNC_TERMINAL_SECRET),
+        "the error must name the setting key: {msg}"
+    );
+    assert!(
+        !msg.contains(SHAPED_UNDECRYPTABLE),
+        "the error must never carry the value: {msg}"
     );
 }
 
 #[test]
-fn known_hazard_pg_sync_password_hands_back_shaped_undecryptable_bytes() {
+fn fail_closed_pg_sync_password_rejects_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::PG_SYNC_PASSWORD, SHAPED_UNDECRYPTABLE);
     assert!(
         kasirmu_crypto::decrypt_pg_sync_password(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
-    assert_eq!(
-        Settings::get_pg_sync_password(&conn).unwrap(),
-        Some(SHAPED_UNDECRYPTABLE.into()),
-        "PIN OF KNOWN HAZARD (typed.rs:437): base64 ciphertext is sent to          PostgreSQL as the password instead of erroring"
+    let err = Settings::get_pg_sync_password(&conn)
+        .expect_err("base64 ciphertext must not be sent to PostgreSQL as the password");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::PG_SYNC_PASSWORD),
+        "the error must name the setting key: {msg}"
+    );
+    assert!(
+        !msg.contains(SHAPED_UNDECRYPTABLE),
+        "the error must never carry the value: {msg}"
     );
 }
 
 #[test]
-fn known_hazard_rate_sync_api_key_hands_back_shaped_undecryptable_bytes() {
+fn fail_closed_rate_sync_api_key_rejects_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::RATE_SYNC_API_KEY, SHAPED_UNDECRYPTABLE);
     assert!(
         kasirmu_crypto::decrypt_rate_api_key(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
-    assert_eq!(
-        Settings::get_rate_sync_api_key(&conn).unwrap(),
-        Some(SHAPED_UNDECRYPTABLE.into()),
-        "PIN OF KNOWN HAZARD (typed.rs:553): a tampered rate key is sent to          the provider as the API key, silently"
+    let err = Settings::get_rate_sync_api_key(&conn)
+        .expect_err("a tampered rate key must not be sent to the provider as the API key");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::RATE_SYNC_API_KEY),
+        "the error must name the setting key: {msg}"
+    );
+    assert!(
+        !msg.contains(SHAPED_UNDECRYPTABLE),
+        "the error must never carry the value: {msg}"
     );
 }
 
 #[test]
-fn known_hazard_lan_server_psk_hands_back_shaped_undecryptable_bytes() {
+fn fail_closed_lan_server_psk_rejects_shaped_undecryptable_bytes() {
     let conn = fresh();
     seed_bare_row(&conn, keys::LAN_SERVER_PSK, SHAPED_UNDECRYPTABLE);
     assert!(
         kasirmu_crypto::decrypt_lan_psk(SHAPED_UNDECRYPTABLE).is_err(),
         "premise: the value must fail the very decrypt this getter calls"
     );
+    let err = Settings::get_lan_server_psk(&conn)
+        .expect_err("the LAN server must not run on 48 zero bytes as its pre-shared key");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(keys::LAN_SERVER_PSK),
+        "the error must name the setting key: {msg}"
+    );
+    assert!(
+        !msg.contains(SHAPED_UNDECRYPTABLE),
+        "the error must never carry the value: {msg}"
+    );
+}
+
+// Half one, restated for the fail-closed gate: the values that are NOT
+// ciphertext — an unset key, an empty string — must keep reading exactly as
+// they did before the gate existed. Neither is an error.
+
+#[test]
+fn fail_closed_leaves_unset_and_empty_values_reading_back_as_before() {
+    let conn = fresh();
+    assert_eq!(Settings::get_sync_api_key(&conn).unwrap(), None);
+    assert_eq!(Settings::get_sync_terminal_secret(&conn).unwrap(), None);
+    assert_eq!(Settings::get_pg_sync_password(&conn).unwrap(), None);
+    assert_eq!(Settings::get_rate_sync_api_key(&conn).unwrap(), None);
+    assert_eq!(Settings::get_lan_server_psk(&conn).unwrap(), None);
+
+    seed_bare_row(&conn, keys::SYNC_TERMINAL_SECRET, "");
+    assert_eq!(
+        Settings::get_sync_terminal_secret(&conn).unwrap(),
+        None,
+        "an empty terminal secret still means 'not paired', not a decrypt failure"
+    );
+    seed_bare_row(&conn, keys::LAN_SERVER_PSK, "");
     assert_eq!(
         Settings::get_lan_server_psk(&conn).unwrap(),
-        Some(SHAPED_UNDECRYPTABLE.into()),
-        "PIN OF KNOWN HAZARD (typed.rs:639): the LAN server would run on 48          zero bytes as its pre-shared key rather than report a failure"
+        Some(String::new()),
+        "an empty LAN PSK is still the empty string, not an error"
     );
 }

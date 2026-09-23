@@ -79,13 +79,34 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-md);
-  overflow: hidden;
+
+  /* ADR-0001 Slice 6 - the keyboard trap, ported from StaffLoginScreen.css (this
+     card is a structural clone of that one, same defect). The 33.75rem floor above
+     is a FLOOR: under an open on-screen keyboard the visual viewport is far shorter,
+     so nothing inside this card may clip and anything that overflows scrolls HERE,
+     on the card, keeping the PIN pad reachable from the focused field. The old
+     overflow: hidden gave the same clipping plus no scrollbar; auto + hidden x is
+     identical visually (overflow-x is never visible alongside a non-visible
+     overflow-y) but scrollable. NOTHING IS CENTRED ON THIS CARD - the overlay
+     centres the CARD, bands align on the cross axis only - so an overflowing column
+     grows downward and stays scrollable. Any future justify-content: center or
+     margin: auto added HERE would re-create the trap: it makes the first lines
+     unreachable and no scroll distance fixes it. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
 
 /* ── Card: 3 vertical sections (identical to the login PIN step) ─── */
 
+/* ADR-0001 Slice 6, mirrors StaffLoginScreen.css: the bands keep their PROPORTIONS
+   (the 15/75/10 login-PIN silhouette) but lose the zero flex-basis - a flex-basis: 0
+   box cannot honour a min-height, so it is that pairing, not the min-height itself,
+   that used to hold the card at 540px while the visual viewport was 300-odd px tall
+   under an open keyboard. The ladder at (max-height: 640px) below completes the fix
+   by switching these to flex: 0 0 auto when room runs out. */
 .session-lock-top-bar {
-  flex: 1.5 0 0;
+  flex: 1.5 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -94,7 +115,7 @@
 }
 
 .session-lock-main-area {
-  flex: 7.5 0 0;
+  flex: 7.5 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -103,7 +124,7 @@
 }
 
 .session-lock-bottom-bar {
-  flex: 1 0 0;
+  flex: 1 0 auto;
   /* Deliberately empty and content-free. Login's bottom band holds ~8px of
      step dots; anything we put here steals height from the main band and
      slides the keypad off its login-matching box. Notices live in
@@ -145,6 +166,13 @@
    the height, so the header tightens up — then collapses to a single compact
    line — instead of competing with the keypad for room. */
 @media (max-height: 760px) {
+  /* ADR-0001 Slice 6, mirrors StaffLoginScreen.css: the card releases its fixed
+     540px floor so it fits the room it actually has (see .session-lock-card above for
+     the scroll half of the fix). */
+  .session-lock-card {
+    min-height: min(33.75rem, calc(100dvh - 4rem));
+  }
+
   .session-lock-header {
     top: var(--space-3);
     gap: 0;
@@ -157,9 +185,33 @@
   .session-lock-date {
     font-size: var(--text-xs);
   }
+
+  .session-lock-footer-copyright {
+    display: none;
+  }
 }
 
 @media (max-height: 640px) {
+  /* Below the second stop the bands stop reserving space at all (mirrors
+     StaffLoginScreen.css): each sizes to its content and the card scrolls whatever
+     will not fit, which is the state the lock badge and the PIN pad have to survive. */
+  .session-lock-card {
+    min-height: min(28rem, calc(100dvh - 2rem));
+  }
+
+  .session-lock-top-bar,
+  .session-lock-main-area,
+  .session-lock-bottom-bar {
+    flex: 0 0 auto;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+  }
+
+  .session-lock-pad-key {
+    max-width: clamp(48px, 12vh, 72px);
+    max-height: clamp(48px, 12vh, 72px);
+  }
+
   .session-lock-header {
     flex-direction: row;
     align-items: baseline;

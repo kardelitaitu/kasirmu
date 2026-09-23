@@ -51,16 +51,17 @@ pub(super) async fn pg_push_batch_multirow(
         // Build "($1,...,$9),($10,...,$18),…" numbered placeholders.
         let mut sql = String::from(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-             last_error, created_at, synced_at, tenant_id) VALUES ",
+             last_error, created_at, synced_at, tenant_id, origin_terminal_id) VALUES ",
         );
-        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = Vec::with_capacity(n * 9);
+        let mut params: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> =
+            Vec::with_capacity(n * 10);
         for (r, item) in chunk.iter().enumerate() {
             if r > 0 {
                 sql.push(',');
             }
-            let base = r * 9;
+            let base = r * 10;
             sql.push_str(&format!(
-                "(${},${},${},${},${},${},${},${},${})",
+                "(${},${},${},${},${},${},${},${},${},${})",
                 base + 1,
                 base + 2,
                 base + 3,
@@ -69,7 +70,8 @@ pub(super) async fn pg_push_batch_multirow(
                 base + 6,
                 base + 7,
                 base + 8,
-                base + 9
+                base + 9,
+                base + 10
             ));
             params.extend_from_slice(&[
                 &item.id,
@@ -81,6 +83,7 @@ pub(super) async fn pg_push_batch_multirow(
                 &item.created_at,
                 &item.synced_at,
                 &tenant_id,
+                &item.origin_terminal_id,
             ]);
         }
         sql.push_str(" ON CONFLICT (id) DO NOTHING RETURNING id");
@@ -113,8 +116,29 @@ pub(super) async fn pg_push_batch_multirow(
 
 // ── Postgres implementations ──────────────────────────────────────────────
 
+/// Build the Postgres origin-filter clause for placeholder number `n`.
+///
+/// C3 S5, Postgres arm of the same contract as the SQLite store: a pull must
+/// never hand a terminal back its own pushes. The clause is a pure ADDITION
+/// to the WHERE list and nothing else — the anchor, the cursor tiebreak,
+/// `ORDER BY` and `LIMIT` keep their exact semantics.
+///
+/// The `::text` cast is explicit because a bare `$n IS NULL` gives
+/// PostgreSQL no type to infer; the cast also lets a caller with no terminal
+/// identity (an admin-minted token, an unpaired install) bind SQL NULL, which
+/// makes the first disjunct true and the row set byte-identical to the
+/// unfiltered pull. A NULL origin always matches — an unstamped or legacy row
+/// is "unknown origin", never "mine", and is never suppressed.
+fn pg_origin_filter(n: u8) -> String {
+    format!(" AND (${n}::text IS NULL OR origin_terminal_id IS NULL OR origin_terminal_id <> ${n})")
+}
+
 /// Pull rows via Postgres, mirroring the three SQLite query shapes with
 /// `$n` placeholders. Row decode failures fail the whole pull (SYNC-10).
+///
+/// `origin_terminal_id` is the caller's own terminal identity, taken from the
+/// verified token claims. Rows it originated are excluded from the pull;
+/// `None` reproduces the unfiltered pull exactly.
 ///
 /// Generic over `deadpool_postgres::GenericClient` so the same code runs on
 /// the tenant-scoped transaction (the `oz.tenant_id` GUC from `tenant_tx`)
@@ -122,52 +146,65 @@ pub(super) async fn pg_push_batch_multirow(
 pub(super) async fn pg_pull_items(
     client: &mut impl deadpool_postgres::GenericClient,
     tenant_id: &str,
+    origin_terminal_id: Option<&str>,
     since: Option<&str>,
     cursor: Option<(&str, &str)>,
     limit: i64,
 ) -> Result<Vec<OfflineQueueItem>, String> {
     const SELECT: &str = "SELECT id, action, payload, status, retry_count, last_error, \
-                          created_at, synced_at, tenant_id, priority FROM offline_queue";
+                          created_at, synced_at, tenant_id, priority, origin_terminal_id \
+                          FROM offline_queue";
 
     // D1 (ADR #43): prepare each query shape once; the connection-level
     // plan cache makes repeated identical pulls skip re-parsing.
     let rows = if let Some((ts, cid)) = cursor {
+        let origin = pg_origin_filter(5);
         let stmt = client
             .prepare_cached(&format!(
                 "{SELECT} WHERE tenant_id = $1 AND created_at >= $2 \
-                 AND (created_at > $3 OR (created_at = $3 AND id > $4)) \
-                 ORDER BY created_at ASC, id ASC LIMIT $5"
+                 AND (created_at > $3 OR (created_at = $3 AND id > $4)){origin} \
+                 ORDER BY created_at ASC, id ASC LIMIT $6"
             ))
             .await
             .map_err(|e| e.to_string())?;
         client
             .query(
                 &stmt,
-                &[&tenant_id, &since.unwrap_or(""), &ts, &cid, &limit],
+                &[
+                    &tenant_id,
+                    &since.unwrap_or(""),
+                    &ts,
+                    &cid,
+                    &origin_terminal_id,
+                    &limit,
+                ],
             )
             .await
             .map_err(|e| e.to_string())?
     } else if let Some(since) = since {
+        let origin = pg_origin_filter(3);
         let stmt = client
             .prepare_cached(&format!(
-                "{SELECT} WHERE created_at >= $1 AND tenant_id = $2 \
+                "{SELECT} WHERE created_at >= $1 AND tenant_id = $2{origin} \
+                 ORDER BY created_at ASC, id ASC LIMIT $4"
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        client
+            .query(&stmt, &[&since, &tenant_id, &origin_terminal_id, &limit])
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        let origin = pg_origin_filter(2);
+        let stmt = client
+            .prepare_cached(&format!(
+                "{SELECT} WHERE tenant_id = $1{origin} \
                  ORDER BY created_at ASC, id ASC LIMIT $3"
             ))
             .await
             .map_err(|e| e.to_string())?;
         client
-            .query(&stmt, &[&since, &tenant_id, &limit])
-            .await
-            .map_err(|e| e.to_string())?
-    } else {
-        let stmt = client
-            .prepare_cached(&format!(
-                "{SELECT} WHERE tenant_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2"
-            ))
-            .await
-            .map_err(|e| e.to_string())?;
-        client
-            .query(&stmt, &[&tenant_id, &limit])
+            .query(&stmt, &[&tenant_id, &origin_terminal_id, &limit])
             .await
             .map_err(|e| e.to_string())?
     };
@@ -205,6 +242,10 @@ fn pg_row_to_item(row: &tokio_postgres::Row) -> Result<OfflineQueueItem, String>
         synced_at: row.try_get("synced_at").map_err(|e| e.to_string())?,
         tenant_id: row.try_get("tenant_id").map_err(|e| e.to_string())?,
         priority: SyncPriority::from(priority as i32),
+        // NULL stays NULL: "unknown origin", never a default.
+        origin_terminal_id: row
+            .try_get("origin_terminal_id")
+            .map_err(|e| e.to_string())?,
     })
 }
 

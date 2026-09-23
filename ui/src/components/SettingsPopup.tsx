@@ -108,11 +108,12 @@ export function SettingsPopup({
         {/* Header */}
         <div className="settings-popup-header">
           <h2 className="settings-popup-title">{title}</h2>
-          <button
-            type="button"
+          <Button
+            unstyled
             className="settings-popup-close"
             onClick={onClose}
             aria-label={l10n.getString('close')}
+            data-testid="settings-popup-close"
           >
             <svg
               width="16"
@@ -128,7 +129,7 @@ export function SettingsPopup({
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         {/* Body */}
@@ -160,7 +161,7 @@ export function SettingsPopup({
         <div className="settings-popup-footer">
           {footer ?? (
             <>
-              <Button variant="ghost" onClick={onClose} disabled={saving}>
+              <Button variant="ghost" onClick={onClose} disabled={saving} data-testid="settings-popup-cancel">
                 {cancelLabel ?? 'Cancel'}
               </Button>
               <Button
@@ -168,6 +169,7 @@ export function SettingsPopup({
                 {...(saving ? { loading: true } : {})}
                 disabled={saveDisabled}
                 onClick={onSave}
+                data-testid="settings-popup-save"
               >
                 {saveLabel ?? 'Save'}
               </Button>

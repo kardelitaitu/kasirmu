@@ -6,8 +6,19 @@ import { act } from 'react';
 import SearchModal, { SEARCH_LABELS } from '../SearchModal';
 import SearchTrigger from '../SearchTrigger';
 import { labelMap } from '../../i18n';
+import type { SearchDoc } from '../../lib/search-index';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+// Docs now arrive as a prop from the content collection. Ranking and real-corpus
+// coverage are tested in lib/__tests__/search-index.test.ts; here a small stand-in
+// is enough to exercise the modal's rendering and keyboard behaviour.
+const DOCS: SearchDoc[] = [
+  { slug: 'welcome', title: 'Welcome to kasir.mu', description: 'What kasir.mu is.' },
+  { slug: 'cloud-sync', title: 'Cloud Sync', description: 'Sync across stores.' },
+  { slug: 'inventory', title: 'Inventory & Warehouses', description: 'Track stock.' },
+  { slug: 'settings', title: 'Settings & Data', description: 'Branding and receipts.' },
+];
 
 describe('SearchModal Component', () => {
   beforeEach(() => {
@@ -31,6 +42,7 @@ describe('SearchModal Component', () => {
           onClose={onClose}
           locale={locale}
           labels={labelMap(locale, SEARCH_LABELS)}
+          docs={DOCS}
         />,
       );
     });
@@ -134,7 +146,7 @@ describe('SearchModal — keyboard navigation', () => {
     const root = createRoot(container);
     await act(async () => {
       root.render(
-        <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />,
+        <SearchModal isOpen onClose={vi.fn()} locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />,
       );
     });
     await act(async () => {
@@ -254,6 +266,98 @@ describe('SearchModal — keyboard navigation', () => {
       await m.unmount();
     }
   });
+
+  // ── Focus containment ─────────────────────────────────────────────
+  // Measured live before this: 10 tabs forward out of the dialog, and one
+  // shift-tab back. `aria-modal="true"` claims the rest of the page is inert,
+  // so it must not be tabbable either.
+
+  const searchInput = () => document.body.querySelector('input[type="search"]') as HTMLInputElement;
+
+  it('wraps focus to the first stop when tabbing forward off the last option', async () => {
+    const m = await renderOpen();
+    try {
+      const options = m.options();
+      options[options.length - 1].focus();
+      await m.press('Tab');
+      expect(document.activeElement).toBe(searchInput());
+    } finally {
+      await m.unmount();
+    }
+  });
+
+  it('wraps focus to the last option on Shift+Tab from the first stop', async () => {
+    const m = await renderOpen();
+    try {
+      searchInput().focus();
+      await m.press('Tab', { shiftKey: true });
+      const options = m.options();
+      expect(document.activeElement).toBe(options[options.length - 1]);
+    } finally {
+      await m.unmount();
+    }
+  });
+
+  it('pulls focus back into the dialog if it is outside it', async () => {
+    const m = await renderOpen();
+    try {
+      const outsider = document.createElement('button');
+      document.body.appendChild(outsider);
+      outsider.focus();
+      await m.press('Tab');
+      expect(document.activeElement).toBe(searchInput());
+      outsider.remove();
+    } finally {
+      await m.unmount();
+    }
+  });
+});
+
+// ── SearchModal — focus is returned to the opener on close ───────────
+
+describe('SearchModal — focus restore', () => {
+  async function render(open: boolean, root: ReturnType<typeof createRoot>) {
+    await act(async () => {
+      root.render(
+        <SearchModal
+          isOpen={open}
+          onClose={vi.fn()}
+          locale="en"
+          labels={labelMap('en', SEARCH_LABELS)}
+          docs={DOCS}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 60));
+    });
+  }
+
+  it('hands focus back to the element that opened it', async () => {
+    const opener = document.createElement('button');
+    opener.textContent = 'Search';
+    document.body.appendChild(opener);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    try {
+      opener.focus();
+      await render(true, root);
+      // Focus moved into the dialog while open.
+      expect(document.activeElement).toBe(document.body.querySelector('input[type="search"]'));
+
+      await render(false, root);
+      // …and comes back to the trigger, so the next Tab resumes there rather
+      // than restarting at the top of the page.
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      opener.remove();
+    }
+  });
 });
 
 // ── SearchTrigger (gap analysis: 0 tests) ────────────────────────────
@@ -264,7 +368,7 @@ describe('SearchTrigger — toggle', () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     await act(async () => {
-      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} />);
+      root.render(<SearchTrigger locale={locale} labels={labelMap(locale, SEARCH_LABELS)} docs={DOCS} />);
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
@@ -272,7 +376,10 @@ describe('SearchTrigger — toggle', () => {
     return {
       container,
       root,
-      button: () => container.querySelector('button[aria-label="Search"]') as HTMLButtonElement | null,
+      button: () =>
+        container.querySelector(
+          `button[aria-label="${labelMap(locale, SEARCH_LABELS)['search.quickSearch']}"]`,
+        ) as HTMLButtonElement | null,
       unmount: async () => {
         await act(async () => { root.unmount(); });
         container.remove();

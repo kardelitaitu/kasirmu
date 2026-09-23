@@ -22,14 +22,20 @@ beforeEach(() => {
   env.PUBLIC_LICENSE_API_URL = 'https://license.test';
   sessionStorage.clear();
   // The snap token fetch is real enough: stub the API on global fetch.
+  // URL-aware so the session probe (/__oz/session) and the snap endpoint can
+  // answer differently. Default: no cookie (401) — tests that need a cookie
+  // session either set sessionStorage or override this stub.
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ token: 'snap-token-123', redirect_url: '' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    ),
+    vi.fn(async (url: string) => {
+      const json = (body: unknown, status = 200) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      if (url === '/__oz/session') return json({ error: 'not signed in' }, 401);
+      return json({ token: 'snap-token-123', redirect_url: '' });
+    }),
   );
 });
 
@@ -100,6 +106,80 @@ describe('openMidtransCheckout', () => {
     const { openMidtransCheckout } = await import('../midtrans');
     await expect(openMidtransCheckout('plus', 'yearly')).rejects.toThrow('midtrans not configured');
   });
+
+  it('resolves the license API at click time, so a late runtime config still checks out', async () => {
+    // The late-config regression, measured in a browser 2026-09-23: the account
+    // dashboard renders, loads this module, and only THEN receives
+    // /__oz/runtime-config.js. A module-scope `const API = licenseApiUrl()`
+    // froze the pre-config undefined, so the click threw 'midtrans not
+    // configured' and issued no request at all — the runtime URL must win even
+    // when it arrives after import.
+    // Empty string, not undefined: an assignment of undefined to
+    // import.meta.env does not take effect under Vitest, so the build-time
+    // value would silently survive and this test would prove nothing.
+    (import.meta.env as Record<string, unknown>).PUBLIC_LICENSE_API_URL = '';
+    const { openMidtransCheckout } = await import('../midtrans');
+    window.__OZ_CONFIG__ = { licenseApiUrl: 'https://license.late' };
+    sessionStorage.setItem('oz_session', 'sess-1');
+    const pay = vi.fn();
+    (window as unknown as { snap: unknown }).snap = { pay };
+
+    try {
+      await openMidtransCheckout('plus', 'yearly');
+
+      expect(fetch).toHaveBeenCalledWith(
+        'https://license.late/api/v1/midtrans/snap',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(pay).toHaveBeenCalledWith('snap-token-123', expect.any(Object));
+    } finally {
+      delete (window as unknown as { snap?: unknown }).snap;
+      delete window.__OZ_CONFIG__;
+    }
+  });
+
+  it('throws when neither the runtime config nor the build-time URL is set', async () => {
+    // Empty string, not undefined: see the note in the test above.
+    (import.meta.env as Record<string, unknown>).PUBLIC_LICENSE_API_URL = '';
+    delete window.__OZ_CONFIG__;
+    const { openMidtransCheckout } = await import('../midtrans');
+    sessionStorage.setItem('oz_session', 'sess-1');
+
+    await expect(openMidtransCheckout('plus', 'yearly')).rejects.toThrow('midtrans not configured');
+  });
+
+  it('uses the cookie token when sessionStorage is empty (cookie-only session)', async () => {
+    // The regression: reading sessionStorage directly made the id-locale
+    // checkout fail outright for a user signed in via the httpOnly cookie in a
+    // new tab (per-tab sessionStorage empty). It must resolve cookie-first.
+    sessionStorage.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const json = (body: unknown, status = 200) =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        if (url === '/__oz/session') return json({ token: 'cookie.token' });
+        return json({ token: 'snap-token-123', redirect_url: '' });
+      }),
+    );
+    const pay = vi.fn();
+    (window as unknown as { snap: unknown }).snap = { pay };
+
+    const { openMidtransCheckout } = await import('../midtrans');
+    await openMidtransCheckout('plus', 'yearly');
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://license.test/api/v1/midtrans/snap',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer cookie.token' }),
+      }),
+    );
+    expect(pay).toHaveBeenCalledWith('snap-token-123', expect.any(Object));
+    delete (window as unknown as { snap?: unknown }).snap;
+  });
 });
 
 describe('CheckoutButton market routing', () => {
@@ -148,7 +228,7 @@ describe('CheckoutButton market routing', () => {
     vi.doMock('../midtrans', () => ({ openMidtransCheckout: vi.fn() }));
     vi.doMock('../../lib/region', () => ({ getRegion: () => 'global', getExplicitRegion: () => 'global' }));
     vi.doMock('../paddle', () => ({
-      hasSession: () => true,
+      hasSession: () => Promise.resolve(true),
       isPaddleConfigured: () => true,
       isPlaceholderPriceId: () => false,
       openPaddleCheckout: vi.fn().mockResolvedValue(undefined),
@@ -174,7 +254,7 @@ describe('CheckoutButton market routing', () => {
     vi.doMock('../midtrans', () => ({ openMidtransCheckout: vi.fn() }));
     vi.doMock('../../lib/region', () => ({ getRegion: () => 'global', getExplicitRegion: () => 'global' }));
     vi.doMock('../paddle', () => ({
-      hasSession: () => true,
+      hasSession: () => Promise.resolve(true),
       isPaddleConfigured: () => true,
       isPlaceholderPriceId: () => false,
       openPaddleCheckout: vi.fn().mockResolvedValue(undefined),

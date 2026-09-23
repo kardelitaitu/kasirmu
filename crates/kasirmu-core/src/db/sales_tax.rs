@@ -20,6 +20,7 @@
 //! invariant, pinned by this module's pre-E1 tests running unmodified.
 
 use super::*;
+use crate::db::tax::MAX_TAX_RATE_BPS;
 use crate::db::tax::TaxSaleScope;
 use crate::tax_rate::{RoundingMode, TaxRate};
 
@@ -48,6 +49,14 @@ impl Store<'_> {
     /// `lua_overrides` — per-SKU tax rate overrides from plugins.
     /// When a SKU is present in `lua_overrides` its `(rate_bps, is_inclusive)`
     /// values are used instead of the DB-resolved rates for that line.
+    ///
+    /// Each override's `rate_bps` must be inside `0..=MAX_TAX_RATE_BPS`, the
+    /// same bound `create_tax_rate` enforces on an authored row. An
+    /// out-of-range override is REJECTED with a structured error rather than
+    /// clamped: the plugin OWNS the amount (D89-1 Option B), so silently
+    /// substituting a different rate would charge a tax the rule never asked
+    /// for, and a rate of 0 or a negative one would otherwise zero or negate
+    /// the line's tax while still stamping a `lua_override` breakdown row.
     ///
     /// All rates for a line contribute to its total tax. Stores the
     /// first rate's id in `tax_rate_id` for backward compatibility.
@@ -112,6 +121,25 @@ impl Store<'_> {
                     message: format!(
                         "line total must be non-negative, got {}",
                         line.line_total.minor_units
+                    ),
+                });
+            }
+        }
+
+        // C2: a Lua override is an untrusted plugin input on a money path, so
+        // its rate is bounded before any line touches it — the same bound the
+        // authored path enforces (TAX-04's MAX_TAX_RATE_BPS). Checked in a
+        // pre-pass so the error leaves no partially-mutated Sale behind, and
+        // checked for every entry, not only for the SKUs this sale carries: a
+        // rule that returns a 0 or negative rate must be refused, never
+        // silently ignored.
+        for (sku, rate_bps, _) in lua_overrides {
+            if !(0..=MAX_TAX_RATE_BPS).contains(rate_bps) {
+                return Err(CoreError::Validation {
+                    field: "rate_bps",
+                    message: format!(
+                        "Lua tax override for SKU '{sku}' must be between 0 and \
+                         {MAX_TAX_RATE_BPS} bps, got {rate_bps}"
                     ),
                 });
             }

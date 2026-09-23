@@ -16,6 +16,8 @@ import { renderWithFluentSync } from '@/__tests__/test-utils/render';
 import StatusBar from '@/components/StatusBar';
 import type { ConnectionHealth } from '@/hooks/connectionHealth';
 import sharedFtl from '@/locales/shared.ftl?raw';
+// The unconfigured sync-pill message lives in settings.ftl (sync's own bundle).
+import settingsFtl from '@/locales/settings.ftl?raw';
 // The pill labels come from staff.ftl (staff-login-connection-auth/-sync),
 // not shared.ftl — the component is shared with the staff login screen.
 import staffFtl from '@/locales/staff.ftl?raw';
@@ -65,7 +67,7 @@ function renderBar(auth: Conn = HEALTHY, sync: Conn = HEALTHY) {
   mockAuth.mockReturnValue(auth);
   mockSync.mockReturnValue(sync);
   mockVersion.mockReturnValue(IDLE_VERSION);
-  return renderWithFluentSync(<StatusBar />, sharedFtl, staffFtl);
+  return renderWithFluentSync(<StatusBar />, sharedFtl, staffFtl, settingsFtl);
 }
 
 beforeEach(() => {
@@ -97,6 +99,28 @@ describe('StatusBar degraded rendering', () => {
   it('paints a healthy server good', () => {
     renderBar();
     expect(screen.getByLabelText('Auth').className).toContain('statusbar-tone--good');
+  });
+
+  it('paints an unconfigured sync service warn and says so, not offline', () => {
+    // The reported defect, at the render layer: a tablet that has never been
+    // configured showed "Sync · Offline" in red. The probe distinguishes it
+    // (test_sync_connection answers "No server URL configured"), the hook
+    // carries the distinction, and the pill must render it as its own state.
+    renderBar(HEALTHY, { state: 'unconfigured', latencyMs: null, cause: null });
+    const sync = screen.getByLabelText('Sync');
+    expect(sync.className).toContain('statusbar-tone--warn');
+    expect(sync.className).not.toContain('statusbar-tone--bad');
+    expect(screen.getByText(/Sync · Not configured/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sync · Offline/)).toBeNull();
+  });
+
+  it('still says Offline for a sync service that is genuinely unreachable', () => {
+    // The other direction: the new state must not have swallowed the outage.
+    renderBar(HEALTHY, { state: 'disconnected', latencyMs: null, cause: null });
+    const sync = screen.getByLabelText('Sync');
+    expect(sync.className).toContain('statusbar-tone--bad');
+    expect(screen.getByText(/Sync · Offline/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sync · Not configured/)).toBeNull();
   });
 
   it('applies the same mapping to the sync pill', () => {

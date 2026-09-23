@@ -7,23 +7,14 @@ fn setup() -> (Store<'static>, String) {
     let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
     let store = Store::new(conn);
 
-    // Migration 025 seeds a default locations row (id='default',
-    // is_primary=0). Update it to is_primary=1 with full test data.
-    // We use UPDATE rather than INSERT OR REPLACE because the latter
-    // triggers a DELETE (blocked by ON DELETE RESTRICT from
-    // workspace_instances referencing locations).
+    // ADR #56 §2.6 removed the seeded 'Default Store' row: a store with no
+    // merchant should have no location, so the baseline no longer ships one
+    // and the test creates what it needs. Inserting is also what
+    // provision_device does, so the fixture matches production.
     conn.execute(
-        "UPDATE locations SET
-            name = ?1,
-            address = ?2,
-            tax_id = ?3,
-            currency = ?4,
-            timezone = ?5,
-            is_primary = 1,
-            created_at = ?6,
-            updated_at = ?7
-         WHERE id = 'default'",
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
         rusqlite::params![
+            "default",
             "Main Store",
             "123 Main St",
             "TAX-001",

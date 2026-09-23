@@ -3,10 +3,14 @@ use crate::migrations;
 use crate::subscription::SubscriptionTier;
 use rusqlite::Connection;
 
+/// A provisioned store. See `migrations::seed_provisioned_baseline` for why
+/// the baseline rows are seeded here rather than shipped by the migration
+/// (ADR #56 §2.6).
 fn fresh() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
     conn.pragma_update(None, "foreign_keys", "ON").unwrap();
     migrations::run(&mut conn).unwrap();
+    migrations::seed_provisioned_baseline(&conn);
     conn
 }
 

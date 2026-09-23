@@ -71,6 +71,13 @@
   letter-spacing: 0.0625rem;
 }
 
+/* A rejected field is marked visibly as well as to assistive tech: the border
+   names the control the banner is talking about, so the message is actionable
+   without reading the whole form. */
+.create-pin-input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
 .create-pin-input:focus-visible {
   border-color: var(--color-border-focus);
   box-shadow: inset 0 0 0 1px var(--color-accent-subtle);

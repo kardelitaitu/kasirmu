@@ -3,6 +3,8 @@ name: deploy-northflank
 description: Ship or re-ship the kasir.mu backend (the unified auth + sync container) to Northflank, and prove the deploy actually landed. Use when asked to deploy/redeploy the backend, when a merge to main should have deployed but the live service looks stale, when triggering or polling a Northflank build, when verifying a deploy with scripts/verify-deployment.py, or when changing the service's environment or Dockerfile. For a FAILED build — retrieving its log, pkg-config or shared-library failures, Dockerfile divergence — read `northflank-deploy-diagnosis` instead; this skill assumes the build succeeds.
 ---
 
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings (first audit stamp for this skill; it shipped without one) · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. Re-measured this pass: all three paths the file cites exist — `ops/docker/Dockerfile.unified`, `scripts/verify-deployment.py`, `apps/license-server/DEPLOY.md`. The `oz-pos` project id is NOT rebrand drift: the file says explicitly that `oz-pos` is the Northflank project id rather than the brand, that renaming it turns working URLs into 404s, and that it is allow-listed in the drift guard's crate-prefix check. Left alone deliberately. Cross-reference integrity checked: the sibling skill `northflank-deploy-diagnosis` that this file's failure path points at does exist. · NOT re-measured (would need live Northflank credentials or a deploy): the build/poll API behaviours, the environment-change steps, and the deploy-verification claims. No network call or deploy was attempted during this audit. -->
+
 # Deploying the kasir.mu backend to Northflank
 
 One service, one image, two functions. `ops/docker/Dockerfile.unified` produces a container
@@ -218,4 +220,4 @@ Either way, record which image is live afterwards — the next deploy will silen
 9. **Changing `OZ_ADMIN_EMAIL` after first boot.** It is write-once: admin sessions resolve
    through it, and a change orphans every existing admin session.
 
-> last audited 21-09-26 by Buffy
+> last audited 22-09-26 by Budak-Korporat

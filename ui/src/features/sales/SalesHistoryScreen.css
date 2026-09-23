@@ -1,5 +1,21 @@
 .sales-history {
   padding: var(--space-4);
+  /* The page's own query container (ADR-0001 T2 / Slice 5), measured on the box
+     the shell grants this screen — not the viewport. UNNAMED on purpose, same
+     reason as its siblings (RetailPosScreen.css, KdsScreen.css): it sits inside
+     the shell's named app-content container, and the only thing between them is
+     a display:contents wrapper, so a named query would find nothing in every
+     mount that does not go through the shell (tests, e2e harness, this screen
+     rendered standalone). An unnamed query against the nearest container is the
+     same measurement inside the shell and stays correct outside it.
+
+     Fixed-position descendants are safe here: `container-type: inline-size`
+     applies layout containment WITHOUT the `contain: layout` behaviour that
+     would re-root a `position: fixed` child, and this sheet has a fixed overlay
+     below. Measured 2026-09-22 in Chromium: a fixed inset:0 child of a 400x200
+     `container-type: inline-size` box reports 1200x800 against a 1200x800
+     viewport - the viewport, not the box. */
+  container-type: inline-size;
 }
 
 /* ── Pull-to-refresh indicator ────────────────────────────────── */
@@ -718,6 +734,93 @@
 
 .sales-history-cell-negative {
   color: var(--color-danger);
+}
+
+/* ── Narrow-container tier (ADR-0001 T2 / Slice 5) ──────────────────
+   The sheet carried no width assumption at all before this: every viewport
+   query in it is a motion preference, and its one width-shape rule was
+   .sales-history-table-wrap { overflow-x: auto } — an admission that the table
+   does not fit, with nothing said about what it does instead. Measured against
+   .sales-history's own inline-size (declared at the top of this sheet), 880px
+   is the same fold point the other two migrated sheets use: below it the
+   five-column table and the two-column detail meta stop holding their content,
+   and the horizontal scrollbar is the only way to reach the trailing columns —
+   which is exactly the keyboard-trap shape ADR-0001 exists to close.
+
+   Below 880px the lanes the row can do without are dropped (sale id, cashier),
+   the detail modal goes full-bleed instead of 90% of a box it no longer fills,
+   and the detail's meta grid and the header's action row stack. The table's
+   own columns (date, total, actions) are fixed px on purpose and are NOT
+   folded: a POS history row is read at a glance and the total is the line.
+
+   Desktop landscape (a content slot >= 880px) renders exactly as before. */
+@container (max-width: 880px) {
+  .sales-history-header {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .sales-history-modal {
+    width: 100%;
+    max-width: none;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .sales-history-detail-meta {
+    grid-template-columns: 1fr;
+  }
+
+  /* Lanes the row can do without, hidden on the LEAF cells rather than on a
+     wrapper: .sales-history-table itself is what carries the layout. */
+  .sales-history-table .sales-history-cell-id,
+  .sales-history-table .sales-history-cell-cashier {
+    display: none;
+  }
+}
+
+/* ── Narrow-shell tier (ADR-0001 Slice 5) ──────────────────────────
+   The shell hands this page slots down to 640px (narrow-shell case),
+   which the 880px tier above does not reach: between 640px and 880px
+   the sheet had NO rule of its own, so the receipt lane (nowrap, mono),
+   the items/payment lanes and the filter bar's fixed-min-width inputs
+   overflowed the box. Everything here is NEW at 640px — the 880px tier
+   already applies at this width (a 640px box also matches max-width:
+   880px), so nothing it declares is repeated. */
+@container (max-width: 640px) {
+  /* The statutory receipt code cannot wrap; it lives in the detail modal
+     (full-bleed since 880px), so the lane leaves the list rows. */
+  .sales-history-table .sales-history-cell-receipt {
+    display: none;
+  }
+
+  /* Items and payment are glanceable detail, not the line of the row:
+     date, total, status and the actions stay. */
+  .sales-history-table th:nth-child(5),
+  .sales-history-table td:nth-child(5),
+  .sales-history-table th:nth-child(7),
+  .sales-history-table td:nth-child(7) {
+    display: none;
+  }
+
+  /* The search input's 12.5rem floor and the select's 8.75rem floor
+     cannot both sit beside the date pair in a 640px box: each control
+     takes the full row it already wraps onto. */
+  .sales-history-filter-input,
+  .sales-history-filter-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sales-history-filter-group {
+    flex: 1 1 100%;
+  }
+
+  /* The free-tier teaser's two-column squeeze folds under its own CTA. */
+  .sales-history-cap-teaser-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* ── C1.2 history-cap teaser (Free tier 30-day window) ───────── */

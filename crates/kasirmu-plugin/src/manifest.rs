@@ -243,6 +243,33 @@ impl PluginManifest {
             ))
         })?;
 
+        // ── Unsupported capability flags fail closed (C2) ──────────────
+        // allow_network / allow_filesystem / allow_http are deserialised but
+        // nothing in the runtime enforces them, so a manifest setting one is
+        // declaring an intent the host cannot honour. Accepting it silently
+        // would imply a protection that does not exist — reject the plugin
+        // instead, naming the flags so the author can remove them.
+        let unsupported: Vec<&str> = [
+            ("allow_network", self.permissions.allow_network),
+            ("allow_filesystem", self.permissions.allow_filesystem),
+            ("allow_http", self.permissions.allow_http),
+        ]
+        .into_iter()
+        .filter(|(_, declared)| *declared)
+        .map(|(flag, _)| flag)
+        .collect();
+        if !unsupported.is_empty() {
+            return Err(PluginError::Manifest(format!(
+                concat!(
+                    "plugin '{name}' declares unsupported capability flag(s): {} — the host does ",
+                    "not implement network, filesystem or HTTP access, so they cannot be granted. ",
+                    "Remove them from [permissions]."
+                ),
+                unsupported.join(", "),
+                name = name,
+            )));
+        }
+
         // Hook names: non-empty, safe identifier characters.
         for hook in &self.capabilities.hooks {
             let valid_hook = !hook.is_empty()

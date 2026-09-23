@@ -4,19 +4,16 @@
 # a sidebar; this labels the page-level back button that returns to the
 # workspace picker.
 staff-back-aria = Back to workspaces
-# Names the Staff / Roles tab strip in the page header.
-staff-tabs-aria = Staff and roles
+# Names the Staff / Roles / Trash tab strip in the page header.
+staff-tabs-aria = Staff, roles and trash
 # Status strip (components/StaffManagementFooter.tsx). A fullscreen route
 # renders without AppLayout, so the app's own StatusBar is absent and the page
 # reports its own state. The counts are the loaded snapshot's, never an
 # assumption: a load that has not completed prints nothing.
-staff-footer-staff-count =
     { $count ->
         [one] { $count } staff member
        *[other] { $count } staff members
     }
-staff-footer-active = { $count } active
-staff-footer-roles =
     { $count ->
         [one] { $count } role
        *[other] { $count } roles
@@ -28,19 +25,24 @@ staff-empty-cta = Add your first staff member
 staff-col-name = Name
 staff-col-username = Username
 staff-col-role = Role
-staff-col-status = Status
 staff-col-workspace = Workspace
-staff-col-actions =
-    .aria-label = Actions
+staff-col-phone = Phone
 staff-status-active = Active
 staff-status-inactive = Inactive
-staff-edit = Edit
+
+// ── Roster (stat row + toolbar) ─────────────────────────────────────
+staff-stat-total = Total
+staff-search =
+    .aria-label = Search staff
+    .placeholder = Search name, username or ID
+staff-filter-all = All
+staff-sort =
+    .aria-label = Sort staff by
+staff-no-matches = No staff match your search
 staff-edit-aria =
     .aria-label = Edit { $name }
-staff-deactivate = Deactivate
 staff-deactivate-aria =
     .aria-label = Deactivate { $name }
-staff-restore = Restore
 staff-restore-aria =
     .aria-label = Reactivate { $name }
 staff-modal-add-title = Add Staff Member
@@ -136,7 +138,6 @@ staff-login-digit-aria =
 staff-login-submit = Login
 staff-login-submitting = Logging in…
 staff-login-error-connection = Could not verify username. Check your connection.
-staff-login-pin-min-length = PIN must be at least 4 digits.
 staff-login-back = ← Back
 staff-login-copyright = © 2026 kasir.mu. All rights reserved.
 staff-login-attempts-remaining = ({ $count } attempt{ $count -> [1] { "" } *{ "s" } } remaining)
@@ -172,8 +173,6 @@ staff-login-connection-sync = Sync
 
 # ── ADR #35 D6 user profile (spec 0049) ─────────────────────────────────
 
-staff-col-id = ID
-staff-id-masked-aria = National ID (masked)
 staff-profile-incomplete = Profile incomplete
 staff-profile-incomplete-edit-hint = Complete this member's profile to unlock role and workspace assignment.
 staff-profile-section-label = Profile
@@ -187,6 +186,11 @@ staff-national-id-type-select = Select type
 staff-national-id-type-ssn = SSN (US)
 staff-national-id-type-nik = NIK / KTP (Indonesia)
 staff-field-national-id-label = National ID *
+# ADR #35 D6: shown instead of the required-marker label when the viewer holds
+# no `staff:read_identity`, so the identity record is withheld and left
+# unchanged on save. A field the viewer cannot fill must not read as required.
+staff-field-national-id-label-hidden = National ID (hidden)
+staff-identity-withheld-hint = You do not have permission to view this member's identity documents. They are left unchanged when you save.
 staff-field-national-id-aria = National ID number (required)
 staff-field-email-label = Email *
 staff-field-email-aria = Email address (required)
@@ -274,9 +278,9 @@ role-perm-sensitive = Sensitive
 role-cancel = Cancel
 role-save = Save role
 role-saved = Saved the { $name } role.
-role-deleted = Deleted the { $name } role.
+role-deleted = Moved the { $name } role to the trash.
 role-delete-confirm-title = Delete this role?
-role-delete-confirm-body = Accounts holding { $name } will lose its permissions. This cannot be undone.
+role-delete-confirm-body = Accounts holding { $name } will lose its permissions. The role goes to the trash, where it can be restored for 90 days.
 
 # Who holds a role, per holder. The collapsed row already states the same
 # total via role-in-use-accounts, and both read holder_count, which core
@@ -315,8 +319,42 @@ role-holders-dims-workspaces = { $count ->
   }
 role-holders-dims-both-lists = { $branches } branches, { $workspaces } workspaces
 
+# ── Trash (staff:delete · 90-day retention) ─────────────────────────
+# A staff member or a custom role is soft-deleted into the trash and purged
+# after TRASH_RETENTION_DAYS (90) in kasirmu-core. The backend owns that
+# window -- its reads run the sweep before they answer -- so the day count
+# below is the operator's cue to restore a row in time, never the thing that
+# decides the row has expired.
+staff-tab-trash = Trash
+staff-trash-intro = Deleted staff and roles stay here for 90 days before permanent deletion. Restoring a staff member brings them back inactive.
+staff-trash-staff-section = Deleted staff
+staff-trash-roles-section = Deleted roles
+staff-trash-empty = Nothing in the trash
+staff-trash-days-left =
+    { $days ->
+        [one] { $days } day before permanent deletion
+       *[other] { $days } days before permanent deletion
+    }
+staff-trash-restore = Restore
+staff-trash-restore-staff-aria =
+    .aria-label = Restore { $name }
+staff-trash-restore-role-aria =
+    .aria-label = Restore the { $name } role
+staff-trash-error = Could not load the trash
+staff-trash-restore-failed = Could not restore. Try again.
+
+# ── Delete (staff:delete) ───────────────────────────────────────────
+staff-delete-aria =
+    .aria-label = Delete { $name }
+staff-delete-confirm-title = Delete staff member?
+staff-delete-confirm-body = { $name } will be moved to the trash and removed for good after 90 days. Restore them from the Trash tab before then. Continue?
+staff-delete-confirm-confirm = Delete
+staff-delete-confirm-cancel = Cancel
+staff-toast-deleted = { $name } moved to the trash
+staff-delete-failed = Could not delete staff member
+role-restored = Restored the { $name } role.
+
 # ── Impersonation (operator:impersonate) ───────────────────────────
-staff-impersonate-action = Impersonate
 staff-impersonate-aria =
     .aria-label = Impersonate { $name }
 staff-impersonating-banner = Impersonating { $name }

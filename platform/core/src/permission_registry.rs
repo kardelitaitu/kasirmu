@@ -4,7 +4,7 @@
 /*
 last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
 crate: platform-core | status: SAFE | lint: CLEAN
-findings: exemplary — 84-key registry with family/sensitivity classification per ADR #35 D2/D3 (15 sensitive keys); validate_grant fail-closed (unregistered key, sensitive-under-family-wildcard, global * reserved for the Owner seed); G-3 CLOSED: staff:delete is documented RESERVED (no enforcement consumer; deactivation rides staff:update; any future hard-delete surface must gate on this key) in both the registry entry and the rbac.rs catalog constant; the Section-D verification held — hand-edited DB rows carrying a family wildcard for a sensitive key still deny at the registry-aware gate (db/staff.rs:122-125), so the creation-time-only sensitivity invariant has an enforcement-side backstop
+findings: exemplary — 84-key registry with family/sensitivity classification per ADR #35 D2/D3 (15 sensitive keys); validate_grant fail-closed (unregistered key, sensitive-under-family-wildcard, global * reserved for the Owner seed); REV 2026-09-22 (DSH staff-trash): the G-3 wording in this stamp and in the staff:delete description above is RETIRED, not merely closed — staff:delete now has three enforcement consumers (delete_staff_scoped, restore_staff_scoped, list_staff_trash_scoped in kasirmu-bridge, registered in both Tauri shells and reached from the staff screen's Trash tab), so the description served to the role editor no longer tells an author that the key guards nothing. The rest of the 31-08-26 reading is kept as written; the Section-D verification held — hand-edited DB rows carrying a family wildcard for a sensitive key still deny at the registry-aware gate (db/staff.rs:122-125), so the creation-time-only sensitivity invariant has an enforcement-side backstop
 next: none — campaign closed for this file | perf: linear registry scan — fine at 84 entries
 */
 //!
@@ -190,7 +190,7 @@ pub const REGISTRY: &[PermissionEntry] = &[
         key: "staff:delete",
         family: "staff",
         sensitive: true,
-        description: "Delete / deactivate a staff member. RESERVED (G-3): no enforcement consumer yet across desktop/tablet/cloud/CLI — deactivation rides staff:update; any future hard-delete IPC must gate on this key.",
+        description: "Move a staff member to the trash, read that trash, and restore from it. Deactivating an account is staff:update — this key is the 90-day retention surface, and a future hard delete must gate on it too.",
     },
     PermissionEntry {
         key: "staff:manage_roles",

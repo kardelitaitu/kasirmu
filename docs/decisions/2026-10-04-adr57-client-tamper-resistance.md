@@ -2,14 +2,70 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — part implemented, part to build
+status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
 
-**Status:** Proposed (2026-10-04). Some controls below are **already implemented and verified**
-(marked IMPLEMENTED with evidence); the rest are **to build** (marked TO BUILD). No control is
-claimed that this record does not either cite or name as work.
+**Status:** Proposed (2026-10-04). **Updated 2026-09-21:** §Q4's escalation fold is implemented
+(`kasirmu_core::build_fingerprint`), and §Q3's gate (a) has been rewritten from *"a named person
+reads `NeedsAttention`"* to *"a violation notification exists"* — the read path was checked and the
+reader already exists in code, so the old criterion would have deferred §2.4 indefinitely without
+changing anyone's behaviour. **§2.1 now ships end to end** — the Android
+computation (`kasirmu-hal/src/transport/apk_signature.rs`), its reporting on the licence-status
+call, the `release_channels` pin store §Q-B decided, and the server-side classification
+(`apps/license-server/build_integrity.go`). **§2.4's operator notification now ships too**
+(`apps/license-server/build_integrity_alerts.go`), which was the last gate on that section: a
+daily scanner alerts the operator on a pinned-set `mismatch`, and on repeated `unknown` per
+§Q4/§Q-C. §3.3's rows below have been re-stated against the new shipped state — detection AND a
+reader now exist.
+
+**The on-device read is now VERIFIED, not merely compiled.** On 2026-09-22 a real tablet (Redmi Pad
+SE) reported its own signing certificate through the JNI path:
+
+```
+80225936dea046144ee13db692165e0aecdbb31a64e89c811955422b075956c9
+```
+
+read by invoking `get_build_fingerprint` over CDP in the running app, and **independently
+corroborated** with `apksigner verify --print-certs` on the very same APK — the two agree character
+for character, in lowercase bare 64-hex, which is the form
+`classify_build_fingerprint` compares against. Three tests in
+`apps/license-server/build_integrity_test.go` now pin that observed value, its keytool spelling, and
+its FORMAT (so a client-side format drift cannot silently turn every real device into a `mismatch`).
+
+**Why this needed a new command.** The fingerprint was previously produced only inside
+`check_license_status`, which returns before reaching the JNI when no licence is activated — so on a
+fresh or free-tier install the whole path was unreachable, and therefore untestable. `get_build_fingerprint`
+(`apps/mobile-tauri/src/commands/health.rs`) exposes the read on any device. It discloses nothing: the
+value is a property of the public APK.
+
+**Still not covered: CI.** The Android build job was retired by `23c963303` (2026-09-02), so nothing
+in CI exercises this path; the evidence above is a manual device run, so a future regression would
+be caught by a person rather than a pipeline.
+
+**Legend for the section markers below:** IMPLEMENTED means built with evidence; **PART IMPLEMENTED**
+means some of a section's signals ship and the rest are named as unbuilt; **STILL TO BUILD** means
+none of it ships. No control is claimed that this record does not either cite or name as work, and
+each marker's remainder is spelled out rather than left to the count.
+
+**⚠️ This record's dates are NOT monotonic, and that is not a defect to fix.** It was updated in
+place across several sessions, so a `2026-09-21` note can postdate a `2026-10-05` one (the
+2026-10-05 entries describe an EARLIER state — they were written to the future-dated plan dates this
+ADR was drafted against). **Read precedence as: this status block is authoritative; in-body section
+markers second; dated history blocks third.** Where a dated block contradicts a marker, the marker
+wins. The dated blocks are kept verbatim because a record of what was believed when is the only way
+to audit how a claim aged.
+
+**Superseded reading, kept as history (2026-09-21).** An earlier note here recorded that §Q4's
+escalation fold had *no non-test caller*, and that a `grep` for
+`build_fingerprint|build_integrity|accepted_pins|release_channels` across `apps/` returned
+*nothing*. **Both were true on that date and are false now:** the field ships
+(`kasirmu-hal/src/transport/apk_signature.rs` → the licence-status call), the server classifies and
+stores every non-`valid` verdict (`build_integrity.go`), §2.4's notifier and its device-quota signal
+ship (`build_integrity_alerts.go`, `quota_effect.go`), and §2.5 refuses a renewal to a device with a
+stored `mismatch`. The note is retained because a record of what was believed when is the only way
+to audit how a claim aged.
 **Date:** 2026-10-04
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #50 (sync auth hardening), ADR #55 (server origin model), ADR #56 (first-run
@@ -37,7 +93,8 @@ blur them into a single claim:
 
 `apps/mobile-tauri/tauri.conf.json:44` sets `minSdkVersion: 26` (Android 8.0, 2017). Distribution
 is sideloaded APKs (`apps/mobile-tauri/AGENTS.md`, Build section:
-`cargo tauri android build --apk` → `adb install`).
+`cargo tauri android build --apk`). That file documents `adb devices` for device checks and gives no
+`adb install` recipe — this record cited one until the 2026-09-22 re-measure.
 
 **This rules out Play Integrity, which an earlier draft of this record proposed.** Two independent
 reasons, either sufficient:
@@ -93,17 +150,17 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 
 | Control | Evidence | Status |
 |---|---|---|
-| Signed subscriptions, verified before trust | `license_verification.rs:393,501,544` | IMPLEMENTED |
+| Signed subscriptions, verified before trust | `license_verification.rs:417` (the definition) verified at `:525` and `:568` | IMPLEMENTED |
 | Verification at *every* consumer, not just boot | `auth.rs:617`, `inventory.rs:112`, `history.rs:76` | IMPLEMENTED |
 | Fail-closed tier projection | `entitlements.rs:35,78,86` — unknown/absent/tampered → Free | IMPLEMENTED |
-| Canceled never in grace; out-of-grace reverts to Free | `subscription.rs:7` module findings, `:665` | IMPLEMENTED |
-| Clock-rollback detection, ledger-based | `subscription.rs:572`, `:534`; tolerance 30s (`:28`) | IMPLEMENTED |
-| Read-only lock, failing closed on an unreadable ledger | `subscription.rs:991-995` (`Err(_) => true`) | IMPLEMENTED |
-| Per-tier bounded offline grace | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 (`subscription_tests.rs:1168-1175`) | IMPLEMENTED |
-| Quota gates on every capped dimension | **7 bridge call sites**, e.g. `bridge/products.rs:701`, `staff.rs:1084`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`, plus `inventory.rs:127`. The gate *definitions* live in `kasirmu-core/src/db/*.rs` (`enforce_product_quota`, `enforce_staff_quota`, …); what this row counts is the bridge call sites that invoke them | IMPLEMENTED |
-| Secrets/device keys denied in settings and export | `platform/core/src/settings/keys.rs:265,295`, gate-pinned at `:263` | IMPLEMENTED |
+| Canceled never in grace; out-of-grace reverts to Free | `subscription.rs:7` module findings, `:691` | IMPLEMENTED |
+| Clock-rollback detection, ledger-based | `subscription.rs:588`, `:550`; tolerance 30s (`:28`) | IMPLEMENTED |
+| Read-only lock, failing closed on an unreadable ledger | `subscription.rs:1027-1031` (`Err(_) => true` at `:1030`) | IMPLEMENTED |
+| Per-tier bounded offline grace | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 (`subscription_tests.rs:1199-1207`) | IMPLEMENTED |
+| Quota gates on every capped dimension | **6 bridge call sites** (corrected 2026-09-22 — this row said 7 while listing six, and §2.4's own note below had already recorded the correction): `bridge/products.rs:701`, `staff.rs:1094`, `locations.rs:259`, `terminals.rs:455`, `workspaces.rs:324`, `inventory.rs:127`. The gate *definitions* live in `kasirmu-core/src/db/*.rs` (`enforce_product_quota`, `enforce_staff_quota`, …); what this row counts is the bridge call sites that invoke them | IMPLEMENTED |
+| Secrets/device keys denied in settings and export | `platform/core/src/settings/keys.rs:282` (`SECRET_KEY_DENY_LIST`) and `:312` (`NON_EXPORTABLE_DEVICE_KEYS`) | IMPLEMENTED |
 | API key sealed to machine identity | Encrypt: `license.rs:141` (`encrypt_api_key(&resp.api_key, &machine_id_for_encryption)`). Decrypt: `license.rs:188` (`sealed_api_key` → `decrypt_api_key` at `:191`). Both halves are `crates/kasirmu-bridge/src/license.rs` | IMPLEMENTED |
-| Server-origin attestation, no debug shortcut | `attestation.rs:12-14,205-260`; echo-nonce check `:255` | IMPLEMENTED |
+| Server-origin attestation, no debug shortcut | `attestation.rs:12-14`, `:203-257` (`probe_origin_with`); echo-nonce check `:251` | IMPLEMENTED |
 
 **The existing posture is strong.** This record extends it; it does not replace it.
 
@@ -111,12 +168,13 @@ Each row is evidence, not intent. Verified against the tree on the date above.
 
 ### 2.1 The deployed-build fingerprint is pinned, and verified server-side
 
-**TO BUILD.** The APK signing-certificate fingerprint is computed at runtime and reported to
-the licence/sync server, which compares it against the fingerprint(s) *it* holds for that tenant
-release channel.
+**IMPLEMENTED 2026-09-21.** The APK signing-certificate fingerprint is computed at runtime and
+reported to the licence/sync server, which compares it against the fingerprint(s) *it* holds for that
+tenant release channel. See the implementation note at the end of this section for what ships, how
+the Android read is reached, and — importantly — what is still unverified.
 
-The signing key already exists and is controlled: `gen/android/app/build.gradle.kts:40-46` reads
-`keyAlias`/`password`/`storeFile` from the gitignored `gen/android/keystore.properties`, and the
+The signing key already exists and is controlled: `apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46` reads
+`keyAlias`/`password`/`storeFile` from the gitignored `apps/mobile-tauri/gen/android/keystore.properties`, and the
 release build config attaches it (`:63-64`). No new key material is required.
 
 | Property | Why it matters |
@@ -133,9 +191,9 @@ reports a valid fingerprint (§2.2).
 
 ### 2.2 Absence of a verdict is treated as a verdict
 
-**TO BUILD.** A missing, malformed, or unparseable fingerprint is classified `unknown` and is
-**never** treated as `valid`. This mirrors the discipline the repo already applies to boot reads
-(`AppShell.tsx:235-240`: "unknown is not no users") and to attestation (`attestation.rs:12-14`:
+**IMPLEMENTED 2026-09-21, on both sides.** A missing, malformed, or unparseable fingerprint is
+classified `unknown` and is **never** treated as `valid`. This mirrors the discipline the repo already applies to boot reads
+(`AppShell.tsx:253`: "unknown is not no users") and to attestation (`attestation.rs:12-14`:
 no debug shortcut where a credential departure is decided).
 
 Without this clause the control in §2.1 is trivially bypassed by deleting the reporting line — the
@@ -151,13 +209,14 @@ grace window of the tier they legitimately hold: 14 days (Plus/Pro), 30 (Premium
 60 (Enterprise).
 
 > **Correction (2026-10-04, found on review).** An earlier revision of this section listed
-> "7 days (Free)" in the sequence above. That was wrong. `subscription.rs:640-643` returns
-> `true` for Free *unconditionally* ("Free tier — always within grace"), and `:942-943` marks a
+> "7 days (Free)" in the sequence above. That was wrong. `subscription.rs:666-669` returns
+> `true` for Free *unconditionally* ("Free tier — always within grace"), and `:977-979` marks a
 > Free tier `Active` forever. `Free.offline_grace_days()` returns 7, but the value is **never
-> consumed for the `Free` variant** because the function returns before reaching it (`:665`). The
+> consumed for the `Free` variant** because the function returns before reaching it (`:691`). The
 > qualifier matters for one variant: `SubscriptionTier::OneTime` maps to `"free"`
-> (`subscription.rs:140`) and, not being the `Free` variant, is *not* caught by the `:641`
-> short-circuit — it reaches `:665` and **its 7-day value is consumed**. This is inert in practice
+> (`subscription.rs:140`) and, not being the `Free` variant, is *not* caught by the `:667`
+> short-circuit — it reaches `:691` and **its 7-day value is consumed**. *(Anchors re-measured
+> 2026-09-22.)* This is inert in practice
 > because nothing seeds a `one_time` row (the bootstrap row is `free`, `subscription.rs:673`), but
 > the blanket word "never" would have been a false claim about the code. **Free is
 > permanent, not time-bounded**, so there is no Free clock to exhaust — which is why this
@@ -181,8 +240,42 @@ the one this record asks to be held to.
 
 ### 2.4 Server-side detection, because effects are observable and claims are not
 
-**TO BUILD.** Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
-(`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1084` `enforce_staff_quota`,
+**IMPLEMENTED 2026-09-22 — Option A chosen and shipped for products and staff.** The detection
+is distributed across both servers according to the data each naturally holds:
+
+1. **Licence Server (`apps/license-server/quota_effect.go` & `build_integrity_alerts.go`)**:
+   Monitors active device terminals (`tenant_machines`) against the subscription's `max_pos_instances`
+   and emails the operator daily on violations.
+2. **Cloud Server (`apps/cloud-server/src/quota_detector.rs`)**:
+   Implements **Option A**. The cloud server holds the synced entity tables (`products` and `users`)
+   and evaluates them directly against the canonical `kasirmu_core::SubscriptionTier` numeric caps
+   (`max_products`, `max_staff_users`), excluding inactive accounts and the owner role. Runs daily on
+   both SQLite and PostgreSQL backends, alerting `OZ_ADMIN_EMAIL` with a 7-day cooldown per
+   `(tenant_id, condition)` (logging at `WARN` when `OZ_SMTP_HOST` is unset).
+
+**Current Status across the four axes:**
+
+| Axis | Data Location | Detection Status | Enforcement / Implementation |
+|---|---|---|---|
+| **Active Terminals (POS instances)** | Licence server (`tenant_machines`) | **SHIPPED** | `findTenantsOverPosQuota` (`apps/license-server/quota_effect.go`) |
+| **Products / Catalog Count** | Cloud server (`products`) | **SHIPPED** | `quota_detector.rs` (`apps/cloud-server/src/quota_detector.rs`) |
+| **Staff Users Count** | Cloud server (`users`) | **SHIPPED** | `quota_detector.rs` (`apps/cloud-server/src/quota_detector.rs`) |
+| **Locations / Warehouses** | Local only (not synced) | **OUT OF SCOPE** | Requires snapshot sync-contract change (locations are not in snapshot) |
+
+**Why Option A over Option B:**
+Option B required cross-service authenticated RPC from the licence server to the cloud server during
+scans, creating an inter-service runtime dependency and an additional failure domain. Option A allows
+each server to independently evaluate the invariants over the data it already owns and persists.
+
+**The quota signal carries an important limit, and the alert says so.** An over-cap count is a
+*correlation*, not a verdict: a tier change mid-sync, a restore from a larger plan, or a hand-edited
+limit all produce it, which is why this section's response policy is "flag and notify, never
+auto-terminate". The alert body lists those innocent explanations explicitly and states that only a
+person can tell them apart — an alert that reads as an accusation is one an operator learns to
+ignore.
+
+Quota enforcement is local — **6 bridge call sites** invoke the core quota gates
+(`bridge/products.rs:701` `enforce_product_quota`, `staff.rs:1094` `enforce_staff_quota`,
 `locations.rs:259` `enforce_location_quota`, `terminals.rs:455` `enforce_terminal_quota`,
 `workspaces.rs:324` `enforce_instance_quota`, `inventory.rs:127` `enforce_warehouse_quota`; the gate
 definitions are in `kasirmu-core/src/db/*.rs`, and named siblings such as
@@ -215,7 +308,41 @@ revenue it protects. Termination stays a human decision; the system job is to ma
 
 ### 2.5 A quarantine state exists for the fingerprint mismatch
 
-**TO BUILD.** Response is graded rather than binary, and the grades already exist as states:
+**IMPLEMENTED 2026-09-22 — option B, the per-device refusal.** A device whose build failed its
+fingerprint check can no longer renew; every other terminal the tenant owns is unaffected.
+
+**The decision, and why B over A.** Tracing the input showed the refusal could not be built as the
+record first described: §2.4 stores verdicts per DEVICE, the renew request carried no
+`machine_id`, and no tenant-level integrity flag existed anywhere. That left two shapes:
+
+| Option | Verdict |
+|---|---|
+| **A. Flag the TENANT**, refuse its renewal | **Rejected.** It refuses every terminal of that tenant because ONE device was tampered — including honest tills at other locations. That is the fleet-lockout failure this section (:281-282) and §Q4 both chose to avoid, merely moved from the client grain to the tenant grain |
+| **B. Key the refusal per DEVICE** | **Chosen.** Correct severity: the tampered terminal cannot renew, its siblings are untouched |
+
+**B was also the cheaper option, which is what settled it.** The bridge already reads
+`machine_id` during renewal — it is the API-key KDF factor (`license.rs`) — so carrying it into
+the request added no new plumbing, and the server already stores the device id on every report. The
+"wire change" framing made B sound expensive; it was one added field on a request that already
+existed, plus a lookup.
+
+**The three invariants the implementation must hold, each pinned by a test:**
+
+1. **Only a `mismatch` refuses.** A persistent `unknown` does NOT: §2.2 makes absence a verdict,
+   but §Q4 routes it to the operator queue precisely because a serialization bug or a
+   partially-rolled-out client produces it from legitimate devices. Refusing on it would let OUR bug
+   stop merchants renewing.
+2. **Fail open on every uncertainty** — an empty `machine_id` (a pre-#57 client), an unknown device,
+   or a lookup error all answer "no refusal". The field may only ever ADD a refusal.
+3. **Indistinguishable on the wire.** The refusal returns the same generic
+   `"invalid api_key or tenant is not active"` this endpoint already uses, per §Q-D: a distinct
+   message would tell the attacker exactly which control fired.
+
+**Scope, stated plainly: this denies PERSISTENCE, not access.** The device keeps selling on its
+current signed entitlement until that entitlement expires (§2.5). That is the whole reason the
+response is a renewal refusal rather than a lock — a false positive must not dark a till mid-shift.
+
+The grades the eventual response will use already exist as states:
 
 | Verdict | Response |
 |---|---|
@@ -228,16 +355,39 @@ revenue it protects. Termination stays a human decision; the system job is to ma
 Refusing *renewal* rather than access is the correct severity for a **mismatch**: it denies the
 attacker persistence without locking a legitimate merchant out mid-shift on a false positive.
 
-**Where the refusal actually happens — corrected against the tree.** Renewal refusal is
-**server-side**, and it is already built: `apps/license-server/renew.go:76-81` refuses any tenant
-whose `status != "active"`. That guard is generic — it is not fingerprint-aware today, so a
-fingerprint mismatch reaches it only once §2.4's detection work marks the tenant. It is **not**
-`TenantSubscription::enforce_pos_writable` (`subscription.rs:1011`): that is a **selling** gate
+**Where the refusal actually happens — corrected against the tree, and re-corrected 2026-09-22.**
+Renewal refusal is **server-side**, and the guard is already built:
+`apps/license-server/renew.go:82-87` refuses any tenant whose `status != "active"`. It is **not**
+`TenantSubscription::enforce_pos_writable` (`subscription.rs:1047`): that is a **selling** gate
 whose callers are the POS checkout paths (`bridge/pos.rs:1755`, `pos.rs:1975`, `offline.rs:236`,
 `core/src/db/sales_checkout.rs:206`, `core/src/db/sales_lifecycle.rs:176`). Wiring renewal refusal
 into it would refuse *sales*, not renewal. This record's earlier revision named it as the renewal
 mechanism, which would send an implementer one gate too deep. The two gates are unrelated and must
 stay so: `enforce_pos_writable` protects revenue collection, the server guard protects renewal.
+
+> **Correction 2026-09-22: "once §2.4's detection work marks the tenant" was wrong, and the
+> correction changes what §2.5 has left to build.** §2.4 does **not** mark the tenant.
+> `build_integrity_reports` rows are per **DEVICE** (`tenant_id` + `machine_id`), and a grep for
+> any tenant-level integrity flag (`integrity_flagged`, `build_integrity_status`, `quarantine`)
+> returns **nothing**. So the generic guard has no fingerprint-aware value to consult, and the
+> refusal is not merely "unwired" — its input does not exist at the grain the guard reads.
+>
+> **And the renew request cannot express a device decision**: `RenewRequest`
+> (`renew.go:19-23`) and `RenewLicenseRequest` (`license_verification.rs:239-251`) both carry
+> `tenant_id` + `key` only — no `machine_id` anywhere. That leaves two options, and they are NOT
+> equivalent:
+>
+> | Option | Cost | Consequence |
+> |---|---|---|
+> | **A. Flag the TENANT on a mismatch**, refuse its renewal | No wire change; small diff | Refuses **every** terminal of that tenant because ONE device was tampered, including honest tills elsewhere — the fleet-lockout failure §2.5 (:281-282) and §Q4 both chose to avoid, reintroduced at the tenant grain instead of the client grain |
+> | **B. Key the refusal per DEVICE** | `machine_id` added to the renew request on BOTH sides — a wire change, plus a fail-open rule for the empty-`machine_id` case (the problem the status call already solved at `license_verification.rs:573-582`) | Correct severity: the tampered terminal cannot renew, the tenant's other tills are unaffected |
+>
+> **RESOLVED 2026-09-22 — option B was chosen and built.** Option A contradicts this section's own
+> severity argument and is rejected on the record's existing reasoning; option B is implemented
+> (see the §2.5 implementation note above): `machine_id` now rides the renew request, and the
+> server refuses a renewal to a device with a stored `mismatch`. The "wire change" framing in the
+> table above made B sound expensive; in practice the bridge already read `machine_id` as the
+> API-key KDF factor, so it was one added field and one lookup.
 
 #### Precedence: `mismatch` (this record) vs the 3-day window (ADR #58 §2.3)
 
@@ -264,9 +414,102 @@ be extended to *check failures*.
 already bounded (§2.3) and the renewal refusal removes persistence. Locking would trade a bounded
 risk for an unbounded false-positive risk against legitimate merchants.
 
+#### IMPLEMENTED 2026-10-05, CORRECTED 2026-09-22 — §2.2's verdict is real, and §2.1's client half SHIPPED too
+
+> **This heading read "…§2.1's client half is not" until 2026-09-22.** That was stale: §2.1's
+> client leg is built and verified — the Android computation
+> (`crates/kasirmu-hal/src/transport/apk_signature.rs`), its attach in the bridge
+> (`crates/kasirmu-bridge/src/build_integrity.rs:34`, `license.rs:528`), and the on-demand read
+> `get_build_fingerprint` (`apps/mobile-tauri/src/commands/health.rs:76`, registered at
+> `apps/mobile-tauri/src/lib.rs:620`). The status block and §2.1's own table said so; the heading
+> contradicted both, inside one record. This note records which of the two survives.
+
+`kasirmu_core::build_fingerprint` now classifies a reported fingerprint into three verdicts, which is
+what makes §2.2 enforceable rather than aspirational:
+
+| Input | Verdict | Why it is not something else |
+|---|---|---|
+| absent (`None`) | `Unknown` | §2.2: absence is a verdict, never `valid` |
+| present but not 64 hex digits | `Unknown` | Unusable is the same class as absent — the device made no usable claim |
+| a SHA-256 the channel does not hold | `Mismatch` | Positive evidence: the re-signed APK |
+| a SHA-256 the channel holds | `Valid` | Matched against the SET §Q-B decided, so rotation is an ordinary write |
+| anything, when the channel holds NO pin | `Unknown` | A channel nobody pinned has made no claim; calling it a mismatch would refuse renewal for every tenant on it |
+
+**The `Unknown`/`Mismatch` split is the whole point, and it is pinned by a test.**
+`only_a_mismatch_counts_as_positive_evidence` asserts the predicate is true for exactly one verdict,
+because §2.5 refuses *renewal* on a mismatch and does nothing on an `Unknown`. Collapsing silence
+into evidence is the failure §2.2 names, and its consequence is a merchant lockout rather than a
+security hole — which is why the conservative direction is the default here.
+
+**Normalisation is not cosmetic and has its own test.** `keytool` prints a SHA-256 uppercase and
+colon-separated; Android's `PackageManager` returns it lowercase and bare. A fingerprint pasted into
+the admin surface in the first form must not mismatch a build that is perfectly correct, so both
+spellings are folded before comparison.
+
+**Every piece now ships — IMPLEMENTED 2026-09-21 (the count corrected 2026-09-22).** This
+paragraph previously listed three absent items, the third being the report itself; the table has
+**four** rows because the pin store §Q-B decided is a fourth thing the path needs and the original
+list folded in with the classification. The full path is now built:
+
+| Piece | Where |
+|---|---|
+| The Android-side computation | `crates/kasirmu-hal/src/transport/apk_signature.rs` |
+| Its reporting | `kasirmu_bridge::license::check_license_status` → `POST /api/v1/license/status` |
+| The `release_channels` pin store §Q-B decided | `ensureReleaseChannels` + `apps/license-server/release_pins.go` |
+| The server-side classification | `apps/license-server/build_integrity.go` |
+
+**How the Android computation is reached, and why not the way this record first assumed.** A
+Tauri plugin (the obvious first reading of "one IPC + one field") would have meant a new crate, a
+Gradle project, an ACL permission set and a `links`-keyed build script to call one Android API.
+The repository already had the mechanism: `crates/kasirmu-hal/src/transport/bt_android.rs` defines
+**the single `JNI_OnLoad`** in the app library and stashes the `JavaVM`, and `kasirmu-hal` is
+statically linked into `libkasirmu_mobile_lib.so` alongside this app. `apk_signature` is therefore a
+**sibling** of that module borrowing its captured VM through `bt_android::with_env`, not a second
+bridge. A second `JNI_OnLoad` anywhere in the same `.so` is a duplicate-symbol link error, so this
+is not merely cheaper — the VM can only be widened from the module that owns it.
+
+`hex` and `sha2` were added to `kasirmu-hal` **Android-gated** alongside `jni`, so no desktop
+path compiles them.
+
+**The value is computed in native code and never passes through the WebView.** A patched JS bundle
+can lie about many things, but rewriting this value requires patching the native library — a
+strictly higher bar, and the reason §2.1 chose a native computation.
+
+**Fail-open, at the source.** `apk_signing_fingerprint` returns `None` for every failure — no
+captured VM, no application context, no package info, absent signature, malformed certificate — and
+`None` omits the field rather than sending an empty string. Off Android it is always `None`. The
+server classifies an absent or unusable report as `unknown`, **never** `mismatch` (§2.2), so a
+device that cannot be fingerprinted is never refused a renewal because of it. The sync daemon's
+ride-along passes `None` deliberately: `platform-sync` is shared with the desktop shell and does
+not depend on `kasirmu-hal`, and the Android tablet reports through the bridge lane that can reach
+it.
+
+**The server stores only non-`valid` verdicts** (`build_integrity_reports`), because a `valid`
+report carries no signal and would bury a real violation in routine noise; §2.4's queue entry is a
+derived view over that durable record. `classifyBuildFingerprint` on the server mirrors
+`kasirmu_core::build_fingerprint::classify_build_fingerprint` arm for arm — including that an
+**empty pin set is `unknown`, not `mismatch`** — because the two must agree about the same report.
+
+**What verification covers, updated after the device run.** `cargo ndk -t arm64-v8a check -p
+kasirmu-mobile` compiles the whole tablet app against the Android target (desktop build unchanged);
+the classifier, the store and the fail-open contract are covered by tests; and the JNI read itself
+was **exercised on a real tablet on 2026-09-22**, returning the certificate `apksigner` reports for
+the same APK. See the status note at the top for the value and the method.
+
+**What is still NOT covered: CI.** `apps/mobile-tauri/AGENTS.md` records that the Android build job
+was retired (`23c963303`, 2026-09-02), so no automated leg exercises this path — the evidence is a
+manual device run. A regression would therefore be caught by a person, not by a pipeline, until that
+job is restored.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3151 passed, 0 failed** (13 of them in
+`build_fingerprint` — corrected 2026-09-22; this read "7", which matched neither
+`build_fingerprint_tests.rs`'s own `#[test]` count nor §Q4's verification line below). The §2.6
+release-profile check is recorded at that section.
+
 ### 2.6 `BOOTSTRAP_FREE` is constrained to Free, permanently
 
-**IMPLEMENTED, with a test to add.** `subscription.rs:518`:
+**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-10-05 (`subscription.rs:534`;
+corrected 2026-09-22 from `:518`, which is `verify_signature`, the next thing this section discusses):**
 
 ```rust
 if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
@@ -279,9 +522,30 @@ a Free row confers Free entitlements, which the user already has. It is nonethel
 the risk is not the current branch but a future one: any edit that lets a non-Free tier reach this
 return is a full bypass.
 
-**TO BUILD — and scoped to the right function.** The test asserts the sentinel branch can never
-return `Ok` for a tier whose `tier_key() != "free"`, and a comment pinning that as an invariant
-rather than a convenience. This is cheap and closes the class.
+**THE TEST ALREADY EXISTS — this item is DONE, verified by running it rather than by reading it.**
+`sentinel_does_not_carry_a_paid_tier` (`subscription_tests.rs:197`) already asserts exactly what this
+section asks for, and it is **stronger** than the section specifies: it writes an `Enterprise` tier
+onto a sentinel-signed row and asserts rejection in release / the legacy permissive arm in debug, so
+a future widening of the guard shows up rather than passing silently.
+
+**One correction to this section's instruction to add the test.** The instruction was written as if
+the test were absent; it is present. What is worth recording instead is the release-profile proof,
+because the debug assertion cannot demonstrate the invariant: under `debug_assertions` the
+`verify_license_signature` short-circuit accepts the sentinel for ANY payload BY DESIGN, so the
+debug arm asserts the opposite of the security property.
+
+```text
+cargo test -p kasirmu-core --lib --release -- sentinel_does_not_carry_a_paid_tier  → ok
+```
+
+That run is what makes the claim true rather than the `#[cfg]` looking correct. **It is not part of
+any default test invocation** — `cargo test` in debug takes the other arm — so the invariant is
+unverified by the ordinary local loop and by any CI leg that does not pass `--release`. Recorded here
+because a reader should not assume a green `cargo test` covers it.
+
+**A comment pinning it as an invariant was added** at `subscription.rs:517-527`, naming the
+`tier_key()` half as the only thing preventing a 14-byte forgery from claiming a paid tier, and
+naming the debug short-circuit as the reason the test must not target `verify_license_signature`.
 
 > **Scope, stated explicitly, because the obvious target is the wrong one.** The test must target
 > `TenantSubscription::verify_signature` (`subscription.rs:517`) — the release-path policy where the
@@ -311,27 +575,143 @@ rather than a convenience. This is cheap and closes the class.
   prevent tampering. Stated here so it cannot be over-claimed later.
 - **Server-side detection needs a home and an owner.** A signal with no response policy is
   noise; §2.4 conservative policy needs someone accountable for acting on it.
-- **New IPC + wire field.** The registration gate (`registration_gate_debt.generated.rs`) and the
-  IPC parity allowlist both move, on both shells.
+- **New IPC + wire field.** *(Corrected 2026-09-22: this read "…and the IPC parity allowlist both
+  move, on both shells", which the tree does not support.)* Exactly one ledger moved —
+  `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs:59`; the DESKTOP ledger has no
+  entry for it, and `scripts/ipc-parity-allowlist.json` has none either. The cost is real but
+  smaller than stated, and it is one shell rather than two.
 - **Build fingerprint must be *stable*.** If the release keystore is rotated or lost, every
   pinned fingerprint changes at once. Rotating it is therefore a coordinated operation, not a
   local one — and it must be recorded as such.
 
 ### 3.3 Residual risk, stated
 
+> **How to read this section, because it carries four successive residual statements.** The table
+> **immediately below is CURRENT**; everything after it is **dated history**, kept because a record
+> of what was believed when is the only way to audit how a claim aged. Where a historical block and
+> the table disagree, **the table wins** — it is the one a reader consults when asking "are we
+> protected?".
+>
+> **The record's dates are non-monotonic** (a 2026-09-21 note may postdate a 2026-10-05 one) because
+> it was updated in place across sessions. Precedence: the **status block** at the top of the record
+> is authoritative, in-body markers second, these dated notes third.
+
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
-| A2 exceeds local quota gates | **Unbounded today.** §2.4's server-side detection is deferred (Q3), so a patched client that skips a local gate is not caught. The bound arrives with §2.4 |
-| A1/A3 patch out fingerprint reporting | **Unbounded today** for the same reason — §2.2's `unknown` classification only has force once §2.4 reads it |
+| A2 exceeds local quota gates | **Detected on the DEVICE axis, still unbounded on the others — updated 2026-09-22.** §2.4's device signal now ships: a tenant with more active terminals than their tier allows is detected from server-held data and emailed to an operator (`findTenantsOverPosQuota`). The product/staff/location axes the section also names are NOT covered, because those counts never reach the licence server |
+| A1/A3 patch out fingerprint reporting | **Detected and reported — updated 2026-09-21.** A deleted reporting line arrives as `unknown`; repetition inside the window escalates (§Q4/§Q-C) and the daily scanner now ALERTS the operator. What remains unbounded is the response: §Q4 routes to a human and never to an automatic refusal, which is deliberate |
+| A1/A3 report a fingerprint at all | **CLOSED 2026-09-21.** The client now computes the APK signing certificate over JNI (`kasirmu-hal/src/transport/apk_signature.rs`) and sends it on the licence-status call; the server classifies and stores every non-`valid` verdict. See the note below for why this closes the *reporting* gap without bounding the row above it |
 | A3 redistributes a working tampered APK | Bounded by the tier's grace window; the forged APK cannot renew (§2.3, and renewal refusal is already enforced — ADR #58 §2.4a.1) |
 | A4 physical access, A5 server compromise, A6 platform exploit | **Out of scope** (§1.3) — no client control addresses these |
 
 - **No control in this record makes client-side modification impossible, and none is claimed to.**
-- **The two "detected server-side" rows are the ones that will be misread.** They describe the design,
-  not the shipped state: §2.4 is deferred on Q3's prerequisites. Until it is built, the honest
-  position is that **tampering is not detected at all**, and the only bound in force is §2.3's grace
-  window for a paid tier. Recording this here because a residual table that describes intent rather
-  than reality is the failure mode this whole record exists to avoid.
+- **The "detected server-side" rows are the ones that will be misread, in BOTH directions.** They
+  used to describe the design rather than the shipped state; as of 2026-09-21 detection and a reader
+  both ship, so the older warning that "tampering is not detected at all" is no longer true either.
+  **Corrected 2026-09-22 — the sentence here used to read "…and then nothing happens
+  automatically", with "the only AUTOMATIC bound remains §2.3's grace window", and the §2.5 work
+  made both false:** tampering is detected, recorded, emailed to an operator **and a `mismatch`
+  refuses that device's renewal** (`apps/license-server/renew.go:111` →
+  `deviceHasFingerprintMismatch`, `build_integrity.go:190`) — automatically, with no human involved.
+  What still needs a human is the *response policy*, not the response: no auto-termination, no lock,
+  and no session refusal on a repeated `unknown`, because §Q4 routes uncertainty to the operator
+  queue rather than to an automatic action.
+- **The reporting path is verified on a real device, but only manually.** On 2026-09-22 a tablet
+  returned its own signing certificate correctly (see the status note), so the JNI read works as
+  designed. What remains unguarded is REGRESSION: with no Android CI leg, nothing would notice if a
+  later change broke the read. A fault there degrades to `unknown` — visible, not silently
+  permissive — but it would surface as the persistent-unknown alert rather than as a mismatch, so
+  the two alerts must still be read differently.
+
+#### HISTORY — snapshot of 2026-10-05, when only the verdict rule existed
+
+> Every "no caller / unbuilt" statement below was true on 2026-10-05 and is **false now**: the
+> classifier has callers on both sides (the client computes and sends; the server classifies and
+> stores), and the scanner reads the result. Kept verbatim as history, not as description.
+
+The verdict classification (§2.2) is implemented and tested, but **it moved no row above**, and
+saying so is the point of this note:
+
+- The classifier is a pure function with **no caller**. A grep for `classify_build_fingerprint`
+  outside its own module returns nothing, so no code path consults it.
+- No code path **produces** a fingerprint either — §2.1's Android leg is unbuilt.
+- Consequently the two unbounded rows stand EXACTLY as they did before. What changed is that the
+  rule they will eventually enforce is now written down and pinned by tests, so the day the client
+  and the queue arrive, the precedence is already decided and cannot be re-derived wrongly.
+
+**The 2026-09-21 Q4 work changed no row either**, for the third time and the same reason: the
+escalation fold (`fold_build_integrity`) is likewise a pure function with **no caller and no
+stored counter** — nothing feeds it a report and nothing remembers the consecutive count between
+sync cycles. It fixes *what the trigger will be* (§Q-C: ≥7 `unknown` reports in a rolling 7-day
+window, evaluated per tenant) so the number is not re-derived under pressure. The field has since
+shipped (see the next note), so the reporting line now exists; what the fold still lacks is any
+caller — nothing feeds it a report and nothing stores the count between sync cycles.
+
+#### HISTORY — snapshot of 2026-09-21, after the client leg but before the notification and the refusal
+
+**The reporting line now exists, so the third reason on the "report a fingerprint at all" row is
+closed: something DOES compute and send the fingerprint**
+(`kasirmu-hal/src/transport/apk_signature.rs` → the licence-status call), and the server DOES
+classify it (`apps/license-server/build_integrity.go`), storing every non-`valid` verdict
+durably. That is a real change to the shipped state and the rows must not keep the old wording.
+
+**At that point it moved neither unbounded row, and the distinction mattered more than the change
+did:** the server *recorded* a `mismatch` while nothing *read it*. A recorded verdict no human is
+told about is not a control; it is a log. This paragraph is kept because it states the reason the
+notification was built next rather than treated as optional.
+
+#### HISTORY — snapshot of 2026-09-21, when the notification closed the reader gap
+
+**The reader now exists.** `apps/license-server/build_integrity_alerts.go` scans daily at 08:00 UTC
+and emails the operator (`OZ_ADMIN_EMAIL`) on two conditions, distinguished deliberately per §Q4:
+
+| Condition | Trigger | Why that trigger |
+|---|---|---|
+| `mismatch` | A SINGLE well-formed, unpinned fingerprint | §2.1 maps a re-sign to a different certificate, so one report is positive evidence; demanding repetition would only add delay to the clear case |
+| `unknown_persistent` | Seven or more unseen reports inside a rolling 7-day window | §2.2 makes absence a verdict, but ONE absence is also what a serialization bug produces — §Q4 chose repetition so our own bug cannot read as an attack |
+
+| Residual | Bound — **as of 2026-09-21** |
+|---|---|
+| A2 exceeds local quota gates | **Still unbounded.** Untouched by this work: the alert reports builds, not quota use |
+| A1/A3 patch out fingerprint reporting | **Detected and alerted** (§2.2/§Q4). The deletion surfaces as repeated `unknown` and reaches a human within a week. It does NOT refuse a renewal — deliberately: `unknown` may be our own bug (§Q4), so only a positive `mismatch` denies persistence |
+| A1/A3 report a fingerprint at all | **CLOSED and now ENFORCED.** The APK certificate is computed natively and sent; a re-signed APK produces a stored `mismatch`, an operator alert, AND a renewal refusal to that device (§2.5) — so a tampered build cannot persist past its current signed entitlement |
+
+**What the notification deliberately does NOT do.** It never refuses a session, never revokes a
+device, never locks an account. §Q4 is explicit that escalation routes to a human because a
+serialization bug, a field rename or a partially-rolled-out client each produce `unknown` from
+legitimate devices — and darking every affected till would be worse than the abuse it prevents. So
+the residual that remains is **response latency and human judgement**, not blindness: a determined
+attacker is now *seen*, and a false positive costs a support email rather than a shop.
+
+**Two honesty notes on the alerting path itself.**
+
+1. **With no SMTP configured the finding is LOGGED, not emailed, and no cooldown is started.** The
+   scan still runs — a missing relay must not silently skip the scan and widen the residual — but an
+   alert that was never delivered must not then suppress the next one for a week.
+2. **Alerts re-fire at most weekly, keyed on tenant AND condition.** A tenant with a mismatch on one
+   device and a persistent unknown on another gets both, and a standing condition keeps re-reporting
+   rather than going quiet — which is the failure mode of a bare "alert once" flag.
+
+**The CURRENT table at the top of this section is the authority on the shipped state** (see the
+currency note there); the blocks between it and here are dated history. The IMPLEMENTED notes in §2
+are the authority on what exists. Where a historical block disagrees with the current table about
+severity, **the current table wins** — it is the one a reader consults
+when asking "are we protected?". As of 2026-09-22 the answer is **partly, and by design**:
+
+- **A re-signed APK is detected, recorded, emailed AND refused a renewal** (§2.1/§2.4/§2.5). The
+  tampered device cannot persist past its current signed entitlement; the tenant's honest terminals
+  are untouched.
+- **A deleted reporting line is detected and emailed** but does NOT refuse anything — deliberate,
+  because `unknown` may be our own bug (§Q4).
+- **An over-quota device count is detected and emailed** (§2.4's device axis), but not on the
+  product/staff/location axes, whose counts never reach the licence server.
+- **The response is a human reading a message, never an automatic lockout** — §Q4's routing, and the
+  reason a false positive costs a support email rather than a shop.
+
+Two caveats belong in the same breath: **no CI leg builds the Android APK** (`23c963303` retired it),
+so the on-device fingerprint read — verified manually on 2026-09-22 — would not be caught by a
+pipeline if it regressed; and a deployment with no `OZ_SMTP_HOST` receives these findings in the
+server log rather than by email.
 
 ## 4. Explicitly Rejected
 
@@ -370,7 +750,7 @@ what this record decides, which removes most of option B's attraction.
 **What option A obliges us to do instead:** write the rotation procedure down *before* it is
 needed, because the failure mode it guards against — a lost or leaked release keystore — is
 unrecoverable for existing installs. That procedure belongs in `apps/mobile-tauri/AGENTS.md`, which
-already documents the signing configuration at `:40-46`, not here.
+already documents the signing configuration in its **Signing** section (`apps/mobile-tauri/AGENTS.md:176`+; corrected 2026-09-22 — this cited `:40-46`, which is the Gradle/JDK failure block), not here.
 
 **If the key is ever compromised:** option B becomes mandatory retroactively, and every tenant's
 pin set must accept both fingerprints during the migration. Recording this now is cheaper than
@@ -390,40 +770,105 @@ therefore what to patch. Telling the *operator* costs nothing and serves every l
 because a genuine enterprise rebuild is diagnosed by a human who already has admin access — not by
 a message on the affected terminal.
 
-**Consistent with how the repo already handles boot reads** (`AppShell.tsx:235-240`): the device
+**Consistent with how the repo already handles boot reads** (`AppShell.tsx:253`): the device
 learns only what it must act on, and the reason lives in logs and admin surfaces. The refusal
 remains visible to the merchant as a failed renewal, which is enough for them to open a support
 conversation.
 
-### Q3 — Who owns the server-side violation queue, and what is the SLA? `[was policy]` — DECIDED (build deferred)
+### Q3 — Who owns the server-side violation queue, and what is the SLA? `[was policy]` — DECIDED, and NOW BUILT (see the note below)
 
 **Decision: the queue is the existing admin "needs attention" surface. §2.4's detection work is
 DEFERRED until two prerequisites hold, and the deferral is deliberate rather than an omission.**
 
 The destination is settled, because the infrastructure already exists and is proven:
-`apps/license-server/admin_stats.go:576-605` computes a `NeedsAttention` list today, including a
-`grace_period` category. Quota and fingerprint violations become two more rows in that list — no
+`apps/license-server/admin_stats.go:581-675` computes a `NeedsAttention` list today (emitted at
+`:790`), including a `grace_period` category. Quota and fingerprint violations become two more rows in that list — no
 new UI, the signal lands where an operator is already looking, and §2.4's response policy (flag,
 never auto-terminate) is a human reading a queue.
 
-**Why the build is deferred rather than scheduled.** Two prerequisites must both hold first, and
-neither does today:
+**Why the build WAS deferred rather than scheduled** — written on the date below, and both
+prerequisites have since been met (see "BOTH CONDITIONS NOW HOLD" further down). Kept verbatim as
+the record of why the deferral was deliberate:
 
-| Prerequisite | State | Why it gates the build |
+| Prerequisite | State **at the time** | Why it gated the build |
 |---|---|---|
-| A named person who reads `NeedsAttention` on a stated cadence | **Not assigned** | A queue with no reader is the exact failure §2.4 warns about |
-| The fingerprint field actually shipping (Q5) | **Not built** | Detection has nothing to detect until the field exists on a sync payload |
+| The fingerprint field actually shipping (Q5) | **Not built** *then; ships now* | Detection has nothing to detect until the field exists on an authenticated payload |
+| A violation **notification**, not a named reader | **Not built** *then; ships now* | Nothing prompts an operator to open a surface they already have open |
 
-**The argument for deferring rather than assigning a role title:** a queue is only a control if
-someone acts on it. Naming an owner who does not operationally exist would let this record *claim*
-coverage it does not have — which is worse than an honest deferral, because the next reader would
-treat the gap as closed. Detection built before an owner exists creates the *appearance* of
-protection while providing none.
+**Gate (a) was rewritten 2026-09-21, from "a named person" to "a notification".** The original
+criterion assumed `NeedsAttention` had no reader, and reading the read path showed that is no
+longer true:
 
-**Trigger to revisit, so this is not deferred forever:** build §2.4 when (a) someone is named and
-reading the surface on a cadence, and (b) Q5's fingerprint field is on a shipped sync payload.
+- Producer: `apps/license-server/admin_stats.go:581-675` (items appended at `:611`/`:642`/`:669`) emits three categories — `grace_period`, `expired_active`, `refund` — capped at 20,
+  each date-stamped.
+- Consumer: `website/public/admin/admin.js:357-373` renders the alert card and inserts it with
+  `c.insertBefore(attCard, c.firstChild)` — **above the revenue hero** — under a comment stating
+  the intent: *"so the operator sees action items before the numbers."*
+
+So `NeedsAttention` is already surfaced where an operator looks, and the paragraph above ("the
+signal lands where an operator is already looking") is shipped behaviour rather than a hope. Naming
+a person does **not** change whether someone opens a dashboard they already open, so the old gate
+(a) would have kept §2.4 deferred indefinitely for no security benefit.
+
+**What the old gate was actually protecting, kept.** The original concern — "a queue with no reader
+is the exact failure §2.4 warns about" — is real, and the replacement preserves it exactly: the
+failure mode is not "nobody looks" but "nobody looks *because nothing changed*". A notification is
+the trigger that makes an unread queue impossible, and it is the piece that was genuinely missing.
+The criterion is *tightened*, not relaxed: it now requires an artifact, where before it required a
+name that could be written down without changing any behaviour.
+
+**The machinery for the notification already exists and is proven**, which is why this gate is
+cheap once the field lands — the work is a third scanner in an existing family rather than a new
+subsystem:
+
+- `apps/license-server/password_rotation.go` runs a **daily scheduler that emails the admin**
+  (`OZ_ADMIN_EMAIL`, falling back to `defaultAdminEmail`) and carries a throttle interval
+  (`passwordRotationReminderInterval`) so a standing condition does not re-notify daily.
+- `apps/license-server/trial_emails.go` supplies the **per-event idempotency log**
+  (`trial_email_log`, `emailAlreadySent`, `logTrialEmailSent`) so one violation notifies once.
+- Both are registered as boot goroutines (`main.go:457,474`) — corrected 2026-09-22; `:434`/`:451` were a webhook route and an `ensure*` migration, not the boot goroutines and both **skip cleanly when
+  `OZ_SMTP_HOST` is unset**, which is the fail-open direction this record requires elsewhere.
+
+**A violation alert has nothing to scan until the field exists**, so the two prerequisites are
+ordered: the field first, the notification with it. They are one unit of work, not two.
+
+**Trigger to revisit, so this is not deferred forever:** build §2.4 when (a) Q5's fingerprint field
+rides a shipped authenticated payload, **and** (b) a violation notification exists — a scanner in
+the family above that alerts the operator when a fingerprint first fails or persists as unknown.
 Until both hold, the honest statement is that the server does not detect tampering — §3.3 carries
 that as a residual rather than this section implying otherwise.
+
+> **BOTH CONDITIONS NOW HOLD as of 2026-09-21, and the notification ships.** The field rides the
+> licence-status call (`kasirmu-hal/src/transport/apk_signature.rs`), and the scanner exists
+> (`apps/license-server/build_integrity_alerts.go`): daily at 08:00 UTC, alerting on a single
+> `mismatch` and on repeated `unknown` per §Q4/§Q-C, with a weekly per-tenant-per-condition
+> cooldown. The two were indeed one unit of work, as this section argued.
+>
+> **At that point the `attentionItem` rows had NOT been added.** §2.4's destination was originally
+> the `NeedsAttention` panel on the admin dashboard; the scanner delivered the same information by
+> email instead, which is the channel §3.3's residual actually needed (an alert reaches an operator
+> who has not opened the dashboard).
+>
+> **The rows have since SHIPPED (2026-09-22).** `admin_stats.go` now emits three ADR #57 types —
+> `integrity_mismatch`, `integrity_unknown_persistent` and `pos_over_quota` — and they are
+> ordered FIRST on the panel because the list is capped at 20: a tamper finding must not be pushed
+> off by a backlog of billing rows. They reuse the scanner's own detection functions
+> (`collectBuildIntegrityFindings`, `findTenantsOverPosQuota`) rather than re-deriving the
+> conditions, so the panel and the daily email cannot disagree about which tenant is violating.
+> `admin.js` renders `integrity_mismatch` with the BAD badge (a re-signed APK is not a warning to
+> triage), and the three labels live in `admin-utils.js`.
+
+> **Consequence found while checking, 2026-09-21: the queue types cannot be built ahead of the
+> field.** A plan to add `integrity_mismatch`/`integrity_unknown_persistent` rows to
+> `attentionItem` was dropped on evidence. `grep` for `build_fingerprint|build_integrity|
+> integrity_mismatch|unknown_persistent|accepted_pins|release_channels` across `apps/` returns
+> **nothing**, and `crates/kasirmu-core/src/build_fingerprint.rs` is a closed island —
+> `fold_build_integrity`, `BuildIntegritySignal` and `BuildFingerprintVerdict` have **no
+> non-test caller** anywhere, and nothing stores the consecutive count. Adding the rows now would
+> create queue entries **no code path can ever write**, which is the same "appearance of
+> protection" defect this section names, one layer down. The rows are downstream of Q5 and are not
+> independently buildable — which is consistent with the two prerequisites above being one unit of
+> work rather than two.
 
 ### Q4 — Is `unknown` allowed to operate indefinitely, or does it escalate? `[was policy]` — DECIDED
 
@@ -443,13 +888,69 @@ is the entire reason §2.2 exists.
 rolled-out client would each produce `unknown` reports from legitimate devices. Routing escalation
 to a human queue means the worst outcome is a support ticket — whereas an automatic lockout on the
 same bug would dark every till running the affected build. **ADR #58 §2.7** forbids the latter for
-the same reason ("Enforcement never depends on the local DB refusing to open",
-`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:440-447`). This record has no §2.7;
-the earlier citation pointed at a section that does not exist here.
+the same reason ("Enforcement never depends on the local DB refusing to open" —
+`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md` **§2.7**; cited by line as `:440-447`
+until the 2026-09-22 re-measure, which lands on ADR #58's §2.4a.1 renew guard instead). This record
+has no §2.7 of its own; the earlier citation pointed at a section that does not exist here.
 
 **Suggested N: 7 consecutive reports**, which at one report per sync cycle separates a broken client
 from an intermittent failure while staying inside a working day. The number is a tuning parameter,
 not a security boundary; the routing to a human *is* the boundary.
+
+**IMPLEMENTED 2026-10-05 — the escalation rule is real; the queue it feeds is not yet wired.**
+
+`kasirmu_core::build_fingerprint` now carries the Q4 decision as a pure state machine:
+`fold_build_integrity(previous_consecutive_unknowns, verdict) -> (u32, BuildIntegritySignal)`, with
+`UNKNOWN_REPORTS_BEFORE_ESCALATION = 7` and a `BuildIntegritySignal` of `None` / `Mismatch` /
+`UnknownPersistent`.
+
+**Three properties are pinned by tests rather than described:**
+
+- **The threshold is asserted from both sides.** One short of 7 does not escalate; the 7th does. An
+  off-by-one here either delays the signal past a working day or fires it on noise.
+- **A usable report RESETS the run, it does not decay it.** A decay would let an attacker stay
+  permanently under the threshold by emitting one usable report every few cycles — re-opening the
+  exact bypass option A was rejected for.
+- **`Mismatch` needs no repetition.** It is positive evidence (§2.5) whereas `Unknown` is an absence
+  of evidence; requiring repetition for a mismatch would let an attacker re-sign the APK and stay
+  unobserved by varying the count.
+
+**The control's LIMIT is pinned too, which is the more useful test.**
+`interleaving_a_usable_report_defeats_the_escalation` demonstrates that a client reporting a valid
+fingerprint every cycle never escalates — and asserts that this is *correct* behaviour for this rule,
+not a bug to fix by strengthening it. The honest statement is that the escalation catches a client
+whose reporting has genuinely stopped working, not one that reports a lie competently. §3.3's
+residual stands unchanged, and the test fails loudly if a future change makes the counter decay —
+which is the signal that the rule had been strengthened into something that cannot tell an
+intermittent fault from a careful attacker.
+
+**The escalation SHIPS — but in Go, and that split is now a recorded decision (2026-09-22).**
+
+This Rust module still has **no production caller**: `BuildIntegritySignal` is not constructed
+anywhere outside its own tests, nothing folds a report in Rust, and nothing stores a consecutive
+count. What actually fires is the scanner
+(`apps/license-server/build_integrity_alerts.go`), which re-states the same rule `N=7` /
+7-day-window in Go and evaluates it against the stored `unknown` reports.
+
+**Decision: keep the Rust state machine as the SPECIFICATION the Go scanner mirrors; do not delete
+it as dead code.** The Rust side carries reasoning the Go constants cannot — specifically *why* a
+usable report RESETS the run rather than decaying it (a decay re-opens option A's bypass), and why
+`Mismatch` needs no repetition. A future change to the threshold that reads only the Go integer
+would lose that argument.
+
+**The risk this creates is silent drift, and it is pinned rather than trusted:** both sides now carry
+a test asserting the same literals — `escalation_rule_matches_the_go_scanner` (Rust) and
+`TestEscalationRuleMatchesTheRustSpecification` (Go) — so changing one without the other fails a
+build. The Go test also pins that the alert cooldown equals the window, since a longer cooldown would
+let a standing condition go unreported.
+
+**The `NeedsAttention` rows shipped on 2026-09-22**, closing this remainder: `admin_stats.go`
+emits `integrity_mismatch`, `integrity_unknown_persistent` and `pos_over_quota`, built by calling
+this scanner's own detection functions so the panel and the email agree by construction. It was an
+additive display change rather than a blocked prerequisite — nothing about detection or response
+depends on it — which is why it could land after the scanner.
+
+**Verification run:** `cargo test -p kasirmu-core --lib -- build_fingerprint` → **13 passed, 0 failed**.
 
 ### Q5 — Does the fingerprint field ride an existing sync call, or need a new command? `[was blocking]` — DECIDED
 
@@ -473,6 +974,21 @@ records agree, and that agreement is what makes option A correct rather than mer
 **Implementation note:** if ADR #58 §2.3's option C is adopted (ride any authenticated call), the
 fingerprint field travels on the same calls at no additional cost. The two records should therefore
 be implemented together.
+
+> **Correction (2026-09-21): "the same calls" are the LICENCE server's, not the sync snapshot's.**
+> Adoption of ADR #58 option C was implemented as a scheduling change, not a wire change — see the
+> §Q1 correction in
+> `2026-10-04-adr58-online-licence-heartbeat-and-revocation.md`. The sync snapshot is built and
+> Redis/ETag-cached by the **cloud server** (`apps/cloud-server/src/sync_api.rs`), which holds no
+> licence knowledge; a verdict or integrity field placed there would be served stale or bust the
+> cache on every heartbeat.
+>
+> The carrier that actually works for this field is the **licence server's** authenticated call
+> (`POST /api/v1/license/status`), which is where the revocation ride-along now runs from
+> (`platform/sync/src/daemon_tick.rs` `run_license_ride_along`). A fingerprint field added there
+> inherits that cadence for free and lands next to `device_revoked`, which is the verdict it is
+> read alongside. **This does not change Q5's option A** — the field still rides an existing
+> authenticated call rather than a new command — it only names which server owns that call.
 
 
 ---
@@ -507,22 +1023,28 @@ change; B makes it an ordinary write. §3.2 already names keystore rotation as a
 rather than a local one — a set is the data shape that operation requires. Option A would ship a
 scalar and pay for it in an incident.
 
-**Bound and rule:** the set is capped (a small N, e.g. 4) and ordered, so it does not become an
-unbounded allow-list — an attacker who could append to it would have defeated §2.1. Membership is
-checked in constant time against the reported value; the cap is a security property, not a storage
-convenience.
+**Bound and rule:** the set is capped (`maxAcceptedPins = 4`), so it does not become an unbounded
+allow-list — an attacker who could append to it would have defeated §2.1. The cap is a security
+property, not a storage convenience. **Two corrections, 2026-09-22:** the set is **not ordered** —
+no ordering rule exists in code, and none is needed, because membership is a set test; and
+membership is **not** checked in constant time — `build_fingerprint.rs:108-111` is
+`accepted.iter().any(|e| normalize(e) == candidate)`, which short-circuits, and
+`build_integrity.go:100-104` loops the same way. At four pins neither has any practical
+consequence, but the claims were wrong as written, and an unimplemented constant-time guarantee is
+exactly the sort of assertion this record exists to avoid.
 
 ### Q-B — Where does the pinned fingerprint live server-side, and who writes it? `[blocking]` — DECIDED
 
 §2.1 says the server "compares it against the fingerprint(s) *it* holds for that tenant release
 channel". The phrase **"tenant release channel" appears nowhere else in the repository** — a
 repo-wide search for `release_channel` / `releaseChannel` returns **zero matches**, so this record is
-the only place the concept exists. No store, no table and no writer is named, so as written §2.1
+the only place the concept exists. *(True at decision time; `release_channels` now EXISTS — see the
+IMPLEMENTED note at the end of this section. Marked 2026-09-22.)* No store, no table and no writer is named, so as written §2.1
 specifies a comparison against data that nothing in the system produces.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. A `release_channels` collection**, keyed by channel, holding the accepted pin set | One pin serves every tenant on the channel; rotation is one write; matches the "channel" language already used | A new collection and a new admin write path; today there is exactly **one** release channel (one keystore, `gen/android/app/build.gradle.kts:40-46`), so the indirection must earn its keep |
+| **A. A `release_channels` collection**, keyed by channel, holding the accepted pin set | One pin serves every tenant on the channel; rotation is one write; matches the "channel" language already used | A new collection and a new admin write path; today there is exactly **one** release channel (one keystore, `apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46`), so the indirection must earn its keep |
 | **B. A field on the tenant record** (a per-tenant pin) | No new collection; the admin surface that already acts on a tenant writes it | Contradicts the word "channel": N tenants on one build need N identical writes, and Q1's rotation becomes an N-row coordinated update rather than one |
 | **C. Derive it from a hosted build artifact** at report time | The pin cannot drift from the shipped APK | Requires the server to hold and hash build artifacts — a release-pipeline dependency this record does not otherwise need, and a new failure mode when the artifact is unavailable |
 
@@ -531,7 +1053,7 @@ admin surface and read by the sync server; with the honest note that today there
 channel.**
 
 The language in §2.1 and Q1 is already channel-scoped, and the deciding fact is operational: this
-project has **one** long-lived release keystore (`gen/android/app/build.gradle.kts:40-46`, Q1), so the
+project has **one** long-lived release keystore (`apps/mobile-tauri/gen/android/app/build.gradle.kts:40-46`, Q1), so the
 channel is a set of one — but the *rotation* story Q1 commits to is precisely the case where a
 per-tenant field (B) becomes an N-tenant coordinated write. A channel record makes rotation one
 write. Option C is rejected because it adds a release-pipeline dependency to the server for a value
@@ -542,6 +1064,39 @@ that only changes when a human rotates a key.
 keystore already lives. **If a single channel is all that ever ships, A and B behave identically —
 A is chosen because it is the shape that does not need a migration on the day a second channel
 exists, and because the record's own vocabulary is already channel-based.**
+
+> **IMPLEMENTED (2026-09-21).** The store, its writer and its reader ship, so §2.1's comparison no
+> longer targets data nothing produces:
+>
+> - **Collection** — `ensureReleaseChannels` (`apps/license-server/main.go`), registered in boot
+>   beside the other `ensure*` migrations and mirrored in the test harness so the tests run the
+>   same migration production does. Fields: `channel`, `accepted_pins` (JSON, `MaxSize` 64 KiB),
+>   `note`, `updated_by`, plus explicit `created`/`updated` autodates — a programmatically-built
+>   collection does NOT get them implicitly, and the unique index on `channel` references `created`.
+>   All five API rules are nil (superuser-only): an **empty-string** rule is PUBLIC in PocketBase
+>   (LSE-5), which on this collection would let anyone append a pin and defeat §2.1 outright.
+> - **Writer/reader** — `apps/license-server/release_pins.go`:
+>   `POST|GET /api/v1/admin/release-channels/{channel}/pins`, admin-authed via `adminAuth`.
+> - **The set is bounded** (`maxAcceptedPins = 4`) and **normalised** to lowercase 64-hex, the same
+>   folding `classify_build_fingerprint` performs, so a fingerprint pasted from `keytool`
+>   (uppercase, colon-separated) cannot mismatch a correct build. An unusable entry is **rejected,
+>   never dropped** — a silently-dropped pin is a build that stops verifying with no indication why.
+> - **Idempotent** on an unchanged set (`status: "unchanged"`), matching `handleAdminSetRegion`.
+>
+> **One defect found and fixed while building it, recorded because the failure was invisible on the
+> write path.** `acceptedPinsFromRecord` first type-asserted the field as `[]any`. PocketBase
+> returns a JSON field as `types.JSONRaw` (a `[]byte`), so every stored set read back as EMPTY —
+> while `POST` kept answering 200 with the pins echoed, because it responds from the request rather
+> than from storage. Nothing on the write path could see it, and nothing on the read path existed
+> before this change. The reader now round-trips through `encoding/json` like
+> `feature_grants.go` does, and `TestReleasePins_StoresAndReadsBackTheSet` plus
+> `TestReleasePins_NormalisesKeytoolSpelling` both fail against the old code.
+>
+> **What this closed at the time.** When this store landed, §2.1's client leg was still unbuilt, so
+> `accepted_pins` had no reporter. It has one now: the Android computation and its reporting shipped
+> in the same session, and `apps/license-server/build_integrity.go` classifies reports against this
+> set. An unpinned channel still reads as `Unknown`, never `Mismatch`, so a deployment that has set
+> no pins cannot refuse renewal for anyone.
 
 ### Q-C — Are the 7 "consecutive" `unknown` reports sync cycles, or calendar days? `[deferrable]` — DECIDED
 
@@ -567,7 +1122,7 @@ for the sync-disabled tenant that ADR #56 §2.4 exempts, and B because it can ne
 than a week even for a device reporting hourly.
 
 **Aligned with the §Q3 cadence, which is the point.** The escalation lands in the
-`NeedsAttention` queue (`admin_stats.go:574-611`), whose existing entries are **date-stamped and
+`NeedsAttention` queue (`admin_stats.go:581-675`), whose existing entries are **date-stamped and
 day-scale** — the grace-period category carries a `grace_until` date at :599-603. A trigger measured
 in calendar time is the unit that queue is read in, so the 7-day window is also the cadence at which
 a human can actually act. Counting cycles would put a sub-hour signal into a day-scale queue and
@@ -587,7 +1142,7 @@ place the client can actually read it.
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. Reuse ADR #58 §2.4a.1's single generic message** ("invalid api_key or tenant is not active", `renew.go:76-81`) | One code path, one message, no new string to leak; consistent with ADR #58's deliberate genericness (`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:289-293`); a fingerprint refusal is indistinguishable from a lapsed account | The *operator* cannot tell a fingerprint refusal from a billing lapse in that response — mitigated because diagnosis is admin-side by Q2 |
+| **A. Reuse ADR #58 §2.4a.1's single generic message** ("invalid api_key or tenant is not active", `renew.go:82-87`) | One code path, one message, no new string to leak; consistent with ADR #58's deliberate genericness (ADR #58 **§2.4a.1**; cited by line as `:289-293` until the 2026-09-22 re-measure); a fingerprint refusal is indistinguishable from a lapsed account | The *operator* cannot tell a fingerprint refusal from a billing lapse in that response — mitigated because diagnosis is admin-side by Q2 |
 | **B. A distinct message** ("this installation failed an integrity check") | Operator/merchant diagnostics | Exactly what Q2 rejected: it tells the attacker the control fired |
 | **C. A distinct message visible only to the admin surface**, generic on the wire | Diagnosis without disclosure | Requires the admin surface to join the refusal to the tenant, i.e. §2.4's detection to already be built (deferred on Q3) |
 
@@ -595,16 +1150,32 @@ place the client can actually read it.
 
 ADR #58 §2.4a.1 already returns **one** message for every non-active status by design, and its own
 text names the cost — a client "cannot distinguish \"you are banned\" from \"your account lapsed\""
-— and accepts it (`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md:289-293`). This record's
+— and accepts it (ADR #58 **§2.4a.1**; cited by line as `:289-293` until the 2026-09-22 re-measure). This record's
 Q2 reached the identical conclusion from the integrity side. Reusing the string makes the two records
 agree on the wire rather than merely in prose, and it means a fingerprint refusal is
 **indistinguishable from an ordinary lapse** — which is the property Q2 asks for. Option C is the
-right end state once Q3's queue exists, and is recorded here so it is not re-derived later; it is not
-adopted now because its prerequisite (server detection) is explicitly deferred.
+right end state once Q3's queue exists, and is recorded here so it is not re-derived later.
 
-**Implementation note:** because the guard at `renew.go:76-81` is keyed on `status`, serving A
-requires only that §2.4's detection mark the tenant rather than add a new response path — the
-refusal then arrives through the existing generic branch with no new wire surface.
+> **Re-read 2026-09-21: option C's prerequisite now exists, and A is still the decision.** Server-side
+> detection ships (`build_integrity.go`) and the alert reaches an operator
+> (`build_integrity_alerts.go`), so the original reason for deferring C — no detection to join a
+> refusal to — no longer applies. **The decision does not change, because the reason for A was never
+> the prerequisite**: A reuses ADR #58's single generic message on the wire, and that indistinguishability
+> is the security property Q2 asks for. C remains the better *diagnostic* end state and remains
+> unbuilt, now purely as a UI improvement rather than a blocked dependency.
+
+**Implementation note — corrected 2026-09-22, because the original sent an implementer the wrong
+way.** It said serving A "requires only that §2.4's detection **mark the tenant**". That is not what
+was built and not what §2.5 decided: the refusal is **per DEVICE**
+(`renew.go` → `deviceHasFingerprintMismatch(app, req.MachineID)`, with `MachineID` carried on
+`RenewRequest`). Someone following the old note would have written a tenant-level flag and
+reintroduced the fleet lockout §2.5 rejected.
+
+What the note got RIGHT is the property that matters here, and it survives: the refusal reuses the
+**existing generic message** rather than adding a response path, so a fingerprint refusal is
+indistinguishable from an ordinary lapse on the wire. That is Q-D's whole content, and the
+implementation satisfies it by returning the same string from the same endpoint — the tenant-status
+guard is just above it, and the device check sits beside it rather than replacing it.
 
 ## 6. Non-Goals
 
@@ -616,3 +1187,5 @@ refusal then arrives through the existing generic branch with no new wire surfac
 - **Not device attestation of the server.** That is ADR #55, and it protects the opposite
   direction (a credential leaving toward a lapsed host).
 - **Not a promise of perfect security.** See §1.3 exclusions and §3.3 residuals.
+
+> last audited 22-09-26 by docs-auditor

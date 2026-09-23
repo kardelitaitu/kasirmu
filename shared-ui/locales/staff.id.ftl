@@ -1,30 +1,8 @@
-staff-login-title = Masuk Staf
-staff-username = Nama Pengguna
-staff-pin = PIN
-staff-enter-pin = Masukkan PIN
-staff-login-button = Masuk
-staff-logout-button = Keluar
-staff-role-owner = Pemilik
-staff-role-manager = Manajer
-staff-role-cashier = Kasir
-staff-permission-denied = Anda tidak memiliki izin untuk mengakses halaman ini
-
-staff-management-title = Manajemen Staf
-staff-add = Tambah Staf
-staff-edit = Ubah Staf
-staff-name = Nama
-staff-role = Peran
-staff-active = Aktif
-staff-inactive = Tidak Aktif
-staff-deactivate = Nonaktifkan
-staff-activate = Aktifkan
-
 staff-login-submit = Masuk
 staff-login-submitting = Memasuki sistem…
 
 # Restaurant Menu
 staff-login-error-connection = Tidak dapat memverifikasi nama pengguna. Periksa koneksi Anda.
-staff-login-pin-min-length = PIN harus minimal 4 digit.
 staff-login-back = ← Kembali
 staff-login-copyright = © 2026 kasir.mu. Seluruh hak cipta dilindungi.
 staff-login-attempts-remaining = ({ $count } percobaan tersisa)
@@ -32,10 +10,7 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 
 # ── Product Bundles ──
 staff-back-aria = Kembali ke ruang kerja
-staff-tabs-aria = Staf dan peran
-staff-footer-staff-count = { $count } anggota staf
-staff-footer-active = { $count } aktif
-staff-footer-roles = { $count } peran
+staff-tabs-aria = Staf, peran, dan sampah
 staff-footer-updated = Diperbarui { $time }
 staff-add-button = Tambah Staf
 staff-empty = Belum ada anggota staf.
@@ -43,27 +18,28 @@ staff-empty-cta = Tambah anggota staf pertama
 staff-col-name = Nama
 staff-col-username = Nama Pengguna
 staff-col-role = Peran
-staff-col-status = Status
 staff-col-workspace = Ruang Kerja
-staff-col-actions =
-    .aria-label = Tindakan
+staff-col-phone = Telepon
 staff-status-active = Aktif
 staff-status-inactive = Tidak Aktif
+
+// ── Roster (stat row + toolbar) ─────────────────────────────────────
+staff-stat-total = Total
+staff-search =
+    .aria-label = Cari staf
+    .placeholder = Cari nama, nama pengguna, atau ID
+staff-filter-all = Semua
+staff-sort =
+    .aria-label = Urutkan staf berdasarkan
+staff-no-matches = Tidak ada staf yang cocok dengan pencarian Anda
 staff-edit-aria =
     .aria-label = Ubah { $name }
 staff-deactivate-aria =
     .aria-label = Nonaktifkan { $name }
-staff-restore = Aktifkan Kembali
 staff-restore-aria =
     .aria-label = Aktifkan kembali { $name }
-staff-modal-add-aria =
-    .aria-label = Tambah anggota staf
-staff-modal-edit-aria =
-    .aria-label = Ubah anggota staf
 staff-modal-add-title = Tambah Anggota Staf
 staff-modal-edit-title = Ubah Anggota Staf
-staff-modal-close =
-    .aria-label = Tutup
 staff-field-username-label = Nama Pengguna *
 staff-username-placeholder =
     .placeholder = mis. jane
@@ -182,8 +158,6 @@ staff-login-connection-sync = Sinkron
 
 # ── ADR #35 D6 profil pengguna (spec 0049) ─────────────────────────────
 
-staff-col-id = ID
-staff-id-masked-aria = Nomor identitas (disamarkan)
 staff-profile-incomplete = Profil belum lengkap
 staff-profile-incomplete-edit-hint = Lengkapi profil anggota ini untuk membuka penetapan peran dan workspace.
 staff-profile-section-label = Profil
@@ -197,6 +171,8 @@ staff-national-id-type-select = Pilih jenis
 staff-national-id-type-ssn = SSN (AS)
 staff-national-id-type-nik = NIK / KTP (Indonesia)
 staff-field-national-id-label = Nomor Identitas *
+staff-field-national-id-label-hidden = Nomor Identitas (disembunyikan)
+staff-identity-withheld-hint = Anda tidak memiliki izin untuk melihat dokumen identitas anggota ini. Dokumen akan dibiarkan tidak berubah saat Anda menyimpan.
 staff-field-national-id-aria = Nomor identitas (wajib)
 staff-field-email-label = Email *
 staff-field-email-aria = Alamat email (wajib)
@@ -278,9 +254,9 @@ role-perm-sensitive = Sensitif
 role-cancel = Batal
 role-save = Simpan peran
 role-saved = Peran { $name } tersimpan.
-role-deleted = Peran { $name } dihapus.
+role-deleted = Peran { $name } dipindahkan ke sampah.
 role-delete-confirm-title = Hapus peran ini?
-role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Tindakan ini tidak bisa dibatalkan.
+role-delete-confirm-body = Akun yang memegang { $name } akan kehilangan izinnya. Peran ini masuk ke sampah dan dapat dipulihkan selama 90 hari.
 
 # Pemegang peran, per akun. Baris yang tertutup sudah menyebut total yang
 # sama lewat role-in-use-accounts, dan keduanya membaca holder_count yang
@@ -318,8 +294,38 @@ role-holders-dims-workspaces = { $count ->
   }
 role-holders-dims-both-lists = { $branches } cabang, { $workspaces } workspace
 
+# ── Sampah (staff:delete · retensi 90 hari) ────────────────────────
+# Anggota staf atau peran kustom dihapus lunak ke sampah dan dibersihkan
+# setelah TRASH_RETENTION_DAYS (90) di kasirmu-core. Backend yang memiliki
+# jendela waktu itu -- pembacaannya menjalankan penyapuan sebelum menjawab --
+# jadi hitungan hari di bawah hanya petunjuk bagi operator untuk memulihkan
+# baris tepat waktu, bukan yang menentukan baris sudah kedaluwarsa.
+staff-tab-trash = Sampah
+staff-trash-intro = Staf dan peran yang dihapus tetap di sini selama 90 hari sebelum dihapus permanen. Memulihkan anggota staf akan mengembalikannya dalam keadaan nonaktif.
+staff-trash-staff-section = Staf yang dihapus
+staff-trash-roles-section = Peran yang dihapus
+staff-trash-empty = Tidak ada isi sampah
+staff-trash-days-left = { $days } hari sebelum dihapus permanen
+staff-trash-restore = Pulihkan
+staff-trash-restore-staff-aria =
+    .aria-label = Pulihkan { $name }
+staff-trash-restore-role-aria =
+    .aria-label = Pulihkan peran { $name }
+staff-trash-error = Gagal memuat sampah
+staff-trash-restore-failed = Gagal memulihkan. Coba lagi.
+
+# ── Hapus (staff:delete) ────────────────────────────────────────────
+staff-delete-aria =
+    .aria-label = Hapus { $name }
+staff-delete-confirm-title = Hapus anggota staf?
+staff-delete-confirm-body = { $name } akan dipindahkan ke sampah dan dihapus permanen setelah 90 hari. Pulihkan dari tab Sampah sebelum itu. Lanjutkan?
+staff-delete-confirm-confirm = Hapus
+staff-delete-confirm-cancel = Batal
+staff-toast-deleted = { $name } dipindahkan ke sampah
+staff-delete-failed = Gagal menghapus anggota staf
+role-restored = Peran { $name } dipulihkan.
+
 # ── Impersonation (operator:impersonate) ───────────────────────────
-staff-impersonate-action = Impersonasi
 staff-impersonate-aria =
     .aria-label = Impersonasi { $name }
 staff-impersonating-banner = Meniru { $name }

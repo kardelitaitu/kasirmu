@@ -515,10 +515,58 @@ impl TenantSubscription {
     /// payload under `debug_assertions`, which is what keeps the
     /// sentinel-with-paid-tier fixtures in the test suites passing there.
     pub fn verify_signature(&self) -> Result<(), CoreError> {
+        // INVARIANT, not a convenience (ADR #57 §2.6): the sentinel is accepted
+        // WITHOUT cryptography, so the `tier_key() == "free"` half is the only
+        // thing keeping it from being a downgrade-to-anything oracle. Any edit
+        // that lets a NON-free tier reach this return is a full licence bypass —
+        // a forged row could then claim Premium by writing 14 bytes.
+        //
+        // The invariant is pinned by `bootstrap_free_sentinel_never_verifies_a_
+        // paid_tier`, and it must be tested HERE rather than against
+        // `verify_license_signature`: that function carries a
+        // `#[cfg(debug_assertions)]` short-circuit accepting the sentinel for
+        // ANY payload, so a test written there would assert something the debug
+        // build violates by design.
+        //
+        // The Free half is harmless rather than generous: a Free row confers
+        // Free entitlements, which the caller already has, so accepting it
+        // grants nothing.
         if self.signature == BOOTSTRAP_FREE_SIGNATURE && self.tier.tier_key() == "free" {
             return Ok(());
         }
         crate::license_verification::verify_license_signature(&self.signed_payload, &self.signature)
+    }
+
+    /// Verify the subscription signature and ensure neither tenant nor device is revoked in the CRL.
+    ///
+    /// Checks the cached Certificate/Licence Revocation List (ADR #58 §2.1/§2.2).
+    /// If the tenant or device is present in the CRL, or if the subscription status is
+    /// already `"revoked"`, returns [`CoreError::LicenseRevoked`].
+    pub fn verify_signature_with_crl(
+        &self,
+        conn: &rusqlite::Connection,
+        machine_id: Option<&str>,
+    ) -> Result<(), CoreError> {
+        if self.status.eq_ignore_ascii_case("revoked") {
+            return Err(CoreError::LicenseRevoked(format!(
+                "Tenant {} is marked revoked",
+                self.tenant_id
+            )));
+        }
+
+        if crate::license_verification::is_revoked_in_cached_crl(
+            conn,
+            None,
+            Some(&self.tenant_id),
+            machine_id,
+        )? {
+            return Err(CoreError::LicenseRevoked(format!(
+                "Tenant {} or device is present in revoked list (CRL)",
+                self.tenant_id
+            )));
+        }
+
+        self.verify_signature()
     }
 
     /// Compute the maximum ledger timestamp across all domain tables
@@ -632,8 +680,18 @@ impl TenantSubscription {
 
     /// Check if the subscription is within grace evaluated at a specific UTC datetime.
     pub fn is_within_grace_period_at(&self, now: chrono::DateTime<chrono::Utc>) -> bool {
-        // Canceled subscriptions are never within grace.
-        if self.status == "canceled" {
+        // Canceled AND revoked are never within grace, for different reasons:
+        //
+        // - `canceled` is a billing outcome, and grace exists to keep a
+        //   lapsed-but-paying merchant trading while they settle up. A canceled
+        //   subscription has already been given its answer about the tier.
+        // - `revoked` is an ABUSE verdict (ADR #58 §2.1). Grace would keep a
+        //   banned register operating for the tier's whole offline window,
+        //   which is precisely the sale the ban exists to stop.
+        //
+        // Both were one arm before ADR #58, and neither is a grace case — but
+        // they are separate arms because the STATES they feed differ.
+        if self.status == "canceled" || self.status == "revoked" {
             return false;
         }
 
@@ -931,7 +989,17 @@ impl TenantSubscription {
         now: chrono::DateTime<chrono::Utc>,
     ) -> SubscriptionLifecycleState {
         match self.status.as_str() {
-            "canceled" | "revoked" => return SubscriptionLifecycleState::Canceled,
+            // ADR #58 §2.1 splits this arm. They are different verdicts and must
+            // not share a state:
+            //
+            // - `canceled` is a BILLING outcome. The tenant who stops paying
+            //   keeps a register and can still sell; the tier degrades to Free.
+            // - `revoked` is an ABUSE verdict. The register is LOCKED — no new
+            //   sessions, and live ones are invalidated (§2.5). Downgrading a
+            //   revoked tenant to Free would let a ban be escaped by simply
+            //   continuing to sell, which defeats the mechanism entirely.
+            "canceled" => return SubscriptionLifecycleState::Canceled,
+            "revoked" => return SubscriptionLifecycleState::Revoked,
             "paused" => return SubscriptionLifecycleState::Paused,
             "expired" => return SubscriptionLifecycleState::Expired,
             "grace_period" => return SubscriptionLifecycleState::Grace,
@@ -1051,6 +1119,12 @@ pub enum SubscriptionLifecycleState {
     Expired,
     /// Canceled or revoked server-side — never within grace.
     Canceled,
+    /// Revoked by an administrator — an abuse verdict, not a billing outcome.
+    ///
+    /// Never within grace, never downgraded: the register is LOCKED. Separate
+    /// from [`Self::Canceled`] because a canceled tenant still trades (degraded
+    /// to Free) while a revoked one does not trade at all. See ADR #58 §2.1.
+    Revoked,
     /// Paused by the server (pause window / billing hold).
     Paused,
     /// Missing, tampered, or unrecognized subscription data — fail closed
@@ -1066,6 +1140,7 @@ impl SubscriptionLifecycleState {
             Self::Grace => "grace",
             Self::Expired => "expired",
             Self::Canceled => "canceled",
+            Self::Revoked => "revoked",
             Self::Paused => "paused",
             Self::Unavailable => "unavailable",
         }

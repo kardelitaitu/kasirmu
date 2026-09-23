@@ -32,6 +32,38 @@ fn log_degraded(operation: &str, err: &rusqlite::Error) {
     );
 }
 
+/// The identity this install stamps on the rows it produces (C3, slice S5a).
+///
+/// Read ONCE per enqueue call — never per row — from the same persisted
+/// `sync_terminal_id` the sync daemons read to stamp their pushes. An
+/// unpaired install has no id and the row keeps SQL NULL, which is the
+/// migration's explicit contract: a guessed origin would make the
+/// self-origin gate suppress a legitimate deduction (silent stock loss).
+///
+/// A read ERROR propagates instead of degrading to `None`. A NULL written
+/// because the lookup failed is indistinguishable from a genuine "unpaired",
+/// and it would silently reopen the double deduction this stamp exists to
+/// close — the failure must be visible, not benign.
+fn enqueue_origin(conn: &rusqlite::Connection) -> Result<Option<String>, CoreError> {
+    Ok(crate::settings::Settings::get_sync_terminal_id(conn)?)
+}
+
+/// Decode a currency's raw bytes for a sync payload.
+///
+/// The outbox payload is JSON the pull side parses, so a non-UTF-8 currency
+/// must be a hard error here (the same rejection `create_refund` performs
+/// before it writes the row) rather than a payload the applier dead-letters
+/// after the refund has already committed locally.
+fn currency_str<'a>(
+    currency: &'a crate::money::Currency,
+    field: &'static str,
+) -> Result<&'a str, CoreError> {
+    std::str::from_utf8(&currency.0).map_err(|e| CoreError::Validation {
+        field,
+        message: format!("invalid UTF-8 in currency bytes: {e}"),
+    })
+}
+
 /// Run a single-row observability query whose "no rows" answer is normal.
 ///
 /// `Ok` → value; `QueryReturnedNoRows` → `None` silently (an empty queue is the
@@ -241,10 +273,11 @@ impl Store<'_> {
 
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
+        item.origin_terminal_id = enqueue_origin(self.conn)?;
         self.conn.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
         )?;
         Ok(item)
     }
@@ -289,10 +322,14 @@ impl Store<'_> {
     ) -> Result<OfflineQueueItem, CoreError> {
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
+        // C3 S5a: same origin stamp as the non-transactional lane. This is the
+        // lane the sale settlement uses, so a miss here would leave the gate
+        // dormant for exactly the mutation the double deduction was seen on.
+        item.origin_terminal_id = enqueue_origin(tx)?;
         tx.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
         )?;
         Ok(item)
     }
@@ -356,6 +393,153 @@ impl Store<'_> {
         Ok(())
     }
 
+    /// OUTBOX: write a refund's `refund_sale` row inside the refund
+    /// transaction, so the sync row and the refund are one atomic unit.
+    ///
+    /// Position is deliberate: `create_refund` calls this AFTER the refunds
+    /// header and its lines are written but BEFORE the stock credit, so a
+    /// failure later in the same transaction (a line whose `sale_line_id` is
+    /// absent from `deduction_locations`, say) takes the outbox row down with
+    /// the refund. Placed just before `tx.commit()` it would be equally atomic
+    /// but untestable - nothing can fail after it - so the earlier seat buys a
+    /// real rollback proof.
+    ///
+    /// Tenant comes from the SALE row, not from `refunds.tenant_id`: the
+    /// column exists (migration 20260827) but `create_refund` never sets it,
+    /// so it reads 'default' for every refund this path writes. Reading it
+    /// would file a multi-store refund under 'default' - the exact bug the
+    /// sale helper's tenant argument exists to avoid.
+    ///
+    /// The payload is SHAPED like the one the pull-side arm parses
+    /// (`platform/sync/src/queue.rs` `RefundPayload`: id / sale_id /
+    /// total_minor / currency / reason / note / processed_by / created_at /
+    /// lines with the same eight line keys), so the applier cannot tell this
+    /// writer from any other. The refund `id` is the identity the arm is
+    /// idempotent on (`refunds.id` is its own durable row), so it is carried
+    /// verbatim. No origin field: `enqueue_offline_in_tx` stamps it.
+    pub fn enqueue_refund_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        refund: &crate::Refund,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![refund.sale_id],
+            |row| row.get(0),
+        )?;
+        // Fail-closed on a malformed currency, exactly as `create_refund` does
+        // before it writes the row: a payload the applier cannot read is a
+        // dead-lettered refund, not a silent one.
+        let currency = currency_str(&refund.total.currency, "currency")?;
+        let mut lines = Vec::with_capacity(refund.lines.len());
+        for line in &refund.lines {
+            lines.push(serde_json::json!({
+                "id": line.id,
+                "sale_line_id": line.sale_line_id,
+                "sku": line.sku,
+                "qty": line.qty,
+                "unit_minor": line.unit_price.minor_units,
+                "line_minor": line.line_total.minor_units,
+                "currency": currency_str(&line.unit_price.currency, "refund_line.currency")?,
+                "created_at": line.created_at,
+            }));
+        }
+        let payload = serde_json::json!({
+            "id": refund.id,
+            "sale_id": refund.sale_id,
+            "total_minor": refund.total.minor_units,
+            "currency": currency,
+            "reason": refund.reason,
+            "note": refund.note,
+            "processed_by": refund.processed_by,
+            "created_at": refund.created_at,
+            "lines": lines,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "refund_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: write a void's `void_sale` row inside the void transaction.
+    ///
+    /// A void's whole effect is the sale's own status, so the payload carries
+    /// nothing but the sale id the pull-side arm compare-and-sets on - and
+    /// that id is also the arm's identity (`sale:<id>:void`). Tenant comes
+    /// from the sale row, same as the settlement helper.
+    pub fn enqueue_void_sale_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        sale_id: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale_id],
+            |row| row.get(0),
+        )?;
+        let payload = serde_json::json!({ "sale_id": sale_id }).to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "void_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: write one `payment.recorded` row per payment split, inside the
+    /// settlement transaction, immediately after that split's INSERT.
+    ///
+    /// Per-split, not one row for the sale: the pull-side arm inserts ONE
+    /// `payments` row per item and probes that row's own identity, so a single
+    /// item carrying several tenders could not be replayed idempotently.
+    ///
+    /// The identity the arm probes is `idempotency_key` when the originator
+    /// minted one (`idx_payments_idempotency_key` is UNIQUE, so a re-sent
+    /// tender is the same tender whatever id it arrives under) and
+    /// `payments.id` otherwise - both are carried, the key only when present.
+    ///
+    /// Tenant comes from the sale row: `payments` has no tenant column.
+    pub fn enqueue_payment_recorded_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        payment_id: &str,
+        sale_id: &str,
+        split: &crate::PaymentSplitArg,
+        currency: &str,
+        created_at: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale_id],
+            |row| row.get(0),
+        )?;
+        let payload = serde_json::json!({
+            "id": payment_id,
+            "sale_id": sale_id,
+            "method": split.method,
+            "amount_minor": split.amount_minor,
+            "currency": currency,
+            "created_at": created_at,
+            "gateway_reference": split.gateway_reference,
+            "gateway_status": split.gateway_status,
+            "gateway_response": split.gateway_response,
+            "idempotency_key": split.idempotency_key,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "payment.recorded",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
     /// OUTBOX: does a still-pending row for this action already exist for
     /// THIS SALE?
     ///
@@ -387,7 +571,7 @@ impl Store<'_> {
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -397,7 +581,7 @@ impl Store<'_> {
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -410,7 +594,7 @@ impl Store<'_> {
         tenant_id: &str,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map(params![tenant_id], Self::row_to_offline_queue_item)?;
@@ -418,12 +602,62 @@ impl Store<'_> {
     }
 
     /// Mark an offline queue item as synced.
+    ///
+    /// The transition is a guarded compare-and-set, not a blind write: the row
+    /// must still be `pending` for the update to land, so a stale or double
+    /// caller can neither re-mark an already-synced item nor — the case that
+    /// loses data — overwrite a dead-lettered (`failed`) row's terminal state
+    /// with `synced`. Same conditional-transition shape as `finalize_sale`
+    /// (`WHERE id = ?2 AND status = 'pending'`).
+    ///
+    /// # Transaction behaviour
+    ///
+    /// SQLite has no nested `BEGIN`, so — exactly like [`Store::log_audit`] —
+    /// this JOINS a caller-owned transaction and only opens its own in
+    /// autocommit. A caller that rolls back therefore leaves the row un-marked;
+    /// a caller with no transaction gets one, so the existence probe and the
+    /// write that depends on it are atomic.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NotFound`] when the id does not exist. An id that exists in
+    /// a non-pending state is an idempotent no-op returning `Ok(())` — duplicate
+    /// id replays and daemon retries must not fail, and
+    /// `mark_offline_synced_is_idempotent` pins that contract.
     pub fn mark_offline_synced(&self, id: &str) -> Result<(), CoreError> {
-        let affected = self.conn.execute(
-            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::mark_synced_on(&tx, id)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::mark_synced_on(self.conn, id)
+        }
+    }
+
+    /// The guarded `pending -> synced` write, on a connection or on a
+    /// caller-owned transaction (`Transaction` derefs to `Connection`).
+    ///
+    /// A row that exists but is not `pending` is not an error: the CAS
+    /// correctly changed nothing, and the caller gets `Ok(())`.
+    fn mark_synced_on(conn: &rusqlite::Connection, id: &str) -> Result<(), CoreError> {
+        let affected = conn.execute(
+            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?1 AND status = 'pending'",
             params![id],
         )?;
-        if affected == 0 {
+        if affected == 1 {
+            return Ok(());
+        }
+        // rows == 0: the id is absent, or it is present in a non-pending state.
+        // Only the first is an error; the second is the no-op the CAS exists to
+        // produce. Probe instead of guessing which one happened.
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if exists == 0 {
             return Err(CoreError::NotFound {
                 entity: "offline_queue",
                 id: id.to_owned(),
@@ -695,10 +929,37 @@ impl Store<'_> {
     ///
     /// `INSERT OR IGNORE` — re-recording the same id is a no-op, so replay
     /// of a page never double-counts a mutation.
+    ///
+    /// Records no effect: delegates to
+    /// [`Self::mark_remote_item_applied_with_effect`] with `None`. A caller
+    /// that knows the effect the application had must use that one — this
+    /// signature is kept so the delivery-only callers keep working.
     pub fn mark_remote_item_applied(&self, item_id: &str, action: &str) -> Result<(), CoreError> {
+        self.mark_remote_item_applied_with_effect(item_id, action, None)
+    }
+
+    /// Record a remote item as applied locally, keyed by the EFFECT it had (C3).
+    ///
+    /// `item_id` proves the item was DELIVERED once; it says nothing about the
+    /// effect that delivery had, so a retry that produces a second deduction is
+    /// a second effect and must be visible as one. `effect_key` is that effect,
+    /// and `idx_sync_applied_items_effect_key` (PARTIAL, `WHERE effect_key IS
+    /// NOT NULL`) enforces it appears once.
+    ///
+    /// `None` is the honest value for a caller that does not know the effect:
+    /// it stays NULL — never a default and never an empty string — and the
+    /// partial index deliberately ignores it, so the pre-C3 rows and the
+    /// not-yet-effect-aware writers cannot collide with each other.
+    pub fn mark_remote_item_applied_with_effect(
+        &self,
+        item_id: &str,
+        action: &str,
+        effect_key: Option<&str>,
+    ) -> Result<(), CoreError> {
         self.conn.execute(
-            "INSERT OR IGNORE INTO sync_applied_items (item_id, action) VALUES (?1, ?2)",
-            params![item_id, action],
+            "INSERT OR IGNORE INTO sync_applied_items (item_id, action, effect_key) \
+             VALUES (?1, ?2, ?3)",
+            params![item_id, action, effect_key],
         )?;
         Ok(())
     }
@@ -841,15 +1102,34 @@ impl Store<'_> {
     /// The sync applier uses this method in the same transaction as the
     /// domain mutation, preventing a crash between mutation and receipt from
     /// causing a second application on replay.
+    ///
+    /// Records no effect — delegates to
+    /// [`Self::mark_remote_item_applied_with_effect_in_tx`] with `None`, so
+    /// the delivery-only callers keep working unchanged.
     pub fn mark_remote_item_applied_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         item_id: &str,
         action: &str,
     ) -> Result<(), CoreError> {
+        self.mark_remote_item_applied_with_effect_in_tx(tx, item_id, action, None)
+    }
+
+    /// [`Self::mark_remote_item_applied_with_effect`] in a caller-owned
+    /// transaction, so the receipt commits or rolls back with the mutation it
+    /// describes. See that method for what `effect_key` means and why `None` is
+    /// a real value rather than a missing one.
+    pub fn mark_remote_item_applied_with_effect_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        item_id: &str,
+        action: &str,
+        effect_key: Option<&str>,
+    ) -> Result<(), CoreError> {
         tx.execute(
-            "INSERT OR IGNORE INTO sync_applied_items (item_id, action) VALUES (?1, ?2)",
-            params![item_id, action],
+            "INSERT OR IGNORE INTO sync_applied_items (item_id, action, effect_key) \
+             VALUES (?1, ?2, ?3)",
+            params![item_id, action, effect_key],
         )?;
         Ok(())
     }
@@ -871,6 +1151,8 @@ impl Store<'_> {
                 .get::<_, i32>("priority")
                 .map(crate::offline::SyncPriority::from)
                 .unwrap_or(crate::offline::SyncPriority::Normal),
+            // NULL stays NULL: "unknown origin", never a default.
+            origin_terminal_id: row.get("origin_terminal_id")?,
         })
     }
 }

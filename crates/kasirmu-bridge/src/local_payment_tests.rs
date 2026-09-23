@@ -46,10 +46,10 @@ fn unique_store_dir() -> std::path::PathBuf {
 fn flow_bridge(conn: rusqlite::Connection) -> TestBridge {
     TestBridge::new()
         .with_conn(conn)
-        .with_db_manager(StoreDatabaseManager::new(
+        .with_db_manager(TestBridge::seed_store_manager(StoreDatabaseManager::new(
             unique_store_dir(),
             migrations::ALL,
-        ))
+        )))
 }
 
 fn owner_session(tb: &TestBridge, token: &str) {
@@ -70,7 +70,7 @@ fn owner_session(tb: &TestBridge, token: &str) {
 
 #[tokio::test]
 async fn set_then_get_round_trips_the_rail_surface() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let tb = flow_bridge(conn);
     owner_session(&tb, "owner-tok");
@@ -103,7 +103,7 @@ async fn set_then_get_round_trips_the_rail_surface() {
 
 #[tokio::test]
 async fn write_rejects_credential_shaped_parameters_as_validation() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let tb = flow_bridge(conn);
     owner_session(&tb, "owner-tok");
@@ -134,7 +134,7 @@ async fn write_rejects_credential_shaped_parameters_as_validation() {
 
 #[tokio::test]
 async fn read_answers_empty_for_a_location_with_no_market_rows() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     seed_owner(&conn);
     let tb = flow_bridge(conn);
     owner_session(&tb, "owner-tok");
@@ -147,7 +147,7 @@ async fn read_answers_empty_for_a_location_with_no_market_rows() {
 
 #[tokio::test]
 async fn denies_staff_without_settings_edit() {
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     {
         let store = Store::new(&conn);
         store.seed_default_roles().unwrap();

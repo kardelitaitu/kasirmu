@@ -168,9 +168,16 @@ export default function PricingGrid({ tiers, locale, labels, downloadHref, conta
               <h2 className="text-lg font-semibold">{tier.name}</h2>
               {/* Row 2: Price */}
               <div className="mt-4 min-h-[58px] flex flex-col justify-start">
+                {/* The price string comes from the tier data, which is already
+                    locale-specific ('Custom' / 'Kustom') — the old
+                    `isEnterprise ? 'Custom' : price.price` override hard-coded
+                    English onto the Indonesian page and contradicted the
+                    comparison table below it, which reads the same data.
+                    Enterprise declares an empty period, so the period span
+                    renders for every other tier without a special case. */}
                 <p className="text-2xl font-bold whitespace-nowrap">
-                  {isEnterprise ? 'Custom' : price.price}
-                  {!isEnterprise && price.period && <span className="text-xs font-normal text-muted"> {price.period}</span>}
+                  {price.price}
+                  {price.period && <span className="text-xs font-normal text-muted"> {price.period}</span>}
                 </p>
                 {billing === 'yearly' && !isFree && !isEnterprise ? (
                   <p className="mt-1 text-xs text-muted leading-tight">{t(labels, 'pricingPage.billing.billedYearly')}</p>

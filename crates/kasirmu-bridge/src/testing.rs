@@ -81,26 +81,38 @@ fn unique_store_dir() -> PathBuf {
 /// copy). Foreign keys are ON; `WAL`/`busy_timeout` PRAGMAs are irrelevant
 /// for a single in-memory connection.
 ///
+/// Then seeds the provisioned baseline (ADR #56 §2.6): the `default` location,
+/// its legal entity, the five `default-*` workspace instances, and the
+/// `BOOTSTRAP_FREE` `tenant_subscription` row. The baseline migration STOPPED
+/// shipping those rows — `provision_device` creates them now, in one
+/// transaction, because a store with no merchant should have no location and no
+/// workspaces. Bridge tests exercise layers BELOW provisioning, so this harness
+/// reproduces what provisioning produces. See
+/// `kasirmu_core::migrations::seed_provisioned_baseline` for the single source
+/// of those rows.
+///
 /// # Panics
 ///
 /// Panics if the database cannot be created — a harness programming error,
 /// matching `fresh_db`'s contract.
 #[must_use]
 pub fn temp_conn() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 /// Whether a freshly seeded subscription row actually verifies and loads,
 /// derived from behaviour and never from `cfg!` / `debug_assertions` — and
 /// since the 19-09-26 owner ruling the answer is `true` in BOTH profiles.
 ///
-/// It runs the product's own two steps over the row `temp_conn()` inherits:
-/// `TenantSubscription::load` for tenant `default` (the row the squashed init
-/// migration seeds — `20260813_init.sql`, "Default tenant subscription (from
-/// migration 061)", signature `BOOTSTRAP_FREE`), then that row's
-/// `TenantSubscription::verify_signature`. `true` only if BOTH succeed. The
-/// answer is produced BY the load path rather than asserted about it, so it
-/// cannot drift from the truth it claims.
+/// It runs the product's own two steps over the row `temp_conn()` seeds:
+/// `TenantSubscription::load` for tenant `default` (the `BOOTSTRAP_FREE` row
+/// `seed_provisioned_baseline` writes, which is what the squashed init
+/// migration used to seed at `20260813_init.sql`, "Default tenant subscription
+/// (from migration 061)"), then that row's `TenantSubscription::verify_signature`.
+/// `true` only if BOTH succeed. The answer is produced BY the load path rather
+/// than asserted about it, so it cannot drift from the truth it claims.
 ///
 /// # The no-seam proof — read this before "fixing" a red licence fixture
 ///
@@ -128,7 +140,8 @@ pub fn temp_conn() -> Connection {
 /// no fourth kind exists.
 ///
 /// - **sentinel on a Free row** — the 14 bytes `BOOTSTRAP_FREE` with
-///   `tier_key = 'free'`, which is what the init migration seeds.
+///   `tier_key = 'free'`, which is what `seed_provisioned_baseline` writes for
+///   `temp_conn()`.
 ///   `TenantSubscription::verify_signature` honours the sentinel in BOTH
 ///   profiles for a free-tier row (`subscription.rs`, owner ruling 19-09-26),
 ///   so the seeded row LOADS in both. This is the only kind a fixture gets for
@@ -474,7 +487,7 @@ impl TestBridge {
     pub fn new() -> Self {
         Self {
             db: Arc::new(Mutex::new(temp_conn())),
-            db_manager: StoreDatabaseManager::new(unique_store_dir(), migrations::ALL),
+            db_manager: Self::provisioned_store_manager(),
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_seconds: TEST_SESSION_TTL_SECONDS,
             // "redis://127.0.0.1/" is unreachable in tests: create_cache
@@ -500,6 +513,65 @@ impl TestBridge {
     pub fn with_conn(mut self, conn: Connection) -> Self {
         self.db = Arc::new(Mutex::new(conn));
         self
+    }
+
+    /// A per-store manager whose `default` store DB carries the provisioned
+    /// baseline.
+    ///
+    /// ADR #56 §2.6 stopped the baseline migration shipping the `default` location,
+    /// its legal entity, the five `default-*` workspace instances and the
+    /// BOOTSTRAP_FREE subscription; `provision_device` creates them now. Scoped
+    /// commands address a store DB by `"default"`, so a test store must be
+    /// provisioned the same way a real one is — otherwise every scoped read
+    /// answers NotFound against a migrated-but-empty store.
+    ///
+    /// The store is opened once here so the seed lands before a test's first
+    /// `open_store`; `StoreDatabaseManager` keeps it for the handle's lifetime.
+    #[must_use]
+    fn provisioned_store_manager() -> StoreDatabaseManager {
+        let manager = StoreDatabaseManager::new(unique_store_dir(), migrations::ALL);
+        {
+            let store_conn = manager
+                .open_store("default")
+                .expect("opening the default store for baseline seeding");
+            let guard = store_conn
+                .lock()
+                .expect("store db lock for baseline seeding");
+            migrations::seed_provisioned_baseline(&guard);
+        }
+        manager
+    }
+
+    /// The provisioned version of a caller-built manager, for tests that construct
+    /// their own `StoreDatabaseManager`. Seeds the same `default` store; a no-op
+    /// if that store was already seeded.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the default store cannot be opened or seeded.
+    pub fn seed_store_manager(manager: StoreDatabaseManager) -> StoreDatabaseManager {
+        {
+            let store_conn = manager
+                .open_store("default")
+                .expect("opening the default store for baseline seeding");
+            let guard = store_conn
+                .lock()
+                .expect("store db lock for baseline seeding");
+            // ON CONFLICT DO NOTHING semantics: the seeder's INSERTs use plain
+            // INSERT, so re-seeding an already-populated store would collide.
+            // Guard on the location row that provisioning writes first.
+            let seeded: bool = guard
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM locations WHERE id = 'default')",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(false);
+            if !seeded {
+                migrations::seed_provisioned_baseline(&guard);
+            }
+        }
+        manager
     }
 
     /// Replace the per-store manager (mirrors `AppState::for_test_with_db_manager`).

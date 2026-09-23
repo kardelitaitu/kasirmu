@@ -321,14 +321,14 @@
 **Commit:** `docs: rebrand OZ-POS → kasir.mu in all user-facing documentation`
 
 Key files with functional (not just prose) brand references:
-- [x] `docs/guides/EXTENDING.md:321`
+- [x] `docs/guides/developer/EXTENDING.md:321`
   `sqlite3 "$APPDATA/mu.kasir.app/kasir.db"` → `"$APPDATA/mu.kasir.app/kasir.db"`
-- [x] `docs/guides/EXTENDING.md:78` — same file, second functional reference: `env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default kasir.db)`
-- [x] `docs/guides/android-install-test.md`
+- [x] `docs/guides/developer/EXTENDING.md:78` — same file, second functional reference: `env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default kasir.db)`
+- [x] `docs/guides/platform/android-install-test.md`
   All `com.ozpos.tablet` → `mu.kasir.tablet`; `oz-pos.db` → `kasir.db`
-- [x] `docs/guides/ios-install-test.md`
+- [x] `docs/guides/platform/ios-install-test.md`
   `APPLE_BUNDLE_ID` example: `com.ozpos.tablet` → `mu.kasir.tablet`
-- [x] `docs/guides/windows-launch-test.md:283`
+- [x] `docs/guides/platform/windows-launch-test.md:283`
   `%APPDATA%\com.ozpos.app\logs\` → `%APPDATA%\mu.kasir.app\logs\`
 - [x] `docs/decisions/2026-07-15-whitelabel-branding-system.md`
   All `com.ozpos.*` identifier examples → `mu.kasir.*`; update default-brand table

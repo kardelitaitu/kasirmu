@@ -8,6 +8,7 @@ next: none | perf: fine
 //!
 //! These commands are the IPC surface for the Staff Management UI.
 
+use rusqlite::OptionalExtension;
 use tauri::{State, command};
 
 use kasirmu_core::auth::hash_pin;
@@ -16,6 +17,7 @@ use kasirmu_core::db::audit_security::{
     SECURITY_ACTION_USER_UPDATE, SECURITY_REASON_PIN_ROTATED, SECURITY_REASON_PROFILE_CHANGED,
     SecurityEvent,
 };
+use kasirmu_core::db::profile::SensitiveWritePolicy;
 use kasirmu_core::permissions;
 
 #[cfg(test)]
@@ -232,6 +234,72 @@ pub async fn list_role_holders_scoped(
         .map_err(Into::into)
 }
 
+/// Move a staff member to the trash (the soft delete, 90-day retention window).
+///
+/// The first enforcement consumer of `staff:delete`, which had none until now.
+#[command]
+pub async fn delete_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::delete_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a staff member back out of the trash.
+///
+/// They come back INACTIVE — reactivating is the separate, audited step.
+#[command]
+pub async fn restore_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<StaffMemberDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The staff trash, newest first. Runs the 90-day purge sweep before listing.
+#[command]
+pub async fn list_staff_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<StaffMemberDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_staff_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a custom role back out of the trash.
+#[command]
+pub async fn restore_role_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_role_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The role trash, newest first. Runs the 90-day purge sweep before listing.
+#[command]
+pub async fn list_role_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RoleDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_role_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
 /// Create a staff member. Caller identity is resolved from the session token.
 ///
 /// STAFF-02: enforces the role-assignment hierarchy (only Owner-level
@@ -325,6 +393,39 @@ pub async fn update_staff_scoped(
         // ADR #35 D6 incomplete-profile semantics: assigning a role that
         // grants sensitive permissions requires a complete profile.
         store.require_role_assignable(&args.id, &args.role_id)?;
+        // C1.1 / W7-B: the reactivation door of the staff limit — the tablet's
+        // copy of the gate the desktop reaches through
+        // `kasirmu_bridge::staff::update_staff_scoped`. This door is NOT
+        // delegated (see this command's doc), so the gate has to exist here too
+        // or the tablet stays bypassable while the desktop is fixed: creating a
+        // member is capped, but switching one back ON adds exactly the same row
+        // to the same count, so deactivate -> create -> reactivate would exceed
+        // the plan with every individual step allowed.
+        //
+        // Only the INACTIVE -> ACTIVE transition is gated: that is the one that
+        // grows the counted set, and a plan at its cap must still let an
+        // operator edit an active member or deactivate one. The current state
+        // is read HERE, inside the transaction and with the same
+        // `deleted_at IS NULL` guard the write below uses, so a trashed or
+        // absent id answers NotFound from `update_user_in_tx` rather than
+        // being misreported as a quota failure.
+        let reactivating = args.is_active
+            && tx
+                .query_row(
+                    "SELECT is_active FROM users WHERE id = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![args.id],
+                    |row| row.get::<_, bool>(0),
+                )
+                .optional()?
+                .is_some_and(|active| !active);
+        if reactivating {
+            // Arms the in-tx veto on the SAME Store that performs the write, so
+            // the verdict and the UPDATE commit or roll back together (the
+            // pre-tx form alone leaves a WAL-snapshot TOCTOU where two
+            // concurrent reactivations both pass).
+            let tier = store.resolve_tier_fail_closed()?;
+            store.enforce_staff_quota(&tier)?;
+        }
         store.update_user_in_tx(
             &args.id,
             &args.username,
@@ -334,8 +435,30 @@ pub async fn update_staff_scoped(
         )?;
         // ADR #35 D6: the profile columns (validated, encrypted at rest by
         // kasirmu-core) follow the same atomic update.
+        //
+        // The write is caller-aware, and both halves of the policy matter:
+        //
+        // * an editor WITHOUT `staff:read_identity` was shown an empty national
+        //   id and tax id because the read withheld them, not because they are
+        //   unset. The write must therefore keep the stored ones: requiring
+        //   them leaves no way to save except inventing a value for a document
+        //   the editor cannot see, and clearing them destroys the real one.
+        // * this screen does not manage payroll — the pay field belongs to its
+        //   own surface — so an update from here never moves the stored amount.
+        //   `keep_pay` is what makes that true; without it, omitting the field
+        //   would clear it, and requiring it would force a blank edit.
+        //
+        // This block is deliberately the same policy the desktop reaches through
+        // `kasirmu_bridge::staff::update_staff_scoped` (see the ADR #49 §4 note
+        // on that function's doc for why this door is not delegated): the two
+        // must move together, because the tablet and desktop edit the same rows.
         if let Some(profile) = &args.profile {
-            store.write_user_profile(&args.id, &profile.clone().into_profile())?;
+            let policy = SensitiveWritePolicy {
+                keep_identity_record: !store
+                    .holds_permission(&session.user_id, permissions::STAFF_READ_IDENTITY)?,
+                keep_pay: true,
+            };
+            store.write_user_profile_with(policy, &args.id, &profile.clone().into_profile())?;
         }
 
         // ADR #35 D5 (spec 0048): the assignment scope rides the same

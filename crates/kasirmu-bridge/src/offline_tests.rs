@@ -7,11 +7,10 @@
 //! adapters over these same functions.
 
 use super::*;
-use kasirmu_core::migrations;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
-    migrations::fresh_db()
+    crate::testing::temp_conn()
 }
 
 #[test]

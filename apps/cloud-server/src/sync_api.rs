@@ -411,8 +411,22 @@ async fn pull_handler(
         (Some(ts), Some(cid)) => Some((ts.as_str(), cid.as_str())),
         _ => None,
     };
+    // C3 S5: pass the caller's OWN terminal identity down so the pull query
+    // can exclude rows it originated. This is defence in depth for the
+    // desktop shell, where the daemons apply against the global database
+    // while checkout wrote a per-store one — so the client-side self-origin
+    // skip is not the whole story. The claim is the verified one (never the
+    // request body), and a caller with no terminal identity — an
+    // admin-minted or legacy token — passes `None` and gets today's
+    // behaviour: every tenant row in the window, unfiltered.
     let mut items: Vec<kasirmu_core::offline::OfflineQueueItem> = store
-        .pull_items(tenant_id, req.since.as_deref(), cursor, limit)
+        .pull_items(
+            tenant_id,
+            claims.terminal_id.as_deref(),
+            req.since.as_deref(),
+            cursor,
+            limit,
+        )
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
     metrics::DB_CONTENTION_SECONDS

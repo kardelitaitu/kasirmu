@@ -131,7 +131,9 @@ fn only_a_transport_fault_or_a_fault_status_advances_the_ladder() {
 
     let rejected = AttestError::Rejected {
         origin: "https://main.example".to_string(),
-        source: CoreError::InvalidSubscriptionSignature("bad nonce".to_string()),
+        source: Box::new(CoreError::InvalidSubscriptionSignature(
+            "bad nonce".to_string(),
+        )),
     };
     assert_eq!(rejected.status(), None);
     assert!(!rejected.advances(), "a rejected answer must not advance");

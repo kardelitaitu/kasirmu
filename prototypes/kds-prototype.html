@@ -52,6 +52,14 @@
   }
   /* light theme: body text colour should match the screen's --text */
   body:has(.kds-screen.light) { color: #1a1a1a; }
+  /* main carries the page landmark (screen readers can skip to it); it also
+     takes over the body's centring so the screen keeps its exact place. */
+  main.kds-shell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+  }
 
   /* ── THEME (dark default, light override via .light class) ── */
   .kds-screen {
@@ -324,10 +332,11 @@
   }
   .kds-panel-section { margin-bottom: 14px; }
   .kds-panel-section:last-child { margin-bottom: 0; }
-  .kds-panel-section h3 { font-size: 12px; font-weight: 600; color: var(--text); opacity: 0.5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+  /* h2, not h3: these sit under the document's h1, so an h3 skipped a level. */
+  .kds-panel-section h2 { font-size: 12px; font-weight: 600; color: var(--text); opacity: 0.5; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
   /* section head row: eyebrow + theme tag (which config is being edited) */
   .kds-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-  .kds-section-head h3 { margin-bottom: 0; }
+  .kds-section-head h2 { margin-bottom: 0; }
   .kds-theme-tag {
     font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--text); opacity: 0.45;
@@ -869,6 +878,10 @@
 </style>
 </head>
 <body>
+<main class="kds-shell">
+<!-- This screen is a rendering of the POS at 1280x800, so it has no visible
+     page title to promote — but the document still owes one h1. -->
+<h1 class="kds-visually-hidden">KDS v2 — Kitchen Display prototype</h1>
 <div class="kds-screen light" id="screen">
   <!-- TOPMENU -->
   <div class="kds-topmenu">
@@ -895,7 +908,7 @@
         <div class="kds-panel-body">
           <!-- DISPLAY: theme + scale -->
           <div class="kds-panel-section">
-            <h3>Display</h3>
+            <h2>Display</h2>
             <div class="kds-setting-card">
               <div class="kds-setting-row">
                 <span class="kds-setting-label">Theme</span>
@@ -929,7 +942,7 @@
           </div>
           <!-- BEHAVIOUR: kitchen toggles -->
           <div class="kds-panel-section">
-            <h3>Behaviour</h3>
+            <h2>Behaviour</h2>
             <div class="kds-setting-card">
               <div class="kds-setting-row">
                 <div class="kds-setting-text">
@@ -957,7 +970,7 @@
           <!-- CARD COLOURS: per-theme config, accordion groups + scoped reset -->
           <div class="kds-panel-section">
             <div class="kds-section-head">
-              <h3>Card Colours</h3>
+              <h2>Card Colours</h2>
               <span class="kds-theme-tag" id="theme-tag">dark</span>
             </div>
             <div class="kds-setting-card">
@@ -1010,6 +1023,7 @@
   <!-- Visually-hidden live region: announces order state to screen readers -->
   <div class="kds-visually-hidden" id="screen-announcer" aria-live="polite"></div>
 </div>
+</main>
 
 <script>
   /* Colour system: 8 configurable colours in 3 semantic groups.

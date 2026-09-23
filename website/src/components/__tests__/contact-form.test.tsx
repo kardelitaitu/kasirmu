@@ -46,6 +46,10 @@ function getInputByPlaceholder(container: HTMLElement, placeholder: string): HTM
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The production shape: the Worker's /__oz/runtime-config.js advertises the
+  // route, and the form reads it at submit time. The unconfigured case has its
+  // own test below.
+  window.__OZ_CONFIG__ = { contactEndpoint: '/api/contact' };
 });
 
 afterEach(() => {
@@ -288,6 +292,57 @@ describe('ContactForm', () => {
           message: 'Padded message body.',
         }),
       });
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('posts to the endpoint the runtime config advertises', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    window.__OZ_CONFIG__ = { contactEndpoint: 'https://license.example/api/v1/web/contact' };
+    const { container, root } = await renderContact('en');
+    try {
+      await act(async () => {
+        setNativeValue(getInputByPlaceholder(container, 'Your name') as HTMLInputElement, 'A');
+        setNativeValue(getInputByPlaceholder(container, 'you@example.com') as HTMLInputElement, 'a@example.com');
+        setNativeValue(getInputByPlaceholder(container, 'How can we help?') as HTMLTextAreaElement, 'Body long enough.');
+      });
+      await act(async () => {
+        container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0][0]).toBe('https://license.example/api/v1/web/contact');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('offers the mailto fallback and posts nothing when no endpoint is configured', async () => {
+    // The contract `.env.example` states for an empty PUBLIC_CONTACT_ENDPOINT.
+    // Before the fix the form POSTed to a hardcoded '/api/contact' regardless —
+    // a route no static host has — so the visitor's message was lost to a 404
+    // before the fallback appeared (measured in a browser 2026-09-23).
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    window.__OZ_CONFIG__ = {};
+    (import.meta.env as Record<string, unknown>).PUBLIC_CONTACT_ENDPOINT = '';
+    const { container, root } = await renderContact('en');
+    try {
+      await act(async () => {
+        setNativeValue(getInputByPlaceholder(container, 'Your name') as HTMLInputElement, 'Audit Tester');
+        setNativeValue(getInputByPlaceholder(container, 'you@example.com') as HTMLInputElement, 'audit@example.com');
+        setNativeValue(getInputByPlaceholder(container, 'How can we help?') as HTMLTextAreaElement, 'Body long enough.');
+      });
+      await act(async () => {
+        container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      const mailto = container.querySelector('a[href^="mailto:"]');
+      expect(mailto?.getAttribute('href')).toContain('support@kasir.mu');
+      expect(mailto?.getAttribute('href')).toContain('Audit%20Tester');
     } finally {
       act(() => root.unmount());
       container.remove();

@@ -259,12 +259,20 @@ pub const MACHINE_ID: &str = "machine_id";
 /// exposure: ADR #57's threat model already assumes a patched client ignores
 /// server verdicts, which is why the enforcement that matters is server-side.
 pub const DEVICE_REVOKED: &str = "device.revoked";
+/// Cached Certificate/Licence Revocation List (CRL) JSON payload (ADR #58 §2.1/§2.2).
+pub const CRL_CACHE_JSON: &str = "crl.cache_json";
+/// RFC 3339 timestamp when the CRL was last fetched/checked.
+pub const CRL_CHECKED_AT: &str = "crl.checked_at";
 /// Persisted hardware fingerprint (`hw_` + full SHA-256 hex of the system
 /// UUID anchor): the license server's one-trial-per-device lock. Like
 /// [`MACHINE_ID`] it is per-device identity — shipping it to a peer hands
 /// it this machine's identity — so it is refused on both untrusted lanes
 /// while `license.rs` keeps minting it under TrustedLocal.
 pub const HARDWARE_FINGERPRINT: &str = "hardware_fingerprint";
+/// RFC 3339 timestamp when the machine attestation was last verified by the licence server (ADR #58 §2.4).
+pub const MACHINE_VERIFIED_AT: &str = "machine.verified_at";
+/// Rotated hardware token issued by the licence server upon attestation (ADR #58 §2.4).
+pub const HARDWARE_TOKEN: &str = "hardware.token";
 
 /// Settings keys that must never be returned by the raw `get_setting` IPC
 /// surface, nor travel in a portable export/restore package.

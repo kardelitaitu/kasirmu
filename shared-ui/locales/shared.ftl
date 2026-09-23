@@ -363,6 +363,13 @@ workspace-card-unpin-aria = Unpin { $name }
 
 # Shell
 
+# Shell layout (ADR-0001, tier T3). The shell renders the portrait prompt for a
+# page registering layout="landscape-locked"; keep the child text the id string
+# resolves to in step with the fallback in AppShell/TabletAppShell.
+layout-rotate-to-landscape = Rotate your device to landscape for the full layout.
+layout-rotate-to-landscape-aria =
+    .aria-label = Rotate to landscape
+
 # Status Bar
 status-bar-connected = Backend connected
 status-bar-disconnected = Backend disconnected
@@ -477,6 +484,26 @@ auth-ip-unknown = Unknown
 auth-copyright = kasir.mu © { $year } All rights reserved.
 auth-clipboard-error = Clipboard error: { $message }
 auth-error-title = Error
+
+## Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)
+auth-tab-license-key = License Key
+auth-tab-pair-device = Pair with Phone
+auth-pair-scan-qr = Scan this QR code with your phone or visit { $url }
+auth-pair-code-label = Pairing Code
+auth-pair-waiting = Waiting for you to claim on your phone…
+auth-pair-expired = Pairing code expired. Click to refresh.
+auth-pair-refresh = Refresh Code
+auth-pair-success = Device paired successfully!
+
+## Revoked Account (ADR #58 §2.6)
+auth-revoked-title = Account suspended
+auth-revoked-message = Your kasir.mu account has been suspended. You cannot log in or process new sales. Your existing data is safe and can be exported below.
+auth-revoked-contact = If you believe this is an error, please contact our support team.
+auth-revoked-export-button = Export my data
+auth-revoked-exporting = Exporting…
+auth-revoked-export-aria = Export all local store data to an encrypted package
+auth-revoked-export-success = Data exported successfully!
+auth-revoked-export-error = Export failed: { $message }
 
 ## Create Owner PIN (first-run setup)
 auth-create-pin-title = Create Owner PIN

@@ -216,8 +216,8 @@ impl SyncStore {
                 for item in items {
                     let outcome = match tx.execute(
                         "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                         params![
                             item.id,
                             item.action,
@@ -228,6 +228,7 @@ impl SyncStore {
                             item.created_at,
                             item.synced_at,
                             tenant_id,
+                            item.origin_terminal_id,
                         ],
                     ) {
                         Ok(_) => PushOutcome::Accepted,
@@ -282,12 +283,13 @@ impl SyncStore {
                         &item.created_at,
                         &item.synced_at,
                         &tenant_id,
+                        &item.origin_terminal_id,
                     ];
                     let outcome = match tx
                         .query_opt(
                             "INSERT INTO offline_queue (id, action, payload, status, retry_count, \
-                         last_error, created_at, synced_at, tenant_id)
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                         last_error, created_at, synced_at, tenant_id, origin_terminal_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                          ON CONFLICT (id) DO NOTHING
                          RETURNING id",
                             params,
@@ -339,9 +341,20 @@ impl SyncStore {
     /// Fetch up to `limit` offline queue items for a tenant, ordered by
     /// `(created_at ASC, id ASC)`, respecting an optional `since` anchor and
     /// an optional `(cursor_ts, cursor_id)` pagination cursor.
+    ///
+    /// C3 S5: `origin_terminal_id` is the caller's own terminal identity from
+    /// the verified token claims. Both backends exclude rows that identity
+    /// originated, so a terminal is never handed back its own pushes — the
+    /// defence-in-depth half of the per-effect receipt, which matters on the
+    /// desktop shell where the daemons apply against the global database while
+    /// checkout wrote a per-store one, so the identity comparison at the
+    /// client is not the whole story. `None` (an admin-minted token, an
+    /// unpaired install) reproduces the unfiltered pull exactly, and a NULL
+    /// origin is never suppressed.
     pub async fn pull_items(
         &self,
         tenant_id: &str,
+        origin_terminal_id: Option<&str>,
         since: Option<&str>,
         cursor: Option<(&str, &str)>,
         limit: i64,
@@ -349,7 +362,7 @@ impl SyncStore {
         match self {
             Self::Sqlite(conn) => {
                 let conn = conn.lock().await;
-                sqlite_pull_items(&conn, tenant_id, since, cursor, limit)
+                sqlite_pull_items(&conn, tenant_id, origin_terminal_id, since, cursor, limit)
             }
             Self::Postgres(pool) => {
                 let mut client = pool.get().await.map_err(|e| e.to_string())?;
@@ -357,7 +370,7 @@ impl SyncStore {
                 tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
                     .await
                     .map_err(|e| e.to_string())?;
-                pg_pull_items(&mut tx, tenant_id, since, cursor, limit).await
+                pg_pull_items(&mut tx, tenant_id, origin_terminal_id, since, cursor, limit).await
             }
         }
     }

@@ -175,6 +175,15 @@ func main() {
 			return err
 		}
 		// Idempotent in-place upgrade for deployments that predate the
+		// tenants.region residency field (ADR #59 §2.1a sequencing step 1):
+		// fresh boots get it from the embedded pb_schema.json; existing
+		// pb_data volumes get it added and their rows backfilled to "global",
+		// which is the launch region and the correct semantics for every
+		// tenant that predates the field.
+		if err := ensureRegionField(app); err != nil {
+			return err
+		}
+		// Idempotent in-place upgrade for deployments that predate the
 		// email_verified field (added with the register-first dashboard):
 		// fresh boots get it from the embedded pb_schema.json; existing
 		// pb_data volumes get it added without reimporting the schema.
@@ -261,6 +270,30 @@ func main() {
 		if err := ensureEnterpriseApprovals(app); err != nil {
 			return err
 		}
+		// ADR #59 §2.1a step 3: the durable audit collection for residency
+		// moves. Created programmatically because the region route writes to it
+		// and a missing collection would drop the audit trail of a real move.
+		if err := ensureTenantRegionEvents(app); err != nil {
+			return err
+		}
+		// ADR #57 §Q-B: the release-channel pin store §2.1 compares a reported
+		// APK signing certificate against. Created programmatically because the
+		// admin write path targets it and a missing collection would make every
+		// pin write a silent no-op.
+		if err := ensureReleaseChannels(app); err != nil {
+			return err
+		}
+		// ADR #57 §2.4: the durable build-integrity report store the status
+		// endpoint writes and the operator queue reads.
+		if err := ensureBuildIntegrityReports(app); err != nil {
+			return err
+		}
+		// ADR #57 §2.4: the alert cooldown store the build-integrity scanner
+		// reads and writes. Created here so a missing collection cannot silently
+		// make every scan re-alert.
+		if err := ensureBuildIntegrityAlertState(app); err != nil {
+			return err
+		}
 		// C4.3: add-on marketplace field on license_keys
 		if err := ensureAddonsField(app); err != nil {
 			return err
@@ -270,6 +303,11 @@ func main() {
 		// source on every deployment (fresh boots get it from the embedded
 		// pb_schema.json).
 		if err := ensureFeatureGrantsField(app); err != nil {
+			return err
+		}
+		// ADR #58 §2.4: add hardware_fingerprint text field to tenant_machines
+		// for continuous machine attestation and hardware token verification.
+		if err := ensureTenantMachinesHardwareFingerprint(app); err != nil {
 			return err
 		}
 		// Admin identity precondition (admin registration squat guard):
@@ -306,6 +344,9 @@ func main() {
 		// Origin attestation (ADR #55): unauthenticated by design -- the client has
 		// no credential until it has attested the host it is about to use.
 		se.Router.POST("/api/v1/license/attest", handleAttest(app))
+		// Certificate/Licence Revocation List (ADR #58 §2.1/§2.2): public,
+		// cryptographically signed list of revoked keys and tenants.
+		se.Router.GET("/api/v1/license/crl", handleLicenseCrl(app))
 		// C3.3: Pause/resume subscription endpoints
 		se.Router.POST("/api/v1/license/pause", handlePause(app))
 		se.Router.POST("/api/v1/license/resume", handleResume(app))
@@ -357,6 +398,10 @@ func main() {
 		// The emailed-code alternative (ADR #54 §2.6): no browser, so the tablet can use it.
 		se.Router.POST("/api/v1/desktop/link/email/request", handleDesktopLinkEmailRequest(app))
 		se.Router.POST("/api/v1/desktop/link/email/consume", handleDesktopLinkEmailConsume(app))
+		// Tablet device-code pairing (ADR #56 §2.5 / §5 Q1).
+		se.Router.POST("/api/v1/pairing/start", handlePairingStart(app))
+		se.Router.POST("/api/v1/pairing/claim", handlePairingClaim(app))
+		se.Router.POST("/api/v1/pairing/poll", handlePairingPoll(app))
 		// User dashboard (ADR #42 Phase 2) — session-authed read endpoints.
 		se.Router.GET("/api/v1/web/usage", handleWebUsage(app))
 		se.Router.GET("/api/v1/web/devices", handleWebDevices(app))
@@ -368,6 +413,12 @@ func main() {
 		se.Router.GET("/api/v1/admin/tenants", handleAdminListTenants(app))
 		se.Router.GET("/api/v1/admin/tenants/{id}", handleAdminGetTenant(app))
 		se.Router.PATCH("/api/v1/admin/tenants/{id}", handleAdminUpdateTenant(app))
+		se.Router.POST("/api/v1/admin/tenants/{id}/region", handleAdminSetRegion(app))
+		// ADR #57 §Q-B: the release-channel pin store's read and write routes.
+		// Admin-authored only — §Q-A makes an attacker who can append to the pin
+		// set the failure this control exists to prevent.
+		se.Router.GET("/api/v1/admin/release-channels/{channel}/pins", handleAdminGetReleasePins(app))
+		se.Router.POST("/api/v1/admin/release-channels/{channel}/pins", handleAdminSetReleasePins(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/activate", handleAdminActivate(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/renew", handleAdminRenew(app))
 		se.Router.POST("/api/v1/admin/tenants/{id}/revoke", handleAdminRevoke(app))
@@ -433,6 +484,15 @@ func main() {
 		}
 		bindPasswordRotationHook(app)
 		go startPasswordRotationScheduler(app)
+
+		// ── Build-integrity alert scanner (ADR #57 §2.4) ───────────
+		// The READER half of ADR #57: §2.1 ships the reporting and the
+		// server classifies every report, so without this the verdicts are
+		// a log nobody reads. Daily at 08:00 UTC, the same rhythm as the
+		// password reminder. It never locks a device — §Q4 routes every
+		// finding to this human rather than to an automatic refusal —
+		// and it re-alerts at most weekly per tenant and condition.
+		go startBuildIntegrityScheduler(app)
 
 		// ── Root → PocketBase admin UI redirect ───────────────────
 		// The bare domain (https://license.kasir.mu) 301-redirects to
@@ -533,6 +593,86 @@ func ensureAPIKeyLookupField(app core.App) error {
 	log.Println("migrated tenants collection: added api_key_lookup field + unique partial index")
 	return nil
 }
+
+// ensureRegionField adds the tenants.region select field to existing
+// deployments that predate it (fresh boots get it from the embedded
+// pb_schema.json). Idempotent: no-op once the field exists.
+//
+// ADR #59 §2.1a sequencing step 1: the tenants collection had NO region field
+// at all. The value is the RESIDENCY axis (a deployment selector from the
+// closed RegionCode set in kasirmu-core/src/regional.rs) and is deliberately
+// not an ISO-3166 market code — the market anchor lives on the tenant's own
+// database as legal_entities.country_code.
+//
+// Existing records are backfilled to `global`, which is the launch
+// region and means "no residency commitment yet" (ADR #59 §Q6) — the correct
+// semantics for every tenant that predates the field, since no other region
+// has ever existed. PocketBase does not apply a select field's default to
+// existing rows, so the backfill is explicit.
+func ensureRegionField(app core.App) error {
+	collection, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		return fmt.Errorf("tenants collection not found: %w", err)
+	}
+	if collection.Fields.GetByName("region") == nil {
+		collection.Fields.Add(&core.SelectField{
+			Name:      "region",
+			MaxSelect: 1,
+			Values:    []string{regionGlobal},
+			Help:      regionFieldHelp,
+		})
+		if err := app.Save(collection); err != nil {
+			return fmt.Errorf("failed to add region field: %w", err)
+		}
+		log.Println("migrated tenants collection: added region field")
+	}
+	return backfillTenantRegions(app)
+}
+
+// backfillTenantRegions sets region = `global` on any tenants row that has
+// no region yet. Separate from ensureRegionField so it also repairs rows a
+// partial migration left blank, and so it is idempotent on its own.
+//
+// Records are read and saved one at a time rather than by raw SQL: PocketBase
+// owns this schema, and going around it with an UPDATE would bypass whatever
+// record validation the collection carries.
+func backfillTenantRegions(app core.App) error {
+	records, err := app.FindAllRecords("tenants")
+	if err != nil {
+		return fmt.Errorf("failed to list tenants for region backfill: %w", err)
+	}
+	backfilled := 0
+	for _, rec := range records {
+		if strings.TrimSpace(rec.GetString("region")) != "" {
+			continue
+		}
+		rec.Set("region", regionGlobal)
+		if err := app.Save(rec); err != nil {
+			return fmt.Errorf("failed to backfill region for tenant %s: %w", rec.Id, err)
+		}
+		backfilled++
+	}
+	if backfilled > 0 {
+		log.Printf("migrated tenants collection: backfilled region=%s on %d tenant(s)", regionGlobal, backfilled)
+	}
+	return nil
+}
+
+// regionGlobal is the only residency region at launch (ADR #59 §Q6). It mirrors
+// RegionCode::Global in kasirmu-core/src/regional.rs and the values list in the
+// embedded pb_schema.json; three spellings of one region would be a routing bug
+// that looks like a data bug, so the literal is named once per process.
+const regionGlobal = "global"
+
+// regionFieldHelp documents the residency axis on the schema itself, so the
+// distinction from the market anchor survives a reader who never opens ADR #59.
+//
+// Deliberately short: PocketBase caps a field's help string at 300 characters,
+// and that cap is load-bearing here — expanding this text is what broke the
+// migration the first time it ran. The full ruling is in ADR #59 §2.2/§Q2; this
+// is the pointer, not a copy of it.
+const regionFieldHelp = "Residency (which deployment holds this tenant's data), NOT the market anchor " +
+	"— that is legal_entities.country_code. Closed set, admin-only (ADR #59 §2.2/§Q2)."
 
 // ensureEmailVerifiedField adds the tenants.email_verified bool to existing
 // deployments that predate it (fresh boots get it from the embedded
@@ -907,6 +1047,170 @@ func ensureEnterpriseApprovals(app core.App) error {
 	return nil
 }
 
+// ensureTenantRegionEvents creates the durable audit collection for residency
+// moves (ADR #59 §2.1a step 3).
+//
+// Why a row and not just the log line handleAdminUpdateTenant emits: a region
+// change moves where a tenant's DATA lives, so "why did this tenant's data
+// move" is precisely the question an incident review asks — and a log line is
+// rotated away while the answer must outlive the deploy that produced it. The
+// row records actor, from-region, to-region and the reason.
+//
+// Superuser-only (LSE-5): the rules are nil, NOT the empty string. An empty
+// string is PUBLIC in PocketBase, which is exactly the repair
+// ensureSuperuserOnlyRules exists to apply to older collections — so a new
+// collection must never be born with one.
+func ensureTenantRegionEvents(app core.App) error {
+	if existing, err := app.FindCollectionByNameOrId(tenantRegionEventsCollection); err == nil {
+		return ensureSuperuserOnlyRules(app, existing)
+	}
+	tenantsColl, err := app.FindCollectionByNameOrId("tenants")
+	if err != nil {
+		return fmt.Errorf("tenants collection not found (required before creating %s): %w", tenantRegionEventsCollection, err)
+	}
+	coll := core.NewBaseCollection(tenantRegionEventsCollection)
+	coll.Fields.Add(&core.RelationField{Name: "tenant_id", Required: true, CollectionId: tenantsColl.Id, MaxSelect: 1})
+	// The actor is whoever held the admin credential when the move ran. Stored
+	// as the resolved agent string rather than a user id, because admin auth is
+	// a shared key or an admin-tenant session and neither is a stable user row.
+	coll.Fields.Add(&core.TextField{Name: "actor", Required: true, Max: 256})
+	coll.Fields.Add(&core.TextField{Name: "from_region", Max: 64})
+	coll.Fields.Add(&core.TextField{Name: "to_region", Required: true, Max: 64})
+	coll.Fields.Add(&core.TextField{Name: "reason", Required: true, Max: 1024})
+	// created/updated are NOT implicit on a programmatically-built collection —
+	// unlike the JSON schema import, NewBaseCollection starts with only the id.
+	// The index below references created, so the fields must be added first;
+	// omitting them is what made the first version of this migration fail with
+	// "no such column: created".
+	coll.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	coll.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	coll.ListRule = nil
+	coll.ViewRule = nil
+	coll.CreateRule = nil
+	coll.UpdateRule = nil
+	coll.DeleteRule = nil
+	// Append-only by convention: no endpoint exposes an update or delete. The
+	// index makes "what happened to this tenant" a cheap query, which is the
+	// only read the collection is for.
+	coll.Indexes = append(coll.Indexes,
+		"CREATE INDEX idx_tenant_region_events_tenant ON tenant_region_events (tenant_id, created)")
+	if err := app.Save(coll); err != nil {
+		return fmt.Errorf("failed to create %s collection: %w", tenantRegionEventsCollection, err)
+	}
+	log.Printf("migrated: created %s collection (ADR #59 region-change audit trail)", tenantRegionEventsCollection)
+	return nil
+}
+
+// tenantRegionEventsCollection is the audit collection name, named once so the
+// writer, the migration and the tests cannot drift apart.
+const tenantRegionEventsCollection = "tenant_region_events"
+
+// recordRegionChange appends one durable audit row for a residency move.
+//
+// Best-effort by design, and the direction matters: the field write has already
+// committed by the time this runs, so failing the request here would report an
+// error for a change that DID happen — the operator would retry and see an
+// idempotent no-op, which is a worse lie than a missing audit line. The loss is
+// logged instead, so it is visible rather than silent.
+//
+// The same reasoning ADR #59 §2.1a uses for the ordering applies: record the
+// reason before flipping the pointer, never after.
+func recordRegionChange(app core.App, tenantID, actor, from, to, reason string) {
+	coll, err := app.FindCollectionByNameOrId(tenantRegionEventsCollection)
+	if err != nil {
+		log.Printf("region audit: collection %s unavailable, event dropped (tenant=%s %s→%s reason=%q): %v",
+			tenantRegionEventsCollection, tenantID, from, to, reason, err)
+		return
+	}
+	rec := core.NewRecord(coll)
+	rec.Set("tenant_id", tenantID)
+	rec.Set("actor", actor)
+	rec.Set("from_region", from)
+	rec.Set("to_region", to)
+	rec.Set("reason", reason)
+	if err := app.Save(rec); err != nil {
+		log.Printf("region audit: failed to record tenant=%s %s→%s (reason=%q): %v",
+			tenantID, from, to, reason, err)
+	}
+}
+
+// releaseChannelsCollection holds the accepted APK signing-certificate pins
+// per release channel (ADR #57 §Q-B option A).
+//
+// The name is a const so the migration, the admin writer and the tests cannot
+// drift apart — the same discipline `tenantRegionEventsCollection` follows.
+const releaseChannelsCollection = "release_channels"
+
+// ensureReleaseChannels creates the release-channel pin store (ADR #57 §Q-B).
+//
+// **Why this collection exists.** ADR #57 §2.1 says the server compares a
+// reported fingerprint "against the fingerprint(s) *it* holds for that tenant
+// release channel" — but §Q-B found that phrase appeared nowhere else in the
+// repository, so as originally written the comparison was against data nothing
+// produced. This is that store. §Q-B chose a channel-keyed record over a
+// per-tenant field because a keystore rotation is then ONE write rather than an
+// N-tenant coordinated update.
+//
+// **The pin is a SET, not a scalar** (§Q-A option B): during a keystore
+// rotation both the outgoing and incoming certificate must verify, so the field
+// is a JSON array. A scalar would make rotation an outage.
+//
+// **Not an unbounded allow-list.** §Q-A is explicit that an attacker who could
+// append to this set would have defeated §2.1, so membership is admin-authored
+// only: this collection is superuser-only (nil rules) and no public endpoint
+// touches it. The bound on set SIZE is enforced by the admin write path rather
+// than by a schema constraint, because PocketBase's JSON field has no length
+// rule; see `handleAdminSetReleasePins`.
+//
+// **Empty is meaningful, and means Unknown rather than Mismatch.** A channel
+// with no pins has made no claim about the build, and
+// `classify_build_fingerprint` (kasirmu-core) reads an empty accepted set as
+// `Unknown` on purpose — treating it as a mismatch would refuse renewal for
+// every tenant on a channel nobody has pinned yet.
+func ensureReleaseChannels(app core.App) error {
+	if existing, err := app.FindCollectionByNameOrId(releaseChannelsCollection); err == nil {
+		return ensureSuperuserOnlyRules(app, existing)
+	}
+	coll := core.NewBaseCollection(releaseChannelsCollection)
+	// The channel name. Today there is exactly one release keystore, so this is
+	// a set of one — the indirection is chosen for the rotation path, not for a
+	// multiplicity that exists yet.
+	coll.Fields.Add(&core.TextField{Name: "channel", Required: true, Max: 64})
+	// JSON array of accepted SHA-256 signing-certificate fingerprints. Stored as
+	// JSON rather than a relation so a rotation is one atomic field write.
+	coll.Fields.Add(&core.JSONField{Name: "accepted_pins", MaxSize: 64 * 1024})
+	// Free-text note recording WHY the current set is what it is (e.g. "rotated
+	// 2026-09-21, old cert kept until v0.0.40 is fully rolled out"). The next
+	// operator reading a surprising pin needs this, and §Q-A's rotation clause is
+	// unactionable without it.
+	coll.Fields.Add(&core.TextField{Name: "note", Max: 1024})
+	// The actor who last wrote the set, resolved the same way the region audit
+	// resolves it (a shared key or an admin-tenant session — neither is a stable
+	// user row).
+	coll.Fields.Add(&core.TextField{Name: "updated_by", Max: 256})
+	// created/updated are NOT implicit on a programmatically-built collection —
+	// unlike a JSON schema import, NewBaseCollection starts with only the id. The
+	// index below references created, so these must be added first; omitting them
+	// is what made the region-audit migration fail with "no such column: created".
+	coll.Fields.Add(&core.AutodateField{Name: "created", OnCreate: true})
+	coll.Fields.Add(&core.AutodateField{Name: "updated", OnCreate: true, OnUpdate: true})
+	// Superuser-only. An empty-string rule would mean PUBLIC in PocketBase (LSE-5),
+	// which on this collection would let anyone append a pin and defeat §2.1.
+	coll.ListRule = nil
+	coll.ViewRule = nil
+	coll.CreateRule = nil
+	coll.UpdateRule = nil
+	coll.DeleteRule = nil
+	// One row per channel: the upsert in the admin writer relies on this.
+	coll.Indexes = append(coll.Indexes,
+		"CREATE UNIQUE INDEX idx_release_channels_channel ON release_channels (channel)")
+	if err := app.Save(coll); err != nil {
+		return fmt.Errorf("failed to create %s collection: %w", releaseChannelsCollection, err)
+	}
+	log.Printf("migrated: created %s collection (ADR #57 §Q-B release-channel pin store)", releaseChannelsCollection)
+	return nil
+}
+
 func ensureTrialClaims(app core.App) error {
 	if existing, err := app.FindCollectionByNameOrId("trial_claims"); err == nil {
 		// LSE-5 repair: normalize legacy empty-string (PUBLIC) rules —
@@ -998,6 +1302,28 @@ func ensurePauseFields(app core.App) error {
 		log.Println("migrated: added paused_until field to subscriptions")
 	}
 
+	return nil
+}
+
+// ensureTenantMachinesHardwareFingerprint adds the hardware_fingerprint text field
+// to tenant_machines for machine attestation (ADR #58 §2.4). Idempotent.
+func ensureTenantMachinesHardwareFingerprint(app core.App) error {
+	collection, err := app.FindCollectionByNameOrId("tenant_machines")
+	if err != nil {
+		return nil
+	}
+	if collection.Fields.GetByName("hardware_fingerprint") != nil {
+		return nil // already exists
+	}
+	collection.Fields.Add(&core.TextField{
+		Name: "hardware_fingerprint",
+		Max:  128,
+		Help: "Hardware-bound fingerprint (hw_<64hex>) bound during activation/heartbeat.",
+	})
+	if err := app.Save(collection); err != nil {
+		return fmt.Errorf("failed to add hardware_fingerprint to tenant_machines: %w", err)
+	}
+	log.Println("migrated tenant_machines collection: added hardware_fingerprint field")
 	return nil
 }
 

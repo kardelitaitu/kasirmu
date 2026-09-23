@@ -2,7 +2,12 @@
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { locales, t } from '../i18n';
 
-const locale = (Astro.currentLocale ?? 'en') as 'en' | 'id';
+interface Props {
+  /** Page locale, threaded down by Header so the active pill matches it. */
+  locale?: string;
+}
+
+const locale = (Astro.props.locale ?? Astro.currentLocale ?? 'en') as 'en' | 'id';
 const path = Astro.url.pathname.replace(/^\/(?:en|id)(?:\/|$)/, '');
 const target = !path || path.replace(/^\/+/, '').startsWith('404') ? '/' : path;
 const activeIndex = locales.indexOf(locale);
@@ -40,6 +45,8 @@ const activeIndex = locales.indexOf(locale);
 
 <script>
   import { navigate } from 'astro:transitions/client';
+  import { setPreferredLanguage } from '../lib/language';
+  import { setRegion } from '../lib/region';
 
   function initLangSwitcher() {
     const switcher = document.querySelector('.lang-switcher') as HTMLElement | null;
@@ -73,10 +80,12 @@ const activeIndex = locales.indexOf(locale);
         }
         // Prevent immediate navigation
         e.preventDefault();
-        // Save language and region preference to localStorage
+        // Save both preferences through their owners — `oz_language` is spelled
+        // in lib/language.ts and `oz_region` in lib/region.ts and nowhere else,
+        // so these writes cannot name different keys than the readers do.
         const lang = idx === 0 ? 'en' : 'id';
-        localStorage.setItem('oz_language', lang);
-        localStorage.setItem('oz_region', lang === 'id' ? 'id' : 'global');
+        setPreferredLanguage(lang);
+        setRegion(lang === 'id' ? 'id' : 'global');
         // Slide pill to clicked option
         switcher!.dataset.activeIndex = String(idx);
         updatePillPosition(idx);

@@ -111,7 +111,7 @@ fn seed_identity(conn: &rusqlite::Connection, user_id: &str, role_id: &str) {
 }
 
 fn scoped_test_bridge() -> TestBridge {
-    let global = kasirmu_core::migrations::fresh_db();
+    let global = crate::testing::temp_conn();
     seed_identity(&global, "transfer-owner", "role-owner");
     let bridge = TestBridge::new().with_conn(global);
     bridge.sessions().write().unwrap().insert(
@@ -167,7 +167,7 @@ async fn scoped_create_derives_created_by_from_session() {
 
 #[tokio::test]
 async fn scoped_transfer_reads_are_isolated_between_store_sessions() {
-    let global = kasirmu_core::migrations::fresh_db();
+    let global = crate::testing::temp_conn();
     seed_identity(&global, "transfer-owner", "role-owner");
     let bridge = TestBridge::new().with_conn(global);
     for (token, store_id) in [("store-a-token", "store-a"), ("store-b-token", "store-b")] {
@@ -211,7 +211,7 @@ async fn scoped_transfer_reads_are_isolated_between_store_sessions() {
 
 #[tokio::test]
 async fn scoped_transfer_denies_user_without_transfer_permission() {
-    let global = kasirmu_core::migrations::fresh_db();
+    let global = crate::testing::temp_conn();
     // Narrow custom role without inventory:transfer — the new role-staff
     // preset grants it (0048 retirement sweep).
     seed_identity(&global, "transfer-cashier", "role-lite");
@@ -238,7 +238,7 @@ async fn scoped_transfer_denies_user_without_transfer_permission() {
 
 #[tokio::test]
 async fn scoped_list_stock_transfers_rejects_invalid_token() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let bridge = TestBridge::new().with_conn(conn);
 
     let result = list_stock_transfers_scoped(&bridge.ctx(), "bad-token").await;
@@ -247,7 +247,7 @@ async fn scoped_list_stock_transfers_rejects_invalid_token() {
 
 #[tokio::test]
 async fn scoped_get_stock_transfer_rejects_invalid_token() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let bridge = TestBridge::new().with_conn(conn);
 
     let result = get_stock_transfer_scoped(&bridge.ctx(), "bad-token", "any-id").await;

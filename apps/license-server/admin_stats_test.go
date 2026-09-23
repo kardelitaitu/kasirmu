@@ -349,3 +349,132 @@ func TestAdminStats_MalformedMarketVarSkippedNotFatal(t *testing.T) {
 		t.Errorf("expected the IDR parse error to surface, got %v", body.Kpis.MarketPriceErrors)
 	}
 }
+
+// ── Needs-attention: ADR #57 §2.4 categories ────────────────────────
+
+// The panel and the daily email are two views of ONE rule, so these tests assert
+// the panel surfaces the same conditions the scanner alerts on. They build the
+// condition in server-held tables, exactly as the scanner tests do.
+
+// fetchNeedsAttention returns the panel items from the live stats endpoint.
+func fetchNeedsAttention(t *testing.T, mux http.Handler, adminKey string) []struct {
+	Type   string `json:"type"`
+	Email  string `json:"email"`
+	Detail string `json:"detail"`
+	At     string `json:"at"`
+} {
+	t.Helper()
+	rec := doJSON(mux, http.MethodGet, "/api/v1/admin/stats", "Bearer "+adminKey, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stats endpoint returned %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		NeedsAttention []struct {
+			Type   string `json:"type"`
+			Email  string `json:"email"`
+			Detail string `json:"detail"`
+			At     string `json:"at"`
+		} `json:"needsAttention"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad JSON: %v", err)
+	}
+	return body.NeedsAttention
+}
+
+func TestAdminStats_ShowsABuildIntegrityMismatch(t *testing.T) {
+	// A re-signed APK must reach the panel, not only the daily email: the panel is
+	// the surface an operator triaging accounts already has open.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant := seedLifecycleTenant(t, app, "panelintegrity@test.com", "active")
+	seedIntegrityReport(t, app, tenant.Id, "panel-dev-1", buildVerdictMismatch, time.Now().UTC())
+
+	items := fetchNeedsAttention(t, mux, "secret-admin-key")
+	found := false
+	for _, it := range items {
+		if it.Type == "integrity_mismatch" && it.Email == "panelintegrity@test.com" {
+			found = true
+			if !strings.Contains(it.Detail, "device") {
+				t.Errorf("detail should count devices, got %q", it.Detail)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected an integrity_mismatch panel item, got %+v", items)
+	}
+}
+
+func TestAdminStats_ShowsAPersistentUnknownAsADistinctType(t *testing.T) {
+	// §Q4: a persistent `unknown` is NOT the same finding as a mismatch. If the
+	// panel collapsed them, a serialization bug would read as an attack.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant := seedLifecycleTenant(t, app, "panelunknown@test.com", "active")
+	now := time.Now().UTC()
+	for i := 0; i < buildIntegrityUnknownThreshold; i++ {
+		seedIntegrityReport(t, app, tenant.Id, "panel-dev-2", buildVerdictUnknown, now.Add(-time.Duration(i)*time.Hour))
+	}
+
+	items := fetchNeedsAttention(t, mux, "secret-admin-key")
+	found := false
+	for _, it := range items {
+		if it.Type == "integrity_unknown_persistent" && it.Email == "panelunknown@test.com" {
+			found = true
+		}
+		if it.Type == "integrity_mismatch" && it.Email == "panelunknown@test.com" {
+			t.Error("a persistent unknown must not be reported as a mismatch")
+		}
+	}
+	if !found {
+		t.Errorf("expected an integrity_unknown_persistent panel item, got %+v", items)
+	}
+}
+
+func TestAdminStats_ShowsATenantOverTheDeviceQuota(t *testing.T) {
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant := seedLifecycleTenant(t, app, "panelquota@test.com", "active")
+	seedSubscriptionWithLimits(t, app, tenant.Id, "pro", "active", 1, 1, "[]")
+	seedQuotaMachine(t, app, tenant.Id, quotaDevA, false)
+	seedQuotaMachine(t, app, tenant.Id, quotaDevB, false)
+
+	items := fetchNeedsAttention(t, mux, "secret-admin-key")
+	found := false
+	for _, it := range items {
+		if it.Type == "pos_over_quota" && it.Email == "panelquota@test.com" {
+			found = true
+			if !strings.Contains(it.Detail, "cap 1") {
+				t.Errorf("detail should name the cap, got %q", it.Detail)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a pos_over_quota panel item, got %+v", items)
+	}
+}
+
+func TestAdminStats_ACleanTenantProducesNoIntegrityItems(t *testing.T) {
+	// The negative case the other three cannot give: no condition, no row. A
+	// detector that always fires would pass every positive test above.
+	app, mux := dashboardMux(t)
+	defer app.Cleanup()
+	t.Setenv("OZ_ADMIN_KEY", "secret-admin-key")
+	tenant := seedLifecycleTenant(t, app, "panelclean@test.com", "active")
+	seedSubscriptionWithLimits(t, app, tenant.Id, "pro", "active", 1, 5, "[]")
+	seedQuotaMachine(t, app, tenant.Id, quotaDevA, false)
+
+	items := fetchNeedsAttention(t, mux, "secret-admin-key")
+	for _, it := range items {
+		if strings.HasPrefix(it.Type, "integrity_") || it.Type == "pos_over_quota" {
+			if it.Email == "panelclean@test.com" {
+				t.Errorf("a clean tenant must produce no ADR #57 item, got %+v", it)
+			}
+		}
+	}
+
+	_ = tenant
+}

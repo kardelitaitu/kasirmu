@@ -316,6 +316,178 @@ fn earlier_migration_re_applies_after_later_ones_move_the_schema() {
     );
 }
 
+/// COMPLIANCE: every registered migration must survive a drift re-apply against
+/// the *final* schema, not only the schema it was born into.
+///
+/// `cosmetic_edit_to_any_migration_re_applies_cleanly` re-applies a migration
+/// against the state right after it ran, and the test above pins one subject.
+/// Neither could catch the class that bricked `kasirmu-app` at startup on
+/// 21-09-26: `20260813_init.sql` drifted (ADR #56 §2.6 edited it in place), and
+/// the re-apply died on the loyalty seed, which names the column
+/// `20260831_loyalty_multiplier_fixedpoint.sql` drops — no gate exercised the
+/// drift path of every migration against a *fully migrated* database, so the
+/// failure surfaced on a merchant's machine instead of here. The init-specific
+/// test below pins that incident's exact checksum; this sweep is the general
+/// property.
+///
+/// For every entry the sweep applies the whole registry, edits one entry
+/// (comment-only — enough to trigger the checksum drift), and requires the
+/// re-apply to succeed. The set that cannot is measured and explicit. A new
+/// failure here means the edited migration's statements no longer replay against
+/// the final schema: fix the statement (make it idempotent, or move it into the
+/// migration that replaces the object it names, as `20260911_memo_fk_restrict.sql`
+/// did), or list the migration below with the DB-03 justification for why
+/// re-running it is impossible by construction.
+#[test]
+fn every_migration_re_applies_against_the_final_schema() {
+    // Measured over the registry, not assumed. Each entry is a one-shot
+    // data/rename migration whose script consumes the state it transforms:
+    // `20260831_loyalty_multiplier_fixedpoint.sql` converts a column and then
+    // drops the source it reads, `20260906_rename_store_to_location.sql`
+    // renames the tables it reads, `20260911_memo_fk_restrict.sql` rebuilds
+    // `memos` reading `location_id` — which its successor
+    // `20260913_memo_locations.sql` then drops — and `20260913` itself rebuilds
+    // a table out of a definition it replaces. The forward-only contract (DB-03,
+    // `platform/core/src/database/migrations.rs`) already assigns that class to
+    // backup-plus-forward-repair rather than re-apply. A migration joining or
+    // leaving this list changes the assert below, so the residual stays
+    // explicit and measured.
+    //
+    // The prefix sweep's residual (`cosmetic_edit_to_any_migration_re_applies_cleanly`)
+    // is one entry SHORTER than this one: it re-applies `20260911` against the
+    // schema as of `20260911`, where `location_id` still exists. This sweep is
+    // the stronger property — replayable against the *final* schema — and the
+    // two lists must not be conflated.
+    const NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA: &[&str] = &[
+        "20260831_loyalty_multiplier_fixedpoint.sql",
+        "20260906_rename_store_to_location.sql",
+        "20260911_memo_fk_restrict.sql",
+        "20260913_memo_locations.sql",
+    ];
+
+    let mut not_reappliable: Vec<String> = Vec::new();
+    let mut failures: Vec<String> = Vec::new();
+    for (index, entry) in ALL.iter().enumerate() {
+        let id = entry.id;
+        // Only the entry under test is edited; every other one keeps the SQL
+        // whose checksum the full apply stored, so it is not dragged into the
+        // drift path as well.
+        let drifted: Vec<platform_core::database::Migration> = ALL
+            .iter()
+            .enumerate()
+            .map(|(position, mig)| platform_core::database::Migration {
+                id: mig.id,
+                sql: if position == index {
+                    Box::leak(format!("{}\n-- cosmetic drift probe\n", mig.sql).into_boxed_str())
+                        as &'static str
+                } else {
+                    mig.sql
+                },
+            })
+            .collect();
+
+        let mut conn = fresh();
+        // The whole registry first: the re-apply below runs against the *final*
+        // schema, exactly as it does for a database whose init script drifted.
+        platform_core::database::run(&mut conn, ALL)
+            .unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+
+        let before = stored_checksum(&conn, id);
+        match platform_core::database::run(&mut conn, &drifted) {
+            Ok(()) => {
+                assert_ne!(
+                    before,
+                    stored_checksum(&conn, id),
+                    "the cosmetic edit to {id} was not detected as drift — the re-apply path \
+                     was skipped, so this sweep proves nothing for it"
+                );
+            }
+            Err(err) => {
+                not_reappliable.push(id.to_string());
+                failures.push(format!("{id}: {err}"));
+            }
+        }
+    }
+
+    // One verdict over the whole registry, so a change to the residual reports
+    // the full diff in a single failure instead of one migration at a time.
+    // A migration MISSING from the list now fails: fix the statement (make it
+    // idempotent, or move it into the migration that replaces the object it
+    // names, as `20260911_memo_fk_restrict.sql` did), or add it with the DB-03
+    // justification. One PRESENT but now passing should be removed.
+    assert_eq!(
+        not_reappliable,
+        NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA,
+        "the set of migrations that cannot survive drift against the final schema changed. \
+         Failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// The frozen init script must stay re-appliable after a later migration has
+/// replaced a column it seeds.
+///
+/// `20260813_init.sql` seeds the four loyalty tiers with `INSERT OR IGNORE INTO
+/// loyalty_tiers (…, earn_multiplier, …)`, and
+/// `20260831_loyalty_multiplier_fixedpoint.sql` later converts that column to
+/// `earn_multiplier_millionths` and **drops** it. Re-applying the init script
+/// against a database that has the whole registry applied therefore fails with
+/// `table loyalty_tiers has no column named earn_multiplier` — and because that
+/// is not a *duplicate-object* error, DB-02's statement-level fallback never
+/// engaged, so the failure was fatal: `kasirmu-app` panicked in its setup hook
+/// (`Failed to setup app: … running migrations: … has no column named
+/// earn_multiplier`) and could not start.
+///
+/// Reproduced the way it actually happens rather than by editing a file: the
+/// database keeps the checksum of the init script it was *installed* with,
+/// while the registry carries today's content. An in-place edit to the init
+/// file is what puts every existing database on this path — ADR #56 §2.6
+/// option C removed the seeded store, workspaces and subscription, so the drift
+/// is real rather than cosmetic.
+#[test]
+fn init_script_re_applies_after_a_later_migration_replaces_its_seed_column() {
+    /// The checksum every database created before the ADR #56 §2.6 in-place
+    /// edit carries for the init script. Measured from the repository, not
+    /// guessed: it is the blob at `11a6d27cd`, the last revision that changed
+    /// the file before §2.6.
+    const PRE_ADR56_INIT_CHECKSUM: &str =
+        "f86bbbe00608dbd6f6a3cb40a82ee01be69d730763a51349adad92cffc78c013";
+    const INIT: &str = "20260813_init.sql";
+
+    let mut conn = fresh();
+    run(&mut conn).unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+
+    // Precondition, asserted rather than assumed: the drift must be real, or
+    // this test proves nothing. If the init script is ever restored to the
+    // pre-ADR-56 bytes, fail here instead of passing vacuously.
+    let installed = stored_checksum(&conn, INIT);
+    assert_ne!(
+        installed, PRE_ADR56_INIT_CHECKSUM,
+        "the init script is back to the pre-ADR-56 bytes, so this test no longer \
+         exercises the drift path — retire it or pick a new subject"
+    );
+
+    // Every later migration keeps the checksum its own apply stored, so the
+    // init script is the only entry on the drift path.
+    conn.execute(
+        "UPDATE schema_migrations SET checksum = ?1 WHERE id = ?2",
+        rusqlite::params![PRE_ADR56_INIT_CHECKSUM, INIT],
+    )
+    .unwrap();
+
+    platform_core::database::run(&mut conn, ALL).unwrap_or_else(|err| {
+        panic!(
+            "re-applying {INIT} against a fully migrated database failed: {err}. An existing \
+             database must survive drift in the init script, not panic in the setup hook."
+        )
+    });
+    assert_eq!(
+        stored_checksum(&conn, INIT),
+        installed,
+        "the drift re-apply did not patch the stored checksum"
+    );
+}
+
 #[test]
 fn migrations_create_expected_tables() {
     let mut conn = fresh();
@@ -456,12 +628,15 @@ fn seed_data_bootstraps_essential_rows() {
         );
     }
 
-    // Default store profile — the FK target for store-scoped rows and the
-    // canonical `workspace_instances` store.
+    // ADR #56 §2.6: the 'Default Store' location is NO LONGER seeded, and this
+    // assertion was inverted to keep the guarantee rather than the row. A
+    // store with no merchant should have no location, so the baseline now
+    // ships an EMPTY locations table and provision_device creates the row.
+    // The assertion is what stops the fiction creeping back.
     assert_eq!(
-        row_count(&conn, "SELECT COUNT(*) FROM locations WHERE id = 'default'",),
-        1,
-        "missing default store profile"
+        row_count(&conn, "SELECT COUNT(*) FROM locations",),
+        0,
+        "the baseline must not seed a location for a merchant who does not exist"
     );
 
     // Loyalty tiers.
@@ -491,7 +666,11 @@ fn seed_data_bootstraps_essential_rows() {
         );
     }
 
-    // Workspace types and the canonical default instances.
+    // Workspace types — the lookup rows genuine fixtures need (`workspaces`
+    // keys stay pinned in the loop above). The five default *instances* are
+    // NOT asserted: ADR #56 §2.6 removed them, and the empty-locations
+    // assertion above is what stops the fiction creeping back. A store with
+    // no merchant should have no workspaces; provision_device creates them.
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM workspace_types"),
         6,
@@ -499,8 +678,8 @@ fn seed_data_bootstraps_essential_rows() {
     );
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM workspace_instances"),
-        5,
-        "default workspace instance seeds must survive"
+        0,
+        "the baseline must not seed workspace instances for a merchant who does not exist"
     );
 
     // Navigation screens (workspace + type).
@@ -515,14 +694,17 @@ fn seed_data_bootstraps_essential_rows() {
         "workspace type screen seeds must survive"
     );
 
-    // Tenant subscription and inventory locations.
+    // ADR #56 §2.6: the BOOTSTRAP_FREE subscription row is NO LONGER seeded.
+    // A provisioned terminal gets a real signed subscription; an unprovisioned
+    // one has no subscription row to verify. An INVERTED assertion keeps the
+    // guarantee (no fiction ships) rather than the row.
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
         ),
-        1,
-        "missing default tenant subscription"
+        0,
+        "the baseline must not seed a sentinel subscription the verifier rejects"
     );
     assert_eq!(
         row_count(&conn, "SELECT COUNT(*) FROM inventory_locations"),
@@ -575,7 +757,8 @@ fn init_sql_creates_complete_schema_surface() {
     // re-measuring — is the 123rd; this assert is where that omission
     // surfaced. 20261006_receipt_hierarchy_code.sql adds the 124th–126th:
     // entity_index_cursors, entity_index_tombstones and
-    // receipt_number_counters. Count measured, not
+    // receipt_number_counters. 20261007_provisioning.sql adds the 127th:
+    // the per-terminal first-run record (ADR #56 §2.1). Count measured, not
     // guessed: the whole
     // registry was replayed through sqlite3 and sqlite_master counted.
     assert_eq!(
@@ -583,7 +766,7 @@ fn init_sql_creates_complete_schema_surface() {
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'",
         ),
-        126,
+        127,
         "table surface drifted"
     );
     assert_eq!(
@@ -642,7 +825,35 @@ fn init_sql_creates_complete_schema_surface() {
         // (tenant_id, display_code) backstop on sales. Its three composite
         // PRIMARY KEYs land as sqlite_autoindex_*, which this query
         // excludes.
-        185,
+        // 20261007_provisioning.sql adds one: idx_provisioning_tenant, the
+        // lookup behind the boot gate and provision_device's idempotency
+        // guard. Its TEXT PRIMARY KEY lands as sqlite_autoindex_*, excluded
+        // here as ever.
+        // 20261009_staff_trash.sql adds one: idx_users_trash, the partial
+        // index behind the trash listing and the 90-day retention sweep. It is
+        // partial (deleted_at IS NOT NULL), so it holds trashed rows only and
+        // the live roster pays nothing for it. That file's two ADD COLUMNs move
+        // no index count at all.
+        // 20261010_role_trash.sql moves this count by zero: it deliberately
+        // ships no index (see its header).
+        // 20261007_sync_origin_and_effect_key.sql adds one:
+        // idx_sync_applied_items_effect_key, the PARTIAL unique index
+        // (effect_key IS NOT NULL) that makes a sync receipt per-EFFECT rather
+        // than per-item. Partial is the point, not a refinement: every
+        // pre-existing row carries a NULL effect_key, and a table-wide unique
+        // index would let the first NULL pass and collide every one after it,
+        // so the existing ledger could no longer grow. That file's two ADD
+        // COLUMNs move no index count at all.
+        // 20261011_open_shift_uniqueness.sql adds one: idx_shifts_open_per_user,
+        // the PARTIAL unique index on shifts(user_id) WHERE status='open' that
+        // moves the open-shift invariant from open_shift's own transaction
+        // (4518a2b8) to the schema. Partial is the point: a user accumulates one
+        // closed shift per day forever, so a table-wide UNIQUE(user_id) would
+        // refuse the second day's shift, while closed rows leave this index
+        // entirely. It mirrors idx_inv_shifts_active_per_user_location, which
+        // has guarded inventory_shifts the same way since the init schema. That
+        // file ships no table and no trigger, so the other two pins stand.
+        189,
         "index surface drifted"
     );
     assert_eq!(
@@ -655,7 +866,16 @@ fn init_sql_creates_complete_schema_surface() {
         // `20260916_role_assignment_scopes.sql`. Nothing since: the
         // 20261002–20261005 tables (sync, midtrans, KDS routing) are plain
         // CREATE TABLE/INDEX DDL — no trigger shipped with them.
-        6,
+        // 20261012_stock_summary_qty_nonnegative.sql adds the third pair, +2:
+        // `stock_summary_qty_nonnegative_insert` and
+        // `..._update`, the CONDITIONAL negative-stock backstop (D11). It is a
+        // trigger rather than a CHECK because the flag it defers to lives on
+        // `workspace_inventory_locations` and is keyed by location — a
+        // cross-row predicate no table CHECK can express. Both arms are
+        // needed: the `INSERT ... ON CONFLICT DO UPDATE` shape both writers
+        // use fires only the UPDATE arm once the row exists. That file adds no
+        // table and no index, so the other two pins stand.
+        8,
         "trigger surface drifted"
     );
 }
@@ -708,14 +928,17 @@ fn analytics_query_uses_status_created_date_index() {
 /// registry migration exactly once.
 #[test]
 fn existing_db_with_legacy_rows_upgrades_idempotently() {
+    /// A pre-reset DB carries this tracking row for a migration the registry no
+    /// longer lists — the runner must ignore it, not error. Named once because
+    /// it seeds the expectation below as well.
+    const LEGACY_ROW: &str = "001_sales.sql";
+
     let mut conn = fresh();
     run(&mut conn).unwrap();
 
-    // A pre-reset DB would have a legacy tracking row the new registry no
-    // longer lists — the runner must ignore it, not error.
     conn.execute(
-        "INSERT INTO schema_migrations (id, checksum) VALUES ('001_sales.sql', NULL)",
-        [],
+        "INSERT INTO schema_migrations (id, checksum) VALUES (?1, NULL)",
+        [LEGACY_ROW],
     )
     .unwrap();
 
@@ -732,8 +955,22 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // Boot the new code against the existing DB.
     run(&mut conn).unwrap();
 
-    // The legacy row is ignored (still present) and the init is recorded
-    // exactly once — the two rows coexist.
+    // The legacy row is ignored (still present) and the registry is recorded
+    // exactly once — the two coexist. The expectation is **derived from the
+    // registry** rather than spelled out: the property under test is that the
+    // runner recorded exactly the registry plus that one unrecognised row, once
+    // each, and a literal list made every new migration fail this test for a
+    // reason that has nothing to do with the upgrade path
+    // (`20261008_provisioning_legacy_backfill.sql` did precisely that). Which
+    // migrations *exist* is pinned absolutely by
+    // `no_registered_migration_ever_disappears` and the list it owns — NOT by
+    // `migration_registry_matches_filesystem`, which cannot see a migration that
+    // was deleted from the registry and the filesystem together.
+    let mut expected: Vec<String> = ALL.iter().map(|mig| mig.id.to_string()).collect();
+    expected.push(LEGACY_ROW.to_string());
+    // `ORDER BY id` and `Vec<String>` both order by UTF-8 bytes, so the two
+    // sequences are comparable without a second pass.
+    expected.sort();
     let ids: Vec<String> = conn
         .prepare("SELECT id FROM schema_migrations ORDER BY id")
         .unwrap()
@@ -742,69 +979,9 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
         .map(|r| r.unwrap())
         .collect();
     assert_eq!(
-        ids,
-        vec![
-            "001_sales.sql".to_string(),
-            "20260813_init.sql".to_string(),
-            "20260814_analytics_index.sql".to_string(),
-            "20260814_offline_queue_index.sql".to_string(),
-            "20260814_sale_lines_tenant.sql".to_string(),
-            "20260814_sales_tenant.sql".to_string(),
-            "20260814_sent_reports.sql".to_string(),
-            "20260814_sent_reports_tenant.sql".to_string(),
-            "20260814_tenant_uniqueness.sql".to_string(),
-            "20260815_tenant_unique_indexes.sql".to_string(),
-            "20260820_kds_devices.sql".to_string(),
-            "20260821_tender_currency.sql".to_string(),
-            "20260822_kds_counter_store.sql".to_string(),
-            "20260822_sale_charges.sql".to_string(),
-            "20260823_po_receive_state.sql".to_string(),
-            "20260824_media_edc.sql".to_string(),
-            "20260825_payment_infra.sql".to_string(),
-            "20260826_sale_line_snapshots.sql".to_string(),
-            "20260827_refunds_tenant.sql".to_string(),
-            "20260831_loyalty_multiplier_fixedpoint.sql".to_string(),
-            "20260831_per_tenant_unique_rebuild.sql".to_string(),
-            "20260901_gift_card_redeem_idempotency.sql".to_string(),
-            "20260901_image_refs.sql".to_string(),
-            "20260901_product_images.sql".to_string(),
-            "20260902_outbox.sql".to_string(),
-            "20260902_snapshot_versions.sql".to_string(),
-            "20260903_webhook_endpoints.sql".to_string(),
-            "20260904_kds_indexes.sql".to_string(),
-            "20260906_rename_store_to_location.sql".to_string(),
-            "20260907_add_location_tenant_id.sql".to_string(),
-            "20260908_legal_entities.sql".to_string(),
-            "20260909_memos.sql".to_string(),
-            "20260910_memo_child_tenant_id.sql".to_string(),
-            "20260911_memo_fk_restrict.sql".to_string(),
-            "20260912_terminals_tenant.sql".to_string(),
-            "20260913_memo_locations.sql".to_string(),
-            "20260914_memo_retention.sql".to_string(),
-            "20260915_topology_revisions.sql".to_string(),
-            "20260916_role_assignment_scopes.sql".to_string(),
-            "20260917_assignment_backfill_org_wide.sql".to_string(),
-            "20260918_payables.sql".to_string(),
-            "20260919_regional_configuration.sql".to_string(),
-            "20260920_audit_retention.sql".to_string(),
-            "20260921_tax_rate_scoping.sql".to_string(),
-            "20260922_over_quota_markers.sql".to_string(),
-            "20260923_fiscal_numbering.sql".to_string(),
-            "20260924_local_payment_methods.sql".to_string(),
-            "20260925_receipt_formats.sql".to_string(),
-            "20260926_location_ticket_prefix.sql".to_string(),
-            "20260926_tax_rate_scoped_authoring.sql".to_string(),
-            "20260927_kds_ticket_prefix_stamp.sql".to_string(),
-            "20260928_document_kind_check.sql".to_string(),
-            "20260929_tax_rate_rounding_mode.sql".to_string(),
-            "20260930_sales_tax_estimate_note.sql".to_string(),
-            "20261001_sale_idempotency.sql".to_string(),
-            "20261002_sync_conflicts.sql".to_string(),
-            "20261003_sync_entity_vectors.sql".to_string(),
-            "20261004_midtrans_transactions.sql".to_string(),
-            "20261005_kds_routing_rules.sql".to_string(),
-            "20261006_receipt_hierarchy_code.sql".to_string(),
-        ]
+        ids, expected,
+        "the runner recorded something other than the registry plus the legacy row, \
+         or recorded a migration more than once"
     );
 
     // INSERT OR IGNORE means the re-run did not duplicate seed rows.
@@ -836,13 +1013,14 @@ fn existing_db_with_legacy_rows_upgrades_idempotently() {
     // from 20261003, plus midtrans_transactions from 20261004, plus
     // kds_routing_rules from 20261005, plus entity_index_cursors,
     // entity_index_tombstones and receipt_number_counters from
-    // 20261006 — each recorded once, idempotently).
+    // 20261006, plus provisioning from 20261007 — each recorded once,
+    // idempotently).
     assert_eq!(
         row_count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
         ),
-        126,
+        127,
         "table surface must be unchanged after upgrade"
     );
 }
@@ -886,7 +1064,10 @@ fn store_to_location_rename_preserves_rows_and_foreign_keys() {
         ),
         0
     );
-    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 2);
+    // ADR #56 §2.6: the baseline no longer seeds a 'Default Store' row, so the
+    // only location here is the one THIS test inserts before the rename.
+    // (Previously 2 = 1 seeded + 1 inserted.)
+    assert_eq!(row_count(&conn, "SELECT COUNT(*) FROM locations"), 1);
     assert_eq!(
         row_count(
             &conn,
@@ -894,19 +1075,23 @@ fn store_to_location_rename_preserves_rows_and_foreign_keys() {
         ),
         1
     );
+    // ADR #56 §2.6: the BOOTSTRAP_FREE subscription row and the five
+    // default workspace instances are no longer seeded, so there is nothing
+    // to rename here — `provision_device` creates both per location. What the
+    // FIXTURE asserts now is the harder half of the rename: zero foreign-key
+    // violations with no seeded rows to hide behind.
     assert_eq!(
         row_count(
             &conn,
-            "SELECT max_locations FROM tenant_subscription WHERE tenant_id = 'default'",
+            "SELECT COUNT(*) FROM tenant_subscription WHERE tenant_id = 'default'",
         ),
-        1
+        0,
+        "no sentinel subscription may survive the baseline"
     );
     assert_eq!(
-        row_count(
-            &conn,
-            "SELECT COUNT(*) FROM workspace_instances WHERE location_id = 'default'",
-        ),
-        5
+        row_count(&conn, "SELECT COUNT(*) FROM workspace_instances"),
+        0,
+        "no seeded workspace instances may survive the baseline"
     );
     assert_eq!(
         row_count(
@@ -949,7 +1134,11 @@ fn location_tables_carry_tenant_id_after_migration() {
         );
     }
 
-    // At least one row resolves to the single-tenant 'default' sentinel.
+    // ADR #56 §2.6 removed the seeded 'Default Store' row, so nothing resolves
+    // to the 'default' sentinel until a location is CREATED — which is the
+    // point of the removal: a store with no merchant has no location. The
+    // guarantee this now pins is the column DEFAULT, exercised by the insert
+    // immediately below rather than by a row the migration happened to ship.
     let default_rows: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM locations WHERE tenant_id = 'default'",
@@ -957,9 +1146,9 @@ fn location_tables_carry_tenant_id_after_migration() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(
-        default_rows >= 1,
-        "at least one location must belong to the default tenant"
+    assert_eq!(
+        default_rows, 0,
+        "the baseline must not seed a location for the default tenant"
     );
 
     // An insert without an explicit tenant takes the 'default' sentinel.
@@ -1134,20 +1323,18 @@ fn legal_entity_migration_creates_defaults_and_moves_locations() {
         .map(|row| row.unwrap())
         .collect();
 
+    // ADR #56 §2.6: the baseline no longer seeds a 'Default Store' location,
+    // so there is no `default`-tenant location for the LE migration to give a
+    // default legal entity to. Only the location THIS test inserts gets one.
+    // That is the correct post-removal behaviour, not a regression: a tenant
+    // with no location has no legal entity until provisioning creates both.
     assert_eq!(
         entities,
-        vec![
-            (
-                "default:default-legal-entity".to_string(),
-                "default".to_string(),
-                "Default Legal Entity".to_string(),
-            ),
-            (
-                "tenant-2:default-legal-entity".to_string(),
-                "tenant-2".to_string(),
-                "Default Legal Entity".to_string(),
-            ),
-        ]
+        vec![(
+            "tenant-2:default-legal-entity".to_string(),
+            "tenant-2".to_string(),
+            "Default Legal Entity".to_string(),
+        )]
     );
 
     let location_entities: Vec<(String, String)> = conn
@@ -1160,18 +1347,14 @@ fn legal_entity_migration_creates_defaults_and_moves_locations() {
         .unwrap()
         .map(|row| row.unwrap())
         .collect();
+    // Same consequence as above: no seeded 'default' location means no
+    // 'default' row to link. ADR #56 §2.6.
     assert_eq!(
         location_entities,
-        vec![
-            (
-                "default".to_string(),
-                "default:default-legal-entity".to_string(),
-            ),
-            (
-                "tenant-2-location".to_string(),
-                "tenant-2:default-legal-entity".to_string(),
-            ),
-        ]
+        vec![(
+            "tenant-2-location".to_string(),
+            "tenant-2:default-legal-entity".to_string(),
+        )]
     );
 
     assert_eq!(
@@ -1920,6 +2103,109 @@ fn pg_init_declares_same_table_surface_as_sqlite() {
     }
 }
 
+/// Every migration the registry has ever shipped must still be registered: the
+/// registry may grow, never shrink.
+///
+/// This is a **subset** check, so adding a migration never fails it and needs no
+/// edit here — but deleting a migration file *together with* its registry entry
+/// does fail. On exactly that mutation (registry entry deleted, `.sql` deleted)
+/// both assertions that look like coverage stayed **green**:
+///
+/// * `migration_registry_matches_filesystem` asserts file→registry parity and
+///   equal counts; both sides lose the same id, so it still holds.
+/// * `existing_db_with_legacy_rows_upgrades_idempotently` derives its expected
+///   list from `ALL`, so its expectation shrinks along with the deletion.
+///
+/// A migration that some feature test looks up by id in `ALL` has a second net
+/// (the two tests below that split on `20261008` do, via `expect`), but one
+/// without such a test would disappear silently. Every id is therefore pinned
+/// absolutely here, which covers the classes nothing else reaches — including
+/// migrations that change no table count and so leave the `127`-table assertion
+/// untouched: `20261008_provisioning_legacy_backfill.sql` is DML only and is
+/// exactly that shape. New migrations belong in the registry, not in this list —
+/// it is a record of what must not vanish, not of what exists.
+const MUST_STAY_REGISTERED: &[&str] = &[
+    "20260813_init.sql",
+    "20260814_tenant_uniqueness.sql",
+    "20260815_tenant_unique_indexes.sql",
+    "20260814_offline_queue_index.sql",
+    "20260814_sale_lines_tenant.sql",
+    "20260814_sales_tenant.sql",
+    "20260814_sent_reports.sql",
+    "20260814_sent_reports_tenant.sql",
+    "20260814_analytics_index.sql",
+    "20260820_kds_devices.sql",
+    "20260821_tender_currency.sql",
+    "20260822_sale_charges.sql",
+    "20260822_kds_counter_store.sql",
+    "20260823_po_receive_state.sql",
+    "20260824_media_edc.sql",
+    "20260825_payment_infra.sql",
+    "20260826_sale_line_snapshots.sql",
+    "20260827_refunds_tenant.sql",
+    "20260831_loyalty_multiplier_fixedpoint.sql",
+    "20260831_per_tenant_unique_rebuild.sql",
+    "20260901_gift_card_redeem_idempotency.sql",
+    "20260901_image_refs.sql",
+    "20260901_product_images.sql",
+    "20260902_outbox.sql",
+    "20260902_snapshot_versions.sql",
+    "20260903_webhook_endpoints.sql",
+    "20260904_kds_indexes.sql",
+    "20260906_rename_store_to_location.sql",
+    "20260907_add_location_tenant_id.sql",
+    "20260908_legal_entities.sql",
+    "20260909_memos.sql",
+    "20260910_memo_child_tenant_id.sql",
+    "20260911_memo_fk_restrict.sql",
+    "20260912_terminals_tenant.sql",
+    "20260913_memo_locations.sql",
+    "20260914_memo_retention.sql",
+    "20260915_topology_revisions.sql",
+    "20260916_role_assignment_scopes.sql",
+    "20260917_assignment_backfill_org_wide.sql",
+    "20260918_payables.sql",
+    "20260919_regional_configuration.sql",
+    "20260920_audit_retention.sql",
+    "20260921_tax_rate_scoping.sql",
+    "20260922_over_quota_markers.sql",
+    "20260923_fiscal_numbering.sql",
+    "20260924_local_payment_methods.sql",
+    "20260925_receipt_formats.sql",
+    "20260926_tax_rate_scoped_authoring.sql",
+    "20260926_location_ticket_prefix.sql",
+    "20260927_kds_ticket_prefix_stamp.sql",
+    "20260928_document_kind_check.sql",
+    "20260929_tax_rate_rounding_mode.sql",
+    "20260930_sales_tax_estimate_note.sql",
+    "20261001_sale_idempotency.sql",
+    "20261002_sync_conflicts.sql",
+    "20261003_sync_entity_vectors.sql",
+    "20261004_midtrans_transactions.sql",
+    "20261005_kds_routing_rules.sql",
+    "20261006_receipt_hierarchy_code.sql",
+    "20261007_provisioning.sql",
+    "20261008_provisioning_legacy_backfill.sql",
+];
+
+/// A migration that disappears is a schema change nobody reviewed.
+#[test]
+fn no_registered_migration_ever_disappears() {
+    let registered: std::collections::HashSet<&str> = ALL.iter().map(|mig| mig.id).collect();
+    let missing: Vec<&str> = MUST_STAY_REGISTERED
+        .iter()
+        .copied()
+        .filter(|id| !registered.contains(id))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "these migrations were registered and no longer are: {missing:#?}. A registry may grow, \
+         never shrink — a migration that disappears changes what a fresh install produces and can \
+         never be re-applied to an existing database. If the removal is deliberate, land it with \
+         MUST_STAY_REGISTERED edited in the same commit."
+    );
+}
+
 #[test]
 fn migration_registry_matches_filesystem() {
     // DB-01: the registry is the source of truth. Every `.sql` file under
@@ -2545,4 +2831,626 @@ fn sales_tax_estimate_note_column_pins_the_audit_stamp_shape() {
         )
         .unwrap();
     assert!(omitted.is_none());
+}
+
+/// ADR #56 §2.1: a terminal the PRE-#56 wizard set up must read as provisioned
+/// after 20261008, and a fresh install must stay unprovisioned.
+///
+/// Two independent defects are pinned here, and they are the two halves of the
+/// same bug. 20261007 created `provisioning` with no backfill, so a legacy
+/// device has no row and `get_first_run_state` answers `Unprovisioned`
+/// (kasirmu-bridge/src/setup.rs:238-249) — an already-set-up device re-enters
+/// onboarding on every boot. And the flow it lands in was invisible, because
+/// the provisioning flow stylesheet animated `fade-up` without defining the keyframes:
+/// `opacity: 0` plus a never-running `forwards` animation. The CSS half is a
+/// stylesheet and no Rust test can see it; the SQL half is what this asserts.
+///
+/// The signal is `store.show_setup_wizard = 'false'`, written by exactly the two
+/// retired commands (`complete_setup` step 7, `dismiss_setup_wizard`) and by
+/// nothing else — no migration seeds a `settings` row, and `provision_device`
+/// deliberately does not write it. Each leg below therefore fails if the backfill
+/// is widened to a predicate that cannot prove the legacy scheme ran.
+#[test]
+fn legacy_setup_backfills_a_provisioning_row_only_for_terminals_the_wizard_set_up() {
+    // Apply everything UP TO the migration under test, plant the legacy state the
+    // wizard left behind, then let the runner apply this migration exactly once —
+    // the real upgrade sequence, rather than a re-apply of an already-applied
+    // script. Indexed by id, not by `ALL.len() - 1` (the convention
+    // `legal_entity_migration_creates_defaults_and_moves_locations` records).
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20261008_provisioning_legacy_backfill.sql")
+        .expect("the legacy backfill migration is present in the registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    // A registered terminal, as the legacy auto-register wrote it
+    // (`terminals.device_id` IS the hostname the shell gates on).
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-legacy', 'Legacy POS', 'legacy-host')",
+        [],
+    )
+    .unwrap();
+    // A second terminal on the SAME install, to prove the backfill is keyed per
+    // terminal rather than writing one row for the whole database.
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-fresh', 'Other POS', 'fresh-host')",
+        [],
+    )
+    .unwrap();
+
+    // The legacy-only signal the retired `complete_setup` / `dismiss_setup_wizard`
+    // pair wrote. Nothing else in the tree writes this key.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.show_setup_wizard', 'false')",
+        [],
+    )
+    .unwrap();
+
+    // The runner applies 20261008 now, once, against the legacy state above.
+    platform_core::database::run(&mut conn, ALL).unwrap();
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM provisioning", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        rows, 2,
+        "one row per REGISTERED terminal — the backfill is keyed per terminal, not per install"
+    );
+
+    let (mode, region, tenant, owner, device, location): (
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = conn
+        .query_row(
+            "SELECT mode, home_region, tenant_id, owner_user_id, device_id, location_id
+             FROM provisioning WHERE terminal_id = 'legacy-host'",
+            [],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        mode, "local",
+        "the legacy install had no licence-server tenant; 'local' is §2.4's default"
+    );
+    assert_eq!(region, "global", "§Q6: 'no residency commitment yet'");
+    assert!(
+        tenant.is_none(),
+        "§2.1: the local 'default' literal is a DIFFERENT namespace and must not be written here"
+    );
+    assert!(
+        owner.is_none(),
+        "the legacy owner is not identifiable from SQL; claiming one would be a guess"
+    );
+    assert!(
+        device.is_none(),
+        "device_id is a credential id the legacy install never had"
+    );
+    assert!(
+        location.is_none(),
+        "the terminal was unbound, so the correlated subquery yields NULL rather than a dangling id"
+    );
+
+    // The gate the shell actually reads: a row for this terminal.
+    assert!(
+        crate::Store::new(&conn)
+            .is_provisioned("legacy-host")
+            .unwrap(),
+        "ADR #56 §2.1: this is the fact that stops a set-up device re-entering onboarding"
+    );
+}
+
+/// The counter-example that makes the test above worth having: a device with NO
+/// legacy signal must get NO row, however many terminals it has registered.
+///
+/// A wrong backfill that marks a genuinely-new device as provisioned is strictly
+/// worse than the bug it fixes, so this leg is the one that fails first if the
+/// predicate is ever widened (dropping the `settings` EXISTS, defaulting the
+/// value comparison, or seeding the key from a migration).
+#[test]
+fn a_terminal_without_the_legacy_signal_is_never_backfilled() {
+    let split = ALL
+        .iter()
+        .position(|m| m.id == "20261008_provisioning_legacy_backfill.sql")
+        .expect("the legacy backfill migration is present in the registry");
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+
+    conn.execute(
+        "INSERT INTO terminals (id, name, device_id) VALUES ('t-new', 'New POS', 'new-host')",
+        [],
+    )
+    .unwrap();
+
+    // On a fresh install the key is simply ABSENT, which is the state this leg
+    // pins: no row, so the flow still runs.
+    platform_core::database::run(&mut conn, ALL).unwrap();
+
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "a terminal with no legacy signal must stay Unprovisioned — a forged row is the worse failure"
+    );
+
+    // Same conclusion from the other direction: a present-but-not-'false' value
+    // is the wizard's "show me" state, not a completion.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.show_setup_wizard', 'true')",
+        [],
+    )
+    .unwrap();
+    platform_core::database::run(&mut conn, ALL).unwrap();
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "only 'false' is the dismissal the retired commands wrote; 'true' must not backfill"
+    );
+
+    // And the `store.setup_complete` key the CLI writes is a DIFFERENT key — it
+    // must not be mistaken for the legacy dismissal either.
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('store.setup_complete', 'true')",
+        [],
+    )
+    .unwrap();
+    platform_core::database::run(&mut conn, ALL).unwrap();
+    assert!(
+        !crate::Store::new(&conn).is_provisioned("new-host").unwrap(),
+        "store.setup_complete is not the legacy dismissal key and must not backfill"
+    );
+}
+
+// ── COR-27 / C18 P1.3: the open-shift invariant at the DATABASE level ──
+
+/// The registry position of the migration under test, so the pre-index leg
+/// below is expressed as "everything except this migration" rather than as a
+/// brittle \`ALL.len() - 1\`.
+fn open_shift_uniqueness_position() -> usize {
+    ALL.iter()
+        .position(|m| m.id == "20261011_open_shift_uniqueness.sql")
+        .expect("20261011_open_shift_uniqueness.sql must be registered")
+}
+
+/// The migration's own SQL, read from the registry — never re-typed here, so
+/// the test cannot drift from the file it pins.
+fn open_shift_uniqueness_sql() -> &'static str {
+    ALL[open_shift_uniqueness_position()].sql
+}
+
+/// One user, so a raw \`shifts\` INSERT has a row for its FK to resolve.
+fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO roles (id, name) VALUES ('role-osu', 'Open Shift Test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id)
+         VALUES (?1, ?2, 'not-used', 'Open Shift Test', 'role-osu')",
+        rusqlite::params![user_id, format!("u-{user_id}")],
+    )
+    .unwrap();
+}
+
+/// 1. A fresh database accepts the index, and it is the PARTIAL one — the
+///    \`WHERE status = 'open'\` clause is in the stored SQL, so closed shifts
+///    are outside the constraint (a table-wide UNIQUE would refuse the second
+///    day's shift). \`migration_surface_pins\` covers the count; this pins the
+///    shape.
+#[test]
+fn open_shift_uniqueness_index_is_partial_on_open_status() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_shifts_open_per_user'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("idx_shifts_open_per_user must exist after the full registry runs");
+
+    let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized.contains("UNIQUE INDEX"),
+        "the guard must be UNIQUE, got: {sql}"
+    );
+    assert!(
+        normalized.contains("shifts(user_id)"),
+        "the guard must be keyed on shifts(user_id), got: {sql}"
+    );
+    assert!(
+        normalized.contains("WHERE status = 'open'"),
+        "the guard must be PARTIAL on status='open'; without that clause a user could \
+         never open a second day's shift, got: {sql}"
+    );
+}
+
+/// 2. THE GUARD BITES, proved through raw SQL so it is the INDEX under test and
+///    not \`Store::open_shift\`.
+///
+///    Leg A is the negative control and the reason this test is honest: the same
+///    statement runs against a database built from the registry WITHOUT this
+///    migration and SUCCEEDS there. So the refusal in leg B comes from the index
+///    and from nothing else in the schema. Leg B then requires the raw INSERT to
+///    be refused and pins both exemptions the partial clause exists for: another
+///    user, and the same user after the first shift is closed.
+#[test]
+fn open_shift_uniqueness_index_bites_on_raw_sql() {
+    const DUPLICATE_INSERT: &str = "INSERT INTO shifts (id, user_id) VALUES (?1, ?2)";
+
+    // ── Leg A: BEFORE the index exists, the raw duplicate is ACCEPTED. ──
+    {
+        let mut conn = fresh();
+        let split = open_shift_uniqueness_position();
+        platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+        seed_shift_user(&conn, "user-open");
+
+        conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-a", "user-open"])
+            .expect("pre-index control: nothing in the schema forbids this row");
+        conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-b", "user-open"])
+            .expect("pre-index control: this second open shift is the defect being closed");
+
+        let open: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM shifts WHERE user_id = 'user-open' AND status = 'open'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            open, 2,
+            "the negative control must actually reproduce the defect"
+        );
+    }
+
+    // ── Leg B: WITH the index, the same raw statement is refused. ──
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    seed_shift_user(&conn, "user-open");
+    seed_shift_user(&conn, "user-other");
+
+    // The first open shift is written with no explicit status at all, so this
+    // also pins that the column DEFAULT (and the CHECK constraint's spelling) is
+    // exactly the literal the index's WHERE clause matches. A WHERE clause that
+    // did not match the rows writers actually produce would pass a naive test
+    // but fail here.
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-a", "user-open"])
+        .unwrap();
+
+    let err = conn
+        .execute(DUPLICATE_INSERT, rusqlite::params!["shift-b", "user-open"])
+        .expect_err("a second open shift for the same user must be refused by the INDEX");
+    assert!(
+        matches!(
+            &err,
+            rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
+        ),
+        "expected a UNIQUE constraint violation, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("shifts.user_id"),
+        "the refusal must name the guarded column, got: {err}"
+    );
+
+    // Exemption 1: another user is untouched by the constraint.
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-c", "user-other"])
+        .expect("the guard is per user, not global");
+
+    // Exemption 2: closing the first shift releases the user — a closed row
+    // leaves the partial index entirely.
+    conn.execute(
+        "UPDATE shifts SET status = 'closed' WHERE id = 'shift-a'",
+        [],
+    )
+    .unwrap();
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-d", "user-open"])
+        .expect("a closed shift must not block the next open for that user");
+
+    let open: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM shifts WHERE user_id = 'user-open' AND status = 'open'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        open, 1,
+        "one open shift per user, after the refusals and the exemptions"
+    );
+}
+
+/// 3. THE MIGRATION CANNOT BRICK AN EXISTING STORE.
+///
+///    A store written before \`open_shift\` was atomic can already hold two open
+///    shifts for one user. If the CREATE ran against that state it would fail,
+///    and the app would not start — so the reconciliation must close the extras
+///    FIRST. This test builds the FINAL schema (the whole registry), plants the
+///    duplicate exactly as such a store would hold it, and then re-applies this
+///    migration's own statements — the same replay the drift path performs on a
+///    real database whose migration file was edited, and the only order in which
+///    the reconciliation sees the final schema.
+#[test]
+fn open_shift_uniqueness_migration_reconciles_pre_existing_duplicates() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    seed_shift_user(&conn, "user-legacy");
+
+    // Simulate the pre-fix store: drop the guard, then write the duplicate.
+    conn.execute("DROP INDEX idx_shifts_open_per_user", [])
+        .unwrap();
+    conn.execute_batch(
+        "INSERT INTO shifts (id, user_id, opened_at, created_at, updated_at, status) VALUES
+           ('legacy-old', 'user-legacy', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'open'),
+           ('legacy-new', 'user-legacy', '2025-01-02T00:00:00.000Z', '2025-01-02T00:00:00.000Z', '2025-01-02T00:00:00.000Z', 'open');",
+    )
+    .unwrap();
+
+    // Re-apply the migration: it must reconcile and then build the index.
+    conn.execute_batch(open_shift_uniqueness_sql())
+        .expect("the migration must not fail on a store that already holds duplicates");
+
+    // The survivor is the most recently opened row — deterministic.
+    let survivors: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT id FROM shifts WHERE user_id = 'user-legacy' AND status = 'open'")
+            .unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+        rows.map(|r| r.unwrap()).collect()
+    };
+    assert_eq!(
+        survivors,
+        vec!["legacy-new".to_string()],
+        "the most recently opened shift must survive, deterministically"
+    );
+
+    // The loser is closed, NOT deleted, and no figure is invented: the counted
+    // cash columns stay NULL (the schema's own "never counted" signal) and the
+    // reason is stamped into notes.
+    let (status, closing, expected, difference, notes): (
+        String,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        String,
+    ) = conn
+        .query_row(
+            "SELECT status, closing_balance_minor, expected_cash_minor, cash_difference_minor, notes
+               FROM shifts WHERE id = 'legacy-old'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "closed", "the loser is closed rather than dropped");
+    assert_eq!(closing, None, "no closing balance may be invented");
+    assert_eq!(expected, None, "no expected cash may be invented");
+    assert_eq!(difference, None, "no cash difference may be invented");
+    assert!(
+        notes.contains("auto-closed"),
+        "the reconciliation must leave an auditable reason, got: {notes}"
+    );
+
+    // And the index the reconciliation exists to protect is in place, so a
+    // third duplicate is refused.
+    let err = conn
+        .execute(
+            "INSERT INTO shifts (id, user_id) VALUES ('legacy-third', 'user-legacy')",
+            [],
+        )
+        .expect_err("the index must exist after the re-apply");
+    assert!(
+        matches!(err, rusqlite::Error::SqliteFailure(_, _)),
+        "expected a constraint violation, got: {err}"
+    );
+}
+/// C10b / D11: the negative-stock backstop, and the reason it is a TRIGGER.
+///
+/// The condition is a cross-row predicate — "may THIS location hold a negative
+/// qty?" is answered by `workspace_inventory_locations.allow_negative_stock`, a
+/// different table keyed by `location_id`. No table CHECK can express that, and
+/// the unconditional `CHECK (qty >= 0)` the review proposed was measured to be
+/// WRONG: it silently re-enables the Layer-1 guard the flag exists to opt out
+/// of, failing `negative_stock_event_fires_when_allow_negative_enabled`.
+///
+/// Both directions, both through RAW SQL, so the TRIGGER is under test and not
+/// `Store::adjust_stock_at_location_with_reason`:
+///
+/// * a binding that did NOT opt in is REFUSED (the backstop bites), on the
+///   INSERT arm AND on the UPDATE arm — the latter is what the upsert both
+///   writers use actually fires once the row exists;
+/// * a binding that DID opt in is ACCEPTED (the feature still works);
+/// * a location with NO binding at all is ACCEPTED, which is the refinement
+///   that keeps `deactivate_inventory_location_with_negative_stock_errors`
+///   passing: the flag is a per-BINDING opt-out, so a location with no binding
+///   has no opt-out to violate, and Rust Layer 1 already refuses negatives on
+///   that path.
+#[test]
+fn stock_summary_negative_guard_is_conditional_on_the_binding() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // A product, and three locations: bound-without-opt-in, bound-with-opt-in,
+    // and unbound. Locations are created through the real API so the fixture
+    // matches what a store actually holds (it writes no binding).
+    let s = crate::db::Store::new(&conn);
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES ('prod-c10b', 'SKU-C10B', 'C10b', 100, 'USD', 'retail')",
+        [],
+    )
+    .unwrap();
+    let bound_no = s
+        .create_inventory_location("Bound No", "store", "")
+        .unwrap();
+    let bound_yes = s
+        .create_inventory_location("Bound Yes", "store", "")
+        .unwrap();
+    let unbound = s.create_inventory_location("Unbound", "store", "").unwrap();
+
+    // A workspace instance plus one binding per bound location. The instance's
+    // `location_id` is the STORE profile (NOT NULL FK), not an inventory
+    // location — the same shape `db/inventory_tests.rs:61` uses.
+    conn.execute(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('retail', 'Retail POS')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO locations (id, name) VALUES ('loc-c10b', 'C10b Site')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
+         VALUES ('ws-c10b', 'retail', 'loc-c10b', 'C10b')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO workspace_inventory_locations \
+             (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
+         VALUES ('wil-c10b-no', 'ws-c10b', ?1, 0, 0, 0), \
+                ('wil-c10b-yes', 'ws-c10b', ?2, 0, 1, 1)",
+        rusqlite::params![bound_no, bound_yes],
+    )
+    .unwrap();
+
+    const INSERT_NEGATIVE: &str = "INSERT INTO stock_summary (item_id, location_id, qty) \
+                                   VALUES ('prod-c10b', ?1, ?2)";
+
+    // -- Direction 1: the backstop BITES on a binding that did not opt in. --
+    let err = conn
+        .execute(INSERT_NEGATIVE, rusqlite::params![&bound_no, -3])
+        .expect_err("a negative qty at a non-opted-in binding must be refused by the TRIGGER");
+    assert!(
+        matches!(
+            &err,
+            rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
+        ),
+        "expected a constraint violation, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("allow_negative_stock"),
+        "the refusal must name the flag it defers to, got: {err}"
+    );
+
+    // The UPDATE arm: seed a non-negative row, then drive it below zero. This
+    // is the `INSERT ... ON CONFLICT DO UPDATE` shape the writers use.
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&bound_no, 1])
+        .expect("a non-negative qty is always allowed");
+    let err = conn
+        .execute(
+            "UPDATE stock_summary SET qty = -1 WHERE item_id = 'prod-c10b' AND location_id = ?1",
+            rusqlite::params![&bound_no],
+        )
+        .expect_err("driving an existing row below zero must be refused by the UPDATE arm");
+    assert!(
+        err.to_string().contains("allow_negative_stock"),
+        "the UPDATE arm must give the same refusal, got: {err}"
+    );
+
+    // -- Direction 2: the feature still works. --
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&bound_yes, -3])
+        .expect("a binding that opted in must still be able to hold negative stock");
+    // ...including through the upsert, which fires only the UPDATE arm.
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES ('prod-c10b', ?1, -9) \
+         ON CONFLICT(item_id, location_id) DO UPDATE SET qty = excluded.qty",
+        rusqlite::params![&bound_yes],
+    )
+    .expect("the opted-in upsert must pass");
+
+    // -- The refinement: no binding means no opt-out to violate. --
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&unbound, -3])
+        .expect(
+            "a location with NO binding has no opt-out to violate; refusing here would \
+             break deactivate_inventory_location_with_negative_stock_errors",
+        );
+
+    let stored: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = 'prod-c10b' AND location_id = ?1",
+            rusqlite::params![&bound_yes],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, -9, "the opted-in value must be stored verbatim");
+}
+
+/// C10b / D11: the trigger is the CONDITIONAL form, not the blanket CHECK the
+/// review proposed — pinned by reading the schema, so a later edit that
+/// "simplifies" it to an unconditional `qty >= 0` fails here rather than in
+/// production. Also pins that no blanket repair rode along: existing negative
+/// rows are legitimate oversells (D11) and must survive the migration.
+#[test]
+fn stock_summary_negative_guard_is_not_an_unconditional_check() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // The table DDL must NOT carry a blanket CHECK on qty.
+    let table_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stock_summary'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        !table_sql.contains("qty >= 0"),
+        "an unconditional CHECK would re-enable the guard allow_negative_stock \
+         exists to opt out of, got: {table_sql}"
+    );
+
+    // Both arms exist and both defer to the binding.
+    for name in [
+        "stock_summary_qty_nonnegative_insert",
+        "stock_summary_qty_nonnegative_update",
+    ] {
+        let sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?1",
+                rusqlite::params![name],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|e| panic!("{name} must exist after the registry runs: {e}"));
+        let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            normalized.contains("NEW.qty < 0"),
+            "{name} must be conditional on a negative NEW.qty, got: {sql}"
+        );
+        assert!(
+            normalized.contains("allow_negative_stock = 1"),
+            "{name} must defer to the binding opt-in, got: {sql}"
+        );
+        assert!(
+            normalized.contains("workspace_inventory_locations"),
+            "{name} must consult the binding table, got: {sql}"
+        );
+    }
+
+    // No blanket repair: a pre-existing negative row is an oversell, not
+    // corruption, and nothing in the migration may rewrite it.
+    let quarantine_tables: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' \
+               AND name = 'stock_summary_negative_quarantine'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        quarantine_tables, 0,
+        "D11: no quarantine table — existing negatives are legitimate and are never repaired"
+    );
 }

@@ -1003,3 +1003,150 @@ fn receive_po_with_lines_nonexistent_po_errors() {
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { entity, .. } if entity == "purchase_order"));
 }
+
+/// A migrated on-disk database in `dir` — the shape a forced-interleaving
+/// race test needs, since a second connection cannot be opened on the
+/// `:memory:` database `fresh_db` returns.
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
+/// C18 (slice P1.7): a status transition is a compare-and-set, forced rather
+/// than hoped for.
+///
+/// Connection B stages a rival transition to `approved` — an uncommitted
+/// `purchase_orders` write — under a write lock it holds until A proves it is
+/// blocked on it. A (the losing transition, run on the main thread) reads the
+/// order while B's write is still invisible, so it starts from `pending`; its
+/// write lands only after B commits.
+///
+/// The ordering is driven by evidence, never by a sleep: A installs a busy
+/// handler that fires the instant SQLite refuses A's write because B holds the
+/// write lock, and that signal is what releases B. A fixed timer made this
+/// test load-dependent — under a loaded machine the loser could reach the
+/// UPDATE after B had already committed, read `approved`, and win, failing the
+/// assertions below on a correct implementation.
+///
+/// Without the compare-and-set, A's unconditional `UPDATE ... WHERE id = ?`
+/// overwrites B's `approved` with `cancelled` and reports success — a lost
+/// update on the column that gates receiving and payables. With it, A's
+/// predicate no longer matches, the transition is refused, and B's status and
+/// timestamp survive exactly as B wrote them.
+#[test]
+fn update_po_status_race_cannot_overwrite_a_competing_transition() {
+    /// Set by A's busy handler — i.e. A has passed its pre-read and is now
+    /// blocked on the write lock B holds. The handler is a `fn` pointer with
+    /// no captured state, so the flag it needs is process-wide.
+    static A_IS_BLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    /// Bounds the wait for that flag so a genuine deadlock fails loudly
+    /// instead of hanging the suite.
+    static B_WAITED_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    /// A's busy handler: records the one fact this test needs, then keeps
+    /// waiting so the block persists until B commits.
+    fn note_blocked(_attempts: i32) -> bool {
+        A_IS_BLOCKED.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        true
+    }
+
+    let dir = std::env::temp_dir().join(format!("oz_po_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    let po_id = {
+        let conn = fresh_file(&dir);
+        seed_supplier(&conn);
+        let po = store(&conn)
+            .create_purchase_order("PO-RACE", "sup-po", "", "", None, &[])
+            .unwrap();
+        store(&conn)
+            .update_po_status(&po.order.id, "pending")
+            .unwrap();
+        po.order.id
+    };
+
+    A_IS_BLOCKED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let po_id = po_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE purchase_orders SET status='approved', updated_at=?1 WHERE id=?2",
+                    params!["2020-01-01T00:00:00.000Z", po_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the staged order");
+            locked_tx.send(()).unwrap();
+            // Hold the write lock until A is demonstrably blocked on it. The
+            // flag can only be set from inside A's UPDATE, which cannot
+            // complete while this transaction is open — so the wait ends only
+            // once the intended interleaving is established, or on the
+            // deadline below.
+            while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) {
+                if B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) > 10_000 {
+                    panic!(
+                        "A never reached its write lock within 10s — the forced interleaving was not established"
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                B_WAITED_MS.fetch_add(5, std::sync::atomic::Ordering::SeqCst);
+            }
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    // A's busy handler replaces the default busy_timeout handler, so A waits
+    // in 5ms steps for as long as B holds the lock rather than giving up.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.busy_handler(Some(note_blocked)).unwrap();
+    let outcome = store(&conn_a).update_po_status(&po_id, "cancelled");
+    rival.join().unwrap();
+
+    assert!(
+        A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst),
+        "A never contended with B's write lock, so the race was not exercised"
+    );
+
+    let err = outcome.expect_err("a transition that lost the race must be refused");
+    assert!(
+        matches!(err, CoreError::Conflict { entity, .. } if entity == "purchase_order"),
+        "expected a Conflict for the losing transition, got: {err}"
+    );
+
+    let (status, updated_at): (String, String) = conn_a
+        .query_row(
+            "SELECT status, updated_at FROM purchase_orders WHERE id = ?1",
+            params![po_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "approved", "the winner's status must survive");
+    assert_eq!(
+        updated_at, "2020-01-01T00:00:00.000Z",
+        "the refused transition must leave the row untouched"
+    );
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}

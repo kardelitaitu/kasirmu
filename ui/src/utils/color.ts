@@ -94,6 +94,22 @@ export function contrastFg(hex: string): string {
 }
 
 /**
+ * Stable hue (0-359) derived from a display name, for the initials fallback
+ * tile: two people in one list never share a colour, and a given name gets the
+ * same one on every render.
+ *
+ * Lived in RestaurantSidebar (its only caller) until the staff roster became
+ * the second consumer of the same tile — one algorithm, two avatars.
+ */
+export function hueFromName(name: string): number {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) % 360;
+  }
+  return hash;
+}
+
+/**
  * Derive the full accent palette from a single base colour.
  *
  * The amounts are tuned to produce a similar visual relationship

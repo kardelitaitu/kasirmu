@@ -81,8 +81,7 @@ fn generate_machine_id_is_deterministic() {
 
 #[test]
 fn machine_id_is_persisted_in_settings() {
-    use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let id1 = generate_machine_id();
     // Simulate what get_machine_id does: persist to Settings.
     Settings::set_batch(&conn, &[("machine_id".to_string(), id1.clone())]).unwrap();
@@ -121,8 +120,7 @@ fn hardware_fingerprint_has_spec_shape_and_is_deterministic() {
 
 #[test]
 fn hardware_fingerprint_is_persisted_in_settings() {
-    use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let fp1 = generate_hardware_fingerprint();
     // Simulate what get_hardware_fingerprint does: persist to Settings.
     Settings::set_batch(&conn, &[("hardware_fingerprint".to_string(), fp1.clone())]).unwrap();
@@ -137,8 +135,7 @@ fn hardware_fingerprint_is_persisted_in_settings() {
 
 #[test]
 fn clock_tamper_detected_on_future_ledger_timestamps() {
-    use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
 
     // Insert a sale with a timestamp far in the future
     // (simulates OS clock being rolled back).
@@ -170,6 +167,7 @@ fn server_license_status_dto_camel_case() {
         tier: "pro".into(),
         active: true,
         device_revoked: false,
+        hardware_verified: Some(true),
         expires_at: Some("2027-01-01T00:00:00Z".into()),
         grace_until: Some("2027-01-15T00:00:00Z".into()),
         max_locations: 2,
@@ -183,6 +181,7 @@ fn server_license_status_dto_camel_case() {
     assert!(json.contains("\"active\":true"));
     // ADR #58 §2.4a.2: the device verdict rides the IPC DTO in camelCase.
     assert!(json.contains("\"deviceRevoked\":false"));
+    assert!(json.contains("\"hardwareVerified\":true"));
 }
 
 #[test]
@@ -193,6 +192,7 @@ fn server_license_status_dto_null_optionals() {
         tier: "free".into(),
         active: false,
         device_revoked: true,
+        hardware_verified: None,
         expires_at: None,
         grace_until: None,
         max_locations: 1,
@@ -209,8 +209,7 @@ fn server_license_status_dto_null_optionals() {
 
 #[test]
 fn store_subscription_updates_tenant_subscription_default() {
-    use kasirmu_core::migrations;
-    let conn = migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
 
     // Verify bootstrap Free tier is seeded
     let sub = TenantSubscription::load(&conn, "default")
@@ -260,6 +259,7 @@ fn renew_license_request_serializes_snake_case() {
         tenant_id: "test-tenant".into(),
         api_key: "oz_test_key".into(),
         key: "OZ-PRO-NEW-KEY".into(),
+        machine_id: "abc123def456ghi".into(),
     };
     let json = serde_json::to_string(&req).unwrap();
     assert!(json.contains("\"tenant_id\""));
@@ -281,6 +281,37 @@ fn renew_license_request_deserializes() {
     assert_eq!(req.tenant_id, "t1");
     assert_eq!(req.api_key, "k1");
     assert_eq!(req.key, "OZ-KEY");
+}
+
+/// ADR #57 §2.5: the device fingerprint rides the renewal so the server can
+/// refuse a renewal to ONE tampered terminal instead of the whole tenant.
+#[test]
+fn renew_license_request_carries_the_machine_id() {
+    let req = RenewLicenseRequest {
+        tenant_id: "t1".into(),
+        api_key: "k".into(),
+        key: "OZ-KEY".into(),
+        machine_id: "abc123def456ghi".into(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(
+        json.contains("\"machine_id\":\"abc123def456ghi\""),
+        "machine_id must ride the renewal body, got: {json}"
+    );
+}
+
+/// An OLDER client sends no `machine_id`. It must still parse, and land as an
+/// empty string — which the server reads as "cannot decide", never as a
+/// refusal. This is the fail-open half of §2.5: adding the field may only
+/// ever ADD a refusal.
+#[test]
+fn renew_license_request_without_machine_id_parses_as_empty() {
+    let json = r#"{"tenant_id":"t1","key":"OZ-KEY"}"#;
+    let req: RenewLicenseRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        req.machine_id, "",
+        "a pre-#57 client must parse, with no device identity asserted"
+    );
 }
 
 #[test]
@@ -322,7 +353,7 @@ fn grace_deadline_fails_closed_on_unknown_tiers() {
 /// Proves the duplicate is closed without damaging the machine-bound lane.
 #[test]
 fn subscription_store_leaves_the_cleartext_column_empty_and_the_sealed_row_intact() {
-    let conn = kasirmu_core::migrations::fresh_db();
+    let conn = crate::testing::temp_conn();
     let machine_id = "MACHINE-FOR-CLEARTTEXT-COPY-TEST";
     let plaintext = "oz-live-API-KEY-9f2c1d";
 

@@ -9,6 +9,7 @@ import {
   type ListSyncConflictsArgs,
   type SyncConflictDto,
 } from '@/api/syncConflicts';
+import { SegmentedTabs } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { l10nErrorMessage } from '@/utils/app-error';
 
@@ -149,24 +150,20 @@ export function SyncConflictReviewScreen() {
 
       {/* `div`, not `nav`: jsx-a11y rejects an interactive role on a
           landmark element, and the tablist needs an accessible name. */}
-      <div className="sync-conflict-review__tabs" role="tablist" aria-label={l10n.getString('sync-conflicts-title')}>
-        {SEVERITY_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={severity === tab.id}
-            className={
-              severity === tab.id
-                ? 'sync-conflict-review__tab sync-conflict-review__tab--active'
-                : 'sync-conflict-review__tab'
-            }
-            onClick={() => setSeverity(tab.id)}
-          >
-            <Localized id={tab.key}>{tab.label}</Localized>
-          </button>
-        ))}
-      </div>
+      {/* This strip had no CSS of its own — the two `sync-conflict-review__tab*
+          classes were unstyled, so it rendered as raw browser buttons. The
+          shared segmented control is what gives it a look, and the hook class
+          below is only for anything this screen wants to add later. */}
+      <SegmentedTabs
+        className="sync-conflict-review__tabs"
+        ariaLabel={l10n.getString('sync-conflicts-title')}
+        items={SEVERITY_TABS.map((tab) => ({
+          value: tab.id,
+          label: <Localized id={tab.key}>{tab.label}</Localized>,
+        }))}
+        activeValue={severity}
+        onSelect={setSeverity}
+      />
 
       {error ? <p className="sync-conflict-review__error">{error}</p> : null}
       {loading ? (

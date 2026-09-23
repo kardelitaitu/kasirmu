@@ -23,7 +23,9 @@ vi.mock('@/components/Toast', () => ({
 vi.mock('@/api/license', () => ({
   activateLicense: vi.fn(),
   getMachineId: vi.fn(),
-  getHardwareFingerprint: vi.fn()
+  getHardwareFingerprint: vi.fn(),
+  startDevicePairing: vi.fn(),
+  pollDevicePairing: vi.fn(),
 }));
 
 vi.mock('@/api/system', () => ({
@@ -65,7 +67,12 @@ vi.mock('@fluent/react', () => ({
         'auth-ip-unknown': 'Unknown',
         'auth-ip-detecting': 'Detecting...',
         'staff-login-connection-auth': 'Auth',
-        'staff-login-connection-sync': 'Sync'
+        'staff-login-connection-sync': 'Sync',
+        'auth-pair-success': 'Device paired successfully!',
+        'auth-pair-code-label': 'Pairing Code',
+        'auth-pair-waiting': 'Waiting for you to claim on your phone…',
+        'auth-pair-expired': 'Pairing code expired. Click to refresh.',
+        'auth-pair-refresh': 'Refresh Code',
       };
       return (map as Record<string, string>)[id] || id;
     }
@@ -103,6 +110,64 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     vi.mocked(activateLicense).mockResolvedValue(true);
     mockClipboardReadText.mockResolvedValue('clipboard-text');
   });
+  // ── A rejected submit marks the field it is about ───────────────────
+  //
+  // The banner names the rule ("Invalid email format") but not which control it
+  // refers to, and with two text fields on screen nothing distinguished the bad
+  // one — so a screen-reader user got a message with no field attached.
+
+  describe('validation marks the offending field', () => {
+    // The handler is async, so the mark lands after a microtask: every
+    // assertion here waits rather than reading synchronously.
+
+    it('marks only the email field when the email is malformed', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('not-an-email', '08123456789', 'KEY123');
+      clickSubmit();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Email Address/i)).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+      // The field that was fine must not be accused.
+      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+    });
+    it('marks only the phone field when the phone is too short', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('test@test.com', '123', 'KEY123');
+      clickSubmit();
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Phone Number/i)).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+      expect(screen.getByLabelText(/Email Address/i)).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('disables submit rather than marking a whitespace-only phone', () => {
+      // The button's own guard is `!phone.trim()`, so a whitespace-only phone
+      // never reaches handleActivate: the disabled control IS the feedback, and
+      // an aria-invalid mark would be asserting a branch that does not run.
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      fillForm('test@test.com', '   ', 'KEY123');
+
+      expect(screen.getByRole('button', { name: /Activate License/i })).toBeDisabled();
+      expect(screen.getByLabelText(/Phone Number/i)).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('clears the mark as soon as the user edits that field', async () => {
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+      const email = screen.getByLabelText(/Email Address/i);
+      fillForm('not-an-email', '08123456789', 'KEY123');
+      clickSubmit();
+      await waitFor(() => {
+        expect(email).toHaveAttribute('aria-invalid', 'true');
+      }, FAST_WAIT);
+
+      fireEvent.change(email, { target: { value: 'fixed@example.com' } });
+
+      expect(email).not.toHaveAttribute('aria-invalid');
+    });
+  });
+
 
   describe('1. Mounting & Lifecycle', () => {
     it('1. getVersion resolves and displays the correct version on mount', async () => {
@@ -693,6 +758,51 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       clickSubmit();
 
       await waitFor(() => expect(activateLicense).toHaveBeenCalledWith('KEY123', 'test@test.com', 'test-machine-id', '08123456789', undefined, undefined, 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'), FAST_WAIT);
+    });
+  });
+
+  describe('8. Tablet Device-Code Pairing (ADR #56 §2.5 / §5 Q1)', () => {
+    it('60. Switches to Pair with Phone tab, starts pairing session, renders QR & Crockford code, and activates on claim', async () => {
+      vi.useFakeTimers();
+      const { startDevicePairing, pollDevicePairing } = await import('@/api/license');
+      vi.mocked(startDevicePairing).mockResolvedValueOnce({
+        code: 'WXYZ7890',
+        poll_token: 'poll-license-123',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=WXYZ7890',
+      });
+      vi.mocked(pollDevicePairing)
+        .mockResolvedValueOnce({ status: 'pending' })
+        .mockResolvedValueOnce({
+          status: 'claimed',
+          tenant_id: 'tenant-paired',
+          email: 'paired@kasir.mu',
+        });
+
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+
+      // Switch to Pair with Phone tab
+      const pairTab = screen.getByRole('tab', { name: /Pair with Phone/i });
+      fireEvent.click(pairTab);
+
+      // Flush microtasks
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(startDevicePairing).toHaveBeenCalled();
+      expect(screen.getByTestId('pairing-code-display')).toHaveTextContent('WXYZ - 7890');
+      expect(screen.getByTestId('pairing-qr-code')).toBeInTheDocument();
+
+      // Advance 3s for poll interval
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(pollDevicePairing).toHaveBeenCalledWith('poll-license-123');
+      expect(mockAddToast).toHaveBeenCalledWith({
+        type: 'success',
+        message: 'Device paired successfully!',
+      });
+      expect(mockOnActivated).toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
   });
 });

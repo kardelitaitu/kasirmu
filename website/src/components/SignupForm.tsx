@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
-import { type Region, setRegion } from '../lib/region';
+import { type Region, getExplicitRegion, setRegion } from '../lib/region';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
-import OtpInput from './OtpInput';
+import OtpInput, { OTP_LABELS } from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
+import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 
 /**
  * Signup form (website-plan.md §5) — the password-first registration path
@@ -50,6 +52,7 @@ export const SIGNUP_FORM_LABELS = [
   'login.orUseEmail',
   'login.resendCode',
   'login.resendCooldown',
+  ...OTP_LABELS,
   ...PASSWORD_FIELD_LABELS,
   ...PASSWORD_STRENGTH_LABELS,
   'signup.agreeBefore',
@@ -58,6 +61,7 @@ export const SIGNUP_FORM_LABELS = [
   'signup.createAccount',
   'signup.email',
   'signup.emailPlaceholder',
+  'signup.validEmailLabel',
   'signup.errorExists',
   'signup.errorRegister',
   'signup.haveAccount',
@@ -81,7 +85,7 @@ interface Props {
 type Step = 'form' | 'code';
 
 const INPUT_CLASS =
-  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-accent';
+  'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
 
 const regionOptions: { value: Region; labelKey: string }[] = [
   { value: 'global', labelKey: 'signup.regionGlobal' },
@@ -91,13 +95,18 @@ const regionOptions: { value: Region; labelKey: string }[] = [
 export default function SignupForm({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // Same late-arrival contract as the login form (see use-runtime-config.ts).
+  useRuntimeConfigArrival();
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
   const [region, setRegionState] = useState<Region>('global');
-  // Read from localStorage after hydration to avoid SSR/client mismatch
+  // Read the persisted choice after hydration to avoid SSR/client mismatch.
+  // Through the region owner rather than localStorage directly: `oz_region` is
+  // spelled in lib/region.ts and nowhere else, so this read cannot name a
+  // different key than setRegion writes.
   useEffect(() => {
-    const saved = localStorage.getItem('oz_region') as Region | null;
+    const saved = getExplicitRegion();
     if (saved && saved !== region) setRegionState(saved);
   }, []);
   const [regionOpen, setRegionOpen] = useState(false);
@@ -197,12 +206,12 @@ export default function SignupForm({ locale, labels }: Props) {
       if (!res.ok) throw new Error('verify-otp failed');
       const data = (await res.json()) as { token?: string };
       if (!data.token) throw new Error('no token');
-      sessionStorage.setItem('oz_session', data.token);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, data.token);
       // Cache the verified email so checkout can prefill it without a
       // round-trip to /me (see paddle.getSessionEmail).
-      sessionStorage.setItem('oz_email', email);
+      sessionStorage.setItem(EMAIL_STORAGE_KEY, email);
       // Persist region for pricing and checkout routing.
-      localStorage.setItem('oz_region', region);
+      setRegion(region);
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorVerify'));
@@ -229,6 +238,7 @@ export default function SignupForm({ locale, labels }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="signup-otp-digit"
+              labels={labels}
             />
           </div>
           {resendSuccess && (
@@ -310,7 +320,10 @@ export default function SignupForm({ locale, labels }: Props) {
           names, and this page is a separate component from AuthForm — so the control has to
           exist here too, not only where sign-in lives. An anchor, not a form: the Worker CSP
           sets form-action 'self'. */}
-      {API && (
+      {/* mounted-gated for the same reason as AuthForm: `API` differs between
+          the SSR pass (undefined) and the hydrated client (runtime config),
+          which caused a React hydration mismatch (#418) on this page. */}
+      {mounted && API && (
         <>
           <a
             href={API + '/api/v1/web/oauth/google/start?next=/' + locale + '/account'}
@@ -332,7 +345,7 @@ export default function SignupForm({ locale, labels }: Props) {
             type="button"
             onClick={() => setRegionOpen(!regionOpen)}
             onBlur={() => setTimeout(() => setRegionOpen(false), 150)}
-            className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left outline-none transition focus:border-accent flex items-center justify-between"
+            className="w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-left transition flex items-center justify-between"
           >
             <span>{t(labels, regionOptions.find((o) => o.value === region)?.labelKey ?? 'signup.regionGlobal')}</span>
             <svg
@@ -382,7 +395,7 @@ export default function SignupForm({ locale, labels }: Props) {
               className={`${inputClass} pr-10`}
             />
             {emailTouched && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label="Valid email">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500" aria-label={t(labels, 'signup.validEmailLabel')}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3.5 8 6.5 11 12.5 5" />
                 </svg>

@@ -182,6 +182,12 @@ fn create_tax_rate_args_without_scope_fields_stay_none() {
 #[test]
 fn scoped_create_round_trips_scope_and_window() {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -262,6 +268,12 @@ fn legacy_create_without_scope_fields_writes_the_global_arm() {
 #[test]
 fn list_tax_rates_dto_joins_scope_and_window() {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {
@@ -306,6 +318,12 @@ fn list_tax_rates_dto_joins_scope_and_window() {
 #[test]
 fn scoped_update_moves_tier_and_window() {
     let conn = kasirmu_core::migrations::fresh_db();
+    // ADR #56 §2.6: `fresh_db()` is deliberately UNPROVISIONED, so the seeded default
+    // location, the `default-*` instances, the legal entity and the free tenant_subscription
+    // row are written by provisioning now. This fixture drives a PROVISIONED store, so it
+    // rebuilds the baseline the migration chain used to seed (same call the rest of the
+    // suite uses for a provisioned store: crates/kasirmu-bridge/src/testing.rs).
+    kasirmu_core::migrations::seed_provisioned_baseline(&conn);
     let created = run_create_tax_rate(
         &conn,
         &CreateTaxRateArgs {

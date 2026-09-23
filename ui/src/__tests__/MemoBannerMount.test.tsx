@@ -76,8 +76,8 @@ function mockSession(roleName = 'cashier') {
 
 // ── Lazy screens both shells import (stubbed — not the test subject) ──
 
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard">Setup Wizard</div>,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow">Provisioning Flow</div>,
 }));
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen">Login</div>,
@@ -109,9 +109,8 @@ vi.mock('@/hooks/useFeatures', () => ({
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true })),
-  completeSetup: vi.fn(),
-  dismissSetupWizard: vi.fn(),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
+  provisionDevice: vi.fn(),
 }));
 
 vi.mock('@/api/license', () => ({

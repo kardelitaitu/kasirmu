@@ -124,18 +124,44 @@ appearance-preview-btn-outline-label = Sekunder
 appearance-preview-badge-label = Aktif
 
 # ── Product Lookup ──
-setup-logo = kasir.mu
-setup-tagline = Point of Sale — Sederhana
-setup-step-store-type = Tipe Toko
-setup-step-payments = Pembayaran
-setup-step-products = Produk
-setup-step-staff = Staf
-setup-step-hardware = Perangkat Keras
-setup-step-business-rules = Aturan Bisnis
-setup-step-data-cloud = Data & Cloud
-setup-step-account = Akun
-setup-step-review = Tinjauan
-setup-step-aria = Langkah { $number }: { $label }
+
+### First-run provisioning (ADR #56 §2.3).
+setup-provision-title = Siapkan terminal ini
+setup-provision-account-section = Akun kasir.mu
+setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
+setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.
+# Label langkah untuk rel progres saat pertama kali dijalankan. Tiga langkah,
+# sesuai tiga keputusan yang benar-benar menjadi syarat pengiriman formulir:
+# cara terminal ditautkan, jenis tokonya, dan siapa yang bisa masuk. Rel ini
+# bukan hiasan — kartunya setinggi ~1420px pada tablet 1366px, jadi tombol kirim
+# dimulai di bawah lipatan layar dan merchant tidak tahu posisinya tanpa rel ini.
+setup-provision-mode-section = Apakah terminal ini ditautkan ke akun Anda?
+setup-provision-step-progress = Langkah { $current } dari { $total }
+setup-provision-step-account = Akun
+setup-provision-step-store = Toko
+setup-provision-step-owner = Pemilik
+setup-mode-local-title = Offline saja
+setup-mode-local-desc = Jaga terminal ini sepenuhnya offline. Tanpa akun, tanpa sinkronisasi — ruang kerja gratis dibuat di perangkat.
+setup-mode-linked-title = Tautkan akun kasir.mu Anda
+setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
+setup-tab-pair = Pasangkan QR
+setup-tab-email = Kode Email
+setup-provision-store-type = Jenis usaha apa ini?
+setup-store-type-simple-retail = Toko
+setup-store-type-simple-retail-blurb = Barcode, tunai, struk, stok, pajak
+setup-store-type-restaurant = Restoran atau kafe
+setup-store-type-restaurant-blurb = Meja, layar dapur, login staf
+setup-provision-location-label = Nama toko
+setup-provision-owner-name-label = Nama Anda
+setup-provision-owner-username-label = Nama masuk
+setup-provision-pin-label = PIN (minimal 4 angka)
+setup-provision-pin-confirm-label = Konfirmasi PIN
+setup-provision-pin-too-short = Gunakan minimal 4 digit.
+setup-provision-pin-mismatch = PIN ini belum cocok.
+setup-provision-submit = Selesaikan penyiapan
+setup-provision-success = Terminal ini siap.
+setup-provision-error = Tidak dapat menyelesaikan penyiapan terminal ini. Silakan coba lagi.
+setup-provision-account-required = Harap tautkan akun kasir.mu Anda sebelum menyelesaikan penyiapan.
 
 setup-account-title = Akun Anda
 setup-account-desc = Opsional. Tautkan POS ini ke akun kasir.mu Anda agar bisa masuk di web dengan Google.
@@ -143,156 +169,41 @@ setup-account-google = Lanjutkan dengan Google
 setup-account-waiting = Menunggu browser Anda…
 setup-account-linked = Tertaut ke { $email }.
 setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lanjutkan tanpa menautkan.
-setup-account-optional = Anda bisa melewati ini. Kunci lisensi Anda tetap menjalankan POS.
+setup-account-retry = Coba lagi
 setup-account-tablet = Gunakan kode yang dikirim ke email akun Anda untuk menautkan perangkat ini.
 setup-account-email = Email akun
+# Label terlihat untuk kolom email/kode di tablet. Sebelumnya hanya ada
+# `placeholder`, yang bukan nama aksesibel: pembaca layar mengumumkan dua kotak
+# teks tanpa label, dan satu-satunya cara menyebutnya adalah lewat placeholder —
+# yang langsung hilang begitu pengguna mengetik.
+setup-account-email-label = Email akun
+setup-account-code-label = Kode verifikasi
 setup-account-send = Kirim kode ke email
-setup-account-sent = Kode terkirim. Kedaluwarsa dalam 15 menit.
 setup-account-code = Kode 6 digit
 setup-account-verify = Verifikasi
+setup-account-sent = Kode terkirim. Kode kedaluwarsa dalam 15 menit.
+setup-account-optional = Anda dapat melewati ini. Kunci lisensi Anda tetap menjalankan POS.
 # Status saat proses (tablet). `setup-account-waiting` di atas menyebut browser dan tetap
 # dipakai kontrol Google, yang memang membuka browser.
 setup-account-sending = Mengirim kode…
 setup-account-verifying = Memeriksa kode…
-setup-progress-aria = Kemajuan setup
-setup-preset-question = Toko seperti apa yang Anda jalankan?
-setup-preset-desc = Pilih preset untuk memulai dengan cepat, atau sesuaikan setiap fitur nanti.
-setup-preset-group-aria = Preset toko
-setup-feature-toggle-aria = Alihkan { $name }
-setup-preset-simple-retail = Ritel Sederhana
-setup-preset-simple-retail-desc = Pindai barcode, keranjang, tunai/kartu/QR, PIN staf, printer nota
-setup-preset-restaurant = Restoran
-setup-preset-restaurant-desc = Meja, KDS, bagi tagihan, QRIS, pendapatan per shift
-setup-preset-full-store = Toko Lengkap
-setup-preset-full-store-desc = Semuanya kecuali sinkronisasi cloud dan loyalitas
-setup-preset-custom = Kustom
-setup-preset-custom-desc = Mulai dari awal — aktifkan sesuai kebutuhan
+# Kegagalan inline untuk jalur email di tablet. `setup-account-failed` di atas
+# adalah kalimat "gagal menautkan" dan salah konteks untuk kode yang sekadar
+# ditolak: belum ada yang tertaut, dan perbaikannya adalah mengetik ulang kodenya,
+# bukan mengulang seluruh penyambungan akun. Masing-masing menyebut langkah yang
+# benar-benar gagal.
+setup-account-send-failed = Kode tidak terkirim. Periksa alamatnya lalu coba lagi.
+setup-account-verify-failed = Kode itu tidak berhasil. Periksa lalu coba lagi, atau kirim ulang.
 
-setup-preset-cafe = Kafe / Toko Roti
-setup-preset-cafe-desc = Layanan cepat dengan layar dapur, tunai+kartu, diskon
-setup-preset-franchise = Waralaba
-setup-preset-franchise-desc = Multi-toko, multi-terminal, restoran + tumpukan admin lengkap
-setup-features-title = { $title }
-setup-features-desc = Aktifkan fitur yang Anda butuhkan. Anda dapat mengubahnya nanti.
-setup-features-group-aria = { $title }
 setup-features-toggle-aria =
     .aria-label = Aktifkan/nonaktifkan { $label }
-setup-features-section-payments = Metode Pembayaran
 
 # Gerbang setup QRIS (pemicu Free→Plus C1 — onboarding)
-setup-qris-label = QRIS (Midtrans)
-setup-qris-available = Terima pembayaran QRIS — sudah termasuk paket Anda.
-setup-qris-included = Termasuk
-setup-qris-upgrade-required = Pembayaran QRIS adalah fitur Plus. Tingkatkan ke Plus untuk menerima QRIS.
-setup-qris-upgrade-cta = Tingkatkan ke Plus
 
-setup-features-section-products = Produk & Stok
-setup-features-section-staff = Manajemen Staf
-setup-features-section-hardware = Perangkat Keras & Peripheral
-setup-features-section-business-rules = Aturan Bisnis
-setup-features-section-data-cloud = Data, Pelaporan & Cloud
-setup-feature-cash-payment = Tunai
-setup-feature-card-payment = Kartu
-setup-feature-multi-currency = Multi-Mata Uang
-setup-feature-inventory-tracking = Stok
-setup-feature-product-variants = Varian
-setup-feature-categories-enabled = Kategori
-setup-feature-staff-login = Login Staf
-setup-feature-staff-roles = Peran Staf
-setup-feature-shift-management = Shift
-setup-feature-audit-log = Log Audit
-setup-feature-barcode-scanning = Barcode
-setup-feature-receipt-printing = Nota
-setup-feature-cash-drawer = Laci Uang
-setup-feature-customer-display = Tampilan Pelanggan
-setup-feature-nfc-reader = NFC
-setup-feature-discount-engine = Diskon
-setup-feature-tax-engine = Pajak
-setup-feature-loyalty-program = Loyalitas
-setup-feature-promotions-engine = Promosi
-setup-feature-product-bundles = Bundel
-setup-feature-reporting = Laporan
-setup-feature-analytics = Analitik
-setup-feature-export-import = Ekspor/Impor
-setup-feature-cloud-sync = Sinkronisasi Cloud
-setup-feature-multi-store = Multi-Toko
-setup-feature-multi-terminal = Multi-Terminal
-setup-feature-plugin-system = Plugin
-setup-feature-inventory-tracking-label = Pelacakan Stok
-setup-feature-product-variants-label = Varian Produk
-setup-feature-shift-management-label = Manajemen Shift
-setup-feature-barcode-scanning-label = Pemindai Barcode
-setup-feature-receipt-printing-label = Pencetak Nota
-setup-feature-nfc-reader-label = Pembaca NFC
-setup-feature-tax-engine-label = Mesin Pajak
-setup-feature-loyalty-program-label = Program Loyalitas
-setup-feature-product-bundles-label = Bundel Produk
-setup-feature-reporting-label = Pelaporan
-setup-feature-export-import-label = Ekspor & Impor
-setup-feature-plugin-system-label = Sistem Plugin
-setup-feature-analytics-label = Analitik
-setup-feature-audit-log-label = Log Audit
-setup-feature-card-payment-label = Kartu
-setup-feature-cash-drawer-label = Laci Kas
-setup-feature-cash-payment-label = Tunai
-setup-feature-categories-enabled-label = Kategori
-setup-feature-cloud-sync-label = Sinkronisasi Cloud
-setup-feature-customer-display-label = Layar Pelanggan
-setup-feature-discount-engine-label = Diskon
-setup-feature-multi-currency-label = Multi-Mata Uang
-setup-feature-multi-store-label = Multi-Toko
-setup-feature-multi-terminal-label = Multi-Terminal
-setup-feature-promotions-engine-label = Promosi
-setup-feature-staff-login-label = Login Staf
-setup-feature-staff-roles-label = Peran Staf
-setup-feature-cash-payment-desc = Terima pembayaran tunai dan lacak laci uang
-setup-feature-card-payment-desc = Terima pembayaran debit dan kartu kredit
-setup-feature-multi-currency-desc = Dukung berbagai mata uang dengan nilai tukar
-setup-feature-inventory-tracking-desc = Lacak tingkat stok per produk dengan peringatan
-setup-feature-product-variants-desc = Varian ukuran, warna, rasa per produk
-setup-feature-categories-enabled-desc = Kelompokkan produk berdasarkan kategori dengan kode warna
-setup-feature-staff-login-desc = Login PIN atau kata sandi untuk kasir
-setup-feature-staff-roles-desc = Tingkat izin pemilik, manajer, kasir
-setup-feature-shift-management-desc = Buka/tutup shift dengan rekonsiliasi tunai
-setup-feature-audit-log-desc = Log tindakan sensitif yang tidak dapat diubah
-setup-feature-barcode-scanning-desc = Pemindaian barcode USB, serial, atau Bluetooth
-setup-feature-receipt-printing-desc = Pencetakan nota USB, serial, atau jaringan
-setup-feature-cash-drawer-desc = Laci uang otomatis melalui GPIO printer
-setup-feature-customer-display-desc = Layar kedua menghadap pelanggan
-setup-feature-nfc-reader-desc = Pembayaran nirsentuh dan pembacaan kartu loyalitas
-setup-feature-discount-engine-desc = Diskon persentase dan jumlah tetap pada item atau keranjang
-setup-feature-tax-engine-desc = Pajak inklusif/eksklusif dengan tarif yang dapat dikonfigurasi
-setup-feature-loyalty-program-desc = Poin pelanggan, tingkatan, dan hadiah
-setup-feature-promotions-engine-desc = Beli-X-dapat-Y, penawaran terbatas waktu, bundel
-setup-feature-product-bundles-desc = Jual beberapa SKU bersama sebagai satu item
-setup-feature-reporting-desc = Laporan penjualan, stok, dan shift
-setup-feature-analytics-desc = Grafik, produk terlaris, peta panas per jam, ekspor CSV
-setup-feature-export-import-desc = Ekspor dan impor data terenkripsi (.ozpkg)
-setup-feature-cloud-sync-desc = Sinkronkan data ke PostgreSQL cloud dengan cadangan
-setup-feature-multi-store-desc = Kelola beberapa lokasi toko
-setup-feature-multi-terminal-desc = Beberapa terminal POS per toko
-setup-feature-plugin-system-desc = Plugin pihak ketiga dan driver kustom
-setup-review-title = Tinjau Pengaturan Anda
-setup-review-desc = Berikut ringkasan konfigurasi Anda. Anda dapat mengubah apa pun nanti.
-setup-review-preset = Preset: { $name }
-setup-review-enabled = Fitur Diaktifkan ({ $count })
-setup-review-disabled = Fitur Dinonaktifkan ({ $count })
-setup-review-none = Tidak Ada
-setup-review-all-on = Semuanya aktif!
-setup-review-more = +{ $count } lagi
-setup-default-currency-label = Mata Uang Default
 
-setup-complete-title = Siap!
-setup-complete-desc = { $preset } POS Anda telah dikonfigurasi dan siap digunakan. Anda dapat menyesuaikan pengaturan kapan saja.
-setup-launch = Luncurkan kasir.mu
-setup-complete-features = { $count } { $count ->
     [one] fitur diaktifkan
     *[other] fitur diaktifkan
 }
-setup-back = Kembali
-setup-skip = Lewati
-setup-finish = Selesaikan Setup
-setup-next = Lanjut
 
 # Live Setup Preview
 lsp-title = Pratinjau Fitur
@@ -421,6 +332,9 @@ settings-save-partial = Sebagian pengaturan gagal disimpan. Coba lagi.
 settings-load-failed = Gagal memuat pengaturan
 settings-retry = Coba Lagi
 settings-sync-not-configured = Sinkronisasi belum dikonfigurasi. Masukkan URL server dan aktifkan sinkronisasi.
+# Pil sinkronisasi di bilah status: perangkat belum punya URL server sama
+# sekali — celah konfigurasi, bukan gangguan jaringan. Sengaja bukan "Luring".
+statusbar-sync-unconfigured-msg = { $name } · Belum dikonfigurasi
 settings-sync-status-idle = Siap
 settings-sync-status-ok = Terhubung
 settings-sync-pending-count = { $count } tertunda
@@ -750,6 +664,10 @@ settings-license-resume-subscription = Lanjutkan langganan
 settings-license-resume-aria = Lanjutkan langganan yang dijeda
 settings-license-resume-success = Langganan dilanjutkan!
 settings-license-resume-failed = Gagal melanjutkan langganan
+# ADR #58 §2.3: Pre-expiry re-authentication window
+settings-license-reauth-banner-title = Pemeriksaan Perpanjangan Langganan Diperlukan
+settings-license-reauth-banner-desc = Langganan Anda berakhir dalam { $days } hari. Hubungkan ke internet untuk melakukan autentikasi ulang dengan server lisensi.
+settings-license-reauth-action = Verifikasi Online Sekarang
 settings-copyright-notice-value = kasir.mu © 2025–2026. Seluruh hak cipta dilindungi.
 
 # ── Toast messages ──
@@ -1139,5 +1057,4 @@ settings-fiscalnum-overview-col-kind = Jenis dokumen
 settings-fiscalnum-overview-col-prefix = Awalan
 settings-fiscalnum-overview-col-current = Nomor terakhir
 settings-fiscalnum-overview-col-updated = Diperbarui
-
 

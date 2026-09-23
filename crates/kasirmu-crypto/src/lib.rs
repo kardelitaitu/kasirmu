@@ -14,6 +14,11 @@ next: none — crate is stable and well-tested | perf: N/A
 //! `nonce` is 12 bytes (random), `ciphertext` is the encrypted
 //! plaintext, and `tag` is the 16-byte GCM authentication tag
 //! (appended automatically by `aes-gcm`).
+//!
+//! Reads are branch-tolerant: a row is accepted under whichever candidate
+//! derivation authenticates it - the family's legacy derivation or the
+//! `OZ_MASTER_KEY` HMAC derivation. Writes still use exactly one derivation,
+//! so bytes written today are unchanged.
 
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, aead::generic_array::GenericArray};
 use hmac::{Hmac, Mac};
@@ -146,6 +151,39 @@ fn portable_key_with(
     }
 }
 
+/// Every key a `domain` row may have been written under, in try order:
+/// the family's `legacy` derivation first, then the master-key HMAC
+/// derivation when `OZ_MASTER_KEY` decodes to 32 bytes.
+///
+/// This is [`portable_key`] widened for READING only. Writes still call
+/// [`portable_key`], so bytes written today are byte-identical; a reader
+/// that finds `OZ_MASTER_KEY` newly set can still open rows the legacy
+/// branch wrote before it existed.
+fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8; 32]> {
+    let mut keys = vec![legacy(domain)];
+    if let Some(master) = master_key_from_env() {
+        keys.push(hmac_key(&master, domain));
+    }
+    keys
+}
+
+/// Internal: decrypt with the first candidate key that authenticates.
+///
+/// AES-GCM tag verification is the only oracle: a key that did not write the
+/// row fails it, and the wrong-key acceptance probability is negligible - so
+/// no marker column, version byte or salt row is needed. The error returned
+/// is the last candidate's, which names no key and no domain.
+fn decrypt_with_candidates(encrypted_b64: &str, keys: &[[u8; 32]]) -> Result<String, CryptoError> {
+    let mut last_err = CryptoError::Internal("no candidate decryption key".into());
+    for key in keys {
+        match decrypt(encrypted_b64, key) {
+            Ok(plaintext) => return Ok(plaintext),
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
+}
+
 // ── Domain-separation prefixes ───────────────────────────────────────
 
 /// SMTP password domain-separation prefix.
@@ -253,8 +291,10 @@ pub fn encrypt_sync_api_key(plaintext: &str) -> Result<String, CryptoError> {
 
 /// Decrypt a sync API key previously encrypted with [`encrypt_sync_api_key`].
 pub fn decrypt_sync_api_key(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(SYNC_API_KEY_DOMAIN, |d| derive_key(d, "static"));
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(SYNC_API_KEY_DOMAIN, |d| derive_key(d, "static")),
+    )
 }
 
 /// Encrypt a sync terminal secret for at-rest storage (static key, portable).
@@ -265,8 +305,10 @@ pub fn encrypt_sync_terminal_secret(plaintext: &str) -> Result<String, CryptoErr
 
 /// Decrypt a sync terminal secret previously encrypted with [`encrypt_sync_terminal_secret`].
 pub fn decrypt_sync_terminal_secret(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(SYNC_TERMINAL_SECRET_DOMAIN, |d| derive_key(d, "static"));
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(SYNC_TERMINAL_SECRET_DOMAIN, |d| derive_key(d, "static")),
+    )
 }
 
 /// Encrypt a PG sync password for at-rest storage (static key, portable).
@@ -277,8 +319,10 @@ pub fn encrypt_pg_sync_password(plaintext: &str) -> Result<String, CryptoError> 
 
 /// Decrypt a PG sync password previously encrypted with [`encrypt_pg_sync_password`].
 pub fn decrypt_pg_sync_password(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(PG_SYNC_PASSWORD_DOMAIN, |d| derive_key(d, "static"));
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(PG_SYNC_PASSWORD_DOMAIN, |d| derive_key(d, "static")),
+    )
 }
 
 /// Encrypt a rate sync API key for at-rest storage (static key, portable).
@@ -289,8 +333,10 @@ pub fn encrypt_rate_api_key(plaintext: &str) -> Result<String, CryptoError> {
 
 /// Decrypt a rate sync API key previously encrypted with [`encrypt_rate_api_key`].
 pub fn decrypt_rate_api_key(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(RATE_API_KEY_DOMAIN, |d| derive_key(d, "static"));
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(RATE_API_KEY_DOMAIN, |d| derive_key(d, "static")),
+    )
 }
 
 /// Encrypt a LAN server PSK for at-rest storage (static key, portable).
@@ -301,8 +347,10 @@ pub fn encrypt_lan_psk(plaintext: &str) -> Result<String, CryptoError> {
 
 /// Decrypt a LAN server PSK previously encrypted with [`encrypt_lan_psk`].
 pub fn decrypt_lan_psk(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(LAN_PSK_DOMAIN, |d| derive_key(d, "static"));
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(LAN_PSK_DOMAIN, |d| derive_key(d, "static")),
+    )
 }
 
 /// Encrypt a user-profile sensitive field for at-rest storage (static key).
@@ -317,8 +365,10 @@ pub fn encrypt_profile_field(plaintext: &str) -> Result<String, CryptoError> {
 /// Fails closed: corrupted, truncated, or cross-domain ciphertext returns
 /// an error — never plaintext.
 pub fn decrypt_profile_field(encrypted_b64: &str) -> Result<String, CryptoError> {
-    let key = portable_key(PROFILE_AT_REST_DOMAIN, derive_static_key);
-    decrypt(encrypted_b64, &key)
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(PROFILE_AT_REST_DOMAIN, derive_static_key),
+    )
 }
 
 // ── Internal encrypt / decrypt ───────────────────────────────────────

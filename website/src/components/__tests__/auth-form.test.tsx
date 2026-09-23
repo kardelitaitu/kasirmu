@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { labelMap } from '../../i18n';
+import { RUNTIME_CONFIG_EVENT } from '../../lib/runtime-config';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -574,6 +575,57 @@ describe('AuthForm — open redirect guard', () => {
     }
   });
 
+  it('uses the token this login just minted, not a cookie token (why the local read is exempt)', async () => {
+    // AuthForm keeps its own sessionStorage read rather than routing through the
+    // cookie-first owner (src/lib/session.ts). This test pins the reason: the
+    // read is not "is the user signed in?" but "hand the dashboard the identity
+    // I just authenticated". A stale cookie for a DIFFERENT account must not win
+    // — cookie-first resolution here would send the dashboard a session for the
+    // previous user. If this fails because the read was rerouted through
+    // getSessionToken(), fix the routing, not the assertion.
+    const authHeaders: string[] = [];
+    mockFetch((url, init) => {
+      if (url.includes('verify-otp')) return okJson({ token: 'tok-fresh-identity' });
+      // An older, different identity still sitting in the httpOnly cookie.
+      if (url.includes('/__oz/session')) return okJson({ token: 'cookie-old-identity' });
+      if (url.includes('exchange-issue')) {
+        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization ?? ''));
+        return okJson({ code: 'code-fresh' });
+      }
+      return okJson({ ok: true });
+    });
+    let capturedHref = '';
+    Object.defineProperty(window, 'location', {
+      value: {
+        get href() { return capturedHref; },
+        set href(v: string) { capturedHref = v; },
+        search: '?redirect=https://dashboard.kasir.mu/settings',
+        pathname: '/en/login',
+      },
+      writable: true,
+    });
+    const { container, root } = await renderAuthForm('en');
+    try {
+      setEmail(container, 'alice@example.com');
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      setCode(container, '123456');
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      expect(sessionStorage.getItem('oz_session')).toBe('tok-fresh-identity');
+      expect(authHeaders).toEqual(['Bearer tok-fresh-identity']);
+      expect(capturedHref).toContain('code=code-fresh');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+      Object.defineProperty(window, 'location', { value: { href: '', search: '', pathname: '/en/login' }, writable: true });
+    }
+  });
+
   it('lands on the clean dashboard URL when the exchange fails (no token in URL)', async () => {
     // WEB-1: if /exchange-issue errors (or returns no code), the user is
     // never stranded, but the removed `?token=` fallback must not come
@@ -680,6 +732,35 @@ describe('AuthForm — not-configured state', () => {
       // The Google entry is hidden with it: it navigates to the licence host, so
       // offering it without an API URL would only produce a 404 for the user.
       expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).toBeNull();
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('reveals the form when the config arrives after hydration', async () => {
+    // A slow /__oz/runtime-config.js hydrates the island first: the notice must
+    // give way to the real form without a reload once the config announces the
+    // URL, and the form must be the usable one (an email field plus the Google
+    // entry the notice withholds).
+    const env = import.meta.env as Record<string, unknown>;
+    env.PUBLIC_LICENSE_API_URL = '';
+    window.__OZ_CONFIG__ = undefined;
+    const { container, root } = await renderAuthForm('en');
+    try {
+      assertText(container, 'The auth API is not configured on this deployment.');
+
+      act(() => {
+        window.__OZ_CONFIG__ = { licenseApiUrl: 'https://late.example' };
+        window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      assertNoText(container, 'The auth API is not configured on this deployment.');
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+      expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).not.toBeNull();
     } finally {
       act(() => root.unmount());
       container.remove();

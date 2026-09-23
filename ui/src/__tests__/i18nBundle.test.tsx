@@ -188,13 +188,8 @@ const nativeSpeakerPins: Pin[] = [
   { key: 'restaurant-toggle-fullscreen', en: 'Toggle Fullscreen', id: 'Aktifkan/nonaktifkan layar penuh' },
   { key: 'retail-shortcut-fullscreen', en: 'Toggle Fullscreen', id: 'Aktifkan/nonaktifkan layar penuh' },
   { key: 'pos-cart-service-toggle-aria', en: 'Toggle service charge', id: 'Aktifkan/nonaktifkan biaya layanan' },
-  {
-    key: 'setup-features-toggle-aria',
-    attr: 'aria-label',
-    args: { label: 'Payments' },
-    en: 'Toggle Payments',
-    id: 'Aktifkan/nonaktifkan Payments',
-  },
+  // `setup-features-toggle-aria` was removed with the Setup Wizard (ADR #56 §2.3
+  // retirement, 2026-09-23). It was the wizard's per-row toggle aria-label.
   { key: 'settings-sync-enabled-aria', en: 'Toggle cloud sync', id: 'Aktifkan/nonaktifkan sinkronisasi cloud' },
   { key: 'appearance-hw-accel-aria', attr: 'aria-label', en: 'Toggle hardware acceleration', id: 'Aktifkan/nonaktifkan akselerasi perangkat keras' },
   {

@@ -146,3 +146,25 @@ pub async fn create_backup_to(
         .await
         .map_err(Into::into)
 }
+
+// ── Command: export without session (ADR #58 §4a Q-A option 3) ───
+
+/// Export data WITHOUT a session — the read-only local twin for revoked tenants.
+///
+/// Mirrors the desktop's `export_data_without_session`. Registered on tablet so
+/// that a revoked tenant can still retrieve their data when §2.5 has invalidated
+/// all sessions. Read-only and local-only by construction: shares `export_data`'s
+/// body in the bridge, so it cannot import, mutate, or reach the network.
+///
+/// ADR #49 applies verbatim. This shim adds one `no_session_resolution` row to the
+/// registration-gate ledger — a published ceiling, not a silent exception.
+#[command]
+pub async fn export_data_without_session(
+    args: ExportDataArgs,
+    state: State<'_, AppState>,
+) -> Result<ExportDataResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::data::export_data_without_session(&ctx, args)
+        .await
+        .map_err(Into::into)
+}

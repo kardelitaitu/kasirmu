@@ -2,7 +2,8 @@
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section D)
 crate: kasirmu-app | status: SAFE | lint: CLEAN
 findings: staff IPC surface fail-closed end-to-end — legacy unscoped commands (list_staff/create_staff/update_staff/list_roles) are permission-denied tombstones (ADR #7); every scoped command gates (STAFF_READ reads, STAFF_CREATE + C1.1 tier limit on create, STAFF_UPDATE on update, STAFF_READ on role list); enforce_role_assignment_policy (STAFF-02/10) identical across shells: Owner-role assignment needs staff:manage_roles, no self-promotion, last-active-owner lock; bootstrap_owner is the only ungated command (first-run bootstrap by design) | REV 2026-09-16 (DSH agents-3, IPC-parity): all four unscoped names in that parenthetical are GONE from this file, not merely denied. list_staff had already gone; create_staff, update_staff and list_roles were retired here after the parity leg showed each registered in neither shell, unnamed by any UI code and uncalled by production Rust, with no test and no ledger row naming them. Each body was Err(PermissionDenied("legacy unscoped staff commands are disabled; use X_scoped")) - a refusal behind a door that generate_handler! never opened, so deleting it removes no reachable behaviour and no coverage. The scoped trio (list_staff_scoped at STAFF_READ, create_staff_scoped at STAFF_CREATE + C1.1, update_staff_scoped at STAFF_UPDATE) and bootstrap_owner are untouched, and the STAFF-02/10 role-assignment policy they share is unchanged. The sentence above stands as the 31-08-26 reading it was.
-next: STAFF_DELETE has no desktop/tablet IPC consumer (registered + sensitive; deactivation rides STAFF_UPDATE) — confirm the cloud/CLI consumer in Section G | perf: fine
+next: none | perf: fine
+REV 2026-09-21 (DSH staff-trash): the REV above said STAFF_DELETE had no desktop/tablet consumer. It has three now — delete_staff_scoped, restore_staff_scoped and list_staff_trash_scoped, all gated on it — so the reserved-key note that G-3 left is discharged for this shell. Editing the stamp here rather than adding a second audit line, whose crate/status fields would go stale on the same file.
 */
 //! Staff management commands — list, create, update staff members and roles.
 //!
@@ -183,6 +184,72 @@ pub async fn list_role_holders_scoped(
         .map_err(Into::into)
 }
 
+/// Move a staff member to the trash (the soft delete, 90-day retention window).
+///
+/// The first enforcement consumer of `staff:delete`, which had none until now.
+#[tauri::command]
+pub async fn delete_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::delete_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a staff member back out of the trash.
+///
+/// They come back INACTIVE — reactivating is the separate, audited step.
+#[tauri::command]
+pub async fn restore_staff_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<StaffMemberDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_staff_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The staff trash, newest first. Runs the 90-day purge sweep before listing.
+#[tauri::command]
+pub async fn list_staff_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<StaffMemberDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_staff_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// Take a custom role back out of the trash.
+#[tauri::command]
+pub async fn restore_role_scoped(
+    id: String,
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<RoleDto, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::restore_role_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
+/// The role trash, newest first. Runs the 90-day purge sweep before listing.
+#[tauri::command]
+pub async fn list_role_trash_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<RoleDto>, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::staff::list_role_trash_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
 /// Create a staff member. Caller identity is resolved from the session token.
 ///
 /// STAFF-02: enforces the role-assignment hierarchy (only Owner-level

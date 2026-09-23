@@ -12,7 +12,10 @@
 //! Money is fixed-point [`Money`] (i64 minor units). A payment is a
 //! two-row write (insert a `payable_payments` history row + accumulate
 //! `payables.paid_minor`) and runs in one transaction, so a crash can never
-//! record a payment that the payable does not reflect.
+//! record a payment that the payable does not reflect. Creation is atomic in
+//! the same way: the amount/supplier checks and the INSERT share one
+//! transaction, so a row exists only if every check passed (see
+//! [`Store::create_payable`]).
 
 use rusqlite::{OptionalExtension, params};
 
@@ -30,7 +33,24 @@ impl Store<'_> {
     /// Create a payable (a debt owed to a supplier). The id, timestamps,
     /// `status = open`, and `paid = 0` are assigned here; the caller supplies
     /// the commercial facts via [`NewPayable`].
+    ///
+    /// The checks and the INSERT are ONE unit: the transaction is opened
+    /// before the first check, so a payable row can only exist if every check
+    /// passed, and a refused create leaves nothing behind (no row, no open
+    /// transaction). Callers that already hold a transaction on this
+    /// connection MUST use [`Self::create_payable_in_tx`] instead to avoid a
+    /// nested `BEGIN` (same split as `update_user`/`update_user_in_tx`).
     pub fn create_payable(&self, input: &NewPayable) -> Result<Payable, CoreError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let payable = Store::new(&tx).create_payable_in_tx(input)?;
+        tx.commit()?;
+        Ok(payable)
+    }
+
+    /// The body of [`Self::create_payable`], writing on `self.conn` WITHOUT
+    /// opening a transaction — the caller must already hold one on this
+    /// connection.
+    pub fn create_payable_in_tx(&self, input: &NewPayable) -> Result<Payable, CoreError> {
         if input.tenant_id.trim().is_empty() {
             return Err(CoreError::Validation {
                 field: "tenant_id",

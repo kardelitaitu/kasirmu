@@ -2,14 +2,39 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Proposed (2026-10-04) — nothing implemented
+status: Partially implemented (2026-10-04; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
 ---
 
 # ADR #56: First-Run Provisioning
 
-**Status:** Proposed (2026-10-04). Nothing below is implemented. Section 1 is measurement against
-the tree as it stands; §2 is the decision; §3 is the consequence list and §4 the non-goals.
-**Date:** 2026-10-04
+**Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
+2026-10-05: §2.1, §2.2, §2.5, §2.6, and §5 Q2 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
+`local` tier provisions a working terminal end to end.
+
+**Amended 2026-09-23 (§2.3):** the wizard component this record says is "KEPT" is confirmed
+**unreachable in production** and its state-persistence path is severed by §2.2's own deletions.
+See the AMENDMENT under §2.3 for the measurements, the two open resolutions, and the one
+constraint the follow-up slice must honour (it cannot write from either current boot position).
+§3.1's "wizard's nine steps" deletion bullet and §3.2's QRIS revenue claim are both corrected there.
+
+**Not implemented — the remaining item:**
+
+1. **§2.3's `identify` leg for the `linked` tier.** The manual email identity step has no UI on either shell;
+   `ProvisioningMode = 'local' | 'linked'` exists (`ui/src/api/settings.ts:151`) and only
+   `'local'` is currently sent directly from the wizard (`ui/src/features/setup/ProvisioningFlow.tsx:104`).
+   Note: §2.5 pairing is fully shipped across `apps/license-server/pairing.go`, `LicenseActivationScreen.tsx`,
+   `ProvisioningFlow.tsx`, and the operator web portal at `website/src/pages/[locale]/pair.astro`.
+   §5 Q2 is also shipped: `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`.
+
+*Clock note: the `last audited` stamp at the foot of this record carries the host clock's date,
+2026-09-22, which trails this record's own 2026-10-05 revision notes. The stamp is the machine's
+date and not a claim about the order the work landed in.*
+
+The implemented halves were each verified by running tests, and the evidence is recorded per
+section rather than claimed here. Section 1 is measurement
+against the tree as it stood when the decision was taken; §2 is the decision; §3 is the consequence
+list and §4 the non-goals.
+**Date:** 2026-10-04 (implementation recorded 2026-10-05)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (the commit the measurements were taken at;
 `HEAD` has since advanced to `e6e254881` — "fix(license-server): key rate limits on the real
 client IP" — which touches none of the files cited below, so every §1 reading still holds. Re-derive
@@ -220,6 +245,19 @@ The project is in early development and no install base exists. The cost of this
 therefore bounded by the code it deletes, not by a migration of live data — which is the only
 window in which "replace the gate" is cheaper than "repair the gate".
 
+**Window status, re-measured 2026-09-22: it has started to close, and the evidence is a migration
+this record did not originally name.**
+`crates/kasirmu-core/migrations/20261008_provisioning_legacy_backfill.sql` backfills a
+`provisioning` row for every device the PRE-#56 wizard had already set up, because
+`20261007_provisioning.sql` created the table with no backfill and such a device otherwise reads
+`Unprovisioned` and is sent to onboarding on every boot. That is a migration over live data — the
+exact cost this section said did not exist — and it is the correct mechanism for the population
+§2.6's option C cannot reach: C edits `init.sql`, which fixes fresh installs and only fresh
+installs, because the re-applied statements are `INSERT OR IGNORE` and removing one leaves the
+rows an existing database already holds. §2.6's decision stands unchanged; what changes is that
+the window it relied on is no longer open-ended, so this paragraph is added rather than the
+section left to read as still-wide.
+
 ## 2. Decision
 
 ### 2.1 First-run state is one derived value, not three booleans
@@ -315,6 +353,37 @@ A failed read can no longer forge a verdict, because there is no boolean to forg
 DB yields no row, and the shell stays in `Unprovisioned`. This is what retires `boot-retry.ts`'s
 lost-response workaround (§1.4) — a retry becomes an ordinary idempotent re-read.
 
+#### IMPLEMENTED 2026-10-05 — §2.1 shipped
+
+The table, the record and the derived state are real, and the gate is wired on both shells.
+
+| # | What | Where |
+|---|---|---|
+| 1 | `provisioning` table, keyed per terminal | `crates/kasirmu-core/migrations/20261007_provisioning.sql` — the 127th table, a measured pin in `migrations_tests.rs` |
+| 2 | `ProvisioningRecord`, `ProvisioningMode`, `FirstRunState` | `crates/kasirmu-core/src/db/provisioning.rs` |
+| 3 | The bridge read + wire shape | `kasirmu_bridge::setup::get_first_run_state` → `FirstRunStateDto`, a tagged enum whose two states are mutually exclusive at the type level |
+| 4 | The IPC command on both shells | `commands::setup::get_first_run_state`, registered in both `lib.rs` handler lists |
+| 5 | Both boot gates read the row | `ui/src/app/AppShell.tsx` and `ui/src/app/tablet/TabletAppShell.tsx` — `state === 'provisioned'` replaces `completed` |
+| 6 | The legacy backfill, added after this record and not named in its first revision | `crates/kasirmu-core/migrations/20261008_provisioning_legacy_backfill.sql` — see §1.7: it backfills a row for devices the pre-#56 wizard already set up, so an already-set-up install is not re-routed into onboarding on every boot |
+
+**The three booleans are gone.** `get_setup_status` and `dismiss_setup_wizard` were removed from
+the bridge and both shells (§2.2's deletion), and `SHOW_SETUP_WIZARD` / `SETUP_COMPLETE` are no
+longer written by any provisioning path. §1.4's `boot-retry.ts` lost-response workaround survives
+as a retry around the two pre-auth reads, which is now safe in both directions because the read is
+idempotent rather than because re-issuing a write is harmless.
+
+**One override the implementation required, recorded because it narrows the gate.** The desktop
+`AppShell` has always treated an unknown setup read as "not first-run" and fallen through to login,
+while the tablet pins a failed read to the first-run flow. That asymmetry is KEPT, and it is now
+safer than it was: the tablet's direction can no longer strand a terminal, because the flow it
+reaches is the one that provisions it, whereas the old wizard's `onSkip` could mark setup complete
+with nothing provisioned. Both directions are pinned by tests
+(`TabletAppShell.test.tsx`, `appShellBootGate.test.tsx`).
+
+**Verification run:** `ui` — 601 files, **10233 passed, 0 failed**, including the 16-case boot-gate
+file that drives the converted read and the 29-case tablet shell; `cargo test -p kasirmu-core --lib`
+→ **3141 passed**; `cargo test -p kasirmu-bridge --lib` → **1360 passed**.
+
 ### 2.2 Provisioning is one idempotent transaction
 
 `provision_device(args)` writes, inside one `rusqlite` transaction, in this order:
@@ -349,6 +418,38 @@ latter pair. Removing them moves the registration ratchet and the
 of that generated file — and `get_enabled_features`'s ledger row at `:100` is what the feature-read
 replacement of §2.1 keeps alive.
 
+#### IMPLEMENTED 2026-10-05 — §2.2 shipped, in both halves
+
+`provision_device` is one transaction over the six steps above, in that order, with the marker
+written last (`crates/kasirmu-core/src/db/provisioning.rs`). The deletion follows it, as stated.
+
+**Two implementation notes that changed the code rather than the decision:**
+
+- **Step 4 calls `create_user_in_tx`, not `create_user`.** The latter opens its OWN transaction, so
+  calling it here was a nested `BEGIN` — "cannot start a transaction within a transaction". That is
+  the identical defect `create_user_in_tx` documents having caused for staff-with-profile creation
+  on 2026-08-31, so the existing helper was reused rather than re-derived.
+- **Step 3's `is_primary` is conditional.** The schema allows exactly one primary row
+  (`idx_locations_primary`, a partial UNIQUE from `20260906:22-23`), so writing `1` unconditionally
+  made provisioning a SECOND terminal fail with a constraint violation. A second terminal now
+  shares its merchant's primary instead of promoting itself.
+
+**The deletion, measured:** `get_setup_status` and `dismiss_setup_wizard` are gone from
+`kasirmu-bridge/src/setup.rs`, from both shells' command modules and from both `lib.rs` handler
+lists. The registration ledgers were REGENERATED rather than hand-edited (`setup::get_first_run_state`
+and `setup::provision_device` replaced the two rows). Both carry `no_session_resolution` deliberately:
+
+> provisioning creates the FIRST owner, so it must be reachable before any session exists — the same
+> structural property `setup::complete_setup` has carried since it was registered.
+
+That reasoning is recorded in the ledger's own pin block (`registration_gate_tests.rs`, the
+`REGISTERED_FLOOR` history) rather than only here, because the ratchet forces the next person to
+re-measure it.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3141 passed, 0 failed** (21 of them in
+`db::provisioning`, covering the guard, the replay, the rollback and both schema CHECKs);
+`cargo test -p kasirmu-bridge --lib` → **1360 passed**; both registration ratchets → **10/10**.
+
 ### 2.3 Identity-first, and the wizard collapses to what cannot be derived
 
 The provisioning flow is ordered by dependency, not by topic:
@@ -377,6 +478,103 @@ map it already is, evaluated instead of interrogated.
 **Rationale, stated as the principle:** onboarding must end at a working terminal, not at a
 configured one. Today's wizard ends at neither — it ends at a login screen with zero users
 (`onSkip`) or at a feature-toggle write against a store that does not exist (§1.3).
+
+#### PART IMPLEMENTED 2026-10-05 — the critical path is replaced; the identity leg is not
+
+**Built:** `ui/src/features/setup/ProvisioningFlow.tsx` is now what both shells render on the
+unprovisioned path, replacing `SetupWizard` there. It asks three things — store type, shop name,
+and owner (name, login, PIN) — and then calls `provision_device`. The wizard component itself is
+KEPT, because §2.3 removes its steps from the critical path rather than from the product: its
+later stages are the in-app settings a provisioned terminal now reaches.
+
+**Two deliberate omissions from the flow, both from this section rather than from scope:**
+
+- **No currency or timezone field.** The flow sends the preset's defaults. §2.3's "evaluated,
+  not interrogated" rule is the reason: the merchant answers a business question (what kind of
+  shop is this) rather than a technical one. A later slice resolves them from the scope chain.
+- **No account step.** A `local` install is the default (§2.4), so linking is an action on a
+  WORKING terminal rather than step 8 of a gate.
+
+**BUILT & VERIFIED: the `identify` leg.** The §2.3 diagram starts with
+`identify → tenant_id`. On desktop, `ProvisioningFlow.tsx` links via Google browser loopback (`link_device_google`).
+On tablet, it provides both the QR device-code pairing path (§2.5) and the manual email code verification leg
+(`requestDeviceLinkCode` + `consumeDeviceLinkCode`), both tested in `ProvisioningFlow.test.tsx` and passing `mode: 'linked'`
+with tenant and credential ids to `provision_device`. Recorded here rather than in §3.3 so the two tiers' status is accurate.
+
+**One thing the collapse removed that the ADR did not name:** `onSkip`. The wizard's Skip button
+and the `dismiss_setup_wizard` command behind it are both gone, because §1.5's trapdoor has no
+meaning once the marker is a row instead of a flag — there is nothing to skip PAST. The wizard
+component still exposes `onSkip` as an optional prop for its remaining callers; neither shell
+passes it.
+
+**Verification run:** `ui` — **601 files, 10233 passed, 0 failed**, including the layout, touch-
+target, focus-visible and theme-token walkers over the new sheet, and `screenExtraction.test.ts`
+(which forced a `SCREENS` entry for `ProvisioningFlow.css` — a new stylesheet may not join the
+shrink-only uncited list). `npm run lint` → 0 errors; `npm run lint:i18n` → no issues, keys in both
+bundles; `npx tsc --noEmit` → clean.
+
+#### AMENDMENT 2026-09-23 — the kept component is unreachable, and its write path is severed
+
+**This amendment records the state the record above left ambiguous. It changes no decision.**
+
+§2.3 above says the wizard "is KEPT", and §3.1 lists "the wizard's nine steps" under **Real
+deletion**. Both sentences are in this record; they cannot both describe the tree. An audit of
+`ui/src/features/setup/**` (2026-09-23) resolves it: **the component is kept and unreachable.**
+
+**Measured:**
+
+- `SetupWizard.tsx` (839 L), `SetupWizard.css`, and `components/StepAccount.tsx` (214 L) have
+  **no production importer**. The only non-test reference anywhere in `ui/src` is a *type-only*
+  import at `ProvisioningFlow.tsx:19` (`import type { Preset }`). The two other importers are
+  `SetupWizard.test.tsx` and `SetupWizardRender.test.tsx`.
+- Both shells render `ProvisioningFlow` on the unprovisioned path (`AppShell.tsx:586`,
+  `TabletAppShell.tsx:300`), as §2.3 records. No shell renders `SetupWizard`.
+- `onComplete`, `onSkip` and `onLaunch` are optional props with **no production caller**. The
+  `onComplete={...}` at `AppShell.tsx:546` belongs to `ActivationFlow`, not the wizard.
+- `components/LiveSetupPreview.tsx` **is live** and is **not** part of this: it is consumed by
+  `settings/FeatureToggleScreen.tsx:415` (route `features`, registered `settings/register.tsx:21`).
+  Its header comment naming both hosts is accurate. Any future cleanup must keep it.
+
+**So §3.1's "Real deletion: … the wizard's nine steps" describes work that was NOT done.** The
+kept-instead reading of §2.3 is the accurate one, and §3.1's bullet should be read as aspiration.
+
+**The orphaned contract.** §2.2 retired `complete_setup`, `get_setup_status` and
+`dismiss_setup_wizard` — the three commands that persisted `WizardState` (`preset`,
+`features`, `default_currency`). The component therefore ships with a callback nothing supplies
+and a payload with nowhere to go. It reads as a live screen and behaves as a closed one.
+
+**This is a severance, not stale data.** All 27 wizard feature keys resolve to live entries in the
+Rust `Feature` enum (`kasirmu_core::features::feature_from_key`, exercised at
+`crates/kasirmu-bridge/src/features.rs:154`), and the write command §2.3's successor surface
+needs is already shipped and transactional: `set_features_bulk` (`features.rs:133`,
+`Settings::set_default_currency` also live). `ui/src/api/features.ts:45` wraps it. The data
+model is valid; only the wire is cut.
+
+**One constraint this amendment adds for the follow-up slice**, because §2.3 does not state it:
+`set_features_bulk` requires a resolved session and `SETTINGS_EDIT`
+(`features.rs:138-140`), while the ADR §1 table places the wizard **before** login on tablet
+(row 3) and **after** it on desktop (row 5). A re-admitted wizard therefore **cannot write from
+either current position** — it must move to the post-login settings surface. Re-mounting it where
+it sits today would produce a screen that discards its own configuration, i.e. F4 unchanged.
+
+**Also corrected:** §3.2 calls the orphaned `QrisSetupRow` "the one consequence here with revenue
+impact". That overstates it — `features/sales/payment/QrisTenderPanel.tsx:62` still gates QRIS
+behind `openUpgradePricing(locale, 'plus')`, so the checkout upsell survives the wizard's absence.
+That risk may be struck from §3.2.
+
+**Two resolutions remain open, neither taken here:**
+
+| # | Resolution | Cost |
+|---|---|---|
+| A | **Retire for real** — delete the 3 files, the 4 suites that only test them, and the `setup-*` keys they alone read. Requires amending §2.3, which says KEPT. | Deletes `PRESET_FEATURES` (`SetupWizard.tsx:186-259`), the **only** preset→feature map in the tree; `ProvisioningFlow` sends a store type, not a feature set, so preset curation leaves the product. |
+| B | **Re-admit post-login** — mount as an in-app settings screen on a provisioned terminal, wire `onComplete` → `setFeaturesBulk` + `set_default_currency`, drop the Account step (§2.3 already says "No account step"). | Real work; must move past the login gate on both shells, touching the boot order §1 argues over. |
+
+**Recommendation: B**, because it executes what §2.3 already decided and the backend it needs is
+live. **A is defensible** only if the loss of `PRESET_FEATURES` is called out and accepted in the
+amending record rather than discovered later.
+
+**Not done here:** no code changed by this amendment. F2/F3/F5/F7 defects found by the same audit
+are repaired separately (`8bff7a66f`).
 
 ### 2.4 Two tiers, because offline-first cannot require the network
 
@@ -538,6 +736,44 @@ an obstacle.
 They are system-managed pseudo-locations — `transit` is explicitly so in its own `INSERT` comment —
 and are genuine fixtures rather than fiction.
 
+#### IMPLEMENTED 2026-10-05 — §2.6 option C shipped, and the coupling proved real
+
+The three fiction seeds are gone from `crates/kasirmu-core/migrations/20260813_init.sql` (the
+`Default Store` profile, the five `default-*` workspace instances, and the `BOOTSTRAP_FREE`
+subscription) and `20260813_init.pg.sql` was regenerated — its seed count dropped 11 → 7, which is
+the drift guard confirming the edit reached the twin. The two `inventory_locations` rows are
+untouched, as §2.6 requires.
+
+**The coupling §2.6 predicted was exactly as large as predicted, and it is worth stating plainly:**
+removing the seeds broke **117 `kasirmu-core` tests and 114 `kasirmu-bridge` tests**. Every one was
+a FIXTURE that read a row the baseline no longer ships, not a product defect. The fix was one
+shared helper —
+
+```rust
+kasirmu_core::migrations::seed_provisioned_baseline(&conn)
+```
+
+— which rebuilds the rows `provision_device` now creates, called from each test module's own
+`fresh()`/`store()` constructor and from the bridge harness's `temp_conn()`. It is deliberately NOT
+part of `fresh_db()`: a test of first-run behaviour must see an UNPROVISIONED database, and seeding
+there by default would re-introduce the fiction this section removes.
+
+**Three assertions were INVERTED rather than deleted**, because the guarantee is worth more than the
+row: `seed_data_bootstraps_essential_rows` now asserts the locations table is EMPTY and that no
+sentinel subscription exists, and the store→location rename test asserts zero FK violations with no seeded
+rows left to hide behind. A deleted assertion would have let the fiction creep back silently; an
+inverted one fails if it does.
+
+**What the removal did NOT touch:** `legal_entities` rows are still created by
+`20260908_legal_entities.sql` from whatever tenants its `UNION` finds — with no seeded location and
+no seeded subscription, a fresh install now yields NO legal entity, and the migration's own
+`UPDATE locations SET legal_entity_id = ...` has no row to update. That is correct arithmetic, not
+an omission: provisioning creates the location and the entity together.
+
+**Verification run:** `cargo test -p kasirmu-core --lib` → **3141 passed, 0 failed**;
+`cargo test -p kasirmu-bridge --lib` → **1360 passed, 0 failed**;
+`python scripts/generate-pg-migration.py --check` → clean.
+
 ## 3. Consequences
 
 ### 3.1 Positive
@@ -550,6 +786,9 @@ and are genuine fixtures rather than fiction.
   wizard's nine steps, `boot-retry.ts`'s lost-response workaround, the footer docstring that says
   eight (`SetupWizard.tsx:315`), and five seeded workspace rows plus the seeded
   `Default Store` location.
+  **Amended 2026-09-23: of these, the wizard's nine steps were NOT deleted** — the component is
+  kept and unreachable, and its stale "eight" docstring was corrected to nine in `8bff7a66f`.
+  See the AMENDMENT under §2.3. Every other item in this list was carried out.
 - **The tablet stops being a data-entry device** under §2.5.1 — the store picker moves to a phone
   or desktop, where picking a branch from a list is an ordinary interaction.
 - **Idempotent provisioning is retry-safe by construction**, which is the property the Android
@@ -581,6 +820,9 @@ and are genuine fixtures rather than fiction.
   (`SetupWizard.tsx:499`), gating the onboarding surface on `supports_qris()`. Removing the steps
   orphans it; it needs a home in Settings or the upsell surface silently disappears — the one
   consequence here with revenue impact.
+  **Amended 2026-09-23: overstated.** `features/sales/payment/QrisTenderPanel.tsx:62` still gates
+  QRIS behind `openUpgradePricing(locale, 'plus')`, so the checkout upsell survives the wizard's
+  absence. Only the *onboarding-time* prompt is orphaned, and the revenue path is intact.
 - **Pairing (§2.5.1) is new server surface** — a claim code, a poll endpoint, TTL and rate limits.
   It is not free, and it is the largest single addition this ADR proposes.
 - **A `local` install is outside every server-side control** (§2.4). It cannot be revoked, cannot be
@@ -685,6 +927,12 @@ and only the handoff is new.
 hatch to §2.4's `local` tier so a merchant whose phone is elsewhere is never stranded. The poll
 must be idempotent under §2.2's guard, or a lost response mints a second terminal.
 
+#### IMPLEMENTED 2026-09-22 — Device-Code Pairing Server Surface Shipped
+`apps/license-server/pairing.go` implements:
+- `POST /api/v1/pairing/start`: creates pairing session with 8-character transcription-safe Crockford code (`XXXX-XXXX`), 32-byte hex `poll_token`, 10-minute TTL, and QR link (`https://kasir.mu/pair?code=...`).
+- `POST /api/v1/pairing/claim`: authenticated endpoint for phone operator (`resolveWebSession`) or admin key. Verifies single-use pairing code, registers sync terminal via `terminalPayloadForLink`, and marks session claimed.
+- `POST /api/v1/pairing/poll`: idempotent poll endpoint for tablet. Returns `{"status": "pending"}` while waiting, or `{"status": "claimed", "tenant_id": ..., "email": ..., "terminal": ...}` once paired. Holds session until TTL so network drops can re-poll safely.
+
 ### Q2 — Which shell converges on which order? `[was blocking]` — DECIDED
 
 | Option | Pros | Cons |
@@ -713,6 +961,12 @@ absence of this gate is the bug, not a design.
 
 *Revision note:* this reverses §1.1's framing that the two ADR-cited orders were equally arguable.
 They were not; one of them cannot work.
+
+**IMPLEMENTED 2026-09-22.** Both shells now converge on the desktop's order (activate → identify → provision → login).
+`readBootGate` in `ui/src/utils/boot-retry.ts` includes `getLicenseStatus` in its parallel lost-response
+retry read. `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`, rendering
+`LicenseActivationScreen` wrapped in `LazyBoundary`. Existing installs bypass the gate via
+`setupCompleted || installExisting` parity with `AppShell.tsx`.
 
 ### Q3 — Does `local` mode ship in the first cut? `[was blocking]` — DECIDED
 
@@ -774,3 +1028,5 @@ question, so `terminal_id` must be resolvable **before** the gate renders — i.
 `MACHINE_ID`/`SYNC_TERMINAL_ID` settings already classified as non-exportable device keys
 (ADR #54 §1.4). If it is not resolvable, the shell must fall to `Unprovisioned` rather than guess,
 matching §2.1's fail-closed direction.
+
+> last audited 22-09-26 by docs-auditor

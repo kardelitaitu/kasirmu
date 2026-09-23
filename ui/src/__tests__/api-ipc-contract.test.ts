@@ -377,9 +377,9 @@ import {
   getHardwareSettings,
   setHardwareSettingsScoped,
   getEnabledFeatures,
-  completeSetup,
-  dismissSetupWizard,
-  getSetupStatus,
+  getPresetFeatures,
+  getFirstRunState,
+  provisionDevice,
 } from '@/api/settings';
 
 describe('settings.ts IPC contract', () => {
@@ -442,23 +442,38 @@ describe('settings.ts IPC contract', () => {
     expect(mockInvoke).toHaveBeenCalledWith('get_enabled_features', undefined);
   });
 
-  it('completeSetup invokes "complete_setup" with args', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    const args = { preset: 'retail', features: ['cloud_sync'], default_currency: 'USD' };
-    await completeSetup(args);
-    expect(mockInvoke).toHaveBeenCalledWith('complete_setup', { args });
+  it('getPresetFeatures invokes "get_preset_features" with the store-type preset', async () => {
+    // The first-run flow's store type must reach the backend, which owns the
+    // preset→features fact. A rename on either side would leave the UI asking a
+    // door that does not exist and silently provisioning an empty feature set.
+    mockInvoke.mockResolvedValue({ features: [] });
+    await getPresetFeatures('restaurant');
+    expect(mockInvoke).toHaveBeenCalledWith('get_preset_features', { preset: 'restaurant' });
   });
 
-  it('dismissSetupWizard invokes "dismiss_setup_wizard" with no args', async () => {
-    mockInvoke.mockResolvedValue(undefined);
-    await dismissSetupWizard();
-    expect(mockInvoke).toHaveBeenCalledWith('dismiss_setup_wizard', undefined);
+  it('getFirstRunState invokes "get_first_run_state" with the terminal id', async () => {
+    mockInvoke.mockResolvedValue({ state: 'unprovisioned' });
+    await getFirstRunState('dev-1');
+    expect(mockInvoke).toHaveBeenCalledWith('get_first_run_state', { terminalId: 'dev-1' });
   });
 
-  it('getSetupStatus invokes "get_setup_status" with no args', async () => {
-    mockInvoke.mockResolvedValue({ completed: true });
-    await getSetupStatus();
-    expect(mockInvoke).toHaveBeenCalledWith('get_setup_status', undefined);
+  it('provisionDevice invokes "provision_device" with the args', async () => {
+    const args = {
+      terminal_id: 'dev-1',
+      location_name: 'Cafe',
+      currency: 'IDR',
+      timezone: 'Asia/Jakarta',
+      owner_username: 'owner',
+      owner_display_name: 'Owner',
+      owner_pin: '1234',
+      preset: 'cafe',
+      features: [],
+      location_kind: 'restaurant' as const,
+      mode: 'local' as const,
+    };
+    mockInvoke.mockResolvedValue({ created: true });
+    await provisionDevice(args);
+    expect(mockInvoke).toHaveBeenCalledWith('provision_device', { args });
   });
 
   it('propagates backend errors', async () => {

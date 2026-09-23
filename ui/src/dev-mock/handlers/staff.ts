@@ -9,7 +9,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
-import { MOCK_STAFF } from '../core/mockSeedData';
+import { MOCK_STAFF, MOCK_STAFF_IDENTITIES } from '../core/mockSeedData';
 import { MOCK_LOGIN_ATTEMPTS_KEY, MOCK_USER_PREFS_KEY, readSlice, writeSlice } from '../core/mockDatabase';
 import { MOCK_ROLE_PERMISSIONS, mockHandlerPayload } from './system';
 import {
@@ -20,6 +20,28 @@ import {
 
 function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>(args: unknown): T {
   return ((args as Record<string, unknown>)?.['args'] ?? args ?? {}) as T;
+}
+
+/**
+ * True when the page was opened with `?nousers=1`.
+ *
+ * The owner-bootstrap path (`has_users === false`) opens `CreatePinScreen` on
+ * both shells, and this mock answered a hardcoded `true` — so the screen could
+ * not be reached in a browser at all and had no E2E coverage. Same seam and the
+ * same reasoning as `unprovisionedRequested()` in `handlers/system.ts`: an
+ * explicit per-navigation opt-in that changes no default, read at CALL time so a
+ * test can navigate first and assert after, and guarded because the handler also
+ * runs under jsdom where `search` may be empty.
+ *
+ * `null` (an UNANSWERED read) is deliberately not reachable this way: unknown is
+ * not "no users", and the shell must keep treating it as such.
+ */
+function noUsersRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('nousers') === '1';
+  } catch {
+    return false;
+  }
 }
 
 /** Display name for a preset role id (the real seeded role names). */
@@ -71,15 +93,36 @@ function mockStaffMember(overrides: Partial<Record<string, unknown>> = {}): Reco
  * while its own expanded list named different ones -- the exact contradiction
  * the real backend was just fixed for, reproduced in the preview that exists
  * to catch it. One source, so the mock cannot show it.
+ *
+ * DERIVED from MOCK_STAFF_IDENTITIES rather than restated, because the roster
+ * and the login seed are two views of the same five people: the session a
+ * preview logs in with carries a user_id, and that id has to be a row this
+ * list serves. Two hand-written tables let `staff-1` be the Staff member at
+ * login and the Owner here, with no comparison anywhere to catch it — the
+ * ids looked plausible, so the divergence stayed invisible until a
+ * self-referencing guard (never delete/impersonate your own row) would have
+ * silently never matched. Deriving both is what makes that unrepresentable.
  */
+const MOCK_STAFF_ROWS: Array<Record<string, unknown>> = MOCK_STAFF_IDENTITIES.map((identity) =>
+  mockStaffMember({
+    id: identity.user_id,
+    username: identity.username,
+    display_name: identity.display_name,
+    role_id: identity.role,
+    role_name: mockRoleName(identity.role),
+    is_active: identity.is_active,
+  }),
+);
+
+/**
+ * Soft-deleted members by id -> when they entered the trash. An id absent
+ * here is a live member. A member row stays in MOCK_STAFF_ROWS either way,
+ * mirroring the backend, where the trash is a column and never a second list.
+ */
+const MOCK_TRASH_STAFF = new Map<string, string>();
+
 function mockStaffFixtures(): Array<Record<string, unknown>> {
-  return [
-    mockStaffMember({ id: 'staff-1', username: 'owner', display_name: 'Owner', role_id: 'role-owner', role_name: 'Owner' }),
-    mockStaffMember({ id: 'staff-2', username: 'admin', display_name: 'Admin', role_id: 'role-admin', role_name: 'Admin' }),
-    mockStaffMember({ id: 'staff-3', username: 'manager', display_name: 'Manager', role_id: 'role-manager', role_name: 'Manager' }),
-    mockStaffMember({ id: 'staff-4', username: 'staff', display_name: 'Staff', role_id: 'role-staff', role_name: 'Staff' }),
-    mockStaffMember({ id: 'staff-5', username: 'auditor', display_name: 'Auditor', role_id: 'role-auditor', role_name: 'Auditor' }),
-  ];
+  return MOCK_STAFF_ROWS.filter((m) => !MOCK_TRASH_STAFF.has(m['id'] as string));
 }
 
 /** Granted permission keys per preset, mirroring platform-core ROLE_PRESETS. */
@@ -119,6 +162,18 @@ const MOCK_AUTHORED_ROLES: MockAuthoredRole[] = [
     reference_count: 0,
   },
 ];
+
+/** A trashed role: the row plus the moment it entered the trash. */
+interface MockTrashedRole extends MockAuthoredRole {
+  deleted_at: string;
+}
+
+/**
+ * The role trash. Real, not a decoration: delete_role_scoped moves the row
+ * here rather than splicing it, because the backend soft-deletes a role and
+ * keeps it restorable for 90 days.
+ */
+const MOCK_TRASH_ROLES: MockTrashedRole[] = [];
 
 const mockRoleList = () => [
   ...MOCK_ROLES.map((r) => ({
@@ -183,7 +238,14 @@ function mockRoleHolders(roleId: string | undefined): {
   // Checked against the two role stores directly rather than against
   // mockRoleList(), which now calls back through mockRoleCounts ->
   // mockRoleHolders. Going through the list would recurse forever.
-  const known = [...MOCK_ROLES.map((r) => r.id), ...MOCK_AUTHORED_ROLES.map((r) => r.id)];
+  const known = [
+    ...MOCK_ROLES.map((r) => r.id),
+    ...MOCK_AUTHORED_ROLES.map((r) => r.id),
+    // A trashed role still exists, so its holder page is an honest empty one
+    // rather than a refusal: list_role_trash_scoped reads the counts, and a
+    // mock that threw here would break the Trash tab in browser preview.
+    ...MOCK_TRASH_ROLES.map((r) => r.id),
+  ];
   if (!known.includes(wanted)) {
     throw new Error(`role ${wanted || '(no id given)'} does not exist`);
   }
@@ -272,8 +334,9 @@ export const staffHandlers: Record<string, MockHandler> = {
   // activation state (enumeration oracle closed).
   'staff_check_username': (_args) => ({ proceed: true }),
 
-  // Pre-auth check — the dev-mock always has seeded staff accounts.
-  'has_users': () => ({ has_users: true }),
+  // Pre-auth check — the dev-mock always has seeded staff accounts, so this
+  // answers true unless the page opted into first-run bootstrap with `?nousers=1`.
+  'has_users': () => ({ has_users: !noUsersRequested() }),
 
   'staff_login': (args) => {
     const { username, pin } = args as { username: string; pin: string };
@@ -286,7 +349,16 @@ export const staffHandlers: Record<string, MockHandler> = {
       throw new Error('Account locked. Too many failed attempts. Try again in 30s');
     }
 
-    if (!staff || pin !== staff.pin_hash) {
+    // An INACTIVE account fails exactly like a wrong PIN, and deliberately
+    // with the same message: the real command refuses one with the uniform
+    // "invalid username or PIN" so the client cannot learn that an account
+    // exists but is deactivated (kasirmu-bridge auth.rs:403). Omitting the
+    // check was invisible while the seed called every identity active; now
+    // that the auditor is inactive (as the roster has always said), a mock
+    // that admitted them would let the preview exercise a login the backend
+    // refuses. The attempt is recorded and not cleared, as the backend's
+    // rate limiter does before it ever resolves the account.
+    if (!staff || pin !== staff.pin_hash || !staff.is_active) {
       loginAttempts[key] = attempts + 1;
       saveMockLoginAttempts();
       throw new Error('Invalid credentials');
@@ -509,9 +581,61 @@ export const staffHandlers: Record<string, MockHandler> = {
     if (existing.reference_count > 0) {
       throw new Error(`role ${id} is still referenced; reassign those rows first`);
     }
+    // Soft delete, as the backend does: the row moves to the trash and stays
+    // restorable for the retention window instead of vanishing.
+    MOCK_TRASH_ROLES.push({ ...existing, deleted_at: new Date().toISOString() });
     MOCK_AUTHORED_ROLES.splice(idx, 1);
     return null;
   },
+  'restore_role_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    const idx = MOCK_TRASH_ROLES.findIndex((r) => r.id === id);
+    const trashed = MOCK_TRASH_ROLES[idx];
+    if (!trashed) throw new Error(`role ${id} not found`);
+    MOCK_TRASH_ROLES.splice(idx, 1);
+    const restored: MockAuthoredRole = {
+      id: trashed.id,
+      name: trashed.name,
+      description: trashed.description,
+      permissions: trashed.permissions,
+      is_builtin: trashed.is_builtin,
+      reference_count: trashed.reference_count,
+    };
+    MOCK_AUTHORED_ROLES.push(restored);
+    return { ...restored, ...mockRoleCounts(restored.id) };
+  },
+  'list_role_trash_scoped': () =>
+    MOCK_TRASH_ROLES.map((r) => ({ ...r, ...mockRoleCounts(r.id) })),
+  'delete_staff_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    // MOCK_STAFF_ROWS, not mockStaffFixtures(): the trash is a column, not a
+    // second list, so an already-trashed row is still FOUND here and then
+    // refused by the guard below — exactly the order core's soft_delete_user
+    // takes (look up, check active, then the UPDATE that matches no row).
+    const member = MOCK_STAFF_ROWS.find((m) => m['id'] === id);
+    if (!member) throw new Error(`user ${id} not found`);
+    // Mirrors the backend refusal: an active account is deactivated first.
+    if (member['is_active'] === true) {
+      throw new Error('deactivate this member before deleting them');
+    }
+    if (MOCK_TRASH_STAFF.has(id)) throw new Error('this member is already in the trash');
+    MOCK_TRASH_STAFF.set(id, new Date().toISOString());
+    return null;
+  },
+  'restore_staff_scoped': (raw) => {
+    const id = (raw as { id?: string })?.id ?? '';
+    if (!MOCK_TRASH_STAFF.has(id)) throw new Error(`user ${id} not found`);
+    MOCK_TRASH_STAFF.delete(id);
+    const row = MOCK_STAFF_ROWS.find((m) => m['id'] === id);
+    if (!row) throw new Error(`user ${id} not found`);
+    // Back INACTIVE, exactly as the delete found them.
+    return { ...row, is_active: false };
+  },
+  'list_staff_trash_scoped': () =>
+    MOCK_STAFF_ROWS.filter((m) => MOCK_TRASH_STAFF.has(m['id'] as string)).map((m) => ({
+      ...m,
+      deleted_at: MOCK_TRASH_STAFF.get(m['id'] as string) ?? null,
+    })),
   'create_staff_scoped': (args) => {
     const a = (args as { username?: string; display_name?: string; role_id?: string; pin?: string }) ?? {};
     const roleId = a.role_id && MOCK_ROLE_PERMISSIONS[a.role_id] ? a.role_id : 'role-staff';
@@ -553,6 +677,12 @@ export const staffHandlers: Record<string, MockHandler> = {
     national_id_type: 'nik',
     national_id: null,
     national_id_masked: '****-****-****-1234',
+    // A mask with no raw value behind it is the withheld state, not an empty
+    // one — the dev server has no ciphertext to hand out. Reporting it keeps
+    // the mock DTO self-consistent (`identity_withheld: false` with a null
+    // national id would claim a member has no document while showing its
+    // last four digits) and lets the withheld branch be seen in the dev app.
+    identity_withheld: true,
     email: 'owner@example.com',
     monthly_take_home_minor: 5000000,
     emergency_contact_name: 'Spouse',

@@ -36,4 +36,16 @@ export function registerStaffFeature() {
     requiredPermission: 'staff:manage_roles',
     fullscreen: true,
   });
+  // The trash is a third tab on the same page and the same component, gated on
+  // the key its commands enforce. Deleted identities stay readable here, so the
+  // gate is staff:delete (owner-only by preset) rather than staff:read: a
+  // manager who cannot delete anyone has no business reading who was deleted.
+  registerPage({
+    route: 'trash',
+    component: StaffManagementScreen,
+    label: 'Trash',
+    requiredRole: 'manager',
+    requiredPermission: 'staff:delete',
+    fullscreen: true,
+  });
 }

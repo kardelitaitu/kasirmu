@@ -276,6 +276,44 @@ fn cli_parse_inventory_adjust() {
     ));
 }
 
+/// C12b: the surface an operator actually types. Defaults must be the safe
+/// ones — a report that silently returns everything on a big store is not.
+#[test]
+fn cli_parse_stock_variance_defaults() {
+    let cli = Cli::try_parse_from(["oz", "stock-variance"]).unwrap();
+    match cli.command {
+        Some(Command::StockVariance(args)) => {
+            assert_eq!(args.min_difference, 1, "default hides consistent pairs");
+            assert_eq!(args.limit, 100, "default is bounded, not unlimited");
+        }
+        _ => panic!("expected StockVariance"),
+    }
+}
+
+/// Both knobs are reachable from the command line, and --db is the global flag.
+#[test]
+fn cli_parse_stock_variance_flags_and_db() {
+    let cli = Cli::try_parse_from([
+        "oz",
+        "--db",
+        "copy.db",
+        "stock-variance",
+        "--min-difference",
+        "5",
+        "--limit",
+        "250",
+    ])
+    .unwrap();
+    assert_eq!(cli.db, "copy.db");
+    match cli.command {
+        Some(Command::StockVariance(args)) => {
+            assert_eq!(args.min_difference, 5);
+            assert_eq!(args.limit, 250);
+        }
+        _ => panic!("expected StockVariance"),
+    }
+}
+
 #[test]
 fn cli_parse_export_csv() {
     let cli = Cli::try_parse_from(["oz", "export-csv", "daily-summary"]).unwrap();

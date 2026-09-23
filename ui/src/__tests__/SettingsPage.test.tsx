@@ -120,6 +120,11 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
     if (cmd === 'list_currencies_scoped') {
       return Promise.resolve(SAMPLE_CURRENCIES);
     }
+    if (cmd === 'get_license_status') {
+      // No licence activated: LicenseSettings falls through to its own empty
+      // state, which is what the migrated-section sweep asserts on.
+      return Promise.resolve({ isActive: false, status: 'missing', tier: null, payload: null, message: null });
+    }
     if (cmd === 'get_default_currency') {
       return Promise.resolve('USD');
     }
@@ -397,6 +402,9 @@ describe('SettingsPage admin shell — flat 14-page IA', () => {
         'fiscalnum-error',
       ],
       'sync-conflicts': ['sync-conflict-review'],
+      // Migrated 2026-09-21: the screen composes the real LicenseSettings
+      // component, whose empty state is what a device with no licence shows.
+      'license-subscription': ['settings-license-empty'],
       // Migrated 2026-09-19: the screen composes sections/DiagnosticsSection,
       // whose feature list proves the body mounted (mocked IPC resolves each
       // verdict, so the <ul> is present).

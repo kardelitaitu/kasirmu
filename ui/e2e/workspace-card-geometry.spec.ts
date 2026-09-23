@@ -38,9 +38,14 @@ test.describe('Workspace card geometry stability', () => {
       rows.map((r) => r.getBoundingClientRect().width),
     );
 
-    // Admin workspace is excluded from the card grid (accessed via Tools section).
-    // 4 workspace cards + 1 'Add Workspace' card = 5 total for owner/admin.
-    expect(widths.length).toBeGreaterThanOrEqual(5);
+    // Admin is excluded from the card grid (reached via the Tools section),
+    // leaving the 4 seeded non-admin workspaces: Restaurant POS, Store POS,
+    // Kitchen Display, Warehouse. The 'Add Workspace' card is NOT rendered
+    // while workspaces exist — WorkspaceHome.tsx:382 gates it on
+    // `sortedWorkspaces.length === 0`, and the comment at the grid's tail
+    // says so explicitly. The old floor of 5 predates that rule.
+    expect(widths.length).toBeGreaterThanOrEqual(4);
+    await expect(page.locator('.workspace-card--add')).toHaveCount(0);
 
     const first = widths[0];
     for (const w of widths) {
@@ -62,9 +67,10 @@ test.describe('Workspace card geometry stability', () => {
       })),
     );
 
-    // Admin workspace is excluded from the card grid (accessed via Tools section).
-    // 4 workspace cards + 1 'Add Workspace' card = 5 total for owner/admin.
-    expect(clipped.length).toBeGreaterThanOrEqual(5);
+    // Admin is excluded from the card grid; the 4 seeded non-admin
+    // workspaces render, and no 'Add Workspace' card exists while any
+    // workspace is present (WorkspaceHome.tsx:382).
+    expect(clipped.length).toBeGreaterThanOrEqual(4);
     for (const t of clipped) {
       expect(t.overflow, `title "${t.text}" is clipped`).toBeLessThanOrEqual(1);
     }

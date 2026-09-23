@@ -94,7 +94,7 @@ cd ui
 npm ci --no-audit --no-fund
 ```
 
-- **No linter sees `.css`** — never cite `eslint` for a stylesheet. Verify with the five walker suites; command and caveats: `docs/frontend/css-verification.md`.
+- **No linter sees `.css`** — never cite `eslint` for a stylesheet. Verify with the five walker suites; command and caveats: `docs/audits/frontend/css-verification.md`.
 
 ### 2. Rust Backend CLI
 

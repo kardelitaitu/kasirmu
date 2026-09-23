@@ -55,6 +55,22 @@ fn exportable_settings_rows(rows: Vec<(String, String)>) -> Vec<serde_json::Valu
 }
 
 #[tauri::command]
+/// Export data WITHOUT a session — the read-only local twin (ADR #58 §4a Q-A option 3).
+///
+/// Registered so a revoked tenant can still retrieve their own data once §2.5 locks
+/// them out of every session-gated path. Read-only and local-only by construction: it
+/// shares `export_data`'s body, so it cannot import, mutate, or reach the network.
+pub async fn export_data_without_session(
+    args: ExportDataArgs,
+    state: State<'_, AppState>,
+) -> Result<ExportDataResult, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::data::export_data_without_session(&ctx, args)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 /// Export data.
 pub async fn export_data(
     session_token: String,

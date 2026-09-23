@@ -119,6 +119,23 @@ describe('PasswordField', () => {
     }
   });
 
+  it('localizes the match indicator, which used to be hardcoded English', async () => {
+    // The accessible name was the literal "Passwords match" in the JSX, so an
+    // Indonesian user's screen reader announced English on an otherwise fully
+    // localized island. It now resolves through `password.matchStatusLabel`,
+    // which only a locale-aware assertion can prove.
+    const en = await renderField({ showConfirm: true, value: 'Abcdef1!', confirmValue: 'Abcdef1!' });
+    const id = await renderField({ locale: 'id', showConfirm: true, value: 'Abcdef1!', confirmValue: 'Abcdef1!' });
+    try {
+      expect(en.container.querySelector('[aria-label="Passwords match"]')).not.toBeNull();
+      // The Indonesian bundle's own word, NOT the English one.
+      expect(id.container.querySelector('[aria-label="Passwords match"]')).toBeNull();
+      expect(id.container.querySelector('[aria-label="Kata sandi cocok"]')).not.toBeNull();
+    } finally {
+      act(() => en.root.unmount()); en.container.remove();
+      act(() => id.root.unmount()); id.container.remove();
+    }
+  });
   it('hides mismatch hint when confirm matches and is long enough', async () => {
     const h = await renderField({ showConfirm: true, value: 'Abcdef1!', confirmValue: 'Abcdef1!' });
     try {

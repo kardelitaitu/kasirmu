@@ -5,6 +5,7 @@ import { clearSession, getSessionEmail, isPaddleConfigured, isPlaceholderPriceId
 import { openMidtransCheckout } from './midtrans';
 import { type Region, getRegion, getExplicitRegion, setRegion } from '../lib/region';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { getSessionToken } from '../lib/session';
 import AccountProfile from './account/AccountProfile';
 import AccountLicense from './account/AccountLicense';
@@ -97,6 +98,7 @@ export const ACCOUNT_LABELS = [
   'account.contactSupport',
   'account.copied',
   'account.copyKey',
+  'account.deviceRevoked',
   'account.devices',
   'account.devicesHint',
   'account.downloadApp',
@@ -108,6 +110,7 @@ export const ACCOUNT_LABELS = [
   'account.invoiceSubject',
   'account.license',
   'account.licenseKey',
+  'account.methodUnlinked',
   'account.loading',
   'account.logout',
   'account.noSubscription',
@@ -125,6 +128,7 @@ export const ACCOUNT_LABELS = [
   'account.region',
   'account.regionHint',
   'account.regionSaved',
+  'account.registerTerminal',
   'account.renewHint',
   'account.renewLink',
   'account.renewsInDay',
@@ -174,6 +178,9 @@ interface Props {
 export default function AccountView({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // ... and re-render if that read happened before the config script finished,
+  // so a late URL still loads the dashboard instead of stranding the notice.
+  useRuntimeConfigArrival();
   const [state, setState] = useState<'loading' | 'anon' | 'error' | 'ready'>('loading');
   const [me, setMe] = useState<MeResponse | null>(null);
   const [devices, setDevices] = useState<Device[] | null>(null);
@@ -190,11 +197,21 @@ export default function AccountView({ locale, labels }: Props) {
     };
   }, []);
 
-  /** Fetch /me once; returns the payload, or null when signed out (token cleared). */
-  const fetchMe = useCallback(async (): Promise<MeResponse | null> => {
+  /**
+   * Fetch /me once; returns the payload, or null when signed out (token cleared).
+   *
+   * `api` is threaded in rather than closed over. `API` comes from
+   * `licenseApiUrl()`, which returns whatever is known at call time, and the
+   * three callers do not all run under the same render: the mount effect and
+   * `pollAfterCheckout` run in the render that produced them, while the revoke
+   * and unlink handlers run later. Passing the URL makes each caller use the
+   * value of the render it is actually running in, rather than one captured at
+   * mount.
+   */
+  const fetchMe = useCallback(async (api: string | undefined): Promise<MeResponse | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
-    const res = await fetch(`${API}/api/v1/web/me`, {
+    if (!token || !api) return null;
+    const res = await fetch(`${api}/api/v1/web/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) {
@@ -208,11 +225,11 @@ export default function AccountView({ locale, labels }: Props) {
   }, []);
 
   /** Fetch the tenant's registered devices (best-effort; null on any error). */
-  const fetchDevices = useCallback(async (): Promise<Device[] | null> => {
+  const fetchDevices = useCallback(async (api: string | undefined): Promise<Device[] | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
+    if (!token || !api) return null;
     try {
-      const res = await fetch(`${API}/api/v1/web/devices`, {
+      const res = await fetch(`${api}/api/v1/web/devices`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
@@ -224,11 +241,11 @@ export default function AccountView({ locale, labels }: Props) {
   }, []);
 
   /** Fetch the tenant's linked sign-in methods (best-effort; null on any error). */
-  const fetchIdentities = useCallback(async (): Promise<SignInMethod[] | null> => {
+  const fetchIdentities = useCallback(async (api: string | undefined): Promise<SignInMethod[] | null> => {
     const token = await getSessionToken();
-    if (!token || !API) return null;
+    if (!token || !api) return null;
     try {
-      const res = await fetch(`${API}/api/v1/web/identities`, {
+      const res = await fetch(`${api}/api/v1/web/identities`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
@@ -258,18 +275,32 @@ export default function AccountView({ locale, labels }: Props) {
     setUseMidtrans(r === 'id' || (!r && locale === 'id'));
   }, [region, locale]);
   // Device revoke state: record id currently being revoked, plus the last
-  // failure message (shown inline on the device row).
+  // failure message (shown inline on the device row) and the machine id of the
+  // last successful revoke, which is what the row's success line reports.
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [revokedMachine, setRevokedMachine] = useState<string | null>(null);
 
   // Linked sign-in methods (ADR #54). null means "not loaded yet", which is why the
   // section renders nothing rather than an empty state while the fetch is in flight.
   const [identities, setIdentities] = useState<SignInMethod[] | null>(null);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  // The unlinked method, kept as the pair the success line needs: the row is
+  // gone from `identities` after a successful unlink, so the provider id has to
+  // survive here for the section to name it (and localise "google" → "Google").
+  const [unlinkedMethod, setUnlinkedMethod] = useState<{ id: string; provider: string } | null>(null);
 
   useEffect(() => {
-    if (!API) {
+    // The URL comes from the render scope (`API`, a dependency below) rather
+    // than a close over one captured at mount, so both paths land here: the
+    // ordinary one (the deferred config script has already run) and the late
+    // one, where useRuntimeConfigArrival() re-renders the island with the URL
+    // and this effect re-runs against it. The revoke/unlink handlers below,
+    // which run long after mount, pass the latest render's URL for the same
+    // reason.
+    const api = licenseApiUrl();
+    if (!api) {
       setState('error');
       return;
     }
@@ -279,7 +310,7 @@ export default function AccountView({ locale, labels }: Props) {
     // when neither exists — so a session that lives ONLY in the httpOnly
     // cookie (sessionStorage cleared, another tab, or an R1-only login)
     // still loads the dashboard instead of falsely showing "anon".
-    fetchMe()
+    fetchMe(api)
       .then((data) => {
         if (!mountedRef.current) return;
         if (data) {
@@ -293,7 +324,7 @@ export default function AccountView({ locale, labels }: Props) {
         if (mountedRef.current) setState('error');
       });
     // Best-effort device list — a failure here must not fail the dashboard.
-    void fetchDevices()
+    void fetchDevices(api)
       .then((list) => {
         if (mountedRef.current) setDevices(list);
       })
@@ -301,14 +332,16 @@ export default function AccountView({ locale, labels }: Props) {
         if (mountedRef.current) setDevices(null);
       });
     // Same contract for the linked sign-in methods.
-    void fetchIdentities()
+    void fetchIdentities(api)
       .then((list) => {
         if (mountedRef.current) setIdentities(list);
       })
       .catch(() => {
         if (mountedRef.current) setIdentities(null);
       });
-  }, [fetchMe, fetchDevices, fetchIdentities]);
+    // Deliberately keyed on the URL, not on the fetchers: a runtime-config
+    // change must re-run the auth fetches once the real backend is known.
+  }, [API, fetchMe, fetchDevices, fetchIdentities]);
 
   const savePassword = async (password: string) => {
     setPwMsg('idle');
@@ -389,7 +422,7 @@ export default function AccountView({ locale, labels }: Props) {
         await new Promise((r) => setTimeout(r, 2500));
         if (!mountedRef.current) return;
         try {
-          const data = await fetchMe();
+          const data = await fetchMe(API);
           if (data) {
             setMe(data);
             setState('ready');
@@ -410,17 +443,23 @@ export default function AccountView({ locale, labels }: Props) {
     if (!token) return;
     setRevokingId(device.id);
     setRevokeError(null);
+    setRevokedMachine(null);
     try {
       const res = await fetch(`${API}/api/v1/web/devices/${encodeURIComponent(device.id)}/revoke`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`revoke failed (${res.status})`);
+      // The revoke is a destructive action with no navigation and no dialog to
+      // dismiss, so without this the only feedback was a badge flipping in a
+      // list the user may not be looking at. Measured 2026-09-23: the response
+      // refetched the list and rendered no status text at all.
+      if (mountedRef.current) setRevokedMachine(device.machine_id);
       // Mark this device revoked in local state immediately; refresh the
       // full list so any server-side ordering is preserved. If the refresh
       // fails (null), keep the existing list and just stamp the revoked
       // device — the list must not collapse to the fallback hint.
-      const fresh = await fetchDevices();
+      const fresh = await fetchDevices(API);
       if (mountedRef.current) {
         setDevices((prev) => {
           const list = fresh ?? prev ?? [];
@@ -441,15 +480,19 @@ export default function AccountView({ locale, labels }: Props) {
     if (!token) return;
     setUnlinkingId(method.id);
     setUnlinkError(null);
+    setUnlinkedMethod(null);
     try {
       const res = await fetch(`${API}/api/v1/web/identities/${encodeURIComponent(method.id)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Same reason as the revoke line above: the row disappearing IS the only
+      // feedback otherwise, and it is silent to a screen reader.
+      if (mountedRef.current) setUnlinkedMethod({ id: method.id, provider: method.provider });
       // Drop the row locally, then reconcile with the server list. If the
       // refresh fails (null) the removal still stands — the DELETE succeeded.
-      const fresh = await fetchIdentities();
+      const fresh = await fetchIdentities(API);
       if (mountedRef.current) {
         setIdentities((prev) => (fresh ?? (prev ?? []).filter((m) => m.id !== method.id)));
       }
@@ -613,6 +656,7 @@ export default function AccountView({ locale, labels }: Props) {
           licenseTierKey={effectiveTier}
           revokingId={revokingId}
           revokeError={revokeError}
+          revokedMachine={revokedMachine}
           onRevoke={(d) => void revokeDevice(d)}
         />
       )}
@@ -624,6 +668,7 @@ export default function AccountView({ locale, labels }: Props) {
           identities={identities}
           unlinkingId={unlinkingId}
           unlinkError={unlinkError}
+          unlinkedMethod={unlinkedMethod}
           onUnlink={(m) => void unlinkIdentity(m)}
         />
       )}

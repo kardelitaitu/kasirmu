@@ -20,6 +20,10 @@ vi.mock('@/features/kds/KdsScreen', () => ({
   default: () => <div data-testid="kds-screen">Kitchen Display System</div>,
 }));
 
+vi.mock('@/features/auth/RevokedScreen', () => ({
+  default: () => <div data-testid="revoked-screen">Account suspended</div>,
+}));
+
 vi.mock('@/features/retail/RetailPosScreen', () => ({
   default: ({ onNavigate }: { onNavigate?: (route: string) => void }) => (
     <div data-testid="retail-pos-screen">
@@ -63,12 +67,16 @@ vi.mock('@/features/memo/MemoBanner', () => ({
 vi.mock('@/api/license', () => ({
   getLicenseStatus: vi.fn(() => Promise.resolve({ is_active: true, payload: null })),
   activateLicense: vi.fn(),
+  // StatusBar's auth-pill poll (co-consumer of this module): `useAuthConnection`
+  // reads this key on mount, and a mock missing it takes the shell down.
+  testAuthConnection: vi.fn(() =>
+    Promise.resolve({ ok: true, status: 'Connected', latencyMs: 10 }),
+  ),
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: vi.fn(() => Promise.resolve({ completed: true })),
-  completeSetup: vi.fn(),
-  dismissSetupWizard: vi.fn(),
+  getFirstRunState: vi.fn(() => Promise.resolve({ state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null })),
+  provisionDevice: vi.fn(),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>
     Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
@@ -149,6 +157,21 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => mockAuthSession(),
 }));
 
+let mockSubscriptionState = 'active';
+
+vi.mock('@/contexts/SubscriptionContext', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    useSubscription: () => ({
+      caps: null,
+      state: mockSubscriptionState,
+      loading: false,
+      refresh: vi.fn(),
+    }),
+  };
+});
+
 // ── Workspace context mock (dynamic per test) ─────────────────
 
 const mockWorkspace = vi.fn();
@@ -160,7 +183,7 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
 
 // ── page-registry: register the kds route so handleNavigate works ──
 import { getLicenseStatus } from '@/api/license';
-import { getSetupStatus } from '@/api/settings';
+import { getFirstRunState } from '@/api/settings';
 import { registerPage, clearPages } from '@/registries/page-registry';
 import { registerNavItem, clearNavItems } from '@/registries/menu-registry';
 
@@ -226,6 +249,7 @@ function mockKitchenRole() {
 describe('AppShell — KDS workspace navigation', () => {
   beforeEach(() => {
     // Reset auth mock to default (cashier) before each test
+    mockSubscriptionState = 'active';
     mockAuthSession.mockReset();
     mockAuthSession.mockReturnValue({
       session: {
@@ -620,7 +644,7 @@ describe('AppShell — KDS workspace navigation', () => {
 
       // Dev bypass means no license IPC calls should be made
       expect(vi.mocked(getLicenseStatus)).not.toHaveBeenCalled();
-      expect(vi.mocked(getSetupStatus)).not.toHaveBeenCalled();
+      expect(vi.mocked(getFirstRunState)).not.toHaveBeenCalled();
 
       // Login screen should render (no session, dev bypass skips license check)
       await waitFor(() => {
@@ -639,7 +663,7 @@ describe('AppShell — KDS workspace navigation', () => {
 
       // No license IPC calls
       expect(vi.mocked(getLicenseStatus)).not.toHaveBeenCalled();
-      expect(vi.mocked(getSetupStatus)).not.toHaveBeenCalled();
+      expect(vi.mocked(getFirstRunState)).not.toHaveBeenCalled();
 
       // Workspace picker should render (empty state)
       await waitFor(() => {
@@ -1112,6 +1136,16 @@ describe('AppShell — KDS workspace navigation', () => {
         expect(screen.getByTestId('analytics-page-stub')).toBeInTheDocument();
       });
       expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('ADR #58 §2.6 — Revoked tenant gate', () => {
+    it('renders RevokedScreen when subscriptionState is revoked', async () => {
+      mockSubscriptionState = 'revoked';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await waitFor(() => {
+        expect(screen.getByTestId('revoked-screen')).toBeInTheDocument();
+      });
     });
   });
 });

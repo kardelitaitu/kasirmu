@@ -11,7 +11,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useFullscreen } from '@/hooks/useFullscreen';
-import { requiredLocalized } from '@/components';
+import { SegmentedTabs, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -381,20 +381,16 @@ export default function WarehouseConsole() {
       </div>
 
       {/* ── Mode tabs ── */}
-      <div className="warehouse-mode-tabs" role="tablist" aria-label={requiredLocalized(l10n, 'warehouse-mode-tabs-aria')}>
-        {(['receive', 'send', 'count', 'stock'] as WarehouseMode[]).map((m) => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={mode === m}
-            className={`warehouse-mode-tab ${mode === m ? 'warehouse-mode-tab--active' : ''}`}
-            onClick={() => setMode(m)}
-          >
-            {requiredLocalized(l10n, `warehouse-mode-${m}`)}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        className="warehouse-mode-tabs"
+        ariaLabel={requiredLocalized(l10n, 'warehouse-mode-tabs-aria')}
+        items={(['receive', 'send', 'count', 'stock'] as WarehouseMode[]).map((m) => ({
+          value: m,
+          label: requiredLocalized(l10n, `warehouse-mode-${m}`),
+        }))}
+        activeValue={mode}
+        onSelect={setMode}
+      />
 
       {/* ── Scan input (barcode-first) ── */}
       {mode !== 'stock' && (

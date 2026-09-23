@@ -1,0 +1,42 @@
+---
+// Root /pair redirect — detects locale and forwards query string (?code=...)
+//
+// The pairing SCREEN is src/pages/[locale]/pair.astro, which has its own h1.
+// This document only chooses the language, so its own content is the fallback
+// for a reader whose browser will not run the redirect below.
+import LocaleFallback from '../components/LocaleFallback.astro';
+import { LANGUAGE_STORAGE_KEY } from '../lib/language';
+import { t } from '../i18n';
+---
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <!-- This document declares `lang="id"` and its fallback body already reads
+         `pair.title` in Indonesian, so the tab title does too: an English
+         "Pair Tablet" here was the one string on the page that disagreed with
+         the language the document claims. -->
+    <title>{`kasir.mu — ${t('id', 'pair.title')}`}</title>
+    <meta name="robots" content="noindex" />
+    <!-- The key arrives via define:vars because an is:inline script is never
+         bundled, so it cannot import the owner (lib/language.ts) directly. -->
+    <script is:inline define:vars={{ LANGUAGE_STORAGE_KEY }}>
+      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      const lang = (saved || navigator.language || 'id').toLowerCase();
+      const locale = lang.startsWith('id') ? 'id' : 'en';
+      window.location.replace(`/${locale}/pair${window.location.search}`);
+    </script>
+  </head>
+  <body>
+    <!-- Rendered, not inside `<noscript>`: a noscript heading belongs to no
+         outline a consumer receives. The 0-second meta refresh that used to sit
+         here sent this reader away before they could read it. -->
+    <LocaleFallback
+      title={t('id', 'pair.title')}
+      links={[
+        { href: '/id/pair', label: 'Bahasa Indonesia' },
+        { href: '/en/pair', label: 'English', lang: 'en' },
+      ]}
+    />
+  </body>
+</html>

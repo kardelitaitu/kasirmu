@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { labelMap } from '../../i18n';
+import { RUNTIME_CONFIG_EVENT } from '../../lib/runtime-config';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -29,6 +30,11 @@ vi.mock('../midtrans', () => midtrans);
 
 function mockFetch(handler: (url: string, init?: RequestInit) => { ok: boolean; status: number; json: () => Promise<unknown> }): void {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string, init?: RequestInit) => handler(url, init)));
+}
+
+/** Every URL the mocked fetch was called with, in order. */
+function fetchMockCalls(): string[] {
+  return (fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
 }
 
 function okJson(data: unknown) {
@@ -187,17 +193,130 @@ describe('AccountView — cookie-only session (R1)', () => {
   });
 });
 
-// ── Not configured state ──────────────────────────────────────────────
+// ── Runtime config (Worker-supplied) ──────────────────────────────────
 
-describe('AccountView — not configured', () => {
-  it('shows not-configured notice when API URL is absent', async () => {
+describe('AccountView — the URL the island fetches against', () => {
+  // A `__PUBLIC_*__` value is what an unresolved template leaves behind: a
+  // TRUTHY string that is not a backend. Returned verbatim it became the base
+  // URL — `if (!api)` never fired and the island fetched the placeholder
+  // itself, so the notice appeared only after that request failed. Astro's own
+  // substitution is not this (measured against `astro build`: absent -> `void
+  // 0`, empty -> `""`), so this pins the guard, not the toolchain.
+  it('shows not-configured and fetches nothing for a placeholder URL', async () => {
     const env = import.meta.env as Record<string, unknown>;
-    env.PUBLIC_LICENSE_API_URL = '';
+    env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
     window.__OZ_CONFIG__ = undefined;
     sessionStorage.setItem('oz_session', 'tok-test');
     const { container, root } = await renderAccount('en');
     try {
       assertText(container, 'The license API is not configured on this deployment.');
+      // No URL means no request — and specifically not a request to the
+      // placeholder string itself, which is what a missing guard produced.
+      expect(fetchMockCalls()).toHaveLength(0);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('fetches against the runtime URL when it is present at hydration', async () => {
+    const env = import.meta.env as Record<string, unknown>;
+    // The build-time value is the placeholder (see the case above); the runtime
+    // config supplies the real base URL.
+    env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
+    window.__OZ_CONFIG__ = undefined;
+    sessionStorage.setItem('oz_session', 'tok-runtime-config');
+    // getSessionToken() probes the Worker's /__oz/session first and only then
+    // falls back to sessionStorage, so the route has to answer here too.
+    mockFetch((url) => {
+      if (url === '/__oz/session') return okJson({ token: 'tok-runtime-config' });
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      if (url.includes('/identities')) return okJson({ identities: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: STUB_LICENSE,
+        subscription: null,
+      });
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
+    const labels = labelMap('en', ACCOUNT_LABELS);
+    // The Worker's /__oz/runtime-config.js has landed before the island mounts
+    // — the normal case, since the deferred script and the module that hydrates
+    // the island both run after the document parses, script order first. A
+    // config that lands AFTER hydration is not covered by either case here.
+    act(() => {
+      window.__OZ_CONFIG__ = { licenseApiUrl: 'https://runtime.example' };
+    });
+    act(() => {
+      root.render(<AccountView locale="en" labels={labels} />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    try {
+      // The request has to go to the runtime URL, not to the placeholder the
+      // build left behind — that is what the `!api` guard not firing produced.
+      expect(fetchMockCalls()).toContain('https://runtime.example/api/v1/web/me');
+      assertNoText(container, "You're not signed in.");
+      assertNoText(container, 'The license API is not configured on this deployment.');
+      assertText(container, 'test@example.com');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('recovers when the runtime config arrives AFTER the first render', async () => {
+    // The gap neither case above covers, and the one a browser reproduced: the
+    // island hydrates before a slow /__oz/runtime-config.js lands, reads no
+    // URL, and would otherwise sit on the notice with zero requests until the
+    // user reloads. The config script announces itself; the island must react.
+    const env = import.meta.env as Record<string, unknown>;
+    env.PUBLIC_LICENSE_API_URL = '';
+    window.__OZ_CONFIG__ = undefined;
+    sessionStorage.setItem('oz_session', 'tok-late-config');
+    mockFetch((url) => {
+      if (url === '/__oz/session') return okJson({ token: 'tok-late-config' });
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      if (url.includes('/identities')) return okJson({ identities: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: STUB_LICENSE,
+        subscription: null,
+      });
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
+    const labels = labelMap('en', ACCOUNT_LABELS);
+    act(() => {
+      root.render(<AccountView locale="en" labels={labels} />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    try {
+      // No URL yet: the notice is the resting state, and nothing was fetched.
+      assertText(container, 'The license API is not configured on this deployment.');
+      expect(fetchMockCalls().filter((u) => u.includes('/api/v1/web/'))).toEqual([]);
+
+      act(() => {
+        window.__OZ_CONFIG__ = { licenseApiUrl: 'https://late.example' };
+        window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      expect(fetchMockCalls()).toContain('https://late.example/api/v1/web/me');
+      assertText(container, 'test@example.com');
+      assertNoText(container, 'The license API is not configured on this deployment.');
     } finally {
       act(() => root.unmount());
       container.remove();
@@ -998,6 +1117,156 @@ describe('AccountView — Devices & Invoices', () => {
       });
       expect(revokeCalls).toHaveLength(1);
       expect(revokeCalls[0]).toContain('/api/v1/web/devices/mac-1/revoke');
+      // The confirmation: a revoke has no dialog and no navigation, so without
+      // this line the only feedback was a badge flipping elsewhere in the list.
+      // It names the terminal and is announced (role="status").
+      const status = container.querySelector('[role="status"]');
+      expect(status?.textContent).toContain('Terminal MACHINE-001 revoked');
+      // Focus recovery: the button that was pressed has just removed itself, and
+      // removing the focused element would drop focus on <body>. With no other
+      // active terminal the section heading is the stable target.
+      expect(document.activeElement?.textContent?.trim()).toBe('Registered Terminals');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('moves focus to the next active terminal when one survives the revoke', async () => {
+    sessionStorage.setItem('oz_session', 'tok-revoke-next');
+    mockFetch((url, init) => {
+      if (url.includes('/devices') && init?.method === 'POST') {
+        return okJson({ status: 'revoked', revoked_at: '2026-08-29T00:00:00Z' });
+      }
+      if (url.includes('/devices')) {
+        return okJson({
+          devices: [
+            { id: 'mac-1', machine_id: 'MACHINE-001', created: '2026-08-01T00:00:00Z', revoked_at: null },
+            { id: 'mac-2', machine_id: 'MACHINE-002', created: '2026-08-02T00:00:00Z', revoked_at: null },
+          ],
+        });
+      }
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      const revokeBtns = Array.from(container.querySelectorAll('button')).filter(
+        (b) => b.textContent?.trim() === 'Revoke',
+      );
+      expect(revokeBtns).toHaveLength(2);
+      act(() => {
+        revokeBtns[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      // Focus lands on the terminal that can still be managed, so the keyboard
+      // user continues in the list instead of being sent back to the top.
+      const focused = document.activeElement as HTMLElement | null;
+      expect(focused?.textContent?.trim()).toBe('Revoke');
+      expect(focused?.closest('.rounded-lg')?.textContent).toContain('MACHINE-002');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('confirms an unlink, naming the provider and repeating that the email code still works', async () => {
+    sessionStorage.setItem('oz_session', 'tok-unlink');
+    const unlinkCalls: string[] = [];
+    // Stateful: the DELETE really removes the method, so the row disappears the
+    // way it does against the license server.
+    let unlinked = false;
+    mockFetch((url, init) => {
+      if (url.includes('/identities') && init?.method === 'DELETE') {
+        unlinkCalls.push(url);
+        unlinked = true;
+        return okJson({ status: 'unlinked' });
+      }
+      if (url.includes('/identities')) {
+        return okJson({
+          identities: unlinked ? [] : [{ id: 'id_google', provider: 'google', email: 'test@example.com' }],
+        });
+      }
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      assertText(container, 'Google');
+      const unlinkBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Unlink');
+      expect(unlinkBtn).not.toBeNull();
+      act(() => {
+        unlinkBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(unlinkCalls).toHaveLength(1);
+      expect(unlinkCalls[0]).toContain('/api/v1/web/identities/id_google');
+      // The row is gone by now, so this line is the whole confirmation — it must
+      // name the provider the way the row did ('Google', not the raw 'google')
+      // and carry the reassurance that unlinking cannot lock anyone out.
+      const status = container.querySelector('[role="status"]');
+      expect(status?.textContent).toContain('Google unlinked');
+      expect(status?.textContent).toContain('email code still works');
+      // The whole row is gone, so the pressed Unlink button is gone with it;
+      // focus must not be left on <body>.
+      expect(document.activeElement?.textContent?.trim()).toBe('Sign-in methods');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('moves focus to the next sign-in method when one survives the unlink', async () => {
+    sessionStorage.setItem('oz_session', 'tok-unlink-next');
+    let unlinked = false;
+    mockFetch((url, init) => {
+      if (url.includes('/identities') && init?.method === 'DELETE') {
+        unlinked = true;
+        return okJson({ status: 'unlinked' });
+      }
+      if (url.includes('/identities')) {
+        return okJson({
+          identities: unlinked
+            ? [{ id: 'id_apple', provider: 'apple', email: 'test@example.com' }]
+            : [
+                { id: 'id_google', provider: 'google', email: 'test@example.com' },
+                { id: 'id_apple', provider: 'apple', email: 'test@example.com' },
+              ],
+        });
+      }
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      const unlinkBtns = Array.from(container.querySelectorAll('button')).filter(
+        (b) => b.textContent?.trim() === 'Unlink',
+      );
+      expect(unlinkBtns).toHaveLength(2);
+      act(() => {
+        unlinkBtns[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      const focused = document.activeElement as HTMLElement | null;
+      expect(focused?.textContent?.trim()).toBe('Unlink');
+      expect(focused?.closest('.rounded-lg')?.textContent).toContain('apple');
     } finally {
       act(() => root.unmount());
       container.remove();

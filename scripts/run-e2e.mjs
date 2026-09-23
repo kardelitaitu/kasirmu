@@ -18,6 +18,12 @@
  *   cd ui && npm run e2e -- --project=desktop # one Playwright project only
  *   cd ui && npm run e2e -- --build         # rebuild stale E2E images first
  *
+ * Server isolation: the runner starts its OWN Vite dev server on its own
+ * port (E2E_PORT, default 1421 — NOT the Tauri devUrl port 1420) and kills
+ * only the PID it spawned. It never probes-for/reuses a server it did not
+ * start and never kills by port, so a sibling session's `npm run dev` on
+ * 1420 can be neither adopted nor terminated by an E2E run.
+ *
  * Image freshness: `compose up --pull=missing` never rebuilds a tag that
  * already exists, so a stale e2e-{cloud,license}-server:latest would silently
  * test outdated binaries. The runner therefore refuses to start when a
@@ -26,12 +32,12 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { generateKeyPairSync } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
-import { platform } from 'os';
 import http from 'node:http';
+import net from 'node:net';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
@@ -39,10 +45,30 @@ const UI_DIR = resolve(ROOT, 'ui');
 
 // Parse args
 const args = process.argv.slice(2);
+
+/**
+ * True when the caller asked to skip Docker — from our own argv, or from
+ * npm's swallowed form of the same flag.
+ *
+ * The form without a separator (npm run e2e:ui --no-docker) is consumed by
+ * npm as one of its OWN config flags: it never reaches this script's argv,
+ * and npm instead exports npm_config_docker (empty for --no-docker, 'true'
+ * for --docker). The runner then read NO_DOCKER as false, took the Docker
+ * path and died in the image freshness guard — aborting a run that had
+ * explicitly asked for no Docker at all. Honour npm's signal too, so both
+ * spellings behave identically. The documented form
+ * (npm run e2e:ui -- --no-docker) still arrives through argv, unchanged.
+ */
+function noDockerRequested() {
+  if (args.includes('--no-docker')) return true;
+  const npmFlag = process.env.npm_config_docker;
+  return npmFlag !== undefined && npmFlag !== 'true';
+}
+
 const HEADED = args.includes('--headed');
 const API_ONLY = args.includes('--api-only');
 const UI_ONLY = args.includes('--ui-only');
-const NO_DOCKER = args.includes('--no-docker');
+const NO_DOCKER = noDockerRequested();
 const CHANGED_ONLY = args.includes('--changed-only');
 // Rebuild the locally-built E2E images that the freshness guard judges stale,
 // instead of aborting. See assertImagesFresh() for the staleness rule.
@@ -52,6 +78,31 @@ const BUILD = args.includes('--build');
 // of running the full matrix in a single job. Forwarded verbatim.
 const PROJECT = args.find(a => a.startsWith('--project=')) ?? '';
 const SPEC_FILES = args.filter(a => !a.startsWith('-'));
+
+/* ── E2E dev-server port (isolation) ────────────────────────────────────
+ * The suite owns its own port so it can never adopt or kill a Vite server
+ * that belongs to another session. Port 1420 is the Tauri desktop devUrl
+ * contract (apps/desktop-tauri/tauri.conf.json) — the human-facing
+ * `npm run dev` — so E2E stays off it by default and only moves when the
+ * caller asks (E2E_PORT=...). ui/e2e/playwright.config.ts reads the same
+ * variable, so runner, readiness poll and Playwright agree on one port.
+ */
+const E2E_PORT = Number(process.env.E2E_PORT || 1421);
+if (!Number.isInteger(E2E_PORT) || E2E_PORT < 1 || E2E_PORT > 65535) {
+  console.error(`E2E_PORT must be a TCP port number (got "${process.env.E2E_PORT}").`);
+  process.exit(3);
+}
+const E2E_BASE_URL = `http://localhost:${E2E_PORT}`;
+// Propagated to the Playwright child (execSync inherits process.env) so a
+// direct-config run and this runner never disagree about the base URL.
+if (!process.env.E2E_BASE_URL) process.env.E2E_BASE_URL = E2E_BASE_URL;
+// This runner OWNS the dev server for the runs it starts: it spawns Vite on
+// E2E_PORT, tracks the child, and reaps that PID at cleanup. Tell
+// ui/e2e/playwright.config.ts to declare no webServer of its own, so there is
+// exactly ONE owner. Without this the two sides double-spawned: Playwright
+// found our server, adopted it, then tore it down mid-run, and every test
+// after the first batch died with `page.goto: Could not connect to server`.
+process.env.E2E_SERVER_EXTERNAL = '1';
 
 /* ── ANSI helpers ───────────────────────────────────────────────────── */
 const GREEN  = '\x1b[32m';
@@ -104,29 +155,47 @@ function log(label, msg) {
   console.log(`  ${CYAN}[${ts}]${NC} ${label} ${msg}`);
 }
 
-/** Kill a process by its listening port (cross-platform). */
-function killByPort(port) {
-  try {
-    if (platform() === 'win32') {
-      // Windows: netstat + taskkill
-      const result = execSync(
-        `netstat -ano | findstr "LISTENING" | findstr ":${port}"`,
-        { stdio: 'pipe', timeout: 5_000 },
-      ).toString();
-      const lines = result.trim().split('\n');
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        const pid = parts[parts.length - 1];
-        if (pid && pid !== '0') {
-          try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'pipe', timeout: 3_000 }); } catch {}
-        }
-      }
-    } else {
-      // Unix: lsof + kill
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null`, { stdio: 'pipe', timeout: 5_000 });
-    }
-  } catch {
-    // No process found on that port — fine
+/**
+ * True when something is listening on `port` on EITHER loopback family.
+ *
+ * Both families must be probed: Vite binds IPv6 loopback ([::1]) in this
+ * environment, so a 127.0.0.1-only probe reports "free" while a server is
+ * demonstrably answering on the port — which is exactly how an earlier
+ * version of this guard let a foreign server be adopted undetected, and why
+ * a run then died with `page.goto: Could not connect to server` the moment
+ * that foreign server went away.
+ */
+function portInUse(port) {
+  const probe = (host) => new Promise((done) => {
+    const socket = net.connect({ port, host });
+    const settle = (inUse) => { socket.destroy(); done(inUse); };
+    socket.setTimeout(2_000);
+    socket.once('connect', () => settle(true));
+    socket.once('timeout', () => settle(false));
+    socket.once('error', () => settle(false));
+  });
+  return Promise.all([probe('127.0.0.1'), probe('::1')]).then(r => r.some(Boolean));
+}
+/**
+ * Refuse to run when the E2E port is already taken.
+ *
+ * Adoption is the defect this whole file was changed for: if some other
+ * process already listens on E2E_PORT — a second concurrent E2E run, or a
+ * leftover server — starting our own Vite would fail (--strictPort) while
+ * the readiness poll silently resolved against the foreign listener, and
+ * Playwright would then test someone else's server until that server went
+ * away. Failing loudly here is the only outcome that cannot be mistaken for
+ * a green run. This is a plain loopback connect, so it needs no netstat/lsof
+ * and cannot be fooled by a port that merely lingers in TIME_WAIT (no
+ * listener accepts there).
+ */
+async function assertE2ePortFree() {
+  if (await portInUse(E2E_PORT)) {
+    throw new Error(
+      `Port ${E2E_PORT} is already in use by another process — refusing to adopt ` +
+      `a server this run did not start. Stop it, or pick another port: ` +
+      `E2E_PORT=1431 npm run e2e:ui`
+    );
   }
 }
 
@@ -280,6 +349,15 @@ function buildServices(services) {
  * there — and it must never become a new way to fail a green pipeline.
  */
 function assertImagesFresh() {
+  // The guard protects against testing stale Docker BINARIES. A --no-docker
+  // run starts no containers and consumes none of these images (the UI specs
+  // run against the Vite dev server + dev-mock on :1420), so there is nothing
+  // to protect and nothing to refuse. Skip it explicitly rather than relying
+  // on startDocker() never being called on this path.
+  if (NO_DOCKER) {
+    log('Docker', 'Freshness guard skipped (--no-docker).');
+    return;
+  }
   if (process.env.CI) {
     log('Docker', 'CI detected — trusting the images built by the workflow.');
     return;
@@ -415,36 +493,44 @@ function stopDocker() {
 /** Start Vite dev server, return when ready. */
 function startVite() {
   return new Promise((resolvePromise, reject) => {
-    // Check if Vite is already running
-    try {
-      execSync('curl -sf http://localhost:1420 > /dev/null 2>&1', { timeout: 3_000 });
-      log('Vite', 'Already running on port 1420, reusing.');
-      resolvePromise();
-      return;
-    } catch {
-      // Not running — kill any stale process on port 1420, then start
-    }
-
-    killByPort(1420);
-
-    log('Vite', 'Starting dev server...');
-    viteProcess = spawn('npx', ['vite'], {
-      cwd: UI_DIR,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      shell: true,
-      // Hide the dev-mode DevToolbar overlay during E2E — it floats
-      // bottom-right at tooltip z-index and would intercept clicks on
-      // POS action buttons (App.tsx reads VITE_DEV_TOOLBAR to disable it).
-      env: { ...process.env, VITE_DEV_TOOLBAR: '0' },
-    });
+    // Always start OUR OWN server. There is deliberately no "is something
+    // already listening? then reuse it" probe here: a server we did not
+    // spawn cannot be distinguished from a sibling session's `npm run dev`,
+    // and adopting one made the whole run fail the moment that foreign
+    // server went away (page.goto: net::ERR_CONNECTION_REFUSED). Ownership
+    // is tracked by the child PID we hold below, never by the port.
+    log('Vite', `Starting dev server on port ${E2E_PORT}...`);
+    // --port/--strictPort on the command line rather than a new package.json
+    // script: it keeps `npm run dev` (the Tauri devUrl contract on 1420)
+    // untouched and makes the port E2E's, not the config's.
+    // vite/bin/vite.js is invoked directly so the tracked PID is vite itself
+    // (the real listener) instead of the shell wrapper `npx` would leave
+    // behind on Windows — which is what makes the SIGTERM below sufficient.
+    viteProcess = spawn(
+      process.execPath,
+      [resolve(UI_DIR, 'node_modules/vite/bin/vite.js'), '--port', String(E2E_PORT), '--strictPort'],
+      {
+        cwd: UI_DIR,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // Hide the dev-mode DevToolbar overlay during E2E — it floats
+        // bottom-right at tooltip z-index and would intercept clicks on
+        // POS action buttons (App.tsx reads VITE_DEV_TOOLBAR to disable it).
+        env: { ...process.env, VITE_DEV_TOOLBAR: '0' },
+      },
+    );
 
     let outputBuffer = '';
     let isReady = false;
+    // Set when our own child reports it could not take the port. Without this
+    // --strictPort's failure is masked by the readiness poll: the poll accepts
+    // ANY listener on the port, so a foreign server holding E2E_PORT would be
+    // reported as "our server is ready" and the run would test it.
+    let failed = false;
     let pollInterval = null;
     const startupTimeout = Number(process.env.VITE_STARTUP_TIMEOUT || '120000');
 
     const markReady = () => {
-      if (isReady) return;
+      if (isReady || failed) return;
       isReady = true;
       if (pollInterval) clearInterval(pollInterval);
       clearTimeout(timeout);
@@ -464,7 +550,20 @@ function startVite() {
 
     const onData = (data) => {
       outputBuffer += data.toString();
-      if (!isReady && (outputBuffer.includes('Local:') || outputBuffer.includes('localhost:1420') || outputBuffer.includes('ready in'))) {
+      if (isReady || failed) return;
+      // Our OWN child could not bind the port — a hard failure, not something
+      // to wait out, and it must beat the poll below.
+      if (/is already in use|EADDRINUSE/i.test(outputBuffer)) {
+        failed = true;
+        if (pollInterval) clearInterval(pollInterval);
+        clearTimeout(timeout);
+        reject(new Error(
+          `Vite could not bind port ${E2E_PORT} (already in use). Refusing to ` +
+          `adopt the server holding it — stop that process or set E2E_PORT to a free port.`
+        ));
+        return;
+      }
+      if (outputBuffer.includes('Local:') || outputBuffer.includes(`localhost:${E2E_PORT}`) || outputBuffer.includes('ready in')) {
         markReady();
       }
     };
@@ -474,8 +573,8 @@ function startVite() {
 
     // Active HTTP poll every 250ms so we don't rely solely on stdout chunking in non-TTY CI
     pollInterval = setInterval(() => {
-      if (isReady) return;
-      const req = http.get('http://127.0.0.1:1420', (res) => {
+      if (isReady || failed) return;
+      const req = http.get(`http://127.0.0.1:${E2E_PORT}`, (res) => {
         req.destroy();
         markReady();
       });
@@ -487,6 +586,7 @@ function startVite() {
     viteProcess.on('error', (err) => {
       if (pollInterval) clearInterval(pollInterval);
       clearTimeout(timeout);
+      failed = true;
       if (!isReady) reject(err);
     });
 
@@ -494,20 +594,29 @@ function startVite() {
       if (pollInterval) clearInterval(pollInterval);
       clearTimeout(timeout);
       if (!isReady && code !== 0 && !outputBuffer.includes('ready')) {
+        failed = true;
         reject(new Error(`Vite exited with code ${code}`));
       }
     });
   });
 }
 
-/** Stop Vite dev server. */
+/**
+ * Stop the Vite dev server WE started.
+ *
+ * Kills exactly the child PID we spawned and nothing else. The previous
+ * `killByPort(1420)` fallback terminated whatever held the port — including
+ * a sibling session's `npm run dev` that we had adopted at startup. Losing
+ * that kill means a crashed runner could in principle leak its own child,
+ * which is the deliberate trade: a leaked process we own is recoverable,
+ * a colleague's dev server we killed is not.
+ */
 function stopVite() {
   if (viteProcess) {
     log('Vite', 'Stopping dev server...');
     viteProcess.kill('SIGTERM');
     viteProcess = null;
   }
-  killByPort(1420);
 }
 
 /**
@@ -551,6 +660,26 @@ function getChangedSpecs() {
   }
 }
 
+/**
+ * Every UI spec on disk, as repo-relative `e2e/<name>.spec.ts` paths.
+ *
+ * The run's population must come from the directory, not a hand-kept list: the
+ * old `--ui-only` array named 10 paths while 29 specs existed, so 17 of them —
+ * including tablet-viewport and kds — were never executed by the documented
+ * command, and a green run reported nothing about the gap. A new spec is now
+ * picked up by existing.
+ */
+function collectSpecFiles() {
+  try {
+    return readdirSync(resolve(UI_DIR, 'e2e'))
+      .filter((f) => f.endsWith('.spec.ts'))
+      .sort()
+      .map((f) => `e2e/${f}`);
+  } catch {
+    return [];
+  }
+}
+
 /** Run Playwright tests. */
 function runPlaywright() {
   let cmd = `npx playwright test --config e2e/playwright.config.ts`;
@@ -580,18 +709,13 @@ function runPlaywright() {
     if (API_ONLY) {
       specs = ['e2e/api.spec.ts'];
     } else if (UI_ONLY) {
-      specs = [
-        'e2e/auth.spec.ts',
-        'e2e/sale.spec.ts',
-        'e2e/pos-workflows.spec.ts',
-        'e2e/product.spec.ts',
-        'e2e/shift.spec.ts',
-        'e2e/settings.spec.ts',
-        'e2e/new-flows.spec.ts',
-        'e2e/e2e-sale-to-history.spec.ts',
-        'e2e/e2e-shift-reconciliation.spec.ts',
-        'e2e/e2e-settings-persist.spec.ts',
-      ];
+      // `--ui-only` documents itself as "All UI E2E tests (excl. API)"
+      // (ui/README.md). It used to be a hand-maintained list of 10 paths, which
+      // silently stopped running 17 of the 29 specs on disk — a new spec was
+      // simply never executed, and a green run said nothing about it. Derive
+      // the population from the directory instead, so adding a spec is enough
+      // to make it run.
+      specs = collectSpecFiles().filter((f) => !f.endsWith('api.spec.ts'));
     }
   }
 
@@ -657,10 +781,13 @@ async function main() {
         log('Docker', `${YELLOW}Not available — skipping.${NC}`);
       }
     } else {
-      log('Docker', 'Skipped (--no-docker).');
+      // (a) --no-docker consumes no Docker binaries, so the image freshness
+      // guard is not applicable and must not abort the run.
+      log('Docker', 'Freshness guard skipped (--no-docker).');
     }
 
     // ── Step 2: Start Vite dev server ─────────────────────────────
+    await assertE2ePortFree();
     await startVite();
 
     // ── Step 3: Run Playwright tests ──────────────────────────────

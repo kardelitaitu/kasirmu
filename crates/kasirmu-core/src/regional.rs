@@ -91,6 +91,72 @@ pub fn is_valid_iso3166_alpha2(code: &str) -> bool {
     b.len() == 2 && b.iter().all(|byte| byte.is_ascii_alphabetic())
 }
 
+/// The canonical residency vocabulary — which deployment a tenant's data lives
+/// in.
+///
+/// This is deliberately **not** an ISO-3166 country code. ADR #59 §2.2 rules
+/// that the two axes must never collapse into one column: the **market** anchor
+/// is `legal_entities.country_code` (ISO-3166 alpha-2, validated by
+/// `is_valid_iso3166_alpha2`), while **residency** is a deployment selector
+/// carried here and on `tenants.region` / `provisioning.home_region`.
+/// `global` is a legal member of this set and is not a country; reusing the
+/// market vocabulary for residency would be the exact collapse §2.2 forbids.
+///
+/// The set is **closed and code-checked**, mirroring `DocumentKind::parse`
+/// (`db/fiscal.rs:95-107`): an unvalidated string is rejected rather than
+/// silently opening a second spelling of one region, which would be a routing
+/// bug that looks like a data bug. Every new region is a code change plus a
+/// release — the same trade §Q2 already makes for correctness-critical values.
+///
+/// The initial set is exactly `{ global }` (ADR #59 §Q6). `global` means
+/// **"no residency commitment yet"**, not a residency region: a merchant in
+/// Germany and one in Brazil both land in it and neither regulator is satisfied
+/// by the name, so no residency promise may be made while it is the only
+/// value. The first real split creates the first real region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RegionCode {
+    /// The single launch region: no residency commitment yet (ADR #59 §Q6).
+    Global,
+}
+
+/// The region every deployment starts in, and the `tenants.region` column
+/// default. Named as a constant so the schema migration, the license server and
+/// the local cache cannot drift into three spellings of one region.
+pub const DEFAULT_REGION: RegionCode = RegionCode::Global;
+
+impl RegionCode {
+    /// The closed set, in the order a UI should present it.
+    pub const ALL: &'static [RegionCode] = &[RegionCode::Global];
+
+    /// Parse a supplied or stored region code, case-insensitively. Anything
+    /// outside the closed set is rejected — never a new region.
+    pub fn parse(raw: &str) -> Result<Self, crate::CoreError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "global" => Ok(Self::Global),
+            other => Err(crate::CoreError::Validation {
+                field: "region",
+                message: format!("region must be one of global; got {other:?}"),
+            }),
+        }
+    }
+
+    /// The stored and wire keyword. Lowercase, matching the serde
+    /// representation, so no second casing of one region can be invented.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+        }
+    }
+}
+
+impl std::fmt::Display for RegionCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Validate and canonicalise one regional axis value at the write boundary.
 ///
 /// This is the single place the design's "validate at the core boundary, not

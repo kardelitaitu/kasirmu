@@ -5,7 +5,7 @@
 //! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
 //! deny-by-default resolver every gate funnels through.
 //!
-//! Role AUTHORING is not here: `create_role`, `update_role`, `delete_role` and
+//! Role AUTHORING is not here: `create_role`, `update_role`, `soft_delete_role` and
 //! `role_reference_counts` live in [`super::roles`] behind that module's single
 //! grant validator and preset-id guard. This module keeps the preset side only
 //! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
@@ -91,10 +91,14 @@ impl Store<'_> {
         Ok(count)
     }
 
-    /// List all roles, ordered by name.
+    /// List all LIVE roles, ordered by name.
+    ///
+    /// A trashed role is excluded here, which is what takes it out of every
+    /// picker, the drawer's taxonomy and the roster's badge lookup at once. The
+    /// trash has its own read, `list_trashed_roles`.
     pub fn list_roles(&self) -> Result<Vec<Role>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, description, permissions, created_at, updated_at FROM roles ORDER BY name",
+            "SELECT id, name, description, permissions, created_at, updated_at FROM roles\n             WHERE deleted_at IS NULL ORDER BY name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Role {
@@ -107,6 +111,42 @@ impl Store<'_> {
             })
         })?;
         rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// The G-2 zombie-account guard, extended to the trash: `role_id` must name a
+    /// role that exists AND is not soft-deleted.
+    ///
+    /// Why the live half is a separate question from `get_role`: that read
+    /// deliberately does NOT filter `deleted_at`, because the role trash renders
+    /// trashed rows through `role_dto` -> `role_holder_count` -> `get_role`. So the
+    /// assignment path asks here instead of filtering there.
+    ///
+    /// Why it matters: a role kept assignable after being trashed can never be
+    /// purged (`purge_expired_roles` refuses a row anything references), so the
+    /// window would never close; and the role keeps granting while `list_roles`
+    /// hides it from every picker, which is an author-visible grant with no row
+    /// to revoke.
+    fn require_assignable_role(&self, role_id: &str) -> Result<(), CoreError> {
+        if self.get_role(role_id)?.is_none() {
+            return Err(CoreError::Validation {
+                field: "role_id",
+                message: format!("role '{role_id}' does not exist"),
+            });
+        }
+        let trashed: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM roles WHERE id = ?1 AND deleted_at IS NOT NULL)",
+            params![role_id],
+            |row| row.get(0),
+        )?;
+        if trashed {
+            return Err(CoreError::Validation {
+                field: "role_id",
+                message: format!(
+                    "role '{role_id}' is in the trash; restore it before assigning it"
+                ),
+            });
+        }
+        Ok(())
     }
 
     /// Look up a single role by id.
@@ -132,14 +172,52 @@ impl Store<'_> {
     }
 }
 
+/// How long anything in the trash is kept before the 90-day sweep runs.
+///
+/// ONE window for both kinds of entry — staff (`purge_expired_users`) and custom
+/// roles (`purge_expired_roles`). A second constant is how the two halves drift
+/// apart, and "the trash holds things for 90 days" would stop being one promise.
+///
+/// The clock starts at `deleted_at` and is enforced by the staff read paths,
+/// which run the sweep: there is no scheduler to depend on, so the window closes
+/// the next time anything looks.
+pub const TRASH_RETENTION_DAYS: i64 = 90;
+
+/// A member sitting in the trash, with the moment they entered it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedUser {
+    /// The user row. Still carries its profile data until the purge anonymises
+    /// it — the trash is where a wrongly-deleted member can be read back and
+    /// restored before that happens.
+    pub user: User,
+    /// When the member entered the trash; the retention clock reads this.
+    pub deleted_at: String,
+}
+
+/// A custom role sitting in the trash, with the moment it entered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashedRole {
+    /// The role row. Unlike a trashed member this is erased wholesale at the end
+    /// of the window rather than anonymised — a role carries no personal data,
+    /// and the delete guard has already proved nothing references it.
+    pub role: Role,
+    /// When the role entered the trash; the retention clock reads this.
+    pub deleted_at: String,
+}
+
 // ── User CRUD ───────────────────────────────────────────────────
 
 impl Store<'_> {
-    /// List all users, ordered by display_name.
+    /// List all LIVE users, ordered by display_name.
+    ///
+    /// Trashed members are excluded here and nowhere else has to ask: this one
+    /// read is the roster, the staff picker and the assignment editor's source,
+    /// so a soft-deleted member leaves all of them at once. The trash has its
+    /// own read, `list_trashed_users`.
     pub fn list_users(&self) -> Result<Vec<User>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at
-             FROM users ORDER BY display_name",
+             FROM users WHERE deleted_at IS NULL ORDER BY display_name",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(User {
@@ -334,11 +412,16 @@ impl Store<'_> {
             .map_err(|e| CoreError::PermissionDenied(e.to_string()))
     }
 
-    /// Look up a user by username.
+    /// Look up a LIVE user by username.
+    ///
+    /// A trashed member is invisible to this lookup on purpose: it backs the
+    /// login path, and a deleted account must not authenticate. The deleted_at
+    /// filter is the load-bearing half — the row SURVIVES the trash (that is
+    /// the design), so nothing else here would stop it resolving.
     pub fn get_user_by_username(&self, username: &str) -> Result<Option<User>, CoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at
-             FROM users WHERE username = ?1",
+             FROM users WHERE username = ?1 AND deleted_at IS NULL",
         )?;
         let result = stmt.query_row(params![username], |row| {
             Ok(User {
@@ -452,18 +535,7 @@ impl Store<'_> {
                 ),
             });
         }
-        // G-2: a role_id that references no row would either violate the FK
-        // (mislabelled as a username Conflict by the catch-all arm below)
-        // or — on a connection with foreign_keys off — create a user whose
-        // gate always denies ("role not found"), a silent zombie account.
-        // Validate up front so every caller (desktop, cloud, CLI) gets a
-        // typed error instead.
-        if self.get_role(role_id)?.is_none() {
-            return Err(CoreError::Validation {
-                field: "role_id",
-                message: format!("role '{role_id}' does not exist"),
-            });
-        }
+        self.require_assignable_role(role_id)?;
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -550,16 +622,16 @@ impl Store<'_> {
         }
         // G-2: same zombie-account guard as create_user — a role change to
         // a nonexistent role must fail with a typed error before any write.
-        if self.get_role(role_id)?.is_none() {
-            return Err(CoreError::Validation {
-                field: "role_id",
-                message: format!("role '{role_id}' does not exist"),
-            });
-        }
+        self.require_assignable_role(role_id)?;
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // `deleted_at IS NULL` is a guard, not a filter on the WHERE: a trashed
+        // member is not editable, and without it a crafted call could set
+        // is_active = 1 on a row that BOTH the login path and the roster filter
+        // out — an active account nobody can see. Restoring is the door back.
         let rows = self.conn.execute(
-            "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
+            "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 \
+             WHERE id = ?6 AND deleted_at IS NULL",
             params![username, display_name.trim(), role_id, is_active, now, id],
         )?;
         if rows == 0 {
@@ -567,6 +639,39 @@ impl Store<'_> {
                 entity: "user",
                 id: id.to_owned(),
             });
+        }
+        // C1.1 / W7-B, the INACTIVE -> ACTIVE door. `create_user` vetoes a
+        // staff insert that pushed the tier's count over its cap; a
+        // reactivation adds exactly the same active row to exactly the same
+        // count, so it walks the same veto — otherwise deactivate -> create ->
+        // reactivate exceeds the cap while every individual step is allowed.
+        // The caller arms this dimension on THIS Store only when the update is
+        // a reactivation (an already-active edit or a deactivation must never
+        // be refused because the plan is full), so an un-armed Store — every
+        // other caller, including the standalone `update_user` — is the legacy
+        // un-gated path. Post-update and inside the caller's transaction, for
+        // the same WAL reason `create_user` counts after its insert: two
+        // concurrent reactivations cannot both pass a pre-tx gate at
+        // `current == limit - 1`. Same literal predicate as
+        // `count_staff_users` (active, owner excluded).
+        if let Some(tier) = self.take_armed_quota(QuotaDimension::Staff)
+            && let Some(limit) = QuotaDimension::Staff.limit_for(&tier)
+        {
+            let current: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id != ?1",
+                params![crate::builtin_roles::OWNER],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                // The caller owns the transaction; returning here makes its
+                // `?` unwind and the transaction guard roll the UPDATE back.
+                return Err(crate::subscription::QuotaError::StaffLimit {
+                    tier: tier.name().into(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
         }
         // Keep the assignment role in sync — the scope columns and scope rows
         // of an existing assignment are preserved (only the role follows).
@@ -605,11 +710,68 @@ impl Store<'_> {
         })
     }
 
-    /// Delete a user by id.
-    pub fn delete_user(&self, id: &str) -> Result<(), CoreError> {
-        let rows = self
-            .conn
-            .execute("DELETE FROM users WHERE id = ?1", params![id])?;
+    /// Move a member to the trash (the soft delete).
+    ///
+    /// REFUSES AN ACTIVE ACCOUNT, here and not only in the UI: deactivating
+    /// first is the policy, and the command layer is not the only caller. A
+    /// second delete on the same member is refused too, so a double-click
+    /// cannot silently restart the retention clock.
+    pub fn soft_delete_user(&self, id: &str) -> Result<User, CoreError> {
+        let user = self.get_user(id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "user",
+            id: id.to_owned(),
+        })?;
+        if user.is_active {
+            return Err(CoreError::Validation {
+                field: "is_active",
+                message: "deactivate this member before deleting them".into(),
+            });
+        }
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET deleted_at = ?1, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, id],
+        )?;
+        if rows == 0 {
+            return Err(CoreError::Validation {
+                field: "deleted_at",
+                message: "this member is already in the trash".into(),
+            });
+        }
+        self.persist_over_quota_markers()?;
+        Ok(user)
+    }
+
+    /// Take a member back out of the trash.
+    ///
+    /// They return INACTIVE, exactly as the delete found them: deletion
+    /// requires an inactive account, so restoring must not become a back door
+    /// to re-granting access — the operator reactivates deliberately through
+    /// `update_user`, and that is the audited step. A purged tombstone is not
+    /// restorable: its personal data is erased, and bringing the row back
+    /// would claim otherwise.
+    ///
+    /// A row PAST its retention window is not restorable either, and that is a
+    /// predicate here rather than a consequence of the purge having run: the
+    /// sweep rides the trash READS, so between a list taken at day 89 and a
+    /// restore clicked after the deadline nothing has purged anything, and the
+    /// window would otherwise be enforced only for a caller that happened to
+    /// list first. The cutoff mirrors `purge_expired_users` exactly — the same
+    /// `TRASH_RETENTION_DAYS`, the same strict-before comparison — so a row is
+    /// restorable precisely when it is still purgeable-eligible, and the two
+    /// clocks cannot drift into a state where a row is neither swept nor
+    /// restorable. The refusal is `NotFound`, the answer an absent or purged
+    /// row already gets: the trash is not a way to prove a row exists.
+    pub fn restore_user(&self, id: &str) -> Result<User, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET deleted_at = NULL, updated_at = ?1 \
+             WHERE id = ?2 AND deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at >= ?3",
+            params![now, id, cutoff],
+        )?;
         if rows == 0 {
             return Err(CoreError::NotFound {
                 entity: "user",
@@ -617,7 +779,72 @@ impl Store<'_> {
             });
         }
         self.persist_over_quota_markers()?;
-        Ok(())
+        self.get_user(id)?.ok_or_else(|| CoreError::NotFound {
+            entity: "user",
+            id: id.to_owned(),
+        })
+    }
+
+    /// Everything in the trash, newest first. Purged tombstones are not listed:
+    /// there is nothing left to read back or restore.
+    pub fn list_trashed_users(&self) -> Result<Vec<TrashedUser>, CoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at, deleted_at \
+             FROM users WHERE deleted_at IS NOT NULL AND purged_at IS NULL \
+             ORDER BY deleted_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(TrashedUser {
+                user: User {
+                    id: row.get("id")?,
+                    username: row.get("username")?,
+                    pin_hash: row.get("pin_hash")?,
+                    display_name: row.get("display_name")?,
+                    role_id: row.get("role_id")?,
+                    is_active: row.get("is_active")?,
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                },
+                deleted_at: row.get("deleted_at")?,
+            })
+        })?;
+        rows.map(|r| Ok(r?)).collect()
+    }
+
+    /// Erase the personal data of every member whose retention window has
+    /// closed, returning how many were erased.
+    ///
+    /// ANONYMISE, NEVER DELETE. `inventory_shifts.user_id` and
+    /// `inventory_transactions.staff_id` are ON DELETE RESTRICT, and
+    /// `audit_log.user_id` is NOT NULL with no cascade, so a row delete fails
+    /// for anyone with history — and deleting the history instead would take
+    /// the books with it. The row stays on as a tombstone the historical rows
+    /// still resolve to; what goes is the person: name, contact details,
+    /// identity, pay, avatar, notes, and the username itself (rewritten to
+    /// `deleted-<id>`, which also frees the handle for a new member).
+    ///
+    /// `pin_hash` is blanked as well, so the account could not authenticate
+    /// even without the `deleted_at` filter on the login lookup — verify_pin
+    /// fails closed on a malformed hash.
+    pub fn purge_expired_users(&self) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // Timestamps are fixed-width RFC 3339 millis, so comparing the strings
+        // compares the instants.
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = self.conn.execute(
+            "UPDATE users SET \
+                 username = 'deleted-' || id, display_name = 'Deleted staff', pin_hash = '', \
+                 date_of_birth = NULL, phone = NULL, national_id_type = NULL, national_id = NULL, \
+                 email = NULL, monthly_take_home_minor = NULL, emergency_contact_name = NULL, \
+                 emergency_contact_phone = NULL, emergency_contact_relationship = NULL, \
+                 job_title = '', notes = '', address = NULL, language = NULL, avatar = NULL, \
+                 tax_id = NULL, national_id_expires_at = NULL, hire_date = NULL, \
+                 national_id_hash = NULL, purged_at = ?1, updated_at = ?1 \
+             WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at < ?2",
+            params![now, cutoff],
+        )?;
+        Ok(rows)
     }
 
     // ── Login attempt rate limiting (persistent) ───────────────────

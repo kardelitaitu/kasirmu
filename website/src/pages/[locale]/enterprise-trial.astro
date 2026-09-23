@@ -9,6 +9,19 @@ import { isNonPublic } from '../../lib/site';
 const locale = Astro.currentLocale ?? 'en';
 const pageTitle = `kasir.mu — ${t(locale, 'enterpriseTrial.title')}`;
 const apiBase = 'https://license.kasir.mu';
+// The script below is `is:inline`, so it cannot import the dictionaries — the
+// strings a visitor reads when a submit fails, and the two labels it swaps on
+// the copy button, arrive as vars. The submit label needs no key at all: the
+// page already rendered it localized, and the script captures it (before this,
+// the restore path preferred a `dataset.originalText` that WAS set on load but
+// fell back to the English literal 'Request Trial', so a failed request left an
+// English button on /id/).
+const copyLabel = t(locale, 'enterpriseTrial.copyButton');
+const copiedLabel = t(locale, 'enterpriseTrial.copiedButton');
+const invalidCode = t(locale, 'enterpriseTrial.invalidCode');
+const invalidEmail = t(locale, 'enterpriseTrial.invalidEmail');
+const processing = t(locale, 'enterpriseTrial.processing');
+const requestFailed = t(locale, 'enterpriseTrial.requestFailed');
 // noindex is derived from the same NON_PUBLIC_PAGES list the sitemap filter
 // and llms.txt use (src/lib/site.ts) — the three surfaces cannot disagree.
 const noindex = isNonPublic(Astro.url.pathname);
@@ -35,7 +48,7 @@ const noindex = isNonPublic(Astro.url.pathname);
             required
             minlength="8"
             placeholder={t(locale, 'enterpriseTrial.codePlaceholder')}
-            class="w-full rounded-lg border border-border px-4 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            class="w-full rounded-lg border border-border px-4 py-2.5 text-sm"
             autocomplete="off"
           />
         </div>
@@ -50,7 +63,7 @@ const noindex = isNonPublic(Astro.url.pathname);
             name="email"
             required
             placeholder={t(locale, 'enterpriseTrial.emailPlaceholder')}
-            class="w-full rounded-lg border border-border px-4 py-2.5 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+            class="w-full rounded-lg border border-border px-4 py-2.5 text-sm"
             autocomplete="email"
           />
         </div>
@@ -102,11 +115,17 @@ const noindex = isNonPublic(Astro.url.pathname);
     </div>
   </section>
 
-  <script is:inline define:vars={{ apiBase }}>
+  <script
+    is:inline
+    define:vars={{ apiBase, copyLabel, copiedLabel, invalidCode, invalidEmail, processing, requestFailed }}
+  >
     (() => {
       const form = document.getElementById('enterprise-trial-form');
       const errorEl = document.getElementById('form-error');
       const submitBtn = document.getElementById('submit-btn');
+      // Captured before anything rewrites it: the localized label the page
+      // rendered, and the one string the restore path needs.
+      const submitLabel = submitBtn.textContent;
       const successPanel = document.getElementById('success-panel');
       const keyDisplay = document.getElementById('license-key-display');
       const copyBtn = document.getElementById('copy-key-btn');
@@ -122,18 +141,18 @@ const noindex = isNonPublic(Astro.url.pathname);
         const email = document.getElementById('email').value.trim();
 
         if (!code || code.length < 8) {
-          errorEl.textContent = 'Please enter a valid approval code (at least 8 characters).';
+          errorEl.textContent = invalidCode;
           errorEl.classList.remove('hidden');
           return;
         }
         if (!email || !email.includes('@')) {
-          errorEl.textContent = 'Please enter a valid email address.';
+          errorEl.textContent = invalidEmail;
           errorEl.classList.remove('hidden');
           return;
         }
 
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Processing…';
+        submitBtn.textContent = processing;
 
         try {
           const res = await fetch(`${apiBase}/api/v1/license/enterprise-trial`, {
@@ -145,7 +164,7 @@ const noindex = isNonPublic(Astro.url.pathname);
           const data = await res.json();
 
           if (!res.ok) {
-            throw new Error(data.error || 'Failed to request enterprise trial');
+            throw new Error(data.error || requestFailed);
           }
 
           // Show success
@@ -157,8 +176,8 @@ const noindex = isNonPublic(Astro.url.pathname);
           copyBtn.addEventListener('click', async () => {
             try {
               await navigator.clipboard.writeText(data.license_key);
-              copyBtn.textContent = 'Copied!';
-              setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+              copyBtn.textContent = copiedLabel;
+              setTimeout(() => { copyBtn.textContent = copyLabel; }, 2000);
             } catch {
               // Fallback: select text
               keyDisplay.select();
@@ -169,12 +188,9 @@ const noindex = isNonPublic(Astro.url.pathname);
           errorEl.classList.remove('hidden');
         } finally {
           submitBtn.disabled = false;
-          submitBtn.textContent = submitBtn.dataset.originalText || 'Request Trial';
+          submitBtn.textContent = submitLabel;
         }
       });
-
-      // Preserve original button text
-      submitBtn.dataset.originalText = submitBtn.textContent;
     })();
   </script>
 </Base>

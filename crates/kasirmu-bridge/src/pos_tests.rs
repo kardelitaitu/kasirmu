@@ -1986,3 +1986,317 @@ async fn publish_course_fired_rejects_unknown_sale_and_empty_course() {
     let empty = publish_course_fired_scoped(&bridge.ctx(), "tok", empty_args).await;
     assert!(matches!(empty, Err(BridgeError::Invalid(_))));
 }
+
+// ── C13: a plugin discount clears the same gate as the manual path ──
+
+/// Write a one-plugin directory whose script is `lua` and whose manifest
+/// declares exactly `permissions`. Mirrors kasirmu-plugin's own fixture.
+fn plugin_dir(name: &str, lua: &str, permissions: &[&str]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let plugin_dir = dir.path().join(name);
+    std::fs::create_dir(&plugin_dir).unwrap();
+    let perms = permissions
+        .iter()
+        .map(|p| format!("\"{p}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    std::fs::write(
+        plugin_dir.join("plugin.toml"),
+        format!(
+            "[plugin]\nname = \"{name}\"\nversion = \"1.0.0\"\n\n[capabilities]\nscripts = [\"script.lua\"]\n\n[permissions]\nrequired_permissions = [{perms}]\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(plugin_dir.join("script.lua"), lua).unwrap();
+    dir
+}
+
+/// Seed a role granting exactly `permissions` plus the user that holds it.
+///
+/// A bespoke role rather than a preset: the presets grant SALES_DISCOUNT to
+/// every checkout role (Owner wildcard, Manager, Staff, Admin), so only a role
+/// authored here can prove the plugin path is gated rather than merely
+/// permissioned in practice.
+fn seed_role_with_permissions(
+    conn: &rusqlite::Connection,
+    role_id: &str,
+    user_id: &str,
+    permissions: &[&str],
+) {
+    Store::new(conn).seed_default_roles().unwrap();
+    let perms = permissions
+        .iter()
+        .map(|p| format!("\"{p}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    conn.execute(
+        "INSERT OR REPLACE INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES (?1, ?1, 'plugin-gate fixture', ?2, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        rusqlite::params![role_id, format!("[{perms}]")],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES (?1, ?1, 'hash', ?1, ?2, 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        rusqlite::params![user_id, role_id],
+    )
+    .unwrap();
+}
+
+/// `bridge.ctx()` with a plugin manager installed — `TestBridge` has no
+/// plugin setter (its headless default is `None`), and every `BridgeCtx`
+/// field is public, so the context is rebuilt over the same borrows.
+fn ctx_with_plugins<'a>(
+    bridge: &'a crate::testing::TestBridge,
+    plugins: &'a tokio::sync::Mutex<Option<kasirmu_plugin::PluginManager>>,
+) -> BridgeCtx<'a> {
+    BridgeCtx {
+        plugins,
+        ..bridge.ctx()
+    }
+}
+
+/// Bridge + store for the plugin-discount gate: one sellable product and a
+/// session on token `plugin-tok` holding `role_id`.
+fn plugin_gate_bridge(
+    role_id: &str,
+    user_id: &str,
+    permissions: &[&str],
+) -> crate::testing::TestBridge {
+    let store_id = "store-plugin-gate";
+    let global = crate::testing::temp_conn();
+    seed_role_with_permissions(&global, role_id, user_id, permissions);
+    let bridge = crate::testing::TestBridge::new().with_conn(global);
+    {
+        let store_conn = bridge.db_manager().open_store(store_id).unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute_batch(
+            "INSERT INTO products (id, sku, name, price_minor, currency, product_type)
+                 VALUES ('plugin-product', 'PLUGIN-COFFEE', 'Plugin Coffee', 1000, 'USD', 'retail');
+             INSERT INTO stock_summary (item_id, location_id, qty)
+                 VALUES ('plugin-product', '01926b3a-0000-7000-8000-000000000001', 100);",
+        )
+        .unwrap();
+    }
+    bridge.sessions().write().unwrap().insert(
+        "plugin-tok".into(),
+        SessionContext::new(
+            user_id.into(),
+            role_id.into(),
+            "plugin-terminal".into(),
+            store_id.into(),
+            "plugin-instance".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    bridge
+}
+
+/// Ring up one cart of PLUGIN-COFFEE and settle it through `complete_sale_scoped`.
+async fn settle_plugin_gate_cart(ctx: &BridgeCtx<'_>) -> Result<CompleteSaleResult, BridgeError> {
+    let started = start_sale_scoped(
+        ctx,
+        "plugin-tok",
+        StartSaleArgs {
+            currency: "USD".into(),
+        },
+    )
+    .await
+    .unwrap();
+    add_line_scoped(
+        ctx,
+        "plugin-tok",
+        AddLineArgs {
+            cart_id: started.cart_id,
+            sku: Sku::new("PLUGIN-COFFEE"),
+            qty: 1,
+            unit_price_minor: 1000,
+            unit_price_currency: None,
+            course: None,
+        },
+    )
+    .await
+    .unwrap();
+    complete_sale_scoped(
+        ctx,
+        "plugin-tok",
+        CompleteSaleScopedArgs {
+            cart_id: started.cart_id,
+            payment_method: "cash".into(),
+            tendered_minor: Some(5000),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            promotion_ids: None,
+            attempt_id: None,
+            tax_estimated: None,
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn plugin_discount_without_sales_discount_is_refused() {
+    // The defect this closes: the plugin manifest's required_permissions is
+    // self-declared and never compared with the caller's role, so before this
+    // gate a plugin (or anyone able to drop a .lua file in the plugin
+    // directory) discounted an order with no permission and no audit.
+    let dir = plugin_dir(
+        "discounter",
+        "oz.apply_discount(\"cart\", 20)\n",
+        &["cart:read", "cart:write"],
+    );
+    let plugins = tokio::sync::Mutex::new(Some(
+        kasirmu_plugin::PluginManager::new(dir.path()).unwrap(),
+    ));
+
+    let bridge = plugin_gate_bridge(
+        "role-plugin-nodiscount",
+        "user-plugin-nodiscount",
+        &["sales:process"],
+    );
+    let ctx = ctx_with_plugins(&bridge, &plugins);
+    let settled = settle_plugin_gate_cart(&ctx).await;
+
+    match settled {
+        Err(BridgeError::PermissionDenied(message)) => assert!(
+            message.contains("sales:discount"),
+            "the refusal must be the SALES_DISCOUNT gate, got: {message}"
+        ),
+        Err(err) => panic!(
+            "a plugin discount without SALES_DISCOUNT must be refused by the permission gate, got: {err:?}"
+        ),
+        Ok(result) => panic!(
+            "a plugin discount without SALES_DISCOUNT settled sale {} — the money-boundary defect",
+            result.sale_id
+        ),
+    }
+}
+
+#[tokio::test]
+async fn plugin_discount_with_sales_discount_succeeds() {
+    let dir = plugin_dir(
+        "discounter",
+        "oz.apply_discount(\"cart\", 20)\n",
+        &["cart:read", "cart:write"],
+    );
+    let plugins = tokio::sync::Mutex::new(Some(
+        kasirmu_plugin::PluginManager::new(dir.path()).unwrap(),
+    ));
+
+    let bridge = plugin_gate_bridge(
+        "role-plugin-discount",
+        "user-plugin-discount",
+        &["sales:process", "sales:discount"],
+    );
+    let ctx = ctx_with_plugins(&bridge, &plugins);
+    let settled = settle_plugin_gate_cart(&ctx).await;
+
+    let result = match settled {
+        Ok(result) => result,
+        Err(err) => panic!(
+            "a plugin discount WITH SALES_DISCOUNT must settle exactly as before, got: {err:?}"
+        ),
+    };
+
+    // The gate must not have swallowed the discount on the way through: the
+    // persisted sale carries the plugin's 20% and the payable total reflects it.
+    let store_conn = bridge.db_manager().open_store("store-plugin-gate").unwrap();
+    let db = store_conn.lock().unwrap();
+    let stored = Store::new(&db)
+        .get_sale(&result.sale_id)
+        .unwrap()
+        .expect("the settled sale must be readable");
+    assert_eq!(
+        stored.discount_percent, 20,
+        "the plugin's discount must survive the permission gate"
+    );
+    assert_eq!(
+        stored.total.minor_units, 800,
+        "1000 minor less the plugin's 20% is the payable"
+    );
+}
+
+// ── C2: the shortfall door passes the plugin tax overrides ──────────
+
+#[tokio::test]
+async fn shortfall_door_applies_the_same_plugin_tax_overrides_as_the_main_door() {
+    // The asymmetry this closes: the main checkout door passes the plugin's
+    // calc_line_tax overrides into the tax computation, this door passed an
+    // EMPTY list — so the same basket was taxed at the DB rate when it went
+    // through shortfall resolution and at the plugin's rate otherwise.
+    let dir = plugin_dir(
+        "taxer",
+        "function calc_line_tax(sku, qty, unit_price_minor, currency)\n    if sku == \"REPLAY-COFFEE\" then\n        return { rate_bps = 500, is_inclusive = false }\n    end\n    return nil\nend\n",
+        &["cart:read"],
+    );
+    let plugins = tokio::sync::Mutex::new(Some(
+        kasirmu_plugin::PluginManager::new(dir.path()).unwrap(),
+    ));
+
+    // replay_guard_bridge seeds REPLAY-COFFEE at 350 with NO tax rate rows, so
+    // an override that never arrived would leave the line's tax at 0.
+    let bridge = replay_guard_bridge();
+    let ctx = ctx_with_plugins(&bridge, &plugins);
+    let settled = complete_sale_with_resolved_shortfalls_scoped(
+        &ctx,
+        "replay-tok",
+        CompleteSaleWithResolvedShortfallsArgs {
+            cart_id: CartId::new(),
+            payment_method: "cash".into(),
+            tendered_minor: Some(5000),
+            customer_id: None,
+            payment_splits: None,
+            customer_name: None,
+            serial_numbers: None,
+            lines: vec![CartLineData {
+                sku: "REPLAY-COFFEE".into(),
+                qty: 2,
+                unit_price_minor: 350,
+                unit_price_currency: None,
+                course: None,
+            }],
+            total_minor: 700,
+            currency: "USD".into(),
+            discount_percent: 0,
+            discount_label: None,
+            promotion_ids: None,
+            resolutions: vec![],
+            base_currency: None,
+            base_total_minor: None,
+            tender_rate_millionths: None,
+            tip_minor: None,
+            service_charge_minor: None,
+            attempt_id: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let store_conn = bridge
+        .db_manager()
+        .open_store("store-replay-guard")
+        .unwrap();
+    let db = store_conn.lock().unwrap();
+    let stored = Store::new(&db)
+        .get_sale(&settled.sale_id)
+        .unwrap()
+        .expect("the settled sale must be readable");
+    // 2 x 350 = 700 minor at the plugin's 500 bps exclusive = 35 minor.
+    assert_eq!(
+        stored.lines[0].tax_amount.minor_units, 35,
+        "the shortfall door must tax at the plugin's rate, not fall back to the DB rate"
+    );
+    assert!(
+        stored.lines[0].tax_rate_id.is_none(),
+        "the override's provenance is a null rate id"
+    );
+}

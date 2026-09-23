@@ -1,11 +1,21 @@
 use super::*;
+use crate::db::tax::MAX_TAX_RATE_BPS;
 use crate::migrations;
-use crate::{Cart, CartLine, SaleStatus, Sku};
+use crate::{Cart, CartLine, Refund, SaleStatus, Sku};
 use rusqlite::Connection;
 use std::collections::HashSet;
 
+/// A provisioned store database.
+///
+/// ADR #56 §2.6 stopped the baseline migration seeding the `Default Store`
+/// location, the five `default-*` workspaces and the BOOTSTRAP_FREE
+/// subscription — `provision_device` creates them now, in one transaction.
+/// These tests exercise layers BELOW provisioning, so they run against what
+/// provisioning produces. See `migrations::seed_provisioned_baseline`.
 fn fresh() -> Connection {
-    migrations::fresh_db()
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    conn
 }
 
 fn store(conn: &Connection) -> Store<'_> {
@@ -744,10 +754,17 @@ fn export_daily_summary_with_sales() {
     let cart = make_cart();
     let sale = Sale::from_cart(&cart).unwrap();
     s.create_sale(&sale).unwrap();
+    // C5: the export reports COMPLETED sales, so the sale has to be paid
+    // before it is revenue. Completing it here rather than asserting on a
+    // freshly created (Pending) row is the behaviour change this test used
+    // to pin the other way.
+    s.update_sale_status(&sale.id, SaleStatus::Active).unwrap();
+    s.update_sale_status(&sale.id, SaleStatus::Completed)
+        .unwrap();
 
     // Export uses date('now') so it should find the sale we just created.
     let rows = s.export_daily_summary().unwrap();
-    assert!(!rows.is_empty(), "should find today's sale");
+    assert!(!rows.is_empty(), "should find today's completed sale");
     assert_eq!(rows[0].total_minor, 1150);
 }
 
@@ -789,6 +806,170 @@ fn create_sale_discount_persisted() {
 }
 
 // ── Export with data ─────────────────────────────────────────
+
+// ── C5: revenue is completed sales only ────────────────────────
+
+/// C5. `export_daily_summary` feeds the EOD header's `total_sales` and
+/// `total_revenue`, so it may only return COMPLETED sales: a pending sale is
+/// not paid yet and a voided one was cancelled — and `void_sale` never clears
+/// `total_minor`, so before the status predicate a void's money stayed inside
+/// the revenue total while the payment breakdown underneath it excluded it.
+#[test]
+fn export_daily_summary_counts_completed_sales_only() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // 1. A pending sale (created but not paid) is not revenue.
+    let pending = Sale::from_cart(&make_cart()).unwrap();
+    s.create_sale(&pending).unwrap();
+    assert_eq!(pending.status, SaleStatus::Pending);
+    assert!(
+        s.export_daily_summary().unwrap().is_empty(),
+        "a pending sale must not be reported as today's revenue"
+    );
+
+    // 2. Neither is an active one (the till is still open on it).
+    s.update_sale_status(&pending.id, SaleStatus::Active)
+        .unwrap();
+    assert!(
+        s.export_daily_summary().unwrap().is_empty(),
+        "an active sale must not be reported as today's revenue"
+    );
+
+    // 3. Completing it makes it revenue.
+    s.update_sale_status(&pending.id, SaleStatus::Completed)
+        .unwrap();
+    let rows = s.export_daily_summary().unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the completed sale is the day's only revenue"
+    );
+    assert_eq!(rows[0].total_minor, 1150);
+
+    // 4. A second sale, voided through the real lifecycle method — it keeps
+    //    its total_minor, so only the status predicate can keep it out.
+    let cancelled = Sale::from_cart(&make_cart()).unwrap();
+    s.create_sale(&cancelled).unwrap();
+    s.update_sale_status(&cancelled.id, SaleStatus::Active)
+        .unwrap();
+    s.void_sale(&cancelled.id, "user-1", "C5 fixture").unwrap();
+    assert_eq!(
+        s.get_sale(&cancelled.id).unwrap().unwrap().status,
+        SaleStatus::Voided
+    );
+
+    let rows = s.export_daily_summary().unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the voided sale must not enter the day's revenue (ids: {:?})",
+        rows.iter().map(|r| r.sale_id.clone()).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        rows[0].total_minor, 1150,
+        "a voided sale must not change total_revenue — the void's 1150 would otherwise ride inside it"
+    );
+
+    // 5. The voided money is still reported, by the query that owns it —
+    //    completed-only revenue must not make a void vanish from the sheet.
+    let voids = s.export_eod_voids().unwrap();
+    assert_eq!(voids.void_count, 1);
+    assert_eq!(voids.void_total_minor, 1150);
+}
+
+/// C5. The EOD body (`export_eod_breakdown`) and the header
+/// (`export_daily_summary`) must answer for the same day, the same sales and
+/// the same money — on a fixture carrying a refund and a void, which is the
+/// case that used to make the two halves disagree.
+#[test]
+fn export_eod_breakdown_reconciles_with_the_daily_summary() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // A completed discounted CASH sale — the one that will be partly refunded.
+    let mut cart = make_cart();
+    cart.set_discount(
+        foundation::Percentage::new(10).unwrap(),
+        Some("Loyalty".into()),
+    );
+    let cash_sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&cash_sale).unwrap();
+    s.update_sale_status(&cash_sale.id, SaleStatus::Active)
+        .unwrap();
+    s.update_sale_status(&cash_sale.id, SaleStatus::Completed)
+        .unwrap();
+
+    // A completed undiscounted CARD sale.
+    let card_sale = Sale::from_cart(&make_cart()).unwrap();
+    let card_sale = Sale {
+        payment_method: Some("card".into()),
+        ..card_sale
+    };
+    s.create_sale(&card_sale).unwrap();
+    s.update_sale_status(&card_sale.id, SaleStatus::Active)
+        .unwrap();
+    s.update_sale_status(&card_sale.id, SaleStatus::Completed)
+        .unwrap();
+
+    // A VOIDED sale — cancelled, but it keeps its money.
+    let voided_sale = Sale::from_cart(&make_cart()).unwrap();
+    s.create_sale(&voided_sale).unwrap();
+    s.update_sale_status(&voided_sale.id, SaleStatus::Active)
+        .unwrap();
+    s.void_sale(&voided_sale.id, "user-1", "C5 fixture")
+        .unwrap();
+
+    // A REFUND against the completed cash sale, through the real path (it
+    // keeps the sale 'completed', so the sale itself stays revenue).
+    let refund = Refund::new(
+        &cash_sale.id,
+        price(400),
+        "customer changed mind",
+        "",
+        "user-1",
+        vec![],
+    );
+    s.create_refund(&refund)
+        .expect("a refund against a completed sale must succeed");
+
+    let daily = s.export_daily_summary().unwrap();
+    let breakdown = s.export_eod_breakdown().unwrap();
+    let voids = s.export_eod_voids().unwrap();
+
+    // Header and body are the same set of sales.
+    let header_count: i64 = daily.len() as i64;
+    let body_count: i64 = breakdown.iter().map(|r| r.sale_count).sum();
+    assert_eq!(
+        body_count, header_count,
+        "the breakdown must count the same completed sales as the header"
+    );
+
+    // …and the same money: the merchant's reconciliation closes.
+    let header_total: i64 = daily.iter().map(|r| r.total_minor).sum();
+    let body_total: i64 = breakdown.iter().map(|r| r.total_minor).sum();
+    assert_eq!(
+        body_total, header_total,
+        "sum(payment breakdown) must equal total_revenue — this is the reconciliation that used to fail"
+    );
+
+    // The discount line is a slice of that revenue, not a fourth query's
+    // opinion of it.
+    let discount_total: i64 = breakdown.iter().map(|r| r.discount_total_minor).sum();
+    assert!(
+        discount_total > 0 && discount_total <= header_total,
+        "discount {discount_total} must sit inside revenue {header_total}"
+    );
+
+    // The void is excluded from revenue and still reported on the sheet.
+    assert_eq!(voids.void_count, 1);
+    assert_eq!(voids.void_total_minor, voided_sale.total.minor_units);
+    assert_eq!(
+        header_total,
+        cash_sale.total.minor_units + card_sale.total.minor_units,
+        "revenue is the two completed sales — not the void, and not the refund"
+    );
+}
 
 #[test]
 fn export_sales_by_hour_with_sales() {
@@ -2799,7 +2980,9 @@ fn complete_sale_partial_shortfall_rolls_back_sale_row() {
         "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
             ('loc-pri', 'Primary', 'store'),
             ('loc-sec', 'Secondary', 'warehouse');
-         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 1);
+         -- Not primary: the provisioned seeder already owns is_primary=1 (partial
+         -- unique), and this test only needs a locations row to point at.
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-1', 'Test Store', 0);
          INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
             VALUES ('ws-multi-test',
                 (SELECT key FROM workspace_types LIMIT 1),
@@ -3005,9 +3188,18 @@ fn void_sale_credits_back_to_original_deduction_source() {
     assert_eq!(loaded.status, SaleStatus::Voided);
 }
 
-/// Two threads attempting complete_sale_deduction on the same SKU:
-/// one succeeds, the other fails with a constraint/serialization error
-/// thanks to BEGIN IMMEDIATE (ADR-19 §5.2).
+/// Two threads attempting complete_sale_deduction on the same SKU: one
+/// succeeds, the other fails — and *how* it fails is what separates the two
+/// transaction modes (ADR-19 §5.2).
+///
+/// A `BEGIN IMMEDIATE` takes the write lock at BEGIN, so the loser's BEGIN
+/// is what waits out the winner via the busy timeout below; it then opens
+/// against the winner's COMMITTED state and is refused by the stock check.
+/// A deferred BEGIN enters immediately, reads the pre-winner snapshot, and
+/// dies on its first write with `SQLITE_BUSY_SNAPSHOT` ("database is
+/// locked") — an error the busy handler cannot absorb. So the assertion is
+/// on the loser's ERROR: a lock error here means the money path regressed to
+/// `unchecked_transaction()` (DEFERRED).
 #[test]
 fn concurrent_complete_sale_serialized_by_begin_immediate() {
     // Use a file-based DB so two connections can access it concurrently.
@@ -3049,6 +3241,11 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
         let sl = sale.clone();
         handles.push(std::thread::spawn(move || {
             let conn = rusqlite::Connection::open(&p).unwrap();
+            // Production shape: `migrations::run` sets this on every
+            // connection. Without it the loser fails instantly instead of
+            // waiting at BEGIN, and the test cannot tell IMMEDIATE from
+            // DEFERRED.
+            conn.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
             let store = Store::new(&conn);
             let result = store.complete_sale_deduction(&sl, None, &tender(700), "cashier-1", None);
             (i, result)
@@ -3056,13 +3253,13 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
     }
 
     let mut success_count = 0;
-    let mut failure_count = 0;
+    let mut failures = Vec::new();
     for h in handles {
         match h.join().unwrap() {
             (_, Ok(_)) => success_count += 1,
             (i, Err(e)) => {
-                failure_count += 1;
                 tracing::info!(thread = i, error = %e, "concurrent sale failed as expected");
+                failures.push(e);
             }
         }
     }
@@ -3071,13 +3268,35 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
         success_count, 1,
         "exactly one thread should succeed with BEGIN IMMEDIATE"
     );
+    assert_eq!(failures.len(), 1, "one winner, one loser");
+
+    // The error IS the assertion — see this test's doc comment.
+    let loser = &failures[0];
     assert!(
-        failure_count >= 1,
-        "second thread should fail with serialization error"
+        !is_sqlite_lock_error(loser),
+        "loser must be refused by the stock check against the winner's committed \
+         state, not by a SQLite lock: a busy/locked error means the transaction \
+         opened DEFERRED and hit SQLITE_BUSY_SNAPSHOT. Got: {loser:?}"
+    );
+    assert!(
+        matches!(loser, CoreError::Validation { field, .. } if *field == "stock"),
+        "loser must fail the stock check, got: {loser:?}"
     );
 
     // Clean up.
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// True when a `CoreError` wraps a SQLite busy/locked failure — the
+/// `SQLITE_BUSY` / `SQLITE_BUSY_SNAPSHOT` / `SQLITE_LOCKED` family the
+/// busy handler cannot absorb.
+fn is_sqlite_lock_error(err: &CoreError) -> bool {
+    matches!(
+        err,
+        CoreError::Db(rusqlite::Error::SqliteFailure(code, _))
+            if code.code == rusqlite::ErrorCode::DatabaseBusy
+                || code.code == rusqlite::ErrorCode::DatabaseLocked
+    )
 }
 
 #[test]
@@ -4584,4 +4803,130 @@ fn test_complete_sale_with_resolved_shortfalls_fails_when_subscription_read_only
         !sale_exists,
         "sale row must not exist when POS is read-only"
     );
+}
+
+// ── C2: a Lua tax override's rate_bps is bounded (TAX-04) ──────────
+
+#[test]
+fn compute_tax_lua_override_at_max_bps_is_accepted() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_category(&conn, "COFFEE", None);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("COFFEE".into(), MAX_TAX_RATE_BPS, false)],
+        RoundingMode::Truncate,
+    )
+    .unwrap();
+
+    let json = sale.lines[0].tax_breakdown_json.as_deref().unwrap();
+    let breakdown: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        breakdown[0]["rate_bps"], MAX_TAX_RATE_BPS,
+        "the bound is inclusive: the largest legitimate rate must still be honoured"
+    );
+}
+
+#[test]
+fn compute_tax_lua_override_above_max_bps_is_rejected() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_category(&conn, "COFFEE", None);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    let err = s
+        .compute_sale_tax(
+            &mut sale,
+            &[("COFFEE".into(), MAX_TAX_RATE_BPS + 1, false)],
+            RoundingMode::Truncate,
+        )
+        .expect_err("an override above the bound must be refused, never applied");
+
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "rate_bps"),
+        "the refusal must name the offending field, got: {err:?}"
+    );
+    assert!(
+        sale.lines[0].tax_breakdown_json.is_none(),
+        "a refused override must leave no breakdown behind"
+    );
+}
+
+#[test]
+fn compute_tax_lua_override_negative_bps_is_rejected() {
+    // The defect this closes: an unbounded negative rate NEGATES the line's
+    // tax and reduces the collectible total. Reject, never clamp — the plugin
+    // owns the amount (D89-1 Option B), so substituting a different rate would
+    // charge a tax the rule never asked for.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_category(&conn, "COFFEE", None);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    let err = s
+        .compute_sale_tax(
+            &mut sale,
+            &[("COFFEE".into(), -1000, false)],
+            RoundingMode::Truncate,
+        )
+        .expect_err("a negative override must be refused, never applied");
+
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "rate_bps"),
+        "the refusal must name the offending field, got: {err:?}"
+    );
+}
+
+#[test]
+fn compute_tax_lua_override_bounded_for_absent_skus_too() {
+    // The bound is on the LIST, not on the lines that happen to be in the
+    // sale: a rule that returns an out-of-range rate for a SKU this basket
+    // does not carry is still a rule asking for an illegitimate rate, and
+    // silently dropping it would let the same rule apply later unchecked.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_category(&conn, "COFFEE", None);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    let err = s
+        .compute_sale_tax(
+            &mut sale,
+            &[("NOT-IN-THIS-CART".into(), -1, false)],
+            RoundingMode::Truncate,
+        )
+        .expect_err("an out-of-range override for an absent SKU must still be refused");
+
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "rate_bps"),
+        "the refusal must name the offending field, got: {err:?}"
+    );
+}
+
+#[test]
+fn compute_tax_lua_override_zero_bps_is_accepted_as_a_zero_rated_line() {
+    // 0 bps is a legitimate basis-point rate (a zero-rated / exempt line), not
+    // an out-of-range value: the example rule scripts/examples/tax_overrides.lua
+    // ships it for essential groceries. Only the RANGE is enforced.
+    let conn = fresh();
+    let s = store(&conn);
+    seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
+    seed_product_with_category(&conn, "MILK", None);
+
+    let mut sale = make_single_line_sale("MILK", 2, 350);
+    s.compute_sale_tax(
+        &mut sale,
+        &[("MILK".into(), 0, false)],
+        RoundingMode::Truncate,
+    )
+    .unwrap();
+
+    assert_eq!(
+        sale.tax_total.minor_units, 0,
+        "the override wins over the DB rate, and 0 is a legitimate rate"
+    );
+    let json = sale.lines[0].tax_breakdown_json.as_deref().unwrap();
+    let breakdown: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+    assert_eq!(breakdown[0]["rate_bps"], 0);
 }

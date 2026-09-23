@@ -1,22 +1,45 @@
 ---
+/**
+ * Site footer: socials + copyright on the left, the sitemap and the legal
+ * links on the right.
+ *
+ * The sitemap is DATA (`FOOTER_COLUMNS` in ../lib/footer-nav), not markup, and
+ * every visible string resolves through `t(locale, …)` — including the column
+ * headings and the nav's accessible name. The link text used to be written
+ * into the markup as bare Indonesian words with no locale branch, so /en/
+ * pages rendered "Fitur / Harga / Unduh / Warung / Kafe / …" under English
+ * headings. A label key cannot drift like that: the i18n audit fails on a key
+ * that is missing from either dictionary.
+ */
 import { getRelativeLocaleUrl } from 'astro:i18n';
 import { t } from '../i18n';
+import { FOOTER_COLUMNS } from '../lib/footer-nav';
 
-const locale = Astro.currentLocale ?? 'en';
+interface Props {
+  /** Page locale, threaded down by Base so the copy matches the document. */
+  locale?: string;
+}
+
+const locale = Astro.props.locale ?? Astro.currentLocale ?? 'en';
 const year = new Date().getFullYear();
 ---
 
 <footer class="border-t border-ink/5 bg-surface/40">
-  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-4 py-8 sm:flex-row">
+  <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-4 py-8 sm:flex-row sm:items-end">
     <!-- Left: Social icons on top of Copyright -->
     <div class="flex flex-col items-center sm:items-start gap-2.5 text-center sm:text-left">
-      <!-- Social links — muted → brand color on hover, monochrome currentColor glyphs -->
-      <div class="flex items-center gap-3.5">
+      <!-- Social links — muted → brand color on hover, monochrome currentColor glyphs.
+           Each anchor is a 24×24 hit area (h-6 w-6) around its 16px glyph, so the
+           pointer target meets the WCAG 2.2 target-size minimum on every page; the
+           row's gap drops to 8px to keep the glyph pitch where the design had it
+           (16+14 before, 24+8 now). Measured 2026-09-23: the Telegram link on
+           /en/docs/ was a 16×16 target 19px from its neighbour. -->
+      <div class="flex items-center gap-2">
         <a
           href="https://discord.gg/NdWDgEzNxx"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#5865F2]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#5865F2]"
           aria-label="Discord"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -27,7 +50,7 @@ const year = new Date().getFullYear();
           href="https://x.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-ink"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-ink"
           aria-label="X (Twitter)"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -38,7 +61,7 @@ const year = new Date().getFullYear();
           href="https://www.instagram.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#E4405F]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#E4405F]"
           aria-label="Instagram"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -49,7 +72,7 @@ const year = new Date().getFullYear();
           href="https://www.facebook.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#1877F2]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#1877F2]"
           aria-label="Facebook"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -60,7 +83,7 @@ const year = new Date().getFullYear();
           href="https://telegram.org"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#229ED9]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#229ED9]"
           aria-label="Telegram"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -75,32 +98,22 @@ const year = new Date().getFullYear();
 
     <!-- Right: Sitemap + Legal Links -->
     <div class="flex flex-col items-center gap-6 sm:items-end">
-      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs" aria-label="Sitemap">
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{t(locale, 'nav.features')}</span>
-          <a href={getRelativeLocaleUrl(locale, 'features')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Fitur</a>
-          <a href={getRelativeLocaleUrl(locale, 'pricing')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Harga</a>
-          <a href={getRelativeLocaleUrl(locale, 'download')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Unduh</a>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-gratis')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Gratis</a>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-murah')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Murah</a>
-          <a href={getRelativeLocaleUrl(locale, 'kasir-qris')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir QRIS</a>
-          <a href={getRelativeLocaleUrl(locale, 'aplikasi-kasir-android')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kasir Android</a>
-        </div>
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Bisnis' : 'Business'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'warung')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Warung</a>
-          <a href={getRelativeLocaleUrl(locale, 'cafe')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Kafe</a>
-          <a href={getRelativeLocaleUrl(locale, 'restaurant')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Restoran</a>
-          <a href={getRelativeLocaleUrl(locale, 'minimarket')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Minimarket</a>
-          <a href={getRelativeLocaleUrl(locale, 'warehouse')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Gudang</a>
-        </div>
-        <div class="flex flex-col gap-2">
-          <span class="font-semibold text-ink">{locale === 'id' ? 'Bantuan' : 'Help'}</span>
-          <a href={getRelativeLocaleUrl(locale, 'docs')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Docs</a>
-          <a href={getRelativeLocaleUrl(locale, 'support')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">Support</a>
-          <a href={getRelativeLocaleUrl(locale, 'cara')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Cara Pakai' : 'How-To Guides'}</a>
-          <a href={getRelativeLocaleUrl(locale, 'perbandingan')} class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink">{locale === 'id' ? 'Perbandingan' : 'Compare'}</a>
-        </div>
+      <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs sm:justify-end" aria-label={t(locale, 'footer.sitemap')}>
+        {
+          FOOTER_COLUMNS.map((column) => (
+            <div class="flex flex-col gap-2">
+              <span class="font-semibold text-ink">{t(locale, column.heading)}</span>
+              {column.links.map((link) => (
+                <a
+                  href={getRelativeLocaleUrl(locale, link.slug)}
+                  class="footer-link relative w-fit text-muted transition-colors duration-200 hover:text-ink"
+                >
+                  {t(locale, link.label)}
+                </a>
+              ))}
+            </div>
+          ))
+        }
       </nav>
       <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>
         <a href={getRelativeLocaleUrl(locale, 'legal/privacy')} class="footer-link relative transition-colors duration-200 hover:text-ink">

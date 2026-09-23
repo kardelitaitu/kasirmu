@@ -1,8 +1,8 @@
 # kasirmu-api
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (2 findings) · SUPERSEDES the 2026-09-03 stamp, whose work stands: the route table was re-repaired and its Auth column corrected against the handlers, and the local-API notes it added are still accurate. Two gaps since: the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling were absent, and GET /api/openapi.json was never in the table at all even though it is a public, no-auth route this crate serves and docs/guides/EXTENDING.md §2.3 documents it. Reconciled by counting, not by eye: the crate registers 27 route() literals; the table now has 31 rows covering all 27 literals — 31 = 27 + 4, because /api/v1/settings, /api/v1/products, /api/v1/exchange-rates and /api/v1/images each carry two rows for their two methods, and every row maps back to a real literal. A third footnote records require_tenant_write, the tenant-scoped sibling of the operator-write gate, which is NOT the same rule - it does not exclude the desktop path outright. Re-verified: OZ_API_PORT default 3099 and OZ_DB_PATH default kasir.db match lib.rs, and the AppState/CORS notes in §State hold. -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE after repair (2 findings) · SUPERSEDES the 2026-09-03 stamp, whose work stands: the route table was re-repaired and its Auth column corrected against the handlers, and the local-API notes it added are still accurate. Two gaps since: the three /api/v1/memos/* routes from the 2026-09-07 cloud-read ruling were absent, and GET /api/openapi.json was never in the table at all even though it is a public, no-auth route this crate serves and docs/guides/developer/EXTENDING.md §2.3 documents it. Reconciled by counting, not by eye: the crate registers 27 route() literals; the table now has 31 rows covering all 27 literals — 31 = 27 + 4, because /api/v1/settings, /api/v1/products, /api/v1/exchange-rates and /api/v1/images each carry two rows for their two methods, and every row maps back to a real literal. A third footnote records require_tenant_write, the tenant-scoped sibling of the operator-write gate, which is NOT the same rule - it does not exclude the desktop path outright. Re-verified: OZ_API_PORT default 3099 and OZ_DB_PATH default kasir.db match lib.rs, and the AppState/CORS notes in §State hold. -->
 
-REST API server for kasir.mu. An axum HTTP API for third-party scripts, kitchen displays, and inventory scanners. Mounted by `apps/cloud-server`, and embedded loopback-only by the desktop app (`apps/desktop-tauri/src/local_api.rs`, off by default — see [EXTENDING guide](../../docs/guides/EXTENDING.md) §2.2).
+REST API server for kasir.mu. An axum HTTP API for third-party scripts, kitchen displays, and inventory scanners. Mounted by `apps/cloud-server`, and embedded loopback-only by the desktop app (`apps/desktop-tauri/src/local_api.rs`, off by default — see [EXTENDING guide](../../docs/guides/developer/EXTENDING.md) §2.2).
 
 ## Quick start
 
@@ -23,7 +23,7 @@ Listens on `OZ_API_PORT` (default `3099`). DB path from `OZ_DB_PATH` (default `k
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/api/v1/health` | No | Health check |
-| GET | `/api/openapi.json` | No | OpenAPI 3.1 document for this surface (see §OpenAPI below and docs/guides/EXTENDING.md §2.3) |
+| GET | `/api/openapi.json` | No | OpenAPI 3.1 document for this surface (see §OpenAPI below and docs/guides/developer/EXTENDING.md §2.3) |
 | POST | `/api/v1/tokens` | Admin¹ | Mint JWT (admin-key path or terminal client-credentials path) |
 | POST | `/api/v1/terminals` | Admin¹ | Register terminal; returns `device_secret` once, re-register rotates |
 | PUT | `/api/v1/tenants/{tenant_id}/plan` | Admin¹ | Set tenant plan |
@@ -62,10 +62,10 @@ must never mutate master data. Sales writes are exempt (terminals sell).
 admin key when one is configured, but the desktop path is not excluded outright.
 GETs on JWT routes are additionally gated by read-tier permissions (spec 0047).
 The three `memos` routes were added by the 2026-09-07 cloud-read ruling and were absent
-from this table until 08-09-26 — the same four-day gap that hit docs/guides/EXTENDING.md
+from this table until 08-09-26 — the same four-day gap that hit docs/guides/developer/EXTENDING.md
 §3.2. `spec/paths.rs` declared them throughout, so the machine-readable contract stayed
 current and only the prose tables drifted.
-Full contract, auth model, and recipes: [docs/guides/EXTENDING.md](../../docs/guides/EXTENDING.md).
+Full contract, auth model, and recipes: [docs/guides/developer/EXTENDING.md](../../docs/guides/developer/EXTENDING.md).
 
 ```bash
 # Generate token

@@ -299,7 +299,7 @@ is a `git mv` plus path edits in those ~12 files.
 
 **P9b — token values (DEFERRED, until a second toolkit needs them).** `tokens.css` is CSS with
 custom properties; lifting the *values* into a generated source is real work, because it touches the
-five CSS walker suites (`docs/frontend/css-verification.md`), `scripts/scan-css-tokens.py`,
+five CSS walker suites (`docs/audits/frontend/css-verification.md`), `scripts/scan-css-tokens.py`,
 `fix-non-existent-tokens.py`, `check-font-bundle.mjs`, and the a11y contrast tests. Recorded here so
 the intent is not lost; not scheduled.
 **Acceptance (P9a):** `test ! -d ui/src/locales` · `bash scripts/lint-i18n.sh` exits 0 ·

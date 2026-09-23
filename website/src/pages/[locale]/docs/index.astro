@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { getCollection } from 'astro:content';
 import Base from '../../../layouts/Base.astro';
+import { toSearchDocs } from '../../../lib/search-index';
 import { t, dict } from '../../../i18n';
 
 export async function getStaticPaths() {
@@ -15,13 +16,22 @@ export async function getStaticPaths() {
 // the Get Started card instead).
 
 const locale = Astro.params.locale ?? 'en';
-const docs = (await getCollection('docs')).filter((d) => d.id.startsWith(`${locale}/`));
+const allDocs = await getCollection('docs');
+const docs = allDocs.filter((d) => d.id.startsWith(`${locale}/`));
+// The docs hub is a docs page too (it renders through `Base`, not
+// `DocsLayout`), so it builds the header's search payload the same way every
+// docs page does — the payload is unchanged, only its owner moved here.
+const searchDocs = toSearchDocs(allDocs, locale);
 // The first Getting Started doc is where the user-facing guide begins.
 const first = docs
   .filter((d) => d.data.category === 'gettingStarted')
   .sort((a, b) => a.data.order - b.data.order)[0];
+// Trailing slash matters: the built page lives at /<locale>/docs/<slug>/, and a
+// link without it costs every visitor and every crawler a 307 hop to the
+// canonical URL the sitemap declares. Keep this in step with the docs links in
+// src/content/docs/*/api-read-tiers.md.
 const guideTarget = first
-  ? `/${locale}/docs/${first.id.slice(locale.length + 1)}`
+  ? `/${locale}/docs/${first.id.slice(locale.length + 1)}/`
   : `/${locale}/`;
 
 // The dev portal (mdBook) is English-only and served from public/ verbatim —
@@ -42,7 +52,7 @@ const targets = [
 const subtitle = t(locale, 'docs.hub.subtitle');
 ---
 
-<Base title={`kasir.mu — ${t(locale, 'docs.title')}`} description={subtitle}>
+<Base title={`kasir.mu — ${t(locale, 'docs.title')}`} description={subtitle} searchDocs={searchDocs}>
   <section class="mx-auto max-w-5xl px-4 py-16">
     <div class="text-center">
       <h1 class="text-4xl font-bold">{t(locale, 'docs.title')}</h1>

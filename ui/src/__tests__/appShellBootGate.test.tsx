@@ -47,7 +47,7 @@ import staffFtl from '@/locales/staff.ftl?raw';
 // ── Boot IPC: per-test answers, including the ability to make a call THROW ──
 
 const mockGetLicenseStatus: Mock<() => Promise<unknown>> = vi.fn();
-const mockGetSetupStatus: Mock<() => Promise<unknown>> = vi.fn();
+const mockGetFirstRunState: Mock<() => Promise<unknown>> = vi.fn();
 const mockHasUsers: Mock<() => Promise<unknown>> = vi.fn();
 
 vi.mock('@/api/license', () => ({
@@ -57,6 +57,12 @@ vi.mock('@/api/license', () => ({
   checkLicenseStatus: vi.fn(),
   getMachineId: vi.fn(),
   getHardwareFingerprint: vi.fn(),
+}));
+
+// The boot gate resolves the terminal id before reading the first-run state
+// (ADR #56 §2.1), so it must answer or the gate never settles.
+vi.mock('@/api/system', () => ({
+  getDeviceId: vi.fn(() => Promise.resolve('dev-1')),
 }));
 
 // The boot path reaches exactly ONE staff function: `hasUsers`
@@ -75,9 +81,8 @@ vi.mock('@/api/staff', () => ({
 }));
 
 vi.mock('@/api/settings', () => ({
-  getSetupStatus: () => mockGetSetupStatus(),
-  completeSetup: vi.fn(() => Promise.resolve()),
-  dismissSetupWizard: vi.fn(() => Promise.resolve()),
+  getFirstRunState: () => mockGetFirstRunState(),
+  provisionDevice: vi.fn(() => Promise.resolve()),
   getEnabledFeatures: vi.fn(() => Promise.resolve({ features: [] })),
   getStoreSettings: vi.fn(() =>
     Promise.resolve({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' }),
@@ -104,8 +109,8 @@ vi.mock('@/features/auth/CreatePinScreen', () => ({
 vi.mock('@/features/auth/StaffLoginScreen', () => ({
   default: () => <div data-testid="staff-login-screen" />,
 }));
-vi.mock('@/features/setup/SetupWizard', () => ({
-  default: () => <div data-testid="setup-wizard" />,
+vi.mock('@/features/setup/ProvisioningFlow', () => ({
+  default: () => <div data-testid="provisioning-flow" />,
 }));
 vi.mock('@/features/workspaces/WorkspaceHome', () => ({
   default: () => <div data-testid="workspace-home" />,
@@ -163,8 +168,8 @@ const LICENCE_EXPIRED = {
 const LICENCE_GRACE = {
   isActive: true, status: 'gracePeriod', tier: 'pro', payload: null, message: null,
 };
-const SETUP_DONE = { completed: true, preset: 'store-pos' };
-const SETUP_FRESH = { completed: false, preset: null };
+const SETUP_DONE = { state: 'provisioned', location_id: 'loc-1', owner_user_id: 'user-1', mode: 'local', home_region: 'global', tenant_id: null };
+const SETUP_FRESH = { state: 'unprovisioned' };
 const USERS_PRESENT = { has_users: true };
 const USERS_NONE = { has_users: false };
 
@@ -228,7 +233,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   // (i) ── the whole boot round-trip throws on a fresh install ───────────────
   it('every boot read throws → activation screen is reachable, nothing is marked complete', async () => {
     mockGetLicenseStatus.mockImplementation(THROWS);
-    mockGetSetupStatus.mockImplementation(THROWS);
+    mockGetFirstRunState.mockImplementation(THROWS);
     mockHasUsers.mockImplementation(THROWS);
 
     await boot();
@@ -243,12 +248,12 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     expect(screen.queryByTestId('staff-login-screen')).not.toBeInTheDocument();
     expect(screen.queryByTestId('create-pin-screen')).not.toBeInTheDocument();
     expect(screen.queryByTestId('workspace-home')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('setup-wizard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provisioning-flow')).not.toBeInTheDocument();
   });
 
   it('setup read succeeds as fresh + licence read throws → still gated, wizard not forged', async () => {
     mockGetLicenseStatus.mockImplementation(THROWS);
-    mockGetSetupStatus.mockResolvedValue(SETUP_FRESH);
+    mockGetFirstRunState.mockResolvedValue(SETUP_FRESH);
     mockHasUsers.mockResolvedValue(USERS_NONE);
 
     await boot();
@@ -261,7 +266,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   // (ii) ── the historical pass, kept, but the verdict no longer lies ────────
   it('setup.completed succeeded + licence read throws → login WITH the unknown badge, licence never claimed active', async () => {
     mockGetLicenseStatus.mockImplementation(THROWS);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -280,7 +285,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
 
   it('licence read succeeded as INACTIVE + setup.completed succeeded → login + inactive badge', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_EXPIRED);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -297,7 +302,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     // settings key itself is unreadable, so `completed` is unavailable, yet
     // the install is plainly not fresh. Access is preserved — by evidence.
     mockGetLicenseStatus.mockImplementation(THROWS);
-    mockGetSetupStatus.mockImplementation(THROWS);
+    mockGetFirstRunState.mockImplementation(THROWS);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -311,7 +316,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   // (iv) ── has_users: unknown is not "no users" ────────────────────────────
   it('has_users REJECTS → no owner-bootstrap screen, login + users-unknown badge', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_FRESH);
+    mockGetFirstRunState.mockResolvedValue(SETUP_FRESH);
     mockHasUsers.mockImplementation(THROWS);
 
     await boot();
@@ -327,7 +332,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
 
   it('has_users answers "no accounts" on an activated install → bootstrap offered, no unknown badge', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_FRESH);
+    mockGetFirstRunState.mockResolvedValue(SETUP_FRESH);
     mockHasUsers.mockResolvedValue(USERS_NONE);
 
     await boot();
@@ -342,7 +347,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   // (v) ── a fresh, never-activated install is still gated by the licence ────
   it('inactive licence + fresh setup + no accounts → activation screen, not owner creation', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_MISSING);
-    mockGetSetupStatus.mockResolvedValue(SETUP_FRESH);
+    mockGetFirstRunState.mockResolvedValue(SETUP_FRESH);
     mockHasUsers.mockResolvedValue(USERS_NONE);
 
     await boot();
@@ -357,7 +362,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   it('happy path: active licence + completed setup + session → shell, no badge', async () => {
     authSession(true);
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -367,12 +372,12 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     });
     expect(screen.queryByTestId('boot-status-badges')).not.toBeInTheDocument();
     expect(screen.queryByTestId('license-activation-screen')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('setup-wizard')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('provisioning-flow')).not.toBeInTheDocument();
   });
 
   it('happy path: active licence + completed setup, nobody signed in → login, no badge', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -385,7 +390,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
 
   it('grace period on an existing install → login, no activation screen, no blocking badge', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_GRACE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -403,13 +408,13 @@ describe('AppShell boot gate — unknown is not a licence', () => {
     // still reach the wizard.
     authSession(true);
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_FRESH);
+    mockGetFirstRunState.mockResolvedValue(SETUP_FRESH);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
 
     await waitFor(() => {
-      expect(screen.getByTestId('setup-wizard')).toBeInTheDocument();
+      expect(screen.getByTestId('provisioning-flow')).toBeInTheDocument();
     });
   });
 
@@ -424,7 +429,7 @@ describe('AppShell boot gate — unknown is not a licence', () => {
   // about the type, not a tested claim about the shell.
   it('grace period is classified GRACE, not folded into active — the warning is raised', async () => {
     mockGetLicenseStatus.mockResolvedValue(LICENCE_GRACE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
 
     await boot();
@@ -475,7 +480,7 @@ describe('AppShell — durable session-token failure banner', () => {
     window.location.hash = '';
     authSession(true);
     mockGetLicenseStatus.mockResolvedValue(LICENCE_ACTIVE);
-    mockGetSetupStatus.mockResolvedValue(SETUP_DONE);
+    mockGetFirstRunState.mockResolvedValue(SETUP_DONE);
     mockHasUsers.mockResolvedValue(USERS_PRESENT);
   });
 

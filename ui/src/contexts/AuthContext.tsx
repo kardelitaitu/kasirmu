@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { staffLogin, type LoginSessionDto } from "@/api/staff";
-import { plainErrorMessage } from "@/utils/app-error";
+import { classifyRetry, plainErrorMessage, USER_ERROR_FALLBACKS } from "@/utils/app-error";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -73,6 +73,33 @@ interface AuthProviderProps {
 }
 
 /**
+ * Turn a failed `staff_login` into copy the merchant may read.
+ *
+ * Two kinds of failure arrive here and they must not be confused:
+ *
+ * - An INTENDED refusal from the server ("Invalid credentials", a rate-limit
+ *   sentence). That text is written for the user and is what the login screen
+ *   has always shown — the E2E suite asserts it verbatim.
+ * - A TRANSPORT failure. On a flaky connection that is an untyped `Error` whose
+ *   message is internal ("network down", or a Rust error string). Rendering it
+ *   leaked internals to the cashier: measured 2026-09-23, the PIN step showed
+ *   the literal text "network down" where "check your connection" belonged.
+ *
+ * `classifyRetry` is the existing owner of exactly this distinction and is
+ * already tested against this vocabulary, so the split is delegated to it rather
+ * than re-deriving a keyword list here. A retryable transport failure gets the
+ * shared user-safe copy; anything else keeps the server's own message, because
+ * that is the copy the login screen is designed around.
+ */
+function loginErrorMessage(err: unknown): string {
+  if (classifyRetry(err) === 'retryable') {
+    return USER_ERROR_FALLBACKS['app-error-offline'] ?? 'You appear to be offline. Check your connection and try again.';
+  }
+  const stated = (err as Record<string, unknown> | null)?.['message'];
+  if (typeof stated === 'string' && stated.trim() !== '') return stated;
+  return plainErrorMessage(err, "Login failed");
+}
+/**
  * Provides authentication state and login/logout actions to the app.
  *
  * Wrap this around the app shell. Before the user logs in, show the
@@ -98,9 +125,7 @@ export function AuthProvider({ children, onLogin }: AuthProviderProps) {
         try { sessionStorage.setItem('current-username', username); } catch { /* ignore */ }
         onLogin?.();
       } catch (err) {
-        const message = (err as Record<string, unknown> | null)?.['message'] as string
-          ?? plainErrorMessage(err, "Login failed");
-        setError(message);
+        setError(loginErrorMessage(err));
       } finally {
         setLoading(false);
         submittingRef.current = false;

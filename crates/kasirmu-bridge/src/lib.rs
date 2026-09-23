@@ -30,6 +30,8 @@ pub mod error;
 /// [`products_images::ingest_to_store`] pipeline: an avatar is stored as a
 /// content-addressed hash in `users.avatar`, exactly like a product photo.
 pub mod avatars;
+/// Build-integrity reporting — the ADR #57 §2.1 client leg.
+pub mod build_integrity;
 /// Category CRUD command bodies — the first Wave-A slice and the pattern
 /// the remaining catalog/fiscal/money modules follow.
 pub mod categories;
