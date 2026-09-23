@@ -334,11 +334,10 @@ impl Settings {
     /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::SYNC_API_KEY)?;
-        Ok(raw
-            .map(|v| {
-                decrypt_or_fail_closed(keys::SYNC_API_KEY, &v, kasirmu_crypto::decrypt_sync_api_key)
-            })
-            .transpose()?)
+        raw.map(|v| {
+            decrypt_or_fail_closed(keys::SYNC_API_KEY, &v, kasirmu_crypto::decrypt_sync_api_key)
+        })
+        .transpose()
     }
 
     /// Set the sync API key (transparently encrypted at rest).
@@ -453,15 +452,14 @@ impl Settings {
     /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_pg_sync_password(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::PG_SYNC_PASSWORD)?;
-        Ok(raw
-            .map(|v| {
-                decrypt_or_fail_closed(
-                    keys::PG_SYNC_PASSWORD,
-                    &v,
-                    kasirmu_crypto::decrypt_pg_sync_password,
-                )
-            })
-            .transpose()?)
+        raw.map(|v| {
+            decrypt_or_fail_closed(
+                keys::PG_SYNC_PASSWORD,
+                &v,
+                kasirmu_crypto::decrypt_pg_sync_password,
+            )
+        })
+        .transpose()
     }
 
     /// Set the PostgreSQL password (transparently encrypted at rest).
@@ -580,15 +578,14 @@ impl Settings {
     /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_rate_sync_api_key(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::RATE_SYNC_API_KEY)?;
-        Ok(raw
-            .map(|v| {
-                decrypt_or_fail_closed(
-                    keys::RATE_SYNC_API_KEY,
-                    &v,
-                    kasirmu_crypto::decrypt_rate_api_key,
-                )
-            })
-            .transpose()?)
+        raw.map(|v| {
+            decrypt_or_fail_closed(
+                keys::RATE_SYNC_API_KEY,
+                &v,
+                kasirmu_crypto::decrypt_rate_api_key,
+            )
+        })
+        .transpose()
     }
 
     /// Set the exchange rate API key (transparently encrypted at rest).
@@ -677,11 +674,10 @@ impl Settings {
     /// under no derivation (see [`decrypt_or_fail_closed`]).
     pub fn get_lan_server_psk(conn: &Connection) -> Result<Option<String>, PlatformError> {
         let raw = Self::get(conn, keys::LAN_SERVER_PSK)?;
-        Ok(raw
-            .map(|v| {
-                decrypt_or_fail_closed(keys::LAN_SERVER_PSK, &v, kasirmu_crypto::decrypt_lan_psk)
-            })
-            .transpose()?)
+        raw.map(|v| {
+            decrypt_or_fail_closed(keys::LAN_SERVER_PSK, &v, kasirmu_crypto::decrypt_lan_psk)
+        })
+        .transpose()
     }
 
     /// Set the LAN server pre-shared key (transparently encrypted at rest).
