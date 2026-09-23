@@ -32,6 +32,22 @@ fn log_degraded(operation: &str, err: &rusqlite::Error) {
     );
 }
 
+/// The identity this install stamps on the rows it produces (C3, slice S5a).
+///
+/// Read ONCE per enqueue call — never per row — from the same persisted
+/// `sync_terminal_id` the sync daemons read to stamp their pushes. An
+/// unpaired install has no id and the row keeps SQL NULL, which is the
+/// migration's explicit contract: a guessed origin would make the
+/// self-origin gate suppress a legitimate deduction (silent stock loss).
+///
+/// A read ERROR propagates instead of degrading to `None`. A NULL written
+/// because the lookup failed is indistinguishable from a genuine "unpaired",
+/// and it would silently reopen the double deduction this stamp exists to
+/// close — the failure must be visible, not benign.
+fn enqueue_origin(conn: &rusqlite::Connection) -> Result<Option<String>, CoreError> {
+    Ok(crate::settings::Settings::get_sync_terminal_id(conn)?)
+}
+
 /// Run a single-row observability query whose "no rows" answer is normal.
 ///
 /// `Ok` → value; `QueryReturnedNoRows` → `None` silently (an empty queue is the
@@ -241,6 +257,7 @@ impl Store<'_> {
 
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
+        item.origin_terminal_id = enqueue_origin(self.conn)?;
         self.conn.execute(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -289,6 +306,10 @@ impl Store<'_> {
     ) -> Result<OfflineQueueItem, CoreError> {
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
+        // C3 S5a: same origin stamp as the non-transactional lane. This is the
+        // lane the sale settlement uses, so a miss here would leave the gate
+        // dormant for exactly the mutation the double deduction was seen on.
+        item.origin_terminal_id = enqueue_origin(tx)?;
         tx.execute(
             "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",

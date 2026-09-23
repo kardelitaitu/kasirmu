@@ -1315,6 +1315,111 @@ fn offline_item_without_origin_reads_back_none_and_stays_null() {
     assert_eq!(stored, None, "an unset origin must be SQL NULL");
 }
 
+/// C3 S5a — THE PRODUCER SIDE. With a paired terminal, an enqueue stamps
+/// THIS install's id, which is the only thing that makes the skip gate in
+/// `platform/sync/src/queue.rs` fire. Without this, that gate is dormant and
+/// a terminal re-applies its own pushed sale — the double deduction.
+#[test]
+fn enqueue_stamps_the_paired_terminal_id_as_origin() {
+    let conn = fresh();
+    let s = store(&conn);
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-42").unwrap();
+
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(
+        item.origin_terminal_id.as_deref(),
+        Some("term-42"),
+        "the enqueued item carries this install's terminal id"
+    );
+
+    // The ROW's value, not merely the struct's — a column dropped from the
+    // INSERT would round-trip in memory and vanish at the next hop.
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("term-42"));
+}
+
+/// The sale settlement writes through `enqueue_offline_in_tx`, so the stamp
+/// must reach THAT INSERT too: a miss here would leave the gate dormant for
+/// exactly the mutation the double deduction was observed on.
+#[test]
+fn enqueue_in_tx_stamps_the_paired_terminal_id_as_origin() {
+    let conn = fresh();
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-tx").unwrap();
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::enqueue_offline_in_tx(
+            &tx,
+            "complete_sale",
+            "{\"sale_id\":\"s-1\"}",
+            "store-7",
+            SyncPriority::Critical,
+        )
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored.as_deref(), Some("term-tx"));
+}
+
+/// The whole point, end to end on the real settlement door: the outbox row a
+/// completed sale leaves behind must name the terminal that produced it.
+#[test]
+fn settled_sale_outbox_row_carries_this_install_as_origin() {
+    let conn = fresh();
+    seed_item(&conn, "ORIGIN-A", 5);
+    crate::settings::Settings::set_sync_terminal_id(&conn, "term-door").unwrap();
+    let s = store(&conn);
+    let sale = sale_with_one_line("ORIGIN-A", 1, 500);
+
+    s.complete_sale_deduction(&sale, None, &[split(500, None)], "user-a", None)
+        .unwrap();
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE action = 'complete_sale'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored.as_deref(),
+        Some("term-door"),
+        "the outbox row names the terminal that produced the sale"
+    );
+}
+
+/// An UNPAIRED install must behave exactly as it does today: no id, no stamp,
+/// SQL NULL. A guess here would make the gate suppress a legitimate deduction.
+#[test]
+fn enqueue_without_a_paired_terminal_leaves_the_origin_null() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(item.origin_terminal_id, None);
+
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, None, "an unpaired install writes SQL NULL");
+}
+
 /// The receipt writers must carry the effect key through the same
 /// INSERT/SELECT pair, and an absent effect must stay NULL.
 #[test]
