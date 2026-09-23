@@ -99,11 +99,41 @@ Two structural reasons make this worse than one weak test. First, fresh_db() (mi
 
 ### 4.4 P1 - Writes that are not in transactions, and balances with more than one writer
 
-There are **138 autocommit-capable conn.execute sites in db/ outside tests** (grep for conn.execute( under crates/kasirmu-core/src/db, excluding _tests.rs), several of them on money paths (sales_crud.rs:591, sales_lifecycle.rs:57, audit.rs:369, loyalty.rs:850 and :965, customers.rs:196 and :250). Some ride an outer transaction, some do not. update_sale_status (sales_crud.rs:558-600) reads the status outside any transaction and then issues an unconditional UPDATE, which makes its own rows == 0 to Conflict branch unreachable; the same file on the void path shows the correct pattern (sales_lifecycle.rs:787-798, a conditional update on status = 'active').
+> **Re-scoped 2026-09-23 (C61): the 131 sites below are a population with three classes, not a defect list.** 99 of them are single-statement functions that are already correct. The real work is 12 functions. Re-derive with the command in the section.
 
-On balances, gift cards are exemplary: one balance, one writer per operation, conditional updates with in-transaction re-reads (gift_cards.rs:57, :430-443, :557-570). Loyalty is not. loyalty_accounts.points has three writers, only one of which is conditional (earn at loyalty.rs:841 is a non-atomic points + ?, redeem at :499 is a correct CAS, reversal at :953 uses MAX(points - ?, 0)); customers.loyalty_points is a derived projection written from three loyalty sites plus two independent insert-time sites in kasirmu-bridge/src/data.rs:740 and kasirmu-cli/src/commands/kasirpkg.rs:419; customers.total_spent_minor is written with + on completion and - on refund, in different transactions, and floors at zero.
+The original text hedged correctly ("some ride an outer transaction, some do not"); the count then travelled into planning without the hedge, as a work list of 89 sites. Re-derived 2026-09-23:
 
-One more detail worth keeping: stock_counts.rs:93, :131, :136 and :143 hand-roll BEGIN IMMEDIATE through execute_batch - the only place in the codebase where the correct mode is used, and it bypasses the Transaction type entirely.
+```bash
+grep -rn 'conn.execute(' --include='*.rs' crates/kasirmu-core/src/db | grep -v '_tests.rs' | wc -l
+# -> 131   (sites, across 40 files)
+```
+
+**131 sites across 40 non-test files**, grouped by enclosing function: **99 functions hold exactly one `execute`, and 12 functions hold two or more.** The previous figure of 138 was correct when measured and has since drifted; the earlier planning number of 89 sites as a work list was never a defect count at all.
+
+The three classes, and only the last one falsifies:
+
+| Class | Size | Is it a defect? |
+|---|---|---|
+| **Single-statement function** | **99 functions, 99 sites** | **No.** Already correct. On the single shared `Store` connection a bare statement issued while the caller's transaction is open **joins it implicitly** — see `db/mod.rs:30-46`, the module's own composability rule. Wrapping these is a no-op, and a rollback test written for one **cannot fail**. |
+| **Multi-statement function** | **12 functions, 32 sites** | **This is the real work.** Atomicity is genuinely at stake where two or more writes must land together. |
+| **Hand-rolled `BEGIN`** | **1 site** | **The only class that falsifies cleanly** — and it is already fixed. |
+
+The single-execute class is not a defect for a structural reason, and that was **proved rather than argued**: a worker restored the pre-fix code at five sites and found that **eight of nine rollback tests could not tell the difference**. Only the hand-rolled-`BEGIN` class produced a discriminating failure, because it fails against a caller already inside a transaction with `cannot start a transaction within a transaction` — **an error, not a lost rollback**. That site is `stock_counts.rs:106`, now guarded by `self.conn.is_autocommit()` at `:112-115` so it joins an open transaction and owns one otherwise (the C18 P1.10 fix; the comment at `:106-111` records the pre-fix behaviour).
+
+The 12 multi-statement functions, for whoever takes the real work: `assignments.rs@436`, `downgrade.rs@64`, `image_refs.rs@222`, `kds_lines.rs@315`, `kds_ops.rs@77`, `loyalty.rs@742`, `loyalty.rs@892`, `profile.rs@988`, `staff.rs@500`, `staff.rs@608`, `staff.rs@872`, `terminal_overrides.rs@63`. Note that several of them already join a caller's transaction by construction — `write_assignment_scope_on` takes `conn: &Connection` and is called both as `self.conn` and as `&tx` (`assignments.rs:402`, `:422`), and the two `*_in_tx` staff functions are called as `Store::new(&tx)` (`profile.rs:588`, `:597`). **Re-check each before wrapping it**: on this codebase "takes `&self`" does not mean "owns its transaction".
+
+**The two concrete defects this section named are now fixed, and the fix is verifiable — do not read the paragraph above as retracting them.** Both were real:
+
+- **`update_sale_status`'s unreachable `rows == 0` branch.** It read the status outside any transaction and then issued an **unconditional** `UPDATE`, so the conflict branch could never fire for a status race — the one thing it existed to catch. It is now a **compare-and-set**: `UPDATE … WHERE id = ?3 AND status = ?4` inside `unchecked_transaction()` (`sales_crud.rs:621-634`), with the conflict branch reachable at `:627-633` and two discriminating tests (`sales_crud_tests.rs:89` `a_transition_that_lost_the_race_reports_the_conflict`, `:189` `a_committed_competing_transition_is_not_overwritten`). The doc comment at `sales_crud.rs:559-583` records the old shape and why the read stays outside the transaction.
+- **Loyalty balances with more than one writer.** `loyalty_accounts.points` had three writers, only one conditional (earn `points + ?` non-atomic, redeem a correct CAS, reversal `MAX(points - ?, 0)`). `customers.loyalty_points` was a derived projection written from three loyalty sites plus two independent insert-time sites. Both were real multi-writer balances; the reversal path now carries its own floor and the projection is maintained inside the same transaction at all three sites (`loyalty.rs:512-518`, `:848-855`, `:981-987`, each marked `MSL-4`).
+
+What remains true and un-retracted in this area: `customers.total_spent_minor` still has **two** production writers with opposite signs in **different** transactions — `sales_lifecycle.rs:59` (`+ ?1` on completion) and `refunds.rs:1027` (`MAX(total_spent_minor - ?1, 0)` on refund). That is a balance with more than one writer by construction, and the floor at zero is what hides a double-subtraction.
+
+On balances generally, gift cards remain exemplary: one balance, one writer per operation, conditional updates with in-transaction re-reads (gift_cards.rs:57, :430-443, :557-570).
+
+**On the hand-rolled `BEGIN`: it is one site, and it is fixed — the earlier list of four was a line-number snapshot of one function.** `stock_counts.rs:114` issues `execute_batch("BEGIN IMMEDIATE")` and its `COMMIT`/`ROLLBACK` sit at `:161`, `:166`, `:173`; the four line numbers this section used to list (`:93`, `:131`, `:136`, `:143`) no longer correspond to those calls, which is what a raw line list does when the file moves. It is now **guarded** — `let owned = self.conn.is_autocommit();` at `:112` — so it joins an open transaction and owns one otherwise, and the same guard appears at `create_stock_count` `:66-70`. The comment at `:106-111` records the pre-fix failure verbatim: unconditional `BEGIN IMMEDIATE` "FAILS with \"cannot start a transaction within a transaction\" for any caller that already holds one — the defect is not a lost rollback, it is an outright error." That distinction is the section's whole point and is now stated in the code.
+
+> One hand-rolled `BEGIN` survives **outside** `db/`, and it is worth knowing about: `platform/core/src/settings/raw.rs:232`/`:235`/`:242` issues `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK` by hand. It is outside this section's stated grep and outside its fence; recorded here so the next reader does not conclude the pattern is extinct.
 
 ## 5. Offline to cloud convergence
 
