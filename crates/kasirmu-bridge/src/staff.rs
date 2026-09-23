@@ -37,7 +37,7 @@ use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
 use kasirmu_core::{Role, User};
 use kasirmu_security::mask::mask_token;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use foundation::{validate_min_length, validate_not_empty};
 
@@ -1234,6 +1234,37 @@ pub async fn update_staff_scoped(
         // ADR #35 D6 incomplete-profile semantics: assigning a role that
         // grants sensitive permissions requires a complete profile.
         store.require_role_assignable(&args.id, &args.role_id)?;
+        // C1.1 / W7-B: the reactivation door of the staff limit. Creating a
+        // member is gated in `create_staff_scoped` and vetoed in-tx by
+        // `create_user`; switching a member back ON adds exactly the same row
+        // to the same count, so it walks the same gate — otherwise
+        // deactivate -> create -> reactivate exceeds the cap while every
+        // individual step is allowed.
+        //
+        // Only the INACTIVE -> ACTIVE transition is gated: that is the one that
+        // grows the counted set, and a plan at its cap must still let an
+        // operator edit an active member or deactivate one. The current state
+        // is read HERE, inside the transaction and with the same
+        // `deleted_at IS NULL` guard the write below uses, so a trashed or
+        // absent id answers NotFound from `update_user_in_tx` rather than
+        // being misreported as a quota failure.
+        let reactivating = args.is_active
+            && tx
+                .query_row(
+                    "SELECT is_active FROM users WHERE id = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![args.id],
+                    |row| row.get::<_, bool>(0),
+                )
+                .optional()?
+                .is_some_and(|active| !active);
+        if reactivating {
+            // Arms the in-tx veto on the SAME Store that performs the write, so
+            // the verdict and the UPDATE commit or roll back together (the
+            // pre-tx form alone leaves a WAL-snapshot TOCTOU where two
+            // concurrent reactivations both pass).
+            let tier = store.resolve_tier_fail_closed()?;
+            store.enforce_staff_quota(&tier)?;
+        }
         store.update_user_in_tx(
             &args.id,
             &args.username,

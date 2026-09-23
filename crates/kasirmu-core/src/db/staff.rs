@@ -640,6 +640,39 @@ impl Store<'_> {
                 id: id.to_owned(),
             });
         }
+        // C1.1 / W7-B, the INACTIVE -> ACTIVE door. `create_user` vetoes a
+        // staff insert that pushed the tier's count over its cap; a
+        // reactivation adds exactly the same active row to exactly the same
+        // count, so it walks the same veto — otherwise deactivate -> create ->
+        // reactivate exceeds the cap while every individual step is allowed.
+        // The caller arms this dimension on THIS Store only when the update is
+        // a reactivation (an already-active edit or a deactivation must never
+        // be refused because the plan is full), so an un-armed Store — every
+        // other caller, including the standalone `update_user` — is the legacy
+        // un-gated path. Post-update and inside the caller's transaction, for
+        // the same WAL reason `create_user` counts after its insert: two
+        // concurrent reactivations cannot both pass a pre-tx gate at
+        // `current == limit - 1`. Same literal predicate as
+        // `count_staff_users` (active, owner excluded).
+        if let Some(tier) = self.take_armed_quota(QuotaDimension::Staff)
+            && let Some(limit) = QuotaDimension::Staff.limit_for(&tier)
+        {
+            let current: i64 = self.conn.query_row(
+                "SELECT COUNT(*) FROM users WHERE is_active = 1 AND role_id != ?1",
+                params![crate::builtin_roles::OWNER],
+                |r| r.get(0),
+            )?;
+            if current > limit {
+                // The caller owns the transaction; returning here makes its
+                // `?` unwind and the transaction guard roll the UPDATE back.
+                return Err(crate::subscription::QuotaError::StaffLimit {
+                    tier: tier.name().into(),
+                    limit,
+                    current: current - 1,
+                }
+                .into());
+            }
+        }
         // Keep the assignment role in sync — the scope columns and scope rows
         // of an existing assignment are preserved (only the role follows).
         self.conn.execute(
@@ -718,12 +751,26 @@ impl Store<'_> {
     /// `update_user`, and that is the audited step. A purged tombstone is not
     /// restorable: its personal data is erased, and bringing the row back
     /// would claim otherwise.
+    ///
+    /// A row PAST its retention window is not restorable either, and that is a
+    /// predicate here rather than a consequence of the purge having run: the
+    /// sweep rides the trash READS, so between a list taken at day 89 and a
+    /// restore clicked after the deadline nothing has purged anything, and the
+    /// window would otherwise be enforced only for a caller that happened to
+    /// list first. The cutoff mirrors `purge_expired_users` exactly — the same
+    /// `TRASH_RETENTION_DAYS`, the same strict-before comparison — so a row is
+    /// restorable precisely when it is still purgeable-eligible, and the two
+    /// clocks cannot drift into a state where a row is neither swept nor
+    /// restorable. The refusal is `NotFound`, the answer an absent or purged
+    /// row already gets: the trash is not a way to prove a row exists.
     pub fn restore_user(&self, id: &str) -> Result<User, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
             "UPDATE users SET deleted_at = NULL, updated_at = ?1 \
-             WHERE id = ?2 AND deleted_at IS NOT NULL AND purged_at IS NULL",
-            params![now, id],
+             WHERE id = ?2 AND deleted_at IS NOT NULL AND purged_at IS NULL AND deleted_at >= ?3",
+            params![now, id, cutoff],
         )?;
         if rows == 0 {
             return Err(CoreError::NotFound {

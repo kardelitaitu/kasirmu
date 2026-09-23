@@ -8,6 +8,7 @@ next: none | perf: fine
 //!
 //! These commands are the IPC surface for the Staff Management UI.
 
+use rusqlite::OptionalExtension;
 use tauri::{State, command};
 
 use kasirmu_core::auth::hash_pin;
@@ -392,6 +393,39 @@ pub async fn update_staff_scoped(
         // ADR #35 D6 incomplete-profile semantics: assigning a role that
         // grants sensitive permissions requires a complete profile.
         store.require_role_assignable(&args.id, &args.role_id)?;
+        // C1.1 / W7-B: the reactivation door of the staff limit — the tablet's
+        // copy of the gate the desktop reaches through
+        // `kasirmu_bridge::staff::update_staff_scoped`. This door is NOT
+        // delegated (see this command's doc), so the gate has to exist here too
+        // or the tablet stays bypassable while the desktop is fixed: creating a
+        // member is capped, but switching one back ON adds exactly the same row
+        // to the same count, so deactivate -> create -> reactivate would exceed
+        // the plan with every individual step allowed.
+        //
+        // Only the INACTIVE -> ACTIVE transition is gated: that is the one that
+        // grows the counted set, and a plan at its cap must still let an
+        // operator edit an active member or deactivate one. The current state
+        // is read HERE, inside the transaction and with the same
+        // `deleted_at IS NULL` guard the write below uses, so a trashed or
+        // absent id answers NotFound from `update_user_in_tx` rather than
+        // being misreported as a quota failure.
+        let reactivating = args.is_active
+            && tx
+                .query_row(
+                    "SELECT is_active FROM users WHERE id = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![args.id],
+                    |row| row.get::<_, bool>(0),
+                )
+                .optional()?
+                .is_some_and(|active| !active);
+        if reactivating {
+            // Arms the in-tx veto on the SAME Store that performs the write, so
+            // the verdict and the UPDATE commit or roll back together (the
+            // pre-tx form alone leaves a WAL-snapshot TOCTOU where two
+            // concurrent reactivations both pass).
+            let tier = store.resolve_tier_fail_closed()?;
+            store.enforce_staff_quota(&tier)?;
+        }
         store.update_user_in_tx(
             &args.id,
             &args.username,

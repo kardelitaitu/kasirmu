@@ -530,16 +530,30 @@ impl Store<'_> {
 
     /// Take a custom role back out of the trash.
     ///
+    /// A row past its retention window is refused with the same
+    /// [`CoreError::NotFound`] an absent or already-purged row gets, and the
+    /// cutoff mirrors [`Store::purge_expired_roles`] exactly — the same
+    /// `TRASH_RETENTION_DAYS`, the same strict-before comparison — so a role is
+    /// restorable precisely when the sweep has not yet claimed it. Without the
+    /// predicate the window held only as a side effect of the purge having
+    /// run: the sweep rides the trash read, so a list taken inside the window
+    /// and a restore clicked after it would resurrect a row the window had
+    /// closed. See [`Store::restore_user`](crate::db::staff) for the same
+    /// reasoning on the staff half.
+    ///
     /// # Errors
     ///
-    /// [`CoreError::NotFound`] when no such role, or when it is not in the
-    /// trash to begin with — a restore is not a way to prove a role exists.
+    /// [`CoreError::NotFound`] when no such role, when it is not in the trash
+    /// to begin with, or when its window has closed — a restore is not a way to
+    /// prove a role exists.
     pub fn restore_role(&self, id: &str) -> Result<Role, CoreError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
             "UPDATE roles SET deleted_at = NULL, updated_at = ?1 \
-             WHERE id = ?2 AND deleted_at IS NOT NULL",
-            params![now, id],
+             WHERE id = ?2 AND deleted_at IS NOT NULL AND deleted_at >= ?3",
+            params![now, id, cutoff],
         )?;
         if rows == 0 {
             return Err(CoreError::NotFound {

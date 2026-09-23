@@ -779,6 +779,139 @@ fn soft_delete_is_refused_twice() {
 }
 
 #[test]
+fn update_user_tx_veto_closes_the_reactivation_door() {
+    // C1.1 / W7-B, the INACTIVE -> ACTIVE half of the staff cap. `create_user`
+    // vetoes an insert that pushed the count over the tier's limit; a
+    // reactivation adds exactly the same active row to exactly the same count,
+    // so it walks the same veto. The sequence below is the bypass: every
+    // individual step is allowed (deactivating frees the slot, creating fills
+    // it), and only the reactivation is the over-cap write.
+    let conn = fresh();
+    seed_users(&conn);
+    let s = store(&conn);
+    // Free allows 1 active staff user; seed_users ships alice active and carol
+    // inactive, so deactivating alice takes the count to 0.
+    deactivate(&conn, "user-1");
+    assert_eq!(s.count_staff_users().unwrap(), 0);
+    // The freed slot is genuinely creatable — this is not a fixture artifact.
+    s.create_user("bob2", "hash", "Bob Two", "role-lite")
+        .unwrap();
+    assert_eq!(s.count_staff_users().unwrap(), 1);
+
+    // Now the reactivation, driven the way BOTH shells drive it: arm the
+    // dimension on the Store that holds the transaction, then write in-tx.
+    let tx = conn.unchecked_transaction().unwrap();
+    let in_tx = Store::new(&tx);
+    in_tx.arm_creation_quota(QuotaDimension::Staff, SubscriptionTier::Free);
+    let err = in_tx
+        .update_user_in_tx("user-1", "alice", "Alice", "role-lite", true)
+        .expect_err("reactivating on a full Free plan must be refused");
+    assert!(
+        matches!(err, CoreError::SubscriptionLimitExceeded(_)),
+        "expected the same error create returns, got {err:?}"
+    );
+    // The caller owns the transaction, so its `?` unwind is what rolls the
+    // UPDATE back — the row must not have been activated by the refused call.
+    tx.rollback().unwrap();
+    assert_eq!(
+        s.count_staff_users().unwrap(),
+        1,
+        "the over-cap reactivation must not persist"
+    );
+    assert!(!s.get_user("user-1").unwrap().unwrap().is_active);
+}
+
+#[test]
+fn update_user_tx_veto_allows_headroom_deactivation_and_unarmed_updates() {
+    // The veto's contract, mirroring `create_user_tx_veto_closes_limit_race`:
+    // when the dimension is ARMED the count after the write must fit the cap;
+    // when it is not armed the path is the legacy un-gated one. Whether a
+    // given update is the transition that arms it is the COMMAND layer's
+    // decision (see `scoped_update_staff_reactivation_*` in kasirmu-bridge and
+    // the tablet's own copy) — that is what keeps a plan at its cap from
+    // refusing ordinary edits, and it cannot be asserted from here because the
+    // core writer cannot tell an edit from a reactivation by looking at the
+    // post-state count alone.
+    let conn = fresh();
+    seed_users(&conn);
+    let s = store(&conn);
+
+    // (a) Reactivating with headroom succeeds: Plus allows 5, the count is 1.
+    let tx = conn.unchecked_transaction().unwrap();
+    let in_tx = Store::new(&tx);
+    in_tx.arm_creation_quota(QuotaDimension::Staff, SubscriptionTier::Plus);
+    in_tx
+        .update_user_in_tx("user-3", "carol", "Carol", "role-lite", true)
+        .expect("reactivating under the cap must succeed");
+    tx.commit().unwrap();
+    assert_eq!(s.count_staff_users().unwrap(), 2);
+
+    // (b) A DEACTIVATION that brings an over-cap tenant back to the cap is
+    // allowed even when armed — it shrinks the counted set.
+    let tx = conn.unchecked_transaction().unwrap();
+    let in_tx = Store::new(&tx);
+    in_tx.arm_creation_quota(QuotaDimension::Staff, SubscriptionTier::Free);
+    in_tx
+        .update_user_in_tx("user-1", "alice", "Alice", "role-lite", false)
+        .expect("deactivating must not be refused at the cap");
+    tx.commit().unwrap();
+    assert_eq!(s.count_staff_users().unwrap(), 1);
+    assert!(!s.get_user("user-1").unwrap().unwrap().is_active);
+
+    // (c) An UN-ARMED Store never refuses: the standalone `update_user` and
+    // every other caller keep the pre-W7-B behaviour. Here the tenant is at the
+    // cap and the reactivation still goes through, which is exactly why the
+    // command layer must arm it.
+    s.update_user("user-1", "alice", "Alice", "role-lite", true)
+        .expect("an un-armed store is the legacy un-gated path");
+    assert_eq!(s.count_staff_users().unwrap(), 2);
+}
+
+#[test]
+fn restore_refuses_a_member_whose_window_has_closed() {
+    // The retention sweep rides the trash READS, so between a list taken
+    // inside the window and a Restore clicked after the deadline nothing has
+    // purged anything. The deadline has to be a predicate on the restore
+    // itself, not a side effect of a list having run first.
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    // Aged directly, NOT purged: the row is still on disk with its data, which
+    // is exactly the state a stale page's Restore button acts on.
+    let stale = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 10))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE users SET deleted_at = ?1 WHERE id = 'user-3'",
+        params![stale],
+    )
+    .unwrap();
+    assert!(store(&conn).get_user("user-3").unwrap().is_some());
+
+    let err = store(&conn)
+        .restore_user("user-3")
+        .expect_err("a closed window must not be restorable");
+    assert!(
+        matches!(err, CoreError::NotFound { entity, .. } if entity == "user"),
+        "expected the same answer a purged row gets, got {err:?}"
+    );
+    // And nothing moved: still trashed, still inactive.
+    let (active, deleted): (bool, Option<String>) = conn
+        .query_row(
+            "SELECT is_active, deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(!active);
+    assert!(
+        deleted.is_some(),
+        "the refused restore must not have un-trashed the row"
+    );
+}
+
+#[test]
 fn restore_returns_the_member_inactive() {
     let conn = fresh();
     seed_users(&conn);

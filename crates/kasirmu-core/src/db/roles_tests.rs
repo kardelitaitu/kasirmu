@@ -314,6 +314,51 @@ fn restore_role_returns_it_to_the_live_list() {
 }
 
 #[test]
+fn restore_role_refuses_a_role_whose_window_has_closed() {
+    // Same structural guarantee as the staff half (see
+    // `staff_tests::restore_refuses_a_member_whose_window_has_closed`): the
+    // purge rides the trash read, so a restore that arrives after the deadline
+    // but before any list must still be refused. Aged directly, NOT purged —
+    // the row is on disk and would otherwise be restorable.
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    store(&conn).soft_delete_role(AUTHORED).unwrap();
+
+    let stale = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS + 10))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "UPDATE roles SET deleted_at = ?1 WHERE id = ?2",
+        params![stale, AUTHORED],
+    )
+    .unwrap();
+
+    let err = store(&conn)
+        .restore_role(AUTHORED)
+        .expect_err("a closed window must not be restorable");
+    assert!(
+        matches!(err, CoreError::NotFound { .. }),
+        "expected NotFound, the same answer an absent role gets, got {err:?}"
+    );
+    // Still trashed, and still absent from the live list.
+    let deleted: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM roles WHERE id = ?1",
+            params![AUTHORED],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deleted.is_some());
+    assert!(
+        store(&conn)
+            .list_roles()
+            .unwrap()
+            .iter()
+            .all(|r| r.id != AUTHORED)
+    );
+}
+
+#[test]
 fn purge_expired_roles_removes_only_past_the_window() {
     let conn = fresh();
     store(&conn).seed_default_roles().unwrap();
