@@ -379,6 +379,24 @@
   color: var(--color-fg-secondary);
 }
 
+/* Desktop-link email login (ADR #54 §2.6): address -> code, or address -> password.
+   Same column layout as the pairing view, but start-aligned because it renders
+   form fields rather than centred prose. */
+.license-email-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: start;
+}
+
+.license-email-step-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  margin-bottom: var(--space-1);
+}
+
 .license-setup-link {
   align-self: center;
   margin-top: var(--space-1);

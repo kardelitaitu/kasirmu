@@ -145,7 +145,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       setEmailStep('code');
       setEmailCode('');
     } catch (err) {
-      setEmailError(plainErrorMessage(err, l10n));
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
       setEmailBusy(false);
     }
@@ -159,7 +159,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       await verifyEmailLoginCode(emailAddress.trim(), emailCode.trim());
       onActivated();
     } catch (err) {
-      setEmailError(plainErrorMessage(err, l10n));
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
       setEmailBusy(false);
     }
@@ -172,7 +172,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
       await loginWithEmailPassword(emailAddress.trim(), emailPassword);
       onActivated();
     } catch (err) {
-      setEmailError(plainErrorMessage(err, l10n));
+      setEmailError(l10nErrorMessage(err, l10n, 'auth-email-failed'));
     } finally {
       setEmailBusy(false);
     }
@@ -467,6 +467,25 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
                 </span>
               </button>
 
+              {/* Email sign-in: the third way in, beside Google and pairing.
+                  Same shape as the pair choice — set the mode, and the flow's
+                  own view below takes over from the entry screen. */}
+              <button
+                type="button"
+                className="license-setup-choice"
+                data-testid="setup-email"
+                onClick={() => setAuthMode('email')}
+              >
+                <span className="license-setup-choice-title">
+                  <Localized id="auth-setup-email">Sign in with Email</Localized>
+                </span>
+                <span className="license-setup-choice-desc">
+                  <Localized id="auth-setup-email-desc">
+                    Get a one-time code by email, or sign in with your password.
+                  </Localized>
+                </span>
+              </button>
+
               {/* The license-key form is desktop-only, so this is the one
                   route to it from the entry screen. */}
               {!isTabletShell() && (
@@ -530,7 +549,175 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
             </button>
           </div>
 
-          {authMode === 'pair' ? (
+          {authMode === 'email' ? (
+            /* The email flow: one view, three steps, switched by emailStep.
+               Every step keeps the same failure surface (emailError) so a
+               rejected code and a rejected password report in one place. */
+            <div className="license-email-view" data-testid="license-email-view">
+              {emailError && (
+                <div className="license-error-banner" role="alert">
+                  {emailError}
+                </div>
+              )}
+
+              {emailStep === 'address' ? (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-step-title">Sign in with your email address</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-label">
+                      <label htmlFor="emailLoginAddress">Email Address</label>
+                    </Localized>
+                    <input
+                      id="emailLoginAddress"
+                      name="email-login-address"
+                      type="email"
+                      autoComplete="email"
+                      spellCheck={false}
+                      className="license-input"
+                      data-testid="email-login-address-input"
+                      placeholder={l10n.getString('auth-email-placeholder')}
+                      value={emailAddress}
+                      onChange={(e) => setEmailAddress(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-send-code"
+                    onClick={() => void sendEmailCode()}
+                    disabled={emailBusy || !emailAddress.trim()}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-send-code">Send code</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-send-code">Send code</Localized>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-link"
+                    data-testid="email-login-use-password"
+                    onClick={() => {
+                      setEmailError(null);
+                      setEmailStep('password');
+                    }}
+                  >
+                    <Localized id="auth-email-use-password">Use a password instead</Localized>
+                  </button>
+                </>
+              ) : emailStep === 'code' ? (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-code-title">Enter the code we emailed you</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-code-label">
+                      <label htmlFor="emailLoginCode">Sign-in code</label>
+                    </Localized>
+                    <input
+                      id="emailLoginCode"
+                      name="email-login-code"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      spellCheck={false}
+                      className="license-input"
+                      data-testid="email-login-code-input"
+                      placeholder={l10n.getString('auth-email-code-placeholder')}
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-verify"
+                    onClick={() => void submitEmailCode()}
+                    disabled={emailBusy || !emailCode.trim()}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-verify">Verify code</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-verify">Verify code</Localized>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="license-setup-link"
+                    data-testid="email-login-back"
+                    onClick={backToEmailAddress}
+                  >
+                    <Localized id="auth-email-back">Use a different email address</Localized>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="license-email-step-title">
+                    <Localized id="auth-email-password-title">Sign in with your password</Localized>
+                  </p>
+
+                  <div className="license-form-group">
+                    <Localized id="auth-email-password-label">
+                      <label htmlFor="emailLoginPassword">Password</label>
+                    </Localized>
+                    <input
+                      id="emailLoginPassword"
+                      name="email-login-password"
+                      type="password"
+                      autoComplete="current-password"
+                      className="license-input"
+                      data-testid="email-login-password-input"
+                      value={emailPassword}
+                      onChange={(e) => setEmailPassword(e.target.value)}
+                      disabled={emailBusy}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="license-submit-btn"
+                    data-testid="email-login-submit-password"
+                    onClick={() => void submitEmailPassword()}
+                    disabled={emailBusy || !emailAddress.trim() || !emailPassword}
+                  >
+                    {emailBusy ? (
+                      <>
+                        <svg className="spinner" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" strokeWidth="2" fill="none">
+                          <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+                          <path d="M12 2a10 10 0 0 1 10 10" />
+                        </svg>
+                        <Localized id="auth-email-password-submit">Sign in</Localized>
+                      </>
+                    ) : (
+                      <Localized id="auth-email-password-submit">Sign in</Localized>
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          ) : authMode === 'pair' ? (
             <div className="license-pairing-view" data-testid="license-pairing-view">
               {pairingError && (
                 <div className="license-error-banner" role="alert">

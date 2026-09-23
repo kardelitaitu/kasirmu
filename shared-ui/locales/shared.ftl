@@ -454,19 +454,38 @@ audit-log-filter-label = Filter by outcome
 auth-activate-title = Setup
 auth-activate-subtitle = Sign in or link this device to get started
 
-# Two mutually exclusive first steps, modelled on the modes ProvisioningFlow
-# already exposes (setup-account-google / setup-tab-pair). Same commands, so the
-# two screens cannot drift into disagreeing about what linking means.
+# Three first steps, modelled on the modes ProvisioningFlow already exposes
+# (setup-account-google / setup-tab-pair). Same commands, so the two screens cannot
+# drift into disagreeing about what linking means. Email login is the desktop-link
+# flow (ADR #54 §2.6): request_email_login_code / verify_email_login_code /
+# login_with_email_password, registered on both shells.
 auth-setup-title = How would you like to get started?
 auth-setup-google = Sign in with Google
 auth-setup-google-desc = Sign in, or create an account automatically if you are new.
 auth-setup-pair = Pair this device to your organization
 auth-setup-pair-desc = Scan a code from a phone or another terminal that is already set up.
+auth-setup-email = Sign in with email
+auth-setup-email-desc = We email a one-time code, or you can use your password.
 auth-setup-back = Back
 auth-setup-waiting-browser = Waiting for your browser to finish signing in…
 auth-setup-google-failed = Could not sign in with Google. Please try again.
 auth-email-label = Email Address
 auth-email-placeholder = store@example.com
+# Desktop-link email login (ADR #54 §2.6). The screen walks address -> code, or
+# address -> password when the account has one. auth-email-failed is the fallback
+# plainErrorMessage() shows when the request itself fails.
+auth-email-step-title = Sign in with your email
+auth-email-send-code = Send code
+auth-email-use-password = Use a password instead
+auth-email-code-title = Enter the code we emailed you
+auth-email-code-label = Login code
+auth-email-code-placeholder = 6-digit code
+auth-email-verify = Verify code
+auth-email-password-title = Enter your password
+auth-email-password-label = Password
+auth-email-password-submit = Sign in
+auth-email-back = Use a different email address
+auth-email-failed = Could not sign in. Check the address and your connection, then try again.
 auth-phone-label = Phone Number
 auth-phone-placeholder = 08123456789
 auth-license-label = License Key
