@@ -31,6 +31,19 @@ compatibility_date = "2026-08-16"
 # fields found in observability field: routes" and silently drops the routes,
 # so the subdomains were never bound by this config.
 routes = [
+  # The marketing host itself MUST be listed here. `wrangler deploy` replaces
+  # the zone's whole route set with this array, so a route that lives only in
+  # the dashboard is silently deleted by the next deploy. That is exactly what
+  # happened on 2026-09-23: this array named only the two subdomains, the apex
+  # route was dropped, every kasir.mu path fell through to the origin behind
+  # the DNS record, and the site answered 522 (Cloudflare edge, ~19.5s) for
+  # every URL while admin.kasir.mu and dashboard.kasir.mu kept working — which
+  # is what made the missing route hard to spot from the outside. Verified
+  # after this fix: `wrangler deploy` leaves all three routes in place.
+  # /__oz/runtime-config.js and /api/contact are served by this Worker on the
+  # apex too, so without this entry the late-config path is unreachable in
+  # production even when the deployment itself is healthy.
+  "kasir.mu/*",
   "dashboard.kasir.mu/*",
   "admin.kasir.mu/*",
 ]
