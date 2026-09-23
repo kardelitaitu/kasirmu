@@ -65,6 +65,7 @@
     "success": "Terima kasih! Pesan Anda sedang dalam perjalanan — kami akan segera membalas.",
     "sendAnother": "Kirim pesan lain",
     "formError": "Tidak dapat mengirim pesan. Silakan coba lagi nanti.",
+    "formUnavailable": "Formulir kontak tidak tersedia saat ini. Silakan kirim email kepada kami.",
     "faqTitle": "Pertanyaan yang sering diajukan",
     "faq": [
       {

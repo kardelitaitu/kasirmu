@@ -33,6 +33,11 @@
  * Base.astro); website/src/lib/runtime-config.ts reads window.__OZ_CONFIG__
  * and falls back to the build-time PUBLIC_LICENSE_API_URL when the endpoint
  * is absent (local preview, non-Worker hosts, or an unset var).
+ *
+ * That script is also where this Worker says whether the support form can
+ * actually send: `contactEndpoint` is '/api/contact' only when
+ * CONTACT_WEBHOOK_URL is configured, and null otherwise, so the page can lead
+ * with its mailto path rather than offer a form that can only answer 503.
  */
 
 interface Env {
@@ -928,9 +933,15 @@ export default {
     // Serve the runtime config. no-store: the value can change (a var edit)
     // without a new bundle, so a cached stale config would defeat the point.
     if (url.pathname === RUNTIME_CONFIG_PATH) {
+      // contactEndpoint is stated as null when CONTACT_WEBHOOK_URL is missing,
+      // because this route can then only answer 503 (`Webhook not configured`
+      // below). The support page reads it and leads with its mailto path
+      // instead of offering a form that cannot send — see src/lib/runtime-config.ts.
+      // Announcing '/api/contact' unconditionally, as this did, made every
+      // visitor on an unconfigured deployment fill in a form guaranteed to fail.
       const body = `window.__OZ_CONFIG__=${JSON.stringify({
         licenseApiUrl: env.LICENSE_API_URL ?? null,
-        contactEndpoint: '/api/contact',
+        contactEndpoint: env.CONTACT_WEBHOOK_URL ? '/api/contact' : null,
       })};window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}));`;
       return new Response(body, {
         headers: {

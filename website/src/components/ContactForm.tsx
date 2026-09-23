@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
+import { contactEndpoint } from '../lib/runtime-config';
+import { useContactRoute } from '../lib/use-runtime-config';
 
 /**
  * Support contact form. Posts { name, email, message } as JSON to the
@@ -7,30 +9,24 @@ import { t, type Labels } from '../i18n/labels';
  * Discord channel. The webhook URL must never be exposed to the browser, so
  * the site only ever talks to that route.
  *
- * When no endpoint is configured the form does NOT post: it reports the
- * failure and offers a mailto: link with the entered fields pre-filled, so the
- * UI stays fully usable. That is what `.env.example` promises for an empty
- * `PUBLIC_CONTACT_ENDPOINT`, and the Worker advertises the runtime value in
- * `/__oz/runtime-config.js` (`contactEndpoint`) so a deployment can move it
- * without a rebuild. This used to be a hardcoded relative `/api/contact`, which
- * ignored both and POSTed into a 404 on any host without the Worker's route;
- * measured 2026-09-23 against a build with no endpoint configured.
+ * The form is only the right affordance when the deployment has a route. The
+ * Worker states whether it does in `/__oz/runtime-config.js` (`contactEndpoint`
+ * is null unless CONTACT_WEBHOOK_URL is set), and on a deployment without one
+ * this island renders its mailto path as the primary affordance instead of a
+ * form whose every submit can only 503 — the visitor learns before typing, not
+ * after. Measured on the live host 2026-09-23: `/api/contact` answered 503
+ * "Webhook not configured" to every submission while the page still offered the
+ * form.
+ *
+ * Two things this must not break, both kept: a deployment that never answers
+ * (a plain static host, a local preview) still gets the form, because silence
+ * is not an answer — that is the `unknown` state, see [contactRouteState]; and
+ * a visitor who has already engaged with the form keeps it, because replacing a
+ * half-filled form (or the one focus is sitting in) throws their work away.
+ * The submit-time degrade to a pre-filled mailto: link is untouched, so the
+ * remaining cases — unknown, or engaged — still end somewhere useful.
  */
 const SUPPORT_EMAIL = 'support@kasir.mu';
-
-/**
- * The contact route this deployment actually has: the Worker's runtime value
- * first, then the build-time PUBLIC_CONTACT_ENDPOINT, else nothing.
- *
- * Read at submit time, not at module scope: the runtime config script is
- * deferred, so a value read while the module loads would miss it.
- */
-function contactEndpoint(): string | undefined {
-  const runtime = typeof window !== 'undefined' ? window.__OZ_CONFIG__?.contactEndpoint : undefined;
-  if (runtime) return runtime;
-  const built = import.meta.env.PUBLIC_CONTACT_ENDPOINT as string | undefined;
-  return built?.trim() ? built.trim() : undefined;
-}
 
 interface Props {
   /** Strings this form reads; `support.astro` builds it with `labelMap`. */
@@ -42,6 +38,7 @@ export const SUPPORT_LABELS = [
   'login.email',
   'login.emailPlaceholder',
   'support.formError',
+  'support.formUnavailable',
   'support.message',
   'support.messagePlaceholder',
   'support.name',
@@ -60,10 +57,17 @@ export default function ContactForm({ labels }: Props) {
   const [message, setMessage] = useState('');
   const [website, setWebsite] = useState(''); // honeypot — bots fill it, humans never see it
   const [status, setStatus] = useState<Status>('idle');
+  // Set by focusing anything inside the form, not only by typing in it: the
+  // config can land ~1s after first paint, and a form swapped out from under
+  // the field a keyboard user is sitting in strands focus on <body>.
+  const [touched, setTouched] = useState(false);
   const submitRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const successRef = useRef<HTMLParagraphElement | null>(null);
   const previousStatus = useRef<Status>('idle');
+  const route = useContactRoute();
+  const routeMissing = route === 'unconfigured';
+  const engaged = touched || Boolean(name || email || message);
 
   /**
    * Focus recovery for the three states this form can end up in.
@@ -146,8 +150,37 @@ export default function ContactForm({ labels }: Props) {
     );
   }
 
+  // No route and no visitor to disturb yet: lead with the way to actually
+  // reach us. Rendered from the config's answer, never from silence.
+  if (routeMissing && !engaged) {
+    return (
+      <div className="rounded-xl border border-ink/10 bg-surface/40 p-6 text-center">
+        <p className="text-sm text-muted">{t(labels, 'support.formUnavailable')}</p>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}`}
+          className="mt-4 inline-block rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+      </div>
+    );
+  }
+
   return (
-    <form onSubmit={submit} className="rounded-xl border border-ink/10 bg-surface/40 p-6" aria-label={t(labels, 'support.submit')}>
+    <form
+      onSubmit={submit}
+      onFocus={() => setTouched(true)}
+      className="rounded-xl border border-ink/10 bg-surface/40 p-6"
+      aria-label={t(labels, 'support.submit')}
+    >
+      {/* The form stayed because the visitor is already using it, so the same
+          warning belongs above it — role=status announces the arrival, and it
+          is never the focus target, so nothing is read twice. */}
+      {routeMissing && (
+        <p className="mb-4 text-sm text-muted" role="status">
+          {t(labels, 'support.formUnavailable')}
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className={labelClass}>{t(labels, 'support.name')}</span>

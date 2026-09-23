@@ -36,6 +36,29 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(text).toContain(`window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}))`);
   });
 
+  it('states contactEndpoint as null when CONTACT_WEBHOOK_URL is unset', async () => {
+    // The route can only answer 503 without a webhook, so advertising it would
+    // send every visitor into a form that cannot send (measured live
+    // 2026-09-23: /api/contact returned 503 "Webhook not configured" while the
+    // support page still offered the form). The support page reads this to lead
+    // with its mailto path instead.
+    const req = new Request('https://kasir.mu/__oz/runtime-config.js');
+    const res = await worker.fetch(req, { ...mockEnv, CONTACT_WEBHOOK_URL: undefined });
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('"contactEndpoint":null');
+    expect(text).not.toContain('/api/contact');
+  });
+
+  it('still advertises the contact route when a webhook is configured', async () => {
+    const req = new Request('https://kasir.mu/__oz/runtime-config.js');
+    const res = await worker.fetch(req, mockEnv);
+
+    const text = await res.text();
+    expect(text).toContain('"contactEndpoint":"/api/contact"');
+  });
+
   it('handles CORS OPTIONS preflight for /api/contact', async () => {
     const req = new Request('https://kasir.mu/api/contact', { method: 'OPTIONS' });
     const res = await worker.fetch(req, mockEnv);
