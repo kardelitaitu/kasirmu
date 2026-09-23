@@ -111,6 +111,18 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "no_session_resolution",
     ),
     (
+        "desktop_link::request_email_login_code",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::verify_email_login_code",
+        "no_session_resolution",
+    ),
+    (
+        "desktop_link::login_with_email_password",
+        "no_session_resolution",
+    ),
+    (
         "desktop_link::start_device_pairing",
         "no_session_resolution",
     ),
@@ -196,7 +208,7 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
 /// Re-read 22-09-26: regenerated to 468 with the floor's raise for the staff/role trash's
 /// five gated commands. 74 debt rows before and after, which is the measurement saying they
 /// arrived already gated.)
-pub const REGISTERED_TOTAL: usize = 472;
+pub const REGISTERED_TOTAL: usize = 475;
 
 /// Debt entries today: the ceiling the ledger may only shrink under.
 /// 70 -> 69: `security::rotate_encryption_key` was deregistered, and its ledger row
@@ -216,7 +228,16 @@ pub const REGISTERED_TOTAL: usize = 472;
 /// reads the store-type presets BEFORE any staff session exists, so a session permission
 /// would guard a door no session can reach. Same class as the `link_device_*` rows above, and
 /// the rise is recorded in docs/records/JOURNAL.md.
-pub const DEBT_CEILING: usize = 75;
+/// 75 -> 78: `desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code`
+/// and `desktop_link::login_with_email_password` (the wizard's email sign-in). All three are
+/// class 1 (`no_session_resolution`) and STRUCTURALLY so: each one CREATES the session the
+/// permission would be checked against — they are reached from `LicenseActivationScreen`,
+/// the pre-session boot gate, whose success is what lets the shell past activation at all.
+/// `require_permission_for_session` there would demand a credential that cannot exist yet,
+/// so the only honest gate would be a bespoke pre-auth exemption keyed to a constant. Same
+/// class as the `link_device_*` rows above and `license::activate_license`; reason recorded
+/// in docs/records/JOURNAL.md, which is what the ceiling pin asks of a rise.
+pub const DEBT_CEILING: usize = 78;
 
 /// Names that never resolve a session at all.
 /// 42: `topology::load_topology` now resolves session (moved to class 2, mirroring
@@ -227,8 +248,10 @@ pub const DEBT_CEILING: usize = 75;
 /// 45 -> 47: `desktop_link::start_device_pairing` and `desktop_link::poll_device_pairing`.
 /// 47 -> 48: `setup::get_preset_features` — new debt at the ceiling's rise. This count is a pin
 /// the generator does not recompute, so it moves by hand in the same pass.
-/// `48 + 27 = 75` partitions `DEBT_CEILING`.
-pub const NO_SESSION_RESOLUTION: usize = 48;
+/// 48 -> 51: the three email sign-in commands above. This count is a pin the generator
+/// does not recompute, so it moves by hand in the same pass as the ceiling.
+/// `51 + 27 = 78` partitions `DEBT_CEILING`.
+pub const NO_SESSION_RESOLUTION: usize = 51;
 
 /// Authenticate-then-assume: a session is resolved and no permission asked.
 pub const RESOLVES_SESSION_NAMES_NO_PERMISSION: usize = 27;

@@ -123,7 +123,20 @@ mod debt;
 /// `SETTINGS_READ`, which is the read half of the same family and is NOT the
 /// write permission — seeing that a restore is pending must not confer the right
 /// to request one.
-const REGISTERED_FLOOR: usize = 472;
+///
+/// The 472 -> 475 step is **not this lane's**: `fc2ea1938` (feat(setup): add the
+/// desktop-link email login commands to both shells) registered
+/// `desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code`
+/// and `desktop_link::login_with_email_password` and touched neither this floor nor
+/// the ledger, so both legs were red at HEAD. All three arrive UNGATED and are class 1
+/// (`no_session_resolution`) structurally: they are the wizard's email sign-in, reached
+/// from `LicenseActivationScreen` — the pre-session boot gate — and each one either
+/// creates the session a permission would be checked against or is the step immediately
+/// before it. So this step moves the floor, the debt ceiling and the class-1 count
+/// together and records the reason in docs/records/JOURNAL.md, which is what the ceiling
+/// pin asks of a RISE. The provenance is the point: this pass records what landed, it
+/// does not approve it.
+const REGISTERED_FLOOR: usize = 475;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

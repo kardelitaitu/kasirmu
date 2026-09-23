@@ -12073,6 +12073,80 @@ Every gate re-run by the parent on a QUIET machine (one heavy job at a time):
 
 **Left open deliberately, each with the decision it needs:** workspace-wide gates stay in motion while other lanes hold dirty files; the Android/tablet shell is unverified because no device is attached and no AVD exists on this host (the tablet E2E project is WebKit at a POS viewport, not the device WebView); the dead staff FTL keys (four referenced nowhere in either locale, plus one cited only by the guide row corrected above) need a locale owner's call; and `scripts/verify-quota-coverage.sh` reports 4 PRE-EXISTING violations in the ADR-56 bootstrap path (`provision_device_inner`, `create_workspaces_in_tx`, `seed_provisioned_baseline` x2) which likely deserve the same reasoned KNOWN-GAP treatment `seed_primary_store` already carries - but excusing a provisioning door is that lane's call, and the guard is wired into no workflow, so the red is visible debt rather than a blocking gate.
 
+## 2026-09-23 — Absorb: the wizard's email sign-in raises the desktop debt ceiling 75 → 78 (desktop-tauri/records)
+
+**Context:**
+`drift_pin_three_way_partition_is_complete_and_sums` and
+`drift_pin_generated_ledger_is_the_sweeps_own_output` were RED at HEAD. The sweep measures three
+registered names as ungated that the ledger does not carry: `desktop_link::request_email_login_code`,
+`desktop_link::verify_email_login_code` and `desktop_link::login_with_email_password`. Measured before
+this pass: 75 ungated (`NO_SESSION_RESOLUTION` 48 + `RESOLVES_SESSION_NAMES_NO_PERMISSION` 27) against
+a `DEBT_CEILING` of 75; after: 78 against 75. `REGISTERED_TOTAL` (472) and `REGISTERED_FLOOR` (472)
+were also stale against a tree that now registers 475: the three commands were registered by
+`fc2ea1938` (feat(setup): add the desktop-link email login commands to both shells), which touched
+neither the floor nor the ledger, so both legs were red for that reason too.
+
+**The decision — gate them, or raise the ceiling?**
+**Raise it.** The three commands are the wizard's email sign-in, and they are class 1
+(`no_session_resolution`) STRUCTURALLY, not by omission. They are reached from
+`ui/src/features/auth/LicenseActivationScreen.tsx` (call sites `:144`, `:159`, `:172`, via
+`ui/src/api/license.ts:140/145/156`), which is the pre-session boot gate: `AppShell.tsx:852-871`
+renders it as step `activate` of `ActivationFlow`, whose `onActivated` is what lets the shell past
+activation at all. Each of the three either creates the web session (`verify_email_login_code`,
+`login_with_email_password`) or is the step that precedes creating it (`request_email_login_code`). A
+`require_permission_for_session` here would ask for a credential that cannot exist at the moment the
+call is made — the exact shape the ledger's own history already prices: `license::activate_license`,
+`link_device_google` and `setup::get_preset_features` have sat in this class since the gate was
+written. Gating them would have required inventing a pre-auth exemption keyed to a constant, which is
+a new mechanism in the permission vocabulary for no gain: the door is authenticated by the licence
+server's `/web/*` endpoint, not by a local session.
+
+The split is deliberate and it is not symmetric across the three, which is worth stating rather than
+smoothing: `request_email_login_code` sends a code to a caller-supplied address and returns nothing,
+while the other two return a `WebSession` token — so a reader could reasonably argue the two session-
+minting doors deserve more than a ledger row. They do not get a gate here either, for the same reason:
+the session they mint is the one a gate would be checked against. What they would need is rate-limiting
+at the endpoint (a server concern, `apps/cloud-server`), not an IPC permission, and that is a different
+lane.
+
+**Changes:**
+1. `apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs` — regenerated with
+   `KASIRMU_REGENERATE_GATE_LEDGER=1`: three new rows (`desktop_link::login_with_email_password`,
+   `desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code`, all
+   `no_session_resolution`) and `REGISTERED_TOTAL` 472 → 475. The generator wrote only its own
+   output, as designed.
+2. The same file, by hand — the two pins the generator deliberately does not recompute
+   (`rendered_ledger_file`'s doc: "a pin is a decision"). `DEBT_CEILING` 75 → 78 with the dated
+   reason above the const; `NO_SESSION_RESOLUTION` 48 → 51, partition comment `51 + 27 = 78`.
+3. `apps/desktop-tauri/src/commands/registration_gate_tests.rs` — `REGISTERED_FLOOR` 472 → 475, the
+   number the tree measures rather than a chosen one, with the `fc2ea1938` step named in the doc
+   comment above it. This is the same EQUALITY the staff/role-trash pass moved: it is the only leg in
+   that file that can see a registration at all, and it moved because the three names were already in
+   `lib.rs` at HEAD — nothing was registered or deregistered by this pass, only measured.
+   `RESOLVES_SESSION_NAMES_NO_PERMISSION` (27) and `UNSOURCED` (0) are unchanged.
+
+**What it means:**
+This is the third rise `DEBT_CEILING` has taken and the second for a `desktop_link` row, and it is
+filed as an **absorb**: the three commands belong to the ADR #54/#56 email sign-in lane, and this pass
+records what landed rather than approving it. If that lane's sign-in is reverted, the three rows, the
+ceiling and the class count come off together.
+
+**Verification:**
+- `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-app --lib
+  drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture` → 1 passed; generator printed
+  "78 debt row(s), registered total 475".
+- `cargo test -p kasirmu-app --lib registration_gate` → 14 passed / 0 failed (pre-fix: 10 passed /
+  4 failed — the floor, partition, ceiling and generator legs).
+- `cargo test -p kasirmu-app --test gate_audit` → 3 passed / 0 failed (the census pin needed no
+  update, as the paragraph below explains).
+- `cargo fmt -p kasirmu-app -- --check` → exit 0.
+
+**Not in this pass:** `apps/desktop-tauri/tests/gate_audit.rs`'s census row for `desktop_link` still
+reads `("desktop_link", 0, &[])`, which is CORRECT under this decision — the census counts gated
+commands and these three are not gated. Its comment at `:57` ("desktop_link gates nothing yet") also
+still holds.
+
+
 
 
 
