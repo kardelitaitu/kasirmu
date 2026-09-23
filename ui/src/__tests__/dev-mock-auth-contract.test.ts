@@ -698,3 +698,27 @@ describe('dev-mock has_users seam', () => {
     expect(second.has_users).toBe(false);
   });
 });
+
+// ── Native dialog commands (tauri-plugin-dialog) ───────────────────────
+//
+// The real plugin invokes these two IPC commands. With no handler the mock
+// returned `null` for both, and every caller reads null as "the user cancelled" —
+// so four flows (export, import, backup, image-pick) returned early in silence.
+// Measured 2026-09-23: pressing "Export my data" on a revoked account did nothing
+// at all — no error, no toast, no page error.
+//
+// Asserting NON-NULL is the point: a handler that returned null would satisfy a
+// "is registered" check while leaving the original defect in place.
+describe('dev-mock native dialog commands', () => {
+  it('answers a chosen path for save, so callers get past the dialog', async () => {
+    const chosen = await invoke('plugin:dialog|save', { options: {} });
+    expect(typeof chosen).toBe('string');
+    expect(chosen as string).not.toHaveLength(0);
+  });
+
+  it('answers a chosen path for open', async () => {
+    const chosen = await invoke('plugin:dialog|open', { options: {} });
+    expect(typeof chosen).toBe('string');
+    expect(chosen as string).not.toHaveLength(0);
+  });
+});

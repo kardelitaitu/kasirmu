@@ -33,6 +33,27 @@ function unprovisionedRequested(): boolean {
   }
 }
 
+/**
+ * True when the page was opened with `?revoked=1`.
+ *
+ * `RevokedScreen` renders only when `subscriptionState === 'revoked'`, and this
+ * mock answered a hardcoded `state: 'active'` — so the ADR #58 §2.6 data-export
+ * screen could not be reached in a browser at all. Same seam and the same
+ * reasoning as `unprovisionedRequested` above: an explicit per-navigation
+ * opt-in that changes no default, read at CALL time, guarded for jsdom.
+ *
+ * `unavailable` (a fail-closed transport reading) is deliberately NOT reachable
+ * this way — it means "we could not ask", which is a different fact from "the
+ * subscription is revoked".
+ */
+function revokedRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('revoked') === '1';
+  } catch {
+    return false;
+  }
+}
+
 
 const MOCK_ROLE_PERMISSIONS: Record<string, string[]> = {
   // Owner — global wildcard.
@@ -497,6 +518,24 @@ export const systemHandlers: Record<string, MockHandler> = {
           tenant_id: null,
         }
   ),
+  'plugin:dialog|save': () => '/tmp/oz-mock/kasir_export_mock.kasirpkg',
+  'plugin:dialog|open': () => '/tmp/oz-mock/kasir_import_mock.kasirpkg',
+
+  // ── Native dialogs (tauri-plugin-dialog) ─────────────────────────────
+  // The real plugin invokes these two IPC commands; with no handler the mock
+  // returned `null` for both, which every caller reads as "the user cancelled".
+  // Four flows (export, import, backup, image-pick) then returned early in
+  // SILENCE — measured 2026-09-23 on the ADR #58 §2.6 screen, where pressing
+  // "Export my data" on a revoked account did nothing at all: no error, no
+  // toast, no page error, because `pickExportPath()` resolved null before the
+  // export command was ever reached. That made the whole export path unreachable
+  // in dev and untestable in E2E.
+  //
+  // These answer a chosen path so the code AFTER the dialog runs. No file is
+  // written — the downstream data handlers already fabricate their own results.
+  // A mock that returned null would reproduce the early-return this exists to
+  // unblock; a caller testing the CANCELLED branch must stub these explicitly.
+
   'provision_device': (a: unknown) => {
     const args = (a as { args?: Record<string, unknown> })?.args ?? {};
     return {
@@ -553,8 +592,8 @@ export const systemHandlers: Record<string, MockHandler> = {
   }),
   'get_subscription_capabilities': () => ({
     tier: 'premium',
-    status: 'active',
-    state: 'active',
+    status: revokedRequested() ? 'revoked' : 'active',
+    state: revokedRequested() ? 'revoked' : 'active',
     // C+D-RES-1: trial state + feature-grant map ride the caps payload.
     // The mock tenant is a paid premium subscription: not a trial, no
     // payload feature overrides - exactly the null/empty-when-absent
