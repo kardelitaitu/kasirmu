@@ -48,6 +48,22 @@ fn enqueue_origin(conn: &rusqlite::Connection) -> Result<Option<String>, CoreErr
     Ok(crate::settings::Settings::get_sync_terminal_id(conn)?)
 }
 
+/// Decode a currency's raw bytes for a sync payload.
+///
+/// The outbox payload is JSON the pull side parses, so a non-UTF-8 currency
+/// must be a hard error here (the same rejection `create_refund` performs
+/// before it writes the row) rather than a payload the applier dead-letters
+/// after the refund has already committed locally.
+fn currency_str<'a>(
+    currency: &'a crate::money::Currency,
+    field: &'static str,
+) -> Result<&'a str, CoreError> {
+    std::str::from_utf8(&currency.0).map_err(|e| CoreError::Validation {
+        field,
+        message: format!("invalid UTF-8 in currency bytes: {e}"),
+    })
+}
+
 /// Run a single-row observability query whose "no rows" answer is normal.
 ///
 /// `Ok` → value; `QueryReturnedNoRows` → `None` silently (an empty queue is the
@@ -370,6 +386,153 @@ impl Store<'_> {
         Self::enqueue_offline_in_tx(
             tx,
             "complete_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: write a refund's `refund_sale` row inside the refund
+    /// transaction, so the sync row and the refund are one atomic unit.
+    ///
+    /// Position is deliberate: `create_refund` calls this AFTER the refunds
+    /// header and its lines are written but BEFORE the stock credit, so a
+    /// failure later in the same transaction (a line whose `sale_line_id` is
+    /// absent from `deduction_locations`, say) takes the outbox row down with
+    /// the refund. Placed just before `tx.commit()` it would be equally atomic
+    /// but untestable - nothing can fail after it - so the earlier seat buys a
+    /// real rollback proof.
+    ///
+    /// Tenant comes from the SALE row, not from `refunds.tenant_id`: the
+    /// column exists (migration 20260827) but `create_refund` never sets it,
+    /// so it reads 'default' for every refund this path writes. Reading it
+    /// would file a multi-store refund under 'default' - the exact bug the
+    /// sale helper's tenant argument exists to avoid.
+    ///
+    /// The payload is SHAPED like the one the pull-side arm parses
+    /// (`platform/sync/src/queue.rs` `RefundPayload`: id / sale_id /
+    /// total_minor / currency / reason / note / processed_by / created_at /
+    /// lines with the same eight line keys), so the applier cannot tell this
+    /// writer from any other. The refund `id` is the identity the arm is
+    /// idempotent on (`refunds.id` is its own durable row), so it is carried
+    /// verbatim. No origin field: `enqueue_offline_in_tx` stamps it.
+    pub fn enqueue_refund_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        refund: &crate::Refund,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![refund.sale_id],
+            |row| row.get(0),
+        )?;
+        // Fail-closed on a malformed currency, exactly as `create_refund` does
+        // before it writes the row: a payload the applier cannot read is a
+        // dead-lettered refund, not a silent one.
+        let currency = currency_str(&refund.total.currency, "currency")?;
+        let mut lines = Vec::with_capacity(refund.lines.len());
+        for line in &refund.lines {
+            lines.push(serde_json::json!({
+                "id": line.id,
+                "sale_line_id": line.sale_line_id,
+                "sku": line.sku,
+                "qty": line.qty,
+                "unit_minor": line.unit_price.minor_units,
+                "line_minor": line.line_total.minor_units,
+                "currency": currency_str(&line.unit_price.currency, "refund_line.currency")?,
+                "created_at": line.created_at,
+            }));
+        }
+        let payload = serde_json::json!({
+            "id": refund.id,
+            "sale_id": refund.sale_id,
+            "total_minor": refund.total.minor_units,
+            "currency": currency,
+            "reason": refund.reason,
+            "note": refund.note,
+            "processed_by": refund.processed_by,
+            "created_at": refund.created_at,
+            "lines": lines,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "refund_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: write a void's `void_sale` row inside the void transaction.
+    ///
+    /// A void's whole effect is the sale's own status, so the payload carries
+    /// nothing but the sale id the pull-side arm compare-and-sets on - and
+    /// that id is also the arm's identity (`sale:<id>:void`). Tenant comes
+    /// from the sale row, same as the settlement helper.
+    pub fn enqueue_void_sale_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        sale_id: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale_id],
+            |row| row.get(0),
+        )?;
+        let payload = serde_json::json!({ "sale_id": sale_id }).to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "void_sale",
+            &payload,
+            &tenant_id,
+            SyncPriority::Critical,
+        )?;
+        Ok(())
+    }
+
+    /// OUTBOX: write one `payment.recorded` row per payment split, inside the
+    /// settlement transaction, immediately after that split's INSERT.
+    ///
+    /// Per-split, not one row for the sale: the pull-side arm inserts ONE
+    /// `payments` row per item and probes that row's own identity, so a single
+    /// item carrying several tenders could not be replayed idempotently.
+    ///
+    /// The identity the arm probes is `idempotency_key` when the originator
+    /// minted one (`idx_payments_idempotency_key` is UNIQUE, so a re-sent
+    /// tender is the same tender whatever id it arrives under) and
+    /// `payments.id` otherwise - both are carried, the key only when present.
+    ///
+    /// Tenant comes from the sale row: `payments` has no tenant column.
+    pub fn enqueue_payment_recorded_outbox_in_tx(
+        tx: &rusqlite::Transaction<'_>,
+        payment_id: &str,
+        sale_id: &str,
+        split: &crate::PaymentSplitArg,
+        currency: &str,
+        created_at: &str,
+    ) -> Result<(), CoreError> {
+        let tenant_id: String = tx.query_row(
+            "SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1",
+            params![sale_id],
+            |row| row.get(0),
+        )?;
+        let payload = serde_json::json!({
+            "id": payment_id,
+            "sale_id": sale_id,
+            "method": split.method,
+            "amount_minor": split.amount_minor,
+            "currency": currency,
+            "created_at": created_at,
+            "gateway_reference": split.gateway_reference,
+            "gateway_status": split.gateway_status,
+            "gateway_response": split.gateway_response,
+            "idempotency_key": split.idempotency_key,
+        })
+        .to_string();
+        Self::enqueue_offline_in_tx(
+            tx,
+            "payment.recorded",
             &payload,
             &tenant_id,
             SyncPriority::Critical,

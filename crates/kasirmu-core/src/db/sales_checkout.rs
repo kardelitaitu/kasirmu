@@ -624,6 +624,24 @@ impl Store<'_> {
                         split.idempotency_key,
                     ],
                 )?;
+                // ── TRANSACTIONAL OUTBOX (C4 S2, the producer) ────────
+                // One `payment.recorded` row PER SPLIT, immediately after
+                // that split's INSERT, inside the settlement transaction: the
+                // pull-side arm inserts one `payments` row per item and probes
+                // that row's own identity, so a single item carrying several
+                // tenders could not be replayed idempotently. Until this seat
+                // existed nothing in production enqueued `payment.recorded`,
+                // and the arm was unreachable. The UNIQUE collision on
+                // `payments.idempotency_key` that the outbox seat above is
+                // tested against still rolls back every row written here.
+                Store::enqueue_payment_recorded_outbox_in_tx(
+                    &tx,
+                    &payment_id,
+                    &sale.id,
+                    split,
+                    cur_str,
+                    &now,
+                )?;
             }
         }
 

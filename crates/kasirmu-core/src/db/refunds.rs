@@ -360,6 +360,19 @@ impl Store<'_> {
             )?;
         }
 
+        // ── 1b. TRANSACTIONAL OUTBOX (C4 S2, the producer) ──────────
+        // The sync row for this refund is written HERE, inside the refund
+        // transaction, after the refunds header and its lines and BEFORE the
+        // stock credit. Sync for sales/refunds is outbox-only - push reads
+        // `list_pending_offline` and nothing else, and no reconciliation
+        // sweep exists - so a refund made on one terminal was never pushed at
+        // all until this seat existed: the pull-side `refund_sale` arm was
+        // unreachable. The earlier seat (before the credit, not before
+        // `tx.commit()`) is what makes the rollback property testable: the
+        // credit path can still fail (a line absent from
+        // `deduction_locations`), and it must take the queue row down with it.
+        Store::enqueue_refund_outbox_in_tx(&tx, refund)?;
+
         // ── 2. Read deduction_locations from the sale ──────────────
         let deduction_locations_json: Option<String> = match tx.query_row(
             "SELECT deduction_locations FROM sales WHERE id = ?1",

@@ -558,6 +558,20 @@ impl Store<'_> {
                         split.idempotency_key,
                     ],
                 )?;
+                // ── TRANSACTIONAL OUTBOX (C4 S2, the producer) ────────
+                // Same seat and same contract as the main checkout door
+                // (sales_checkout.rs): one `payment.recorded` row PER SPLIT,
+                // right after that split's INSERT, inside the settlement
+                // transaction. A tender row on one door but not its sibling
+                // would be the invented-inconsistency class.
+                Store::enqueue_payment_recorded_outbox_in_tx(
+                    &tx,
+                    &payment_id,
+                    &sale.id,
+                    split,
+                    cur_str,
+                    &now,
+                )?;
             }
         }
 
@@ -817,6 +831,16 @@ impl Store<'_> {
         // S3: cancel active KDS tickets in the same transaction — a voided
         // sale's tickets must not linger on the kitchen board.
         self.cancel_kds_orders_for_sale_in_tx(&tx, sale_id)?;
+
+        // ── TRANSACTIONAL OUTBOX (C4 S2, the producer) ──────────────
+        // The sync row for this void is written HERE, inside the void
+        // transaction and after the compare-and-set above succeeded, so a void
+        // made on one terminal actually reaches the others: until this seat
+        // existed nothing in production enqueued `void_sale`, and the
+        // pull-side arm was unreachable. The CAS is what makes the row
+        // conditional - the `rows == 0` branch above rolls back before this
+        // point, so a lost race writes no queue row.
+        Store::enqueue_void_sale_outbox_in_tx(&tx, sale_id)?;
 
         tx.commit()?;
 
