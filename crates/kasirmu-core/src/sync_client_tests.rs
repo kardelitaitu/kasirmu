@@ -909,3 +909,76 @@ fn pull_clears_a_stale_scope_when_the_server_row_is_unscoped() {
         "the hub dropped the scope, so the branch must too"
     );
 }
+
+// ── C51: the sync-http-disabled push stub must FAIL, not fake success ──
+
+/// The disabled-HTTP push path returns an ERROR, never fake `Accepted`s.
+///
+/// This is the whole point of C51: the stub used to return
+/// `Ok(vec![PushOutcome::Accepted; n])` for a batch it never sent. Every
+/// outcome applier maps `Accepted` -> `mark_offline_synced`, so a build
+/// without HTTP marked every queued mutation `synced` and destroyed it
+/// locally, with nothing in the error, log or metric surface to tell it
+/// apart from a real push.
+///
+/// HOW THIS IS TESTED WITHOUT DISABLING THE FEATURE: it cannot be tested by
+/// flipping `--no-default-features`, because that configuration does not
+/// compile this crate at all (`license_verification.rs` and `sync_auth.rs`
+/// use reqwest ungated; verified: `cargo check -p kasirmu-core
+/// --no-default-features` fails with `E0433: cannot find module or crate
+/// `reqwest``). Both stub bodies therefore delegate to
+/// `push_outcomes_without_http`, which is `#[cfg(any(not(feature =
+/// "sync-http"), test))]` — the same function the disabled build calls,
+/// compiled into the test build so its behaviour is pinned here. The
+/// delegation is what makes the test meaningful: it exercises the shared
+/// decision, not a copy of it.
+#[test]
+fn push_outcomes_without_http_fails_loudly() {
+    let err = push_outcomes_without_http()
+        .expect_err("a build without HTTP must NOT report a batch as accepted");
+    assert!(
+        matches!(err, SyncHttpError::Client(_)),
+        "expected the disabled-feature Client error, got {err:?}"
+    );
+    assert!(
+        err.to_string().contains("sync-http feature is disabled"),
+        "the message must name the cause, got: {err}"
+    );
+}
+
+/// Both entry points to the one disabled capability share one decision.
+///
+/// `send_items_to_server` (async) and `send_items_to_server_blocking` are two
+/// doors to the same missing capability, so they MUST agree — they do so by
+/// construction here, both delegating to `push_outcomes_without_http`. This
+/// asserts the shared decision is an error and that the async entry point's
+/// disabled form is a thin delegate, rather than asserting the two bodies
+/// separately (which would be the copy the delegation exists to prevent).
+///
+/// The blocking entry point is private, so this pins the contract at the
+/// shared function plus the async stub's own text — the strongest assertion
+/// reachable from a default-feature test run.
+#[test]
+fn both_push_entry_points_share_the_disabled_decision() {
+    let err = push_outcomes_without_http().expect_err("the shared decision must be an error");
+    assert!(matches!(err, SyncHttpError::Client(_)));
+
+    // The async stub must delegate, not reimplement: a body that grew its own
+    // `Ok(...)` would satisfy nothing here and reintroduce the fake success.
+    let src = include_str!("sync_client.rs");
+    // The disabled stub is the LAST declaration of this function in the file
+    // (the feature-gated one comes first), so `last()` selects it.
+    let stub = src
+        .split("pub async fn send_items_to_server(")
+        .last()
+        .and_then(|rest| rest.split("// ── Memo cloud push").next())
+        .expect("the disabled async stub must exist in sync_client.rs");
+    assert!(
+        stub.contains("push_outcomes_without_http()"),
+        "the disabled async stub must delegate to the shared decision"
+    );
+    assert!(
+        !stub.contains("PushOutcome::Accepted"),
+        "the disabled stub must never construct a fake Accepted outcome"
+    );
+}

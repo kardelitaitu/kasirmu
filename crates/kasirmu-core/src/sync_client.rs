@@ -408,6 +408,45 @@ pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptRes
     }
 }
 
+/// The outcome the push path produces when `sync-http` is compiled out.
+///
+/// C51: this used to be `Ok(vec![PushOutcome::Accepted; items.len()])` — a
+/// fake success for a batch that was never sent. Every outcome applier
+/// routes `Accepted` to `mark_offline_synced`, so a build without HTTP
+/// marked each queued mutation `synced` and destroyed it locally, with no
+/// error, no log and no metric to distinguish it from a real push. A
+/// compile-time configuration that cannot sync must not be able to report
+/// that it synced.
+///
+/// Both entry points (`send_items_to_server` and its blocking twin) delegate
+/// here, so they cannot drift apart, and — deliberately NOT behind
+/// `#[cfg(not(feature = "sync-http"))]` — the disabled-build behaviour stays
+/// reachable from a normal test run. It has to: `--no-default-features` does
+/// not compile this crate at all (`license_verification.rs` and `sync_auth.rs`
+/// use reqwest ungated — see the note in `attestation.rs`), so a test inside
+/// the `cfg` block could never execute.
+///
+/// Failing makes the caller's existing error path run instead
+/// (`mark_all_failed`, or the logged `Err` arm), which records the reason in
+/// `last_error` and surfaces it in `failed_count` — loud and diagnosable.
+/// That is the house rule for this crate's other disabled stubs
+/// (`ack_memo_on_server`, `fetch_active_memos_from_server`,
+/// `qris_charge_on_server`, `qris_status_from_server`,
+/// `sync_pull::fetch_snapshot_from_server`); the push path was the lone
+/// exception, and `fetch_active_memos_from_server`'s own doc comment already
+/// called it out ("unlike the push path's pretend-accepted").
+///
+/// Compiled when the feature is off (where the stubs need it) or under
+/// `test` (where it is the only way to reach the disabled-build decision),
+/// so a default build carries no dead code and a default `cargo test` can
+/// still pin the behaviour.
+#[cfg(any(not(feature = "sync-http"), test))]
+fn push_outcomes_without_http() -> Result<Vec<PushOutcome>, SyncHttpError> {
+    Err(SyncHttpError::Client(
+        "sync-http feature is disabled".into(),
+    ))
+}
+
 /// Blocking variant of send_items_to_server — only for spawn_blocking contexts.
 #[cfg(feature = "sync-http")]
 fn send_items_to_server_blocking(
@@ -452,15 +491,10 @@ fn send_items_to_server_blocking(
 
 #[cfg(not(feature = "sync-http"))]
 fn send_items_to_server_blocking(
-    config: &SyncConfig,
-    items: &[OfflineQueueItem],
+    _config: &SyncConfig,
+    _items: &[OfflineQueueItem],
 ) -> Result<Vec<PushOutcome>, SyncHttpError> {
-    tracing::info!(
-        item_count = items.len(),
-        server = %config.server_url,
-        "sync-http feature disabled; would sync batch to server"
-    );
-    Ok(vec![PushOutcome::Accepted; items.len()])
+    push_outcomes_without_http()
 }
 
 /// Send a batch of offline queue items to the remote server via
@@ -509,19 +543,31 @@ pub async fn send_items_to_server(
     Ok(push_resp.results)
 }
 
-/// Stub used when `sync-http` feature is disabled — just logs the intent.
+/// Stub used when `sync-http` feature is disabled — always fails.
+///
+/// C51: this used to return `Ok(vec![PushOutcome::Accepted; items.len()])`,
+/// a fake success for a batch that was never sent. Every outcome applier
+/// routes `Accepted` to `mark_offline_synced`, so a build without HTTP
+/// marked each queued mutation `synced` and destroyed it locally — with no
+/// error, no log and no metric to distinguish it from a real push. A
+/// compile-time configuration that cannot sync must not be able to report
+/// that it synced.
+///
+/// Failing here instead makes the caller's existing error path run
+/// (`mark_all_failed` / the logged `Err` arm), which records the reason in
+/// `last_error` and surfaces it in `failed_count` — loud and diagnosable,
+/// rather than silent.
+///
+/// This is the house rule for the crate's other disabled stubs
+/// (`ack_memo_on_server`, `fetch_active_memos_from_server`,
+/// `qris_charge_on_server`, `qris_status_from_server`,
+/// `fetch_snapshot_from_server`); the push path was the lone exception.
 #[cfg(not(feature = "sync-http"))]
 pub async fn send_items_to_server(
-    config: &SyncConfig,
-    items: &[OfflineQueueItem],
+    _config: &SyncConfig,
+    _items: &[OfflineQueueItem],
 ) -> Result<Vec<PushOutcome>, SyncHttpError> {
-    tracing::info!(
-        item_count = items.len(),
-        server = %config.server_url,
-        "sync-http feature disabled; would sync batch to server"
-    );
-    // Pretend all items were accepted when HTTP is compiled out.
-    Ok(vec![PushOutcome::Accepted; items.len()])
+    push_outcomes_without_http()
 }
 
 // ── Memo cloud push (2026-09-07 cloud-read ruling) ─────────────────
