@@ -400,7 +400,12 @@ describe('DataManagement — Backup with NO session token (known hazard, not a g
 // are the only two names this file exposes that the tablet registers
 // (apps/mobile-tauri/src/lib.rs:651).
 describe('DataManagement — Backup on the TABLET shell', () => {
-  const tabletWith = (sessionToken: string | null) => {
+  // Named as a hook because it IS one: it reads the seeded value through
+  // useWorkspace() before overriding the mock. react-hooks/rules-of-hooks requires
+  // any function that calls a hook to start with "use" -- under the plain name
+  // tabletWith (44c06dc55) the UI lint job failed on this line. The callers are
+  // test bodies, the same position the case above reads the harness from at :355.
+  const useTabletHarness = (sessionToken: string | null) => {
     vi.mocked(isTabletShell).mockReturnValue(true);
     const harnessWorkspace = useWorkspace();
     vi.mocked(useWorkspace).mockReturnValue({ ...harnessWorkspace, sessionToken });
@@ -416,7 +421,7 @@ describe('DataManagement — Backup on the TABLET shell', () => {
     vi.clearAllMocks();
     mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
     mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
-    const harnessWorkspace = tabletWith(token);
+    const harnessWorkspace = useTabletHarness(token);
     try {
       render(<DataManagementScreen />);
       await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
@@ -441,7 +446,7 @@ describe('DataManagement — Backup on the TABLET shell', () => {
     vi.clearAllMocks();
     mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
     mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
-    const harnessWorkspace = tabletWith(HARNESS_SESSION_TOKEN);
+    const harnessWorkspace = useTabletHarness(HARNESS_SESSION_TOKEN);
     try {
       render(<DataManagementScreen />);
       await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
@@ -467,7 +472,7 @@ describe('DataManagement — Backup on the TABLET shell', () => {
     mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', sizeBytes: 12_582_912 });
     mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
     mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-    const harnessWorkspace = tabletWith(HARNESS_SESSION_TOKEN);
+    const harnessWorkspace = useTabletHarness(HARNESS_SESSION_TOKEN);
     try {
       render(<DataManagementScreen />);
       await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
