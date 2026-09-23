@@ -625,3 +625,65 @@ recorded here so it is not re-investigated.
 - **No end-to-end run on a real device.** Every fix across these rounds is asserted at the DOM or
   browser level. The visual result — error borders, the bootstrap card on real Android — is
   unverified on physical hardware.
+
+---
+
+## Round 19 — the progress rail was NOT decoration; it was a defect
+
+Rounds 17-18 recorded "no progress/step indicator" as a *design question*, reasoning that a step
+rail over a single card would be decoration. **That reasoning was never measured, and it was
+wrong.**
+
+### The measurement that settled it
+
+A throwaway Playwright probe, at the tablet's own viewport (1024x1366):
+
+```
+MEASURED {"cardH":1423,"viewportH":1366,"scrollH":1479,"clientH":1366}
+```
+
+The card is **1423px tall in a 1366px viewport** — 57px taller than the screen, with 113px of
+scroll. The submit button and the last two fields (`Login name`, both PIN fields) begin **below
+the fold**. So the merchant sees a heading, a mode choice, and part of a form — with the primary
+action off-screen, no indication of how much is left, and no signal that anything is still
+required below. That is not a candidate for a nice-to-have indicator; it is a form whose exit is
+invisible on first paint.
+
+### The fix
+
+A rail of three steps — **Account, Shop, Owner** — matching the three decision groups the form
+already gates `canSubmit` on.
+
+**The load-bearing property is that the rail is derived from the SAME values as `canSubmit`**, not
+from a second state machine. `stepOwnerDone` reuses the exact expressions (locationName, pin
+length, `pin === confirmPin`) that the submit gate uses, so the rail cannot claim "finished" while
+the button still refuses. That would be the dead-control defect the PIN messages fixed,
+reintroduced by the very thing meant to help.
+
+Accessibility, matching the file's existing contract that state is never colour-only:
+- `aria-current="step"` on the active `<li>` — a position, not a decoration;
+- `Step {current} of {total}` as text, so the fact survives without colour;
+- a check glyph on completed steps, not just a fill change.
+
+### Verification
+
+**20/20 E2E pass on desktop and tablet** (the rail test asserts it is *visible*, not merely in the
+DOM) · `ProvisioningFlow.test.tsx` **22/22** · `screenExtraction` **272/272** · full UI suite **606
+files / 10,328 tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing** · i18n clean.
+
+### Two things I got wrong mid-round, and caught
+
+1. **My first linkage test was fiction.** `never marks a step done while submit is still disabled`
+   filled only step 1, so it never exercised the PIN half of the gate. The **negative control** —
+   deleting the PIN check from `stepOwnerDone` — left it GREEN, which is exactly what a tautological
+   test looks like. Rewritten to fill everything except the PIN agreement; the same negative control
+   now fails with `expected [span, span] to have a length of 2 but got 3`.
+2. **I clobbered a live FTL key.** Inserting the step keys replaced `setup-provision-mode-section`
+   rather than preceding it, because my `edit` old_string was that key's own line. The parity gate
+   caught it (`1 missing key(s)`) — and it is worth noting the walker found it, not me: I had
+   already run typecheck and lint clean before parity reported it.
+
+Also corrected: I first wrote `var(--color-on-primary)`, which does not exist. The real token is
+`--color-pos-on-primary`; the CSS walker's parent-sheet check surfaced it.
+
+**Commit:** `0c7a17f68`.
