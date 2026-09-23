@@ -6,7 +6,7 @@ findings: exemplary — MONEY-05 checked arithmetic at IPC boundary with documen
 next: checked_add for received+damaged (COR-29) | perf: statement reuse mitigates the per-order line query
 */
 
-use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderWithLines};

@@ -117,7 +117,10 @@ fn unsupported_capability_flags_fail_closed() {
         let err = load_with_capability_flag(flag)
             .expect_err("a declared but unenforced capability must not load");
         let msg = err.to_string();
-        assert!(msg.contains(flag), "must name the offending flag {flag}: {msg}");
+        assert!(
+            msg.contains(flag),
+            "must name the offending flag {flag}: {msg}"
+        );
         assert!(
             msg.contains("unsupported capability flag"),
             "must say the capabilities are unsupported: {msg}"
