@@ -883,6 +883,16 @@ pub(crate) fn earn_points_with_conn(
 /// [`earn_points_with_conn`] this must commit or roll back atomically
 /// with the refund row itself.
 ///
+/// C18 P3 verdict: NOT wrapped, and deliberately so. It is a free function on
+/// `&Connection`, so it has no `Store` and no `is_autocommit()` to branch on,
+/// and it writes THREE rows that must move together — the ledger row, the
+/// account balance, and the `customers.loyalty_points` projection. Both
+/// callers already supply a transaction (`refunds.rs:427` passes its refund
+/// `tx`; the sync lane's `reverse_loyalty_for_refund_in_tx` passes its own), so
+/// the invariant is already held one level up and wrapping here would require
+/// an owned transaction the signature cannot express. The gap that WOULD be a
+/// defect is a caller reaching it without one — and there is none.
+///
 /// Public because it is the ONE writer of the loyalty-points reversal:
 /// the local refund path (`db::refunds`) and the sync lane's remote
 /// `refund_sale` arm (`platform-sync`) both call it, so the same refund

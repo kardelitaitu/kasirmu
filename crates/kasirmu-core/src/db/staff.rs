@@ -728,6 +728,19 @@ impl Store<'_> {
             });
         }
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // C18 P3: the trash UPDATE and the quota-marker refresh are one unit of
+        // work. The markers are a MATERIALISED read of the live counts (the
+        // refresh clears and re-inserts), so a failure after the UPDATE would
+        // leave the trash row committed while `over_quota_markers` still
+        // describes the pre-delete population — a report that disagrees with
+        // the rows it summarises until the next unrelated write refreshes it.
+        // `persist_over_quota_markers` uses a SAVEPOINT, so it nests inside the
+        // transaction opened here.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
         let rows = self.conn.execute(
             "UPDATE users SET deleted_at = ?1, updated_at = ?1 \
              WHERE id = ?2 AND deleted_at IS NULL",
@@ -740,6 +753,9 @@ impl Store<'_> {
             });
         }
         self.persist_over_quota_markers()?;
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
         Ok(user)
     }
 

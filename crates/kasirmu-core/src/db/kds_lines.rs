@@ -324,6 +324,19 @@ impl Store<'_> {
             });
         }
 
+        // C18 P3: the status READ that validates the transition and the UPDATE
+        // that performs it are one unit of work — the same check-then-write race
+        // as the P1.11 precedent. Without it the read can see `preparing` and the
+        // UPDATE still land after a concurrent caller moved the line to `ready`,
+        // so a stale offline replay regresses a line item the state machine says
+        // it may not. Own-or-join (SQLite has no nested BEGIN).
+        let owned = self.conn.is_autocommit();
+        let tx = if owned {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
+
         // Read the current status before mutating (no partial writes on
         // regression).
         let current_status: String = self
@@ -384,6 +397,11 @@ impl Store<'_> {
                 id: item_id.to_owned(),
             });
         }
+
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
+        let _ = owned;
 
         let mut stmt = self.conn.prepare(
             "SELECT id, kds_order_id, sku, display_name, qty, course, modifiers_json,

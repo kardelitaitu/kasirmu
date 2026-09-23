@@ -399,7 +399,23 @@ impl Store<'_> {
         role_id: &str,
         spec: &AssignmentSpec,
     ) -> Result<(), CoreError> {
-        Self::write_assignment_scope_on(self.conn, user_id, role_id, spec)
+        // C18 P3: the upsert plus the two DELETE-then-INSERT dimension
+        // replacements are ONE unit of work, and this entry point used to
+        // write them all on `self.conn` in autocommit. The invariant is the
+        // REPLACEMENT: a `list` dimension means exactly the ids given, so a
+        // mid-sequence failure (the loop's FK, a locked table) left the
+        // assignment row claiming `branch_scope = 'list'` with its dimension
+        // rows already DELETED and not yet re-inserted — a silently narrowed
+        // scope that denies access the operator just granted. Own-or-join, the
+        // `stock_counts.rs` idiom; the `_on` helper stays the conn-bound body.
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::write_assignment_scope_on(&tx, user_id, role_id, spec)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::write_assignment_scope_on(self.conn, user_id, role_id, spec)
+        }
     }
 
     /// Write a user's single effective assignment (ADR #35 D5 / spec 0048),
