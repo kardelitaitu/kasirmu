@@ -475,3 +475,82 @@ fn update_table_status_invalid_rejected() {
     let err = s.update_table_status("t1", "invalid_status").unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "status"));
 }
+
+// ── C18 P1.12: the write and its read-back share the caller's transaction ──
+
+/// A rolled-back caller leaves the table exactly as it was. A version that
+/// committed its own UPDATE would leave it `occupied` and fail here.
+#[test]
+fn assign_table_order_joins_a_caller_transaction() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_table(&dummy_table("tbl-rb")).unwrap();
+
+    // `active_sale_id` carries a real FK to `sales(id)`, so the sale must exist
+    // (a fake id trips the constraint, as the neighbouring test notes).
+    let cart = crate::Cart::new("USD".parse().unwrap());
+    let sale = crate::Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).assign_table_order("tbl-rb", &sale.id).unwrap();
+    let inside: String = tx
+        .query_row("SELECT status FROM tables WHERE id = 'tbl-rb'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        inside, "occupied",
+        "visible inside the caller's transaction"
+    );
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row("SELECT status FROM tables WHERE id = 'tbl-rb'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        after, "available",
+        "a rolled-back caller must not occupy the table"
+    );
+}
+
+/// Same for the release half.
+#[test]
+fn release_table_joins_a_caller_transaction() {
+    let conn = fresh();
+    let s = store(&conn);
+    let mut t = dummy_table("tbl-rb2");
+    t.status = "occupied".into();
+    s.create_table(&t).unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).release_table("tbl-rb2").unwrap();
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row("SELECT status FROM tables WHERE id = 'tbl-rb2'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(
+        after, "occupied",
+        "a rolled-back caller must not release the table"
+    );
+}
+
+/// The autocommit arm still persists and closes its own transaction.
+#[test]
+fn assign_table_order_still_commits_in_autocommit() {
+    let conn = fresh();
+    store(&conn).create_table(&dummy_table("tbl-auto")).unwrap();
+    let cart = crate::Cart::new("USD".parse().unwrap());
+    let sale = crate::Sale::from_cart(&cart).unwrap();
+    store(&conn).create_sale(&sale).unwrap();
+    let t = store(&conn)
+        .assign_table_order("tbl-auto", &sale.id)
+        .unwrap();
+    assert_eq!(t.status, "occupied");
+    assert!(conn.is_autocommit(), "the owned transaction must be closed");
+}

@@ -304,6 +304,17 @@ impl Store<'_> {
         product_name: &str,
         qty: i64,
     ) -> Result<StockTransferLine, CoreError> {
+        // C18 P1.11: the guard read and the INSERT are ONE unit of work.
+        // SQLite has no nested BEGIN, so this joins a caller-owned transaction
+        // and only opens its own in autocommit (the `log_audit` idiom). Without
+        // it the status check could pass on `draft` and the line still be added
+        // after a concurrent `send_transfer` moved the transfer to `in_transit`.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
+
         let status: String = self
             .conn
             .query_row(
@@ -330,6 +341,10 @@ impl Store<'_> {
             params![id, transfer_id, sku, product_name, qty],
         )?;
 
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
+
         Ok(StockTransferLine {
             id,
             transfer_id: transfer_id.to_owned(),
@@ -341,9 +356,31 @@ impl Store<'_> {
     }
 
     /// Remove a line from a draft transfer.
+    ///
+    /// C18 P1.11: the two guard reads and the DELETE are ONE unit of work — the
+    /// same defect as [`Self::add_transfer_line`], on the delete side. The status
+    /// could read `draft` here and the line still be removed after a concurrent
+    /// `send_transfer` had already deducted it from source inventory, which is how
+    /// a line and its stock movement get split. Joins a caller-owned transaction,
+    /// or owns one in autocommit.
     pub fn remove_transfer_line(&self, line_id: &str) -> Result<(), CoreError> {
-        let transfer_id: String = self
-            .conn
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::remove_transfer_line_on(self.conn, line_id)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::remove_transfer_line_on(self.conn, line_id)
+        }
+    }
+
+    /// The guard reads plus the DELETE, on the connection whose transaction (if
+    /// any) the caller owns.
+    fn remove_transfer_line_on(
+        conn: &rusqlite::Connection,
+        line_id: &str,
+    ) -> Result<(), CoreError> {
+        let transfer_id: String = conn
             .query_row(
                 "SELECT transfer_id FROM stock_transfer_lines WHERE id = ?1",
                 params![line_id],
@@ -354,7 +391,7 @@ impl Store<'_> {
                 id: line_id.to_owned(),
             })?;
 
-        let status: String = self.conn.query_row(
+        let status: String = conn.query_row(
             "SELECT status FROM stock_transfers WHERE id = ?1",
             params![transfer_id],
             |row| row.get(0),
@@ -367,7 +404,7 @@ impl Store<'_> {
             });
         }
 
-        let deleted = self.conn.execute(
+        let deleted = conn.execute(
             "DELETE FROM stock_transfer_lines WHERE id = ?1",
             params![line_id],
         )?;

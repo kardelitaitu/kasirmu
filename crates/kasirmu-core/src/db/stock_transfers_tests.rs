@@ -724,3 +724,55 @@ fn create_transfer_with_explicit_locations() {
         "explicit destination location should be preserved"
     );
 }
+
+// ── C18 P1.11: the guard read and its mutation share one transaction ──
+
+/// The line INSERT joins an open transaction: rollback leaves no line, which is
+/// what stops a line and its stock movement from being split.
+#[test]
+fn add_transfer_line_joins_a_caller_transaction() {
+    let conn = fresh();
+    let s = store(&conn);
+    let t = s
+        .create_transfer(None, None, None, None, "", "user-1", &[])
+        .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn)
+        .add_transfer_line(&t.id, "SKU-1", "Widget", 3)
+        .unwrap();
+    tx.rollback().unwrap();
+
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_transfer_lines WHERE transfer_id = ?1",
+            params![t.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "a rolled-back caller must leave no transfer line");
+}
+
+/// The DELETE half joins too: a rollback must not have deleted the line.
+#[test]
+fn remove_transfer_line_joins_a_caller_transaction() {
+    let conn = fresh();
+    let s = store(&conn);
+    let t = s
+        .create_transfer(None, None, None, None, "", "user-1", &[])
+        .unwrap();
+    let line = s.add_transfer_line(&t.id, "SKU-1", "Widget", 3).unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).remove_transfer_line(&line.id).unwrap();
+    tx.rollback().unwrap();
+
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_transfer_lines WHERE id = ?1",
+            params![line.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 1, "a rolled-back caller must not have deleted the line");
+}

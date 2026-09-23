@@ -245,7 +245,34 @@ impl Store<'_> {
             None => (None, None),
         };
 
-        self.conn.execute(
+        // C18 P1.13: join-or-own (SQLite has no nested BEGIN), the `log_audit`
+        // idiom. Transaction SHAPE only — no tenant is stamped here. Desktop is
+        // single-tenant by construction and `check_tenant_integrity` refuses to
+        // boot on a foreign-tenant products row (owner decision D9), so this
+        // deliberately does not touch tenant_id.
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::create_product_variant_on(&tx, variant, price_minor, currency_str.as_deref())?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::create_product_variant_on(
+                self.conn,
+                variant,
+                price_minor,
+                currency_str.as_deref(),
+            )
+        }
+    }
+
+    /// The single INSERT, on a connection OR a caller-owned transaction.
+    fn create_product_variant_on(
+        conn: &rusqlite::Connection,
+        variant: &ProductVariant,
+        price_minor: Option<i64>,
+        currency_str: Option<&str>,
+    ) -> Result<(), CoreError> {
+        conn.execute(
             "INSERT INTO product_variants (id, parent_sku, name, sku, price_minor, currency, barcode,
                                            sort_order, is_active, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -273,7 +300,47 @@ impl Store<'_> {
             None => (None, None),
         };
 
-        let affected = self.conn.execute(
+        // C18 P1.13: join-or-own, same shape and same tenant caution as
+        // `create_product_variant` above.
+        let affected = if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            let affected = Self::update_product_variant_on(
+                &tx,
+                variant,
+                price_minor,
+                currency_str.as_deref(),
+            )?;
+            if affected == 0 {
+                tx.rollback()?;
+            } else {
+                tx.commit()?;
+            }
+            affected
+        } else {
+            Self::update_product_variant_on(
+                self.conn,
+                variant,
+                price_minor,
+                currency_str.as_deref(),
+            )?
+        };
+        if affected == 0 {
+            return Err(CoreError::NotFound {
+                entity: "product_variant",
+                id: variant.sku.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The single UPDATE, on a connection OR a caller-owned transaction.
+    fn update_product_variant_on(
+        conn: &rusqlite::Connection,
+        variant: &ProductVariant,
+        price_minor: Option<i64>,
+        currency_str: Option<&str>,
+    ) -> Result<usize, CoreError> {
+        Ok(conn.execute(
             "UPDATE product_variants SET name = ?1, price_minor = ?2, currency = ?3,
                                           barcode = ?4, sort_order = ?5, is_active = ?6,
                                           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -287,14 +354,7 @@ impl Store<'_> {
                 variant.is_active as i64,
                 variant.sku
             ],
-        )?;
-        if affected == 0 {
-            return Err(CoreError::NotFound {
-                entity: "product_variant",
-                id: variant.sku.clone(),
-            });
-        }
-        Ok(())
+        )?)
     }
 
     /// Delete a product variant by its own SKU.

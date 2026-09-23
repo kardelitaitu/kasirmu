@@ -704,3 +704,128 @@ fn list_stock_adjustments_empty() {
     let adjustments = store.list_stock_adjustments().unwrap();
     assert!(adjustments.is_empty());
 }
+
+// ── C18 P1.10: the write surface joins the caller's transaction ──
+
+fn rollback_count(id: &str, number: &str) -> StockCount {
+    StockCount {
+        id: id.into(),
+        count_number: number.into(),
+        status: StockCountStatus::Draft,
+        count_type: CountType::Full,
+        notes: String::new(),
+        counted_by: None,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        completed_at: None,
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    }
+}
+
+/// `create_stock_count` joins an open transaction: a rollback leaves no row.
+#[test]
+fn create_stock_count_joins_a_caller_transaction() {
+    let conn = fresh_conn();
+    let count = rollback_count("sc-rb", "CNT-RB-001");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&conn).create_stock_count(&count).unwrap();
+    tx.rollback().unwrap();
+
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_counts WHERE id = 'sc-rb'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "a rolled-back caller must leave no stock count");
+}
+
+/// The line INSERT joins too, so a line cannot outlive its caller's rollback.
+#[test]
+fn add_count_line_joins_a_caller_transaction() {
+    let conn = fresh_conn();
+    let s = Store::new(&conn);
+    s.create_stock_count(&rollback_count("sc-rb2", "CNT-RB-002"))
+        .unwrap();
+
+    let line = StockCountLine {
+        id: "scl-rb".into(),
+        count_id: "sc-rb2".into(),
+        sku: "SKU-1".into(),
+        product_name: "Widget".into(),
+        expected_qty: 10,
+        counted_qty: Some(8),
+        difference: -2,
+        notes: String::new(),
+    };
+
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&conn).add_count_line(&line).unwrap();
+    tx.rollback().unwrap();
+
+    let n: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_count_lines WHERE id = 'scl-rb'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "a rolled-back caller must leave no count line");
+}
+
+/// P1.10 — `create_stock_count_with_next_number` must JOIN a caller's open
+/// transaction. Pre-fix it ran `BEGIN IMMEDIATE` unconditionally, which SQLite
+/// rejects outright ("cannot start a transaction within a transaction"), so this
+/// is the site where the defect is an ERROR rather than a lost rollback — and
+/// therefore the one that falsifies cleanly.
+#[test]
+fn create_stock_count_with_next_number_joins_a_caller_transaction() {
+    let conn = fresh_conn();
+
+    let mut count = rollback_count("sc-alloc", "placeholder");
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&conn)
+        .create_stock_count_with_next_number(&mut count)
+        .expect("a caller-owned transaction must be joined, not nested");
+
+    // Visible inside the caller's transaction...
+    let inside: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM stock_counts WHERE id = 'sc-alloc'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, 1);
+    tx.rollback().unwrap();
+
+    // ...and gone when the caller rolls back, because the caller owned the commit.
+    let after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM stock_counts WHERE id = 'sc-alloc'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, 0,
+        "a rolled-back caller must leave no allocated count"
+    );
+}
+
+/// The autocommit arm still allocates and commits on its own.
+#[test]
+fn create_stock_count_with_next_number_still_commits_in_autocommit() {
+    let conn = fresh_conn();
+    let mut count = rollback_count("sc-alloc2", "placeholder");
+    Store::new(&conn)
+        .create_stock_count_with_next_number(&mut count)
+        .unwrap();
+    assert!(
+        count.count_number.starts_with("CNT-"),
+        "the number must be assigned from the sequence, got {:?}",
+        count.count_number
+    );
+    assert!(conn.is_autocommit(), "the owned transaction must be closed");
+}
