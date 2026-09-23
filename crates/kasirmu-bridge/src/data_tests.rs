@@ -921,6 +921,148 @@ async fn restore_prepare_writes_a_request_naming_the_candidate() {
     assert!(status.error.is_none());
 }
 
+// ── C8 slice S4a follow-up: the on-disk contract the BOOT CONSUMER reads ──
+//
+// apps/desktop-tauri/src/recovery.rs::consume_pending_restore reads the file
+// this module writes and enforces three things on it, each from its OWN copy
+// of the rule: the file name (it carries a second `.restore-request.json`
+// constant, because `RESTORE_REQUEST_SUFFIX` here is private), the
+// `candidate_path` key of its own `#[derive(Deserialize)]` struct, and that
+// the path named is absolute with no `..` segment. Two copies of a rule agree
+// only by inspection until something asserts them against each other, so the
+// cases below assert the CONSUMER's literals against what the writer actually
+// put on disk. They deliberately never build their expectation from
+// `RESTORE_REQUEST_SUFFIX`: a fixture derived from the writer moves with the
+// writer and would pin nothing.
+
+/// The suffix `recovery.rs` appends — a LITERAL, on purpose, not
+/// `RESTORE_REQUEST_SUFFIX`. If the writer's constant is renamed and this file
+/// is updated to match in the same commit, the consumer is still looking for
+/// the old name; this literal is what fails then.
+const CONSUMER_REQUEST_SUFFIX: &str = ".restore-request.json";
+
+/// The file name `recovery.rs` looks for beside a live database.
+fn consumer_request_file(live: &std::path::Path) -> std::path::PathBuf {
+    let name = live.file_name().unwrap().to_string_lossy().into_owned();
+    live.with_file_name(format!("{name}{CONSUMER_REQUEST_SUFFIX}"))
+}
+
+/// The names in a directory, sorted; empty when it cannot be read.
+fn dir_entries(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    names
+}
+
+/// Drive the REAL `restore_prepare` against a scratch directory and return the
+/// scratch (kept alive), the result DTO, and the file's parsed JSON.
+async fn prepared_request(label: &str) -> (RestoreScratch, RestorePrepareResult, serde_json::Value) {
+    let scratch = RestoreScratch::new(label);
+    let live = scratch.live();
+    scratch.write_db(&live, "Live Store");
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    let (bridge, token) = settings_editor().await;
+    let result = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: scratch.generation0().display().to_string(),
+            confirm_store_name: "Kopi Senja".into(),
+        },
+    )
+    .await
+    .expect("a valid candidate with the right name must prepare a request");
+
+    let raw = std::fs::read_to_string(consumer_request_file(&live)).expect(
+        "restore_prepare must have written the file the boot consumer derives from its own suffix",
+    );
+    let parsed = serde_json::from_str(&raw).expect("the request file must be JSON");
+    (scratch, result, parsed)
+}
+
+/// (1) The name written beside a database is the exact name the consumer looks
+/// for — asserted as a literal, and as the ONLY file carrying that suffix.
+#[tokio::test]
+async fn restore_prepare_writes_the_exact_file_name_the_boot_consumer_reads() {
+    let (scratch, result, _) = prepared_request("contract-name").await;
+    let live = scratch.live();
+    let expected = consumer_request_file(&live);
+
+    assert!(
+        expected.is_file(),
+        "restore_prepare must write exactly '{}'; the directory holds {:?}",
+        expected.display(),
+        dir_entries(&scratch.0)
+    );
+    // Exactly one file under the consumer's suffix: a second derivation in the
+    // writer would leave the consumer reading the wrong one of the two.
+    let requests: Vec<String> = dir_entries(&scratch.0)
+        .into_iter()
+        .filter(|name| name.ends_with(CONSUMER_REQUEST_SUFFIX))
+        .collect();
+    assert_eq!(
+        requests,
+        vec![expected.file_name().unwrap().to_string_lossy().into_owned()],
+        "exactly one request file, under the consumer's own suffix"
+    );
+    // The DTO that tells the caller where the request went names that same file.
+    assert_eq!(std::path::Path::new(&result.request_path), expected);
+}
+
+/// (2) The JSON carries the one key the consumer's `Deserialize` struct reads.
+#[tokio::test]
+async fn restore_request_json_carries_the_candidate_path_key_the_boot_consumer_deserializes() {
+    let (scratch, _, parsed) = prepared_request("contract-key").await;
+    let object = parsed
+        .as_object()
+        .expect("the request file must be a JSON object");
+    assert!(
+        object.contains_key("candidate_path"),
+        "recovery.rs's RestoreRequest reads `candidate_path`; without that key the boot \
+         deserialization fails and a restore an operator believes is queued is never \
+         consumed. Keys present: {:?}",
+        object.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        object["candidate_path"].as_str().unwrap(),
+        scratch.generation0().display().to_string(),
+        "the key the consumer reads must name the candidate that was chosen"
+    );
+}
+
+/// (3) The recorded candidate path is absolute and carries no `..` — the two
+/// rules `read_candidate_path` refuses on, each with its own error string.
+#[tokio::test]
+async fn restore_request_records_an_absolute_candidate_path_without_a_parent_segment() {
+    let (scratch, _, parsed) = prepared_request("contract-path").await;
+    let recorded = parsed["candidate_path"]
+        .as_str()
+        .expect("candidate_path is a string");
+    let candidate = Path::new(recorded);
+
+    assert!(
+        candidate.is_absolute(),
+        "recovery.rs refuses a relative candidate path rather than resolving it against \
+         the working directory; the request names '{recorded}'"
+    );
+    assert!(
+        !candidate
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir)),
+        "recovery.rs refuses a candidate path containing '..'; the request names '{recorded}'"
+    );
+    assert_eq!(recorded, scratch.generation0().display().to_string());
+}
+
 #[tokio::test]
 async fn list_restore_candidates_reports_a_corrupt_generation_as_corrupt() {
     let scratch = RestoreScratch::new("list");
