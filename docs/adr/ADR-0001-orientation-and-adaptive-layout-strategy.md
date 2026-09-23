@@ -80,7 +80,7 @@ viewport query can see.
 aspect ratio including extreme portrait, and the tablet window resizes on rotation. Any strategy
 that hard-codes an orientation assumption is wrong on hardware the product already ships.
 
-**7. There is no gate.** No walker suite in `docs/frontend/css-verification.md` asserts
+**7. There is no gate.** No walker suite in `docs/audits/frontend/css-verification.md` asserts
 anything about orientation or adaptiveness, and no CSS linter exists in this repo at all.
 A rule added as prose is a rule that will not survive the next feature.
 
@@ -115,7 +115,7 @@ place that reads it. A structural orientation need becomes data, reviewable in a
 than a `useOrientation` call buried in a component.
 
 **T4.** Enforcement is a **walker suite** in the existing five-suite family
-(`docs/frontend/css-verification.md`), because that is the only thing in this repo that reads
+(`docs/audits/frontend/css-verification.md`), because that is the only thing in this repo that reads
 `.css` at all. Two assertions: (a) a stylesheet that declares an orientation branch outside the
 shell, or a second copy of the landscape literal, fails; (b) a page registration whose declared
 layout is not consumed by a call site fails. It prints its denominator, like its siblings.
@@ -231,7 +231,7 @@ grep -rln "@media[^{]*orientation" ui/src --include='*.css' | wc -l
 grep -n "--bp-" ui/src/theme/tokens.css
 
 # The walker family; the orientation suite (T4) is the sixth member and DOES assert orientation
-sed -n '13,20p' docs/frontend/css-verification.md
+sed -n '13,20p' docs/audits/frontend/css-verification.md
 ```
 
 **Measured 2026-10-21** (replaces the briefed 97/115 figure, which no command reproduced):
