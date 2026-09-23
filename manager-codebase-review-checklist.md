@@ -148,6 +148,30 @@ The ordered, lowest-risk-first list is in the inventory recorded in the journal:
 
 ---
 
+
+---
+
+## Handover - where this stands and what is next
+
+**State at 2026-09-23 (mid-implementation).** 21 items verified and ticked with a commit SHA each; 6 slices landed but partial with a named remainder; the rest queued or parked. Every tick's evidence is in the verification log below, and the gate command block above re-derives all of it.
+
+**Landed and verified (each with its SHA):** C5 + C5b (completed sales only, one day definition, both shells), C6 + C6b (one timezone contract on the read path, validation on the write path), C7 detection half (RLS posture reported at boot and on /health), C9 (qris-core proprietary), C10a (the seven money-path doors are BEGIN IMMEDIATE, and the regression test can now detect the mode), C11 code half (snapshot before migrating), C12 (read-only stock variance report), C13 (plugin discounts gated, Lua tax bounds enforced), C17 slices 1-2 (ceilings 95 to 89 on the tablet, 75 to 72 desktop-pending), C18 P1.1/P1.2/P1.3/P1.5 (sale-status CAS, cash payouts, open_shift, fiscal sequence), C27 (unified routing, checker widened), C1 stages S1 and S1.5 (branch-tolerant credential reads, fail closed on undecryptable), C8 slices S1 and S2 (atomic verified backups; validated atomic restore with the CLI re-pointed onto it), C2 first step (no silent plugin hot-swap, capability flags fail closed), C3 slice S1 (origin column + per-effect receipt schema).
+
+**The next three dispatches, in order, with fences (do these before starting anything else):**
+1. **C4 slice S2** - the enqueue sites, once C4-S1's arms land: `crates/kasirmu-core/src/db/refunds.rs` (after the refund/line inserts, before the stock credit), `sales_lifecycle.rs` (void_sale, after the CAS and before commit), `sales_checkout.rs` and `sales_lifecycle.rs:544` (one payment.recorded per split, after each INSERT), plus new `enqueue_*_outbox_in_tx` helpers in `db/offline.rs`. Use the in-transaction enqueue form only - the non-transactional insert is the wrong one. Acceptance: a rolled-back refund or settlement leaves zero queue rows; a committed one leaves exactly one.
+2. **C18 slice P1.3b** - the shift invariant needs a database-level guard: a migration adding a PARTIAL UNIQUE INDEX on shifts(user_id) WHERE status = 'open'. It must land with its own index-surface pin bump in `crates/kasirmu-core/src/migrations_tests.rs` (the pin is a census over sqlite_master; the comment block above it explains each increment).
+3. **C8 slice S4** - the boot-time safe-mode consumer in both shells, called BEFORE `AppState::new` opens anything, with a `<db>.restore.lock` made by create_new so a double boot cannot race. Depends on S3's request file (in flight).
+
+**Owner-blocked, each waiting on one question (do not guess these):**
+- **C1 stage 2** (per-install keychain key + `oz rekey`): is `OZ_MASTER_KEY` set on any deployment, and is whole-file .db credential portability a requirement? The reader is already branch-tolerant, which was the precondition.
+- **C2 signature verification + operator grant store**: D7 - how much plugin trust is acceptable. The silent hot-swap is already removed, so the remaining risk is a first load of a dropped file.
+- **C7 role cutover**: has any PostgreSQL deployment run scripts/rls-cutover.sql? Detection now reports the posture at boot, so the answer is one HTTP call away.
+- **C26 architecture**: rule versus tier order, deadline **2026-11-07** (the grandfathered entries expire then and the checker treats expired as blocking).
+- **C17 slice 3** (desktop create_backup): does the pre-login updater keep a session-less door as a documented exemption? And does set_setting's global-identity-vs-store-database split allow a straight repoint to its scoped twin?
+
+**Two operational lessons from implementation, worth keeping:**
+- **Verify worker artifacts, not the roster.** Four workers in this wave stopped silently - two produced nothing, one produced complete green work it never committed, one wrote nothing at all - while still reporting running or ready. A file mtime, a grep for the expected marker, or running the acceptance yourself is the reliable signal, and a commit SHA is the only tick worth recording.
+- **A worker that cannot demonstrate a failing test should say so.** Three slices here landed with a proven RED: the concurrency test failed against the unfixed SQL first (sale-status CAS, cash payout, open_shift). Two others correctly reported that no discriminating test exists for their change (the fiscal sequence wrap, the C13 tax bounds) rather than shipping a test that would pass either way.
 ## Gate commands - re-verify everything ticked so far
 
 Run from the repository root. These are the exact commands whose output is recorded in the verification log; none of them mutates the tree. (Per AGENTS.md, a full `cargo test --workspace` is not an iteration command - the workspace CHECK is fine, and the per-crate test targets below are what the ticks actually assert.)
