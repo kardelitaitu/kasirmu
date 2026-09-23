@@ -1,22 +1,3 @@
-staff-login-title = Masuk Staf
-staff-username = Nama Pengguna
-staff-pin = PIN
-staff-enter-pin = Masukkan PIN
-staff-login-button = Masuk
-staff-logout-button = Keluar
-staff-role-owner = Pemilik
-staff-role-manager = Manajer
-staff-role-cashier = Kasir
-staff-permission-denied = Anda tidak memiliki izin untuk mengakses halaman ini
-
-staff-management-title = Manajemen Staf
-staff-add = Tambah Staf
-staff-name = Nama
-staff-role = Peran
-staff-active = Aktif
-staff-inactive = Tidak Aktif
-staff-activate = Aktifkan
-
 staff-login-submit = Masuk
 staff-login-submitting = Memasuki sistem…
 
@@ -57,14 +38,8 @@ staff-deactivate-aria =
     .aria-label = Nonaktifkan { $name }
 staff-restore-aria =
     .aria-label = Aktifkan kembali { $name }
-staff-modal-add-aria =
-    .aria-label = Tambah anggota staf
-staff-modal-edit-aria =
-    .aria-label = Ubah anggota staf
 staff-modal-add-title = Tambah Anggota Staf
 staff-modal-edit-title = Ubah Anggota Staf
-staff-modal-close =
-    .aria-label = Tutup
 staff-field-username-label = Nama Pengguna *
 staff-username-placeholder =
     .placeholder = mis. jane
