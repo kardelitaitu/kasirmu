@@ -95,7 +95,11 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
             "CUSTOMERS_VIEW",
         ],
     ),
-    ("data", 6, &["DATA_EXPORT", "SETTINGS_EDIT"]),
+    // Re-pinned 2026-09-23 (was 6): 9b551e76b added the restore-candidate
+    // gate require_session_permission(..., SETTINGS_EDIT) in
+    // kasirmu-bridge/src/data.rs and did not bump this row. The key was
+    // already pinned, so only the count moved.
+    ("data", 7, &["DATA_EXPORT", "SETTINGS_EDIT"]),
     ("edc", 3, &["SALES_PROCESS", "SALES_REFUND", "SALES_VOID"]),
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
     ("exchange_rates", 0, &[]),
@@ -152,9 +156,14 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ("picker", 0, &[]),
     ("picker_ticket", 0, &[]),
     ("plugins", 0, &[]),
+    // Re-pinned 2026-09-23 (was 17): 1b7bd2466 added the plugin-discount
+    // gate require_session_permission(..., SALES_DISCOUNT) in
+    // kasirmu-bridge/src/pos.rs and did not bump this row. The key was
+    // already pinned, so only the count moved. The tablet row below stays at
+    // 17: its census scans apps/mobile-tauri only, not the bridge.
     (
         "pos",
-        17,
+        18,
         &["SALES_DISCOUNT", "SALES_OVERRIDE_PRICE", "SALES_PROCESS"],
     ),
     (
