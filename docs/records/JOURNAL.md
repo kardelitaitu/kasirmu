@@ -12146,6 +12146,85 @@ reads `("desktop_link", 0, &[])`, which is CORRECT under this decision — the c
 commands and these three are not gated. Its comment at `:57` ("desktop_link gates nothing yet") also
 still holds.
 
+## 2026-09-23 — Absorb: the same three commands raise the TABLET debt ceiling 89 → 92 (mobile-tauri/records)
+
+**Context:**
+The tablet twin of the entry above, from the same commit and the same omission. `fc2ea1938`
+('add the desktop-link email login commands to both shells') registered
+`desktop_link::request_email_login_code`, `desktop_link::verify_email_login_code` and
+`desktop_link::login_with_email_password` in `apps/mobile-tauri/src/lib.rs` and updated the pins in
+NEITHER shell, so the tablet's three drift pins were red at HEAD:
+`drift_pin_debt_ceilings_only_shrink` ("92 ungated registered commands against a ceiling of 89"),
+`drift_pin_three_way_partition_is_complete_and_sums` (3 names measured and absent from the ledger)
+and `drift_pin_generated_ledger_is_the_sweeps_own_output` ("first row out of order: row 47").
+`drift_pin_registration_floor_is_met` was green only by accident of the tablet's slack: it asserts
+`REGISTERED_FLOOR == REGISTERED_TOTAL` (339 == 339) plus `parsed <= floor + 24`, and the tree parses
+342 — inside the slack, so a stale floor passed while the ledger's total lagged the tree by three.
+
+**The decision is the desktop's, applied:** the three are legitimately ungated pre-auth doors and are
+carried as class-1 (`no_session_resolution`) debt. Nothing is re-argued here; the reasoning, the call
+sites and the split among the three are in the entry above and are not restated. What differs is only
+the numbers, and they were read from each pin's own message rather than copied from the desktop.
+
+**Changes:**
+1. `apps/mobile-tauri/src/commands/registration_gate_debt.generated.rs` — regenerated with
+   `KASIRMU_REGENERATE_GATE_LEDGER=1`: three new rows, all `no_session_resolution`, and
+   `REGISTERED_TOTAL` written by the generator (it stayed 342 — the tree was already at 342, which is
+   exactly the lag the floor leg could not see). The generator wrote only its own output, as designed.
+2. The same file, by hand — the two pins `rendered_ledger_file` deliberately does not recompute:
+   `DEBT_CEILING` 89 → 92 and `NO_SESSION_RESOLUTION` 45 → 48, with the dated reason above each and
+   the partition comment `48 + 44 = 92`. `RESOLVES_SESSION_NAMES_NO_PERMISSION` (44) is unchanged —
+   all three joined class 1, which is the same shape the desktop's rise had.
+3. `apps/mobile-tauri/src/commands/registration_gate_tests.rs` — `REGISTERED_FLOOR` 339 → 342, the
+   number the tree parses rather than a chosen one, with the `fc2ea1938` step named in the doc comment
+   above it. This is the tablet's own equality (`REGISTERED_FLOOR == REGISTERED_TOTAL`) and it had to
+   move with the ledger's total in one pass: the ledger is regenerated, and a regenerated total that
+   disagrees with a hand-kept floor fails the build by design.
+   `REGISTERED_SLACK` (24) and `UNSOURCED` (0) are unchanged.
+
+**Before → after, every pin that moved:**
+
+| pin | before | after |
+|---|---|---|
+| `DEBT_CEILING` | 89 | 92 |
+| `NO_SESSION_RESOLUTION` | 45 | 48 |
+| `REGISTERED_FLOOR` | 339 | 342 |
+| `REGISTERED_TOTAL` | 339 | 342 |
+| debt rows in the ledger | 89 | 92 |
+| measured ungated vs ceiling | 92 vs 89 | 92 vs 92 |
+| `RESOLVES_SESSION_NAMES_NO_PERMISSION` | 44 | 44 (unmoved) |
+| partition | 45 + 44 = 89 | 48 + 44 = 92 |
+
+**What it means:**
+Filed as an **absorb**, the same standing as the desktop entry above and as `auth::has_users`: the
+three commands belong to the ADR #54/#56 email sign-in lane, and this pass records what landed rather
+than approving it. If that lane's sign-in is reverted, the three rows, the ceiling, the class-1 count
+and the floor come off together in both shells.
+
+The two shells were red for one commit and were fixed in two passes because their pins are separate
+files. That is worth naming rather than smoothing: a commit that registers a command in both shells
+has to move two floors, two ceilings, two class counts and two ledgers, and `fc2ea1938` moved none of
+them. The desktop pass (`7a5292530`) and this one close that gap; nothing in either pin prevents the
+next one, which is why the provenance is written into the ledger comments rather than only here.
+
+**Verification:**
+- `cargo test -p kasirmu-mobile --lib registration_gate` → 11 passed / 0 failed (pre-fix: 8 passed /
+  3 failed — the ceiling, partition and generator legs).
+- `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
+  drift_pin_generated_ledger_is_the_sweeps_own_output -- --nocapture` → 1 passed; generator printed
+  "92 debt row(s), registered total 342".
+- `cargo test -p kasirmu-mobile --lib commands::offline` → 22 passed / 0 failed.
+- `cargo fmt -p kasirmu-mobile -- --check` → exit 0.
+- Desktop pins re-run and still green: `cargo test -p kasirmu-app --lib registration_gate` →
+  14 passed / 0 failed; `cargo test -p kasirmu-app --test gate_audit` → 3 passed / 0 failed (the
+  census pin's `tablet_command_census_matches_pin` included).
+
+**Not in this pass:** `apps/mobile-tauri/src/lib.rs` was not touched — the registrations are already
+committed and that file may be dirty in a sibling lane. `scripts/verify-scoped-coverage.sh` is out of
+scope (fixed separately in `19568c216`). No census row moved: `desktop_link` gates nothing in either
+shell under this decision.
+
+
 
 
 
