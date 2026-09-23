@@ -872,68 +872,56 @@ more" — I measured constantly — but **measure the failure path, not just the
 
 ---
 
-## Round 23 — the login screens printed internal error text to the cashier
 
-Applying round 22's lesson (probe the FAILURE path), I forced the auth server to fail at the PIN
-step:
+---
 
-```
-BEFORE  toast text: "network down"
-AFTER   toast text: "You appear to be offline. Check your connection and try again."
-```
+## Round 24 — the website auth islands: browser-verified SOUND (negative result)
 
-**The internal `Error.message` from the IPC boundary was rendered verbatim to the merchant.** The
-consequences are worse than untidy copy: a cashier whose PIN is correct reads an internal string,
-concludes the PIN is wrong, and retypes it until the rate limiter locks the terminal.
+Rounds 18-19 left the website auth islands open as "unaudited" and "worth a look". This round I
+looked — against a real browser, which no test in either suite had ever done.
 
-### Root cause, and why the existing gate missed it
+### What was missing
 
-`AuthContext` preferred the raw message over the project's user-safe mapper:
+`website/package.json` declares `playwright ^1.61.1` as a **direct dependency** with **no E2E
+directory, no spec, and no script that runs it**. The islands had unit tests (`auth-form.test.tsx`,
+`signup-form.test.tsx`, `ssr-flash.test.tsx`) and a static accessibility gate over built pages, but
+nothing had ever loaded the page in a browser.
 
-```ts
-const message = (err as Record<string, unknown> | null)?.['message'] as string
-  ?? plainErrorMessage(err, "Login failed");
-```
+### Method
 
-`plainErrorMessage`'s own doc says it exists "so raw backend text never reaches a hook consumer" —
-and this line defeated it, because every `Error` has a `.message`, so the `??` never fell through.
+`astro dev` (port 4322 — 4321 was taken, which is itself worth knowing for a future harness), driven
+by a throwaway `playwright` script, standing in for the Worker's `/__oz/runtime-config.js` with
+`page.route`. All four islands exercised on both the configured and unconfigured paths.
 
-`errorPolicyCompliance.test.ts` (ERR-05/ERR-10) exists to catch exactly this and **passed anyway**.
-Its two rules look for `err instanceof Error ? err.message` and for `\w+\.message`; this line uses
-**bracket access** (`?.['message']`), which neither regex matches. A gate that cannot see the shape
-of the leak it is guarding is worse than no gate, because it reports green.
+### Results — all four islands are sound
 
-### The fix, and the distinction it preserves
+| Check | Result |
+|---|---|
+| `/en/login` with runtime config | form, 1 email input, 1 submit, 2 tabs, Google link, a real `<label>` — **0 page errors** |
+| `/en/signup` with runtime config | form, 2 password inputs, 1 email input, region control |
+| `/en/pair`, `/en/account` | render clean, no error text |
+| All four, config absent | degrade to the not-configured notice |
 
-Two kinds of failure arrive at this provider and conflating them would be a regression:
-- a server REFUSAL ("Invalid credentials", a rate-limit sentence) — copy written for the user, and
-  what `e2e/auth.spec.ts` asserts verbatim;
-- a TRANSPORT failure — an untyped `Error` whose message is internal.
+**The anti-flash contract holds in real output, not just in a unit test.** With JavaScript
+**disabled** — so the SSR HTML *is* the page — `/en/login` and `/en/signup` still contain the real
+form (`hasForm: true`, one email input) and the notice is **absent**. `ssr-flash.test.tsx` asserts
+this via `renderToString`; this is the first time it has been checked against bytes the server
+actually sent.
 
-`classifyRetry` already owns that distinction with a tested vocabulary, so the split is delegated to
-it rather than re-derived. A retryable failure gets the shared offline copy; anything else keeps the
-server's own sentence. The same fix was applied to `SessionLockScreen`, whose unlock handler had the
-identical shape (`raw ?? l10n.getString(...)`) — the extended gate found it, not me.
+### Honest scope
 
-### Widening the gate (two attempts)
+This is a **negative result**, and the value is that it closes a thread open since round 16 rather
+than leaving "unaudited" standing. It is not a clean bill of health for the website: I checked that
+the islands render, hydrate, degrade, and contain no page errors. I did **not** drive the full
+OTP/password/reset flows against a live licence server, because there is no browser harness for
+`website/` to hook into and building one is a larger change than this round justifies.
 
-A new bracket-access rule, plus `isWhitelisted`, plus whitelist entries for two legitimate
-parse-not-display sites (`CreatePinScreen`'s "already exist" detection, `SessionLockScreen`'s
-rate-limit parse).
+**No commits.** The probe was deleted; `git status` is clean. Nothing here warranted a code change,
+which is the correct outcome when the code is right.
 
-**My first version of the rule was itself wrong.** It exempted any line containing a normalizer, so
-`raw ?? plainErrorMessage(...)` — the exact leak — passed; the raw value wins and the mapper is dead
-code. Verified by re-planting the leak and watching the gate stay green. The rule now treats
-normalizer-after-`??` as a FAILURE, and re-planting the leak makes it report
-`contexts/AuthContext.tsx:128`.
+### Still open
 
-### Verification
-
-**24/24 auth E2E** (including a new outage test that asserts the toast does NOT contain "network
-down" and DOES match /offline|connection/) · `AuthContext.test.tsx` **20/20** ·
-`errorPolicyCompliance` **4/4** · **22/22 provisioning E2E** · full UI suite **606 files / 10,350
-tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing**.
-
-Every fix carries a negative control; the gate fix has one that proves it is not vacuously green.
-
-**Commit:** `dfd9752ae`.
+- **The provisioning card is ~700px taller than the desktop viewport** (rounds 20-21). Structural
+  fix, needs a product decision.
+- **No website E2E harness.** Playwright is installed and unused. A future round could wire one,
+  but it needs the licence-server stub to be useful.
