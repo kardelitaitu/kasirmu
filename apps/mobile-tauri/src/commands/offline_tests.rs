@@ -443,23 +443,178 @@ async fn retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item() 
          order_for_push call and the Low item leads, which is the C20 negative control"
     );
 
-    // C54 divergence, pinned rather than hidden: the push above SUCCEEDED (the
-    // body proves it), yet the command returns Err because Phase 3 writes the
-    // outcomes to `state.db` — the GLOBAL identity database — where these
-    // store-row ids do not exist, so `mark_offline_synced` returns NotFound. The
-    // bridge twin re-resolves the STORE scope instead. When the collapse lands,
-    // this assertion fails and whoever lands it deletes it.
-    match result {
-        Err(AppError::Core { sub_kind, message }) => assert_eq!(
-            format!("{sub_kind:?}"),
-            "NotFound",
-            "C54: the outcomes went to a db where these ids do not exist: {message}"
-        ),
-        other => panic!(
-            "C54: expected the known Phase 3 divergence (NotFound from the global db), \
-             got {other:?}; if the tablet now writes the store db, delete this assertion"
-        ),
+    // ── C59: THE ASSERTION THAT CLOSES THE DUPLICATE-PUSH LOOP ──────
+    //
+    // This replaced the C54 divergence pin, which asserted the command returned
+    // `AppError::Core { sub_kind: NotFound }` after the body proved the push
+    // succeeded — the pin existed so that whoever fixed Phase 3 had to delete it on
+    // purpose. This is that fix.
+    //
+    // Before: Phase 3 wrote `state.db` (the GLOBAL identity db), where these
+    // store-row ids do not exist, so `mark_offline_synced` returned NotFound and the
+    // `?` in `apply_sync_outcomes` aborted the command. The rows stayed `pending`
+    // and every retry re-sent them forever.
+    // After: the command returns Ok and the STORE rows the push read are `synced`,
+    // so the next `list_pending_offline` no longer offers them.
+    let result = result.expect("a successful push must no longer abort on Phase 3");
+    assert_eq!(result.synced_count, 3, "all three items are accepted");
+    assert_eq!(result.failed_count, 0);
+    assert!(!result.plan_required);
+
+    // Assertion 1 — the STORE rows flip to `synced` and the pending queue drains.
+    // This is the observable difference: pre-fix these were still `pending`.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-order-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        let store = Store::new(&db_guard);
+        let items = store.list_all_offline().unwrap();
+        assert_eq!(items.len(), 3);
+        assert!(
+            items.iter().all(|i| i.status == OfflineQueueStatus::Synced),
+            "every pushed item must be marked synced in the STORE db, got {:?}",
+            items
+                .iter()
+                .map(|i| (&i.action, &i.status))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            store.pending_offline_count().unwrap(),
+            0,
+            "the pending queue must drain, or the next retry re-sends the same items"
+        );
     }
+
+    // Assertion 2 — the GLOBAL database queue is untouched. Phase 3 used to write
+    // its marks there; this is the assertion that keeps the fix from silently
+    // re-introducing that.
+    {
+        let state = app.state::<AppState>();
+        let db = state.db.lock().await;
+        let items = Store::new(&db).list_all_offline().unwrap();
+        assert!(
+            items.is_empty(),
+            "the global offline_queue must not receive scoped marks, got {items:?}"
+        );
+    }
+}
+
+/// The other half: a GENUINE push failure must not mark anything `synced`.
+///
+/// The fix moved Phase 3's write target, and the hazard of that kind of change is
+/// over-marking — a body that reports success for a push that never landed. This
+/// drives a real HTTP 500 through the same path and pins the honest outcome: the
+/// command does not abort, nothing is `synced`, and the failure is RECORDED on the
+/// store rows (`failed` + `last_error` + `retry_count`), which is the pre-existing
+/// `mark_all_failed` contract this slice did not change.
+#[tokio::test]
+async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced() {
+    use crate::commands::sync::{UpdateSyncSettingsArgs, update_sync_settings_data};
+    use crate::state::AppState;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server: a genuine server-side failure, not a plan gate.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return;
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let _ = socket.read(&mut buffer).await;
+        let body = r#"{"error":"upstream exploded"}"#;
+        let response = format!(
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+    });
+
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "retry-fail-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-fail-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        Store::new(&db_guard)
+            .enqueue_offline("complete_sale", r#"{"id":"will-fail"}"#)
+            .unwrap();
+    }
+
+    let result = retry_offline_sync_scoped("retry-fail-token".into(), app.state()).await;
+    task.await.expect("the fake server task must finish");
+
+    let result = result.expect("a recorded push failure is not a command abort");
+    assert_eq!(result.synced_count, 0, "nothing was accepted");
+    assert_eq!(result.failed_count, 1, "the failure is counted");
+
+    let state = app.state::<AppState>();
+    let conn_arc = state.resolve_store("retry-fail-token").unwrap();
+    let db_guard = conn_arc.lock().unwrap();
+    let store = Store::new(&db_guard);
+    let items = store.list_all_offline().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_ne!(
+        items[0].status,
+        OfflineQueueStatus::Synced,
+        "a failed push must never be recorded as synced"
+    );
+    assert_eq!(items[0].status, OfflineQueueStatus::Failed);
+    assert_eq!(
+        items[0].retry_count, 1,
+        "the attempt is counted for retry policy"
+    );
+    assert!(
+        items[0].last_error.is_some(),
+        "the reason must be recorded on the row, not swallowed"
+    );
 }
 
 #[test]
