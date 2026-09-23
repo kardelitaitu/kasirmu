@@ -16,7 +16,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Fence: crates/kasirmu-plugin/src/lib.rs:8-12; manager.rs:109-129 and :218-308; apps/desktop-tauri/src/state.rs:325-347 and :702-755; manifest.rs:186-192.
   See D7 for the recommended shape (signed/checksummed manifest, operator grant, gated watcher - not removing the host). Done when: a modified .lua file is refused with a visible error and the previous plugin set keeps running; required_permissions become an operator grant rather than a self-declaration; allow_network / allow_filesystem / allow_http are either enforced or deleted.
 
-- [ ] **C3 [P0] Make the pull idempotent per effect, not per item** (5.1, P0-2)
+- [ ] **C3 [P0] Make the pull idempotent per effect, not per item** (5.1, P0-2) **Slice status:** S1 DONE (schema befd3b71 + the index-surface pin bumped to 188 in 0db7ba6c - the pin is a census assertion over sqlite_master, so every migration that adds or drops a named index must move it, and the comment block above it now explains why each increment happened); S2 (carry the field through the queue, the transport and both server stores) in flight. S3-S7 remain.
   Fence: platform/sync/src/queue.rs:438-443; apps/cloud-server/src/sync_store/pg.rs:163-166; plus a migration adding an origin/terminal column to offline_queue (20260813_init.sql:353-362 shows it has none).
   Done when: a test pushes a complete_sale, pulls it back, and asserts stock moved exactly once. Prefer the client-side origin check; use the server-side terminal filter only if a second puller class appears. **Prerequisite: C12.**
 
