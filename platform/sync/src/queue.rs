@@ -352,7 +352,8 @@ fn payment_already_applied(
 ///
 /// Mirrored: the refunds header, its refund_lines, the stock credit (see
 /// [credit_refund_effect_without_sale] for the location rule), the loyalty
-/// reversal and the sale.refund audit row. NOT mirrored: the over-refund
+/// reversal, the CRM-06 customer lifetime-spend reversal and the sale.refund
+/// audit row. NOT mirrored: the over-refund
 /// money and quantity bounds, which are the originator's decision to make
 /// (this lane replays a refund that was already accepted there, and
 /// re-deriving the bounds from a partially-replicated history would reject
@@ -406,6 +407,16 @@ fn apply_refund_with_sale_in_tx(
             "sync loyalty refund reversal failed (non-fatal)"
         );
     }
+    // CRM-06, same non-fatal policy as the originator's step 2c: a customer
+    // row that cannot be updated must not roll back money already credited.
+    if let Err(e) = reverse_customer_spend_for_refund_in_tx(tx, payload) {
+        tracing::warn!(
+            refund_id = %payload.id,
+            sale_id = %payload.sale_id,
+            error = %e,
+            "sync customer spend reversal failed (non-fatal)"
+        );
+    }
 
     tx.execute(
         "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
@@ -431,84 +442,84 @@ fn apply_refund_with_sale_in_tx(
 
 /// Reverse the sale's loyalty award proportionally, on the caller's transaction.
 ///
-/// Mirrors kasirmu_core::db::loyalty::reverse_loyalty_on_refund, which is
-/// pub(crate) to kasirmu-core and therefore not callable from this crate. The
-/// ledger row's primary key is deterministic (loyalty-reversal-<refund_id>),
-/// the same key the core function mints, so the two can never double-reverse
-/// the same refund even if a future slice routes this effect through core.
+/// DELEGATES to the one writer of this effect,
+/// [`kasirmu_core::db::loyalty::reverse_loyalty_on_refund`] — the very
+/// function `Store::create_refund` calls on the originator. This crate used
+/// to mirror that function's body because it was `pub(crate)` to
+/// kasirmu-core and therefore unreachable from here; that mirror was a second
+/// writer of the same effect, free to drift from the original.
+///
+/// Idempotence is the helper's own: the ledger row's primary key is
+/// deterministic (`loyalty-reversal-<refund_id>`), so a replay of the same
+/// refund returns `Ok(None)` without touching a balance.
+///
+/// The `sales.total_minor` read is this lane's only addition: the helper
+/// takes the sale total as an argument rather than reading it, so the
+/// denominator of the proportional reversal is supplied here.
 fn reverse_loyalty_for_refund_in_tx(
     tx: &rusqlite::Transaction<'_>,
     payload: &RefundPayload,
 ) -> Result<(), CoreError> {
-    // The award to reverse (LOY-06 wrote exactly one 'earn' row per sale).
-    let earn: Option<(String, i64)> = tx
-        .query_row(
-            "SELECT account_id, points FROM loyalty_transactions
-             WHERE sale_id = ?1 AND txn_type = 'earn'
-             ORDER BY created_at ASC LIMIT 1",
-            rusqlite::params![payload.sale_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((account_id, earned_points)) = earn else {
-        // Legacy sale predating LOY-06 awarding, or a sale that earned nothing.
-        return Ok(());
-    };
-
     let sale_total_minor: i64 = tx.query_row(
         "SELECT total_minor FROM sales WHERE id = ?1",
         rusqlite::params![payload.sale_id],
         |row| row.get(0),
     )?;
-    let already_reversed: i64 = tx.query_row(
-        "SELECT COALESCE(SUM(-points), 0) FROM loyalty_transactions
-         WHERE sale_id = ?1 AND txn_type = 'refund_reversal'",
-        rusqlite::params![payload.sale_id],
-        |row| row.get(0),
+    kasirmu_core::db::loyalty::reverse_loyalty_on_refund(
+        tx,
+        &payload.sale_id,
+        &payload.id,
+        payload.total_minor,
+        sale_total_minor,
     )?;
-    let headroom = earned_points - already_reversed;
-    // Integer round-half-up in i128 - points, like money, never touch a float.
-    let proportional = if sale_total_minor > 0 && payload.total_minor > 0 {
-        let num = i128::from(earned_points) * i128::from(payload.total_minor);
-        let den = i128::from(sale_total_minor);
-        ((num * 2 + den) / (den * 2)) as i64
-    } else {
-        0
-    };
-    let deduct = proportional.min(headroom).max(0);
-    if deduct <= 0 {
-        return Ok(());
-    }
+    Ok(())
+}
 
-    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+/// CRM-06: reverse the customer's lifetime spend for a replicated refund.
+///
+/// The same effect `Store::create_refund` applies on the originator
+/// (`db/refunds.rs`, step 2c), reproduced here because it is inlined in that
+/// function rather than exposed as a helper. Without it a remote refund
+/// reversed the loyalty points but left `customers.total_spent_minor`
+/// untouched, so one refund produced two different customer totals depending
+/// on which terminal applied it.
+///
+/// The completion hook accrues spend in BASE currency, so the refund converts
+/// at the rate recorded on the sale — `refund_base = refund_total ×
+/// base_total / total`, integer round-half-up in i128, no float on money —
+/// and floors at zero for customers who accrued nothing during the
+/// projection-gap window. A sale with no customer, or a legacy sale with no
+/// recorded base total, reverses the raw refund total, exactly as the
+/// originator does.
+///
+/// Idempotence is the caller's: this runs only on the sale-present path,
+/// which has already inserted the refunds row that `refund_already_applied`
+/// probes, so a replayed refund never reaches here a second time.
+fn reverse_customer_spend_for_refund_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &RefundPayload,
+) -> Result<(), CoreError> {
+    let (sale_customer_id, sale_total, sale_base_total): (Option<String>, i64, Option<i64>) = tx
+        .query_row(
+            "SELECT customer_id, total_minor, base_total_minor FROM sales WHERE id = ?1",
+            rusqlite::params![payload.sale_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+    let Some(customer_id) = sale_customer_id.as_deref() else {
+        return Ok(());
+    };
+    let refund_base = match (sale_base_total, sale_total) {
+        (Some(base), total) if total > 0 && base != total => {
+            let num = i128::from(payload.total_minor) * i128::from(base);
+            let den = i128::from(total);
+            ((num * 2 + den) / (den * 2)) as i64
+        }
+        _ => payload.total_minor,
+    };
     tx.execute(
-        "INSERT INTO loyalty_transactions (id, account_id, sale_id, points, txn_type, description, created_at)
-         VALUES (?1, ?2, ?3, ?4, 'refund_reversal', ?5, ?6)",
-        rusqlite::params![
-            format!("loyalty-reversal-{}", payload.id),
-            account_id,
-            payload.sale_id,
-            -deduct,
-            format!("Reversed {deduct} points for refund on sale"),
-            now,
-        ],
-    )?;
-    tx.execute(
-        "UPDATE loyalty_accounts
-         SET points = MAX(points - ?1, 0),
-             lifetime_points = MAX(lifetime_points - ?1, 0),
-             tier_id = COALESCE((SELECT id FROM loyalty_tiers
-                                 WHERE min_points <= MAX(lifetime_points - ?1, 0)
-                                 ORDER BY min_points DESC LIMIT 1), tier_id),
-             updated_at = ?2
-         WHERE id = ?3",
-        rusqlite::params![deduct, now, account_id],
-    )?;
-    tx.execute(
-        "UPDATE customers SET loyalty_points =
-            (SELECT points FROM loyalty_accounts WHERE id = ?1),
-         updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
-        rusqlite::params![account_id, now],
+        "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
+         updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![refund_base, payload.created_at, customer_id],
     )?;
     Ok(())
 }

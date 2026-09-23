@@ -882,7 +882,14 @@ pub(crate) fn earn_points_with_conn(
 /// Runs on the CALLER's connection/transaction — like
 /// [`earn_points_with_conn`] this must commit or roll back atomically
 /// with the refund row itself.
-pub(crate) fn reverse_loyalty_on_refund(
+///
+/// Public because it is the ONE writer of the loyalty-points reversal:
+/// the local refund path (`db::refunds`) and the sync lane's remote
+/// `refund_sale` arm (`platform-sync`) both call it, so the same refund
+/// cannot reverse different points depending on which terminal applies
+/// it. A caller reaching it without a refunds row of its own is still
+/// replay-safe: the deterministic key above absorbs the second apply.
+pub fn reverse_loyalty_on_refund(
     conn: &rusqlite::Connection,
     sale_id: &str,
     refund_id: &str,

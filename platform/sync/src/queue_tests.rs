@@ -1849,6 +1849,18 @@ fn loyalty_points(store: &Store<'_>) -> i64 {
         .unwrap()
 }
 
+/// CRM-06: the customer's lifetime spend, in base currency.
+fn customer_total_spent(store: &Store<'_>) -> i64 {
+    store
+        .conn()
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
 fn sale_status(store: &Store<'_>, sale_id: &str) -> String {
     store
         .conn()
@@ -1945,6 +1957,83 @@ fn refund_payload(refund_id: &str, sale_id: &str) -> String {
         ),
         refund_id, sale_id
     )
+}
+
+/// The payload shape for a PARTIAL remote refund: [refund_payload] at a
+/// caller-chosen total, so the proportional reversals are non-trivial and a
+/// second application is distinguishable from the first.
+fn refund_payload_with_total(refund_id: &str, sale_id: &str, total_minor: i64) -> String {
+    format!(
+        concat!(
+            "{{\"id\":\"{}\",\"sale_id\":\"{}\",\"total_minor\":{},\"currency\":\"USD\",",
+            "\"reason\":\"damaged\",\"note\":\"\",\"processed_by\":\"user-1\",",
+            "\"created_at\":\"2026-01-02T00:00:00.000Z\",\"lines\":[{{\"id\":\"rl-1\",",
+            "\"sale_line_id\":\"sl-1\",\"sku\":\"COFFEE\",\"qty\":1,\"unit_minor\":350,",
+            "\"line_minor\":350,\"currency\":\"USD\",",
+            "\"created_at\":\"2026-01-02T00:00:00.000Z\"}}]}}"
+        ),
+        refund_id, sale_id, total_minor
+    )
+}
+
+/// C4 (CRM-06 follow-up): a remote `refund_sale` against a database that HAS
+/// the sale must reverse the customer's lifetime spend exactly once, not only
+/// the loyalty points. The sync arm used to reverse the points and skip the
+/// spend reversal that `Store::create_refund` applies on the originator, so
+/// one refund produced two different customer totals depending on which
+/// terminal applied it.
+#[test]
+fn apply_remote_atomic_refund_reverses_customer_lifetime_spend_once() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    seed_refundable_sale(&store, "sale-spend-1", 1);
+    deduct_one_coffee(&store);
+    // The sale-completion hook accrues the customer's base-currency spend.
+    // seed_refundable_sale writes the sale row directly, so accrue it here.
+    store
+        .conn()
+        .execute(
+            "UPDATE customers SET total_spent_minor = 1000 WHERE id = 'cust-1'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(loyalty_points(&store), 100);
+    assert_eq!(customer_total_spent(&store), 1000);
+    let queue = SyncQueue::new();
+
+    // 400 of the 1000 sale: both reversals are proportional, so applying the
+    // effect twice would be visible in the numbers rather than masked by a
+    // full clawback.
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload_with_total("refund-spend-1", "sale-spend-1", 400),
+    );
+    let outcome = queue
+        .apply_remote_atomic_full(&store, &remote)
+        .expect("refund_sale must apply, not dead-letter as unsupported");
+    assert!(outcome.applied);
+
+    assert_eq!(loyalty_points(&store), 60, "100 earned minus 40 reversed");
+    assert_eq!(
+        customer_total_spent(&store),
+        600,
+        "1000 accrued minus the 400 refunded, in base currency"
+    );
+
+    // A re-apply changes NEITHER figure.
+    let replay = queue
+        .apply_remote_atomic_full(&store, &remote)
+        .expect("a replayed refund must not error");
+    assert!(
+        !replay.applied,
+        "the replay is absorbed by the refunds.id probe"
+    );
+    assert_eq!(loyalty_points(&store), 60, "no second points reversal");
+    assert_eq!(
+        customer_total_spent(&store),
+        600,
+        "no second spend reversal"
+    );
 }
 
 /// C4: a remote `refund_sale` against a database that HAS the sale credits
