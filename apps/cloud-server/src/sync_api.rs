@@ -252,6 +252,45 @@ pub async fn plan_middleware(
     Ok(next.run(request).await)
 }
 
+/// The Prometheus `outcome` label for one push result.
+///
+/// C50: this classification used to be an inline match arm with a
+/// hand-written `reason.starts_with("duplicate id:")` literal — the FIFTH
+/// expression of the duplicate-id rule and the only one that re-typed the
+/// string instead of calling the shared predicate. The prefix's PRODUCER
+/// (`sync_store/sqlite.rs` and `sync_store/pg.rs`, both
+/// `format!("duplicate id: {}", item.id)`) and this CLASSIFIER lived in
+/// different files, so a reword of
+/// [`kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX`] would have
+/// silently desynchronised the metric from the thing it measures:
+/// `sync_pushes_total{outcome="conflict"}` would quietly stop counting
+/// replays and start counting them as `rejected`. A metric that stops
+/// measuring without failing is the same shape as the audit-retention
+/// divergence (C44) and the inert quota axis (C36).
+///
+/// Calling the predicate instead of re-typing the prefix makes the coupling
+/// explicit and compile-checked: there is no second literal to drift, and
+/// the constant is reachable because this crate already depends on
+/// `kasirmu-core` (`apps/cloud-server/Cargo.toml`) and already uses it in
+/// this very file.
+///
+/// Extracted from the handler body so the classification is reachable from a
+/// unit test without an HTTP round trip — the same reason the client-side
+/// appliers were extracted. Kept private: it is an implementation detail of
+/// the push handler's instrumentation, not part of the server's surface.
+fn push_outcome_label(outcome: &PushOutcome) -> &'static str {
+    match outcome {
+        PushOutcome::Accepted => "accepted",
+        PushOutcome::Rejected { reason }
+            if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
+        {
+            "conflict"
+        }
+        PushOutcome::Rejected { .. } => "rejected",
+        PushOutcome::Conflict(..) => "conflict",
+    }
+}
+
 /// `POST /api/sync/push` — receive and persist offline queue items.
 ///
 /// Each item is inserted with its existing client-generated ID. Duplicate
@@ -338,13 +377,9 @@ async fn push_handler(
                 reason: format!("invalid id: {}", item.id),
             },
         };
-        let label = match &outcome {
-            PushOutcome::Accepted => "accepted",
-            PushOutcome::Rejected { reason } if reason.starts_with("duplicate id:") => "conflict",
-            PushOutcome::Rejected { .. } => "rejected",
-            PushOutcome::Conflict(..) => "conflict",
-        };
-        metrics::SYNC_PUSHES_TOTAL.with_label_values(&[label]).inc();
+        metrics::SYNC_PUSHES_TOTAL
+            .with_label_values(&[push_outcome_label(&outcome)])
+            .inc();
         results.push(outcome);
     }
 
