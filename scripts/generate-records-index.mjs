@@ -200,6 +200,7 @@ function render() {
   const research = [];
   const phases = [];
   const audits = [];
+  const docsAudits = [];
   const observability = [];
 
   if (existsSync(decisionsDir)) {
@@ -256,6 +257,42 @@ function render() {
       audits.push({ ...rec, num: Number.isNaN(num) ? null : num });
     }
     audits.sort((a, b) => (a.num ?? 99) - (b.num ?? 99));
+  }
+
+  // ── one-off audit reports (docs/audits/) ───────────────────────────────────
+  // Decision 2026-09-23 (documentation-audit follow-up): this directory was the
+  // one class of records the "single entry point" never scanned. The audit/
+  // collector above reads a root folder deleted in 0689d5652 (its own DECISION
+  // note explains why that branch stays), so "0 audits" was permanent while
+  // eleven real reports — frontend, seo, setup, skills, and the documentation
+  // audit of the docs system itself — stayed invisible to the page that claims
+  // to index ADRs, audits and system analyses. Same rules as the records scan:
+  // recurse with readdir sorted at each depth so --check stays byte-stable, no
+  // front matter required, status read from the record or the shared em-dash
+  // (never invented). Area prefers the subdirectory — it carries the real topic
+  // — and falls back to the filename keywords for files sitting at the root of
+  // docs/audits/.
+  const docsAuditsDir = join(ROOT, 'docs', 'audits');
+  const collectAudits = (dir) => {
+    const found = [];
+    for (const f of readdirSync(dir).sort()) {
+      const file = join(dir, f);
+      if (statSync(file).isDirectory()) {
+        found.push(...collectAudits(file));
+      } else if (f.endsWith('.md')) {
+        found.push(file);
+      }
+    }
+    return found;
+  };
+  if (existsSync(docsAuditsDir)) {
+    for (const file of collectAudits(docsAuditsDir)) {
+      const rec = readRecord(file);
+      const parts = file.split(/[/\\]/);
+      const parent = parts[parts.length - 2];
+      if (parent && parent.toLowerCase() !== 'audits') rec.area = parent;
+      docsAudits.push(rec);
+    }
   }
 
   if (existsSync(observabilityDir)) {
@@ -422,6 +459,18 @@ function render() {
     L.push('');
   }
 
+  // ── One-off audit reports (docs/audits/) ───────────────────────────────────
+  if (docsAudits.length) {
+    L.push('## Audit Reports (`docs/audits/`)');
+    L.push('');
+    L.push(row(['Area', 'Title', 'Status']));
+    L.push(row(['---', '---', '---']));
+    for (const r of docsAudits) {
+      L.push(row([mdCell(r.area), linkCell(r.title, relFromRecords(r.file)), mdCell(r.status)]));
+    }
+    L.push('');
+  }
+
   // ── Scattered audit reports ──
   L.push('## Scattered Audit Reports (`docs/`)');
   L.push('');
@@ -455,7 +504,7 @@ function render() {
     [numbered.length, 'ADRs'],
     [research.length, 'research'],
     [phases.length, 'phased'],
-    [audits.length, 'audits'],
+    [audits.length + docsAudits.length, 'audits'],
     [scattered.length, 'scattered'],
     [observability.length, 'observability'],
     [records.length, 'records'],

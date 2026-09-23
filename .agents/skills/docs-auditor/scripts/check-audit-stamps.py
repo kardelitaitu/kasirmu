@@ -26,6 +26,13 @@ Also reported: files with a stamp but no footer (nothing machine-read), a footer
 but no stamp behind it, and footers that are not real calendar dates — the shape
 regex in detect.sh accepts 31-13-26, so a typo passes there and fails here.
 
+Gitignored paths are skipped: a file the repository excludes (.workbuddy-ai/
+scratch and friends) cannot carry a claim the repo makes, and memory files that
+*discuss* malformed footers quote them literally — a quoted example is not a
+footer. Tracked files and new-but-not-ignored files are always checked; git is
+consulted once for the whole tree, and git being unavailable restores the old
+walk-everything behaviour rather than failing open.
+
 Exit codes: 0 clean, 1 findings in the OLDER class or an impossible date,
 2 the checker itself failed. The NEWER class is informational and does not
 affect the exit code.
@@ -40,6 +47,7 @@ import argparse
 import datetime as _dt
 import pathlib
 import re
+import subprocess
 import sys
 
 # Vendored trees and build output are not ours to audit.
@@ -55,6 +63,41 @@ def _iter_docs(root: pathlib.Path):
         if any(part in rel for part in SKIP_PARTS):
             continue
         yield rel, path
+
+
+def _git_ignored(root: pathlib.Path, rels: list) -> set:
+    """Subset of repo-relative `rels` excluded by .gitignore (never checked).
+
+    Decision 2026-09-23 (documentation-audit follow-up): the tree walk also
+    sees local scratch the repository ignores, and the one live red finding
+    was a .workbuddy-ai memory file QUOTING `30-02-26` inside a discussion of
+    impossible dates. Quoting is not a footer, and only the ignore rule can
+    tell a repo claim from someone's scratchpad. One `git check-ignore
+    --stdin` call for the whole tree; exit >= 2 or no git at all falls back
+    to checking everything (the pre-2026-09-23 behaviour).
+    """
+    if not rels:
+        return set()
+    try:
+        proc = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "check-ignore", "--stdin"],
+            # Bytes, not text: on Windows, subprocess text mode rewrites "\n"
+            # to "\r\n" on input, git reads the CR back as part of the
+            # filename, and answers with the whole path wrapped in quotes —
+            # the parsed set then never matches a real path and every
+            # gitignored finding sneaks through. quotepath=false keeps
+            # non-ASCII paths verbatim instead of octal-escaped.
+            input=("\n".join(rels) + "\n").encode("utf-8"),
+            capture_output=True,
+            cwd=root, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    # 0 = at least one path ignored, 1 = none ignored, >= 2 = misuse/error.
+    if proc.returncode >= 2:
+        return set()
+    out = proc.stdout.decode("utf-8", errors="replace")
+    return {ln.strip().strip('"') for ln in out.splitlines() if ln.strip()}
 
 
 def _stamp_dates(text: str) -> list:
@@ -90,8 +133,16 @@ def main() -> int:
 
     equal, newer, older, footer_only, stamp_only, bad_dates = [], [], [], [], [], []
 
+    docs = list(_iter_docs(root))
+    root_posix = root.as_posix() + "/"
+    rels = [s[len(root_posix):] if s.startswith(root_posix) else s
+            for s, _ in docs]
+    ignored = _git_ignored(root, rels)
+
     try:
-        for rel, path in _iter_docs(root):
+        for (rel, path), rpath in zip(docs, rels):
+            if rpath in ignored:
+                continue
             try:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:

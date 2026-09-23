@@ -42,7 +42,7 @@ refresh would have silently dropped the entire set from the entry point.
 
 **Fixed**: the scan recurses (sorted at each depth, so `--check` stays byte-stable), the
 index was regenerated, and `--check` now prints
-`ok: … (54 ADRs, 4 research, 17 phased, 0 audits, 14 scattered, 2 observability, 13 records)`.
+`ok: … (54 ADRs, 4 research, 17 phased, 11 audits, 14 scattered, 2 observability, 13 records)`.
 The escaping self-test (`scripts/test-records-index-escaping.sh`) still passes 7/7.
 
 ### 2. Freshness enforcement existed in prose only
@@ -129,6 +129,22 @@ and no tooling reads per-module changelogs (release history lives in the single 
 recorded — a requirement nothing obeys is worse than no requirement, because it teaches
 readers that the document lies.
 
+### 7. The entry point never scanned `docs/audits/`
+The generator's audit collector reads a root `audit/` folder deleted in `0689d5652` —
+its own comment admits the branch has never been true in this file's history — so the
+counts line said `0 audits` while eleven real reports (frontend, seo, setup, skills,
+and this document) sat outside the page claiming to index "ADRs, audits, verifications,
+measurement records and system analyses". Found on 2026-09-23 by the follow-up session
+that asked why the count was zero.
+
+**Fixed**: a recursive `docs/audits/` scan joined the records scan's rules (readdir
+sorted at each depth for byte-stable `--check`, no front matter required, status read
+from the record or the shared em-dash — never invented; area prefers the subdirectory
+because it carries the real topic), a `## Audit Reports (docs/audits/)` section renders
+it, and the counts line now reads `11 audits`. The legacy `audit/` branch and its
+consolidation pointer were left exactly as they are — that DECISION comment says
+removing it is a different decision than a typo repair, and it is right.
+
 ## Checker blind spots found in passing
 
 - **Basename fallback**: a link to a nonexistent path passes if *any* file with that
@@ -168,10 +184,14 @@ readers that the document lies.
 1. **Five future-dated ADR files** (`2026-10-04` ×4, `2026-10-11` adr60) against today,
    2026-09-23. Either a clock problem or a convention that now lies; needs the owner's
    intent, not a rename.
-2. **ADR status-table drift**: the hand table in `decisions/README.md` disagrees with
-   frontmatter on #43, #55, #56, #58, plus the known duplicate #43. Generate the table
-   from frontmatter or reconcile it — the generator that would do it already reads
-   frontmatter for the records index.
+2. **ADR status-table enforcement**: the hand table in `decisions/README.md` was
+   reconciled against frontmatter on 2026-09-23 (#55 → `Implemented`, #56 and #58 →
+   `Partially implemented`, the correction recorded in that file's Conventions the
+   way the 08-09-26 pair was), and the duplicate #43 stays by documented decision.
+   What is still missing is anything that KEEPS the match: no checker reads the
+   column against frontmatter, so the next re-audit will drift the same way. The
+   generator already parses both — a `--check`-style comparator beside it is the
+   natural home.
 3. **The house checker itself**: teach `check-dead-refs.py` to resolve links relative to
    the file before falling back to basename matching, and to skip-with-count (not
    silently skip) HTML-comment lines. Both changes are small and would have caught
@@ -182,7 +202,7 @@ readers that the document lies.
 ## Re-verification (all run in this session, all green unless noted)
 
 ```
-node scripts/generate-records-index.mjs --check     # ok, 54 ADRs … 13 records
+node scripts/generate-records-index.mjs --check     # ok, 54 ADRs … 11 audits … 13 records
 python3 scripts/verify-ci-docs-drift.py             # 0 drift item(s)
 python3 scripts/verify-ci-docs-drift.py --self-test # all cases passed
 python3 scripts/test-runner-labels.py               # enforced per-needle, fixture live
@@ -193,15 +213,16 @@ python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
     # every other scanned file is clean
 python3 .agents/skills/docs-auditor/scripts/check-orphans.py        # green
 python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
-    # the two REAL under-reports (committed .agents/reviews footers reading
-    # 14-09-26 under a 2026-09-15 stamp) were bumped to the checker's demanded
-    # date. One residual DRIFT line remains and is a parser false positive:
-    # .workbuddy-ai/memory/2026-09-17.md:19 QUOTES the footer `30-02-26`
-    # inside a discussion of impossible dates, and the checker parses the
-    # quoted example as a footer. Left alone on purpose — untracked scratch
-    # notes of another session, and editing the sentence to silence a parser
-    # is the wrong trade. That session (or check-audit-stamps.py learning to
-    # ignore backtick-quoted footers) owns the fix.
+    # green (exit 0). The two REAL under-reports (committed .agents/reviews
+    # footers reading 14-09-26 under a 2026-09-15 stamp) were bumped to the
+    # date the checker demanded, and the residual false positive was fixed at
+    # the source on 2026-09-23 instead of being documented forever: the
+    # checker now skips gitignored paths (one `git check-ignore --stdin` call
+    # for the whole tree), because a file git ignores cannot carry a repo
+    # claim, and a memory file QUOTING `30-02-26` while discussing impossible
+    # dates is not a footer. Tracked and new-but-untracked files remain fully
+    # checked; git being unavailable falls back to the old walk-everything
+    # behaviour rather than failing open.
 python3 scripts/verify-doc-uniqueness.py                          # green
 ```
 

@@ -120,6 +120,22 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 The per-sector audit reports were consolidated into [**Audit Open Findings**](./audit-open-findings.md) (current); fully-remediated sectors are closed by the commits recorded there.
 
+## Audit Reports (`docs/audits/`)
+
+| Area | Title | Status |
+| --- | --- | --- |
+| general | [Documentation audit — the docs system itself — 23-09-26](../audits/documentation-audit-23-09-26.md) | — |
+| frontend | [Agent Ops Handbook — CSS Verification](../audits/frontend/css-verification.md) | — |
+| frontend | [Fluent Page Audit — Full Journal](../audits/frontend/fluent-page-audit.md) | — |
+| seo | [SEO audit — kasir.mu marketing site (on-page, technical, content)](../audits/seo/seo-audit-19-09-26.md) | — |
+| seo | [SEO review — robots.txt and llms.txt (kasir.mu)](../audits/seo/seo-robots-llms-review-19-09-26.md) | — |
+| setup | [Setup wizard + login/signup — state-of-the-art working notes](../audits/setup/setup-state-of-the-art.md) | in progress. Round 1 corrected a bad commit and landed one UX improvement. |
+| setup | [Setup Wizard — Audit & Review](../audits/setup/setup-wizard-audit.md) | — |
+| setup | [Setup wizard — decision record and plans](../audits/setup/setup-wizard-option-b-plan.md) | — |
+| setup | [Wizard retirement — RESOLVED](../audits/setup/setup-wizard-retirement-blocker.md) | — |
+| skills | [Skill audit — .agents/skills/ — 18-09-26](../audits/skills/skill-audit-18-09-26.md) | — |
+| skills | [Skill audit — .agents/skills/ — 22-09-26](../audits/skills/skill-audit-22-09-26.md) | — |
+
 ## Scattered Audit Reports (`docs/`)
 
 - **theming** — [Retail POS Theming Audit — 2026-07-28](../archived/2026-07-28-retail-pos-theming-audit.md)

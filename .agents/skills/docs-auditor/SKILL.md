@@ -215,7 +215,7 @@ Before starting any verification:
 | `rg` over `shared-ui/locales/*.ftl` | Verify Fluent IDs referenced by docs |
 | `scripts/check.sh` | Full local validation mirroring CI |
 | `python3 .agents/skills/docs-auditor/scripts/check-orphans.py` | Shallow-mode structural pass: unversioned wrappers, heading orphans, stale version headers (§4b) |
-| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md`; flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
+| `python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py` | Compare every stamp date against its footer date across all `*.md` (gitignored scratch is skipped — one `git check-ignore --stdin` per run, since 2026-09-23); flags the under-reporting direction and impossible footer dates (`detect.sh` accepts `31-13-26` on shape). Exit 1 on drift. |
 | `python3 .agents/skills/docs-auditor/scripts/check-api-surface.py` | Reconcile `docs/guides/developer/api-reference.md` against both clients' `generate_handler!` registries; exit 1 on any of four drift classes (not wired into CI — the page is red against it by design) |
 | `python3 .agents/skills/docs-auditor/scripts/check-nav-paths.py` | Reconcile every bolded **X → Y** nav path in `website/src/content/docs/{en,id}` against the nav registry |
 | `python3 .agents/skills/docs-auditor/scripts/check-env-docs.py` | Fail when a variable the license server reads is named in no doc — closes the gap `verify-ci-docs-drift.py` cannot see (it compares docs to gates, not to config surface) |
