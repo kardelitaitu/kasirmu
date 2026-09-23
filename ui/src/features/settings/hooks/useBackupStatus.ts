@@ -38,7 +38,10 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
   // error. Calling a pending read 'failed' would be a second false claim; and this tab mounts
   // only on demand, by which time the effect below has normally settled.
   const [backup, setBackup] = useState<BackupInfo>({
-    lastBackup: null,
+    // The tablet has no status command to read (see the effect below), so it starts in
+    // the never-answered state. `null` would render 'Never' for the one frame before
+    // the effect runs -- a compliance claim the tablet cannot support.
+    lastBackup: isTabletShell() ? undefined : null,
     lastBackupSize: null,
     backingUp: false,
   });
@@ -62,9 +65,34 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
     // to installs that can never hold a token (offline, no admin instance). It is now
     // LOUD - event backup_ungated_no_session in crates/kasirmu-bridge/src/data.rs - and
     // pinned by a known-hazard test in ui/src/__tests__/DataManagementBackup.test.tsx.
-    const fetchStatus = sessionToken
-      ? () => getBackupStatusScoped(sessionToken)
-      : () => getBackupStatus();
+    // ── The tablet has NO backup-status command, and that is not a no-op ──
+    //
+    // `get_backup_status` and `get_backup_status_scoped` are DESKTOP-registered
+    // names only: defined at apps/desktop-tauri/src/commands/data.rs:33 and :133 and
+    // registered at apps/desktop-tauri/src/lib.rs:964-965. apps/mobile-tauri defines
+    // neither and registers neither (its only backup door is `create_backup_to`,
+    // apps/mobile-tauri/src/commands/data.rs:139), so on the tablet this invoke is
+    // rejected by the IPC layer for an unknown command -- the catch below then fires
+    // a spurious error toast and the panel shows the failure string on EVERY mount of
+    // this screen.
+    //
+    // Do NOT 'fix' that by adding a tablet scoped read. The bridge's status body
+    // reads `default_backup_path` -- `<db>.backup.db` beside the database -- and on
+    // Android that path is inside private storage the tablet never writes: the
+    // tablet backs up to an operator-chosen destination instead. Such a read would
+    // answer 'Never' for a store that HAS backed up, which is exactly the compliance
+    // claim BackupSection's three-way render exists to refuse.
+    //
+    // So the tablet simply does not read a status: the state above starts at
+    // `undefined` (never answered, which is not the same as 'Never'), and the only
+    // status the tablet honestly has is the one handleBackup writes locally after a
+    // successful create_backup_to.
+    const fetchStatus = isTabletShell()
+      ? null
+      : sessionToken
+        ? () => getBackupStatusScoped(sessionToken)
+        : () => getBackupStatus();
+    if (!fetchStatus) return;
     fetchStatus()
       .then((status) => {
         setBackup((prev) => ({
