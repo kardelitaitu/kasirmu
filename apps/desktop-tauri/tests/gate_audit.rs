@@ -99,7 +99,26 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     // gate require_session_permission(..., SETTINGS_EDIT) in
     // kasirmu-bridge/src/data.rs and did not bump this row. The key was
     // already pinned, so only the count moved.
-    ("data", 7, &["DATA_EXPORT", "SETTINGS_EDIT"]),
+    //
+    // Re-pinned for C8 S5a (7 -> 10, keys gain SETTINGS_READ): the three restore
+    // IPC commands are now registered in apps/desktop-tauri/src/lib.rs and gated
+    // in apps/desktop-tauri/src/commands/data.rs. `restore_prepare` requires
+    // SETTINGS_EDIT (it writes <db>.restore-request.json, the file the boot
+    // consumer promotes); `list_restore_candidates` and `restore_status` require
+    // SETTINGS_READ — the read half of the same family, so seeing that a restore
+    // is pending does not confer the right to request one.
+    //
+    // Note for the next reader: the bridge's own `restore_prepare` enforces
+    // SETTINGS_EDIT as well (kasirmu-bridge/src/data.rs:1159), and the two reads
+    // take no token there by design. So the wrapper gate is NOT independently
+    // observable at runtime — removing it still denies a session without the
+    // permission, via the bridge. THIS ROW is what makes the wrapper gate
+    // load-bearing: drop it and the count falls to 9 and this pin goes red.
+    (
+        "data",
+        10,
+        &["DATA_EXPORT", "SETTINGS_EDIT", "SETTINGS_READ"],
+    ),
     ("edc", 3, &["SALES_PROCESS", "SALES_REFUND", "SALES_VOID"]),
     ("email", 3, &["REPORTS_SCHEDULE", "SETTINGS_EDIT"]),
     ("exchange_rates", 0, &[]),
