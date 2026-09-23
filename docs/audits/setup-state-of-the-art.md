@@ -687,3 +687,69 @@ Also corrected: I first wrote `var(--color-on-primary)`, which does not exist. T
 `--color-pos-on-primary`; the CSS walker's parent-sheet check surfaced it.
 
 **Commit:** `0c7a17f68`.
+
+---
+
+## Round 20 — measured where the height actually goes; the fix was smaller than hoped
+
+Round 19 established the card is 1423px tall in a 1366px viewport and added a rail. The bigger
+question, left open as a product decision, was whether the form should simply be shorter. This
+round I measured that instead of guessing.
+
+### Where the pixels go (measured, per section, tablet viewport)
+
+```
+card 1478 | header 113 | nav-steps 41 | mode-box 151 | account-box 435
+fieldset(store) 133 | five .provisioning-field @ 67 = 335 | submit 37 | padding 84 | gaps 21
+```
+
+And the position that matters — on the **default (linked)** path:
+
+```
+FOLD {"vh":1366,"cardTop":28,"firstInput":1013,"submit":1426,"scrollH":1534}
+```
+
+**The first text input sits at y=1013 in a 1366px viewport — 74% down the screen.** A merchant
+scrolls past 1000px of mode selection and account linking before reaching the first thing they can
+type into; the submit button is at y=1426, 60px below the fold entirely.
+
+### What I changed
+
+One thing: the header subtitle. It restated whichever mode was selected — while the card directly
+beneath it was headed "Link your kasir.mu account", and the offline one said "No account needed"
+above a card reading "Keep this terminal completely offline". On the linked path the merchant read
+the same instruction **four times** before reaching a field: header, card title, card description,
+account hint.
+
+**The saving is 18px of 1478 — about 1%.** That is worth stating plainly: the subtitle was genuine
+duplication and removing it is right, but it does almost nothing for the fold problem. I had
+expected more and the measurement said otherwise. `setup-provision-desc` was orphaned by the
+removal and is deleted from both bundles.
+
+### What I did NOT change, and why
+
+The remaining 1000px is **real content**, not padding: a mode choice (151), the account-linking
+box (435 — the QR/email/Google path), a store-type fieldset (133), five inputs (335) and a submit
+(37). Each is load-bearing.
+
+- The **account box is already correctly gated**: `provisionMode === 'linked'` skips all 435px on
+  the offline path. I checked before assuming this was a defect; it is not.
+  
+- Splitting the card into **genuine sequential steps** (one decision per screen) is the change that
+  would actually fix the fold — 1000px of content cannot be trimmed into 1366px otherwise. But
+  that is a redesign of a flow governed by ADR #56, it changes what a merchant sees on first boot,
+  and it cannot be validated from a headless browser. **I am not making it unilaterally.**
+
+### Verification
+
+`ProvisioningFlow.test.tsx` **23/23** · **20/20 E2E** on desktop and tablet · full UI suite **606
+files / 10,328 tests** · `tsc` clean · lint **0 errors** · parity **0 missing** · i18n clean.
+
+Negative control: reintroducing the subtitle makes the new test fail (`expected <p></p> to be
+null`).
+
+**Note on suite flakiness:** two consecutive full runs each failed a *different* pre-existing test
+(`SalesDashboardScreen`, then `useNewTicketSound`) under parallel load; each passes in isolation,
+and neither touches setup or auth. Worth recording rather than reporting as green.
+
+**Commit:** `0f0a36a21`.
