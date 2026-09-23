@@ -1,11 +1,11 @@
 ---
-num: 1
+num: 60
 area: frontend-architecture
-title: ADR-0001: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)
+title: ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)
 status: Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated
 ---
 
-# ADR-0001: Orientation & Adaptive Layout Strategy
+# ADR-60: Orientation & Adaptive Layout Strategy
 
 **Status:** Implemented (2026-10-11). All four tiers (T1 shell media queries, T2 container
 queries, T3 declared layout escape hatch, T4 walker gate) are in the tree and enforced. Slices
@@ -15,14 +15,13 @@ EodReport, CartPanel). The remaining sheets are future Slice-5 work under the sa
 **Recorded against:** branch `0.0.39`
 **Tags:** css, layout, orientation, container-queries, tablet, tauri, gates, walker
 
-> **Why the number is 1 and the location is `docs/adr/`.** Every existing record lives in
-> `docs/decisions/` as `YYYY-MM-DD-adrNN-<slug>.md` (`docs/decisions/README.md` — the
-> highest number in use is **59**, numbers #16 and #24–#29 are unused, and **#43 is claimed
-> twice**). This file was requested under `docs/adr/`, a directory that did not exist before
-> this write, and it takes a **fresh local series starting at 0001** so it cannot collide with
-> the `decisions/` numbering. **Cite this record by filename, not by number.** If the series
-> is later folded into `docs/decisions/`, renumber there and leave a pointer — do not renumber
-> in place, because filenames are the only collision-free citation form this repo has.
+> **Provenance note.** This record was originally written under `docs/adr/ADR-0001-*.md`
+> (a separate directory that predated this unification) and later merged into `docs/decisions/`
+> as `2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md` — the next available
+> number after ADR-59. The old `docs/adr/` series used `ADR-0001`; this file is now
+> canonically **ADR-60** in the `docs/decisions/` sequence. **Cite by filename.**
+> Code and tests that reference `ADR-0001` by label are correct historical citations.
+
 
 ## Context
 

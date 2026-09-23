@@ -83,6 +83,7 @@ implementation-status walkthrough.
 | 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — part implemented, part to build |
 | 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Proposed (2026-10-04) — mechanism largely implemented, one state to add |
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — nothing implemented |
+| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated |
 
 ## Research notes
 

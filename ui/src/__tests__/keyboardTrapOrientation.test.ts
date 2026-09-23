@@ -1,7 +1,7 @@
 /**
  * Keyboard-Trap Orientation - ADR-0001 Slice 6.
  *
- * docs/adr/ADR-0001-orientation-and-adaptive-layout-strategy.md#L210, verbatim:
+ * docs/decisions/2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md#L210, verbatim:
  *
  *   | **6** | Keyboard-trap verification | A check that a focused field plus an open
  *   on-screen keyboard leaves the submit control reachable, in both orientations. |
