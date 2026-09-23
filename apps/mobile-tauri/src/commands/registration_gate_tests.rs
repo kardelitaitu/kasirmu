@@ -1333,7 +1333,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
                 let first = after.chars().next().unwrap_or('x');
                 if first == DOUBLE_QUOTE || first == SINGLE_QUOTE {
                     literal += 1;
-                } else if !inside_allowed {
+                } else if computed_name_is_an_offender(&rel, inside_allowed) {
                     offenders.push(format!("{}:{}", rel, i + 1));
                 }
                 rest = &rest[hit + 7..];
@@ -1350,6 +1350,87 @@ fn drift_pin_no_computed_command_names_in_ui() {
     );
 }
 
+/// Is this file test scaffolding rather than production source?
+///
+/// Ported from the desktop twin (`apps/desktop-tauri/src/commands/registration_gate_tests.rs`,
+/// `counts_as_test_scaffold`), which this tablet copy never received. Without it this sweep
+/// read `ui/src/__tests__/dev-mock-dto-conformance.test.ts` as production source and went
+/// red on a table-driven mock harness - a test file handing a command name through, which is
+/// what a mock is for, not a screen assembling one.
+///
+/// Grounded in the extractor both gates exist to agree with, so this is a rule and not a
+/// convenience: `scripts/verify-ipc-parity.py` names seven production roots (`UI_SCAN_DIRS`,
+/// :83) and its walks drop any `__tests__` path (:149 for the command extractor, :274 for the
+/// second pass). The parity surface is production source only, so a test file cannot skew it
+/// in either direction and is not what the computed-name ban protects.
+///
+/// A COMPONENT test, never a substring: only a whole `__tests__` component is scaffolding,
+/// so `ui/src/foo__tests__bar/Screen.tsx` is still production source.
+fn counts_as_test_scaffold(rel: &str) -> bool {
+    rel.split('/').any(|part| part == "__tests__")
+}
+
+/// Does a computed-name site in this file make it an offender?
+///
+/// Production source only, and never a file already on the toleration list. Mirrors
+/// `computed_name_is_an_offender` in the desktop twin. The two halves differ for the reason
+/// the desktop copy documents at length: the hazard is production UI assembling a name the
+/// parity extractor cannot see, whereas a mock or a test harness passing one through is not
+/// that. Collapsing the halves would turn the scaffold tolerance into a blanket exemption
+/// for every test file, which is the outcome the tolerance exists to avoid.
+fn computed_name_is_an_offender(rel: &str, inside_allowed: bool) -> bool {
+    !inside_allowed && !counts_as_test_scaffold(rel)
+}
+
+/// The scaffold tolerance in BOTH directions, because one direction alone is a blanket
+/// exemption with a test that agrees with it.
+///
+/// The tolerating direction is the file that made this gate red. The catching direction is
+/// the one that keeps the port honest: a computed name in PRODUCTION UI must still land in
+/// the offender list. `ui/src/utils/logged-invoke.ts` is the right witness because the
+/// desktop copy tolerates it BY NAME in its `TOLERATED_FORWARDS` list - so it is caught by
+/// RULE here and excused by LIST there, and the two decisions must stay distinguishable.
+#[test]
+fn the_scaffold_tolerance_tolerates_a_test_harness_and_still_catches_production_ui() {
+    // -- Tolerating direction: the offender that made this leg red is scaffolding. --
+    let harness = "ui/src/__tests__/dev-mock-dto-conformance.test.ts";
+    assert!(
+        counts_as_test_scaffold(harness),
+        "a whole __tests__ component is test scaffolding, not production source: {harness}"
+    );
+    assert!(
+        !computed_name_is_an_offender(harness, false),
+        "a table-driven mock harness builds the name at runtime by design; it must not offend"
+    );
+
+    // -- Catching direction: the same computed name in production source still offends. --
+    let production = "ui/src/utils/logged-invoke.ts";
+    assert!(
+        !counts_as_test_scaffold(production),
+        "production source is not scaffolding: {production}"
+    );
+    assert!(
+        computed_name_is_an_offender(production, false),
+        "a computed name in production UI must still land in the offender list: {production}"
+    );
+
+    // -- The two reasons stay separable: a file on the toleration list is excused by THAT
+    // list, not silently reclassified as scaffolding. --
+    assert!(
+        !computed_name_is_an_offender(production, true),
+        "an allow-listed file is tolerated by the list"
+    );
+    assert!(
+        !counts_as_test_scaffold(production),
+        "and the list did not make it scaffolding, so the reasons remain distinguishable"
+    );
+
+    // -- Component, never substring: a name that merely CONTAINS the marker is not scaffold. --
+    assert!(
+        !counts_as_test_scaffold("ui/src/foo__tests__bar/Screen.tsx"),
+        "only a whole __tests__ component is scaffolding; a substring match would tolerate production files this rule must not"
+    );
+}
 /// Report only — prints and exits zero, by design.
 ///
 /// ui/src/__tests__/api-security-contract.test.ts and
