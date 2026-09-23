@@ -834,7 +834,17 @@ fn init_sql_creates_complete_schema_surface() {
         // partial (deleted_at IS NOT NULL), so it holds trashed rows only and
         // the live roster pays nothing for it. That file's two ADD COLUMNs move
         // no index count at all.
-        187,
+        // 20261010_role_trash.sql moves this count by zero: it deliberately
+        // ships no index (see its header).
+        // 20261007_sync_origin_and_effect_key.sql adds one:
+        // idx_sync_applied_items_effect_key, the PARTIAL unique index
+        // (effect_key IS NOT NULL) that makes a sync receipt per-EFFECT rather
+        // than per-item. Partial is the point, not a refinement: every
+        // pre-existing row carries a NULL effect_key, and a table-wide unique
+        // index would let the first NULL pass and collide every one after it,
+        // so the existing ledger could no longer grow. That file's two ADD
+        // COLUMNs move no index count at all.
+        188,
         "index surface drifted"
     );
     assert_eq!(
