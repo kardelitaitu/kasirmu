@@ -1446,3 +1446,61 @@ closed until linked) · **36/36 E2E** across the three setup specs · full UI su
 and passes in isolation (pre-existing, per round 27b).
 
 **Commit:** `2c71a0b6c`.
+---
+
+## Round 31-32 — offline behaviour is now covered, and it was already correct
+
+Round 31 probed the flow's behaviour when the connection is lost; round 32 turned that into
+permanent coverage. **No product defect was found — the contract the module doc states is what the
+code does**, but none of it had ever been asserted from the outside.
+
+### What the module doc claims, and what is now pinned
+
+The flow's own header draws the line: `provision_device` takes a local DB lock and writes local
+SQLite rows, so a provision cannot fail for want of a connection; what offline blocks is the LINK.
+That was a comment. `ui/e2e/provisioning-offline.spec.ts` now asserts it in a browser:
+
+| Test | Result |
+|---|---|
+| An account linked while online survives the connection dropping | the warning appears, `Linked to …` persists |
+| A linked terminal can still be provisioned with the connection down | the flow completes and the shell moves on |
+| Offline blocks linking and explains why, without blocking the offline path | email fields disabled; the standalone path still finishes |
+
+The middle one is the load-bearing case: a merchant who linked, then lost signal, must not be asked
+to redo the link or be stranded. It works.
+
+### Two hypotheses I formed and had to discard
+
+1. **"The QR auto-start fires a network call while offline."** The effect at :212 has no `isOffline`
+   guard, so this looked like a real gap. It is not: the effect is additionally gated on
+   `!pairingSession`, and a session already loaded stays loaded — measured, the pairing box renders
+   from cache with no new call.
+2. **"The pairing success toast can double-fire."** The poll runs every 3s and the effect only
+   re-runs after React commits `linkedAccount`, so two ticks could plausibly both see `claimed`. I
+   counted actual toasts with a `MutationObserver` over 12s against a mock that always answers
+   `claimed`: **exactly 1** on both shells. The cleanup works.
+
+Neither reached a commit. Recorded because both were plausible and both were wrong — the same shape
+as the round-25 misdiagnosis, caught this time before reporting it as a defect.
+
+### One assertion of mine was wrong, not the code
+
+My first draft asserted "Continue with Google" is disabled offline. It does not exist on the tablet
+shell — this entry renders QR/email subtabs instead. Corrected to assert what the shell actually
+shows (the email fields and send button are disabled), which is the same contract stated in the
+right vocabulary.
+
+### A pre-existing lint error, not mine
+
+`npm run lint` reports **1 error** in `ui/src/__tests__/DataManagementBackup.test.tsx`
+(`react-hooks/rules-of-hooks`: `useWorkspace` called inside `tabletWith`). Confirmed present at HEAD,
+introduced by a peer's `44c06dc55`, and the file is untouched in my working tree. **Left alone** — it
+is another session's work and the fix is theirs to make. Flagged here so it is not mistaken for a
+regression from this audit.
+
+### Verification
+
+**6/6 new E2E** on desktop and tablet · full UI suite **607 files / 10,371 tests pass** · `tsc` clean ·
+lint **0 errors from this audit** (the one error above is pre-existing and not mine).
+
+**Commit:** `17ad9a0f3`.
