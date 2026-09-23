@@ -56,6 +56,12 @@ fn remote_sync_admits(key: &str) -> bool {
     IngestPolicy::RemoteSync.admits(key)
 }
 
+/// The payload's `sale_id` is deliberately NOT a field here: this struct is
+/// the APPLY shape (it needs the lines), while the identity of the effect —
+/// `sale_id` — is read by `remote_effect_key`, which must name the effect
+/// BEFORE the item is applied and is therefore the one reader of every
+/// identity field. A field deserialized and never read is dead weight, and
+/// `-D warnings` agrees.
 #[derive(Deserialize)]
 struct SalePayload {
     #[serde(default)]
@@ -340,6 +346,67 @@ fn payment_already_applied(
         )?,
     };
     Ok(exists == 1)
+}
+
+/// The EFFECT a remote item will have, derived from its action and payload (C3).
+///
+/// `sync_applied_items` records DELIVERY: `item_id` proves this item arrived
+/// once, and nothing about the mutation it caused. A redelivery of the same
+/// mutation under a DIFFERENT item id is therefore invisible to an item-keyed
+/// receipt, and the mutation is applied a second time — a second stock
+/// deduction. The effect key is the identity of the mutation itself, and it is
+/// this function — not the arms — that names it, because the receipt is
+/// pre-checked BEFORE the item is applied, so the key must be derivable
+/// without applying it.
+///
+/// One key per arm, and the identity is always the one the originator minted:
+///
+/// - `complete_sale`   → `sale:<sale_id>:deduct`
+/// - `finalize_sale`   → `sale:<sale_id>:finalize`
+/// - `void_sale`       → `sale:<sale_id>:void`
+/// - `refund_sale`     → `refund:<refund_id>`
+/// - `payment.recorded`→ `payment:<payment_id>`
+/// - `stock.movement`  → `stock_movement:<movement_id>`
+/// - `product.created` → `product:<sku>:create`
+/// - `settings.update` / `settings.change` → `setting:<key>`
+///
+/// TWO ARMS CANNOT CARRY A SINGLE KEY, and they return `None` rather than a
+/// fabricated one:
+///
+/// - `stock.adjusted` — `StockAdjustmentPayload` is `{sku, delta, location_id}`
+///   with no id, and two genuinely distinct identical deltas ARE two effects
+///   (`adjust_stock` is not idempotent by design). Any key invented from the
+///   sku and delta would silently swallow the second, legitimate one.
+/// - `stock.movement` under the `crdt_delta` envelope — one item carrying two
+///   sub-effects (the `local` and the `remote` side of a merge), so no single
+///   key describes it.
+///
+/// A `None` key stays SQL NULL: the partial unique index ignores NULL, so
+/// these rows behave exactly as they did before C3 — recorded per delivery —
+/// and can never collide with each other.
+///
+/// A payload whose identity field is absent or unreadable yields `None` rather
+/// than an error: the arm itself is the authority on malformed payloads and
+/// reports them with its own message, so this function must not shadow that.
+fn remote_effect_key(action: &str, payload: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(payload).ok()?;
+    // The CRDT merge envelope carries two sub-effects in one item — see the
+    // module note above on why it cannot carry one key.
+    let is_crdt_envelope = value.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta");
+    let field = |name: &str| -> Option<&str> { value.get(name).and_then(|v| v.as_str()) };
+    match action {
+        "complete_sale" => Some(format!("sale:{}:deduct", field("sale_id")?)),
+        "finalize_sale" => Some(format!("sale:{}:finalize", field("sale_id")?)),
+        "void_sale" => Some(format!("sale:{}:void", field("sale_id")?)),
+        "refund_sale" => Some(format!("refund:{}", field("id")?)),
+        "payment.recorded" => Some(format!("payment:{}", field("id")?)),
+        "stock.movement" if !is_crdt_envelope => Some(format!("stock_movement:{}", field("id")?)),
+        "product.created" => Some(format!("product:{}:create", field("sku")?)),
+        "settings.update" | "settings.change" => Some(format!("setting:{}", field("key")?)),
+        // stock.adjusted, a CRDT-enveloped stock.movement, and any unknown
+        // action: no single effect to name (see the doc comment).
+        _ => None,
+    }
 }
 
 /// Replicate a refund - its rows and its effects - where the sale EXISTS.
@@ -831,6 +898,13 @@ impl SyncQueue {
     /// also carries the changed settings key and its originating terminal so
     /// the sync daemon can publish `SettingsUpdated` after the commit —
     /// making a change made on another terminal reactive in this one's UI.
+    ///
+    /// C3: the receipt is keyed on the EFFECT, not only on the delivery. A
+    /// re-delivered effect — the same sale or refund arriving under a
+    /// DIFFERENT item id — is recognised by its effect key and is not applied
+    /// a second time. The effect is named by `remote_effect_key` before the
+    /// item is applied; an action that cannot name a single effect yields
+    /// `None` and keeps the pre-C3 delivery-only behaviour.
     pub fn apply_remote_atomic_full(
         &self,
         store: &Store<'_>,
@@ -844,11 +918,31 @@ impl SyncQueue {
         }
 
         let tx = store.conn().unchecked_transaction()?;
-        let already: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sync_applied_items WHERE item_id = ?1)",
-            rusqlite::params![item.id],
-            |row| row.get(0),
-        )?;
+
+        // C3: the EFFECT is derived from the action and payload BEFORE the
+        // item is applied, because the receipt below is keyed on it and the
+        // duplicate must be recognised before the mutation runs, not undone
+        // after it. The arms are unchanged: every effect key is a field of
+        // the payload the originator minted (see `remote_effect_key`).
+        let effect_key = remote_effect_key(&item.action, &item.payload);
+
+        // Two questions, two probes. `item_id` proves THIS item was
+        // delivered; `effect_key` proves the mutation it caused happened. A
+        // redelivery of the same effect under a DIFFERENT item id is caught
+        // only by the effect key — the defect this receipt exists to close.
+        let already: bool = if let Some(key) = effect_key.as_deref() {
+            tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_applied_items WHERE item_id = ?1 OR effect_key = ?2)",
+                rusqlite::params![item.id, key],
+                |row| row.get(0),
+            )?
+        } else {
+            tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_applied_items WHERE item_id = ?1)",
+                rusqlite::params![item.id],
+                |row| row.get(0),
+            )?
+        };
         if already {
             tx.commit()?;
             return Ok(ApplyOutcome::default());
@@ -856,7 +950,12 @@ impl SyncQueue {
 
         match self.apply_remote_in_tx(&tx, item) {
             Ok(()) => {
-                store.mark_remote_item_applied_in_tx(&tx, &item.id, &item.action)?;
+                store.mark_remote_item_applied_with_effect_in_tx(
+                    &tx,
+                    &item.id,
+                    &item.action,
+                    effect_key.as_deref(),
+                )?;
                 store.clear_remote_failure_in_tx(&tx, &item.id)?;
                 tx.commit()?;
                 Ok(ApplyOutcome {

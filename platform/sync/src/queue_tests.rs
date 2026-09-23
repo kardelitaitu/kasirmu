@@ -952,6 +952,123 @@ fn apply_push_conflict_routes_sale_status_dag() {
     );
 }
 
+// ── C3 S3a: the receipt is keyed on the EFFECT, not the item ────
+
+/// The receipt must record the effect the item had, not only that the item
+/// was delivered. Without this the partial unique index on `effect_key` is
+/// inert and the ledger is still per-ITEM — the defect C3 set out to fix.
+#[test]
+fn applied_receipt_records_the_sale_effect_key() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let remote = OfflineQueueItem {
+        id: "remote-sale-effect".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-42","line_items":[{"sku":"COFFEE","qty":2}]}"#.into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+
+    let key: Option<String> = store
+        .conn()
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            rusqlite::params![remote.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        key.as_deref(),
+        Some("sale:sale-42:deduct"),
+        "the receipt must name the EFFECT (this sale\'s deduction), not only the delivery"
+    );
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+}
+
+/// THE CASE THAT DISTINGUISHES AN EFFECT-KEYED RECEIPT FROM AN ITEM-KEYED
+/// ONE: the same effect re-delivered under a DIFFERENT item id. An
+/// item-keyed ledger sees an unknown item and deducts a second time; an
+/// effect-keyed ledger sees the deduction already recorded and skips it.
+#[test]
+fn redelivered_effect_under_a_different_item_id_is_not_reapplied() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let payload = r#"{"sale_id":"sale-dup","line_items":[{"sku":"COFFEE","qty":2}]}"#;
+
+    let first = OfflineQueueItem {
+        id: "remote-sale-dup-a".into(),
+        action: "complete_sale".into(),
+        payload: payload.into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+    let second = OfflineQueueItem {
+        id: "remote-sale-dup-b".into(),
+        action: "complete_sale".into(),
+        payload: payload.into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &first).unwrap());
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+
+    assert!(
+        !queue.apply_remote_atomic(&store, &second).unwrap(),
+        "the same effect under a new item id must be recognised as applied"
+    );
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        48,
+        "the effect must land exactly once however it is delivered"
+    );
+}
+
+/// An arm that cannot name a single effect must behave EXACTLY as before:
+/// two genuinely distinct identical deltas are two effects, so both land and
+/// both receipts stay NULL (the partial index ignores NULL).
+#[test]
+fn effectless_arms_keep_the_delivery_only_behaviour() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let payload = r#"{"sku":"COFFEE","delta":10}"#;
+
+    let first = OfflineQueueItem {
+        id: "remote-adj-a".into(),
+        action: "stock.adjusted".into(),
+        payload: payload.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+    let second = OfflineQueueItem {
+        id: "remote-adj-b".into(),
+        action: "stock.adjusted".into(),
+        payload: payload.into(),
+        ..OfflineQueueItem::new("stock.adjusted", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &first).unwrap());
+    assert!(queue.apply_remote_atomic(&store, &second).unwrap());
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        70,
+        "two distinct identical deltas are two effects and both must apply"
+    );
+
+    let null_keys: i64 = store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM sync_applied_items WHERE effect_key IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        null_keys, 2,
+        "an effectless arm must record no key, and NULLs must not collide"
+    );
+}
 // ── SYNC-05: CRDT merge payloads are consumable end-to-end ─────
 
 #[test]
@@ -2110,13 +2227,18 @@ fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
     assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
     assert_eq!(sale_status(&store, "sale-void-1"), "voided");
 
-    // A replay under a FRESH queue id (so the receipt cannot absorb it) must
-    // still be a benign no-op rather than an error.
+    // A replay under a FRESH queue id must still be a benign no-op rather
+    // than an error. C3 moved WHERE it is recognised: the receipt is keyed
+    // on the effect (`sale:sale-void-1:void`), so the second delivery is
+    // caught by the effect probe before the arm runs and reports
+    // `applied: false` — it is the same effect, already applied. The
+    // invariant this test protects is unchanged and is asserted below: the
+    // status is still voided and nothing was re-applied.
     let replay = OfflineQueueItem::new("void_sale", r#"{"sale_id":"sale-void-1"}"#);
     assert!(replay.id != remote.id);
     assert!(
-        queue.apply_remote_atomic(&store, &replay).unwrap(),
-        "an already-voided sale is a benign replay"
+        !queue.apply_remote_atomic(&store, &replay).unwrap(),
+        "the same effect under a fresh item id is recognised as already applied"
     );
     assert_eq!(sale_status(&store, "sale-void-1"), "voided");
 }
@@ -2173,8 +2295,12 @@ fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
     assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
     assert_eq!(payments_row_count(&store), 1);
 
+    // Same effect under a fresh item id: C3's effect key (`payment:pay-3`)
+    // recognises the tender before the arm runs, so this reports
+    // `applied: false` — the effect landed once. The invariant is the row
+    // count, asserted here.
     let replay = OfflineQueueItem::new("payment.recorded", payload);
-    assert!(queue.apply_remote_atomic(&store, &replay).unwrap());
+    assert!(!queue.apply_remote_atomic(&store, &replay).unwrap());
     assert_eq!(payments_row_count(&store), 1);
 }
 
