@@ -1140,3 +1140,81 @@ Negative control: restoring `qr_payload` in place of `qr_url` fails both new uni
 key-list mismatch and `expected 'undefined' to be 'string'`.
 
 **Commit:** `66486f339`.
+---
+
+## Round 27 — the account-linking flow could not be completed in dev at all
+
+Continued the mock-drift seam, but this time asked the question structurally instead of finding
+instances one at a time: **which commands does this objective's flow depend on, and what does the
+mock actually answer for each?** Dumped the return shape of all fourteen commands the setup and
+login paths call.
+
+### The finding
+
+Three commands came back as **unhandled** — meaning `invoke` fell through to its
+`console.warn` + `return null` branch:
+
+```
+link_device_google           UNHANDLED
+link_device_email_request    UNHANDLED
+link_device_email_consume    UNHANDLED
+```
+
+`grep` over `ui/src/dev-mock` for all three names returned **zero** hits. So the entire account-
+linking path — the thing ADR #56 §2.3 makes the DEFAULT first-run mode, and the reason the free plan
+attaches to an account — was non-functional on any dev preview or E2E run. Measured in a browser:
+
+- **Google**: `linkDeviceGoogle()` resolved `null`, so the button silently did nothing.
+- **Email**: the address was accepted, the code field appeared, and then **every** code was rejected
+  with "That code did not work" — because `link_device_email_consume` never returned
+  `{ tenantId, email, verified }`.
+
+A merchant following the recommended path could not link an account. After the fix:
+
+```
+BEFORE:  That code did not work. Check it and try again, or resend.
+AFTER:   Linked to merchant@example.com.    (+ the flow completes)
+```
+
+### Shapes taken from the Rust structs, not invented
+
+Which matters, because inventing shapes is what caused round 26. `LinkedAccount`
+(kasirmu-core/src/desktop_link.rs:123) and `VerifiedAccount` (:137) are both `camelCase` on the wire,
+and `terminal` is `Option<TerminalCredential>` — omitted when absent, not sent as `null`, matching
+serde's skip-if-none. The handlers mirror that.
+
+### Two smaller corrections in the same pass
+
+1. **`check_license_status` did not match its own declared type.** `ServerLicenseStatus` requires
+   `deviceRevoked`; the mock omitted it. Nothing reads the field today, so no user impact — but a
+   registry typed `(args) => unknown` cannot catch a missing field, which is exactly how the
+   `qr_url` defect shipped. Completed the DTO.
+2. **A doc comment asserted enforcement that does not exist.** `deviceRevoked`'s doc said "the shell
+   refuses to open a session while it is set". The shell never reads the field; the **backend** drops
+   sessions (`kasirmu-bridge/src/license.rs:568` → `invalidate_all_sessions`), which is the correct
+   place because a client-side check cannot stop a session already open on a stolen tablet. The
+   comment invited someone to add a redundant client gate. Rewritten.
+
+### Why no existing test caught it
+
+There are ~50 `api-*-contract` test files, and the name is misleading: they assert that the right
+**IPC command name** is called, never that the payload matches the DTO. `api-license-contract.test.ts:38`
+hand-writes a `check_license_status` fixture that is missing `deviceRevoked` and nothing complains,
+because `mockResolvedValue` accepts any object.
+
+Confirmed the fix is available cheaply: annotating such a fixture with its interface **does** make
+`tsc` reject it (`error TS2741: Property 'deviceRevoked' is missing`). 137 untyped DTO fixtures exist
+across that family — typing them is a worthwhile follow-up, larger than this round.
+
+### Verification
+
+**24/24 provisioning E2E**, including a new test that links by emailed code and finishes the whole
+first-run flow (the first time that path has been exercised end to end in a browser) · 47/47 across
+the mock and license contract suites · full UI suite **606 files / 10,353 tests pass** · `tsc` clean ·
+lint **0 errors** · parity **0 missing**.
+
+**Note:** two full-suite runs each failed a *different* pre-existing test under parallel load
+(`SubscriptionContext`, then `NodeTopologyEditorDevMock` + `SettingsPage`); all pass in isolation and
+none touches setup, auth, or the dev-mock. Recorded rather than reported as green.
+
+**Commit:** `27a2bc40e`.
