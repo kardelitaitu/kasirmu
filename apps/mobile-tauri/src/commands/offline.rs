@@ -271,6 +271,13 @@ pub async fn pending_offline_count_scoped(
 ///
 /// # ADR #49 NOT APPLIED, deliberately — and this one is a defect, not just a fork
 ///
+/// **Its twin is `kasirmu_bridge::offline::retry_offline_sync_scoped`
+/// (`crates/kasirmu-bridge/src/offline.rs`), which the desktop command
+/// (`apps/desktop-tauri/src/commands/offline.rs`) delegates to.** The two bodies are
+/// one operation implemented twice; what differs and why is below, and the ordering
+/// half is pinned by
+/// `offline_tests::retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item`.
+///
 /// Refused 2026-09-16. The gate is fine (case 1: `SYNC_MANAGE`, same kind, same
 /// order), but **Phase 3 writes to a different database than the twin's.**
 ///

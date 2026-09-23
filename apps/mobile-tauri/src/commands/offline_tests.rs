@@ -315,6 +315,153 @@ fn run_requeue_remote_failure_unknown_id_errors() {
     }
 }
 
+// ── C54: the tablet retry path's push order, and its twin ────────
+//
+// `retry_offline_sync_scoped` is the tablet's own body for the operation the
+// desktop delegates to `kasirmu_bridge::offline::retry_offline_sync_scoped`.
+// Two implementations, one operation — the divergent-twin class. This test is
+// the tablet's call-site proof, which the bridge's test file cannot provide:
+// the tablet command needs `AppState`, and the bridge harness builds a
+// `BridgeCtx`.
+//
+// It asserts the ORDER OF THE HTTP REQUEST BODY captured from a raw loopback
+// socket (this crate has no mock-HTTP dev-dependency), the same pattern
+// `sync_tests.rs` uses for `sync_run_scoped`. The queue is seeded in the WRONG
+// order on purpose — Low first — so `Store::list_pending_offline`'s
+// `ORDER BY created_at ASC` alone would push Low ahead of Critical. Deleting
+// the `order_for_push` call makes this fail: that is the C20 negative control.
+#[tokio::test]
+async fn retry_offline_sync_scoped_pushes_critical_before_an_earlier_low_item() {
+    use crate::commands::sync::{UpdateSyncSettingsArgs, update_sync_settings_data};
+    use crate::state::AppState;
+    use kasirmu_core::Store;
+    use kasirmu_core::auth;
+    use kasirmu_core::migrations;
+    use kasirmu_core::offline::SyncPriority;
+    use kasirmu_core::session::SessionContext;
+    use platform_core::StoreDatabaseManager;
+    use tauri::Manager as _;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Fake push server: accept one request, capture the body, accept all three.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let server_url = format!("http://{}", listener.local_addr().unwrap());
+    let task = tokio::spawn(async move {
+        let Ok((mut socket, _)) = listener.accept().await else {
+            return String::new();
+        };
+        let mut buffer = vec![0_u8; 16 * 1024];
+        let read = socket.read(&mut buffer).await.unwrap_or(0);
+        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+        let body =
+            r#"{"results":[{"outcome":"accepted"},{"outcome":"accepted"},{"outcome":"accepted"}]}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = socket.write_all(response.as_bytes()).await;
+        request
+    });
+
+    // The global db carries identity (roles + user) only; the scoped store db is
+    // a separate file the manager creates below.
+    let conn = migrations::fresh_db();
+    let sync_user_id = {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+        let hash = auth::hash_pin("1234").unwrap();
+        store
+            .create_user("sync-admin", &hash, "Sync Admin", "role-owner")
+            .unwrap()
+            .id
+    };
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "retry-order-token".into(),
+        SessionContext::new(
+            sync_user_id,
+            "role-owner".into(),
+            "terminal-1".into(),
+            "store-a".into(),
+            "instance-1".into(),
+            "restaurant-pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    // Settings and the queue go through the STORE db — the queue the scoped push
+    // reads. Enqueued Low first, on purpose.
+    {
+        let state = app.state::<AppState>();
+        let conn_arc = state.resolve_store("retry-order-token").unwrap();
+        let db_guard = conn_arc.lock().unwrap();
+        update_sync_settings_data(
+            &db_guard,
+            &UpdateSyncSettingsArgs {
+                server_url: Some(server_url),
+                api_key: Some("test-jwt".into()),
+                enabled: true,
+            },
+        )
+        .unwrap();
+        let store = Store::new(&db_guard);
+        store
+            .enqueue_offline_priority("bulk", r#"{"n":1}"#, SyncPriority::Low)
+            .unwrap();
+        store
+            .enqueue_offline_priority("money", r#"{"n":2}"#, SyncPriority::Critical)
+            .unwrap();
+        store
+            .enqueue_offline_priority("catalog", r#"{"n":3}"#, SyncPriority::Normal)
+            .unwrap();
+    }
+
+    let result = retry_offline_sync_scoped("retry-order-token".into(), app.state()).await;
+    let request = task.await.expect("the fake server task must finish");
+    let body_start = request.find("\r\n\r\n").expect("a complete HTTP request") + 4;
+    let body = &request[body_start..];
+    let sent: Vec<String> =
+        serde_json::from_str::<Vec<kasirmu_core::offline::OfflineQueueItem>>(body)
+            .expect("the push body is the item array")
+            .iter()
+            .map(|i| i.action.clone())
+            .collect();
+    assert_eq!(
+        sent,
+        vec!["money", "catalog", "bulk"],
+        "the REQUEST BODY must carry Critical before Normal before Low; delete the \
+         order_for_push call and the Low item leads, which is the C20 negative control"
+    );
+
+    // C54 divergence, pinned rather than hidden: the push above SUCCEEDED (the
+    // body proves it), yet the command returns Err because Phase 3 writes the
+    // outcomes to `state.db` — the GLOBAL identity database — where these
+    // store-row ids do not exist, so `mark_offline_synced` returns NotFound. The
+    // bridge twin re-resolves the STORE scope instead. When the collapse lands,
+    // this assertion fails and whoever lands it deletes it.
+    match result {
+        Err(AppError::Core { sub_kind, message }) => assert_eq!(
+            format!("{sub_kind:?}"),
+            "NotFound",
+            "C54: the outcomes went to a db where these ids do not exist: {message}"
+        ),
+        other => panic!(
+            "C54: expected the known Phase 3 divergence (NotFound from the global db), \
+             got {other:?}; if the tablet now writes the store db, delete this assertion"
+        ),
+    }
+}
+
 #[test]
 fn requeue_remote_failure_args_deserialize() {
     let json = r#"{"itemId":"dl-1"}"#;
