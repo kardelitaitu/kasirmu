@@ -213,5 +213,29 @@ test.describe('First-run owner bootstrap', () => {
     // the field itself — the association a screen reader follows.
     await expect(page.getByLabel(/Confirm PIN/i)).toHaveAttribute('aria-invalid', 'true');
   });
+
+  test('a fresh terminal lands on login after setup, not back on owner bootstrap', async ({ page }) => {
+    // THE DEFECT THIS PINS (measured 2026-09-23). On a fresh install `has_users` answers
+    // false, which is what opens owner bootstrap. `provision_device` then CREATES the owner
+    // inside its transaction (ADR #56 §2.2) — but the shells hold `hasAnyUsers` from the
+    // boot read and never refreshed it, so the merchant was dropped straight back onto
+    // "Create Owner PIN", asked to create the account they had just created, with the
+    // success toast still on screen.
+    //
+    // `?nousers=1` is what makes this reachable: it is the honest fresh-install answer.
+    await page.goto('/index.mobile.html?nousers=1&unprovisioned=1');
+    await page.waitForSelector('[data-testid="provisioning-flow"]', { timeout: 20_000 });
+
+    await page.getByTestId('provision-mode-local').click();
+    await fillOwnerForm(page);
+    await page.getByTestId('provision-submit').click();
+
+    // The flow leaves, and the shell does NOT re-offer owner bootstrap.
+    await expect(page.getByTestId('provisioning-flow')).toBeHidden({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /Create Owner PIN/i })).toBeHidden();
+
+    // It lands on the login screen, where the owner they just created can sign in.
+    await expect(page.getByTestId('staff-login-screen')).toBeVisible({ timeout: 15_000 });
+  });
 });
 

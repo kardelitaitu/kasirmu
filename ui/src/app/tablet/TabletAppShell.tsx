@@ -297,7 +297,18 @@ export default function TabletAppShell() {
   if (!hasCompletedSetup) {
     return (
       <LazyBoundary>
-        <ProvisioningFlow onProvisioned={() => setHasCompletedSetup(true)} />
+        <ProvisioningFlow
+          onProvisioned={() => {
+            setHasCompletedSetup(true);
+            // The flow CREATED the owner as part of the transaction (ADR #56 §2.2),
+            // so "are there any users?" now has a different answer from the one this
+            // shell read at boot. `hasAnyUsers` is a boot-time value and was false on a
+            // fresh install — leaving it stale sent the merchant straight back to
+            // "Create Owner PIN", asking them to create the account they had just
+            // created, with the success toast still on screen. Measured 2026-09-23.
+            setHasAnyUsers(true);
+          }}
+        />
       </LazyBoundary>
     );
   }

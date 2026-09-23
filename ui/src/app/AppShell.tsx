@@ -583,7 +583,16 @@ export default function AppShell() {
       <>
         {bootBadges}
         <LazyBoundary>
-          <ProvisioningFlow onProvisioned={() => setSetupKnownComplete(true)} />
+          <ProvisioningFlow
+            onProvisioned={() => {
+              setSetupKnownComplete(true);
+              // Same reason as the tablet shell: `provision_device` creates the owner
+              // inside its transaction (ADR #56 §2.2), so the boot-time `has_users`
+              // answer is stale. Without this the merchant returned to
+              // "Create Owner PIN" immediately after being told setup succeeded.
+              setHasAnyUsers(true);
+            }}
+          />
         </LazyBoundary>
       </>
     );
