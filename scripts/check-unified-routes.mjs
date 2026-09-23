@@ -17,12 +17,197 @@
  * semantics beyond that; first-match-wins ordering is not verified, only coverage.
  */
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const caddy = readFileSync(join(root, 'apps/unified/Caddyfile'), 'utf8');
+// C31: the path is overridable so the negative control can point the gate at a
+// deliberately corrupted copy. Default is unchanged, and this is the ONLY way
+// to exercise the syntax validator's failure branch without editing a tracked
+// file in place. `argv[2]` wins so a report can paste a self-contained command.
+const caddyPath = process.argv[2] ?? join(root, 'apps/unified/Caddyfile');
+const caddy = readFileSync(caddyPath, 'utf8');
+
+// ── Caddyfile syntax validation (C31) ────────────────────────────────────────
+//
+// WHY A PARSER AND NOT `caddy validate`. The real validator is the only thing
+// that understands caddy's full grammar, and it is NOT reachable from this
+// gate: no `caddy` binary is on PATH here, `ops/docker/Dockerfile.unified`
+// copies the binary into the RUNTIME stage of the deployed image (stage 3,
+// `COPY --from=caddy /usr/bin/caddy`) where the gate never runs, and this gate
+// is invoked by `scripts/check.sh` as a plain node step with no daemon. Pulling
+// an image or downloading a binary inside a static gate would add a network
+// dependency the brief forbids inventing, so this is the strongest check that
+// IS available offline.
+//
+// WHAT IT CATCHES, and why it is not the old text scan. The previous check
+// split the file on the literal `handle ` and read routing off that, so it
+// could not see structure at all: a missing closing brace, a stray token or a
+// mis-nested block all still yielded the same 7 prefixes and exited 0, while
+// caddy would refuse to adapt the file and the container would fail to start.
+// This lexer understands comments, quoted strings and escapes (so the `{…}`
+// inside the header comment is not a brace), and the parser then checks brace
+// balance, statement nesting, top-level shape, and the depth-1 directive
+// vocabulary (plus that every `import` resolves).
+//
+// LIMITS, stated so nobody reads more into a green run than is there: this is
+// a STRUCTURAL check, not caddy's grammar. It cannot know a directive's full
+// argument grammar, matcher semantics, or whether a block is legal in its
+// context. It deliberately does NOT flag an unterminated quoted string, which
+// real caddy accepts (verified: `encode "gzip` validates clean) - being
+// stricter than caddy here would fail a file that deploys fine. The real
+// validator remains the deployed image's own `caddy validate` at start-up.
+
+// Caddy HTTP handler directives legal at DEPTH 1 (directly inside a site
+// block or a snippet body).
+//
+// SCOPE IS DELIBERATE AND NARROW. Sub-directives at depth >= 2 are open-ended
+// (a `reverse_proxy` block has health_* and lb_* keys, a `log` block has
+// `output`, a `basic_auth` block has user entries), so checking them requires
+// caddy's full grammar and a whitelist there produces FALSE POSITIVES - this
+// was measured, not assumed: `output`, `user` and `@api` are all legal and were
+// all rejected by a depth-agnostic version of this list. A false positive that
+// fails a legitimate deploy is worse than the stray token it would catch, so
+// the check stops at depth 1 where the set is finite and documented.
+//
+// A named matcher (`@name`) and a path matcher (`*`, `/foo/*`) are also legal
+// at statement position and are accepted by shape, not by list.
+const DEPTH1_DIRECTIVES = new Set([
+  'abort', 'acme_server', 'basic_auth', 'basicauth', 'bind', 'debug', 'encode',
+  'error', 'file_server', 'forward_auth', 'handle', 'handle_errors',
+  'handle_path', 'header', 'import', 'invoke', 'log', 'map', 'method',
+  'metrics', 'php_fastcgi', 'push', 'redir', 'request_body', 'request_header',
+  'respond', 'reverse_proxy', 'rewrite', 'root', 'route', 'skip_log',
+  'templates', 'tls', 'tracing', 'try_files', 'uri', 'vars',
+]);
+
+/** True for a statement head that is a matcher rather than a directive. */
+function isMatcher(head) {
+  return head.startsWith('@') || head === '*' || head.startsWith('/');
+}
+
+/**
+ * Tokenize a Caddyfile: comments, quoted strings, escapes and braces.
+ *
+ * Line numbers are 1-based. `firstOnLine` marks a token that starts a
+ * statement, which is what makes this a parse rather than a scan: a directive
+ * is only recognised at statement position, so an argument that happens to
+ * spell a directive name is not mistaken for one.
+ */
+function lexCaddyfile(src) {
+  const tokens = [];
+  const lines = src.split(/\r?\n/);
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
+    let first = true;
+    let i = 0;
+    while (i < line.length) {
+      const ch = line[i];
+      if (ch === ' ' || ch === '\t') { i++; continue; }
+      if (ch === '#') break; // comment runs to end of line
+      if (ch === '{' || ch === '}') {
+        tokens.push({ value: ch, line: n + 1, firstOnLine: first });
+        first = false; i++; continue;
+      }
+      if (ch === '"') {
+        // A quoted token may contain braces and '#'. An unterminated quote
+        // runs to end of line rather than erroring - caddy accepts it.
+        let j = i + 1; let buf = '';
+        while (j < line.length) {
+          if (line[j] === '\\' && j + 1 < line.length) { buf += line[j + 1]; j += 2; continue; }
+          if (line[j] === '"') { j++; break; }
+          buf += line[j]; j++;
+        }
+        tokens.push({ value: buf, line: n + 1, firstOnLine: first, quoted: true });
+        first = false; i = j; continue;
+      }
+      let j = i;
+      while (j < line.length && line[j] !== ' ' && line[j] !== '\t' && line[j] !== '{' && line[j] !== '}') j++;
+      tokens.push({ value: line.slice(i, j), line: n + 1, firstOnLine: first });
+      first = false; i = j;
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Structural validation. Returns a list of human-readable problems (empty =
+ * the file is structurally sound). Never throws.
+ */
+function validateCaddyfile(src) {
+  const errors = [];
+  const tokens = lexCaddyfile(src);
+  const snippets = new Set();
+  const stack = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    // A closing brace is its own statement wherever it appears.
+    if (t.value === '}') {
+      if (stack.length === 0) {
+        errors.push(`line ${t.line}: unmatched '}' - a block is closed that was never opened`);
+      } else {
+        stack.pop();
+      }
+      i++; continue;
+    }
+    if (!t.firstOnLine) { i++; continue; }
+
+    // The statement runs to the next line-starting token (or a closing brace).
+    const stmt = [];
+    let j = i;
+    while (j < tokens.length && tokens[j].value !== '}' && (j === i || !tokens[j].firstOnLine)) {
+      stmt.push(tokens[j]); j++;
+    }
+    const head = stmt[0].value;
+    const opensBlock = stmt[stmt.length - 1].value === '{';
+
+    if (stack.length === 0) {
+      if (/^\(.+\)$/.test(head)) {
+        snippets.add(head.slice(1, -1));
+        if (!opensBlock) {
+          errors.push(`line ${stmt[0].line}: snippet '${head}' does not open a block with '{'`);
+        }
+      } else if (!opensBlock) {
+        errors.push(`line ${stmt[0].line}: top-level statement '${head}' does not open a block with '{'`);
+      }
+    } else {
+      // Depth 1 only: see DEPTH1_DIRECTIVES for why deeper checks are unsound.
+      if (stack.length === 1 && !isMatcher(head) && !DEPTH1_DIRECTIVES.has(head)) {
+        errors.push(
+          `line ${stmt[0].line}: unrecognized directive '${head}' - caddy would refuse to start` +
+            ' (if this is a real caddy directive, add it to DEPTH1_DIRECTIVES)',
+        );
+      }
+      if (head === 'import') {
+        const target = stmt[1]?.value;
+        if (!target) {
+          errors.push(`line ${stmt[0].line}: 'import' names no snippet or file`);
+        } else if (!snippets.has(target) && !existsSync(join(dirname(caddyPath), target))) {
+          errors.push(
+            `line ${stmt[0].line}: 'import ${target}' names neither a snippet defined above it nor a file beside the Caddyfile` +
+              ' - caddy refuses to start on an unresolved import',
+          );
+        }
+      }
+    }
+    if (opensBlock) stack.push({ line: stmt[0].line, head });
+    i = j;
+  }
+  for (const open of stack) {
+    errors.push(`line ${open.line}: '${open.head}' opens a block that is never closed with '}'`);
+  }
+  return errors;
+}
+
+const syntaxErrors = validateCaddyfile(caddy);
+if (syntaxErrors.length > 0) {
+  console.error('unified-routes: ' + caddyPath + ' is not structurally valid caddy: ');
+  for (const e of syntaxErrors) console.error('  - ' + e);
+  console.error('Caddy refuses to adapt a file like this at container start, so the deploy builds and then does not boot.');
+  process.exit(1);
+}
 
 // The whole licence-server package: route constants live in the file that owns the handler.
 const dir = join(root, 'apps/license-server');
