@@ -123,7 +123,7 @@ async fn sqlite_backend_push_pull_plan_snapshot_roundtrip() {
 
     // Pull returns the one accepted item.
     let items = store
-        .pull_items("tenant-a", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-a", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
@@ -243,7 +243,7 @@ async fn sqlite_push_batch_matches_per_item_semantics() {
 
     // Pull confirms exactly the accepted rows landed.
     let pulled = store
-        .pull_items("tenant-b", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-b", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     let mut ids: Vec<_> = pulled.iter().map(|i| i.id.as_str()).collect();
@@ -312,7 +312,7 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     ));
 
     let items = store
-        .pull_items(&tenant, Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items(&tenant, None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
@@ -713,7 +713,7 @@ async fn sqlite_push_batch_commits_atomically_and_rejects_dups() {
     assert!(matches!(outcomes[2], PushOutcome::Accepted));
 
     let pulled = store
-        .pull_items("tenant-cs3", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-cs3", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     let mut ids: Vec<_> = pulled.iter().map(|i| i.id.as_str()).collect();
@@ -1437,7 +1437,7 @@ async fn sqlite_backend_push_pull_carries_the_origin_terminal() {
     ));
 
     let items = store
-        .pull_items("tenant-a", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items("tenant-a", None, Some("2026-01-01T00:00:00Z"), None, 501)
         .await
         .unwrap();
     assert_eq!(items.len(), 2);
@@ -1503,7 +1503,13 @@ async fn sqlite_push_batch_fallback_carries_the_origin_terminal() {
     assert!(matches!(&outcomes[1], PushOutcome::Rejected { .. }));
 
     let pulled = store
-        .pull_items("tenant-fallback", Some("2026-01-01T00:00:00Z"), None, 501)
+        .pull_items(
+            "tenant-fallback",
+            None,
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
         .await
         .unwrap();
     assert_eq!(pulled.len(), 1, "only the unpoisoned item lands");
@@ -1512,4 +1518,157 @@ async fn sqlite_push_batch_fallback_carries_the_origin_terminal() {
         Some("fallback-terminal"),
         "the per-item fallback INSERT must carry the origin column too"
     );
+}
+/// C3 S5: the pull must never hand a terminal back its own pushes, and a
+/// caller with no terminal identity must be unaffected.
+///
+/// Three cases, all through the store seam the handler uses:
+///
+/// - pulling as terminal A does NOT return the row A originated;
+/// - the same row IS returned when pulling as terminal B;
+/// - a pull with no identity returns everything, exactly as before.
+///
+/// The NULL-origin case is asserted alongside: an unstamped or legacy row is
+/// never suppressed, whichever identity asks.
+#[tokio::test]
+async fn sqlite_pull_excludes_rows_originated_by_the_calling_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let mut mine = sample_item("origin-mine");
+    mine.tenant_id = "tenant-origin".into();
+    mine.origin_terminal_id = Some("terminal-A".into());
+    let mut theirs = sample_item("origin-theirs");
+    theirs.tenant_id = "tenant-origin".into();
+    theirs.origin_terminal_id = Some("terminal-B".into());
+    // NULL origin: unstamped or legacy — always returned, to everyone.
+    let mut legacy = sample_item("origin-legacy");
+    legacy.tenant_id = "tenant-origin".into();
+    legacy.origin_terminal_id = None;
+
+    for item in [&mine, &theirs, &legacy] {
+        assert!(matches!(
+            store.push_item(item, "tenant-origin").await.unwrap(),
+            PushOutcome::Accepted
+        ));
+    }
+
+    let pull = |origin: Option<&'static str>| {
+        let store = store.clone();
+        async move {
+            store
+                .pull_items(
+                    "tenant-origin",
+                    origin,
+                    Some("2026-01-01T00:00:00Z"),
+                    None,
+                    501,
+                )
+                .await
+                .unwrap()
+        }
+    };
+
+    // Case 1: pulling AS terminal A must not return A's own row.
+    let as_a = pull(Some("terminal-A")).await;
+    let ids: Vec<&str> = as_a.iter().map(|i| i.id.as_str()).collect();
+    assert!(
+        !ids.contains(&"origin-mine"),
+        "terminal A must not be handed back its own push, got: {ids:?}"
+    );
+    assert!(ids.contains(&"origin-theirs"), "B's row still travels");
+    assert!(
+        ids.contains(&"origin-legacy"),
+        "NULL origin is never suppressed"
+    );
+
+    // Case 2: the SAME row IS returned when pulling as terminal B.
+    let as_b = pull(Some("terminal-B")).await;
+    let ids: Vec<&str> = as_b.iter().map(|i| i.id.as_str()).collect();
+    assert!(
+        ids.contains(&"origin-mine"),
+        "A's row must reach B — the filter is per-caller, not global: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&"origin-theirs"),
+        "B is filtered from its own row"
+    );
+
+    // Case 3: no terminal identity — today's behaviour, every row.
+    let as_admin = pull(None).await;
+    let mut ids: Vec<&str> = as_admin.iter().map(|i| i.id.as_str()).collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        vec!["origin-legacy", "origin-mine", "origin-theirs"],
+        "an admin-minted token (no terminal identity) sees everything"
+    );
+}
+
+/// C3 S5: the filter is present in ALL THREE pull query shapes — the
+/// cursor page, the since page and the bare page each carry it, and the
+/// placeholder renumbering leaves the anchor / tiebreak / LIMIT semantics
+/// intact (a shifted placeholder would silently drop the tenant scope).
+#[tokio::test]
+async fn sqlite_pull_filter_applies_to_all_three_query_shapes() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let mut mine = sample_item("shape-mine");
+    mine.tenant_id = "tenant-shapes".into();
+    mine.origin_terminal_id = Some("terminal-A".into());
+    mine.created_at = "2026-01-01T00:00:00Z".into();
+    let mut theirs = sample_item("shape-theirs");
+    theirs.tenant_id = "tenant-shapes".into();
+    theirs.origin_terminal_id = Some("terminal-B".into());
+    theirs.created_at = "2026-01-02T00:00:00Z".into();
+    for item in [&mine, &theirs] {
+        assert!(matches!(
+            store.push_item(item, "tenant-shapes").await.unwrap(),
+            PushOutcome::Accepted
+        ));
+    }
+
+    // since + cursor shape: resume from the anchor, id tiebreak.
+    let cursor_page = store
+        .pull_items(
+            "tenant-shapes",
+            Some("terminal-A"),
+            Some("2026-01-01T00:00:00Z"),
+            Some(("2026-01-01T00:00:00Z", "shape-mine")),
+            501,
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = cursor_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "cursor shape keeps the filter");
+
+    // since-only shape.
+    let since_page = store
+        .pull_items(
+            "tenant-shapes",
+            Some("terminal-A"),
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = since_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "since shape keeps the filter");
+
+    // bare shape (no since, no cursor).
+    let bare_page = store
+        .pull_items("tenant-shapes", Some("terminal-A"), None, None, 501)
+        .await
+        .unwrap();
+    let ids: Vec<&str> = bare_page.iter().map(|i| i.id.as_str()).collect();
+    assert_eq!(ids, vec!["shape-theirs"], "bare shape keeps the filter");
+
+    // LIMIT still bounds the page (501 fetch limit, two rows total here).
+    let limited = store
+        .pull_items("tenant-shapes", None, None, None, 1)
+        .await
+        .unwrap();
+    assert_eq!(limited.len(), 1, "LIMIT semantics are untouched");
 }
