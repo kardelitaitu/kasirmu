@@ -252,7 +252,7 @@ Measured 2026-09-19 on this host (16 cores / 32 threads):
 
 **Read both figures as single-ABI (arm64), which is not what the commands above produce.** They
 pass no `--target`, so they build the `universal` flavor across all four ABIs; the numbers here
-came from the `--target aarch64` path that `docs/guides/android-install-test.md` and
+came from the `--target aarch64` path that `docs/guides/platform/android-install-test.md` and
 `scripts/android-cdp.mjs` use, which narrows `abiList` to `arm64-v8a`. The release column proves
 it: 26.9 MB matches the 25.8 MB arm64 `.so` plus packaging, whereas the four-ABI
 `apk/universal/release/app-universal-release.apk` measured 2026-09-20 is **104,737,268 B** and

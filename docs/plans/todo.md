@@ -134,17 +134,17 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 > ⚠️ **There are currently two files with this name, both stamped "single source
 > of truth", and they disagree about entitlements.** `f3d9cca6` moved the
 > repo-root copy to `docs/records/subscription-tiers.md` without noticing that
-> `28147fe4` had already created `docs/guides/subscription-tiers.md`. The guides
+> `28147fe4` had already created `docs/guides/user/subscription-tiers.md`. The guides
 > copy grants `audit:view` and white-label branding at Pro; the records copy has
 > no audit row and white-label at Enterprise only. Neither is marked superseded.
 > This link points at the guides copy because that is where the existing
-> `docs/guides/BUSINESS_PLAN.md` reference already resolves — **that is a
+> `docs/guides/product/BUSINESS_PLAN.md` reference already resolves — **that is a
 > tie-break for link purposes, not a ruling on which entitlements are correct.**
 > ⚠️ That justification was false as written, and is fixed only as of
 > 2026-09-06: neither copy resolved. The guides copy cited
 > `docs/BUSINESS_PLAN.md` and the records copy cited
 > `docs/archived/BUSINESS_PLAN.md`, and the file has lived at
-> `docs/guides/BUSINESS_PLAN.md` throughout (the guides path has been broken
+> `docs/guides/product/BUSINESS_PLAN.md` throughout (the guides path has been broken
 > since it was introduced in `feb25194`). Both are now corrected to the real
 > location, so the tie-break above holds for the first time — but note it was
 > never a tie-break on 2026-08-17 reasoning, only on a broken link.

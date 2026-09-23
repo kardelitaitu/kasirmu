@@ -9,7 +9,7 @@
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `kasirmu-mobile.xcodeproj`
-> while `docs/guides/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> while `docs/guides/platform/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 

@@ -14,9 +14,9 @@ This guide covers how to contribute effectively. The full project conventions li
 |----------|---------------|
 | [`AGENTS.md`](./AGENTS.md) | Project-wide coding standards (Rust, Tauri, UI, testing, Git) |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Directory layout and module responsibilities |
-| [`ROADMAP.md`](./docs/guides/ROADMAP.md) | Phased milestones |
-| [`WHITEPAPER.md`](./docs/guides/WHITEPAPER.md) | Design rationale, tech choices, database strategy |
-| [`docs/guides/QUICKSTART.md`](./docs/guides/QUICKSTART.md) | First-time local setup and build |
+| [`ROADMAP.md`](./docs/guides/product/ROADMAP.md) | Phased milestones |
+| [`WHITEPAPER.md`](./docs/guides/product/WHITEPAPER.md) | Design rationale, tech choices, database strategy |
+| [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md) | First-time local setup and build |
 | [`.agents/skills/onboarding-guide`](./.agents/skills/onboarding-guide/SKILL.md) | Meta-skill that routes you to the right specialized skill |
 | [`.agents/skills/skill-drift-guard`](./.agents/skills/skill-drift-guard/SKILL.md) | Detects and patches skill drift — run before opening a PR |
 
@@ -31,9 +31,9 @@ Be respectful, assume good faith, and keep feedback focused on the work. We are 
 ## Before your first commit
 
 1. **Read [`AGENTS.md`](./AGENTS.md)** — it defines the non-negotiables (Money struct, rusqlite transactions, thiserror/anyhow, clippy `-D warnings`, Conventional Commits, etc.).
-2. **Read [`docs/guides/QUICKSTART.md`](./docs/guides/QUICKSTART.md)** — get the project building locally first.
+2. **Read [`docs/guides/developer/QUICKSTART.md`](./docs/guides/developer/QUICKSTART.md)** — get the project building locally first.
 3. **Read the relevant skill** under `.agents/skills/` (the onboarding guide will route you).
-4. **Skim [`ROADMAP.md`](./docs/guides/ROADMAP.md)** so you know what's in scope and what's deferred.
+4. **Skim [`ROADMAP.md`](./docs/guides/product/ROADMAP.md)** so you know what's in scope and what's deferred.
 
 If your change touches more than one layer (Rust core, Tauri IPC, UI, HAL, project structure), read each relevant skill in layer order: `rust-backend` → `tauri-ipc` → `ui-components` → `hal-drivers`.
 
