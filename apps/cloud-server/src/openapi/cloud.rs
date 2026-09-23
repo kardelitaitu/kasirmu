@@ -91,7 +91,11 @@ pub(super) fn build_cloud_schemas() -> Value {
                 "tenant_id": { "type": "string", "description": "Owning tenant; defaults to \"default\" when omitted. The server overrides it from the JWT claims, so a client-supplied value is ignored", "default": "default" },
                 "created_at": { "type": "string", "description": "ISO-8601 creation timestamp", "example": "2026-09-11T12:34:56.789Z" },
                 "synced_at": { "type": ["string", "null"], "description": "ISO-8601 sync timestamp; serialised as null until the item is applied" },
-                "priority": { "type": "string", "enum": ["Critical", "Normal", "Low"], "description": "Sync priority tier (P-2). Serialised as the variant name — capitalised, NOT snake_case — and defaulted to Normal when omitted", "default": "Normal" }
+                "priority": { "type": "string", "enum": ["Critical", "Normal", "Low"], "description": "Sync priority tier (P-2). Serialised as the variant name — capitalised, NOT snake_case — and defaulted to Normal when omitted", "default": "Normal" },
+                // Nullable on purpose: a pre-existing row has no recorded origin,
+                // and null means unknown — never an empty string. See
+                // `20261007_sync_origin_and_effect_key.sql`.
+                "origin_terminal_id": { "type": ["string", "null"], "description": "Terminal that originated this mutation, when its producer knew it; serialised as null when unknown. Consumers must treat null as not proven self-originated, never as not self-originated" }
             }
         },
         "SyncPushRequest": {
