@@ -155,6 +155,18 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const [confirmPin, setConfirmPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /**
+   * A failure from the submit itself, rendered BESIDE the submit button rather
+   * than in the banner at the top of the card.
+   *
+   * Measured on the desktop POS viewport (1366x768, ui/e2e/playwright.config.ts):
+   * the card is 1460px, so reaching the button means scrolling ~250px down. A
+   * failed submit then rendered its message at the top of the card, at
+   * `errTop: -87` — 87px ABOVE the viewport. The merchant clicked "Finish setup",
+   * it failed, and the screen showed nothing at all. The message has to appear
+   * where the user is looking, which is the button they just pressed.
+   */
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -347,6 +359,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     async (e: React.FormEvent) => {
       e.preventDefault();
       setErrorMsg(null);
+      setSubmitError(null);
       if (provisionMode === 'linked' && !isLinked) {
         setErrorMsg(l10n.getString('setup-provision-account-required'));
         return;
@@ -392,7 +405,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
         void result;
         onProvisioned();
       } catch (err: unknown) {
-        setErrorMsg(l10nErrorMessage(err, l10n, 'setup-provision-error'));
+        // Beside the button, not in the top banner — see `submitError` above.
+        setSubmitError(l10nErrorMessage(err, l10n, 'setup-provision-error'));
       } finally {
         setBusy(false);
       }
@@ -878,6 +892,14 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </p>
           )}
         </div>
+
+        {/* Above the button, in the same gap the user is already looking at.
+            `role="alert"` because this follows a submit they are waiting on. */}
+        {submitError && (
+          <div className="provisioning-error" role="alert" data-testid="provision-submit-error">
+            {submitError}
+          </div>
+        )}
 
         <Button size="lg" type="submit" disabled={!canSubmit || busy} data-testid="provision-submit">
           <Localized id="setup-provision-submit">

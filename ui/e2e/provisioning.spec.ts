@@ -102,6 +102,33 @@ test.describe('First-run provisioning', () => {
     await page.getByTestId('store-type-simple-retail').click();
     await expect(page.getByText(/Step 3 of 3/i)).toBeVisible();
   });
+
+  test('a failed submit shows its error beside the button, in view', async ({ page }) => {
+    // The defect this pins, measured on the desktop POS viewport (1366x768): the
+    // card is ~1460px, so pressing "Finish setup" means scrolling down. The
+    // failure used to render in the banner at the TOP of the card, at
+    // errTop -87 — 87px above the viewport. The merchant saw nothing at all.
+    // This asserts the message lands on screen, not merely in the DOM.
+    await page.evaluate(async () => {
+      const mod = await import('/src/dev-mock/core/mockDispatcher.ts');
+      (mod as { handlers: Record<string, unknown> }).handlers['provision_device'] = () => {
+        throw new Error('backend exploded');
+      };
+    });
+
+    await page.getByTestId('provision-mode-local').click();
+    await fillOwnerForm(page);
+    const submit = page.getByTestId('provision-submit');
+    await submit.scrollIntoViewIfNeeded();
+    await submit.click();
+
+    const err = page.getByTestId('provision-submit-error');
+    // `toBeInViewport`, not `toBeVisible`: an element scrolled off-screen is still
+    // "visible" to Playwright, and off-screen is exactly the bug.
+    await expect(err).toBeInViewport({ timeout: 10_000 });
+    await expect(err).toHaveAttribute('role', 'alert');
+    await expect(page.getByTestId('provision-submit')).toBeEnabled();
+  });
 });
 
 // ── The first-run owner bootstrap (has_users === false) ────────────────

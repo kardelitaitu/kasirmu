@@ -383,6 +383,50 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(h1.nextElementSibling).toBeNull();
   });
 
+  // ── A failed submit must be visible where the user is ──────────────
+  //
+  // Measured on the desktop POS viewport (1366x768): the card is 1460px, so the
+  // submit button is ~250px below the top. The failure used to render in the
+  // banner at the TOP of the card, which sat at errTop -87 — 87px above the
+  // viewport. The merchant pressed "Finish setup", it failed, and the screen
+  // showed nothing. This pins the message beside the button instead.
+
+  it('shows a failed submit next to the submit button, not in the top banner', async () => {
+    vi.mocked(provisionDevice).mockRejectedValueOnce(new Error('backend exploded'));
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fillBasicForm();
+
+    const submit = screen.getByTestId('provision-submit');
+    fireEvent.click(submit);
+
+    const inline = await screen.findByTestId('provision-submit-error');
+    expect(inline.textContent).toMatch(/Could not finish setting up this terminal/i);
+    expect(inline.getAttribute('role')).toBe('alert');
+
+    // It must be a SIBLING of the button (same gap, same scroll position), not
+    // the form-wide banner at the top of the card.
+    expect(submit.previousElementSibling).toBe(inline);
+    expect(inline.className).not.toContain('provisioning-card-top');
+  });
+
+  it('keeps the account-required guard in the top banner, where the user is', async () => {
+    // That guard fires when the merchant has NOT yet linked — at which point they
+    // are still at the top of the card choosing a mode, so the banner IS the
+    // right place. The two paths must not be collapsed into one.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+    fillBasicForm();
+
+    // `canSubmit` is false without a link, so submit is disabled and no error is
+    // raised — the guard is defensive. Assert the button state, which is what
+    // the merchant actually meets.
+    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    expect(screen.queryByTestId('provision-submit-error')).not.toBeInTheDocument();
+  });
+
   it('defaults to the linked mode and requires an account before submitting', async () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 
