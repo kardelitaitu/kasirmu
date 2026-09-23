@@ -458,7 +458,7 @@ ADR/specification:
    to many targets; input accepts exactly one source; over-capacity drops are
    refused at drag time (explicit, never silent); no cycle rule needed (KDS →
    hardware only, hardware has no ticket-out). See the implementation ADR's
-   [Ticket-routing cardinality](2026-08-08-adr34-typed-connection-gating.md#decision--ticket-routing-cardinality-2026-08-12)
+   [Ticket-routing cardinality](2026-08-08-adr44-typed-connection-gating.md#decision--ticket-routing-cardinality-2026-08-12)
    section. The other non-ownership relationships remain open.
 7. What is the exact `schema_version` migration from geometric ports, including
    the UI for unresolved relationships? Legacy relationships whose meaning is
@@ -466,7 +466,7 @@ ADR/specification:
    load-time migration dialog resolves each ambiguous legacy wire in place from
    the pairing table's legal options (delete-only when none exist), one undo
    entry, Apply unchanged until every wire is resolved — see the implementation
-   ADR's [Legacy-schema migration UI](2026-08-08-adr34-typed-connection-gating.md#decision--legacy-schema-migration-ui-2026-08-12)
+   ADR's [Legacy-schema migration UI](2026-08-08-adr44-typed-connection-gating.md#decision--legacy-schema-migration-ui-2026-08-12)
    section. The identity-inference rules and `schema_version: 1` persistence
    already covered the inferable cases.
 8. What are the concrete backend compiler effects and transactional records for
@@ -656,12 +656,12 @@ gap: KDS nodes now expose a visible right **Ticket Out** socket, and hardware
 inputs admit the `ticket-in` semantic alongside `generic-in`, so a KDS →
 printer drop resolves to exactly one `ticket-routing` option and authors the
 wire in the preset's exact recorded format. See the implementation ADR
-([2026-08-08-adr34-typed-connection-gating.md](2026-08-08-adr34-typed-connection-gating.md)).
+([2026-08-08-adr44-typed-connection-gating.md](2026-08-08-adr44-typed-connection-gating.md)).
 `operation-out` remains load-compatible / future-facing only.
 
 ## Related decisions
 
-- [ADR #34 Implementation: Typed Connection Gating & Live Validation](2026-08-08-adr34-typed-connection-gating.md)
+- [ADR #34 Implementation: Typed Connection Gating & Live Validation](2026-08-08-adr44-typed-connection-gating.md)
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](2026-07-20-node-based-store-topology-builder.md)
 - [ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture](2026-07-10-workspace-type-instance-design.md)
 - [ADR #7: Data Scope Guard](2026-07-10-data-scope-guard.md)

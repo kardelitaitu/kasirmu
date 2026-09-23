@@ -17,7 +17,7 @@ status: Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration func
 
 [ADR #34](./2026-08-07-adr34-business-logic-topology-builder.md) set the goal — "make
 valid relationships discoverable and invalid relationships difficult or
-impossible to create" — and [ADR #44](./2026-08-08-adr34-typed-connection-gating.md)
+impossible to create" — and [ADR #44](./2026-08-08-adr44-typed-connection-gating.md)
 shipped the gate, declaring `topologySemantics.json` the single source of truth
 for what may connect.
 
@@ -1236,5 +1236,5 @@ deferred list.
 
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](./2026-07-20-node-based-store-topology-builder.md)
 - [ADR #34: Topology Editor as the Business Logic Builder](./2026-08-07-adr34-business-logic-topology-builder.md) — §Presets superseded by §4 here
-- [ADR #44: Typed Connection Gating & Live Validation](./2026-08-08-adr34-typed-connection-gating.md) — §1 completes its single-source-of-truth goal
+- [ADR #44: Typed Connection Gating & Live Validation](./2026-08-08-adr44-typed-connection-gating.md) — §1 completes its single-source-of-truth goal
 - [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md)

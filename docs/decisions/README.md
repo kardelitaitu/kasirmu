@@ -59,7 +59,7 @@ implementation-status walkthrough.
 | 32 | [DB Layer Extraction (R2) & Platform File Split (R5)](./2026-07-25-db-extraction-and-platform-split.md) | Proposed |
 | 33 | [Panic Policy & Production unwrap/expect Enforcement](./2026-08-03-panic-policy.md) | Implemented (2026-08-03) |
 | 34 | [Topology Editor as the Business Logic Builder](./2026-08-07-adr34-business-logic-topology-builder.md) | Proposed |
-| 44 | [Typed Connection Gating & Live Validation (Implementation)](./2026-08-08-adr34-typed-connection-gating.md) | Implemented (2026-08-08) |
+| 44 | [Typed Connection Gating & Live Validation (Implementation)](./2026-08-08-adr44-typed-connection-gating.md) | Implemented (2026-08-08) |
 | 35 | [RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data](./2026-08-11-adr35-rbac-role-assignments-user-profile.md) | Accepted (ratified 2026-08-11) |
 | 36 | [Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](./2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | [Product Popularity Index — Weighted Activity Score for Retail Sorting](./2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
