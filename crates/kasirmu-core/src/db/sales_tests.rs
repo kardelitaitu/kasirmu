@@ -3245,7 +3245,8 @@ fn concurrent_complete_sale_serialized_by_begin_immediate() {
             // connection. Without it the loser fails instantly instead of
             // waiting at BEGIN, and the test cannot tell IMMEDIATE from
             // DEFERRED.
-            conn.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+            conn.busy_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
             let store = Store::new(&conn);
             let result = store.complete_sale_deduction(&sl, None, &tender(700), "cashier-1", None);
             (i, result)

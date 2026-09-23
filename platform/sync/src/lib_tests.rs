@@ -1623,12 +1623,15 @@ fn apply_push_outcomes_duplicate_id_replay_marks_synced() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let queue = SyncQueue::new();
-    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    let item = store
+        .enqueue_offline("sale.create", "{\"total\":100}")
+        .unwrap();
 
     let results = vec![transport::PushOutcome::Rejected {
         reason: format!(
             "{}{}",
-            kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX, item.id
+            kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+            item.id
         ),
     }];
     apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
@@ -1657,7 +1660,9 @@ fn apply_push_outcomes_genuine_rejection_marks_failed() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let queue = SyncQueue::new();
-    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    let item = store
+        .enqueue_offline("sale.create", "{\"total\":100}")
+        .unwrap();
 
     let results = vec![transport::PushOutcome::Rejected {
         reason: "invalid id: not-a-uuid".into(),
@@ -1686,7 +1691,9 @@ fn apply_push_outcomes_duplicate_prefix_is_anchored() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let queue = SyncQueue::new();
-    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    let item = store
+        .enqueue_offline("sale.create", "{\"total\":100}")
+        .unwrap();
 
     let results = vec![transport::PushOutcome::Rejected {
         reason: "validation failed: duplicate id: suffix".into(),
@@ -1712,7 +1719,9 @@ fn apply_push_outcomes_accepted_marks_synced() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let queue = SyncQueue::new();
-    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    let item = store
+        .enqueue_offline("sale.create", "{\"total\":100}")
+        .unwrap();
 
     let results = vec![transport::PushOutcome::Accepted];
     apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
@@ -1723,7 +1732,10 @@ fn apply_push_outcomes_accepted_marks_synced() {
         .into_iter()
         .find(|i| i.id == item.id)
         .unwrap();
-    assert_eq!(stored.status, kasirmu_core::offline::OfflineQueueStatus::Synced);
+    assert_eq!(
+        stored.status,
+        kasirmu_core::offline::OfflineQueueStatus::Synced
+    );
 }
 
 /// `Conflict` is unchanged: it still goes through the shared ADR #21 resolver
@@ -1734,7 +1746,9 @@ fn apply_push_outcomes_conflict_uses_shared_resolver() {
     let conn = kasirmu_core::migrations::fresh_db();
     let store = Store::new(&conn);
     let queue = SyncQueue::new();
-    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    let item = store
+        .enqueue_offline("sale.create", "{\"total\":100}")
+        .unwrap();
     // The server's copy of the same action, with a newer timestamp so the
     // resolver has a defined winner.
     let mut server_item = item.clone();
@@ -1780,14 +1794,11 @@ fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
 
     let all = store.list_all_offline().unwrap();
-    let got = |id: &str| {
-        all.iter()
-            .find(|i| i.id == id)
-            .unwrap()
-            .status
-            .clone()
-    };
-    assert_eq!(got(&a.id), kasirmu_core::offline::OfflineQueueStatus::Synced);
+    let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status.clone();
+    assert_eq!(
+        got(&a.id),
+        kasirmu_core::offline::OfflineQueueStatus::Synced
+    );
     assert_eq!(
         got(&b.id),
         kasirmu_core::offline::OfflineQueueStatus::Pending,
