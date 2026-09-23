@@ -266,3 +266,83 @@ fn reads_are_tenant_scoped() {
         CoreError::NotFound { .. }
     ));
 }
+
+/// The write is atomic with the checks that precede it: a payable whose
+/// referenced supplier disappears between the read and the write is refused,
+/// and the refusal leaves NO row behind.
+///
+/// The concurrency window is reproduced deterministically, without threads: a
+/// one-shot `BEFORE INSERT` trigger on `payables` plays the part of the
+/// concurrent writer (deleting the supplier) that would otherwise slip in
+/// between `create_payable`'s validation and its INSERT.
+#[test]
+fn create_is_refused_when_the_supplier_changed_before_the_write() {
+    let conn = fresh();
+    seed_supplier(&conn, "sup-1");
+    conn.execute_batch(
+        "CREATE TRIGGER yank_supplier_on_payable_insert BEFORE INSERT ON payables
+         BEGIN DELETE FROM suppliers WHERE id = NEW.supplier_id; END;",
+    )
+    .unwrap();
+    let s = store(&conn);
+    let err = s
+        .create_payable(&np("sup-1", 100_000, None))
+        .expect_err("a supplier invalidated before the write must refuse the payable");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected the FK violation to surface, got {err:?}"
+    );
+    // The failed create left nothing: no payable, no outstanding balance.
+    assert!(s.list_payables("default", None).unwrap().is_empty());
+    assert_eq!(s.outstanding_payable_total("default").unwrap(), 0);
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM payables", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "a refused create must leave no payable row");
+}
+
+/// The happy path still commits through the same transaction: the row is
+/// readable after the wrapper returns (i.e. the commit happened).
+#[test]
+fn create_commits_through_the_transaction_wrapper() {
+    let conn = fresh();
+    seed_supplier(&conn, "sup-1");
+    let s = store(&conn);
+    let p = s.create_payable(&np("sup-1", 1000, None)).unwrap();
+    assert_eq!(
+        s.get_payable("default", &p.id).unwrap().unwrap().id,
+        p.id,
+        "a successful create is visible after the transaction commits"
+    );
+}
+
+/// The body of the create runs INSIDE a transaction rather than in autocommit,
+/// so it can be composed with a caller's own unit of work.
+///
+/// `create_payable_in_tx` joins the caller's transaction instead of opening a
+/// nested one: aborting that outer transaction discards the payable the body
+/// already inserted. This is the same body `create_payable` wraps, and it is
+/// the shape that keeps a future DB-backed check (a supplier lookup, a PO
+/// amount bound) in the same unit as the INSERT — a body that wrote in
+/// autocommit would leave the row behind after this rollback.
+#[test]
+fn create_payable_in_tx_joins_the_callers_transaction() {
+    let conn = fresh();
+    seed_supplier(&conn, "sup-1");
+    {
+        let tx = conn.unchecked_transaction().unwrap();
+        Store::new(&tx)
+            .create_payable_in_tx(&np("sup-1", 500, None))
+            .expect("the body must run on the caller's transaction, not open its own");
+        tx.rollback().unwrap();
+    }
+    let s = store(&conn);
+    assert!(s.list_payables("default", None).unwrap().is_empty());
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM payables", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        rows, 0,
+        "aborting the caller's transaction must discard the payable"
+    );
+}
