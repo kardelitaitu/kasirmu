@@ -558,3 +558,70 @@ checking `totalLines` against the number of lines actually returned. The file wa
 - **Website auth islands** (`AuthForm.tsx`, `SignupForm.tsx`): the round-16 investigation found
   and fixed a real runtime-config defect in `AccountView`. The same
   runtime-URL-arrives-after-mount class should be checked in `PairView.tsx` and `SignupForm.tsx`.
+
+---
+
+## Round 18 — the `CreatePinScreen` E2E blocker is RESOLVED (was: needs a dev-mock change)
+
+Rounds 16-17 recorded this as blocked: `CreatePinScreen` renders only when the shell reads
+`has_users: false`, and the dev-mock answered a hardcoded `true`, so the screen had **no browser
+coverage at all**. The proposed remedy in round 10 was rejected as "needs a product decision"
+because it appeared to require changing that answer.
+
+**It did not.** The provisioning flow's own blocker was solved one round earlier with a
+per-navigation query flag (`?unprovisioned=1`, round 15). `has_users` needed exactly the same
+seam, and the pattern was already in the tree to copy — `unprovisionedRequested()` in
+`dev-mock/handlers/system.ts`.
+
+### The change
+
+`?nousers=1` on the tablet entry (`/index.mobile.html`) flips the answer. Read at **call time**,
+not module load, so a test can navigate then assert; guarded with try/catch because the handler
+also runs under jsdom where `search` may be empty. The comment records that `null` — an
+UNANSWERED read — is deliberately *not* reachable this way: unknown is not "no users", and the
+shell must keep treating it as such.
+
+**The default is unchanged, and that is the load-bearing half.** A dev preview that silently
+reported no accounts would drop every developer into first-run bootstrap. Four unit tests pin it:
+true by default, true under an unrelated query, false only under the flag, and a call-time read.
+
+### `ui/e2e/provisioning.spec.ts` — 9 tests, 18 total across both projects
+
+New:
+- the owner-bootstrap screen opens when no accounts exist (the store really has none, so a login
+  could never succeed — the shell must offer bootstrap, not a dead form);
+- every bootstrap field has an accessible name, addressed by `<label>` rather than placeholder;
+- an incomplete bootstrap will not submit;
+- a mismatched confirm PIN is refused and reported through `aria-invalid` on the field itself.
+
+Plus the 5 provisioning tests from round 15, unchanged.
+
+### Verification
+
+**18/18 E2E pass on desktop and tablet** · `dev-mock-auth-contract.test.ts` 30/30 · full UI suite
+**606 files / 10,324 tests pass** · `tsc` clean · lint **0 errors** (58 pre-existing warnings).
+
+**Negative control:** forcing `has_users` to an unconditional `false` makes **3** of the new tests
+fail — the default is genuinely asserted, not merely described.
+
+**Commit:** `73c3d17b9`.
+
+### Round 18 also closed the round-16 loose end
+
+Round 16 fixed a runtime-config defect in `AccountView` and flagged `PairView.tsx` /
+`SignupForm.tsx` as possibly carrying the same class. **Checked, and they do not:**
+- `PairView` reads `API` during render but its mount effect never touches it — it only resolves a
+  session token — so there is no stale capture.
+- `SignupForm` uses `API` exclusively inside event handlers (`register`, `verify`, resend), which
+  read the current render's value at call time. It has no mount-effect fetch.
+
+So `AccountView` was the only instance. The stated suspicion was wrong, and the negative result is
+recorded here so it is not re-investigated.
+
+### Still open
+
+- **No progress/step indicator** in the provisioning flow — a deliberate design question, not an
+  omission (a step rail over a single non-linear card is decoration).
+- **No end-to-end run on a real device.** Every fix across these rounds is asserted at the DOM or
+  browser level. The visual result — error borders, the bootstrap card on real Android — is
+  unverified on physical hardware.
