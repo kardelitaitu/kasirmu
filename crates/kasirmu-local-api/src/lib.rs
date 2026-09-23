@@ -168,6 +168,101 @@ pub fn open_api_store_connection(
     Ok((Arc::new(Mutex::new(conn)), path))
 }
 
+/// The validated claims of a request's bearer token, or `None` when the
+/// request carries no usable token.
+///
+/// Takes the `HeaderMap` rather than the whole `Request` on purpose: a
+/// `Request` owns an `axum::body::Body`, which is not `Sync`, so borrowing one
+/// across the `await` below would make this future `!Send` and the middleware
+/// unusable as a `Router` layer. `HeaderMap` is `Sync`, so borrowing it is
+/// free.
+///
+/// A validation failure is deliberately NOT an error here. The router's own
+/// auth middleware owns the 401 taxonomy (`missing_token` / `invalid_token` /
+/// `token_expired`) and must keep owning it; this helper exists only so the
+/// guard below can ask what claims a token the REAL auth would accept carries
+/// - it never turns a rejection into a different rejection, only adds one of
+/// its own.
+async fn bearer_claims(
+    headers: &axum::http::HeaderMap,
+    secret: &str,
+) -> Option<kasirmu_api::auth::ApiTokenClaims> {
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())?
+        .strip_prefix("Bearer ")?;
+    kasirmu_api::auth::validate_token_with_secret(token, Some(secret))
+        .await
+        .ok()
+}
+
+/// Refuse a WRITE whose token carries a tenant claim this surface's own boot
+/// check would reject (C34).
+///
+/// THE HAZARD. This surface serves exactly ONE store - the app's own
+/// `store-{id}.sqlite` - and that store is the `default` tenant by
+/// construction. `Store::check_tenant_integrity` refuses to start the app when
+/// any `products` or `users` row carries another tenant, and it runs on every
+/// launch. The shared `kasirmu-api` write routes stamp the request's tenant
+/// claim onto the row they just wrote (`products.rs`, `users.rs`), so a single
+/// request carrying a non-default claim can leave a row that makes the next
+/// launch fail - a remote way to brick the install.
+///
+/// WHY THE CLAIM IS REACHABLE AT ALL. `mint_token` (the UI path) passes no
+/// tenant, so a UI-minted token is safe. But the embedded router serves
+/// `POST /api/v1/tokens` publicly, gated by the per-install secret - which
+/// doubles as the operator admin key - and that mint takes `tenant_id`
+/// straight from the request body. Nothing between the body and the stamp
+/// knows this surface serves a single tenant. This layer is that knowledge.
+///
+/// WHY WRITES ONLY. A read carrying a foreign claim selects nothing here and
+/// cannot affect the next boot, so GET/HEAD/OPTIONS keep their exact
+/// behaviour. Only a write can plant the row the boot check rejects.
+///
+/// WHY `"default"` AND NOT JUST "not empty". The routes resolve the claim with
+/// `claims.tenant_id.as_deref().unwrap_or("default")`, which maps `None` to the
+/// accepted value but passes `Some("")` straight through - an empty claim
+/// would stamp `tenant_id = ''`, which the boot check rejects exactly as a
+/// named foreign tenant. So the ONLY two admitted values are an absent claim
+/// and the literal `"default"`.
+///
+/// The guard is deliberately at the boundary rather than at each stamp: one
+/// rule here covers `products`, `users`, `tax_rates` and any stamp site added
+/// later, and it cannot drift from the routes it protects. It does not weaken
+/// `check_tenant_integrity` - that invariant still refuses a genuinely
+/// foreign-tenant store, which is what makes this a boundary guard rather than
+/// a second implementation of the check.
+async fn reject_foreign_tenant_writes(
+    secret: &str,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let is_write = !matches!(req.method().as_str(), "GET" | "HEAD" | "OPTIONS");
+    if is_write
+        && let Some(claims) = bearer_claims(req.headers(), secret).await
+        && let Some(tenant) = claims.tenant_id.as_deref()
+        && tenant != "default"
+    {
+        tracing::warn!(
+            tenant = %tenant,
+            method = %req.method(),
+            path = %req.uri().path(),
+            "local API: refused a write carrying a non-default tenant claim - such a row would make the next app launch fail its tenant integrity check"
+        );
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({
+                "error": "foreign_tenant_write",
+                "message": "this local API serves a single store; a token scoped to another tenant cannot write here",
+            })),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
 /// Read `local_api.enabled` from the settings table.
 pub fn is_enabled(conn: &Connection) -> bool {
     kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
@@ -293,7 +388,9 @@ pub async fn start_with_audit(
         // The per-install secret doubles as the operator admin key: token
         // minting over HTTP and master-data writes require X-Admin-Key.
         admin_key: Some(secret.clone()),
-        api_secret: secret,
+        // Cloned so the C34 boundary layer below can validate with the very
+        // same secret the router's auth middleware uses.
+        api_secret: secret.clone(),
         db_path: db_path.display().to_string(),
         port: bound_port,
         // Device credentials are a cloud-fleet provisioning concept; a
@@ -319,7 +416,31 @@ pub async fn start_with_audit(
         api_state,
         Some(kasirmu_api::spec::local_spec(bound_port)),
         audit,
-    );
+    )
+    // C34: the embedded surface must not let a request write a tenant value
+    // its OWN boot check will reject. Applied here (outside the router) so it
+    // runs BEFORE the router's auth layer, which means it sees the request
+    // even when the token is one the auth layer would accept - and it never
+    // needs the router to expose its claims. See
+    // [`reject_foreign_tenant_writes`] for why the claim is reachable and why
+    // only writes are gated.
+    .layer(axum::middleware::from_fn({
+        let guard_secret = Arc::new(secret);
+        move |req: axum::extract::Request, next: axum::middleware::Next| {
+            let guard_secret = guard_secret.clone();
+            async move { reject_foreign_tenant_writes(&guard_secret, req, next).await }
+        }
+    }))
+    // The guard is the OUTERMOST layer, so its refusal short-circuits before
+    // the router's own security-headers layer runs and would otherwise be the
+    // one response on this surface without them (the MED-4 finding: anything
+    // outside the router's layer scope escapes it). Re-applying the SAME
+    // public middleware here - rather than copying its header list - keeps one
+    // definition of what those headers are; the insert is idempotent for every
+    // response that already passed through the inner copy.
+    .layer(axum::middleware::from_fn(
+        kasirmu_api::security_headers_middleware,
+    ));
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = tokio::spawn(async move {
