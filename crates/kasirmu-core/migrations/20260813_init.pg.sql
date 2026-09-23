@@ -315,6 +315,7 @@ BEGIN
             ('offline_queue', 'synced_at', 'TEXT', NULL::text, false),
             ('offline_queue', 'tenant_id', 'TEXT', '''default''', true),
             ('offline_queue', 'priority', 'BIGINT', '1', true),
+            ('offline_queue', 'origin_terminal_id', 'TEXT', NULL::text, false),
             ('processed_webhooks', 'event_id', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'provider', 'TEXT', NULL::text, true),
             ('processed_webhooks', 'received_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD HH24:MI:SS'')', true),
@@ -385,6 +386,7 @@ BEGIN
             ('sync_applied_items', 'item_id', 'TEXT', NULL::text, true),
             ('sync_applied_items', 'action', 'TEXT', NULL::text, true),
             ('sync_applied_items', 'applied_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('sync_applied_items', 'effect_key', 'TEXT', NULL::text, false),
             ('sync_pull_state', 'id', 'BIGINT', NULL::text, true),
             ('sync_pull_state', 'since', 'TEXT', NULL::text, false),
             ('sync_pull_state', 'cursor', 'TEXT', NULL::text, false),
@@ -1463,7 +1465,7 @@ CREATE TABLE IF NOT EXISTS offline_queue (
     last_error      TEXT,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     synced_at       TEXT
-, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1);
+, tenant_id TEXT NOT NULL DEFAULT 'default', priority BIGINT NOT NULL DEFAULT 1, origin_terminal_id TEXT);
 
 CREATE TABLE IF NOT EXISTS processed_webhooks (
     event_id TEXT PRIMARY KEY,
@@ -1578,7 +1580,11 @@ CREATE TABLE IF NOT EXISTS sync_applied_items (
     item_id    TEXT PRIMARY KEY,                     -- remote offline_queue item id
     action     TEXT NOT NULL,                        -- action applied (for diagnostics)
     applied_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
+, effect_key TEXT);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_applied_items_effect_key
+    ON sync_applied_items(effect_key)
+    WHERE effect_key IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sync_pull_state (
     id         BIGINT PRIMARY KEY CHECK (id = 1),   -- single-row guard

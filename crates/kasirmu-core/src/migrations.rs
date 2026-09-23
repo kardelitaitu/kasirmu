@@ -377,6 +377,19 @@ pub const ALL: &[Migration] = &[
         id: "20261010_role_trash.sql",
         sql: include_str!("../migrations/20261010_role_trash.sql"),
     },
+    // C3 slice S1 (schema only, no behaviour yet): the origin stamp a terminal
+    // needs to recognise its OWN pushed mutation, and the per-effect receipt
+    // that replaces the delivery-only `sync_applied_items` ledger. Two nullable
+    // columns and one PARTIAL unique index — no backfill, because a guessed
+    // origin would suppress a legitimate deduction. The unguarded `ADD COLUMN`
+    // form stands on the drift path's `pragma_table_info` fallback (20261009
+    // precedent); the index is guarded outright. Appended after the registry
+    // tail so the id 20261007 does not reorder anything — it touches no column
+    // any earlier migration reads.
+    Migration {
+        id: "20261007_sync_origin_and_effect_key.sql",
+        sql: include_str!("../migrations/20261007_sync_origin_and_effect_key.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
