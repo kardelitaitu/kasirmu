@@ -653,3 +653,48 @@ describe('dev-mock lockout + shift-history persistence (restart parity)', () => 
     expect(shifts[0]!['id']).toBe('shift-seed-1');
   });
 });
+
+// ── The first-run owner-bootstrap seam (has_users) ─────────────────────
+//
+// `CreatePinScreen` is reached only when the shell reads `has_users: false`,
+// and the mock answered a hardcoded `true` — so the screen had no browser
+// coverage at all. `?nousers=1` is the opt-in that opens it. The DEFAULT is the
+// load-bearing half of this contract: a dev preview that silently reported no
+// accounts would drop every developer into first-run bootstrap.
+describe('dev-mock has_users seam', () => {
+  function setSearch(search: string): void {
+    window.history.replaceState({}, '', search === '' ? '/index.html' : `/index.html${search}`);
+  }
+
+  afterEach(() => setSearch(''));
+
+  it('answers true by default, so a normal dev preview keeps its seeded owner', async () => {
+    setSearch('');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(true);
+  });
+
+  it('answers true for any other query string', async () => {
+    setSearch('?unprovisioned=1');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(true);
+  });
+
+  it('answers false only under ?nousers=1, opening owner bootstrap', async () => {
+    setSearch('?nousers=1');
+    const res = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(res.has_users).toBe(false);
+  });
+
+  it('reads the flag at CALL time, not at module load', async () => {
+    // A test must be able to navigate first and invoke after — capturing the
+    // flag at import time would freeze the answer of whichever page loaded first.
+    setSearch('');
+    const first = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(first.has_users).toBe(true);
+
+    setSearch('?nousers=1');
+    const second = (await invoke('has_users', {})) as unknown as { has_users: boolean };
+    expect(second.has_users).toBe(false);
+  });
+});

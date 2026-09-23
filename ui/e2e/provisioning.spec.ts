@@ -85,3 +85,61 @@ test.describe('First-run provisioning', () => {
     await expect(page.locator('#provision-pin-error')).toHaveText(/at least 4 digits/i);
   });
 });
+
+// ── The first-run owner bootstrap (has_users === false) ────────────────
+//
+// `CreatePinScreen` is the OTHER first-run gate: it opens when the shell reads
+// `has_users: false`, i.e. a store with no owner account at all. It was
+// unreachable in a browser for the same reason the provisioning flow was — the
+// dev-mock answered a hardcoded `true` — so it carried no E2E coverage until the
+// `?nousers=1` seam. The default is deliberately unchanged: a normal dev preview
+// still reports its seeded owner.
+const NO_USERS = '/index.mobile.html?nousers=1';
+
+test.describe('First-run owner bootstrap', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(NO_USERS);
+  });
+
+  test('opens the owner-bootstrap screen when no accounts exist', async ({ page }) => {
+    // The store really has no users, so a login could never succeed — the shell
+    // must offer bootstrap rather than a dead login form.
+    await expect(page.getByRole('heading', { name: /Create Owner PIN/i })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator('#displayName')).toBeVisible();
+    await expect(page.locator('#username')).toBeVisible();
+    await expect(page.locator('#pin')).toBeVisible();
+    await expect(page.locator('#confirmPin')).toBeVisible();
+  });
+
+  test('every bootstrap field has an accessible name', async ({ page }) => {
+    // The fields carry a real <label>, so this is addressable by name — the same
+    // contract the provisioning flow's tablet fields had to be given this round.
+    await expect(page.getByLabel(/Display Name/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel(/^Username$/i)).toBeVisible();
+    await expect(page.getByLabel(/^PIN$/i)).toBeVisible();
+    await expect(page.getByLabel(/Confirm PIN/i)).toBeVisible();
+  });
+
+  test('will not submit an incomplete bootstrap', async ({ page }) => {
+    const submit = page.getByRole('button', { name: /Create/i });
+    await expect(submit).toBeVisible({ timeout: 15_000 });
+    await expect(submit).toBeDisabled();
+  });
+
+  test('names the offending field instead of silently refusing to submit', async ({ page }) => {
+    // A PIN that cannot possibly match must be named, not merely blocked.
+    await page.getByLabel(/Display Name/i).fill('Budi Santoso');
+    await page.getByLabel(/^Username$/i).fill('budi');
+    await page.getByLabel(/^PIN$/i).fill('1234');
+    await page.getByLabel(/Confirm PIN/i).fill('9999');
+
+    const submit = page.getByRole('button', { name: /Create/i });
+    await submit.click();
+
+    // The submit is refused and the mismatch is reported through aria-invalid on
+    // the field itself — the association a screen reader follows.
+    await expect(page.getByLabel(/Confirm PIN/i)).toHaveAttribute('aria-invalid', 'true');
+  });
+});

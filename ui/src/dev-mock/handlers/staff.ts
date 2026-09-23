@@ -22,6 +22,28 @@ function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>
   return ((args as Record<string, unknown>)?.['args'] ?? args ?? {}) as T;
 }
 
+/**
+ * True when the page was opened with `?nousers=1`.
+ *
+ * The owner-bootstrap path (`has_users === false`) opens `CreatePinScreen` on
+ * both shells, and this mock answered a hardcoded `true` — so the screen could
+ * not be reached in a browser at all and had no E2E coverage. Same seam and the
+ * same reasoning as `unprovisionedRequested()` in `handlers/system.ts`: an
+ * explicit per-navigation opt-in that changes no default, read at CALL time so a
+ * test can navigate first and assert after, and guarded because the handler also
+ * runs under jsdom where `search` may be empty.
+ *
+ * `null` (an UNANSWERED read) is deliberately not reachable this way: unknown is
+ * not "no users", and the shell must keep treating it as such.
+ */
+function noUsersRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('nousers') === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** Display name for a preset role id (the real seeded role names). */
 function mockRoleName(role: string): string {
   switch (role) {
@@ -312,8 +334,9 @@ export const staffHandlers: Record<string, MockHandler> = {
   // activation state (enumeration oracle closed).
   'staff_check_username': (_args) => ({ proceed: true }),
 
-  // Pre-auth check — the dev-mock always has seeded staff accounts.
-  'has_users': () => ({ has_users: true }),
+  // Pre-auth check — the dev-mock always has seeded staff accounts, so this
+  // answers true unless the page opted into first-run bootstrap with `?nousers=1`.
+  'has_users': () => ({ has_users: !noUsersRequested() }),
 
   'staff_login': (args) => {
     const { username, pin } = args as { username: string; pin: string };
