@@ -3648,10 +3648,14 @@ ON CONFLICT DO NOTHING;
 --   image_refs — no PG write path audited; desktop-local image references — cover when its cloud sync path lands
 --   legal_entities — §G slice pending the cloud-sync decision; local CRUD paths exist but no PG write path is audited yet
 --   local_payment_methods — regional slice 6; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
+--   media_assets — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a fail-fast stub (create_media_asset returns PLANNED) and the image GC loop only DELETEs. RLS is an isolation guarantee only where the write path stamps tenant_id, so there is nothing for a policy to gate yet — move back to RLS_TABLES when the media pipeline writes it
+--   media_thumbnails — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260824_media_edc.sql; db/media.rs is a fail-fast stub and the image GC loop only DELETEs. Nothing to gate until the media pipeline persists thumbnails
 --   memo_revisions — append-only revision history with no PG write path at all (pg.rs never touches it) — nothing for a policy to gate
 --   over_quota_markers — tenant_id added schema-side ahead of multi-tenant writes; no PG write path audited yet -- cover when cloud sync lands
 --   payable_payments — no PG write path yet; desktop-local AP settlement history — cover when payables cloud sync lands
 --   payables — no PG write path yet; desktop-local AP ledger (Hutang) — cover when payables cloud sync lands
+--   payment_gateways — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_gateways.rs is a fail-fast stub (upsert_gateway returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until gateway config CRUD lands
+--   payment_settlements — no writer anywhere in the repo — no INSERT/UPDATE exists outside the CREATE TABLE in 20260825_payment_infra.sql; db/payment_settlements.rs is a fail-fast stub (record_settlement returns PLANNED) and the copier's DEFAULT_TABLES excludes it. Nothing to gate until the reconciliation job writes it
 --   provisioning — ADR #56 first-run record; written only by the desktop/tablet provision_device transaction against the LOCAL store DB, and never synced to PG. It records which server holds this tenant's data, so replicating it into the shared cloud schema would put one install's routing fact in every other tenant's reach for no read that exists. Cover if provisioning ever moves cloud-side
 --   receipt_formats — regional receipt-format axis; desktop-local write paths only (Store CRUD via the scoped commands) — tenant_id stamped schema-side from birth, cover when its PG write path lands; parent legal_entities is itself exempt pending the cloud-sync decision
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
@@ -3666,12 +3670,11 @@ DO $$
 DECLARE
     t text;
 BEGIN
-    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'entity_index_cursors', 'entity_index_tombstones', 'locations', 'media_assets',
-                            'media_thumbnails', 'memo_locations', 'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue',
-                            'payment_gateways', 'payment_settlements', 'product_activity', 'product_bundles', 'product_taxes', 'product_variants',
-                            'products', 'receipt_number_counters', 'refunds', 'sale_idempotency', 'sale_lines', 'sales',
-                            'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors', 'sync_terminals', 'tax_rates',
-                            'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+    FOREACH t IN ARRAY ARRAY['bundle_items', 'edc_terminals', 'entity_index_cursors', 'entity_index_tombstones', 'locations', 'memo_locations',
+                            'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'product_activity', 'product_bundles',
+                            'product_taxes', 'product_variants', 'products', 'receipt_number_counters', 'refunds', 'sale_idempotency',
+                            'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors',
+                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (
