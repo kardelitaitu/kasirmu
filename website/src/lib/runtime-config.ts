@@ -31,20 +31,22 @@ export function licenseApiUrl(): string | undefined {
   if (typeof window !== 'undefined' && window.__OZ_CONFIG__?.licenseApiUrl) {
     return window.__OZ_CONFIG__.licenseApiUrl;
   }
-  // An unset PUBLIC_* var reaches the client as the literal string
-  // "__PUBLIC_LICENSE_API_URL__", not as undefined: Astro substitutes the
-  // placeholder at build time and, with no value to substitute, the
-  // placeholder itself ships. Returning it handed callers a truthy URL they
-  // then fetched against — AccountView's `!api` guard never fired and the
-  // dashboard showed a generic fetch error instead of the not-configured
-  // notice. Treat it as unset.
+  // MEASURED 2026-09-23 against `astro build` on this toolchain: a var that is
+  // genuinely absent is substituted as `void 0`, and one set to the empty
+  // string as `""` — both falsy, so the not-configured path below works with
+  // or without the guard. A truthy `__PUBLIC_*__` value reaches the client
+  // only if a deployment bakes the literal placeholder into the var (a copied
+  // template value); returning it would hand callers a base URL that is not a
+  // backend, `!api` would never fire, and the page would fetch the placeholder
+  // itself. The normalization is defensive for that input, not a repair of
+  // Astro's own substitution.
   return placeholderAsUnset(import.meta.env.PUBLIC_LICENSE_API_URL as string | undefined);
 }
 
 /**
- * Astro's unresolved PUBLIC_* placeholder (e.g. `__PUBLIC_LICENSE_API_URL__`)
- * means the variable was not set at build time. Undefined lets callers fall
- * back to their not-configured state.
+ * A literal `__PUBLIC_*__` value (the shape an unresolved template leaves
+ * behind) is not a backend URL. Undefined lets callers fall back to their
+ * not-configured state instead of fetching the placeholder as a base.
  */
 function placeholderAsUnset(value: string | undefined): string | undefined {
   return value && /^__PUBLIC_.*__$/.test(value) ? undefined : value;

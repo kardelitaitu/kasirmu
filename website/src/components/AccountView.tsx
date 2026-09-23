@@ -199,9 +199,8 @@ export default function AccountView({ locale, labels }: Props) {
    * three callers do not all run under the same render: the mount effect and
    * `pollAfterCheckout` run in the render that produced them, while the revoke
    * and unlink handlers run later. Passing the URL makes each caller use the
-   * value from the render it is actually running in, so the effect's
-   * `[API, …]` dependency is what re-issues the fetches once the Worker's
-   * runtime config lands.
+   * value of the render it is actually running in, rather than one captured at
+   * mount.
    */
   const fetchMe = useCallback(async (api: string | undefined): Promise<MeResponse | null> => {
     const token = await getSessionToken();
@@ -281,12 +280,16 @@ export default function AccountView({ locale, labels }: Props) {
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read the URL from the render scope (`API`, a dependency below), NOT by
-    // calling licenseApiUrl() here. The Worker's /__oz/runtime-config.js can
-    // land after this island's first render, so the effect has to re-run once
-    // the URL appears — and the render-scoped value is the only one whose
-    // identity change React can see. An in-effect call cannot: React compares
-    // dependencies, it does not re-run effects on external state.
+    // Read the URL once per run instead of closing over the render's value:
+    // `API` is a dependency below, so a render that brings a NEW url re-runs
+    // this effect against it, and the revoke/unlink handlers (which run long
+    // after mount) use whatever the latest render knew.
+    //
+    // Scope, measured in a browser 2026-09-23: `/__oz/runtime-config.js` is a
+    // deferred script in the head, so it has landed before this island
+    // hydrates and the first run already sees it. Nothing re-renders when it
+    // arrives, so a config that lands LATER than hydration does not re-run
+    // this effect — the not-configured notice stands until the page reloads.
     const api = licenseApiUrl();
     if (!api) {
       setState('error');

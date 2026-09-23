@@ -194,15 +194,14 @@ describe('AccountView — cookie-only session (R1)', () => {
 
 // ── Runtime config (Worker-supplied) ──────────────────────────────────
 
-describe('AccountView — runtime config arrives after the first render', () => {
-  // An unset PUBLIC_* var does not reach the client as undefined: Astro ships
-  // the literal placeholder '__PUBLIC_LICENSE_API_URL__', a TRUTHY string.
-  // Because licenseApiUrl() returned it verbatim, `if (!api)` never fired and
-  // the island fetched the placeholder string itself as a base URL — the
-  // not-configured notice appeared only AFTER that request failed, and
-  // getSessionToken() resolved no token in the meantime, so a signed-in user
-  // briefly saw "not signed in". Both halves below failed before the fix.
-  it('shows not-configured and fetches nothing while the URL is unset', async () => {
+describe('AccountView — the URL the island fetches against', () => {
+  // A `__PUBLIC_*__` value is what an unresolved template leaves behind: a
+  // TRUTHY string that is not a backend. Returned verbatim it became the base
+  // URL — `if (!api)` never fired and the island fetched the placeholder
+  // itself, so the notice appeared only after that request failed. Astro's own
+  // substitution is not this (measured against `astro build`: absent -> `void
+  // 0`, empty -> `""`), so this pins the guard, not the toolchain.
+  it('shows not-configured and fetches nothing for a placeholder URL', async () => {
     const env = import.meta.env as Record<string, unknown>;
     env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
     window.__OZ_CONFIG__ = undefined;
@@ -219,10 +218,10 @@ describe('AccountView — runtime config arrives after the first render', () => 
     }
   });
 
-  it('re-runs the auth fetches against the runtime URL once it lands', async () => {
+  it('fetches against the runtime URL when it is present at hydration', async () => {
     const env = import.meta.env as Record<string, unknown>;
-    // Exactly what Astro substitutes when PUBLIC_LICENSE_API_URL is unset:
-    // the placeholder itself, which is a truthy string.
+    // The build-time value is the placeholder (see the case above); the runtime
+    // config supplies the real base URL.
     env.PUBLIC_LICENSE_API_URL = '__PUBLIC_LICENSE_API_URL__';
     window.__OZ_CONFIG__ = undefined;
     sessionStorage.setItem('oz_session', 'tok-runtime-config');
@@ -245,8 +244,9 @@ describe('AccountView — runtime config arrives after the first render', () => 
     const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
     const labels = labelMap('en', ACCOUNT_LABELS);
     // The Worker's /__oz/runtime-config.js has landed before the island mounts
-    // — the normal case, since Astro's client directive and the deferred script
-    // both run after the document parses.
+    // — the normal case, since the deferred script and the module that hydrates
+    // the island both run after the document parses, script order first. A
+    // config that lands AFTER hydration is not covered by either case here.
     act(() => {
       window.__OZ_CONFIG__ = { licenseApiUrl: 'https://runtime.example' };
     });
