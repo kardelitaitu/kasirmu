@@ -12013,6 +12013,17 @@ My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that b
 
 **Commits:** `324c1a9cd` (one staff identity list), `f6dcb000e` (role-trash E2E), `30152281b` (mock login refuses an inactive account), `a950240ea` (Roles panel + stat tile refresh, four state-consistency fixes), `d45a78afe` (the dismissed fixture keeps every role loggable), `64a1740e8` (memo clearance for the tablet row), `2211f8da6` (quota reactivation door + restore deadline). Never push without a direct user order.
 
+**Workspace-gate blockers observed while verifying (all PEER-owned; recorded so the next reader attributes them without re-deriving):**
+- `cargo test --workspace --all-features` cannot COMPILE: `platform/sync/src/queue.rs` (dirty, in flight) added `origin_terminal_id` to `OfflineQueueItem` and two committed construction sites lag — `platform/sync/src/conflict.rs:162` and `crates/kasirmu-core/src/sync_client_tests.rs:354` (E0063). Nothing to do with staff.
+- `cargo clippy --all-targets --all-features -- -D warnings` findings, every one outside staff: `crates/kasirmu-core/src/db/mod.rs:406` (collapsible `if`, in `rotate_generations`, the snapshot backup path — committed by another lane) plus the same E0063; and `platform/core/src/settings/typed.rs` carries four `enclosing Ok and ? operator are unneeded` errors in the COMMITTED tree (clippy runs in no live workflow, so nothing surfaced them). Checked by listing every `-->` location the clippy run printed: none names a file this session touched.
+- `cargo fmt --all -- --check` diffs, none in staff: `apps/cloud-server/src/sync_store/pg.rs`, `crates/kasirmu-core/src/db/products_crud_tests.rs`, `crates/kasirmu-core/src/db/purchase_orders.rs`, `crates/kasirmu-plugin/src/manifest_tests.rs`, `platform/sync/src/queue_tests.rs`.
+- Staff scope IS green on the same tree: `npm run test` 606 files / 10320 passed; core `db::staff` 68, `db::roles` 41, bridge `staff` 130, mobile `staff` 54; `staff-trash.spec.ts` 6 passed on both projects.
+
+**Two process corrections, both worth more than the findings they produced:**
+- `rustfmt --edition 2021 --check <files>` printed DOZENS of diffs for the staff files and was WRONG. This workspace is edition 2024 and the staff code uses `let` chains, which rustfmt cannot parse on 2021 — a parse failure makes it emit a full-file rewrite. `cargo fmt`, which reads the edition, reports those files clean. Trusting the hand-rolled invocation would have sent me to 'fix' formatting that was already correct.
+- Piping a check through `Select-Object -First N` had silently TRUNCATED the file list in two earlier attributions of this same round, so 'the only diff is X' was never established. Both mistakes pointed the same way — at code that was fine — which is exactly the failure mode a verification step exists to prevent.
+
+
 
 
 
