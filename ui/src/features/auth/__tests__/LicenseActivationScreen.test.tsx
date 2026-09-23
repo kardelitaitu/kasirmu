@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, createEvent } from '@testing-librar
 import LicenseActivationScreen from '../LicenseActivationScreen';
 import { activateLicense, getHardwareFingerprint, getMachineId } from '@/api/license';
 import { getVersion, getLocalIp, type VersionInfo } from '@/api/system';
+import { isTabletShell } from '@/utils/shellKind';
 
 // FAST_WAIT: 5ms polling for async assertions (10x faster than default 50ms).
 const FAST_WAIT = { interval: 5, timeout: 500 } as const;
@@ -31,6 +32,14 @@ vi.mock('@/api/license', () => ({
 vi.mock('@/api/system', () => ({
   getVersion: vi.fn(),
   getLocalIp: vi.fn()
+}));
+
+// C47: which shell is rendering. Mocked rather than driven through setShellKind because
+// that module holds one non-reactive value per bundle (utils/shellKind.ts:14) whose default
+// is 'desktop', so a default of `false` here reproduces every existing case in this file
+// and lets the tablet cases below flip it per-test.
+vi.mock('@/utils/shellKind', () => ({
+  isTabletShell: vi.fn().mockReturnValue(false),
 }));
 
 
@@ -109,6 +118,8 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     vi.mocked(getHardwareFingerprint).mockResolvedValue('hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
     vi.mocked(activateLicense).mockResolvedValue(true);
     mockClipboardReadText.mockResolvedValue('clipboard-text');
+    // Desktop by default, so every case above keeps the shell it was written against.
+    vi.mocked(isTabletShell).mockReturnValue(false);
   });
   // ── A rejected submit marks the field it is about ───────────────────
   //
@@ -803,6 +814,73 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
       expect(mockOnActivated).toHaveBeenCalled();
 
       vi.useRealTimers();
+    });
+  });
+
+  // ── C47: the tablet must not call commands it does not register ───────
+  //
+  // activate_license / get_machine_id / get_hardware_fingerprint are DESKTOP-registered
+  // only (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269). The tablet's commands::license
+  // surface is get_license_status / check_license_status alone — its activation path is
+  // device pairing. Before this fix the key form was reachable on the tablet and a submit
+  // hit three unknown commands, so the catch reported a generic activation failure the
+  // operator could do nothing about: the same swallowed-rejection shape as C40, on the
+  // licensing screen. These cases fail if either half of the fix regresses.
+  describe('C47 — the tablet shell never calls the desktop-only activation commands', () => {
+    it('61. does not offer the License Key tab at all', () => {
+      vi.mocked(isTabletShell).mockReturnValue(true);
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+
+      // The tab is absent, not merely unselected: a tab an operator can open and fill in
+      // and then watch fail is worse than one that is not there.
+      expect(screen.queryByRole('tab', { name: /License Key/i })).not.toBeInTheDocument();
+      // The pairing tab — the tablet's real activation surface — is still offered.
+      expect(screen.getByRole('tab', { name: /Pair with Phone/i })).toBeInTheDocument();
+    });
+
+    it('62. invokes none of the three desktop-only commands on mount or on the pairing path', async () => {
+      vi.mocked(isTabletShell).mockReturnValue(true);
+      const { startDevicePairing } = await import('@/api/license');
+      vi.mocked(startDevicePairing).mockResolvedValue({
+        code: 'WXYZ7890',
+        poll_token: 'poll-license-123',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=WXYZ7890',
+      });
+
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+
+      // Mount alone must not reach them. The tablet boots straight into pair mode
+      // (initial authMode), so this is also the effect path.
+      await waitFor(() => expect(startDevicePairing).toHaveBeenCalled(), FAST_WAIT);
+      expect(getMachineId).not.toHaveBeenCalled();
+      expect(getHardwareFingerprint).not.toHaveBeenCalled();
+      expect(activateLicense).not.toHaveBeenCalled();
+
+      // And there is no key form to submit: the only route into handleActivate is the
+      // submit button, which the tablet does not render.
+      expect(screen.queryByRole('button', { name: /Activate License/i })).not.toBeInTheDocument();
+      // The generic activation failure must NOT be reported: nothing was attempted, which
+      // is not the same claim as an attempt that failed.
+      expect(mockAddToast).not.toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'An error occurred during activation.' }),
+      );
+    });
+
+    it('63. still activates with the key form on the DESKTOP shell', async () => {
+      vi.mocked(isTabletShell).mockReturnValue(false);
+      render(<LicenseActivationScreen onActivated={mockOnActivated} />);
+
+      // The guard must not have narrowed the desktop: pinned in both directions, because a
+      // fix that disabled activation everywhere would satisfy case 62 alone.
+      expect(screen.getByRole('tab', { name: /License Key/i })).toBeInTheDocument();
+      fillForm();
+      clickSubmit();
+
+      await waitFor(() => expect(activateLicense).toHaveBeenCalledWith(
+        'KEY123', 'test@test.com', 'test-machine-id', '08123456789', undefined, undefined,
+        'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      ), FAST_WAIT);
     });
   });
 });

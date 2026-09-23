@@ -175,31 +175,52 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
 
     setLoading(true);
     try {
-      const machineId = await getMachineId();
-      // Device-level fingerprint (SPEC-2026-TRIAL-LOCK): the server's
-      // one-trial-per-device lock keys on it, falling back to machine_id
-      // when omitted. Always sent — it never gates paid keys.
-      const hardwareFingerprint = await getHardwareFingerprint();
+      // C47: shell-guarded, and the guard is load-bearing rather than decorative.
+      //
+      // The tablet shell registers NONE of the three commands this path needs:
+      // activate_license, get_machine_id and get_hardware_fingerprint are desktop-only
+      // (apps/desktop-tauri/src/lib.rs:1261, :1267, :1269 — the tablet's commands::license
+      // surface is get_license_status / check_license_status alone, and its activation
+      // path is device pairing). Unguarded, a tablet submit is rejected as an unknown
+      // command and the catch below reports a generic activation failure the operator
+      // cannot act on: the C40 shape, on the licensing screen.
+      //
+      // `success` is deliberately three-state. `null` means NOT ATTEMPTED on this shell,
+      // which is not the same claim as `false` (attempted and refused) — the same
+      // distinction BackupSection draws between a failed read and an answered-empty one.
+      // A tablet therefore reports nothing rather than inventing a failure.
+      //
+      // The three calls sit inside this `if` block on purpose: that brace is the guard
+      // scripts/verify-ipc-parity.py's shell-blind leg reads, so an edit that lifts them
+      // back out is caught by the gate rather than by a licensing outage.
+      let success: boolean | null = null;
+      if (!isTabletShell()) {
+        const machineId = await getMachineId();
+        // Device-level fingerprint (SPEC-2026-TRIAL-LOCK): the server's
+        // one-trial-per-device lock keys on it, falling back to machine_id
+        // when omitted. Always sent — it never gates paid keys.
+        const hardwareFingerprint = await getHardwareFingerprint();
 
-      // Pass the segmented-trial vertical only when detected, so generic
-      // activations stay 4-arg (and the server ignores it for paid keys
-      // regardless).
-      const success = trialVertical || bundleId
-        ? await activateLicense(
-            key.trim(),
-            email.trim(),
-            machineId,
-            phone.trim(),
-            trialVertical || undefined,
-            bundleId || undefined,
-            hardwareFingerprint
-          )
-        : await activateLicense(key.trim(), email.trim(), machineId, phone.trim(), undefined, undefined, hardwareFingerprint);
+        // Pass the segmented-trial vertical only when detected, so generic
+        // activations stay 4-arg (and the server ignores it for paid keys
+        // regardless).
+        success = trialVertical || bundleId
+          ? await activateLicense(
+              key.trim(),
+              email.trim(),
+              machineId,
+              phone.trim(),
+              trialVertical || undefined,
+              bundleId || undefined,
+              hardwareFingerprint
+            )
+          : await activateLicense(key.trim(), email.trim(), machineId, phone.trim(), undefined, undefined, hardwareFingerprint);
+      }
 
-      if (success) {
+      if (success === true) {
         addToast({ type: 'success', message: l10n.getString('auth-activation-success') });
         onActivated();
-      } else {
+      } else if (success === false) {
         setErrorMsg(l10n.getString('auth-activation-failed'));
       }
     } catch (err: unknown) {
@@ -285,15 +306,26 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
           </div>
 
           <div className="license-mode-tabs" role="tablist" aria-label={l10n.getString('auth-activate-title')}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authMode === 'key'}
-              className={`license-mode-tab ${authMode === 'key' ? 'active' : ''}`}
-              onClick={() => setAuthMode('key')}
-            >
-              <Localized id="auth-tab-license-key">License Key</Localized>
-            </button>
+            {/* C47: the License Key tab is NOT offered on the tablet. Its form cannot
+                submit there — activate_license / get_machine_id / get_hardware_fingerprint
+                are desktop-only (see the guard in handleActivate), so the tab would be a
+                dead end an operator could fill in and then watch fail. The tablet's own
+                activation surface is the pairing tab beside it, which is the mode the
+                initial state already selects on that shell. Hiding the affordance is the
+                honest half of the fix; the guard below is the enforced half, and the two
+                are kept together because a tab is easy to re-add and the guard is what
+                the parity gate reads. */}
+            {!isTabletShell() && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={authMode === 'key'}
+                className={`license-mode-tab ${authMode === 'key' ? 'active' : ''}`}
+                onClick={() => setAuthMode('key')}
+              >
+                <Localized id="auth-tab-license-key">License Key</Localized>
+              </button>
+            )}
             <button
               type="button"
               role="tab"
