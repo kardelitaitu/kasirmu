@@ -355,6 +355,34 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
   const stepDone = [stepAccountDone, stepStoreDone, stepOwnerDone];
   const currentStep = stepDone.indexOf(false);
 
+  // ── Progressive disclosure ─────────────────────────────────────────
+  //
+  // The rail above TELLS the merchant where they are; these flags let the card show
+  // only that much. Measured on the desktop POS viewport (1366x768, the terminal this
+  // flow actually ships to once a build is packaged — the dev bypass is
+  // `import.meta.env.DEV` only): on first paint only the mode box was FULLY visible.
+  // The store type, the shop name and the submit button were all below the fold, so a
+  // fresh merchant saw a set of choices and no way to tell a form followed them.
+  //
+  // Sections after the current step are collapsed rather than unmounted: unmounting
+  // would drop half-typed values when a merchant moves back to change their answer,
+  // and `canSubmit` reads every field regardless of visibility. Collapsing keeps the
+  // form's state identical while removing the height.
+  //
+  // `currentStep === -1` means every step is done — then everything is open, so the
+  // merchant can review and press the button.
+  //
+  // ONLY the owner step (3) collapses. The store-type choice stays visible even while
+  // step 1 is open, deliberately: hiding it would mean a merchant cannot see what the
+  // form is about to ask them, and the store type is a DECISION rather than detail —
+  // measuring the tradeoff, the merchant should be able to see the whole shape of the
+  // choice even when they cannot yet act on all of it.
+  //
+  // `currentStep === -1` means every step is done — then it opens, so the merchant can
+  // review their answers and press the button. One-way: once open it stays open, so a
+  // correction to an earlier answer never hides the section being corrected.
+  const ownerStepOpen = currentStep === -1 || currentStep >= 2;
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -804,6 +832,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           </div>
         </fieldset>
 
+        {ownerStepOpen && (
+        <>
         <div className="provisioning-field">
           {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
           <label htmlFor="provision-location-name">
@@ -892,6 +922,8 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
             </p>
           )}
         </div>
+        </>
+        )}
 
         {/* Above the button, in the same gap the user is already looking at.
             `role="alert"` because this follows a submit they are waiting on. */}

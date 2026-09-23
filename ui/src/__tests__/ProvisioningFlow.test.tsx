@@ -416,15 +416,84 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // are still at the top of the card choosing a mode, so the banner IS the
     // right place. The two paths must not be collapsed into one.
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
-    fireEvent.click(screen.getByTestId('provision-mode-local'));
-    fireEvent.click(screen.getByTestId('provision-mode-linked'));
-    fillBasicForm();
 
-    // `canSubmit` is false without a link, so submit is disabled and no error is
-    // raised — the guard is defensive. Assert the button state, which is what
-    // the merchant actually meets.
+    // The default (linked) mode, with a store type chosen but no account linked.
+    // `handleSubmit` is what raises the guard, and on a disabled submit the browser
+    // will not fire it — so the guard is reached only when `canSubmit` passes for
+    // some other reason. Its real job is the defensive branch, and what the merchant
+    // meets is the disabled button plus the account box still asking.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.getByRole('heading', { name: /kasir\.mu Account/i })).toBeInTheDocument();
     expect(screen.getByTestId('provision-submit')).toBeDisabled();
+
+    // No submit-scoped error is shown before anything is submitted.
     expect(screen.queryByTestId('provision-submit-error')).not.toBeInTheDocument();
+  });
+
+  it('does not open the owner fields on the linked path until the account is linked', async () => {
+    // The consequence of progressive disclosure for the DEFAULT path: a merchant who
+    // has not yet linked cannot reach the owner fields at all, because step 1 is not
+    // done. Correct, and worth pinning — the alternative is offering fields whose
+    // values the submit will refuse.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    expect(screen.getByTestId('provision-mode-linked').getAttribute('aria-pressed')).toBe('true');
+    // Even choosing a store type does not open them: step 1 is still owed.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
+  });
+
+  // ── Progressive disclosure of the owner step ───────────────────────
+  //
+  // Measured on the flows this ships to: before this, the card was 1460px against the
+  // desktop POS viewport (768px), with the store type, shop name and submit all below
+  // the fold on first paint. The owner fields are now withheld until step 3 is current,
+  // which drops the card to ~905px once a store type is chosen and puts submit on screen.
+  //
+  // Deliberately only the OWNER step. The store-type choice stays visible while step 1 is
+  // open: it is a decision, and hiding it would mean a merchant cannot see what the form
+  // is about to ask. An earlier draft collapsed it too and broke the first-run test that
+  // asserts both store types are offered on load — the test was right.
+
+  it('withholds the owner fields until the earlier steps are answered', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // First paint: the two decisions are offered, the owner fields are not yet.
+    expect(screen.getByTestId('provision-mode-linked')).toBeInTheDocument();
+    expect(screen.getByTestId('store-type-simple-retail')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Confirm PIN/i)).not.toBeInTheDocument();
+
+    // Answering step 1 (offline mode) is not enough — the store type is still owed.
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
+
+    // Choosing a store type completes step 2 and reveals the owner fields.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.getByLabelText(/Shop name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Confirm PIN/i)).toBeInTheDocument();
+  });
+
+  it('keeps the owner fields mounted once revealed, so a correction cannot hide them', async () => {
+    // One-way by design: a merchant who goes back to change their store type must not
+    // lose the owner values they already typed. The fields stay mounted (so React keeps
+    // their state) — the section is conditionally RENDERED, never remounted on a toggle.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Toko Berkah' } });
+
+    // Change the store type — the merchant is correcting an earlier answer.
+    fireEvent.click(screen.getByTestId('store-type-restaurant'));
+    expect(screen.getByLabelText(/Shop name/i)).toHaveValue('Toko Berkah');
+  });
+
+  it('opens the owner fields once every step is complete, so the form can be reviewed', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fillBasicForm();
+    // All three steps done -> everything open, submit reachable.
+    expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
+    expect(screen.getByLabelText(/Shop name/i)).toBeInTheDocument();
   });
 
   it('defaults to the linked mode and requires an account before submitting', async () => {
@@ -433,11 +502,15 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     const linkedModeBtn = screen.getByTestId('provision-mode-linked');
     expect(linkedModeBtn.getAttribute('aria-pressed')).toBe('true');
 
-    // The account box is rendered by default, and submit stays disabled
-    // until the account is actually linked.
+    // The account box is rendered by default, and submit stays disabled until the
+    // account is actually linked. The owner fields are withheld on this path —
+    // step 1 is "is this terminal attached to an account", and the mode choice
+    // alone does not answer it — so the assertion is the submit state, which is
+    // what the merchant meets, rather than a fill that cannot happen yet.
     expect(screen.getByRole('heading', { name: /kasir\.mu Account/i })).toBeInTheDocument();
-
-    fillBasicForm();
+    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    // Choose a store type — still not enough, because the account is owed.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
     expect(screen.getByTestId('provision-submit')).toBeDisabled();
   });
 
@@ -664,11 +737,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Account box is visible
     expect(screen.getByRole('heading', { name: /kasir\.mu Account/i })).toBeInTheDocument();
 
-    fillBasicForm();
-
-    // Submit button must be disabled until account is linked
+    // Submit stays disabled until the account is linked. The owner fields are NOT yet
+    // reachable: step 1 is "is this terminal attached to an account", and on the linked
+    // path the mode choice alone does not answer it (progressive disclosure).
     const submitBtn = screen.getByTestId('provision-submit');
     expect(submitBtn).toBeDisabled();
+    expect(screen.queryByLabelText(/Shop name/i)).not.toBeInTheDocument();
 
     // Simulate Google account link on desktop
     vi.mocked(linkDeviceGoogle).mockResolvedValueOnce({
@@ -683,8 +757,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }));
 
+    // Linking completes step 1, which reveals the owner fields and enables submit.
     await waitFor(() => {
       expect(screen.getByText(/Linked to owner@example\.com\./i)).toBeInTheDocument();
+    }, FAST_WAIT);
+    fillBasicForm();
+    await waitFor(() => {
       expect(submitBtn).not.toBeDisabled();
     }, FAST_WAIT);
 
