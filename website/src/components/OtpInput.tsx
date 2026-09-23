@@ -1,4 +1,12 @@
 import React, { useEffect, useRef } from 'react';
+import { t, type Labels } from '../i18n/labels';
+
+/**
+ * The two strings this widget names itself with, owned here because both the
+ * login and the signup island render it; each spreads this list into its own
+ * `*_LABELS`, so a missing translation is caught by island-label-coverage.
+ */
+export const OTP_LABELS = ['otp.groupLabel', 'otp.digit'];
 
 interface OtpInputProps {
   length?: number;
@@ -9,6 +17,8 @@ interface OtpInputProps {
   autoFocus?: boolean;
   idPrefix?: string;
   error?: boolean;
+  /** Strings, from the island that renders this widget. */
+  labels: Labels;
 }
 
 export default function OtpInput({
@@ -20,6 +30,7 @@ export default function OtpInput({
   autoFocus = true,
   idPrefix = 'otp-digit',
   error = false,
+  labels,
 }: OtpInputProps) {
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -104,7 +115,7 @@ export default function OtpInput({
   return (
     <div
       role="group"
-      aria-label="One-time verification code"
+      aria-label={t(labels, 'otp.groupLabel')}
       className="flex items-center justify-between gap-2"
     >
       {Array.from({ length }, (_, idx) => (
@@ -117,7 +128,9 @@ export default function OtpInput({
           type="text"
           // The group above names the widget; each box still needs its own
           // name, or a screen reader announces six unnamed text fields.
-          aria-label={`Digit ${idx + 1} of ${length}`}
+          aria-label={t(labels, 'otp.digit')
+            .replace('{n}', String(idx + 1))
+            .replace('{total}', String(length))}
           inputMode="numeric"
           pattern="[0-9]*"
           maxLength={length}

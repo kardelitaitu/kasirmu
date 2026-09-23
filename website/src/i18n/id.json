@@ -113,6 +113,9 @@
     "title": "Dokumentasi",
     "onThisPage": "Di halaman ini",
     "updated": "Diperbarui",
+    "copyCode": "Salin",
+    "copiedCode": "✓ Tersalin",
+    "copyCodeLabel": "Salin kode ke papan klip",
     "nextStep": {
       "title": "Siap mulai?",
       "body": "Unduh aplikasinya gratis, atau lihat paketnya dulu.",
@@ -122,6 +125,8 @@
     "feedback": {
       "question": "Apakah halaman ini bermanfaat?",
       "hint": "Bantu kami menyempurnakan dokumentasi kasir.mu",
+      "thanksYes": "Terima kasih atas masukannya!",
+      "thanksNo": "Terima kasih, kami akan terus menyempurnakannya.",
       "yes": "Ya",
       "no": "Belum"
     },
@@ -163,6 +168,7 @@
     "ctaPrimary": "Unduh Gratis",
     "ctaSecondary": "Lihat Harga",
     "carousel": {
+    "label": "Tangkapan layar aplikasi kasir.mu",
       "restaurant": "Restoran",
       "retail": "Ritel",
       "kitchen": "Dapur",
@@ -524,6 +530,10 @@
     "matchStatusLabel": "Kata sandi cocok",
     "show": "Tampilkan kata sandi",
     "hide": "Sembunyikan kata sandi"
+  },
+  "otp": {
+    "groupLabel": "Kode verifikasi sekali pakai",
+    "digit": "Digit {n} dari {total}"
   },
   "signup": {
     "title": "Buat akun Anda",
@@ -1034,6 +1044,11 @@
     "successMessage": "Salin kunci di bawah dan tempel ke aplikasi kasir.mu saat diminta untuk mengaktifkan. Trial Anda mencakup toko, staf, dan semua jenis workspace tanpa batas selama 30 hari.",
     "yourKeyLabel": "Kunci Lisensi Anda",
     "copyButton": "Salin",
+    "copiedButton": "Tersalin!",
+    "invalidCode": "Masukkan kode persetujuan yang valid (minimal 8 karakter).",
+    "invalidEmail": "Masukkan alamat email yang valid.",
+    "processing": "Memproses…",
+    "requestFailed": "Gagal meminta uji coba. Silakan coba lagi.",
     "nextSteps": "Langkah berikutnya: Buka kasir.mu, tempel kunci ini bersama email Anda, dan mulai menggunakan fitur Enterprise segera.",
     "downloadButton": "Unduh kasir.mu"
   },

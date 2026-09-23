@@ -3,9 +3,17 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react';
-import OtpInput from '../OtpInput';
+import OtpInput, { OTP_LABELS } from '../OtpInput';
+import { labelMap } from '../../i18n';
 
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
+ * The widget names itself from the island's labels, so the harness passes the
+ * real dictionaries: the group name and the per-box names are read by a screen
+ * reader, and "Digit 1 of 6" in English on /id/ was the defect these replaced.
+ */
+const LABELS = (locale: 'en' | 'id') => labelMap(locale, OTP_LABELS);
 
 describe('OtpInput', () => {
   it('renders 6 input slots by default', async () => {
@@ -14,7 +22,7 @@ describe('OtpInput', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<OtpInput value="" onChange={() => {}} />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={() => {}} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -31,7 +39,7 @@ describe('OtpInput', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<OtpInput value="1234" onChange={() => {}} />);
+      root.render(<OtpInput labels={LABELS('en')} value="1234" onChange={() => {}} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -55,7 +63,7 @@ describe('OtpInput', () => {
     const onComplete = vi.fn();
 
     await act(async () => {
-      root.render(<OtpInput value="12345" onChange={onChange} onComplete={onComplete} />);
+      root.render(<OtpInput labels={LABELS('en')} value="12345" onChange={onChange} onComplete={onComplete} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -82,7 +90,7 @@ describe('OtpInput', () => {
     // Must use Object.defineProperty + input event (React 19 controlled
     // input pattern) to trigger synthetic onChange.
     await act(async () => {
-      root.render(<OtpInput value="" onChange={onChange} autoFocus={false} />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={onChange} autoFocus={false} />);
     });
 
     const input = container.querySelector('input')!;
@@ -110,7 +118,7 @@ describe('OtpInput', () => {
     const onComplete = vi.fn();
 
     await act(async () => {
-      root.render(<OtpInput value="" onChange={onChange} onComplete={onComplete} autoFocus={false} />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={onChange} onComplete={onComplete} autoFocus={false} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -139,7 +147,7 @@ describe('OtpInput', () => {
     const onComplete = vi.fn();
 
     await act(async () => {
-      root.render(<OtpInput value="" onChange={onChange} onComplete={onComplete} autoFocus={false} />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={onChange} onComplete={onComplete} autoFocus={false} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -166,7 +174,7 @@ describe('OtpInput', () => {
     const onChange = vi.fn();
 
     await act(async () => {
-      root.render(<OtpInput value="12" onChange={onChange} autoFocus={false} />);
+      root.render(<OtpInput labels={LABELS('en')} value="12" onChange={onChange} autoFocus={false} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -189,7 +197,7 @@ describe('OtpInput', () => {
     const onChange = vi.fn();
 
     await act(async () => {
-      root.render(<OtpInput value="" onChange={onChange} autoFocus={false} />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={onChange} autoFocus={false} />);
     });
 
     const inputs = container.querySelectorAll('input');
@@ -210,11 +218,35 @@ describe('OtpInput', () => {
     const root = createRoot(container);
 
     await act(async () => {
-      root.render(<OtpInput value="" onChange={() => {}} autoFocus={false} error />);
+      root.render(<OtpInput labels={LABELS('en')} value="" onChange={() => {}} autoFocus={false} error />);
     });
 
     const input = container.querySelector('input');
     expect(input?.className).toContain('border-red-500');
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it('names the group and every box in Indonesian on /id/', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(<OtpInput labels={LABELS('id')} value="" onChange={() => {}} autoFocus={false} />);
+    });
+
+    // Literal Indonesian, not a re-read of the dictionary: the point is what a
+    // screen reader says on /id/, which used to be "One-time verification code"
+    // and "Digit 1 of 6".
+    expect(container.querySelector('[role="group"]')?.getAttribute('aria-label')).toBe(
+      'Kode verifikasi sekali pakai',
+    );
+    const inputs = [...container.querySelectorAll('input')];
+    expect(inputs[0].getAttribute('aria-label')).toBe('Digit 1 dari 6');
+    expect(inputs[5].getAttribute('aria-label')).toBe('Digit 6 dari 6');
     await act(async () => {
       root.unmount();
     });

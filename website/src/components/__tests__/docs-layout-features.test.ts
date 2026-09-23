@@ -17,6 +17,31 @@ const LAYOUT_SRC = readFileSync(
   'utf-8'
 );
 
+const EN_DICT = JSON.parse(readFileSync(join(__dirname, '../../i18n/en.json'), 'utf-8'));
+const ID_DICT = JSON.parse(readFileSync(join(__dirname, '../../i18n/id.json'), 'utf-8'));
+
+/**
+ * The `define:vars` values DocsLayout hands its inline script, mapped to the
+ * dictionary key each one comes from. Astro renders those as declarations ahead
+ * of the script body (an `is:inline` script cannot import the dictionaries), so
+ * the harness declares them too — read out of the real dictionary, which is
+ * what makes the assertions below meaningful: a label that stops coming from the
+ * dictionary, or a locale whose string is missing, fails here.
+ */
+const LAYOUT_VARS: Record<string, string> = {
+  copyCode: 'docs.copyCode',
+  copiedCode: 'docs.copiedCode',
+  copyCodeLabel: 'docs.copyCodeLabel',
+  feedbackThanksYes: 'docs.feedback.thanksYes',
+  feedbackThanksNo: 'docs.feedback.thanksNo',
+};
+
+function dictValue(dict: Record<string, unknown>, key: string): string {
+  return key
+    .split('.')
+    .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], dict) as string;
+}
+
 function extractSetupDocsFeatures(): string {
   const match = LAYOUT_SRC.match(
     /const setupDocsFeatures\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\};\s*setupDocsFeatures\(\);/
@@ -25,9 +50,13 @@ function extractSetupDocsFeatures(): string {
   return match[1].trim();
 }
 
-function injectScript(body: string): void {
+function injectScript(body: string, locale: 'en' | 'id' = 'en'): void {
+  const dict = locale === 'id' ? ID_DICT : EN_DICT;
+  const vars = Object.entries(LAYOUT_VARS)
+    .map(([name, key]) => `const ${name} = ${JSON.stringify(dictValue(dict, key))};`)
+    .join('\n');
   const script = document.createElement('script');
-  script.textContent = `(() => { ${body} })();`;
+  script.textContent = `(() => { ${vars}\n${body} })();`;
   document.body.appendChild(script);
 }
 
@@ -61,8 +90,21 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
       expect(LAYOUT_SRC).toContain('code-block-wrapper');
     });
 
-    it('creates copy button with aria-label', () => {
-      expect(LAYOUT_SRC).toContain('Copy code to clipboard');
+    it('names the copy button from the injected dictionary strings', () => {
+      expect(LAYOUT_SRC).toContain("setAttribute('aria-label', copyCodeLabel)");
+      // The literals these replaced are gone: they shipped English to /id/.
+      expect(LAYOUT_SRC).not.toContain('Copy code to clipboard');
+      expect(LAYOUT_SRC).not.toContain("'✓ Copied'");
+    });
+
+    it('injects exactly the strings its script reads', () => {
+      const declared = LAYOUT_SRC.match(/define:vars=\{\{([^}]*)\}\}/)?.[1] ?? '';
+      const names = declared
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .sort();
+      expect(names).toEqual(Object.keys(LAYOUT_VARS).sort());
     });
 
     it('uses navigator.clipboard.writeText', () => {
@@ -95,7 +137,13 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
     });
 
     it('has i18n for Indonesian feedback', () => {
-      expect(LAYOUT_SRC).toContain('Terima kasih');
+      // The acknowledgement is a dictionary value now, not a `lang === 'id'`
+      // ternary inside the script.
+      expect(LAYOUT_SRC).not.toContain('Terima kasih');
+      expect(ID_DICT.docs.feedback.thanksYes).not.toBe(EN_DICT.docs.feedback.thanksYes);
+      expect(ID_DICT.docs.feedback.thanksNo).not.toBe(EN_DICT.docs.feedback.thanksNo);
+      // ...and the script reads it from the injected vars.
+      expect(LAYOUT_SRC).toContain("feedbackThanksYes + '</span>'");
     });
   });
 
@@ -187,9 +235,23 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
 
       const btn = content.querySelector('.copy-code-btn') as HTMLButtonElement;
       expect(btn).toBeTruthy();
-      expect(btn.textContent).toBe('Copy');
+      expect(btn.textContent).toBe(EN_DICT.docs.copyCode);
       expect(btn.type).toBe('button');
-      expect(btn.getAttribute('aria-label')).toBe('Copy code to clipboard');
+      expect(btn.getAttribute('aria-label')).toBe(EN_DICT.docs.copyCodeLabel);
+    });
+
+    it('labels the copy button in the reader\'s language', () => {
+      const content = document.createElement('div');
+      content.className = 'docs-content';
+      content.appendChild(document.createElement('pre'));
+      document.body.appendChild(content);
+
+      injectScript(extractSetupDocsFeatures(), 'id');
+
+      const btn = content.querySelector('.copy-code-btn') as HTMLButtonElement;
+      expect(btn.textContent).toBe(ID_DICT.docs.copyCode);
+      expect(btn.getAttribute('aria-label')).toBe(ID_DICT.docs.copyCodeLabel);
+      expect(btn.textContent).not.toBe(EN_DICT.docs.copyCode);
     });
 
     it('does NOT double-wrap an already wrapped pre', () => {
@@ -252,11 +314,11 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
       // Allow microtasks to flush
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(btn.textContent).toBe('✓ Copied');
+      expect(btn.textContent).toBe(EN_DICT.docs.copiedCode);
       expect(btn.classList.contains('text-green-500')).toBe(true);
 
       await vi.advanceTimersByTimeAsync(2000);
-      expect(btn.textContent).toBe('Copy');
+      expect(btn.textContent).toBe(EN_DICT.docs.copyCode);
       expect(btn.classList.contains('text-green-500')).toBe(false);
 
       vi.useRealTimers();
@@ -385,7 +447,7 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
 
       btnYes.click();
 
-      expect(wrap.innerHTML).toContain('Thanks for your feedback!');
+      expect(wrap.innerHTML).toContain(EN_DICT.docs.feedback.thanksYes);
       expect(wrap.querySelector('span')?.classList.contains('text-green-500')).toBe(true);
     });
 
@@ -405,11 +467,12 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
 
       btnNo.click();
 
-      expect(wrap.innerHTML).toContain('Thanks, we will improve it!');
+      expect(wrap.innerHTML).toContain(EN_DICT.docs.feedback.thanksNo);
     });
 
+    // The locale is resolved on the server and arrives as injected vars, so the
+    // harness passes it the way Astro does instead of faking document.lang.
     it('shows Indonesian thank-you on Yes click', () => {
-      document.documentElement.lang = 'id';
       const wrap = document.createElement('div');
       wrap.setAttribute('data-doc-feedback-wrap', '');
       const btnYes = document.createElement('button');
@@ -421,7 +484,7 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
       document.body.appendChild(wrap);
 
       const script = extractSetupDocsFeatures();
-      injectScript(script);
+      injectScript(script, 'id');
 
       btnYes.click();
 
@@ -429,7 +492,6 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
     });
 
     it('shows Indonesian improvement message on No click', () => {
-      document.documentElement.lang = 'id';
       const wrap = document.createElement('div');
       wrap.setAttribute('data-doc-feedback-wrap', '');
       const btnYes = document.createElement('button');
@@ -441,7 +503,7 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
       document.body.appendChild(wrap);
 
       const script = extractSetupDocsFeatures();
-      injectScript(script);
+      injectScript(script, 'id');
 
       btnNo.click();
 

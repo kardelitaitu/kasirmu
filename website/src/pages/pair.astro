@@ -12,7 +12,11 @@ import { t } from '../i18n';
 <html lang="id">
   <head>
     <meta charset="utf-8" />
-    <title>kasir.mu — Pair Tablet</title>
+    <!-- This document declares `lang="id"` and its fallback body already reads
+         `pair.title` in Indonesian, so the tab title does too: an English
+         "Pair Tablet" here was the one string on the page that disagreed with
+         the language the document claims. -->
+    <title>{`kasir.mu — ${t('id', 'pair.title')}`}</title>
     <meta name="robots" content="noindex" />
     <!-- The key arrives via define:vars because an is:inline script is never
          bundled, so it cannot import the owner (lib/language.ts) directly. -->

@@ -3,7 +3,7 @@ import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
-import OtpInput from './OtpInput';
+import OtpInput, { OTP_LABELS } from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
 import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
@@ -80,6 +80,7 @@ export const AUTH_FORM_LABELS = [
   'login.tabPassword',
   'login.title',
   'login.verify',
+  ...OTP_LABELS,
   ...PASSWORD_FIELD_LABELS,
   ...PASSWORD_STRENGTH_LABELS,
   'signup.errorExists',
@@ -488,6 +489,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="reset-otp-digit"
+              labels={labels}
             />
           </div>
           <PasswordField
@@ -541,6 +543,7 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="login-otp-digit"
+              labels={labels}
             />
           </div>
           {resendSuccess && (

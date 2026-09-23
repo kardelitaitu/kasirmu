@@ -51,6 +51,7 @@ const ISLANDS: Island[] = [
     list: AUTH_FORM_LABELS,
     files: [
       '../components/AuthForm.tsx',
+      '../components/OtpInput.tsx',
       '../components/PasswordField.tsx',
       '../components/PasswordStrength.tsx',
     ],
@@ -60,6 +61,7 @@ const ISLANDS: Island[] = [
     list: SIGNUP_FORM_LABELS,
     files: [
       '../components/SignupForm.tsx',
+      '../components/OtpInput.tsx',
       '../components/PasswordField.tsx',
       '../components/PasswordStrength.tsx',
     ],
@@ -149,6 +151,10 @@ describe('island label coverage', () => {
     // modules actually read is declared — which covers the error keys by use
     // rather than by a copy of the list.
     expect(read('../components/AuthForm.tsx')).toContain('...PASSWORD_FIELD_LABELS');
+    // The OTP widget is rendered by both auth islands, so its two name strings
+    // have one owner (OtpInput.tsx) and both islands spread it.
+    expect(read('../components/AuthForm.tsx')).toContain('...OTP_LABELS');
+    expect(read('../components/SignupForm.tsx')).toContain('...OTP_LABELS');
     expect(read('../components/SignupForm.tsx')).toContain('...PASSWORD_STRENGTH_LABELS');
     expect(read('../components/AccountView.tsx')).toContain('...PASSWORD_FIELD_LABELS');
     expect(read('../components/PricingGrid.tsx')).toContain('...CHECKOUT_LABELS');

@@ -47,24 +47,33 @@ describe('SearchTrigger Component', () => {
     };
   }
 
-  it('renders trigger icon button with keyboard shortcut title', async () => {
+  // The trigger is icon-only, so `aria-label` is its name, not a decoration.
+  const TRIGGER_NAME = (locale: 'en' | 'id') =>
+    labelMap(locale, SEARCH_LABELS)['search.quickSearch'];
+
+  it('names the icon-only trigger from the dictionary, with the shortcut in its tooltip', async () => {
     const { container, unmount } = await renderTrigger('en');
-    const btn = container.querySelector('button[aria-label="Search"]');
+    const btn = container.querySelector(`button[aria-label="${TRIGGER_NAME('en')}"]`);
     expect(btn).not.toBeNull();
     expect(btn?.getAttribute('title')).toContain('⌘K');
     await unmount();
   });
 
-  it('renders Indonesian title when locale is id', async () => {
+  it('names the trigger in Indonesian on /id/ — name and tooltip agree', async () => {
     const { container, unmount } = await renderTrigger('id');
-    const btn = container.querySelector('button[aria-label="Search"]');
-    expect(btn?.getAttribute('title')).toContain('Cari');
+    const btn = container.querySelector(`button[aria-label="${TRIGGER_NAME('id')}"]`);
+    expect(btn, 'the trigger is named in Indonesian').not.toBeNull();
+    expect(btn?.getAttribute('title')).toBe(`${TRIGGER_NAME('id')} (⌘K)`);
+    // The English name it shipped before this is gone from the id island.
+    expect(container.querySelector('button[aria-label="Search"]')).toBeNull();
     await unmount();
   });
 
   it('opens search modal on button click', async () => {
     const { container, unmount } = await renderTrigger('en');
-    const btn = container.querySelector('button[aria-label="Search"]') as HTMLButtonElement;
+    const btn = container.querySelector(
+      `button[aria-label="${TRIGGER_NAME('en')}"]`,
+    ) as HTMLButtonElement;
 
     await act(async () => {
       btn.click();

@@ -33,6 +33,19 @@ interface Props {
 const { locale, title, description, updated, entries, currentSlug, headings, searchDocs } = Astro.props;
 const toc = (headings ?? []).filter((h) => h.depth >= 2 && h.depth <= 3);
 const docDesc = description ?? t(locale, 'docs.title');
+// The copy button is built by the inline script below, and an `is:inline`
+// script is never bundled — it cannot import the dictionaries, so its three
+// strings arrive as vars (the same route index.astro uses for the language
+// key). Spelled here rather than in English inside the script: the button is
+// visible text on every /id/docs/* page.
+const copyCode = t(locale, 'docs.copyCode');
+const copiedCode = t(locale, 'docs.copiedCode');
+const copyCodeLabel = t(locale, 'docs.copyCodeLabel');
+// The feedback acknowledgement is written into the DOM on click, so it was two
+// inline `isId ? … : 'Thanks…'` ternaries — the last copy on this page still
+// spelled out in the script instead of the dictionaries.
+const feedbackThanksYes = t(locale, 'docs.feedback.thanksYes');
+const feedbackThanksNo = t(locale, 'docs.feedback.thanksNo');
 // Where a reader goes after reading a doc. The docs are the site's most
 // search-aligned content — people arrive from "how do I …" queries — but until
 // this block every article ended with the feedback widget and no route into the
@@ -197,7 +210,10 @@ const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
 
     <Footer locale={locale} />
 
-    <script is:inline>
+    <script
+      is:inline
+      define:vars={{ copyCode, copiedCode, copyCodeLabel, feedbackThanksYes, feedbackThanksNo }}
+    >
       (() => {
         const setupDocsFeatures = () => {
           // 1. Copy code buttons on pre blocks
@@ -211,16 +227,16 @@ const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
             const btn = document.createElement('button');
             btn.className = 'copy-code-btn';
             btn.type = 'button';
-            btn.textContent = 'Copy';
-            btn.setAttribute('aria-label', 'Copy code to clipboard');
+            btn.textContent = copyCode;
+            btn.setAttribute('aria-label', copyCodeLabel);
             btn.addEventListener('click', async () => {
               const code = pre.querySelector('code')?.innerText || pre.innerText;
               try {
                 await navigator.clipboard.writeText(code);
-                btn.textContent = '✓ Copied';
+                btn.textContent = copiedCode;
                 btn.classList.add('text-green-500');
                 setTimeout(() => {
-                  btn.textContent = 'Copy';
+                  btn.textContent = copyCode;
                   btn.classList.remove('text-green-500');
                 }, 2000);
               } catch {}
@@ -256,12 +272,11 @@ const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
           const btnYes = document.querySelector('[data-doc-feedback-yes]');
           const btnNo = document.querySelector('[data-doc-feedback-no]');
           if (fbWrap && btnYes && btnNo) {
-            const isId = document.documentElement.lang === 'id';
             btnYes.addEventListener('click', () => {
-              fbWrap.innerHTML = '<span class="text-xs font-semibold text-green-500">✓ ' + (isId ? 'Terima kasih atas masukannya!' : 'Thanks for your feedback!') + '</span>';
+              fbWrap.innerHTML = '<span class="text-xs font-semibold text-green-500">✓ ' + feedbackThanksYes + '</span>';
             });
             btnNo.addEventListener('click', () => {
-              fbWrap.innerHTML = '<span class="text-xs font-semibold text-muted">' + (isId ? 'Terima kasih, kami akan terus menyempurnakannya.' : 'Thanks, we will improve it!') + '</span>';
+              fbWrap.innerHTML = '<span class="text-xs font-semibold text-muted">' + feedbackThanksNo + '</span>';
             });
           }
         };

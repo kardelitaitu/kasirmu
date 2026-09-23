@@ -376,7 +376,10 @@ describe('SearchTrigger — toggle', () => {
     return {
       container,
       root,
-      button: () => container.querySelector('button[aria-label="Search"]') as HTMLButtonElement | null,
+      button: () =>
+        container.querySelector(
+          `button[aria-label="${labelMap(locale, SEARCH_LABELS)['search.quickSearch']}"]`,
+        ) as HTMLButtonElement | null,
       unmount: async () => {
         await act(async () => { root.unmount(); });
         container.remove();

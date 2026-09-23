@@ -23,17 +23,24 @@ interface Props {
   descriptions: Record<SlideId, string>;
   /** Localized "screenshot coming soon" caption on placeholder slides. */
   comingSoon: string;
+  /** Localized name for the whole carousel, announced with its `group` role. */
+  carouselLabel: string;
 }
 
-const { labels, descriptions, comingSoon } = Astro.props;
+const { labels, descriptions, comingSoon, carouselLabel } = Astro.props;
 ---
 
 <div class="flex flex-wrap items-center justify-center gap-12" data-carousel>
-  <!-- Stage — overflow-hidden container hosting the horizontal track -->
+  <!-- Stage — overflow-hidden container hosting the horizontal track.
+       `aria-roledescription` stays the English word "carousel" on purpose: it
+       is announced in place of the `group` role, and Indonesian localises it
+       only as the loanword "korsel", whose everyday sense is a ride at a fair.
+       The name beside it IS localized, so a reader hears the Indonesian
+       description followed by a role they already recognise from other apps. -->
   <div
     role="group"
     aria-roledescription="carousel"
-    aria-label="kasir.mu app screenshots"
+    aria-label={carouselLabel}
     class="relative w-full max-w-[1280px] overflow-hidden rounded-2xl shadow-2xl shadow-black/30"
     style="aspect-ratio: 1280 / 720;"
   >

@@ -21,6 +21,7 @@ const carouselDescriptions = {
   topology: t(locale, 'hero.carousel.topologyDesc'),
 } as const;
 const carouselComingSoon = t(locale, 'hero.carousel.screenshotComingSoon');
+const carouselLabel = t(locale, 'hero.carousel.label');
 // The YC-style badge above the H1 is a joke — it parodies a funding badge to
 // say the opposite. It used to be a hard-coded English string, which on /id/
 // put an English sentence as the first thing an Indonesian visitor read; the
@@ -58,6 +59,11 @@ const badge = t(locale, 'hero.badge');
   
   <!-- Hero Mockup Carousel — 5 slides (Restaurant/Retail/Kitchen/Warehouse/Topology) -->
   <div class="mt-12 mx-auto max-w-[1280px]">
-    <HeroCarousel labels={carouselLabels} descriptions={carouselDescriptions} comingSoon={carouselComingSoon} />
+    <HeroCarousel
+      labels={carouselLabels}
+      descriptions={carouselDescriptions}
+      comingSoon={carouselComingSoon}
+      carouselLabel={carouselLabel}
+    />
   </div>
 </section>

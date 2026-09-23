@@ -7,7 +7,8 @@
  * time from ~12s to ~6s on a multi-core machine (Ryzen 9 7950X: 32 threads).
  *
  * Execution order:
- *   Phase 1 (parallel): sync-dev-files + audit-i18n + check-password-policy
+ *   Phase 1 (parallel): sync-dev-files + audit-i18n + check-ui-strings +
+ *                       check-password-policy
  *   Phase 2 (sequential, depends on phase 1): import-portal.sh
  *   Phase 3 (parallel test pool, after phase 2): vitest run
  *
@@ -70,6 +71,7 @@ const total = Date.now();
 await parallel('static checks', [
   run('node', ['scripts/sync-dev-files.mjs'], { cwd: ROOT }),
   run('node', ['scripts/audit-i18n.mjs'],    { cwd: ROOT }),
+  run('node', ['--experimental-strip-types', 'scripts/check-ui-strings.mjs'], { cwd: ROOT }),
   run('node', ['--experimental-strip-types', 'scripts/check-password-policy.mjs'], { cwd: ROOT }),
 ]);
 

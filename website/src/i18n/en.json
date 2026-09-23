@@ -109,6 +109,9 @@
     "title": "Documentation",
     "onThisPage": "On this page",
     "updated": "Updated",
+    "copyCode": "Copy",
+    "copiedCode": "✓ Copied",
+    "copyCodeLabel": "Copy code to clipboard",
     "nextStep": {
       "title": "Ready to get started?",
       "body": "Download the free app, or look at the plans first.",
@@ -118,6 +121,8 @@
     "feedback": {
       "question": "Was this page helpful?",
       "hint": "Help us improve the kasir.mu documentation",
+      "thanksYes": "Thanks for your feedback!",
+      "thanksNo": "Thanks, we will improve it!",
       "yes": "Yes",
       "no": "No"
     },
@@ -159,6 +164,7 @@
     "ctaPrimary": "Download free",
     "ctaSecondary": "See Pricing",
     "carousel": {
+    "label": "kasir.mu app screenshots",
       "restaurant": "Restaurant",
       "retail": "Retail",
       "kitchen": "Kitchen",
@@ -520,6 +526,10 @@
     "matchStatusLabel": "Passwords match",
     "show": "Show password",
     "hide": "Hide password"
+  },
+  "otp": {
+    "groupLabel": "One-time verification code",
+    "digit": "Digit {n} of {total}"
   },
   "signup": {
     "title": "Create your account",
@@ -1030,6 +1040,11 @@
     "successMessage": "Copy the key below and paste it into the kasir.mu app when prompted to activate. Your trial includes unlimited stores, staff, and all workspace types for 30 days.",
     "yourKeyLabel": "Your License Key",
     "copyButton": "Copy",
+    "copiedButton": "Copied!",
+    "invalidCode": "Please enter a valid approval code (at least 8 characters).",
+    "invalidEmail": "Please enter a valid email address.",
+    "processing": "Processing…",
+    "requestFailed": "Couldn't request the trial. Please try again.",
     "nextSteps": "Next: Open kasir.mu, paste this key along with your email, and start using Enterprise features immediately.",
     "downloadButton": "Download kasir.mu"
   },

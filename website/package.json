@@ -12,6 +12,7 @@
     "check": "astro check",
     "precheck": "node scripts/audit-i18n.mjs && node --experimental-strip-types scripts/check-password-policy.mjs && vitest run",
     "check:i18n": "node scripts/audit-i18n.mjs",
+    "check:strings": "node --experimental-strip-types scripts/check-ui-strings.mjs",
     "check:links": "node scripts/check-links.mjs",
     "check:seo": "node --experimental-strip-types scripts/check-seo.mjs",
     "astro": "astro",

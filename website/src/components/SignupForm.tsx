@@ -4,7 +4,7 @@ import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import { type Region, getExplicitRegion, setRegion } from '../lib/region';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
-import OtpInput from './OtpInput';
+import OtpInput, { OTP_LABELS } from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
 import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
@@ -52,6 +52,7 @@ export const SIGNUP_FORM_LABELS = [
   'login.orUseEmail',
   'login.resendCode',
   'login.resendCooldown',
+  ...OTP_LABELS,
   ...PASSWORD_FIELD_LABELS,
   ...PASSWORD_STRENGTH_LABELS,
   'signup.agreeBefore',
@@ -237,6 +238,7 @@ export default function SignupForm({ locale, labels }: Props) {
               error={!!error}
               disabled={loading}
               idPrefix="signup-otp-digit"
+              labels={labels}
             />
           </div>
           {resendSuccess && (
