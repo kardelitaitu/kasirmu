@@ -11,7 +11,7 @@ import staffFtl from '@/locales/staff.ftl?raw';
 import StaffManagementScreen from '@/features/staff/StaffManagementScreen';
 import { STAFF_TAB_IDS } from '@/features/staff/components/staffTabsModel';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { ImpersonationProvider } from '@/contexts/ImpersonationContext';
+import { ImpersonationProvider, useImpersonation } from '@/contexts/ImpersonationContext';
 import { makeSubscriptionCaps } from '@/__tests__/test-utils/mocks/subscriptionCaps';
 
 // FAST_WAIT: 5ms polling for async assertions (10x faster than default 50ms).
@@ -140,53 +140,62 @@ beforeEach(() => {
   // The tab is reflected in the route hash, so a case that switched tabs
   // would otherwise leave the next render mounting on the Roles tab.
   window.location.hash = '';
-  invokeMock.mockImplementation((cmd: string) => {
-    if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
-    if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
-    if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
-    if (cmd === 'create_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[0], username: 'newuser' });
-    if (cmd === 'update_staff_scoped') return Promise.resolve(SAMPLE_STAFF[0]);
-    if (cmd === 'get_staff_profile_scoped') return Promise.resolve(SAMPLE_PROFILE);
-    if (cmd === 'impersonate_user_scoped') {
-      return Promise.resolve({ session_token: 'imp-token', user_id: 'staff-1', display_name: 'Jane Smith', expires_at: '' });
-    }
-    if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([
-      { key: 'restaurant', name: 'Restaurant', description: 'Dine-in service', icon: 'restaurant' },
-      { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
-    ]);
-    if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
-    if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
-    if (cmd === 'list_role_trash_scoped') return Promise.resolve(TRASHED_ROLES);
-    if (cmd === 'restore_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[1] });
-    if (cmd === 'restore_role_scoped') return Promise.resolve({ ...TRASHED_ROLES[0] });
-    if (cmd === 'delete_staff_scoped') return Promise.resolve(null);
-    if (cmd === 'list_legal_entities_scoped') {
-      return Promise.resolve([
-        {
-          id: 'default:default-legal-entity',
-          tenantId: 'default',
-          name: 'Default Legal Entity',
-          legalName: 'Default Legal Entity',
-          registrationNumber: '',
-          taxId: '',
-          status: 'active',
-          createdAt: '',
-          updatedAt: '',
-        },
-      ]);
-    }
-    // Reached via the app shell's branding provider, not the screen itself.
-    // Without it every test below rendered the error branch -- 23 of 26.
-    // Shape matches the other suites that mock this (CloudSyncSettings.test.tsx).
-    if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
-      return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
-    }
-    recordUnmatchedInvoke(cmd);
-    return Promise.reject(new Error(`Unknown command: ${cmd}`));
-  });
+  invokeMock.mockImplementation(defaultInvokeTable);
 });
 
 afterEach(() => assertAllInvokesHandled('StaffManagementScreen'));
+
+/**
+ * The default command table, hoisted out of `beforeEach` so a case that needs
+ * to change ONE answer can spread this and override that key instead of
+ * re-listing every command it does not care about. A test that copies the
+ * whole chain loses any command the copy forgot, and the failure then points
+ * at the wrong thing.
+ */
+function defaultInvokeTable(cmd: string): Promise<unknown> {
+  if (cmd === 'list_staff_scoped') return Promise.resolve(SAMPLE_STAFF);
+  if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+  if (cmd === 'list_permission_keys_scoped') return Promise.resolve([]);
+  if (cmd === 'create_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[0], username: 'newuser' });
+  if (cmd === 'update_staff_scoped') return Promise.resolve(SAMPLE_STAFF[0]);
+  if (cmd === 'get_staff_profile_scoped') return Promise.resolve(SAMPLE_PROFILE);
+  if (cmd === 'impersonate_user_scoped') {
+    return Promise.resolve({ session_token: 'imp-token', user_id: 'staff-1', display_name: 'Jane Smith', expires_at: '' });
+  }
+  if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([
+    { key: 'restaurant', name: 'Restaurant', description: 'Dine-in service', icon: 'restaurant' },
+    { key: 'store', name: 'Retail Store', description: 'Retail counter', icon: 'store' },
+  ]);
+  if (cmd === 'list_locations_scoped') return Promise.resolve(SAMPLE_BRANCHES);
+  if (cmd === 'list_staff_trash_scoped') return Promise.resolve(TRASHED_STAFF);
+  if (cmd === 'list_role_trash_scoped') return Promise.resolve(TRASHED_ROLES);
+  if (cmd === 'restore_staff_scoped') return Promise.resolve({ ...SAMPLE_STAFF[1] });
+  if (cmd === 'restore_role_scoped') return Promise.resolve({ ...TRASHED_ROLES[0] });
+  if (cmd === 'delete_staff_scoped') return Promise.resolve(null);
+  if (cmd === 'list_legal_entities_scoped') {
+    return Promise.resolve([
+      {
+        id: 'default:default-legal-entity',
+        tenantId: 'default',
+        name: 'Default Legal Entity',
+        legalName: 'Default Legal Entity',
+        registrationNumber: '',
+        taxId: '',
+        status: 'active',
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+  }
+  // Reached via the app shell's branding provider, not the screen itself.
+  // Without it every test below rendered the error branch -- 23 of 26.
+  // Shape matches the other suites that mock this (CloudSyncSettings.test.tsx).
+  if (cmd === 'get_brand_settings' || cmd === 'get_brand_settings_scoped') {
+    return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+  }
+  recordUnmatchedInvoke(cmd);
+  return Promise.reject(new Error(`Unknown command: ${cmd}`));
+}
 
 async function waitForTable() {
   await screen.findByRole('list', { name: /staff members/i });
@@ -1505,6 +1514,366 @@ describe('StaffManagementScreen trash', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('delete_staff_scoped', { sessionToken: 'session-1', id: 'staff-2' });
     }, FAST_WAIT);
+  });
+});
+
+// ── Feedback paths and route entry (unpinned until these cases) ───────
+//
+// The suite above pins every IPC payload, every gate and every rendered
+// slice — and none of the OUTCOMES the operator is told about. A mutation
+// run (drop the call, swap the toast key, no-op the retry) left all 54 of
+// those cases green, so each case below exists because its own mutation
+// did not. Nothing here re-asserts a payload the suite already holds.
+
+/** A quota rejection shaped exactly as the IPC boundary delivers it. */
+function quotaRejection(command: string): Error {
+  return new Error(
+    `Error invoking remote method '${command}': Error: ` +
+      JSON.stringify({
+        kind: 'core',
+        subKind: 'subscriptionLimitExceeded',
+        message: 'Your Free tier allows maximum 1 staff users. You currently have 1. Upgrade to add more.',
+      }),
+  );
+}
+
+describe('StaffManagementScreen feedback and route entry', () => {
+  it('opens on Roles from a #/roles deep link, without a click', async () => {
+    // The tab IS the route. A bookmark, a restore, or the browser's Back
+    // button all arrive here with no click handler in the path, so the
+    // initial tab has to come from the hash.
+    //
+    // replaceState, not a hash ASSIGNMENT: jsdom fires a hashchange for the
+    // assignment, and the screen's own listener would then set the tab —
+    // which is precisely the path this case is NOT about, and which masks a
+    // broken initial read entirely.
+    window.history.replaceState(null, '', '#/roles');
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+
+    await waitFor(() => expect(document.querySelector('.role-authoring')).not.toBeNull(), FAST_WAIT);
+    expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('staff-add-role-btn')).toBeInTheDocument();
+    // The Staff action did not come along for the ride.
+    expect(screen.queryByRole('button', { name: /add staff/i })).not.toBeInTheDocument();
+  });
+
+  it('records the impersonation session the row action started', async () => {
+    // The screen's call is the REQUEST; the operator is not impersonating
+    // anyone until the minted token is recorded with the provider. Asserting
+    // only that `impersonate_user_scoped` was invoked passes even when the
+    // result is thrown away, so the session itself is what is read here.
+    const probe: { target: string | null; name: string | null } = { target: null, name: null };
+    function ImpersonationProbe() {
+      const active = useImpersonation().active;
+      probe.target = active?.targetUserId ?? null;
+      probe.name = active?.targetDisplayName ?? null;
+      return null;
+    }
+
+    renderWithProvidersSync(
+      <ImpersonationProvider>
+        <StaffManagementScreen />
+        <ImpersonationProbe />
+      </ImpersonationProvider>,
+      staffFtl,
+    );
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+
+    await waitFor(() => expect(probe.target).toBe('staff-1'), FAST_WAIT);
+    // The banner names the target, so the name is part of the recorded
+    // session, not decoration the caller may drop.
+    expect(probe.name).toBe('Jane Smith');
+  });
+
+  it('tells the operator who is now being impersonated', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+
+    // The failure copy and the success copy are both "impersonation"
+    // messages, so a swapped key still renders a plausible sentence; the
+    // member's name and the success type are what separate them.
+    await waitFor(() => {
+      expect(document.querySelector('.toast--success')?.textContent).toContain('Now impersonating Jane Smith');
+    }, FAST_WAIT);
+  });
+
+  it('says a member was deactivated, not restored', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-1'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
+
+    // Both toasts name the member and differ only in the verb, which is
+    // exactly the pair a wrong ternary swaps silently.
+    await waitFor(() => {
+      expect(document.querySelector('.toast--success')?.textContent).toContain('Jane Smith deactivated');
+    }, FAST_WAIT);
+  });
+
+  it('says a deleted member moved to the trash, not that they were restored', async () => {
+    sessionPermissions.push('staff:delete');
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
+
+    await waitFor(() => {
+      expect(document.querySelector('.toast--success')?.textContent).toContain('John Doe moved to the trash');
+    }, FAST_WAIT);
+  });
+
+  it('clears the quota banner once a later reactivation succeeds', async () => {
+    // The cap is a snapshot, not a property of the account: a refused
+    // reactivation followed by a successful one means the banner is stale.
+    // Without the clear it stands there telling the operator the plan still
+    // blocks an action that just worked.
+    let attempts = 0;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'update_staff_scoped') {
+        attempts += 1;
+        if (attempts === 1) return Promise.reject(quotaRejection('update_staff_scoped'));
+        return Promise.resolve(SAMPLE_STAFF[0]);
+      }
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    await screen.findByTestId('staff-quota-blocked-banner', undefined, FAST_WAIT);
+
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    await waitFor(() => {
+      expect(screen.queryByTestId('staff-quota-blocked-banner')).not.toBeInTheDocument();
+    }, FAST_WAIT);
+  });
+
+  it('points the refused-reactivation CTA at the Plus pricing card', async () => {
+    // The banner's copy is the same for every tier, so the DESTINATION is
+    // the only place the target tier is stated. A wrong anchor lands the
+    // owner on a card they cannot buy.
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'update_staff_scoped') return Promise.reject(quotaRejection('update_staff_scoped'));
+        return defaultInvokeTable(cmd);
+      });
+
+      renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+      await waitForTable();
+
+      fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+      const cta = await screen.findByTestId('staff-quota-blocked-upgrade-btn', undefined, FAST_WAIT);
+      fireEvent.click(cta);
+
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/pricing/#plus'),
+        '_blank',
+        expect.any(String),
+      );
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('points the drawer quota CTA at the Plus pricing card', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    try {
+      invokeMock.mockImplementation((cmd: string) => {
+        if (cmd === 'create_staff_scoped') return Promise.reject(quotaRejection('create_staff_scoped'));
+        return defaultInvokeTable(cmd);
+      });
+
+      renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+      await waitForTable();
+
+      fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByRole('textbox', { name: /username/i }), { target: { value: 'newuser' } });
+      fireEvent.change(within(dialog).getByRole('textbox', { name: /display name/i }), { target: { value: 'New User' } });
+      fireEvent.change(within(dialog).getByPlaceholderText(/enter pin/i), { target: { value: '1234' } });
+      fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
+      await fillRequiredProfile(dialog);
+      fireEvent.click(within(dialog).getByRole('button', { name: /create/i }));
+
+      const cta = await within(dialog).findByTestId('staff-drawer-upgrade-btn', undefined, FAST_WAIT);
+      fireEvent.click(cta);
+
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining('/pricing/#plus'),
+        '_blank',
+        expect.any(String),
+      );
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('still renders the roster, and names the failure, when the workspace read fails', async () => {
+    // STAFF-08: the workspace name map is decoration on the cards; the staff
+    // list is the page. A failed secondary read must degrade to a notice,
+    // never to an empty or error screen.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_all_workspaces_scoped') return Promise.reject(new Error('boom'));
+      if (cmd === 'list_locations_scoped') return Promise.reject(new Error('boom'));
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    expect(screen.getByTestId('staff-card-staff-1')).toBeInTheDocument();
+    expect(screen.getByText(/workspace data unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText(/staff data below is still current/i)).toBeInTheDocument();
+  });
+
+  it('retries a failed trash load through the retry testid', async () => {
+    // The live roster has its retry pinned above; the Trash tab has its own
+    // read and its own retry, and a no-op there leaves the operator staring
+    // at an error card with a button that does nothing.
+    sessionPermissions.push('staff:delete');
+    let failedOnce = false;
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_trash_scoped') {
+        if (!failedOnce) {
+          failedOnce = true;
+          return Promise.reject(new Error('database is locked'));
+        }
+        return Promise.resolve(TRASHED_STAFF);
+      }
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('tab', { name: 'Trash' }));
+
+    // The failure is stated as a retryable error, not as an empty trash.
+    const retry = await screen.findByTestId('staff-trash-retry-btn', undefined, FAST_WAIT);
+    expect(retry.className).toMatch(/\bbtn(--|$)/);
+    expect(screen.queryByTestId('staff-trash-empty')).not.toBeInTheDocument();
+
+    fireEvent.click(retry);
+
+    expect(await screen.findByTestId('staff-trash-staff-2', undefined, FAST_WAIT)).toBeInTheDocument();
+    expect(screen.queryByTestId('staff-trash-retry-btn')).not.toBeInTheDocument();
+  });
+
+  it('says so when a trash restore is refused', async () => {
+    // A refused restore leaves the row exactly where it was, so the toast is
+    // the only thing that distinguishes "it worked" from "the backend said
+    // no" — and the operator's next move depends on which it was.
+    sessionPermissions.push('staff:delete');
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'restore_staff_scoped') return Promise.reject(new Error('refused'));
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+    fireEvent.click(screen.getByRole('tab', { name: 'Trash' }));
+    fireEvent.click(await screen.findByTestId('staff-trash-restore-staff-2', undefined, FAST_WAIT));
+
+    await waitFor(() => {
+      expect(document.querySelector('.toast--error')?.textContent).toContain('Could not restore. Try again.');
+    }, FAST_WAIT);
+  });
+
+  it('reports a failed activation as a save failure', async () => {
+    // Not every refusal is a quota refusal. The quota branch above must not
+    // have swallowed the generic one: an account that fails to switch on for
+    // any other reason still has to say so.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'update_staff_scoped') return Promise.reject(new Error('boom'));
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+
+    await waitFor(() => {
+      expect(document.querySelector('.toast--error')?.textContent).toContain('Failed to save staff member');
+    }, FAST_WAIT);
+  });
+
+  it('reports a failed delete, which is the one write that cannot be retried from here', async () => {
+    sessionPermissions.push('staff:delete');
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'delete_staff_scoped') return Promise.reject(new Error('boom'));
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
+
+    await waitFor(() => {
+      expect(document.querySelector('.toast--error')?.textContent).toContain('Could not delete staff member');
+    }, FAST_WAIT);
+  });
+
+  it('confirms a successful create by name', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /username/i }), { target: { value: 'newuser' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /display name/i }), { target: { value: 'New User' } });
+    fireEvent.change(within(dialog).getByPlaceholderText(/enter pin/i), { target: { value: '1234' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
+    await fillRequiredProfile(dialog);
+    fireEvent.click(within(dialog).getByRole('button', { name: /create/i }));
+
+    await waitFor(() => {
+      expect(document.querySelector('.toast--success')?.textContent).toContain('New User created successfully');
+    }, FAST_WAIT);
+  });
+
+  it('does not carry a withheld identity into the next create form', async () => {
+    // The withheld flag is reset by the drawer's open reset, not by the
+    // profile read (a create form reads no profile at all). Without the
+    // reset, editing a member whose identity was withheld and then pressing
+    // Add Staff leaves the NEW form's identity fields disabled and labelled
+    // "hidden" — a create form that cannot be completed.
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'get_staff_profile_scoped') {
+        return Promise.resolve({ ...SAMPLE_PROFILE, national_id: null, tax_id: null, identity_withheld: true });
+      }
+      return defaultInvokeTable(cmd);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    const editDialog = await screen.findByRole('dialog');
+    await waitFor(() => {
+      expect(within(editDialog).getByLabelText('National ID (hidden)')).toBeDisabled();
+    }, FAST_WAIT);
+
+    fireEvent.click(within(editDialog).getByTestId('settings-popup-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
+
+    fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
+    const createDialog = screen.getByRole('dialog');
+
+    expect(within(createDialog).queryByLabelText('National ID (hidden)')).not.toBeInTheDocument();
+    const nationalId = within(createDialog).getByLabelText('National ID *');
+    expect(nationalId).toBeEnabled();
+    expect(within(createDialog).getByLabelText('National ID Type *')).toBeEnabled();
   });
 });
 
