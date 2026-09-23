@@ -753,3 +753,70 @@ null`).
 and neither touches setup or auth. Worth recording rather than reporting as green.
 
 **Commit:** `0f0a36a21`.
+
+---
+
+## Round 21 — ⚠️ CORRECTION: rounds 19-20 measured the wrong viewport
+
+I have to correct the record. Round 19 measured the card at `setViewportSize(1024, 1366)` and
+reported "1423px against a 1366px viewport". Round 20 built on that. **Both used one viewport for
+both Playwright projects, and that viewport is not what either project actually is.**
+
+`ui/e2e/playwright.config.ts` defines:
+
+```
+desktop: viewport { width: 1366, height: 768 }   // a POS terminal, comment says so
+tablet:  viewport { width: 1024, height: 1366 }
+```
+
+Measuring each project on its OWN configured viewport:
+
+```
+REAL desktop {"vp":"1366x768",  "cardH":1460, "overflow":748, "submitTop":1420, "firstInputTop":1006}
+REAL tablet  {"vp":"1024x1366", "cardH":1633, "overflow":323, "submitTop":1587, "firstInputTop":1058}
+```
+
+**The desktop terminal overflows by 748px — the card is nearly two screens tall, and the submit sits
+at y=1420 in a 768px viewport, 652px below the fold.** Round 19 reported the tablet's number and
+called it "the" number, so the desktop case — the primary POS form factor, and the worse one — was
+never characterised.
+
+### What this round fixed
+
+The card's `padding: var(--space-12)` (48px) and `gap: var(--space-6)` (24px) were desktop-sized and
+applied at **every** height: 240px of a 768px screen — 31% — spent on padding and whitespace before
+any content. A `@media (max-height: 900px)` block restates both at `--space-6` / `--space-4`.
+
+Measured effect: **desktop 1460px → 1355px, overflow 748 → 643 (−105px).** The tablet is unchanged
+and correctly so — at 1366px tall its padding is proportionate, and the query does not fire.
+
+### What this does NOT fix, stated plainly
+
+**643px of overflow remains on the desktop, and 323px on the tablet.** I measured the remaining
+content section by section and found no waste: the mode box is already a 2-column grid; the account
+box is 435px of real UI (an 181px QR, subtabs, code badge, pulse status) and is already gated on
+`provisionMode === 'linked'` so the offline path skips it entirely; the five fields are 67px each.
+Trimmed as far as it goes, this form is simply taller than a 768px screen.
+
+The remaining fix is structural — split into genuine sequential steps, one decision per screen — and
+that is a redesign of an ADR #56 flow that changes first-boot behaviour and cannot be validated from
+a headless browser. **I am not doing it unilaterally.**
+
+### Process note
+
+Two rounds of analysis rested on a number I never checked against the config that defines it. The
+lesson is narrow and worth keeping: *measure the viewport the project actually uses, not one you
+chose.* A probe that sets its own viewport silently detaches from the thing under test.
+
+### Verification
+
+`fullScreenSurfaceInset.test.ts` **11/11** (new contract test asserts the compact body actually
+restates both properties — the declaration-present-but-inert shape this repo has been bitten by) ·
+`screenExtraction` + `ProvisioningFlow` **295/295** · **20/20 E2E** · full UI suite **606 files /
+10,341 tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing** ·
+`orientationAdaptiveWalker` **0 violations** (a `max-height` query, not an orientation literal, so
+the shell-owns-orientation fence is respected).
+
+Negative control: deleting the compact block makes the contract test fail.
+
+**Commit:** `77a955d9d`.
