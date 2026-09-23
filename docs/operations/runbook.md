@@ -501,7 +501,7 @@ answers — `GET /api/v1/web/me` and `GET /api/v1/web/identities` → 401, `POST
 /api/v1/desktop/link/email/request` → 400, `POST /api/v1/desktop/link/google/start` → 400,
 `POST /api/v1/web/request-otp` → 400, `GET /api/sync/snapshot` → 401, `POST /api/v1/terminals`
 → 422, and both OAuth endpoints → 302 (configured) — so the `deployment COMPLETE` verdict is
-current, not the 2026-09-26 `predated ADR #54` reading this section used to carry.
+current, not the 2026-09-20 `predated ADR #54` reading this section used to carry.
 
 **Two probe paths that produce 404 by design — do not read them as a stale deploy.**
 `/api/v1/desktop/link/` and `/api/v1/desktop/link/start` **do not exist in the source**; the
@@ -605,7 +605,7 @@ failures to expect, and what each means:
   > **You can check registration without the console.** Ask Google: build the authorize URL
   > with the client id and the callback under test and GET it. An unregistered `redirect_uri`
   > answers `400 redirect_uri_mismatch` *before* consent; a registered one answers `302`
-  > onward. Measured 2026-09-26 — it settled a "did we register these?" question in one call,
+  > onward. Measured 2026-09-20 — it settled a "did we register these?" question in one call,
   > and a `302` also proves the client id itself is valid.
 - `400 invalid oauth state` after the consent screen: the browser did not send the
   `oz_oauth_state` cookie back — something in front of the licence host is stripping

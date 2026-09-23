@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """verify-deployment.py -- prove a live unified deployment actually serves ADR #54.
 
-Why this exists: on 2026-09-26 a tablet APK was diagnosed as "cannot connect to either auth or
+Why this exists: on 2026-09-20 a tablet APK was diagnosed as "cannot connect to either auth or
 sync server". Both servers were healthy; the running container simply predated the Google
 sign-in work, so every /api/v1/desktop/* route answered 404. On the tablet the sign-in path is
 the emailed code, and the link response is what carries the sync terminal credential -- so one
@@ -15,7 +15,7 @@ Two traps this encodes, because both cost real time when done by hand:
      SUPPOSED to refuse; presence is what is being measured, never success.
 
 Only ONE host is probed by default. The alias in the app's compiled ladder is fronted by
-Cloudflare, whose rate limiting a burst of these probes trips -- measured 2026-09-26: a scripted
+Cloudflare, whose rate limiting a burst of these probes trips -- measured 2026-09-20: a scripted
 pass over both names returned 403 for every /api/v1/* path while a single paced request to the
 same path returned 401. That is a property of the edge and of the prober, not of the deployment,
 so this stops at the first throttle and tells you to re-run later or check the alias by hand.
@@ -81,7 +81,7 @@ def classify(got, want):
         return 'MISSING'
     if got in (403, 429):
         # Cloudflare sits in front of the alias origin and throttles a burst of probes from one
-        # IP. That is the tool's own fingerprint, not the deployment's: measured 2026-09-26, a
+        # IP. That is the tool's own fingerprint, not the deployment's: measured 2026-09-20, a
         # single request to the same path returned 404 while a scripted pass reported 403.
         return 'THROTTLED'
     return 'UNEXPECTED'

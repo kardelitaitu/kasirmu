@@ -603,7 +603,7 @@
       "label": "Environment variables are documented",
       "status": "required",
       "runners": { "check.sh": ["env docs"] },
-      "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-26: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py."
+      "_note": "Added in 0.0.39, then WIRED TO THE EXISTING CHECKER on 2026-09-20: scripts/check-env-docs.mjs was written before anyone looked in .agents/skills/docs-auditor/scripts/, where check-env-docs.py had covered this since 09-09-26 with a WIDER scope (32 variables here vs 15). That one also reads apps/unified/healthcheck.sh's shell vars, accepts PADDLE_/MIDTRANS_/LOGIN_/LICENSE_/OZPA_ prefixes, checks go-live-checklist.md and verification-*.md, and carries an `env-doc: ok:` pragma. The duplicate was deleted; the step name is unchanged so the runner mapping holds. Runner: python .agents/skills/docs-auditor/scripts/check-env-docs.py."
     },
     {
       "id": "unified-routes",

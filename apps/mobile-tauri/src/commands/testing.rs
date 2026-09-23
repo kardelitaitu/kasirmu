@@ -15,7 +15,7 @@
 //! **the bridge's copy is the authority for the ruling and for the rationale
 //! below. Keep the two in step.**
 //!
-//! ## The ruling (2026-09-26, `fd925d5c7`)
+//! ## The ruling (2026-09-19, `fd925d5c7`)
 //!
 //! `TenantSubscription::verify_signature` honours the schema-seeded
 //! `BOOTSTRAP_FREE` sentinel in **every** profile, but only when the row's

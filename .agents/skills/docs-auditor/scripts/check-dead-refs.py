@@ -57,7 +57,7 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     one reference that is most deliberately correct as dead.
 
   * Section anchors are not checked either, and measurement says they cannot be cheaply. Counted
-    2026-09-26: 1,915 `§` references across 489 files, 174 distinct tokens. Most infer their
+    2026-09-20: 1,915 `§` references across 489 files, 174 distinct tokens. Most infer their
     target from the surrounding prose ("spec 0046b §3.4" vs "ADR #54 §2.3" vs "runbook §8"),
     so a checker would first have to guess WHICH document is meant. The one unambiguous form —
     an explicit `ADR #N §X.Y`, resolvable through each ADR's `num:` frontmatter — occurs 15
@@ -70,7 +70,7 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
   * Prose splits are NOT checked, and an attempt was withdrawn rather than shipped noisy. Three
     sections of ADR #54 and one runbook paragraph had a note inserted into the middle of a
     sentence (a numbered rule read "...the admin row already exists with", then ten lines of
-    history, then "email_verified = false"). A checker was written for it on 2026-09-26: it found
+    history, then "email_verified = false"). A checker was written for it on 2026-09-20: it found
     those three, plus 60+ false positives, because the hard part is not the punctuation test but
     SEGMENTING markdown prose into paragraphs -- a continuation line starting with `**bold**` or
     `1.4` looks like a list item, and every rule added to compensate cost another real case. It
@@ -78,7 +78,7 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     case stays a hand audit.
 
   * Paths inside FENCED CODE BLOCKS are not checked, which is the one place a command is most
-    likely to rot. Measured 2026-09-26: a `node scripts/check-env-docs.mjs` line sat in ADR #54's
+    likely to rot. Measured 2026-09-20: a `node scripts/check-env-docs.mjs` line sat in ADR #54's
     verification block for eight rounds after that script was deleted, and every checker here was
     green -- ADRs are historical, and a fenced line is not a prose reference. Scanning fences was
     tried: the five docs that matter (ADR #54, the runbook, agent-gates, DEPLOY, the dev compose)

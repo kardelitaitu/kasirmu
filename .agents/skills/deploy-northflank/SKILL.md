@@ -126,7 +126,7 @@ curl -sS -X PATCH "$API/projects/$PROJECT/services/combined/$SERVICE" \
   -d '{"runtimeEnvironment":{"variables":{ /* all keys, old and new */ }}}'
 ```
 
-Verified behaviour (measured 2026-09-26 while adding the Google keys):
+Verified behaviour (measured 2026-09-20 while adding the Google keys):
 
 - A PATCH **redeploys the running image** — a brief `503`, then healthy with a low
   `uptime` — and **starts no build**. New code still needs its own trigger.

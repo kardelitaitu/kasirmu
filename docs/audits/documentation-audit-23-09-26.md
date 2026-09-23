@@ -7,7 +7,8 @@ working tree on 2026-09-23. Peer sessions were active during the run — see
 **Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
 pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
 close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
-not touched*), plus four open items that are separate work (listed at the bottom).
+not touched*), plus four open items that are separate work (listed at the bottom — item 1 has since
+been closed in follow-up passes, so three remain).
 
 ## Scope and method
 
@@ -192,13 +193,22 @@ removing it is a different decision than a typo repair, and it is right.
    cross-file line anchor still holds), citations repointed (index, hand table, setup-wizard
    audit, two UI test headers), records index regenerated. Superseded labels survive in git
    history; the per-claim attribution table is in the re-date commit.
-   **Successor finding, not attempted — a second future-date cluster:** 2026-09-26/27
-   claims in ADR #54/#55, `docs/guides/developer/api-reference.md`,
+   **Successor finding — resolved 23-09-26 by the same attribution pass.** The
+   2026-09-26/27 claims in ADR #54/#55, `docs/guides/developer/api-reference.md`,
    `docs/operations/runbook.md`, `apps/license-server/DEPLOY.md`,
    `.agents/skills/deploy-northflank/SKILL.md`,
    `docs/records/snapshots/2026-09-21-license-ratelimit-collapse.md`, plus the root
-   `todo-sync-endpoint-derivation.md` dated `2026-10-06` — same disease, ~3 days ahead;
-   needs the same attribution pass.
+   `todo-sync-endpoint-derivation.md` dated `2026-10-06` were re-dated per line to the
+   commit that first asserted each claim: the Google-keys era → 2026-09-20 (adr54 ×15
+   incl. the lone 09-27, adr55 ×2, api-reference, runbook ×2, DEPLOY ×2, the SKILL's
+   copied measurement), the snapshot → 2026-09-21 (its own event), the Date: line →
+   2026-09-22. The sweep also caught four files the finding had not named —
+   `scripts/gates.json`'s wiring note, `scripts/verify-deployment.py` ×3, and three
+   measurement claims inside `check-dead-refs.py` itself (all minted 09-20), plus
+   `datetime.rs`'s `C6` annotation (`26-09-26` → `23-09-26`, minted 2026-09-23).
+   Plans, fixtures and deadlines (backlog eligibility, the 2026-11-06 boundary
+   expiries, test/JSON data, manager-checklist dates) and this file's own quotations
+   of the superseded dates were left as they stand.
 2. **ADR status-table enforcement**: the hand table in `decisions/README.md` was
    reconciled against frontmatter on 2026-09-23 (#55 → `Implemented`, #56 and #58 →
    `Partially implemented`, the correction recorded in that file's Conventions the
