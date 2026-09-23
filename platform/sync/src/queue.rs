@@ -26,6 +26,7 @@ use kasirmu_core::error::CoreError;
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
 use kasirmu_core::settings::Settings;
 use kasirmu_core::settings::{IngestPolicy, IngestPolicyKind};
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -186,6 +187,454 @@ struct SettingsUpdatePayload {
 #[derive(Deserialize)]
 struct FinalizeSalePayload {
     sale_id: String,
+}
+
+/// Payload for the `refund_sale` sync action (checklist C4, slice S1).
+///
+/// Carries the WHOLE refund the originator minted, including its primary key
+/// `id`. That id is the refund's own durable row and is the ONLY thing this
+/// lane probes for idempotency: `sync_applied_items` records delivery, not
+/// effect, so a receipt that advanced is no proof the refund landed (and a
+/// receipt that was lost is no proof it did not).
+///
+/// `deny_unknown_fields` is deliberately absent: a later origin build adds a
+/// field and this applier must keep parsing the payload rather than
+/// dead-lettering it.
+#[derive(Deserialize)]
+struct RefundPayload {
+    /// The refund's own primary key, minted on the originator.
+    id: String,
+    /// FK to the original sale. The sales row is a REAL foreign key
+    /// (`refunds.sale_id REFERENCES sales(id)`), so a refund can only be
+    /// replicated where the sale already exists.
+    sale_id: String,
+    /// Refund total in minor units.
+    #[serde(default)]
+    total_minor: i64,
+    /// Refund currency (ISO-4217).
+    #[serde(default)]
+    currency: String,
+    #[serde(default)]
+    reason: String,
+    #[serde(default)]
+    note: String,
+    /// Staff member who processed the refund on the originator.
+    #[serde(default)]
+    processed_by: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    lines: Vec<RefundLinePayload>,
+}
+
+/// One line of a `refund_sale` payload.
+#[derive(Deserialize)]
+struct RefundLinePayload {
+    /// The refund line's own primary key, minted on the originator.
+    id: String,
+    #[serde(default)]
+    sale_line_id: String,
+    #[serde(default)]
+    sku: String,
+    #[serde(default)]
+    qty: i64,
+    #[serde(default)]
+    unit_minor: i64,
+    #[serde(default)]
+    line_minor: i64,
+    #[serde(default)]
+    currency: String,
+    #[serde(default)]
+    created_at: String,
+    /// The location the originator deducted these units from. Absent on older
+    /// senders and on legacy sales; the credit then lands at the canonical
+    /// default location.
+    #[serde(default)]
+    location_id: Option<String>,
+}
+
+/// Payload for the `void_sale` sync action.
+///
+/// A void carries no refund rows — its whole effect is the sale's own status,
+/// so idempotency is decided by a compare-and-set on that status rather than
+/// by a row of its own.
+#[derive(Deserialize)]
+struct VoidSalePayload {
+    /// The sale to void. The originator's `reason`/`user_id` (when sent) are
+    /// tolerated and ignored: a void's whole effect is the sale's status, and
+    /// the local audit row for it is written by the path that owns the status.
+    sale_id: String,
+}
+
+/// Payload for the `payment.recorded` sync action.
+///
+/// The payment's own durable row is `payments.id`; a gateway tender also
+/// carries an `idempotency_key` with a UNIQUE index behind it, which is the
+/// stronger identity when it is present.
+#[derive(Deserialize)]
+struct PaymentPayload {
+    /// The payment's own primary key, minted on the originator.
+    id: String,
+    /// FK to the sale. Also a real foreign key, so a payment can only be
+    /// replicated where the sale already exists.
+    sale_id: String,
+    #[serde(default)]
+    method: String,
+    #[serde(default)]
+    amount_minor: i64,
+    #[serde(default)]
+    currency: String,
+    #[serde(default)]
+    created_at: String,
+    #[serde(default)]
+    gateway_reference: Option<String>,
+    #[serde(default)]
+    gateway_status: Option<String>,
+    #[serde(default)]
+    gateway_response: Option<String>,
+    /// Unique when present — the idempotency probe prefers it.
+    #[serde(default)]
+    idempotency_key: Option<String>,
+}
+
+/// Whether this database already contains the refund the payload describes,
+/// decided by the refund's OWN durable row (checklist C4).
+///
+/// A refund's downstream effects — stock credits, the loyalty reversal, the
+/// customer spend reversal, the audit row — are all functions of
+/// `refunds.id` and share its transaction, so this ONE probe suppresses them
+/// together. `sync_applied_items` is deliberately NOT consulted: it records
+/// that an item was delivered, not that its effect landed.
+fn refund_already_applied(conn: &rusqlite::Connection, refund_id: &str) -> Result<bool, CoreError> {
+    let tx = conn;
+    let exists: i64 = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM refunds WHERE id = ?1)",
+        rusqlite::params![refund_id],
+        |row| row.get(0),
+    )?;
+    Ok(exists == 1)
+}
+
+/// Whether this database already contains the payment the payload describes,
+/// decided by the payment's OWN durable row (checklist C4).
+///
+/// The idempotency key is the stronger identity when the originator sent one —
+/// `idx_payments_idempotency_key` is UNIQUE, so a re-sent tender is the same
+/// tender whatever id it arrives under. A payment with no key (legacy cash
+/// rows) falls back to its primary key.
+fn payment_already_applied(
+    conn: &rusqlite::Connection,
+    payload: &PaymentPayload,
+) -> Result<bool, CoreError> {
+    let tx = conn;
+    let exists: i64 = match payload.idempotency_key.as_deref() {
+        Some(key) => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM payments WHERE idempotency_key = ?1)",
+            rusqlite::params![key],
+            |row| row.get(0),
+        )?,
+        None => tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM payments WHERE id = ?1)",
+            rusqlite::params![payload.id],
+            |row| row.get(0),
+        )?,
+    };
+    Ok(exists == 1)
+}
+
+/// Replicate a refund - its rows and its effects - where the sale EXISTS.
+///
+/// Called only after the refunds.id probe said this refund is absent here,
+/// so every write below is a first write. Store::create_refund cannot be
+/// used: it opens its own transaction and SQLite has no nested BEGIN, so the
+/// row shapes it writes are mirrored here and committed by the caller's
+/// transaction together with the queue receipt.
+///
+/// Mirrored: the refunds header, its refund_lines, the stock credit (see
+/// [credit_refund_effect_without_sale] for the location rule), the loyalty
+/// reversal and the sale.refund audit row. NOT mirrored: the over-refund
+/// money and quantity bounds, which are the originator's decision to make
+/// (this lane replays a refund that was already accepted there, and
+/// re-deriving the bounds from a partially-replicated history would reject
+/// legitimate items); and the KDS ticket cancellation, which is a local board
+/// concern the daemon's own KDS path owns.
+fn apply_refund_with_sale_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &RefundPayload,
+) -> Result<(), CoreError> {
+    tx.execute(
+        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            payload.id,
+            payload.sale_id,
+            payload.total_minor,
+            payload.currency,
+            payload.reason,
+            payload.note,
+            payload.processed_by,
+            payload.created_at,
+        ],
+    )?;
+
+    for line in &payload.lines {
+        tx.execute(
+            "INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                line.id,
+                payload.id,
+                line.sale_line_id,
+                line.sku,
+                line.qty,
+                line.unit_minor,
+                line.line_minor,
+                line.currency,
+                line.created_at,
+            ],
+        )?;
+    }
+
+    credit_refund_effect_without_sale(tx, payload)?;
+    if let Err(e) = reverse_loyalty_for_refund_in_tx(tx, payload) {
+        // Non-fatal, matching create_refund: a loyalty failure must not roll
+        // back a refund whose money and stock rows are already correct.
+        tracing::warn!(
+            refund_id = %payload.id,
+            sale_id = %payload.sale_id,
+            error = %e,
+            "sync loyalty refund reversal failed (non-fatal)"
+        );
+    }
+
+    tx.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES (?1, ?2, 'sale.refund', 'sale', ?3, ?4, 'success', ?5)",
+        rusqlite::params![
+            uuid::Uuid::now_v7().to_string(),
+            payload.processed_by,
+            payload.sale_id,
+            serde_json::json!({
+                "refund_id": payload.id,
+                "reason": payload.reason,
+                "total_minor": payload.total_minor,
+                "currency": payload.currency,
+                "line_count": payload.lines.len(),
+                "origin": "sync",
+            })
+            .to_string(),
+            payload.created_at,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Reverse the sale's loyalty award proportionally, on the caller's transaction.
+///
+/// Mirrors kasirmu_core::db::loyalty::reverse_loyalty_on_refund, which is
+/// pub(crate) to kasirmu-core and therefore not callable from this crate. The
+/// ledger row's primary key is deterministic (loyalty-reversal-<refund_id>),
+/// the same key the core function mints, so the two can never double-reverse
+/// the same refund even if a future slice routes this effect through core.
+fn reverse_loyalty_for_refund_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &RefundPayload,
+) -> Result<(), CoreError> {
+    // The award to reverse (LOY-06 wrote exactly one 'earn' row per sale).
+    let earn: Option<(String, i64)> = tx
+        .query_row(
+            "SELECT account_id, points FROM loyalty_transactions
+             WHERE sale_id = ?1 AND txn_type = 'earn'
+             ORDER BY created_at ASC LIMIT 1",
+            rusqlite::params![payload.sale_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((account_id, earned_points)) = earn else {
+        // Legacy sale predating LOY-06 awarding, or a sale that earned nothing.
+        return Ok(());
+    };
+
+    let sale_total_minor: i64 = tx.query_row(
+        "SELECT total_minor FROM sales WHERE id = ?1",
+        rusqlite::params![payload.sale_id],
+        |row| row.get(0),
+    )?;
+    let already_reversed: i64 = tx.query_row(
+        "SELECT COALESCE(SUM(-points), 0) FROM loyalty_transactions
+         WHERE sale_id = ?1 AND txn_type = 'refund_reversal'",
+        rusqlite::params![payload.sale_id],
+        |row| row.get(0),
+    )?;
+    let headroom = earned_points - already_reversed;
+    // Integer round-half-up in i128 - points, like money, never touch a float.
+    let proportional = if sale_total_minor > 0 && payload.total_minor > 0 {
+        let num = i128::from(earned_points) * i128::from(payload.total_minor);
+        let den = i128::from(sale_total_minor);
+        ((num * 2 + den) / (den * 2)) as i64
+    } else {
+        0
+    };
+    let deduct = proportional.min(headroom).max(0);
+    if deduct <= 0 {
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    tx.execute(
+        "INSERT INTO loyalty_transactions (id, account_id, sale_id, points, txn_type, description, created_at)
+         VALUES (?1, ?2, ?3, ?4, 'refund_reversal', ?5, ?6)",
+        rusqlite::params![
+            format!("loyalty-reversal-{}", payload.id),
+            account_id,
+            payload.sale_id,
+            -deduct,
+            format!("Reversed {deduct} points for refund on sale"),
+            now,
+        ],
+    )?;
+    tx.execute(
+        "UPDATE loyalty_accounts
+         SET points = MAX(points - ?1, 0),
+             lifetime_points = MAX(lifetime_points - ?1, 0),
+             tier_id = COALESCE((SELECT id FROM loyalty_tiers
+                                 WHERE min_points <= MAX(lifetime_points - ?1, 0)
+                                 ORDER BY min_points DESC LIMIT 1), tier_id),
+             updated_at = ?2
+         WHERE id = ?3",
+        rusqlite::params![deduct, now, account_id],
+    )?;
+    tx.execute(
+        "UPDATE customers SET loyalty_points =
+            (SELECT points FROM loyalty_accounts WHERE id = ?1),
+         updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
+        rusqlite::params![account_id, now],
+    )?;
+    Ok(())
+}
+
+/// Apply a void by compare-and-set on the sale's own status.
+///
+/// The CAS is the idempotency decision. Its zero-row branch is then
+/// DISAMBIGUATED by probing the status, because three very different
+/// situations all produce rows == 0:
+///
+/// - the sale is absent here - nothing to void, a benign replay;
+/// - it is already voided - the first void stands, a benign replay;
+/// - it is completed or pending - a genuine conflict (a paid or in-flight
+///   sale must not be overwritten to voided), returned as Conflict so the
+///   item dead-letters VISIBLY instead of vanishing into a silent Ok.
+///
+/// Only active reaches the CAS, which is the transition the sale's own status
+/// graph allows (Active to Voided).
+fn apply_void_sale_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &VoidSalePayload,
+) -> Result<(), CoreError> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let rows = tx.execute(
+        "UPDATE sales SET status = 'voided', updated_at = ?1, version = version + 1
+         WHERE id = ?2 AND status = 'active'",
+        rusqlite::params![now, payload.sale_id],
+    )?;
+    if rows == 1 {
+        return Ok(());
+    }
+
+    let status: Option<String> = tx
+        .query_row(
+            "SELECT status FROM sales WHERE id = ?1",
+            rusqlite::params![payload.sale_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match status.as_deref() {
+        // Absent here, or already voided: the effect this item describes is
+        // either impossible on this terminal or already present. Consume it.
+        None | Some("voided") => Ok(()),
+        // A completed or pending sale is NOT a void - surface it.
+        _ => Err(CoreError::Conflict {
+            entity: "sale",
+            field: "status",
+        }),
+    }
+}
+
+/// Insert a remote payment's own row where the sale EXISTS.
+///
+/// Called only after the idempotency probe said this payment is absent here,
+/// so this is a first write. Store::create_payments cannot be used: it mints
+/// its own id, opens its own transaction, and takes a different
+/// (split-argument) shape, none of which fits a replay of an already-minted
+/// row.
+fn insert_payment_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &PaymentPayload,
+) -> Result<(), CoreError> {
+    tx.execute(
+        "INSERT INTO payments (id, sale_id, method, amount_minor, currency, created_at,
+                               gateway_reference, gateway_status, gateway_response, idempotency_key)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        rusqlite::params![
+            payload.id,
+            payload.sale_id,
+            payload.method,
+            payload.amount_minor,
+            payload.currency,
+            payload.created_at,
+            payload.gateway_reference,
+            payload.gateway_status,
+            payload.gateway_response,
+            payload.idempotency_key,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Credit stock for a refund whose sale row is ABSENT on this terminal
+/// (checklist C4, the non-origin case).
+///
+/// `refunds.sale_id` is a real foreign key to `sales(id)` with
+/// `foreign_keys ON`, so the refund row — and every row that hangs off it —
+/// cannot be written here at all. The EFFECT still can and must: a refund
+/// recorded on the terminal that sold the goods has to put those units back
+/// into the stock this terminal shares. Only the stock effect is reproducible
+/// from the payload; loyalty and customer spend are keyed off the sale and
+/// have nothing to attach to, and this arm never fabricates a sale row.
+///
+/// The location comes from the payload line's recorded deduction location when
+/// the originator named one, and from the canonical default location otherwise
+/// — the same fallback `credit_refund_to_default_location` takes for a legacy
+/// sale with no `deduction_locations`.
+///
+/// A negative or zero quantity is skipped, not credited backwards: the
+/// `refund_lines.qty CHECK (qty > 0)` bound is unavailable on this path
+/// because there is no row to constrain.
+fn credit_refund_effect_without_sale(
+    tx: &rusqlite::Transaction<'_>,
+    payload: &RefundPayload,
+) -> Result<(), CoreError> {
+    let store = Store::new(tx);
+    for line in &payload.lines {
+        if line.qty <= 0 {
+            continue;
+        }
+        let location = line
+            .location_id
+            .as_deref()
+            .unwrap_or(kasirmu_core::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+        store.adjust_stock_at_location_with_reason(
+            tx,
+            &line.sku,
+            line.qty,
+            &kasirmu_core::inventory::LocationId::from(location),
+            Some("refund"),
+            None,
+            None,
+            None,
+        )?;
+    }
+    Ok(())
 }
 
 /// Outcome of applying a remote item atomically (SYNC-10).
@@ -555,6 +1004,58 @@ impl SyncQueue {
                     .map_err(|e| CoreError::Internal(format!("invalid finalize payload: {e}")))?;
                 Store::finalize_sale_in_tx(tx, &payload.sale_id)?;
             }
+            // C4 (slice S1): a refund recorded on another terminal. Idempotent
+            // on the refund's OWN durable row, never on the queue receipt.
+            "refund_sale" => {
+                let payload: RefundPayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid refund payload: {e}")))?;
+                if refund_already_applied(tx, &payload.id)? {
+                    return Ok(());
+                }
+                let sale_present: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sales WHERE id = ?1)",
+                    rusqlite::params![payload.sale_id],
+                    |row| row.get(0),
+                )?;
+                if sale_present {
+                    apply_refund_with_sale_in_tx(tx, &payload)?;
+                } else {
+                    // The refund row cannot be written here: `refunds.sale_id`
+                    // is a real FK to `sales(id)` and this terminal has no
+                    // sales row for it. The EFFECT still applies, and the item
+                    // is consumed rather than dead-lettered — an absent sale is
+                    // a topology fact, not a malformed payload.
+                    credit_refund_effect_without_sale(tx, &payload)?;
+                }
+            }
+            // C4 (slice S1): a void recorded on another terminal. The status
+            // CAS is the idempotency decision, and its zero-row branch is
+            // disambiguated so a benign replay and a genuine conflict are not
+            // the same outcome.
+            "void_sale" => {
+                let payload: VoidSalePayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid void payload: {e}")))?;
+                apply_void_sale_in_tx(tx, &payload)?;
+            }
+            // C4 (slice S1): a tender recorded on another terminal.
+            "payment.recorded" => {
+                let payload: PaymentPayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid payment payload: {e}")))?;
+                if payment_already_applied(tx, &payload)? {
+                    return Ok(());
+                }
+                let sale_present: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sales WHERE id = ?1)",
+                    rusqlite::params![payload.sale_id],
+                    |row| row.get(0),
+                )?;
+                if sale_present {
+                    insert_payment_in_tx(tx, &payload)?;
+                }
+                // No sale here means no `payments` row (the FK forbids it) and
+                // no further effect to reproduce: a payment moves no stock and
+                // no loyalty, and this arm must never fabricate a sales row.
+            }
             _ => {
                 return Err(CoreError::Internal(format!(
                     "unsupported remote sync action: {}",
@@ -724,6 +1225,61 @@ impl SyncQueue {
                 let payload: FinalizeSalePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid finalize payload: {e}")))?;
                 store.finalize_sale(&payload.sale_id)?;
+                Ok(())
+            }
+            // C4 (slice S1) parity: the legacy dispatcher applies the three
+            // arms with the same effect-level idempotency as the atomic one.
+            // The caller's connection is used directly - the legacy path owns
+            // no transaction and must not open one here.
+            "refund_sale" => {
+                let payload: RefundPayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid refund payload: {e}")))?;
+                let already: i64 = store.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM refunds WHERE id = ?1)",
+                    rusqlite::params![payload.id],
+                    |row| row.get(0),
+                )?;
+                if already == 1 {
+                    return Ok(());
+                }
+                let sale_present: bool = store.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sales WHERE id = ?1)",
+                    rusqlite::params![payload.sale_id],
+                    |row| row.get(0),
+                )?;
+                let tx = store.conn().unchecked_transaction()?;
+                if sale_present {
+                    apply_refund_with_sale_in_tx(&tx, &payload)?;
+                } else {
+                    credit_refund_effect_without_sale(&tx, &payload)?;
+                }
+                tx.commit()?;
+                Ok(())
+            }
+            "void_sale" => {
+                let payload: VoidSalePayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid void payload: {e}")))?;
+                let tx = store.conn().unchecked_transaction()?;
+                apply_void_sale_in_tx(&tx, &payload)?;
+                tx.commit()?;
+                Ok(())
+            }
+            "payment.recorded" => {
+                let payload: PaymentPayload = serde_json::from_str(&item.payload)
+                    .map_err(|e| CoreError::Internal(format!("invalid payment payload: {e}")))?;
+                if payment_already_applied(store.conn(), &payload)? {
+                    return Ok(());
+                }
+                let sale_present: bool = store.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sales WHERE id = ?1)",
+                    rusqlite::params![payload.sale_id],
+                    |row| row.get(0),
+                )?;
+                if sale_present {
+                    let tx = store.conn().unchecked_transaction()?;
+                    insert_payment_in_tx(&tx, &payload)?;
+                    tx.commit()?;
+                }
                 Ok(())
             }
             // Unsupported action — log and skip.

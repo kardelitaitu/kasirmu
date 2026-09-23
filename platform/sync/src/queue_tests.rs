@@ -326,6 +326,7 @@ fn queue_apply_resolution_local_wins() {
         synced_at: None,
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
+        origin_terminal_id: None,
     };
 
     let resolved = ResolvedItem {
@@ -359,6 +360,7 @@ fn queue_apply_resolution_remote_wins() {
         synced_at: None,
         tenant_id: "default".into(),
         priority: kasirmu_core::offline::SyncPriority::Normal,
+        origin_terminal_id: None,
     };
 
     let resolved = ResolvedItem {
@@ -1801,4 +1803,341 @@ fn a_hazard_name_refused_from_the_network_still_travels_in_a_package() {
             "{key} must STILL travel in a portable package: a refusal here means it was folded into the shared exclusion rule, and restores break"
         );
     }
+}
+// ── C4 / slice S1: refund_sale, void_sale, payment.recorded ───
+//
+// Every arm below is idempotent on the EFFECT's own durable row, never on
+// the queue receipt: `sync_applied_items` records delivery, not effect.
+
+/// The canonical default location id, mirrored here so the assertions below
+/// read as "the fallback location" rather than as a magic string.
+const DEFAULT_LOC: &str = "01926b3a-0000-7000-8000-000000000001";
+
+fn payments_row_count(store: &Store<'_>) -> i64 {
+    store
+        .conn()
+        .query_row("SELECT COUNT(*) FROM payments", [], |row| row.get(0))
+        .unwrap()
+}
+
+fn sales_row_count(store: &Store<'_>) -> i64 {
+    store
+        .conn()
+        .query_row("SELECT COUNT(*) FROM sales", [], |row| row.get(0))
+        .unwrap()
+}
+
+fn refunds_row_count(store: &Store<'_>, refund_id: &str) -> i64 {
+    store
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM refunds WHERE id = ?1",
+            [refund_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn loyalty_points(store: &Store<'_>) -> i64 {
+    store
+        .conn()
+        .query_row(
+            "SELECT points FROM loyalty_accounts WHERE customer_id = 'cust-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn sale_status(store: &Store<'_>, sale_id: &str) -> String {
+    store
+        .conn()
+        .query_row("SELECT status FROM sales WHERE id = ?1", [sale_id], |row| {
+            row.get(0)
+        })
+        .unwrap()
+}
+
+/// Insert a sale row in `status` with everything the sync arms read.
+fn seed_sale_row(store: &Store<'_>, sale_id: &str, status: &str) {
+    store
+        .conn()
+        .execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                                tendered_minor, discount_percent, discount_label, user_id,
+                                created_at, updated_at, subtotal_minor, tax_total_minor, version)
+             VALUES (?1, 1000, 'USD', 1, ?2, 'CASH', 1000, 0, NULL, 'user-1',
+                     '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1000, 0, 1)",
+            rusqlite::params![sale_id, status],
+        )
+        .unwrap();
+}
+
+/// Seed one COMPLETED sale carrying a deduction of `qty` COFFEE units at the
+/// canonical default location, plus the LOY-06 award of 100 points.
+///
+/// The `deduction_locations` JSON is the shape a refund's location credit
+/// reads; the loyalty `earn` row is what a refund reversal looks for.
+fn seed_refundable_sale(store: &Store<'_>, sale_id: &str, qty: i64) {
+    let conn = store.conn();
+    conn.execute(
+        "INSERT INTO customers (id, name, notes, created_at, updated_at)
+         VALUES ('cust-1', 'Alice', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                           tendered_minor, discount_percent, discount_label, user_id, customer_id,
+                           created_at, updated_at, subtotal_minor, tax_total_minor,
+                           deduction_locations, version)
+         VALUES (?1, 1000, 'USD', 1, 'completed', 'CARD', 1000, 0, NULL, 'user-1', 'cust-1',
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 1000, 0, ?2, 1)",
+        rusqlite::params![
+            sale_id,
+            format!(
+                "{{\"lines\":[{{\"sale_line_id\":\"sl-1\",\"sku\":\"COFFEE\",\"deductions\":[{{\"location_id\":\"{DEFAULT_LOC}\",\"qty\":{qty}}}]}}]}}"
+            ),
+        ],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency,
+                                 line_position, tax_minor, store_id)
+         VALUES ('sl-1', ?1, 'COFFEE', ?2, 350, 1000, 'USD', 1, 0, NULL)",
+        rusqlite::params![sale_id, qty],
+    )
+    .unwrap();
+    store.earn_points("cust-1", sale_id, 1000).unwrap();
+}
+
+/// Deduct one COFFEE unit at the canonical default location, the way the sale
+/// this file seeds would have done it (the canonical per-location writer, not
+/// the deprecated aggregate stamp).
+fn deduct_one_coffee(store: &Store<'_>) {
+    let tx = store.conn().unchecked_transaction().unwrap();
+    store
+        .adjust_stock_at_location_with_reason(
+            &tx,
+            "COFFEE",
+            -1,
+            &kasirmu_core::inventory::LocationId::from(DEFAULT_LOC),
+            Some("sale"),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    tx.commit().unwrap();
+}
+
+/// The payload shape a remote `refund_sale` item carries: the WHOLE refund,
+/// primary key included.
+fn refund_payload(refund_id: &str, sale_id: &str) -> String {
+    format!(
+        concat!(
+            "{{\"id\":\"{}\",\"sale_id\":\"{}\",\"total_minor\":1000,\"currency\":\"USD\",",
+            "\"reason\":\"damaged\",\"note\":\"\",\"processed_by\":\"user-1\",",
+            "\"created_at\":\"2026-01-02T00:00:00.000Z\",\"lines\":[{{\"id\":\"rl-1\",",
+            "\"sale_line_id\":\"sl-1\",\"sku\":\"COFFEE\",\"qty\":1,\"unit_minor\":350,",
+            "\"line_minor\":350,\"currency\":\"USD\",",
+            "\"created_at\":\"2026-01-02T00:00:00.000Z\"}}]}}"
+        ),
+        refund_id, sale_id
+    )
+}
+
+/// C4: a remote `refund_sale` against a database that HAS the sale credits
+/// stock exactly once, mints exactly one refunds row, and reverses loyalty
+/// once; a re-apply is a no-op on all three.
+#[test]
+fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    seed_refundable_sale(&store, "sale-refund-1", 1);
+    // The sale deducted 1 unit, so stock sits at 49 before the refund.
+    deduct_one_coffee(&store);
+    assert_eq!(inventory_qty(&store, "COFFEE"), 49);
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new("refund_sale", refund_payload("refund-1", "sale-refund-1"));
+    let outcome = queue
+        .apply_remote_atomic_full(&store, &remote)
+        .expect("refund_sale must apply, not dead-letter as unsupported");
+    assert!(outcome.applied);
+
+    assert_eq!(inventory_qty(&store, "COFFEE"), 50, "stock credited once");
+    assert_eq!(refunds_row_count(&store, "refund-1"), 1, "one refunds row");
+    assert_eq!(loyalty_points(&store), 0, "100 earned minus 100 reversed");
+
+    // A replay is a no-op: same stock, same row count, same points.
+    let replay = queue
+        .apply_remote_atomic_full(&store, &remote)
+        .expect("a replayed refund must not error");
+    assert!(
+        !replay.applied,
+        "the replay is absorbed by the refunds.id probe"
+    );
+    assert_eq!(inventory_qty(&store, "COFFEE"), 50);
+    assert_eq!(refunds_row_count(&store, "refund-1"), 1);
+    assert_eq!(loyalty_points(&store), 0);
+}
+
+/// C4: a refund whose sale is ABSENT on this terminal applies the EFFECT and
+/// returns Ok, without inserting a refunds row (the FK forbids one) and
+/// without fabricating a sales row.
+#[test]
+fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload("refund-orphan", "sale-not-here"),
+    );
+    let outcome = queue
+        .apply_remote_atomic_full(&store, &remote)
+        .expect("an absent sale is a topology fact, not a malformed payload");
+    assert!(outcome.applied);
+
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        51,
+        "the effect lands even with no sale row"
+    );
+    assert_eq!(refunds_row_count(&store, "refund-orphan"), 0);
+    assert_eq!(sales_row_count(&store), 0, "no sales row may be fabricated");
+}
+
+/// C4: `void_sale` moves an active sale to voided, and a replay is a no-op.
+#[test]
+fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    seed_sale_row(&store, "sale-void-1", "active");
+
+    let remote = OfflineQueueItem::new("void_sale", r#"{"sale_id":"sale-void-1"}"#);
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(sale_status(&store, "sale-void-1"), "voided");
+
+    // A replay under a FRESH queue id (so the receipt cannot absorb it) must
+    // still be a benign no-op rather than an error.
+    let replay = OfflineQueueItem::new("void_sale", r#"{"sale_id":"sale-void-1"}"#);
+    assert!(replay.id != remote.id);
+    assert!(
+        queue.apply_remote_atomic(&store, &replay).unwrap(),
+        "an already-voided sale is a benign replay"
+    );
+    assert_eq!(sale_status(&store, "sale-void-1"), "voided");
+}
+
+/// C4: a void of a COMPLETED sale is a conflict, not a silent Ok - it must
+/// dead-letter visibly instead of being consumed.
+#[test]
+fn apply_remote_atomic_void_of_a_completed_sale_is_a_conflict() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    seed_sale_row(&store, "sale-done-1", "completed");
+
+    let remote = OfflineQueueItem::new("void_sale", r#"{"sale_id":"sale-done-1"}"#);
+    let err = queue
+        .apply_remote_atomic(&store, &remote)
+        .expect_err("a paid sale must not be voided by a remote item");
+    assert!(
+        matches!(err, CoreError::Conflict { .. }),
+        "expected Conflict, got {err:?}"
+    );
+    assert_eq!(sale_status(&store, "sale-done-1"), "completed");
+}
+
+/// C4: `payment.recorded` with an idempotency key inserts one row, and a
+/// re-application inserts none.
+#[test]
+fn apply_remote_atomic_payment_with_key_inserts_once_and_replay_inserts_none() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    seed_sale_row(&store, "sale-pay-1", "completed");
+
+    let payload = r#"{"id":"pay-1","sale_id":"sale-pay-1","method":"CARD","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z","idempotency_key":"idem-1"}"#;
+    let remote = OfflineQueueItem::new("payment.recorded", payload);
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(payments_row_count(&store), 1);
+
+    // Same key, DIFFERENT row id: the key is the stronger identity, so the
+    // tender is recognised as already present and no second row is written.
+    let replay_payload = r#"{"id":"pay-2","sale_id":"sale-pay-1","method":"CARD","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z","idempotency_key":"idem-1"}"#;
+    let replay = OfflineQueueItem::new("payment.recorded", replay_payload);
+    assert!(queue.apply_remote_atomic(&store, &replay).unwrap());
+    assert_eq!(payments_row_count(&store), 1, "no second payments row");
+}
+
+/// C4: without a key the payment's own primary key is the identity.
+#[test]
+fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    seed_sale_row(&store, "sale-pay-2", "completed");
+
+    let payload = r#"{"id":"pay-3","sale_id":"sale-pay-2","method":"CASH","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z"}"#;
+    let remote = OfflineQueueItem::new("payment.recorded", payload);
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(payments_row_count(&store), 1);
+
+    let replay = OfflineQueueItem::new("payment.recorded", payload);
+    assert!(queue.apply_remote_atomic(&store, &replay).unwrap());
+    assert_eq!(payments_row_count(&store), 1);
+}
+
+/// C4: a payment whose sale is ABSENT has nothing to do and must return Ok
+/// (no payments row is insertable - the FK forbids it - and no sale may be
+/// fabricated to make one fit).
+#[test]
+fn apply_remote_atomic_payment_without_the_sale_is_a_benign_noop() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    let payload = r#"{"id":"pay-orphan","sale_id":"sale-not-here","method":"CASH","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z"}"#;
+    let remote = OfflineQueueItem::new("payment.recorded", payload);
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(payments_row_count(&store), 0);
+    assert_eq!(sales_row_count(&store), 0);
+}
+
+/// C4 legacy parity: the non-atomic `apply_remote` mirror consumes the same
+/// three actions instead of warning them away.
+#[test]
+fn apply_remote_legacy_consumes_the_three_new_arms() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    seed_refundable_sale(&store, "sale-legacy-1", 1);
+    deduct_one_coffee(&store);
+    let queue = SyncQueue::new();
+
+    queue
+        .apply_remote(
+            &store,
+            &OfflineQueueItem::new("refund_sale", refund_payload("refund-l1", "sale-legacy-1")),
+        )
+        .unwrap();
+    assert_eq!(inventory_qty(&store, "COFFEE"), 50);
+    assert_eq!(refunds_row_count(&store, "refund-l1"), 1);
+
+    queue
+        .apply_remote(
+            &store,
+            &OfflineQueueItem::new(
+                "payment.recorded",
+                r#"{"id":"pay-l1","sale_id":"sale-legacy-1","method":"CASH","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z"}"#,
+            ),
+        )
+        .unwrap();
+    assert_eq!(payments_row_count(&store), 1);
+
+    // The legacy mirror applies a void on an active sale and absorbs the
+    // replay, exactly as the atomic arm does.
+    seed_sale_row(&store, "sale-legacy-void", "active");
+    let void = OfflineQueueItem::new("void_sale", r#"{"sale_id":"sale-legacy-void"}"#);
+    queue.apply_remote(&store, &void).unwrap();
+    queue.apply_remote(&store, &void).unwrap();
+    assert_eq!(sale_status(&store, "sale-legacy-void"), "voided");
 }
