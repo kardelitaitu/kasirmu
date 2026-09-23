@@ -477,20 +477,17 @@ fn reverse_loyalty_for_refund_in_tx(
 
 /// CRM-06: reverse the customer's lifetime spend for a replicated refund.
 ///
-/// The same effect `Store::create_refund` applies on the originator
-/// (`db/refunds.rs`, step 2c), reproduced here because it is inlined in that
-/// function rather than exposed as a helper. Without it a remote refund
-/// reversed the loyalty points but left `customers.total_spent_minor`
-/// untouched, so one refund produced two different customer totals depending
-/// on which terminal applied it.
+/// DELEGATES to the one writer of this effect,
+/// [`kasirmu_core::db::refunds::reverse_customer_spend_on_refund`] — the very
+/// function `Store::create_refund` calls on the originator. This crate used
+/// to mirror that function's body because it was inlined in `create_refund`
+/// and therefore unreachable from here; that mirror was a second writer of
+/// the same money rule, free to drift from the original.
 ///
-/// The completion hook accrues spend in BASE currency, so the refund converts
-/// at the rate recorded on the sale — `refund_base = refund_total ×
-/// base_total / total`, integer round-half-up in i128, no float on money —
-/// and floors at zero for customers who accrued nothing during the
-/// projection-gap window. A sale with no customer, or a legacy sale with no
-/// recorded base total, reverses the raw refund total, exactly as the
-/// originator does.
+/// The `sales` read is this lane's only addition: the helper takes the sale
+/// total and base total as arguments rather than reading them, so the
+/// conversion the refund is measured at is supplied here from the same row
+/// the originator reads.
 ///
 /// Idempotence is the caller's: this runs only on the sale-present path,
 /// which has already inserted the refunds row that `refund_already_applied`
@@ -508,20 +505,14 @@ fn reverse_customer_spend_for_refund_in_tx(
     let Some(customer_id) = sale_customer_id.as_deref() else {
         return Ok(());
     };
-    let refund_base = match (sale_base_total, sale_total) {
-        (Some(base), total) if total > 0 && base != total => {
-            let num = i128::from(payload.total_minor) * i128::from(base);
-            let den = i128::from(total);
-            ((num * 2 + den) / (den * 2)) as i64
-        }
-        _ => payload.total_minor,
-    };
-    tx.execute(
-        "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
-         updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![refund_base, payload.created_at, customer_id],
-    )?;
-    Ok(())
+    kasirmu_core::db::refunds::reverse_customer_spend_on_refund(
+        tx,
+        customer_id,
+        payload.total_minor,
+        sale_total,
+        sale_base_total,
+        &payload.created_at,
+    )
 }
 
 /// Apply a void by compare-and-set on the sale's own status.

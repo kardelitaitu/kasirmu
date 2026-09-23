@@ -406,24 +406,21 @@ impl Store<'_> {
         }
 
         // ── 2c. CRM-06: reverse lifetime spend (base currency) ────
-        // The completion hook accrues spend in base currency; the refund
-        // converts its amount at the rate recorded on the sale
-        // (refund_base = refund_total × base_total / total, integer
-        // round-half-up — no floats on money). Floors at zero: legacy
-        // customers accrued nothing during the projection-gap window.
+        // The ONE writer of this effect is
+        // [`reverse_customer_spend_on_refund`], called here on the
+        // originator and by the sync lane's remote `refund_sale` arm, so
+        // one refund cannot leave two different customer totals depending
+        // on which terminal applied it. Same non-fatal policy as step 2b:
+        // a customer row that cannot be updated must not roll back money
+        // and stock already credited.
         if let Some(customer_id) = sale_customer_id.as_deref() {
-            let refund_base = match (sale_base_total, sale_total) {
-                (Some(base), t) if t > 0 && base != t => {
-                    let num = i128::from(refund.total.minor_units) * i128::from(base);
-                    let den = i128::from(t);
-                    ((num * 2 + den) / (den * 2)) as i64
-                }
-                _ => refund.total.minor_units,
-            };
-            if let Err(e) = tx.execute(
-                "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
-                 updated_at = ?2 WHERE id = ?3",
-                params![refund_base, refund.created_at, customer_id],
+            if let Err(e) = reverse_customer_spend_on_refund(
+                &tx,
+                customer_id,
+                refund.total.minor_units,
+                sale_total,
+                sale_base_total,
+                &refund.created_at,
             ) {
                 tracing::warn!(
                     "customer spend reversal failed for sale {} (refund {}): {e}",
@@ -949,6 +946,56 @@ impl Store<'_> {
             created_at: row.get("created_at")?,
         })
     }
+}
+
+/// CRM-06: reverse the customer's lifetime spend for a refund — the ONE
+/// writer of this money value.
+///
+/// The completion hook accrues spend in BASE currency, so the refund
+/// converts its amount at the rate recorded on the sale:
+/// `refund_base = refund_total × base_total / total`, integer round-half-up
+/// in i128 (no float ever touches money). The update floors at zero
+/// (`MAX(..., 0)`) for legacy customers who accrued nothing during the
+/// projection-gap window. A legacy sale with no recorded base total — or one
+/// whose base total equals its total, i.e. no conversion to make — reverses
+/// the raw refund total.
+///
+/// Public because it is the ONE writer of this effect: the local refund path
+/// ([Store::create_refund], step 2c) and the sync lane's remote
+/// `refund_sale` arm (`platform-sync`, `queue.rs`) both call it, so one
+/// refund cannot leave two different customer totals depending on which
+/// terminal applied it. A caller reaching it without a refunds row of its own
+/// is still replay-safe, because both callers apply it only after the
+/// refunds row exists — that row is what the replay probe reads.
+///
+/// Runs on the CALLER's connection/transaction — like
+/// [`crate::db::loyalty::reverse_loyalty_on_refund`] this must commit or
+/// roll back atomically with the refund row itself. The caller owns the
+/// failure policy: `create_refund` and the sync arm both log and continue,
+/// because a customer row that cannot be updated must not roll back money
+/// and stock already credited.
+pub fn reverse_customer_spend_on_refund(
+    conn: &rusqlite::Connection,
+    customer_id: &str,
+    refund_total_minor: i64,
+    sale_total_minor: i64,
+    sale_base_total_minor: Option<i64>,
+    at: &str,
+) -> Result<(), CoreError> {
+    let refund_base = match (sale_base_total_minor, sale_total_minor) {
+        (Some(base), total) if total > 0 && base != total => {
+            let num = i128::from(refund_total_minor) * i128::from(base);
+            let den = i128::from(total);
+            ((num * 2 + den) / (den * 2)) as i64
+        }
+        _ => refund_total_minor,
+    };
+    conn.execute(
+        "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
+         updated_at = ?2 WHERE id = ?3",
+        params![refund_base, at, customer_id],
+    )?;
+    Ok(())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
