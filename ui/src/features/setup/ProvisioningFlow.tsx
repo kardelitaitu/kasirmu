@@ -57,8 +57,22 @@ type LinkState =
   | { kind: 'linked'; account: LinkedAccountDto }
   | { kind: 'failed' };
 
-/** The emailed-code path's state for tablet. */
-type EmailState = 'idle' | 'sending' | 'sent' | 'verifying' | 'verified' | 'failed';
+/**
+ * The emailed-code path's state for tablet.
+ *
+ * `sendFailed` and `verifyFailed` are separate members on purpose. They used to
+ * be one `failed`, which is why a rejected code and an unreachable mail server
+ * offered the merchant the same sentence. They are different problems with
+ * different fixes, and the copy has to name the right one.
+ */
+type EmailState =
+  | 'idle'
+  | 'sending'
+  | 'sent'
+  | 'verifying'
+  | 'verified'
+  | 'sendFailed'
+  | 'verifyFailed';
 
 /**
  * The store types offered, with the preset each maps to.
@@ -242,8 +256,9 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       setCodeSent(true);
       setEmailState('sent');
     } catch {
-      setEmailState('failed');
-      setErrorMsg(l10n.getString('setup-account-failed'));
+      // No `setErrorMsg`: the message belongs beside the field that produced it,
+      // which is where the sendFailed branch below puts it.
+      setEmailState('sendFailed');
     }
   };
 
@@ -261,8 +276,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       setLinkedAccount(linked);
       setEmailState('verified');
     } catch {
-      setEmailState('failed');
-      setErrorMsg(l10n.getString('setup-account-failed'));
+      setEmailState('verifyFailed');
     }
   };
 
@@ -560,7 +574,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                         disabled={linkingBusy || emailState === 'verified' || isOffline}
                         onChange={(e) => {
                           setEmail(e.target.value);
-                          if (emailState === 'failed' || emailState === 'sent') setEmailState('idle');
+                          if (emailState === 'sendFailed' || emailState === 'verifyFailed' || emailState === 'sent') setEmailState('idle');
                         }}
                         autoComplete="email"
                       />
@@ -574,7 +588,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                       </Button>
                     </div>
 
-                    {(emailState === 'sent' || (emailState === 'failed' && codeSent)) && (
+                    {(emailState === 'sent' || ((emailState === 'verifyFailed') && codeSent)) && (
                       <div className="provisioning-account-input-row" style={{ marginTop: 'var(--space-2)' }}>
                         {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
                         <label htmlFor="provision-account-code" className="sr-only">
@@ -590,7 +604,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                           disabled={linkingBusy || isOffline}
                           onChange={(e) => {
                             setCode(e.target.value);
-                            if (emailState === 'failed') setEmailState('sent');
+                            if (emailState === 'verifyFailed') setEmailState('sent');
                           }}
                           autoComplete="one-time-code"
                         />
@@ -613,6 +627,27 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                     {emailState === 'verifying' && (
                       <p className="provisioning-note" role="status">
                         <Localized id="setup-account-verifying">Checking the code…</Localized>
+                      </p>
+                    )}
+                    {/* The failures render HERE, under the fields they belong to.
+                        They used to set the form-wide banner at the top of the
+                        card, two sections away from the input that failed, and
+                        both cases shared one sentence — so a rejected code and an
+                        unreachable mail server read identically. role="alert"
+                        because these follow a submit the user is waiting on, not
+                        live keystrokes. */}
+                    {emailState === 'sendFailed' && (
+                      <p className="provisioning-field-error" role="alert">
+                        <Localized id="setup-account-send-failed">
+                          Could not send the code. Check the address and try again.
+                        </Localized>
+                      </p>
+                    )}
+                    {emailState === 'verifyFailed' && (
+                      <p className="provisioning-field-error" role="alert">
+                        <Localized id="setup-account-verify-failed">
+                          That code did not work. Check it and try again, or resend.
+                        </Localized>
                       </p>
                     )}
                   </div>

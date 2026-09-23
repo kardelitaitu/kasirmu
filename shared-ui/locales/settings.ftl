@@ -100,6 +100,12 @@ setup-account-optional = You can skip this. Your licence key still runs the POS.
 # the Google control, which really does open one.
 setup-account-sending = Sending the code…
 setup-account-verifying = Checking the code…
+# Inline failures for the tablet's email leg. `setup-account-failed` above is the
+# "could not link" sentence and reads wrong for a code that was merely rejected:
+# nothing was linked yet, and the fix is to retype the code, not to try the whole
+# account connection again. Each names the step that actually failed.
+setup-account-send-failed = Could not send the code. Check the address and try again.
+setup-account-verify-failed = That code did not work. Check it and try again, or resend.
 
 
 # Accessible name for a feature toggle row. The code used to write

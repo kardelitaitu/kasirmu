@@ -75,6 +75,8 @@ vi.mock('@fluent/react', () => ({
           'setup-account-code-label': 'Verification code',
           'setup-account-failed': 'Failed to connect account.',
           'setup-account-retry': 'Try again',
+          'setup-account-send-failed': 'Could not send the code. Check the address and try again.',
+          'setup-account-verify-failed': 'That code did not work. Check it and try again, or resend.',
           'setup-provision-account-required': 'Please link your kasir.mu account before finishing setup.',
           'setup-provision-success': 'This terminal is ready.',
           'setup-provision-pin-too-short': 'Use at least 4 digits.',
@@ -212,6 +214,69 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       expect(linkDeviceGoogle).toHaveBeenCalledTimes(2);
       expect(screen.getByText(/Linked to retry@example\.com\./i)).toBeInTheDocument();
     }, FAST_WAIT);
+  });
+
+  // ── The two email-leg failures are different problems ──────────────
+  //
+  // Both used to set one state ('failed') and one sentence via the form-wide
+  // banner at the top of the card. A rejected code and a mail server that never
+  // answered are not the same problem and do not have the same fix, and the
+  // message belonged under the field, not two sections above it.
+
+  it('names a failed send and offers no code field to fill in', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'ABCD1234',
+      poll_token: 'poll-token-xyz',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    vi.mocked(requestDeviceLinkCode).mockRejectedValueOnce(new Error('smtp down'));
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+    fireEvent.click(screen.getByRole('tab', { name: /Email Code/i }));
+    fireEvent.change(screen.getByLabelText(/^Account email$/i), {
+      target: { value: 'owner@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Email me a code/i }));
+
+    // The send-specific sentence, not the link-failure one.
+    expect(
+      await screen.findByText(/Could not send the code/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Failed to connect account/i)).not.toBeInTheDocument();
+    // No code was ever sent, so there is nothing to type into.
+    expect(screen.queryByLabelText(/Verification code/i)).not.toBeInTheDocument();
+  });
+
+  it('names a rejected code, and keeps the code field so it can be retyped', async () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValueOnce({
+      code: 'ABCD1234',
+      poll_token: 'poll-token-xyz',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    vi.mocked(requestDeviceLinkCode).mockResolvedValueOnce(undefined);
+    vi.mocked(consumeDeviceLinkCode).mockRejectedValueOnce(new Error('bad code'));
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-linked'));
+    fireEvent.click(screen.getByRole('tab', { name: /Email Code/i }));
+    fireEvent.change(screen.getByLabelText(/^Account email$/i), {
+      target: { value: 'owner@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Email me a code/i }));
+
+    const codeInput = await screen.findByLabelText(/Verification code/i);
+    fireEvent.change(codeInput, { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: /Verify/i }));
+
+    // The verify-specific sentence, and the field stays so the code can be fixed.
+    expect(await screen.findByText(/That code did not work/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Could not send the code/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Verification code/i)).toBeInTheDocument();
   });
 
   it('defaults to the linked mode and requires an account before submitting', async () => {

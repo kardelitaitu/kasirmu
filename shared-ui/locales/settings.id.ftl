@@ -179,6 +179,13 @@ setup-account-optional = Anda dapat melewati ini. Kunci lisensi Anda tetap menja
 # dipakai kontrol Google, yang memang membuka browser.
 setup-account-sending = Mengirim kode…
 setup-account-verifying = Memeriksa kode…
+# Kegagalan inline untuk jalur email di tablet. `setup-account-failed` di atas
+# adalah kalimat "gagal menautkan" dan salah konteks untuk kode yang sekadar
+# ditolak: belum ada yang tertaut, dan perbaikannya adalah mengetik ulang kodenya,
+# bukan mengulang seluruh penyambungan akun. Masing-masing menyebut langkah yang
+# benar-benar gagal.
+setup-account-send-failed = Kode tidak terkirim. Periksa alamatnya lalu coba lagi.
+setup-account-verify-failed = Kode itu tidak berhasil. Periksa lalu coba lagi, atau kirim ulang.
 
 setup-features-toggle-aria =
     .aria-label = Aktifkan/nonaktifkan { $label }
