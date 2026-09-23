@@ -183,6 +183,67 @@ pub fn build_batches(
     batches
 }
 
+/// Apply per-item push outcomes to the local offline queue.
+///
+/// The third push-outcome applier in the workspace, alongside
+/// `kasirmu_core::sync_client::apply_sync_outcomes` (the immediate path) and
+/// `daemon::apply_push_results` (the SQLite daemon). All three MUST classify
+/// outcomes identically: a rejection rule applied in two of three appliers is
+/// the divergent-twin failure, not a smaller change.
+///
+/// # Duplicate-id replays are not rejections
+///
+/// A `Rejected` reason carrying the
+/// [`kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX`] marker means
+/// the server already holds this item id, so the mutation landed on a previous
+/// push and only the local mark was lost (the canonical case: a crash between
+/// the server insert and `mark_offline_synced`, then a re-push). Item ids are
+/// client-generated UUIDv7 values assigned once at enqueue and never reused
+/// (`OfflineQueueItem::new`), so a duplicate id can only ever be THIS item.
+/// The correct local state is `synced`. Routing it to `mark_failed` would be
+/// silently terminal: push-side `failed` rows have no requeue path, so the
+/// item would be stranded locally while sitting durably on the server.
+///
+/// # Errors
+///
+/// Propagates the first queue-write failure. A duplicate-id replay is the ONLY
+/// rejection that marks synced; every other reason still dead-letters the row.
+fn apply_push_outcomes(
+    queue: &SyncQueue,
+    store: &Store<'_>,
+    batch: &[kasirmu_core::offline::OfflineQueueItem],
+    results: &[transport::PushOutcome],
+) -> Result<(), SyncError> {
+    for (item, outcome) in batch.iter().zip(results.iter()) {
+        match outcome {
+            transport::PushOutcome::Accepted => {
+                queue.mark_synced(store, &item.id)?;
+            }
+            transport::PushOutcome::Conflict(server_item) => {
+                // SYNC-02: single shared conflict-application service --
+                // identical ADR #21 strategy whether the conflict is
+                // processed here or by the daemon.
+                queue.apply_push_conflict(store, item, server_item)?;
+            }
+            transport::PushOutcome::Rejected { reason }
+                if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
+            {
+                // Idempotent replay: the server already holds this exact item,
+                // so the mutation landed. Mark synced, never failed.
+                tracing::info!(
+                    item_id = %item.id,
+                    "sync engine: duplicate-id replay, item already on server, marking synced"
+                );
+                queue.mark_synced(store, &item.id)?;
+            }
+            transport::PushOutcome::Rejected { reason } => {
+                queue.mark_failed(store, &item.id, reason)?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Whether a snapshot tax rate's scope can be honoured in this database.
 ///
 /// `true` means the row may be written. `false` covers two refusals:
@@ -551,22 +612,7 @@ impl SyncEngine {
                 );
 
                 let results = self.transport.push_items(batch).await?;
-                for (item, outcome) in batch.iter().zip(results.iter()) {
-                    match outcome {
-                        transport::PushOutcome::Accepted => {
-                            queue.mark_synced(store, &item.id)?;
-                        }
-                        transport::PushOutcome::Conflict(server_item) => {
-                            // SYNC-02: single shared conflict-application
-                            // service — identical ADR #21 strategy whether the
-                            // conflict is processed here or by the daemon.
-                            queue.apply_push_conflict(store, item, server_item)?;
-                        }
-                        transport::PushOutcome::Rejected { reason } => {
-                            queue.mark_failed(store, &item.id, reason)?;
-                        }
-                    }
-                }
+                apply_push_outcomes(&queue, store, batch, &results)?;
                 total_pushed += results.len();
             }
         } else {

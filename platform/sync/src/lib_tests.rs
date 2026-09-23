@@ -1600,3 +1600,197 @@ fn import_snapshot_clears_a_stale_scope_when_the_server_row_is_unscoped() {
         "the hub cleared the scope, so the branch must too"
     );
 }
+
+// ── apply_push_outcomes: the third applier ───────────────────
+//
+// C45: `lib.rs` routed EVERY `Rejected` outcome to `mark_failed`, with no
+// duplicate-id predicate — unlike `sync_client::apply_sync_outcomes` and
+// `daemon::apply_push_results`, which both classify it. These tests pin the
+// third applier to the same rule so the divergence cannot come back.
+
+/// A `Rejected` whose reason carries the duplicate-id prefix marks the row
+/// SYNCED, not failed.
+///
+/// This is the crash-then-repush case: the server already holds the item, so
+/// the mutation landed and only the local mark was lost. Marking it `failed`
+/// is silently terminal — push-side failed rows are never requeued — so the
+/// item would be stranded locally while durably present on the server.
+///
+/// Pre-fix this test FAILS: the bare `Rejected` arm called `mark_failed`, so
+/// the row read `failed` with the duplicate-id text as its error.
+#[test]
+fn apply_push_outcomes_duplicate_id_replay_marks_synced() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+
+    let results = vec![transport::PushOutcome::Rejected {
+        reason: format!(
+            "{}{}",
+            kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX, item.id
+        ),
+    }];
+    apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
+
+    let stored = store
+        .list_all_offline()
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == item.id)
+        .unwrap();
+    assert_eq!(
+        stored.status,
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
+        "a duplicate-id replay is a successful earlier push, not a rejection"
+    );
+    assert!(
+        stored.synced_at.is_some(),
+        "the replay must be recorded as synced, with a timestamp"
+    );
+}
+
+/// A genuine rejection still dead-letters the row. The duplicate-id carve-out
+/// must not swallow real failures.
+#[test]
+fn apply_push_outcomes_genuine_rejection_marks_failed() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+
+    let results = vec![transport::PushOutcome::Rejected {
+        reason: "invalid id: not-a-uuid".into(),
+    }];
+    apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
+
+    let stored = store
+        .list_all_offline()
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == item.id)
+        .unwrap();
+    assert_eq!(
+        stored.status,
+        kasirmu_core::offline::OfflineQueueStatus::Failed,
+        "a real rejection must stay terminal"
+    );
+    assert_eq!(stored.last_error.as_deref(), Some("invalid id: not-a-uuid"));
+}
+
+/// The prefix must be matched as a prefix of the reason, not as a substring
+/// anywhere in it — otherwise an error message that merely MENTIONS a
+/// duplicate id would be misread as a replay.
+#[test]
+fn apply_push_outcomes_duplicate_prefix_is_anchored() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+
+    let results = vec![transport::PushOutcome::Rejected {
+        reason: "validation failed: duplicate id: suffix".into(),
+    }];
+    apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
+
+    let stored = store
+        .list_all_offline()
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == item.id)
+        .unwrap();
+    assert_eq!(
+        stored.status,
+        kasirmu_core::offline::OfflineQueueStatus::Failed,
+        "the prefix is anchored: a reason that only mentions a duplicate id is still a rejection"
+    );
+}
+
+/// `Accepted` is unchanged: the row is marked synced.
+#[test]
+fn apply_push_outcomes_accepted_marks_synced() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+
+    let results = vec![transport::PushOutcome::Accepted];
+    apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
+
+    let stored = store
+        .list_all_offline()
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == item.id)
+        .unwrap();
+    assert_eq!(stored.status, kasirmu_core::offline::OfflineQueueStatus::Synced);
+}
+
+/// `Conflict` is unchanged: it still goes through the shared ADR #21 resolver
+/// (`apply_push_conflict`), which marks the row resolved with an auditable tag
+/// rather than dead-lettering it.
+#[test]
+fn apply_push_outcomes_conflict_uses_shared_resolver() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let item = store.enqueue_offline("sale.create", "{\"total\":100}").unwrap();
+    // The server's copy of the same action, with a newer timestamp so the
+    // resolver has a defined winner.
+    let mut server_item = item.clone();
+    server_item.id = "server-copy".into();
+    server_item.created_at = "2030-01-01T00:00:00.000Z".into();
+
+    let results = vec![transport::PushOutcome::Conflict(server_item)];
+    apply_push_outcomes(&queue, &store, std::slice::from_ref(&item), &results).unwrap();
+
+    let stored = store
+        .list_all_offline()
+        .unwrap()
+        .into_iter()
+        .find(|i| i.id == item.id)
+        .unwrap();
+    assert_eq!(
+        stored.status,
+        kasirmu_core::offline::OfflineQueueStatus::Synced,
+        "a conflict is resolved, not dead-lettered"
+    );
+    assert!(
+        stored
+            .last_error
+            .as_deref()
+            .is_some_and(|e| e.starts_with("resolved: conflict")),
+        "the resolution must leave an auditable marker, got {:?}",
+        stored.last_error
+    );
+}
+
+/// A batch longer than the results is not misaligned: `zip` stops at the
+/// shorter side, so a truncated server response leaves the trailing items
+/// PENDING rather than marking them from a neighbour's outcome.
+#[test]
+fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let a = store.enqueue_offline("sale.create", "{\"n\":1}").unwrap();
+    let b = store.enqueue_offline("sale.create", "{\"n\":2}").unwrap();
+
+    let results = vec![transport::PushOutcome::Accepted];
+    apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
+
+    let all = store.list_all_offline().unwrap();
+    let got = |id: &str| {
+        all.iter()
+            .find(|i| i.id == id)
+            .unwrap()
+            .status
+            .clone()
+    };
+    assert_eq!(got(&a.id), kasirmu_core::offline::OfflineQueueStatus::Synced);
+    assert_eq!(
+        got(&b.id),
+        kasirmu_core::offline::OfflineQueueStatus::Pending,
+        "an item with no outcome must stay pending, never inherit a neighbour's"
+    );
+}
