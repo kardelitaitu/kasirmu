@@ -5,9 +5,11 @@
 # SELF-TEST WRONG (it read the live nav, so a screen rename broke it) and check-api-surface.py
 # could not run at all after apps/desktop-client became apps/desktop-tauri. A checker that
 # cannot run looks exactly like a checker that found nothing, which is the failure this step
-# exists to catch. Only these three ship a self-test today.
+# exists to catch. check-env-docs, check-ci-claims and check-nav-paths shipped first;
+# check-dead-refs joined on 2026-09-24 with its source-relative resolution cases (the
+# 2026-09-23 documentation audit, open item 3).
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths; do
+for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs; do
   python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
 done

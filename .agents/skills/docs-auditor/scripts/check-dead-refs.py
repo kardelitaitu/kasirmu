@@ -42,7 +42,11 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
   * A basename found ANYWHERE in the tree resolves a qualified reference, so
     "e2e/login.spec.ts" resolves on the strength of a same-named file in another dir.
     Chosen because docs cite files by name constantly; the cost is missing a moved file
-    whose name did not change.
+    whose name did not change. SINCE 2026-09-24 this rescue never applies to markdown
+    link targets written ./x or ../x: those resolve against the source file alone, so a
+    stale reorg link can no longer pass on the strength of a same-named survivor in
+    another directory (~25 such breaks were measured and repaired by hand in the
+    2026-09-23 documentation audit; see its open item 3).
   * Prose containing slashes off a known top-level dir can look like a path
     ("install/uninstall/shortcut/update wiring"). These are rare and are handled with the
     pragma rather than a heuristic that would start eating real findings.
@@ -86,6 +90,18 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     `/tmp/attest.json`), so a fence scanner cannot tell a repo path from a server path without
     knowing which commands run where. Until it can, a command block is a hand check.
 
+  * Markdown link and image targets ([text](target)) are extracted and resolved against
+    the SOURCE FILE's directory first (since 2026-09-24). A ./ or ../ target is anchored:
+    it passes only if the path exists relative to the file that links it -- never from the
+    repo root, never through the basename fallback -- because that fallback is what hid
+    the stale ../operations/... links the 2026-09-23 audit repointed by hand. A plain
+    target (docs/foo.md written inside a nested page) tries the source directory first,
+    then the path-literal rules below unchanged. Targets that are not filesystem paths
+    are skipped: URLs, mailto:/tel:, anchors (#...), site-absolute routes (/...), and
+    everything under website/, whose ../../login/ forms are Astro routes rather than
+    paths (audit open item 4 owns telling those apart -- extracting them here produced
+    ~90 false findings when attempted).
+
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
   the reference is intentional, in one token, where a reader can see it.
@@ -96,6 +112,7 @@ Usage:
   python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
   python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --verbose
   python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py docs/guides/FOO.md
+  python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
 """
 
 import argparse
@@ -153,6 +170,16 @@ PATH_RE = re.compile(r"(?<![\w/.~-])((?:" + TOP + r")/[\w./+~@-]*[\w])")
 
 BARE_RE = re.compile(
     r"\b([\w.+-]+\.(?:sh|ps1|py|mjs|cjs|sql|toml|ya?ml|tsx|ts|rs|ftl|go|css|json))\b")
+
+# A markdown link or image target: [text](target). Captures the target only; the
+# resolution RULES (source-relative first, anchored ./ ../, skipped domains) live in
+# resolve_ok and in scan_text's extraction skips. PATH_RE cannot see ./x or ../x -- its
+# lookbehind rejects a preceding "/" or "." -- which is why this extractor exists.
+LINK_RE = re.compile(r"\]\(\s*<?([^)\s>]+)>?\)")
+
+# Link targets that name a route or an endpoint, not a repository path. "/..." is a
+# site-absolute route; the scheme prefixes are URLs. Compared with str.startswith.
+LINK_SKIP = ("http://", "https://", "mailto:", "tel:", "ftp://", "/", "#", "{{")
 
 # NOTE: the character class must NOT contain a bare "." - a class like [....] keeps
 # literal dots, which makes every path with an extension look like a placeholder and
@@ -291,10 +318,40 @@ def is_historical_doc(path, text):
         return True
     return False
 
-def resolve_ok(token, files, dirs, basenames):
+def resolve_ok(token, files, dirs, basenames, src_dir=""):
     b = token.split("#")[0].rstrip("/").rstrip(".-")
     if not b:
         return True
+
+    def on_disk(p):
+        # The index PRUNEs node_modules/, target/, dist/ and friends, so a reference to
+        # a pruned-but-present path is not dead. Without this, every ui/node_modules
+        # mention in a doc is a false positive.
+        try:
+            return (ROOT / p).exists()
+        except OSError:
+            return False
+
+    # SOURCE-RELATIVE FIRST (2026-09-24): every candidate is first tried against the
+    # directory of the file that names it, which is what a markdown reader does. For a
+    # root-level file src_dir is "": the repo root IS the source directory, so "./x"
+    # normalizes to "x" there instead of failing the anchored branch below.
+    rel = os.path.normpath(os.path.join(src_dir, b)).replace(os.sep, "/")
+
+    # ANCHORED targets ("./x", "../x"): markdown's own relative form, extracted from
+    # [text](...) links only. These resolve against the source file ALONE -- no repo-root
+    # retry, no basename fallback -- so a stale reorg link cannot pass on the strength of
+    # a same-named survivor in another directory (the ~25 hidden breaks the 2026-09-23
+    # audit found by hand; its open item 3).
+    if b.startswith("./") or b.startswith("../"):
+        if not rel or rel.startswith("../"):
+            return False            # the link escapes the repo root (or resolved to nothing)
+        return (rel in files or (rel + "/") in dirs
+                or any(f.startswith(rel + "/") for f in files) or on_disk(rel))
+
+    if rel and rel != b and (rel in files or (rel + "/") in dirs or on_disk(rel)):
+        return True                 # source-relative resolution wins before any fallback
+
     if b in files or b in dirs or (b + "/") in dirs:
         return True
     if any(f.startswith(b + "/") for f in files):     # a directory named by prefix
@@ -306,15 +363,7 @@ def resolve_ok(token, files, dirs, basenames):
     # tokenizer to "scripts/generate-license-keys." - a real path with a real prefix.
     if any(f.startswith(b + ".") or f.startswith(b + "-") for f in files):
         return True
-    # Fall back to the filesystem. The index PRUNEs node_modules/, target/, dist/ and
-    # friends, so a reference to a pruned-but-present directory is not dead. Without
-    # this, every ui/node_modules mention in a doc is a false positive.
-    try:
-        if (ROOT / b).exists():
-            return True
-    except OSError:
-        pass
-    return False
+    return on_disk(b)
 
 
 def check_file(path, files, dirs, basenames, include_bare=False):
@@ -329,6 +378,22 @@ def check_file(path, files, dirs, basenames, include_bare=False):
         text = (ROOT / path).read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
         return None, str(exc)
+    return scan_text(path, text, files, dirs, basenames, include_bare)
+
+
+def scan_text(path, text, files, dirs, basenames, include_bare=False):
+    """Pure core of check_file: (path, text) plus an index -> (hits, historical).
+
+    Split out for --self-test, which feeds synthetic fixtures here and touches no file
+    on disk -- check-nav-paths.py's rule: a self-test that mutates the tree can damage
+    the thing it is policing."""
+
+    # Relative resolution is anchored to the directory of the file being scanned.
+    src_dir = path.rsplit("/", 1)[0] if "/" in path else ""
+    # website/ keeps path-literal scanning only: its ../../login/ and /en/docs/ link
+    # targets are Astro routes, not filesystem paths, and extracting them produced ~90
+    # false findings in the 2026-09-23 audit (open item 4 owns the site-aware checker).
+    links = not path.startswith("website/")
     hits = []
     lines = text.split(chr(10))
 
@@ -364,6 +429,19 @@ def check_file(path, files, dirs, basenames, include_bare=False):
             if after in ("*", "{", "?", "[", "~"):
                 continue                       # a glob, not a path claim
             cands.append(m.group(1))
+        # Markdown link/image targets, so ./ and ../ targets and non-TOP plain targets
+        # are graded at all -- all three were invisible to this checker before
+        # 2026-09-24 (measured in the 2026-09-23 audit). Deduped against PATH_RE's
+        # captures: double-reporting from two regexes was one of the five silent bugs
+        # the self-test caught on day one.
+        if links:
+            for m in LINK_RE.finditer(line):
+                tgt = m.group(1)
+                if tgt.startswith(LINK_SKIP) or "://" in tgt:
+                    continue
+                if PLACEHOLDER.search(tgt) or tgt in cands:
+                    continue
+                cands.append(tgt)
         # A bare filename that is just the last segment of a path already captured above
         # must not be reported a second time (crates/x/y.rs would appear twice).
         tails = {c.rsplit("/", 1)[-1] for c in cands}
@@ -381,9 +459,60 @@ def check_file(path, files, dirs, basenames, include_bare=False):
                 continue
             if PLACEHOLDER.search(c):
                 continue
-            if not resolve_ok(c, files, dirs, basenames):
+            if not resolve_ok(c, files, dirs, basenames, src_dir):
                 hits.append((n, c.split("#")[0]))
     return hits, is_historical_doc(path, text)
+
+
+def self_test():
+    # Synthetic fixtures, deliberately (check-nav-paths.py's rule): a self-test that
+    # reads the live tree fails whenever the tree is refactored, which says nothing about
+    # the resolution logic it exists to pin. Every case pins one claim from the
+    # 2026-09-23 audit's open item 3 or one of the bug classes this checker shipped with.
+    files = {"docs/sub/page.md", "docs/sub/brother.md", "docs/other/ghost.md",
+             "docs/guide.md", "website/src/content/docs/en/index.md"}
+    dirs = {"docs/", "docs/sub/", "docs/other/", "website/", "website/src/",
+            "website/src/content/", "website/src/content/docs/",
+            "website/src/content/docs/en/"}
+    basenames = {f.rsplit("/", 1)[-1] for f in files}
+    idx = (files, dirs, basenames)
+
+    def hits(path, text):
+        h, _ = scan_text(path, text, *idx)
+        return h
+
+    cases = []
+    # The regression the whole change exists for: ghost.md survives in docs/other/, so a
+    # basename fallback would resolve this stale link and the finding would vanish.
+    cases.append(("stale ../ link reported despite same-named file elsewhere",
+                  len(hits("docs/sub/page.md", "[g](../late/ghost.md)")) == 1))
+    cases.append(("existing ../ link clean",
+                  len(hits("docs/sub/page.md", "[g](../other/ghost.md)")) == 0))
+    cases.append(("./ sibling extracted (the previously invisible form)",
+                  len(hits("docs/sub/page.md", "[n](./nope.md)")) == 1))
+    cases.append(("existing ./ sibling clean",
+                  len(hits("docs/sub/page.md", "[b](./brother.md)")) == 0))
+    cases.append(("anchored target resolves against the source directory",
+                  len(hits("docs/guide.md", "[p](./sub/page.md)")) == 0))
+    cases.append(("plain link target through the source directory, clean",
+                  len(hits("docs/guide.md", "[p](sub/page.md)")) == 0))
+    cases.append(("missing path reported exactly once (no double count)",
+                  len(hits("docs/sub/page.md", "[x](docs/nope.md)")) == 1))
+    cases.append(("website site-route targets skipped",
+                  len(hits("website/src/content/docs/en/index.md",
+                           "[l](../../login/) [m](../account.md)")) == 0))
+    cases.append(("pragma still suppresses an anchored stale link",
+                  len(hits("docs/sub/page.md",
+                           "<!-- dead-ref: ok -->" + chr(10) +
+                           "[g](../late/ghost.md)")) == 0))
+    cases.append(("dated record stays historical",
+                  is_historical_doc("docs/records/2026-01-01-x.md", "t") is True))
+    bad = [n for n, ok in cases if not ok]
+    if bad:
+        print("SELF-TEST WRONG: " + ", ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (%d cases, no files touched)" % len(cases))
+    return 0
 
 
 def main():
@@ -394,7 +523,12 @@ def main():
                     help="also test bare filenames (noisy: build artifacts)")
     ap.add_argument("--include-historical", action="store_true",
                     help="list dated-record hits too (still not counted as drift)")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run synthetic resolution cases; touches no files")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     try:
         files, dirs, basenames = build_index()
@@ -433,7 +567,11 @@ def main():
 
     # One batched git query decides which unresolved paths are ignored on purpose,
     # so the answer comes from .gitignore rather than a hardcoded extension list.
-    seen = {r[2] for r in rows}
+    # Anchored link targets (./x, ../x) are excluded: they are never gitignore forms,
+    # and a ../ argument makes git check-ignore fail its WHOLE batch of twenty, which
+    # would silently drop the ignore-filtering for the other nineteen (seen as "2 git
+    # check-ignore batch(es) errored" on the first run of the link rules).
+    seen = {r[2] for r in rows if not r[2].startswith(("./", "../"))}
     ign = git_ignored(seen)
     before = len(rows)
     rows = [r for r in rows if r[2] not in ign]

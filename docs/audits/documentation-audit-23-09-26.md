@@ -7,8 +7,8 @@ working tree on 2026-09-23. Peer sessions were active during the run — see
 **Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
 pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
 close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
-not touched*), plus four open items that are separate work (listed at the bottom — item 1 has since
-been closed in follow-up passes, so three remain).
+not touched*), plus four open items that are separate work (listed at the bottom — items 1 and 3
+have since been closed in follow-up passes, so two remain).
 
 ## Scope and method
 
@@ -151,9 +151,15 @@ removing it is a different decision than a typo repair, and it is right.
 - **Basename fallback**: a link to a nonexistent path passes if *any* file with that
   basename exists anywhere in the tree. That hid ~25 real broken links from
   `check-dead-refs` (its 23 vs the strict scan's 148) — including every launch-guide
-  `../operations/…` link.
-- **HTML-comment lines are not scanned**, so audit stamps can carry dead paths
-  silently (two launch-test stamps did; both precision-corrected here).
+  `../operations/…` link. **Closed 24-09-26**: link targets now resolve against the
+  source file first, and `./`/`../` targets never reach the basename rescue (open
+  item 3); path literals in prose keep it deliberately, because docs cite files by
+  bare name constantly.
+- ~~**HTML-comment lines are not scanned**~~ **Believed wrong 24-09-26**: a probe line
+  carrying a dead path inside an HTML comment was flagged on the first try, and this
+  audit's own house-checker count included two audit-stamp path claims — a scanner that
+  skips comments produces neither. The stamp paths above were precision-corrected
+  because they WERE scanned; the blind spot does not exist.
 - **Dated records are exempted** by name, which is right for history and wrong when the
   file is a live index pointing into `snapshots/`.
 - **`docs/plans/` and `website/` resolve differently**: plan docs legitimately cite
@@ -177,7 +183,7 @@ removing it is a different decision than a typo repair, and it is right.
 - **`docs/plans/**`** — working documents; forward paths are not drift.
 - **`website/src/content/docs/**`** — site routes, see above.
 - **`.agents/`, `.workbuddy-ai/`** — the agent working corpus, out of scope by house rule.
-- **`](url)` literals** — three "broken links" in `seo-robots-llms-review` are a
+- **`](url)` literals** — three "broken links" in `seo-robots-llms-review` are a <!-- dead-ref: ok: names the scanner artifact `](url)` on purpose -->
   scanner artifact: the text `](url)` in a table describing link shapes. <!-- dead-ref: ok: this line exists to name the scanner artifact `](url)` itself -->
 
 ## Open items (bigger than a link sweep — not attempted here)
@@ -217,10 +223,25 @@ removing it is a different decision than a typo repair, and it is right.
    column against frontmatter, so the next re-audit will drift the same way. The
    generator already parses both — a `--check`-style comparator beside it is the
    natural home.
-3. **The house checker itself**: teach `check-dead-refs.py` to resolve links relative to
-   the file before falling back to basename matching, and to skip-with-count (not
-   silently skip) HTML-comment lines. Both changes are small and would have caught
-   finding 5 a reorg earlier.
+3. ~~**The house checker itself**~~ **Resolved 24-09-26 — half shipped, half withdrawn
+   on evidence.** Shipped: `check-dead-refs.py` now extracts markdown link targets and
+   resolves every candidate against the source file's directory first; `./` and `../`
+   targets are anchored there — no repo-root retry, no basename fallback — so a stale
+   reorg link can no longer pass on the strength of a same-named survivor elsewhere
+   (the ~25 hidden breaks this audit repointed by hand). `website/` stays exempt from
+   link extraction: its `../../login/` forms are Astro routes until open item 4 lands.
+   The HTML-comment half was **withdrawn on evidence**: a probe line carrying a dead
+   path inside an HTML comment was flagged on the first try, and this audit's own
+   house-checker count included two audit-stamp path claims — only a scanner that reads
+   comments produces those. Ten `--self-test` cases now pin the rules (basename rescue
+   blocked for `./`/`../`, extraction of the previously invisible forms, source-dir
+   anchoring, pragma suppression, the website skip, no double counting), and
+   `check-auditor-selftests.sh` runs them beside the other three checkers. The first
+   hardened run re-exposed four genuinely dead depth-3 links — QUICKSTART and EXTENDING
+   pointing at the root ARCHITECTURE one directory short, the onboarding skill likewise
+   at root AGENTS — repointed, plus the three llms.txt `url`-target shape-quotes this
+   document already knew about, pragma'd at their source. The live baseline held at
+   7 refs in the fenced checklist.
 4. **A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
    told apart by a file scanner.
 

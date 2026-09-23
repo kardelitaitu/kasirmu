@@ -59,7 +59,9 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   count hides that three of the four need different fixes.
 - **Unresolved path references** (any doc): run
   `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
-  once (pruned) and reports path literals in markdown that resolve to nothing,
+  once (pruned) and reports path literals and markdown link targets that resolve to
+  nothing — link targets against the source file's directory first, with `./` and `../`
+  targets anchored there (no repo-root retry, no basename fallback) since 2026-09-24 —
   separating live docs from dated records, plans and active specs — which are not drift,
   because a plan names files it intends to create. Burned down to **0 unresolved refs
   across 332 live docs (exit 0)** the same day, from 62 files on the first ad-hoc sweep.

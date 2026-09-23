@@ -537,7 +537,7 @@ Documented so scripts don't build on sand:
 ---
 
 **Related:** [plugin-guide.md](./plugin-guide.md) ·
-[ARCHITECTURE.md](../../ARCHITECTURE.md) ·
+[ARCHITECTURE.md](../../../ARCHITECTURE.md) ·
 [spec 0047](../../specs/_active/0047-openapi-drift-guard-and-read-tiers.md) ·
 [kasirmu-api README](../../../crates/kasirmu-api/README.md)
 
