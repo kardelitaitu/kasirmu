@@ -612,6 +612,27 @@ impl Store<'_> {
     }
 
     /// Freeze a gift card (prevent further redemptions).
+    ///
+    /// C18: the transition is a compare-and-set, not a blind write. The status
+    /// the card carries is read first (`Self::get_gift_card`) and the guarded
+    /// UPDATE carries it as a predicate, so a competing writer that commits in
+    /// between makes the predicate match zero rows and this call is refused
+    /// instead of overwriting the winner. That matters because `status` gates
+    /// redemption of a stored-value row: the unguarded write could relabel a
+    /// card the winner had just exhausted to `redeemed` as `frozen`, leaving a
+    /// money-bearing row in a state no writer intended.
+    ///
+    /// The status is read OUTSIDE the transaction on purpose (the
+    /// `update_po_status` / `void_sale` shape, ADR #6) — reading it inside
+    /// would just observe the winner's value and then overwrite it, which is
+    /// the lost update this guard exists to prevent.
+    ///
+    /// # Errors
+    ///
+    /// `CoreError::NotFound` when no card carries `card_number_or_id`, and
+    /// `CoreError::Validation { field: "status" }` for a card that is not
+    /// `active` — whether that was true at the read or became true before the
+    /// write landed.
     pub fn freeze_gift_card(&self, card_number_or_id: &str) -> Result<GiftCard, CoreError> {
         let card = match self.get_gift_card(card_number_or_id)? {
             Some(c) => c,
@@ -632,10 +653,20 @@ impl Store<'_> {
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        self.conn.execute(
-            "UPDATE gift_cards SET status = 'frozen', updated_at = ?1 WHERE id = ?2",
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+        let changed = tx.execute(
+            "UPDATE gift_cards SET status = 'frozen', updated_at = ?1
+             WHERE id = ?2 AND status = 'active'",
             params![now, card.id],
         )?;
+        if changed != 1 {
+            tx.rollback()?;
+            return Err(CoreError::Validation {
+                field: "status",
+                message: "gift card status changed during freeze — try again".into(),
+            });
+        }
+        tx.commit()?;
 
         self.get_gift_card_by_raw_id(&card.id)?
             .ok_or_else(|| CoreError::NotFound {
@@ -645,6 +676,23 @@ impl Store<'_> {
     }
 
     /// Unfreeze a gift card (re-enable redemptions).
+    ///
+    /// C18: same compare-and-set as [`Self::freeze_gift_card`], in the other
+    /// direction. A rival writer that moved the card off `frozen` between the
+    /// read and this write makes the guarded UPDATE match zero rows, so the
+    /// rival's state survives and this call is refused rather than silently
+    /// reopening a card the winner had already consumed.
+    ///
+    /// The status is read outside the transaction for the same reason as the
+    /// freeze path — an in-transaction read would observe the winner and then
+    /// overwrite it.
+    ///
+    /// # Errors
+    ///
+    /// `CoreError::NotFound` when no card carries `card_number_or_id`, and
+    /// `CoreError::Validation { field: "status" }` for a card that is not
+    /// `frozen` — whether that was true at the read or became true before the
+    /// write landed.
     pub fn unfreeze_gift_card(&self, card_number_or_id: &str) -> Result<GiftCard, CoreError> {
         let card = match self.get_gift_card(card_number_or_id)? {
             Some(c) => c,
@@ -665,10 +713,20 @@ impl Store<'_> {
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        self.conn.execute(
-            "UPDATE gift_cards SET status = 'active', updated_at = ?1 WHERE id = ?2",
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+        let changed = tx.execute(
+            "UPDATE gift_cards SET status = 'active', updated_at = ?1
+             WHERE id = ?2 AND status = 'frozen'",
             params![now, card.id],
         )?;
+        if changed != 1 {
+            tx.rollback()?;
+            return Err(CoreError::Validation {
+                field: "status",
+                message: "gift card status changed during unfreeze — try again".into(),
+            });
+        }
+        tx.commit()?;
 
         self.get_gift_card_by_raw_id(&card.id)?
             .ok_or_else(|| CoreError::NotFound {

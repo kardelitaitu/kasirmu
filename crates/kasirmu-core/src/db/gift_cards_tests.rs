@@ -660,3 +660,250 @@ fn notes_render_kwd_three_decimals() {
         .unwrap();
     assert_eq!(result.transaction.notes, "Redeemed 0.012 on sale sale-14");
 }
+
+// ── C18 (slice P1.4): freeze/unfreeze are compare-and-sets ──────────────
+
+/// A migrated on-disk database in `dir` — the shape a forced-interleaving
+/// race test needs, since a second connection cannot be opened on the
+/// `:memory:` database `fresh()` returns.
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
+fn seed_card(conn: &Connection, card_number: &str) {
+    seed_user(conn, "staff-1");
+    store(conn)
+        .issue_gift_card(IssueGiftCardInput {
+            card_number: card_number.into(),
+            pin: None,
+            initial_amount_minor: 50000,
+            currency: "IDR".into(),
+            issued_to: None,
+            created_by: "staff-1".into(),
+            expiry_date: None,
+        })
+        .unwrap();
+}
+
+fn status_and_updated_at(conn: &Connection, card_number: &str) -> (String, String) {
+    conn.query_row(
+        "SELECT status, updated_at FROM gift_cards WHERE card_number = ?1",
+        params![card_number],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .unwrap()
+}
+
+/// The pre-check already refuses a card that is not `active`; this pins the
+/// OUTCOME (refused, row untouched) rather than only the error variant, so a
+/// future rewrite of the guard cannot regress it into a silent write.
+#[test]
+fn freeze_gift_card_refuses_an_already_frozen_card() {
+    let conn = fresh();
+    seed_card(&conn, "GC-C18-01");
+    let frozen = store(&conn).freeze_gift_card("GC-C18-01").unwrap();
+    assert_eq!(frozen.status, "frozen");
+    let before = status_and_updated_at(&conn, "GC-C18-01");
+
+    let err = store(&conn)
+        .freeze_gift_card("GC-C18-01")
+        .expect_err("freezing an already-frozen card must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "status",
+                ..
+            }
+        ),
+        "expected a status Validation, got: {err}"
+    );
+    assert_eq!(
+        status_and_updated_at(&conn, "GC-C18-01"),
+        before,
+        "a refused freeze must leave the row exactly as it was"
+    );
+}
+
+#[test]
+fn unfreeze_gift_card_refuses_an_active_card() {
+    let conn = fresh();
+    seed_card(&conn, "GC-C18-02");
+    let before = status_and_updated_at(&conn, "GC-C18-02");
+    assert_eq!(before.0, "active");
+
+    let err = store(&conn)
+        .unfreeze_gift_card("GC-C18-02")
+        .expect_err("unfreezing an active card must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "status",
+                ..
+            }
+        ),
+        "expected a status Validation, got: {err}"
+    );
+    assert_eq!(
+        status_and_updated_at(&conn, "GC-C18-02"),
+        before,
+        "a refused unfreeze must leave the row exactly as it was"
+    );
+}
+
+/// C18 (slice P1.4): the freeze is a compare-and-set, forced rather than
+/// hoped for.
+///
+/// Connection B stages a rival write that moves the card off `active` — an
+/// uncommitted `gift_cards` update held under a write lock until B's own
+/// timer releases it. A (the freeze, run on the main thread the instant B
+/// announces its lock) reads the card while B's write is still invisible, so
+/// it starts from `active`; A's write lands only after B commits.
+///
+/// Without the status predicate, A's unconditional `UPDATE ... WHERE id = ?`
+/// overwrites B's `redeemed` with `frozen` and reports success — a lost
+/// update on the column that gates redemption of a stored-value row. With the
+/// predicate, A's UPDATE matches zero rows, the freeze is refused, and B's
+/// status and timestamp survive exactly as B wrote them.
+#[test]
+fn freeze_gift_card_race_cannot_overwrite_a_competing_transition() {
+    let dir = std::env::temp_dir().join(format!("oz_gc_freeze_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    {
+        let conn = fresh_file(&dir);
+        seed_card(&conn, "GC-C18-R1");
+    }
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE gift_cards SET status='redeemed', updated_at=?1 WHERE card_number=?2",
+                    params!["2020-01-01T00:00:00.000Z", "GC-C18-R1"],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the staged card");
+            locked_tx.send(()).unwrap();
+            // B releases on its own timer: A is blocked inside
+            // `freeze_gift_card` and cannot signal mid-call.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = store(&conn_a).freeze_gift_card("GC-C18-R1");
+    rival.join().unwrap();
+
+    let err = outcome.expect_err("a freeze that lost the race must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "status",
+                ..
+            }
+        ),
+        "expected a status Validation for the losing freeze, got: {err}"
+    );
+
+    let (status, updated_at) = status_and_updated_at(&conn_a, "GC-C18-R1");
+    assert_eq!(status, "redeemed", "the winner's status must survive");
+    assert_eq!(
+        updated_at, "2020-01-01T00:00:00.000Z",
+        "the refused freeze must leave the row untouched"
+    );
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// C18 (slice P1.4): the same compare-and-set in the other direction.
+///
+/// B stages an unfreeze-by-another-terminal (`frozen` -> `active`, sentinel
+/// timestamp) under its write lock. A reads `frozen` while that write is
+/// invisible, then writes after B commits. Without the predicate A's
+/// unconditional update reports success and clobbers B's `updated_at`; with
+/// it A's UPDATE matches zero rows and the unfreeze is refused.
+#[test]
+fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
+    let dir = std::env::temp_dir().join(format!("oz_gc_unfreeze_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    {
+        let conn = fresh_file(&dir);
+        seed_card(&conn, "GC-C18-R2");
+        store(&conn).freeze_gift_card("GC-C18-R2").unwrap();
+    }
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE gift_cards SET status='active', updated_at=?1 WHERE card_number=?2",
+                    params!["2020-01-01T00:00:00.000Z", "GC-C18-R2"],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the staged card");
+            locked_tx.send(()).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = store(&conn_a).unfreeze_gift_card("GC-C18-R2");
+    rival.join().unwrap();
+
+    let err = outcome.expect_err("an unfreeze that lost the race must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "status",
+                ..
+            }
+        ),
+        "expected a status Validation for the losing unfreeze, got: {err}"
+    );
+
+    let (status, updated_at) = status_and_updated_at(&conn_a, "GC-C18-R2");
+    assert_eq!(status, "active", "the winner's status must survive");
+    assert_eq!(
+        updated_at, "2020-01-01T00:00:00.000Z",
+        "the refused unfreeze must leave the row untouched"
+    );
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
