@@ -481,6 +481,69 @@ fn provisioning_a_local_terminal_names_no_licence_server_tenant() {
     assert_eq!(out.record.mode, ProvisioningMode::Local);
 }
 
+/// A LINKED provision must stamp the SUPPLIED tenant onto the location row.
+///
+/// `locations` is RLS-covered, so a row left at the column DEFAULT is
+/// invisible to the tenant that owns it — and the cloud quota detector counts
+/// locations per tenant, so a paying tenant would score 0 locations. The
+/// source is `args.tenant_id`, the caller's own claim: the same value this
+/// transaction already writes into the peer `provisioning` row.
+#[test]
+fn a_linked_provision_stamps_the_supplied_tenant_on_the_location_row() {
+    let conn = fresh();
+    let mut linked = args_for("dev-tenant");
+    linked.mode = ProvisioningMode::Linked;
+    linked.tenant_id = Some("tenant-abc".to_owned());
+    linked.device_credential_id = Some("cred-1".to_owned());
+
+    let out = provision_device(&conn, &linked).unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_ne!(
+        stored, "default",
+        "a linked location must not sit on the single-tenant column DEFAULT"
+    );
+    assert_eq!(
+        stored, "tenant-abc",
+        "the location carries the tenant the caller supplied"
+    );
+    // One source, one tenant: the marker row and the location row agree.
+    assert_eq!(out.record.tenant_id.as_deref(), Some(stored.as_str()));
+}
+
+/// A LOCAL provision has no licence-server tenant, so the column is OMITTED
+/// and the schema's own NOT NULL DEFAULT 'default' supplies it — the declared
+/// single-tenant value, not a literal this code writes. The row must still be
+/// created: omitting a column is not a way to lose the location.
+#[test]
+fn a_local_provision_omits_the_tenant_column_and_the_row_still_lands() {
+    let conn = fresh();
+    let out = provision_device(&conn, &args_for("dev-local-tenant")).unwrap();
+    assert!(out.created);
+
+    let stored: String = conn
+        .query_row(
+            "SELECT tenant_id FROM locations WHERE id = ?1",
+            rusqlite::params![out.location_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        stored, "default",
+        "the schema's declared single-tenant default supplies the value"
+    );
+    // The local marker still carries NO tenant — the two namespaces stay
+    // distinct (§2.1), which is what makes the location's 'default' the
+    // column's declared value rather than a claim about a licence tenant.
+    assert_eq!(out.record.tenant_id, None);
+}
+
 #[test]
 fn location_kind_selects_the_workspace_topology() {
     // A shop must not get a kitchen display. This is the one axis where the

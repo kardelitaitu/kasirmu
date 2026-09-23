@@ -465,16 +465,47 @@ fn provision_device_inner(
         [],
         |r| r.get(0),
     )?;
-    tx.execute(
-        "INSERT INTO locations (id, name, currency, timezone, is_primary) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![
-            location_id,
-            args.location_name.trim(),
-            args.currency,
-            args.timezone,
-            i32::from(!has_primary),
-        ],
-    )?;
+    // TENANT (RLS): `locations` is RLS-covered
+    // (scripts/generate-pg-migration.py RLS_TABLES) and this column was
+    // previously left to its DEFAULT, so every provisioned location read
+    // 'default' — the cloud quota detector counts locations per tenant
+    // (apps/cloud-server/src/quota_detector.rs:330) and would score a paying
+    // tenant 0. The value is the caller's own claim, the SAME one this
+    // function already trusts for the peer `provisioning` row at step 6
+    // below (which binds `args.tenant_id` verbatim), so the two rows cannot
+    // disagree about who owns the terminal.
+    //
+    // The `local` arm (None) deliberately OMITS the column rather than
+    // binding a value: `migrations/20260907_add_location_tenant_id.sql:10-11`
+    // states "Default 'default' preserves single-tenant store-DB semantics: a
+    // desktop store database is scoped to one tenant by construction". So
+    // 'default' for an unlinked local install is the DECLARED value of this
+    // column, not a value this code invents — and binding NULL is not an
+    // option, the column is NOT NULL. Do not "fix" this into a literal or a
+    // code fallback: the omit IS the fix.
+    match args.tenant_id.as_deref() {
+        Some(tenant_id) => tx.execute(
+            "INSERT INTO locations (id, name, currency, timezone, is_primary, tenant_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                location_id,
+                args.location_name.trim(),
+                args.currency,
+                args.timezone,
+                i32::from(!has_primary),
+                tenant_id,
+            ],
+        )?,
+        None => tx.execute(
+            "INSERT INTO locations (id, name, currency, timezone, is_primary) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                location_id,
+                args.location_name.trim(),
+                args.currency,
+                args.timezone,
+                i32::from(!has_primary),
+            ],
+        )?,
+    };
     create_workspaces_in_tx(tx, &location_id, args.location_kind)?;
 
     // ── Step 4: the owner, in this transaction ───────────────────
