@@ -618,6 +618,21 @@
       "status": "required",
       "runners": { "check.sh": ["auditor self-tests"] },
       "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships (three today). Runner: sh scripts/check-auditor-selftests.sh."
+    },
+    {
+      "id": "records-index",
+      "label": "Records index freshness",
+      "status": "required",
+      "runners": { "check.sh": ["records index freshness"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "steps": ["Records index freshness check"] },
+      "_note": "Added 2026-09-23 by the documentation audit. The freshness gate docs/records/README.md and docs/README.md both described as 'unbuilt by decision' is now built, and the decision log reverses with it: --check was RED at wiring time (148 generated vs 158 committed lines, ADR #60 missing) and a run of it surfaced the generator defect behind seven dead snapshots/ rows -- a gate deferred to avoid crying wolf had let the wolf in. Wired blocking in check.sh AND dev-ci.yml#ci-docs-drift because the drift was repaired in the same change, so the step has a green baseline from day one (the inverse of ci-docs-drift's advisory->required arc, for the same stated reason: a known-red baseline gets disabled)."
+    },
+    {
+      "id": "dead-refs",
+      "label": "Docs dead references",
+      "status": "advisory",
+      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "advisory_at": "step", "steps": ["Docs dead references"] },
+      "_note": "Added 2026-09-23 by the documentation audit. Runs check-dead-refs.py in CI with continue-on-error because its findings sat in manager-codebase-review-checklist.md while a concurrent session was actively writing that file during the audit (the count grew 2 -> 7 over the session as the peer kept writing, which is the point: racing it is the wrong trade for pragma insertions). NO check.sh runner BY DESIGN, not by omission: check.sh's step() exits 1 on first failure, so a leg red for reasons outside the runner's control would break every local pre-push until the peer file clears (19 gates already carry no runners; this joins them for a stated reason). FLIP CONDITION, so the advisory state cannot calcify: when check-dead-refs reports 0, drop continue-on-error and advisory_at, set status required, and add runners.check.sh ['docs dead refs'] with the step -- the ci-docs-drift precedent (advisory -> required when R36-10 closed the count to 0), with the trigger written down instead of implied."
     }
   ]
 }

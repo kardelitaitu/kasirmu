@@ -410,6 +410,13 @@ step "ci docs drift" "python3 scripts/verify-ci-docs-drift.py" python3 scripts/v
 # noticed, plus a control that must still pass, so "the drift gate is green" cannot
 # mean "the drift gate stopped looking".
 step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-test" python3 scripts/verify-ci-docs-drift.py --self-test
+# docs/records/README.md calls itself the single entry point, and its freshness
+# gate was "unbuilt by decision" (docs/README.md) — a decision the 2026-09-23
+# documentation audit reversed once the generator defect behind seven dead
+# snapshots/ rows was fixed and the 148-vs-158-line drift repaired: a gate
+# deferred to avoid crying wolf had let the wolf in.
+# Gate: scripts/gates.json -> "records-index".
+step "records index freshness" "node scripts/generate-records-index.mjs --check" node scripts/generate-records-index.mjs --check
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs
