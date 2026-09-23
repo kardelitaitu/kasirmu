@@ -362,6 +362,7 @@ fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
         created_at: local.created_at.clone(),
         synced_at: None,
         priority: local.priority,
+        origin_terminal_id: local.origin_terminal_id.clone(),
     };
     let outcomes = vec![PushOutcome::Conflict(server_item)];
     let result = apply_sync_outcomes(&store, &items, &outcomes).unwrap();

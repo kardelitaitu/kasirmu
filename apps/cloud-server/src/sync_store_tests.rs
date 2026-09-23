@@ -84,6 +84,7 @@ fn sample_item(id: &str) -> OfflineQueueItem {
         created_at: "2026-01-01T00:00:00Z".into(),
         synced_at: None,
         priority: SyncPriority::Normal,
+        origin_terminal_id: None,
     }
 }
 
@@ -298,6 +299,9 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
 
     let mut item = sample_item(&format!("pg-item-{tenant}"));
     item.tenant_id = tenant.clone();
+    // C3 S2: the Postgres arm must carry the origin through its INSERT, its
+    // SELECT list and its row decode, exactly as the SQLite arm does.
+    item.origin_terminal_id = Some("pg-terminal-abc".into());
     assert!(matches!(
         store.push_item(&item, &tenant).await.unwrap(),
         PushOutcome::Accepted
@@ -314,6 +318,11 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, format!("pg-item-{tenant}"));
     assert_eq!(items[0].tenant_id, tenant);
+    assert_eq!(
+        items[0].origin_terminal_id.as_deref(),
+        Some("pg-terminal-abc"),
+        "the Postgres INSERT/SELECT must carry the origin, or it vanishes here"
+    );
 
     assert_eq!(store.pending_count(&tenant).await, 1);
     assert!(store.distinct_tenant_count().await >= 1);
@@ -1382,5 +1391,125 @@ async fn sqlite_resolve_conflict_records_the_decision_once() {
             .resolve_conflict("tenant-b", &id, "keep_remote", "bob")
             .await
             .unwrap()
+    );
+}
+/// C3 S2: the origin must survive the SERVER round trip — push into the
+/// offline_queue table, pull it back out. This is the assertion the slice
+/// exists for: a column dropped from the server INSERT list makes the value
+/// round-trip locally and vanish at the server, which is silent.
+#[tokio::test]
+async fn sqlite_backend_push_pull_carries_the_origin_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Case 1: an item built by the REAL local producer on the CLIENT database,
+    // then pushed into the server database — the actual topology, so a column
+    // the client writes and the server drops cannot hide. (The origin is set
+    // directly because the producer does not write a real one until slice S3.)
+    let mut with_origin = {
+        let client = fresh_db();
+        let client = client.lock().await;
+        let mut item = kasirmu_core::Store::new(&client)
+            .enqueue_offline_scoped(
+                "complete_sale",
+                r#"{"total":100}"#,
+                "tenant-a",
+                SyncPriority::Critical,
+            )
+            .unwrap();
+        item.origin_terminal_id = Some("terminal-abc".into());
+        item.created_at = "2026-01-01T00:00:00Z".into();
+        item
+    };
+    assert!(matches!(
+        store.push_item(&with_origin, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    // Case 2: an item WITHOUT one must come back None — never a default.
+    let without_origin = OfflineQueueItem {
+        origin_terminal_id: None,
+        ..sample_item("origin-unset")
+    };
+    assert!(matches!(
+        store.push_item(&without_origin, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    let items = store
+        .pull_items("tenant-a", Some("2026-01-01T00:00:00Z"), None, 501)
+        .await
+        .unwrap();
+    assert_eq!(items.len(), 2);
+
+    let set = items.iter().find(|i| i.id == with_origin.id).unwrap();
+    assert_eq!(
+        set.origin_terminal_id.as_deref(),
+        Some("terminal-abc"),
+        "the server INSERT must carry the origin column, or it vanishes here"
+    );
+
+    let unset = items.iter().find(|i| i.id == "origin-unset").unwrap();
+    assert_eq!(unset.origin_terminal_id, None);
+
+    // The stored value is NULL, not an empty string.
+    let stored: Option<String> = {
+        let conn = conn.lock().await;
+        conn.query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params!["origin-unset"],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(stored, None, "an unset origin must be SQL NULL");
+}
+
+/// C3 S2: the per-item FALLBACK INSERT in `sync_store.rs` is a second,
+/// separate column list from the multirow fast path. It only runs when the
+/// fast path's statement fails, so nothing else exercises it — and a column
+/// dropped there would silently lose the origin for exactly the batches that
+/// took the fallback.
+///
+/// A trigger that raises on ONE id makes the multirow statement fail, so the
+/// batch drops to the per-item loop, and the surviving items prove the
+/// fallback carries the origin column.
+#[tokio::test]
+async fn sqlite_push_batch_fallback_carries_the_origin_terminal() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Poison exactly one id: the multirow statement fails, the fallback runs.
+    {
+        let conn = conn.lock().await;
+        conn.execute_batch(
+            "CREATE TRIGGER poison_one BEFORE INSERT ON offline_queue
+             WHEN NEW.id = 'fallback-poison'
+             BEGIN SELECT RAISE(ABORT, 'poisoned for the fallback test'); END;",
+        )
+        .unwrap();
+    }
+
+    let batch = vec![
+        OfflineQueueItem {
+            origin_terminal_id: Some("fallback-terminal".into()),
+            ..sample_item("fallback-ok")
+        },
+        sample_item("fallback-poison"),
+    ];
+    let outcomes = store.push_batch(&batch, "tenant-fallback").await.unwrap();
+    assert_eq!(outcomes.len(), 2);
+    assert!(matches!(outcomes[0], PushOutcome::Accepted));
+    assert!(matches!(&outcomes[1], PushOutcome::Rejected { .. }));
+
+    let pulled = store
+        .pull_items("tenant-fallback", Some("2026-01-01T00:00:00Z"), None, 501)
+        .await
+        .unwrap();
+    assert_eq!(pulled.len(), 1, "only the unpoisoned item lands");
+    assert_eq!(
+        pulled[0].origin_terminal_id.as_deref(),
+        Some("fallback-terminal"),
+        "the per-item fallback INSERT must carry the origin column too"
     );
 }

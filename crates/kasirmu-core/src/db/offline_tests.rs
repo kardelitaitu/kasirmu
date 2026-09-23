@@ -1256,3 +1256,125 @@ fn rolled_back_settlement_enqueues_nothing() {
             .unwrap()
     );
 }
+// ── C3 S2: the origin terminal and the effect key ───────────────
+
+/// The origin must survive the local round trip: enqueued into the row and
+/// read back by every SELECT shape, including the receipt writers.
+///
+/// The whole point of slice S2 is that the value is not merely held in the
+/// struct — a dropped column in any INSERT/SELECT pair would make it
+/// round-trip locally and vanish at the next hop.
+#[test]
+fn offline_item_origin_round_trips_through_the_row() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    // A fresh item has no recorded origin — None, never a default.
+    assert_eq!(item.origin_terminal_id, None);
+
+    item.origin_terminal_id = Some("terminal-abc".into());
+    conn.execute(
+        "UPDATE offline_queue SET origin_terminal_id = ?1 WHERE id = ?2",
+        params!["terminal-abc", item.id],
+    )
+    .unwrap();
+
+    // Read back through the tenant-scoped pending list the push path uses.
+    let read = s.list_pending_offline_for_tenant("default").unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].origin_terminal_id.as_deref(), Some("terminal-abc"));
+
+    // And through the all-items list, the other SELECT shape.
+    let all = s.list_all_offline().unwrap();
+    assert_eq!(all[0].origin_terminal_id.as_deref(), Some("terminal-abc"));
+}
+
+/// An item whose origin is never set must come back `None`, and the column
+/// must be SQL NULL — not an empty string, and not a default.
+#[test]
+fn offline_item_without_origin_reads_back_none_and_stays_null() {
+    let conn = fresh();
+    let s = store(&conn);
+    let item = s.enqueue_offline("complete_sale", "{}").unwrap();
+    assert_eq!(item.origin_terminal_id, None);
+
+    let read = s.list_pending_offline_for_tenant("default").unwrap();
+    assert_eq!(read[0].origin_terminal_id, None);
+
+    // The stored value is NULL, not "". A default or an empty string here
+    // would defeat the future reader, which must tell "unknown" from a
+    // terminal id that happens to be blank.
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT origin_terminal_id FROM offline_queue WHERE id = ?1",
+            params![item.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, None, "an unset origin must be SQL NULL");
+}
+
+/// The receipt writers must carry the effect key through the same
+/// INSERT/SELECT pair, and an absent effect must stay NULL.
+#[test]
+fn applied_receipt_records_the_effect_key() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // A caller that knows the effect records it.
+    s.mark_remote_item_applied_with_effect("item-1", "complete_sale", Some("effect-1"))
+        .unwrap();
+    // A caller that does not passes None — and that must be NULL, which the
+    // PARTIAL index deliberately ignores so these rows cannot collide.
+    s.mark_remote_item_applied("item-2", "complete_sale")
+        .unwrap();
+
+    let key: Option<String> = conn
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            params!["item-1"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(key.as_deref(), Some("effect-1"));
+
+    let absent: Option<String> = conn
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            params!["item-2"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(absent, None, "an unrecorded effect must be SQL NULL");
+
+    // The effect is constrained once by the PARTIAL unique index. The writer
+    // is `INSERT OR IGNORE`, so a repeated effect key is absorbed (Ok) rather
+    // than raised — what must hold is that no second row lands.
+    s.mark_remote_item_applied_with_effect("item-3", "complete_sale", Some("effect-1"))
+        .unwrap();
+    let effect_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sync_applied_items WHERE effect_key = ?1",
+            params!["effect-1"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(effect_rows, 1, "one effect must be recorded exactly once");
+
+    // The NULL effect keys are deliberately NOT constrained by the partial
+    // index, so a second caller that records no effect still lands.
+    s.mark_remote_item_applied("item-4", "complete_sale")
+        .unwrap();
+    let null_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sync_applied_items WHERE effect_key IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        null_rows, 2,
+        "NULL effects must not collide with each other"
+    );
+}

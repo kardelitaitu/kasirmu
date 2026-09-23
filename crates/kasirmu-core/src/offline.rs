@@ -82,6 +82,16 @@ pub struct OfflineQueueItem {
     /// Sync priority tier (P-2). Critical items transmit before Normal/Low.
     #[serde(default = "default_priority")]
     pub priority: SyncPriority,
+    /// Terminal that ORIGINATED this mutation, when its producer knew it (C3).
+    ///
+    /// Nullable on purpose, and a `None` means "unknown" — never an empty
+    /// string and never a default. The column was added with no backfill,
+    /// because a guessed origin would make the self-origin check suppress a
+    /// legitimate deduction (silent stock loss), so a reader must treat a
+    /// `None` as "not proven self-originated" rather than as "not
+    /// self-originated".
+    #[serde(default)]
+    pub origin_terminal_id: Option<String>,
 }
 
 /// Status of an offline queue item.
@@ -136,6 +146,7 @@ impl OfflineQueueItem {
             synced_at: None,
             tenant_id: String::from("default"),
             priority: SyncPriority::Normal,
+            origin_terminal_id: None,
         }
     }
 

@@ -86,16 +86,16 @@ fn decode_pull_cursor(cursor: Option<&str>) -> (Option<String>, Option<String>) 
 fn build_pull_sql(since: Option<&str>, cursor: Option<&str>) -> &'static str {
     match (since, cursor) {
         (None, Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND (created_at > $2 OR (created_at = $2 AND id > $3))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $4"
         }
         (Some(_), Some(_)) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n           AND (created_at > $3 OR (created_at = $3 AND id > $4))\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $5"
         }
         (Some(_), None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n           AND created_at >= $2\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $3"
         }
         (None, None) => {
-            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $2"
+            "SELECT id, action, payload, status, retry_count, last_error,\n\n                tenant_id, created_at::TEXT, synced_at::TEXT, origin_terminal_id\n\n         FROM offline_queue\n\n         WHERE tenant_id = $1\n\n         ORDER BY created_at ASC, id ASC\n\n         LIMIT $2"
         }
     }
 }
@@ -255,7 +255,8 @@ impl PgTransport {
                     created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')),
                     synced_at TEXT,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
-                    priority BIGINT NOT NULL DEFAULT 1
+                    priority BIGINT NOT NULL DEFAULT 1,
+                    origin_terminal_id TEXT
                 )",
             )
             .await
@@ -291,11 +292,12 @@ impl PgTransport {
                 &item.retry_count,
                 &item.last_error,
                 &item.tenant_id,
+                &item.origin_terminal_id,
             ];
             let result = tx
                 .execute(
-                    "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id)
-                     VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+                    "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, tenant_id, origin_terminal_id)
+                     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
                      ON CONFLICT (id) DO NOTHING",
                     params,
                 )
@@ -574,6 +576,8 @@ impl PgTransport {
                     synced_at: row.get::<_, Option<String>>("synced_at"),
                     tenant_id: row.get("tenant_id"),
                     priority: kasirmu_core::offline::SyncPriority::Normal,
+                    // NULL stays NULL: "unknown origin", never a default.
+                    origin_terminal_id: row.get("origin_terminal_id"),
                 }
             })
             .collect();

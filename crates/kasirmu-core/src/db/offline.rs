@@ -242,9 +242,9 @@ impl Store<'_> {
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
         self.conn.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
         )?;
         Ok(item)
     }
@@ -290,9 +290,9 @@ impl Store<'_> {
         let mut item = OfflineQueueItem::with_tenant(action, payload, tenant_id);
         item.priority = priority;
         tx.execute(
-            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32],
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![item.id, item.action, item.payload, item.status.as_stored_str(), item.retry_count, item.last_error, item.created_at, item.synced_at, item.tenant_id, item.priority as i32, item.origin_terminal_id],
         )?;
         Ok(item)
     }
@@ -387,7 +387,7 @@ impl Store<'_> {
     /// List all pending (unsynced) offline queue items, oldest first.
     pub fn list_pending_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue WHERE status = 'pending' ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -397,7 +397,7 @@ impl Store<'_> {
     /// List all offline queue items.
     pub fn list_all_offline(&self) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], Self::row_to_offline_queue_item)?;
@@ -410,7 +410,7 @@ impl Store<'_> {
         tenant_id: &str,
     ) -> Result<Vec<OfflineQueueItem>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority
+            "SELECT id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id
              FROM offline_queue WHERE status = 'pending' AND tenant_id = ?1 ORDER BY created_at ASC",
         )?;
         let rows = stmt.query_map(params![tenant_id], Self::row_to_offline_queue_item)?;
@@ -695,10 +695,37 @@ impl Store<'_> {
     ///
     /// `INSERT OR IGNORE` — re-recording the same id is a no-op, so replay
     /// of a page never double-counts a mutation.
+    ///
+    /// Records no effect: delegates to
+    /// [`Self::mark_remote_item_applied_with_effect`] with `None`. A caller
+    /// that knows the effect the application had must use that one — this
+    /// signature is kept so the delivery-only callers keep working.
     pub fn mark_remote_item_applied(&self, item_id: &str, action: &str) -> Result<(), CoreError> {
+        self.mark_remote_item_applied_with_effect(item_id, action, None)
+    }
+
+    /// Record a remote item as applied locally, keyed by the EFFECT it had (C3).
+    ///
+    /// `item_id` proves the item was DELIVERED once; it says nothing about the
+    /// effect that delivery had, so a retry that produces a second deduction is
+    /// a second effect and must be visible as one. `effect_key` is that effect,
+    /// and `idx_sync_applied_items_effect_key` (PARTIAL, `WHERE effect_key IS
+    /// NOT NULL`) enforces it appears once.
+    ///
+    /// `None` is the honest value for a caller that does not know the effect:
+    /// it stays NULL — never a default and never an empty string — and the
+    /// partial index deliberately ignores it, so the pre-C3 rows and the
+    /// not-yet-effect-aware writers cannot collide with each other.
+    pub fn mark_remote_item_applied_with_effect(
+        &self,
+        item_id: &str,
+        action: &str,
+        effect_key: Option<&str>,
+    ) -> Result<(), CoreError> {
         self.conn.execute(
-            "INSERT OR IGNORE INTO sync_applied_items (item_id, action) VALUES (?1, ?2)",
-            params![item_id, action],
+            "INSERT OR IGNORE INTO sync_applied_items (item_id, action, effect_key) \
+             VALUES (?1, ?2, ?3)",
+            params![item_id, action, effect_key],
         )?;
         Ok(())
     }
@@ -841,15 +868,34 @@ impl Store<'_> {
     /// The sync applier uses this method in the same transaction as the
     /// domain mutation, preventing a crash between mutation and receipt from
     /// causing a second application on replay.
+    ///
+    /// Records no effect — delegates to
+    /// [`Self::mark_remote_item_applied_with_effect_in_tx`] with `None`, so
+    /// the delivery-only callers keep working unchanged.
     pub fn mark_remote_item_applied_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         item_id: &str,
         action: &str,
     ) -> Result<(), CoreError> {
+        self.mark_remote_item_applied_with_effect_in_tx(tx, item_id, action, None)
+    }
+
+    /// [`Self::mark_remote_item_applied_with_effect`] in a caller-owned
+    /// transaction, so the receipt commits or rolls back with the mutation it
+    /// describes. See that method for what `effect_key` means and why `None` is
+    /// a real value rather than a missing one.
+    pub fn mark_remote_item_applied_with_effect_in_tx(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        item_id: &str,
+        action: &str,
+        effect_key: Option<&str>,
+    ) -> Result<(), CoreError> {
         tx.execute(
-            "INSERT OR IGNORE INTO sync_applied_items (item_id, action) VALUES (?1, ?2)",
-            params![item_id, action],
+            "INSERT OR IGNORE INTO sync_applied_items (item_id, action, effect_key) \
+             VALUES (?1, ?2, ?3)",
+            params![item_id, action, effect_key],
         )?;
         Ok(())
     }
@@ -871,6 +917,8 @@ impl Store<'_> {
                 .get::<_, i32>("priority")
                 .map(crate::offline::SyncPriority::from)
                 .unwrap_or(crate::offline::SyncPriority::Normal),
+            // NULL stays NULL: "unknown origin", never a default.
+            origin_terminal_id: row.get("origin_terminal_id")?,
         })
     }
 }
