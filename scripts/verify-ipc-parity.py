@@ -1225,6 +1225,40 @@ READ_ATTEMPTS = 50
 READ_RETRY_SECONDS = 0.001
 
 
+def assert_allowlist_bytes(path: Path, written: bytes) -> None:
+    """Re-read a file this helper just wrote and refuse unless it holds `written`, byte for byte.
+
+    The write below is LF BY CONSTRUCTION -- `NamedTemporaryFile(..., newline="\n")` -- and
+    this is the independent second half of that claim. Construction says what SHOULD land;
+    this says what DID. It is not a normalisation pass and it repairs nothing: it refuses, so
+    a future edit to the write path that drops the `newline` argument -- or swaps the temp
+    file for a bare `ALLOWLIST_PATH.write_text(...)` -- fails the writer run that makes it,
+    instead of silently re-emitting every line of a file another lane owns as CRLF.
+
+    Bytes, not text: `read_text` translates CRLF back to LF on the way in and would hide
+    exactly the defect this exists to catch. Measured against the real payload: this writer
+    produces 35545 bytes with 0 CR, and the same text pushed through a text-mode open with no
+    `newline` argument is 35813 bytes with 268 CR -- a whole-file byte difference with zero
+    differing text lines, which is why no assertion on the payload can see it.
+
+    Called twice per write, and the order is the point. Once on the SIBLING TEMP before the
+    rename, where a failure costs nothing -- the previous allowlist is still on disk and the
+    bad bytes never leave the temp. Once on the TARGET after it, which is what a subsequent
+    reader will actually open. The first is the fail-safe; the second is the proof.
+    """
+    landed = path.read_bytes()
+    if landed == written:
+        return
+    raise AllowlistWriteRefusal([
+        f"{path.name} did not come back as the bytes this run wrote: "
+        f"{len(written)} bytes written, {len(landed)} on it now "
+        f"({landed.count(b'\r')} CR there, {written.count(b'\r')} CR written). The write "
+        f"path has lost its LF guarantee -- check the `newline=` argument on the temporary "
+        f"file in write_allowlist_payload. Nothing was normalised: whatever the write "
+        f"actually produced is what is there."
+    ])
+
+
 def write_allowlist_payload(payload: dict) -> None:
     """The ONE way this gate writes the allowlist file: LF endings, UTF-8, no escapes.
 
@@ -1266,20 +1300,40 @@ def write_allowlist_payload(payload: dict) -> None:
     and the writer turns that into a refusal -- the previous file stays exactly as it was,
     which is the property that made the rename worth having: a failed write cannot leave
     anything half-built, and cannot corrupt what was already there.
+
+    Fourth job, added after the C41/C47 lanes each re-discovered CRLF in this file: the bytes
+    are not assumed to be the ones this function meant to write. `assert_allowlist_bytes`
+    re-reads and compares, twice -- on the sibling temp before the rename (fail-safe: the bad
+    bytes never reach the shared path) and on the target after it (proof: what a reader opens
+    is what was written). Construction says what SHOULD land, the guard says what DID, and
+    neither is a normalisation: the guard refuses, so a future edit that drops the `newline=`
+    argument above fails the writer run that makes it instead of quietly re-emitting all 268
+    lines of a file another lane owns as CRLF.
     """
     ALLOWLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", newline="\n", delete=False,
         dir=str(ALLOWLIST_PATH.parent), prefix=ALLOWLIST_PATH.name + ".", suffix=".tmp")
     tmp_path = Path(tmp.name)
+    # The exact text this helper intends to land, kept so the guard below can compare BYTES
+    # rather than re-serialising (a second json.dumps could differ from the first).
+    text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    written = text.encode("utf-8")
     try:
         with tmp:
-            tmp.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            tmp.write(text)
             tmp.flush()
             os.fsync(tmp.fileno())
+        # Fail-safe half: if the write path ever loses its LF guarantee, the mismatch is
+        # caught HERE, while the bad bytes are still a sibling temp and the allowlist on disk
+        # is untouched. Raising past the rename is what keeps a regression from landing.
+        assert_allowlist_bytes(tmp_path, written)
         for attempt in range(REPLACE_ATTEMPTS):
             try:
                 os.replace(tmp_path, ALLOWLIST_PATH)
+                # Proof half: the rename is the write, so read the TARGET back -- the file a
+                # reader will open -- and refuse unless it is byte-for-byte what was written.
+                assert_allowlist_bytes(ALLOWLIST_PATH, written)
                 return
             except PermissionError:
                 # Windows denies a rename onto a file another process has open. Retry: the
@@ -1533,7 +1587,7 @@ class AllowlistWriteRefusal(RuntimeError):
 
     Not a subclass of `AllowlistUnusable`, and that separation is the whole point: that class
     means the bytes never arrived, while every refusal in this class arrives AFTER a clean read
-    and a clean validation. Three causes, all of them about this process and its attempt to put
+    and a clean validation. Four causes, all of them about this process and its attempt to put
     new bytes where a shared file sits, none of them about the surface the gate grades --
 
     1. drift: the file on disk is not the file this run validated, because another lane
@@ -1542,7 +1596,13 @@ class AllowlistWriteRefusal(RuntimeError):
     2. a busy target: Windows denied the rename onto a file a reader holds open, past the
        `REPLACE_ATTEMPTS` ceiling (the `AllowlistBusyError` from `write_allowlist_payload`);
     3. any other failure of the write itself: the sibling temp could not be made, the
-       directory could not be created, the swap raised something that is not a sharing denial.
+       directory could not be created, the swap raised something that is not a sharing denial;
+    4. the read-back guard: the bytes that landed are not the bytes this run wrote
+       (`assert_allowlist_bytes`). Raised from the sibling temp BEFORE the rename -- where
+       the previous allowlist is still on disk -- and again on the target after it. This is
+       the only cause that can mean the write path itself has regressed rather than the
+       environment refusing it, and it is the reason the line-ending defect can no longer be
+       reintroduced silently by an edit to `write_allowlist_payload`.
 
     Until now all three came back through `update_allowlist` as a `list[str]` and were
     printed as `FAIL: N allowlist write problem(s)` at exit 1 -- the VERDICT
@@ -2557,6 +2617,107 @@ def self_test() -> int:
             globals()["ALLOWLIST_PATH"] = saved_path
     case("case 9  the self-test never touched the real allowlist path",
          globals()["ALLOWLIST_PATH"] == saved_path)
+
+    # 9b: the guard the writer now calls on every write. Case 9 above proves the write path
+    # PRODUCES LF; this one proves the read-back that REFUSES when it does not, and that the
+    # writer actually calls it -- a guard nothing invokes is not a guard. Measured against the
+    # real payload: this writer produces 35545 bytes with 0 CR, and the same text through a
+    # text-mode open with no newline argument is 35813 with 268 CR, so the sabotage below is
+    # the real defect and not a fixture invented to be catchable.
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_guard = globals()["assert_allowlist_bytes"]
+        probe = Path(tmp) / "allowlist.json"
+        seen: list[Path] = []
+        refused = None
+
+        def spy(path: Path, written: bytes) -> None:
+            seen.append(path)
+            saved_guard(path, written)
+
+        try:
+            globals()["ALLOWLIST_PATH"] = probe
+            globals()["assert_allowlist_bytes"] = spy
+            with redirect_stdout(io.StringIO()):
+                write_allowlist_payload(sample)
+            produced = probe.read_bytes()
+            # Two calls per write, and the ORDER is the guarantee: the sibling temp BEFORE
+            # the rename (so a regression never lands) and the target AFTER it (so what a
+            # reader opens is what was written). One call, or the wrong order, is a guard
+            # that lets the bad bytes through -- hence an assertion on the sequence.
+            case("case 9b the writer guards the temp before the rename and the target after",
+                 len(seen) == 2 and seen[0].name.endswith(".tmp") and seen[1] == probe)
+            case("case 9b the guard accepts the LF bytes that write just produced",
+                 b"\r" not in produced and produced.endswith(b"}\n"))
+
+            # The defect itself, reproduced through the mechanism that caused it rather than
+            # by editing bytes: a text-mode open with NO newline argument, which is exactly
+            # the pre-fix write path. newline="\r\n" is stated explicitly, not left to
+            # os.linesep, so this sabotage produces the Windows outcome on any host -- a
+            # fixture that silently degrades to a no-op on Linux would prove nothing there.
+            with open(probe, "w", encoding="utf-8", newline="\r\n") as fh:
+                fh.write(produced.decode("utf-8"))
+            crlf = probe.read_bytes()
+            case("case 9b the pre-fix write path really does produce CRLF bytes",
+                 b"\r\n" in crlf and len(crlf) > len(produced))
+
+            # The guard must REFUSE it, and must leave the bytes alone: a guard that repaired
+            # the file would be the post-pass this whole change exists to avoid.
+            try:
+                assert_allowlist_bytes(probe, produced)
+            except AllowlistWriteRefusal as exc:
+                refused = exc
+            case("case 9b a CRLF file is refused, never normalised back to LF",
+                 refused is not None and probe.read_bytes() == crlf)
+            case("case 9b the refusal states both byte counts and the CR count",
+                 refused is not None
+                 and f"{len(crlf)} on it now" in str(refused)
+                 and f"{crlf.count(b'\r')} CR there" in str(refused))
+        finally:
+            globals()["assert_allowlist_bytes"] = saved_guard
+            globals()["ALLOWLIST_PATH"] = saved_path
+    case("case 9b the guard self-test never touched the real allowlist path",
+         globals()["ALLOWLIST_PATH"] == saved_path
+         and globals()["assert_allowlist_bytes"] is saved_guard)
+
+    # 9c: the fail-safe half, which is the whole reason the guard is called twice. A write path
+    # that has regressed must be caught while the bad bytes are still a sibling temp -- the
+    # allowlist another lane owns has to come out of the failed run exactly as it went in.
+    # Here the guard is made to fail on the temp ONLY, standing in for a write path that lost
+    # its LF guarantee; the run must raise, and the target must keep its previous bytes.
+    with tempfile.TemporaryDirectory() as tmp:
+        saved_path = globals()["ALLOWLIST_PATH"]
+        saved_guard = globals()["assert_allowlist_bytes"]
+        target = Path(tmp) / "allowlist.json"
+        target.write_bytes(b'{"previous": true}\n')
+        before = target.read_bytes()
+        raised = None
+
+        def refuse_temp(path: Path, written: bytes) -> None:
+            if path.name.endswith(".tmp"):
+                raise AllowlistWriteRefusal(["the write path lost its LF guarantee"])
+            saved_guard(path, written)
+
+        try:
+            globals()["ALLOWLIST_PATH"] = target
+            globals()["assert_allowlist_bytes"] = refuse_temp
+            with redirect_stdout(io.StringIO()):
+                try:
+                    write_allowlist_payload(sample)
+                except AllowlistWriteRefusal as exc:
+                    raised = exc
+        finally:
+            globals()["assert_allowlist_bytes"] = saved_guard
+            globals()["ALLOWLIST_PATH"] = saved_path
+        case("case 9c a regressed write path is refused before the rename lands",
+             raised is not None)
+        case("case 9c the refusal leaves the existing allowlist byte-for-byte intact",
+             target.read_bytes() == before)
+        case("case 9c the refusal leaves no sibling temp behind",
+             [p.name for p in Path(tmp).iterdir() if p.name.endswith(".tmp")] == [])
+    case("case 9c the fail-safe self-test never touched the real allowlist path",
+         globals()["ALLOWLIST_PATH"] == saved_path
+         and globals()["assert_allowlist_bytes"] is saved_guard)
 
     # 10: the three reads that used to hand a raw section straight to set(). Grouped as the
     # no-op claim: routing them through section_names had to change nothing on a tree where
