@@ -869,6 +869,71 @@ Negative control: routing the failure back to `setErrorMsg` makes the new test f
 Rounds 19, 20 and 21 argued about pixels while this was sitting one probe away. Each of them
 tuned a layout that a merchant could not use when anything went wrong. The lesson is not "measure
 more" — I measured constantly — but **measure the failure path, not just the happy-path geometry.**
-A form that is 700px too tall is a nuisance; a form that silently swallows its own error is broken.
 
-**Commit:** `20cd628f2`.
+---
+
+## Round 23 — the login screens printed internal error text to the cashier
+
+Applying round 22's lesson (probe the FAILURE path), I forced the auth server to fail at the PIN
+step:
+
+```
+BEFORE  toast text: "network down"
+AFTER   toast text: "You appear to be offline. Check your connection and try again."
+```
+
+**The internal `Error.message` from the IPC boundary was rendered verbatim to the merchant.** The
+consequences are worse than untidy copy: a cashier whose PIN is correct reads an internal string,
+concludes the PIN is wrong, and retypes it until the rate limiter locks the terminal.
+
+### Root cause, and why the existing gate missed it
+
+`AuthContext` preferred the raw message over the project's user-safe mapper:
+
+```ts
+const message = (err as Record<string, unknown> | null)?.['message'] as string
+  ?? plainErrorMessage(err, "Login failed");
+```
+
+`plainErrorMessage`'s own doc says it exists "so raw backend text never reaches a hook consumer" —
+and this line defeated it, because every `Error` has a `.message`, so the `??` never fell through.
+
+`errorPolicyCompliance.test.ts` (ERR-05/ERR-10) exists to catch exactly this and **passed anyway**.
+Its two rules look for `err instanceof Error ? err.message` and for `\w+\.message`; this line uses
+**bracket access** (`?.['message']`), which neither regex matches. A gate that cannot see the shape
+of the leak it is guarding is worse than no gate, because it reports green.
+
+### The fix, and the distinction it preserves
+
+Two kinds of failure arrive at this provider and conflating them would be a regression:
+- a server REFUSAL ("Invalid credentials", a rate-limit sentence) — copy written for the user, and
+  what `e2e/auth.spec.ts` asserts verbatim;
+- a TRANSPORT failure — an untyped `Error` whose message is internal.
+
+`classifyRetry` already owns that distinction with a tested vocabulary, so the split is delegated to
+it rather than re-derived. A retryable failure gets the shared offline copy; anything else keeps the
+server's own sentence. The same fix was applied to `SessionLockScreen`, whose unlock handler had the
+identical shape (`raw ?? l10n.getString(...)`) — the extended gate found it, not me.
+
+### Widening the gate (two attempts)
+
+A new bracket-access rule, plus `isWhitelisted`, plus whitelist entries for two legitimate
+parse-not-display sites (`CreatePinScreen`'s "already exist" detection, `SessionLockScreen`'s
+rate-limit parse).
+
+**My first version of the rule was itself wrong.** It exempted any line containing a normalizer, so
+`raw ?? plainErrorMessage(...)` — the exact leak — passed; the raw value wins and the mapper is dead
+code. Verified by re-planting the leak and watching the gate stay green. The rule now treats
+normalizer-after-`??` as a FAILURE, and re-planting the leak makes it report
+`contexts/AuthContext.tsx:128`.
+
+### Verification
+
+**24/24 auth E2E** (including a new outage test that asserts the toast does NOT contain "network
+down" and DOES match /offline|connection/) · `AuthContext.test.tsx` **20/20** ·
+`errorPolicyCompliance` **4/4** · **22/22 provisioning E2E** · full UI suite **606 files / 10,350
+tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing**.
+
+Every fix carries a negative control; the gate fix has one that proves it is not vacuously green.
+
+**Commit:** `dfd9752ae`.
