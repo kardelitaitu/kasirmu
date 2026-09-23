@@ -42,6 +42,12 @@ pub mod lan_server;
 /// merchants run their own scripts against this register. Off by
 /// default; enabled via Settings → Local API.
 pub mod local_api;
+/// Boot-time consumer of a pending restore request (C8, slice S4a).
+///
+/// Runs from the setup closure below, BEFORE [`state::AppState::new`] opens the
+/// database — the only moment a restore swap is safe, because nothing has yet
+/// cloned the connection into the detached daemons that cannot be forced closed.
+mod recovery;
 /// Global application state (DB, kernel, sync daemon, registry).
 pub mod state;
 
@@ -108,6 +114,50 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── Pending restore request (C8, slice S4a) ───────────────────
+            // Consumed BEFORE `AppState::new` below, which opens the database
+            // and runs migrations. This is the only moment the swap is safe:
+            // the live `Arc<Mutex<Connection>>` is cloned into daemons spawned
+            // detached with no handle registry, so a later in-process swap
+            // would fight every one of them.
+            //
+            // A failed recovery must never become a failure to start. The
+            // module returns an outcome rather than an error, every outcome is
+            // logged here, and a refusal leaves the request in place for an
+            // operator while the app boots on the existing database.
+            match state::resolve_db_path(app.handle()) {
+                Ok(db_path) => match recovery::consume_pending_restore(&db_path) {
+                    recovery::Outcome::NothingPending => {}
+                    recovery::Outcome::AlreadyClaimed => {
+                        tracing::warn!(
+                            db = %db_path.display(),
+                            "a restore request is pending but another boot holds the lock; leaving it alone"
+                        );
+                    }
+                    recovery::Outcome::Restored { candidate, snapshot } => {
+                        tracing::info!(
+                            db = %db_path.display(),
+                            candidate = %candidate.display(),
+                            snapshot = %snapshot.display(),
+                            "pending restore request consumed — the database was replaced before it was opened"
+                        );
+                    }
+                    recovery::Outcome::Refused { reason } => {
+                        tracing::error!(
+                            db = %db_path.display(),
+                            reason = %reason,
+                            "a pending restore request was refused; booting on the existing database and leaving the request in place"
+                        );
+                    }
+                },
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        "cannot resolve the database path to check for a pending restore request; booting normally"
+                    );
+                }
+            }
+
             let state = AppState::new(app.handle())
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
