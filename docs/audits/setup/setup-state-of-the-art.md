@@ -1388,3 +1388,61 @@ intact.
 No code changes; the probe was deleted and the dev server stopped. `website/` shows four untracked
 files (`acct-proof.*`) belonging to another session — left untouched per the shared-checkout rule.
 The only commit this round is this record.
+---
+
+## Round 30 — progressive disclosure of the owner step (the structural fix, in the smaller form)
+
+Rounds 20-21 measured the card as ~700px too tall and I deferred the fix as "needs a product
+decision". This round I did the part that does not need one.
+
+### The measurement that framed it
+
+On first paint, per section, on the two viewports this ships to (both running the tablet shell;
+`index.mobile.html` is the only browser-reachable entry because the desktop shell bypasses under
+`import.meta.env.DEV`, which is compile-time and absent from a packaged build):
+
+```
+desktop 768px: mode-box FULLY | account-box PARTIAL | store-type BELOW | shop-name BELOW | submit BELOW
+tablet 1366px: mode-box FULLY | account-box FULLY  | store-type FULLY | shop-name FULLY | submit BELOW
+```
+
+On a 768px terminal a fresh merchant saw **one decision and nothing else** — no store type, no fields,
+no submit, and no indication any of it followed.
+
+### What changed
+
+The owner step (shop name, your name, login name, PIN, confirm) is now rendered only once step 3 is
+current — derived from the SAME `stepDone` the rail already uses, so disclosure and the progress
+indicator cannot disagree. Card height once a store type is chosen: **1460px → 905px**, and submit
+comes on screen.
+
+**Deliberately not the store type.** An earlier draft collapsed that too, and the first-run test
+went red because it asserts both store types are offered on load. The test was right and my draft was
+wrong: the store type is a DECISION, and hiding it would mean a merchant cannot see what the form is
+about to ask. Detail can be disclosed progressively; a choice should stay visible. I narrowed the
+change rather than editing the test.
+
+### The honest limits
+
+- **First paint is unchanged** (967px initial vs 1460px at step 2). The owner fields were never the
+  *initial* blocker — the 451px account box and the mode box are, and both are step-1 content that
+  must show. So this fixes the middle of the flow, not the entry.
+- The submit button is still below the fold on the 768px desktop at first paint. Closing that needs
+  the account box itself restructured, which IS the ADR #56 redesign I keep declining to do alone.
+
+### Three tests encoded the old always-visible contract
+
+All three assumed the owner fields were reachable without answering step 1. Each was updated to
+answer the step first or to assert the state a merchant actually meets — none was weakened to pass:
+`fillBasicForm()` is still the same helper, and the linked-path test now links *before* filling
+because that is the order the real merchant must use.
+
+### Verification
+
+`ProvisioningFlow.test.tsx` **29/29** (four new tests: withholding, one-way persistence of typed
+values across a store-type change, opening when all steps complete, and the linked path staying
+closed until linked) · **36/36 E2E** across the three setup specs · full UI suite **607 files /
+10,367 tests pass** · `tsc` clean · lint **0 errors** · the `SalesDashboardScreen` flake appeared once
+and passes in isolation (pre-existing, per round 27b).
+
+**Commit:** `2c71a0b6c`.
