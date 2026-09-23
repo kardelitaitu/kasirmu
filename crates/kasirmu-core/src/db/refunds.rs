@@ -413,21 +413,21 @@ impl Store<'_> {
         // on which terminal applied it. Same non-fatal policy as step 2b:
         // a customer row that cannot be updated must not roll back money
         // and stock already credited.
-        if let Some(customer_id) = sale_customer_id.as_deref() {
-            if let Err(e) = reverse_customer_spend_on_refund(
+        if let Some(customer_id) = sale_customer_id.as_deref()
+            && let Err(e) = reverse_customer_spend_on_refund(
                 &tx,
                 customer_id,
                 refund.total.minor_units,
                 sale_total,
                 sale_base_total,
                 &refund.created_at,
-            ) {
-                tracing::warn!(
-                    "customer spend reversal failed for sale {} (refund {}): {e}",
-                    refund.sale_id,
-                    refund.id
-                );
-            }
+            )
+        {
+            tracing::warn!(
+                "customer spend reversal failed for sale {} (refund {}): {e}",
+                refund.sale_id,
+                refund.id
+            );
         }
 
         // ── 3. Write audit log inside the same transaction ─────────

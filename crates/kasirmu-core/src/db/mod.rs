@@ -403,15 +403,15 @@ impl Store<'_> {
             return Ok(());
         }
         let oldest = Self::backup_generation_path(destination, last);
-        if oldest.exists() {
-            if let Err(e) = std::fs::remove_file(&oldest) {
-                tracing::warn!(
-                    event = "backup_rotation_failed",
-                    path = %oldest.display(),
-                    error = %e,
-                    "could not drop the oldest backup generation"
-                );
-            }
+        if oldest.exists()
+            && let Err(e) = std::fs::remove_file(&oldest)
+        {
+            tracing::warn!(
+                event = "backup_rotation_failed",
+                path = %oldest.display(),
+                error = %e,
+                "could not drop the oldest backup generation"
+            );
         }
         for generation in (1..last).rev() {
             let from = Self::backup_generation_path(destination, generation);
