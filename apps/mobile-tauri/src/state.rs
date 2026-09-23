@@ -379,7 +379,13 @@ impl AppState {
     }
 }
 
-fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+/// Resolve the live database path, running the one-time data-dir migration.
+///
+/// `pub(crate)` because the setup closure calls this BEFORE `AppState::new` to
+/// check for a pending restore request; `AppState::new` itself resolves the same
+/// path through here, so both agree on one location. Mirrors the desktop shell's
+/// promotion (`apps/desktop-tauri/src/state.rs`, C8 slice S4a).
+pub(crate) fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
         .app_data_dir()
