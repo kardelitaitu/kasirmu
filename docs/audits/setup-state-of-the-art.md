@@ -474,3 +474,87 @@ desktop and tablet** · 30 dev-mock/boot unit tests unchanged.
   needs a decision about ownership before I start.
 - **No end-to-end run on a real device.** Every fix here is asserted at the DOM level. The visual
   result of the new error borders is unverified on any real screen.
+
+---
+
+## Round 17 — three defects fixed in the tablet account-linking leg
+
+Resumed the audit of `ProvisioningFlow.tsx` by reading it end to end rather than grepping for
+suspected problems. All three findings below are in the **tablet email path**, which the flow's
+own tests had reached only through `getByPlaceholderText` — the symptom of the first defect.
+
+### 17.1 The tablet email and code fields had no accessible name
+
+`<input type="email" placeholder={...}>` and the code field beside it were labelled **only by a
+`placeholder`. A placeholder is not an accessible name: a screen reader announced two unlabelled
+text boxes, and it is a *false* label besides — the browser erases it the moment the user types,
+leaving nothing to say what the field was for (WCAG 3.3.2).
+
+The tell was in the suite: the only way the existing test could address those fields was
+`getByPlaceholderText`, in a file where every other field is reached by `getByLabelText`. That
+asymmetry is what an unlabelled control looks like from the outside.
+
+**Fix:** visually-hidden `<label>` + `sr-only` for each, `setup-account-email-label` /
+`setup-account-code-label` in both bundles, and the test now queries by accessible name. The
+walker's `screenExtraction` entry gains `parentCss: ['../theme/components.css']` — the same
+citation `KdsScreen` and `SettingsSelect` carry, since `.sr-only` is a global utility and not a
+class this feature's sheet should own.
+
+### 17.2 `link.kind === 'failed'` was written and never read
+
+`linkWithGoogle`'s catch set `{ kind: 'failed' }` and **nothing in the component ever read that
+member**. The union branch existed, the state was set, and the screen drew the same idle button
+as the first paint — so a merchant whose Google window closed early saw a control that looked
+untouched. The only signal was the form-wide banner at the top of the card.
+
+**Fix:** render the failure inline beside the button with a `Try again` retry (`setup-account-retry`),
+mirroring the escape the pairing branch already had — and dropped the now-duplicated `setErrorMsg`,
+which had been drawing the *same sentence twice on one screen*.
+
+### 17.3 One `failed` state for two different problems, reported two sections away
+
+`sendCode` and `verifyCode` both set `emailState = 'failed'` and both wrote the
+`setup-account-failed` sentence into the **form-wide banner**, while the fields that failed sit
+two sections below it. So an unreachable mail server and a mistyped code produced the identical
+message, in the wrong place. Worse, on a failed **send** the code row never rendered at all
+(`sent || (failed && codeSent)`, and `codeSent` is false), so there was no feedback near the
+field at all.
+
+**Fix:** split into `sendFailed` / `verifyFailed`, render each under its own field with copy that
+names the step that actually failed (`setup-account-send-failed`, `setup-account-verify-failed`,
+both bundles), `role="alert"` because these follow a submit the user is waiting on — not the
+`role="status"` the PIN messages use, which follow live keystrokes.
+
+### Verification
+
+`ProvisioningFlow.test.tsx` **19/19** · full UI suite **606 files / 10,320 tests pass** ·
+`tsc` clean · lint **0 errors** (58 pre-existing warnings) · parity **0 missing** · i18n lint
+clean · `screenExtraction` **272/272**.
+
+Every fix carries a **negative control**: reverting each one individually makes its new test fail
+(unlabelled field → `Unable to find a label`; removed retry → `Unable to find role="button"`;
+collapsed state → `Unable to find ... /Could not send the code/`).
+
+**Commits:** `ba2f8fafe` (accessible names), `a709969cc` (inline link retry), `adeac4976` (email-leg failures).
+
+### ⚠️ Process failure worth recording
+
+While building a negative control I read `ProvisioningFlow.tsx` with the `read` tool, which caps
+at **800 lines**, and wrote that truncated string back — destroying the file's last ~25 lines.
+This is the **same trap recorded in an earlier round for `settings.ftl` (which caps at ~1080 of
+1192)**, now hit a second time against a different file. It was caught immediately because the
+next `tsc` failed, not because I was watching for it.
+
+**Rule that should have prevented it:** never write back a string obtained from `read` without
+checking `totalLines` against the number of lines actually returned. The file was restored from
+`git show HEAD:<path>` and confirmed byte-clean by diffing against HEAD.
+
+### Still open
+
+- **No progress/step indicator** in the flow. It is a single card, so this is a genuine design
+  question rather than an omission — a step rail over a non-linear form is decoration.
+- **`CreatePinScreen` E2E** remains blocked by the dev-mock hardcoding `has_users: true`
+  (`dev-mock/handlers/staff.ts:306`); the screen renders only when no users exist.
+- **Website auth islands** (`AuthForm.tsx`, `SignupForm.tsx`): the round-16 investigation found
+  and fixed a real runtime-config defect in `AccountView`. The same
+  runtime-URL-arrives-after-mount class should be checked in `PairView.tsx` and `SignupForm.tsx`.
