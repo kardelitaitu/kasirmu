@@ -537,8 +537,20 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                         Use the code sent to your account email to link this device.
                       </Localized>
                     </p>
+                    {/* Both fields here are labelled by a real <label>, not by a
+                        bare `placeholder`. A placeholder is not an accessible name — a
+                        screen reader announced two unlabelled text boxes — and it
+                        is a false one besides: the browser clears it the moment the
+                        user types, leaving nothing to say what the field was for. */}
                     <div className="provisioning-account-input-row">
+                      {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
+                      <label htmlFor="provision-account-email" className="sr-only">
+                        <Localized id="setup-account-email-label">
+                          <span>Account email</span>
+                        </Localized>
+                      </label>
                       <input
+                        id="provision-account-email"
                         type="email"
                         placeholder={l10n.getString('setup-account-email')}
                         value={email}
@@ -561,7 +573,14 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
 
                     {(emailState === 'sent' || (emailState === 'failed' && codeSent)) && (
                       <div className="provisioning-account-input-row" style={{ marginTop: 'var(--space-2)' }}>
+                        {/* eslint-disable-next-line jsx-a11y/label-has-associated-control -- text via Localized span */}
+                        <label htmlFor="provision-account-code" className="sr-only">
+                          <Localized id="setup-account-code-label">
+                            <span>Verification code</span>
+                          </Localized>
+                        </label>
                         <input
+                          id="provision-account-code"
                           inputMode="numeric"
                           placeholder={l10n.getString('setup-account-code')}
                           value={code}

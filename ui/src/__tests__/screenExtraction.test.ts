@@ -301,6 +301,13 @@ const SCREENS: ScreenEntry[] = [
     name: 'ProvisioningFlow',
     tsx: 'setup/ProvisioningFlow.tsx',
     css: ['setup/ProvisioningFlow.css'],
+    // Cited, not muted: the tablet email/code fields take their accessible
+    // names from visually-hidden <label>s, so this screen names `.sr-only`,
+    // which is defined in theme/components.css and imported by both entry
+    // points (main.tsx:7 desktop, main.mobile.tsx:20 tablet). Same treatment as
+    // KdsScreen and SettingsSelect above — a real dependency on a global
+    // utility sheet, not a class this feature's own sheet should have to own.
+    parentCss: ['../theme/components.css'],
   },
 
   // ── Customers ─────────────────────────────────────────

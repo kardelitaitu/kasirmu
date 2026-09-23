@@ -68,6 +68,11 @@ vi.mock('@fluent/react', () => ({
           'setup-tab-email': 'Email Code',
           'setup-account-email': 'Email address',
           'setup-account-code': 'Verification code',
+          // Visible labels for the same two fields. Deliberately DIFFERENT text
+          // from the placeholder keys above, so a query by accessible name
+          // cannot accidentally pass by matching the placeholder.
+          'setup-account-email-label': 'Account email',
+          'setup-account-code-label': 'Verification code',
           'setup-account-failed': 'Failed to connect account.',
           'setup-provision-account-required': 'Please link your kasir.mu account before finishing setup.',
           'setup-provision-success': 'This terminal is ready.',
@@ -543,18 +548,21 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     fireEvent.click(emailTab);
     expect(emailTab.getAttribute('aria-selected')).toBe('true');
 
-    // Input email and send code
-    const emailInput = screen.getByPlaceholderText(/Email address/i);
+    // Input email and send code. Queried by its accessible NAME, not its
+    // placeholder: the field used to have only a placeholder, which is not a
+    // label — the two fields below were unreachable by name for a screen
+    // reader, and getByPlaceholderText was the only way to find them.
+    const emailInput = screen.getByLabelText(/^Account email$/i);
     fireEvent.change(emailInput, { target: { value: 'owner-tablet@example.com' } });
     fireEvent.click(screen.getByRole('button', { name: /Email me a code/i }));
 
     await waitFor(() => {
       expect(requestDeviceLinkCode).toHaveBeenCalledWith('owner-tablet@example.com');
-      expect(screen.getByPlaceholderText(/Verification code/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Verification code/i)).toBeInTheDocument();
     }, FAST_WAIT);
 
     // Input code and verify
-    const codeInput = screen.getByPlaceholderText(/Verification code/i);
+    const codeInput = screen.getByLabelText(/Verification code/i);
     fireEvent.change(codeInput, { target: { value: '123456' } });
     fireEvent.click(screen.getByRole('button', { name: /Verify/i }));
 

@@ -84,6 +84,12 @@ setup-account-linked = Linked to { $email }.
 setup-account-failed = Could not link this device. You can try again, or continue without linking.
 setup-account-tablet = Use the code sent to your account email to link this device.
 setup-account-email = Account email
+# Visible labels for the tablet's email/code fields. They shipped with only a
+# `placeholder`, which is not an accessible name: a screen reader announced two
+# unlabelled text boxes, and the only way to address them by name was the
+# placeholder — which the browser erases the moment the user types.
+setup-account-email-label = Account email
+setup-account-code-label = Verification code
 setup-account-send = Email me a code
 setup-account-code = 6-digit code
 setup-account-verify = Verify

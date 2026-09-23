@@ -163,6 +163,12 @@ setup-account-linked = Tertaut ke { $email }.
 setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lanjutkan tanpa menautkan.
 setup-account-tablet = Gunakan kode yang dikirim ke email akun Anda untuk menautkan perangkat ini.
 setup-account-email = Email akun
+# Label terlihat untuk kolom email/kode di tablet. Sebelumnya hanya ada
+# `placeholder`, yang bukan nama aksesibel: pembaca layar mengumumkan dua kotak
+# teks tanpa label, dan satu-satunya cara menyebutnya adalah lewat placeholder —
+# yang langsung hilang begitu pengguna mengetik.
+setup-account-email-label = Email akun
+setup-account-code-label = Kode verifikasi
 setup-account-send = Kirim kode ke email
 setup-account-code = Kode 6 digit
 setup-account-verify = Verifikasi
