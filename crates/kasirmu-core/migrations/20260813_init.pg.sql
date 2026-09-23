@@ -2558,6 +2558,10 @@ CREATE TABLE IF NOT EXISTS shifts (
     updated_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 , total_payouts_minor BIGINT NOT NULL DEFAULT 0);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_open_per_user
+    ON shifts(user_id)
+    WHERE status = 'open';
+
 CREATE TABLE IF NOT EXISTS "stock_transfers" (
     id                     TEXT PRIMARY KEY,
     transfer_number        TEXT NOT NULL UNIQUE,

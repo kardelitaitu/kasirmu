@@ -390,6 +390,18 @@ pub const ALL: &[Migration] = &[
         id: "20261007_sync_origin_and_effect_key.sql",
         sql: include_str!("../migrations/20261007_sync_origin_and_effect_key.sql"),
     },
+    // COR-27 / C18 P1.3: the open-shift invariant moves from one function to the
+    // schema — a PARTIAL unique index on shifts(user_id) WHERE status='open',
+    // mirroring idx_inv_shifts_active_per_user_location on inventory_shifts. The
+    // migration also reconciles any pre-existing duplicate open shifts (closing
+    // all but the most recent, deterministically) so the CREATE cannot fail on a
+    // store written before 4518a2b8 made open_shift atomic. One named index, so
+    // the index-surface pin in migrations_tests.rs moves 188 -> 189; no table is
+    // added. Appended after the registry tail so no earlier migration reorders.
+    Migration {
+        id: "20261011_open_shift_uniqueness.sql",
+        sql: include_str!("../migrations/20261011_open_shift_uniqueness.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

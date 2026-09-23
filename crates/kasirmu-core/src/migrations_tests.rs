@@ -844,7 +844,16 @@ fn init_sql_creates_complete_schema_surface() {
         // index would let the first NULL pass and collide every one after it,
         // so the existing ledger could no longer grow. That file's two ADD
         // COLUMNs move no index count at all.
-        188,
+        // 20261011_open_shift_uniqueness.sql adds one: idx_shifts_open_per_user,
+        // the PARTIAL unique index on shifts(user_id) WHERE status='open' that
+        // moves the open-shift invariant from open_shift's own transaction
+        // (4518a2b8) to the schema. Partial is the point: a user accumulates one
+        // closed shift per day forever, so a table-wide UNIQUE(user_id) would
+        // refuse the second day's shift, while closed rows leave this index
+        // entirely. It mirrors idx_inv_shifts_active_per_user_location, which
+        // has guarded inventory_shifts the same way since the init schema. That
+        // file ships no table and no trigger, so the other two pins stand.
+        189,
         "index surface drifted"
     );
     assert_eq!(
@@ -2992,3 +3001,241 @@ fn a_terminal_without_the_legacy_signal_is_never_backfilled() {
         "store.setup_complete is not the legacy dismissal key and must not backfill"
     );
 }
+
+// ── COR-27 / C18 P1.3: the open-shift invariant at the DATABASE level ──
+
+/// The registry position of the migration under test, so the pre-index leg
+/// below is expressed as "everything except this migration" rather than as a
+/// brittle \`ALL.len() - 1\`.
+fn open_shift_uniqueness_position() -> usize {
+    ALL.iter()
+        .position(|m| m.id == "20261011_open_shift_uniqueness.sql")
+        .expect("20261011_open_shift_uniqueness.sql must be registered")
+}
+
+/// The migration's own SQL, read from the registry — never re-typed here, so
+/// the test cannot drift from the file it pins.
+fn open_shift_uniqueness_sql() -> &'static str {
+    ALL[open_shift_uniqueness_position()].sql
+}
+
+/// One user, so a raw \`shifts\` INSERT has a row for its FK to resolve.
+fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
+    conn.execute(
+        "INSERT OR IGNORE INTO roles (id, name) VALUES ('role-osu', 'Open Shift Test')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id)
+         VALUES (?1, ?2, 'not-used', 'Open Shift Test', 'role-osu')",
+        rusqlite::params![user_id, format!("u-{user_id}")],
+    )
+    .unwrap();
+}
+
+/// 1. A fresh database accepts the index, and it is the PARTIAL one — the
+///    \`WHERE status = 'open'\` clause is in the stored SQL, so closed shifts
+///    are outside the constraint (a table-wide UNIQUE would refuse the second
+///    day's shift). \`migration_surface_pins\` covers the count; this pins the
+///    shape.
+#[test]
+fn open_shift_uniqueness_index_is_partial_on_open_status() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    let sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_shifts_open_per_user'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("idx_shifts_open_per_user must exist after the full registry runs");
+
+    let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        normalized.contains("UNIQUE INDEX"),
+        "the guard must be UNIQUE, got: {sql}"
+    );
+    assert!(
+        normalized.contains("shifts(user_id)"),
+        "the guard must be keyed on shifts(user_id), got: {sql}"
+    );
+    assert!(
+        normalized.contains("WHERE status = 'open'"),
+        "the guard must be PARTIAL on status='open'; without that clause a user could \
+         never open a second day's shift, got: {sql}"
+    );
+}
+
+/// 2. THE GUARD BITES, proved through raw SQL so it is the INDEX under test and
+///    not \`Store::open_shift\`.
+///
+///    Leg A is the negative control and the reason this test is honest: the same
+///    statement runs against a database built from the registry WITHOUT this
+///    migration and SUCCEEDS there. So the refusal in leg B comes from the index
+///    and from nothing else in the schema. Leg B then requires the raw INSERT to
+///    be refused and pins both exemptions the partial clause exists for: another
+///    user, and the same user after the first shift is closed.
+#[test]
+fn open_shift_uniqueness_index_bites_on_raw_sql() {
+    const DUPLICATE_INSERT: &str = "INSERT INTO shifts (id, user_id) VALUES (?1, ?2)";
+
+    // ── Leg A: BEFORE the index exists, the raw duplicate is ACCEPTED. ──
+    {
+        let mut conn = fresh();
+        let split = open_shift_uniqueness_position();
+        platform_core::database::run(&mut conn, &ALL[..split]).unwrap();
+        seed_shift_user(&conn, "user-open");
+
+        conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-a", "user-open"])
+            .expect("pre-index control: nothing in the schema forbids this row");
+        conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-b", "user-open"])
+            .expect("pre-index control: this second open shift is the defect being closed");
+
+        let open: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM shifts WHERE user_id = 'user-open' AND status = 'open'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(open, 2, "the negative control must actually reproduce the defect");
+    }
+
+    // ── Leg B: WITH the index, the same raw statement is refused. ──
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    seed_shift_user(&conn, "user-open");
+    seed_shift_user(&conn, "user-other");
+
+    // The first open shift is written with no explicit status at all, so this
+    // also pins that the column DEFAULT (and the CHECK constraint's spelling) is
+    // exactly the literal the index's WHERE clause matches. A WHERE clause that
+    // did not match the rows writers actually produce would pass a naive test
+    // but fail here.
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-a", "user-open"])
+        .unwrap();
+
+    let err = conn
+        .execute(DUPLICATE_INSERT, rusqlite::params!["shift-b", "user-open"])
+        .expect_err("a second open shift for the same user must be refused by the INDEX");
+    assert!(
+        matches!(
+            &err,
+            rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
+        ),
+        "expected a UNIQUE constraint violation, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("shifts.user_id"),
+        "the refusal must name the guarded column, got: {err}"
+    );
+
+    // Exemption 1: another user is untouched by the constraint.
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-c", "user-other"])
+        .expect("the guard is per user, not global");
+
+    // Exemption 2: closing the first shift releases the user — a closed row
+    // leaves the partial index entirely.
+    conn.execute("UPDATE shifts SET status = 'closed' WHERE id = 'shift-a'", [])
+        .unwrap();
+    conn.execute(DUPLICATE_INSERT, rusqlite::params!["shift-d", "user-open"])
+        .expect("a closed shift must not block the next open for that user");
+
+    let open: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM shifts WHERE user_id = 'user-open' AND status = 'open'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        open, 1,
+        "one open shift per user, after the refusals and the exemptions"
+    );
+}
+
+/// 3. THE MIGRATION CANNOT BRICK AN EXISTING STORE.
+///
+///    A store written before \`open_shift\` was atomic can already hold two open
+///    shifts for one user. If the CREATE ran against that state it would fail,
+///    and the app would not start — so the reconciliation must close the extras
+///    FIRST. This test builds the FINAL schema (the whole registry), plants the
+///    duplicate exactly as such a store would hold it, and then re-applies this
+///    migration's own statements — the same replay the drift path performs on a
+///    real database whose migration file was edited, and the only order in which
+///    the reconciliation sees the final schema.
+#[test]
+fn open_shift_uniqueness_migration_reconciles_pre_existing_duplicates() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+    seed_shift_user(&conn, "user-legacy");
+
+    // Simulate the pre-fix store: drop the guard, then write the duplicate.
+    conn.execute("DROP INDEX idx_shifts_open_per_user", []).unwrap();
+    conn.execute_batch(
+        "INSERT INTO shifts (id, user_id, opened_at, created_at, updated_at, status) VALUES
+           ('legacy-old', 'user-legacy', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'open'),
+           ('legacy-new', 'user-legacy', '2025-01-02T00:00:00.000Z', '2025-01-02T00:00:00.000Z', '2025-01-02T00:00:00.000Z', 'open');",
+    )
+    .unwrap();
+
+    // Re-apply the migration: it must reconcile and then build the index.
+    conn.execute_batch(open_shift_uniqueness_sql())
+        .expect("the migration must not fail on a store that already holds duplicates");
+
+    // The survivor is the most recently opened row — deterministic.
+    let survivors: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT id FROM shifts WHERE user_id = 'user-legacy' AND status = 'open'")
+            .unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+        rows.map(|r| r.unwrap()).collect()
+    };
+    assert_eq!(
+        survivors,
+        vec!["legacy-new".to_string()],
+        "the most recently opened shift must survive, deterministically"
+    );
+
+    // The loser is closed, NOT deleted, and no figure is invented: the counted
+    // cash columns stay NULL (the schema's own "never counted" signal) and the
+    // reason is stamped into notes.
+    let (status, closing, expected, difference, notes): (
+        String,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        String,
+    ) = conn
+        .query_row(
+            "SELECT status, closing_balance_minor, expected_cash_minor, cash_difference_minor, notes
+               FROM shifts WHERE id = 'legacy-old'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "closed", "the loser is closed rather than dropped");
+    assert_eq!(closing, None, "no closing balance may be invented");
+    assert_eq!(expected, None, "no expected cash may be invented");
+    assert_eq!(difference, None, "no cash difference may be invented");
+    assert!(
+        notes.contains("auto-closed"),
+        "the reconciliation must leave an auditable reason, got: {notes}"
+    );
+
+    // And the index the reconciliation exists to protect is in place, so a
+    // third duplicate is refused.
+    let err = conn
+        .execute(
+            "INSERT INTO shifts (id, user_id) VALUES ('legacy-third', 'user-legacy')",
+            [],
+        )
+        .expect_err("the index must exist after the re-apply");
+    assert!(
+        matches!(err, rusqlite::Error::SqliteFailure(_, _)),
+        "expected a constraint violation, got: {err}"
+    );
+}
+
