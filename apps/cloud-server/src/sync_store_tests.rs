@@ -1406,7 +1406,7 @@ async fn sqlite_backend_push_pull_carries_the_origin_terminal() {
     // then pushed into the server database — the actual topology, so a column
     // the client writes and the server drops cannot hide. (The origin is set
     // directly because the producer does not write a real one until slice S3.)
-    let mut with_origin = {
+    let with_origin = {
         let client = fresh_db();
         let client = client.lock().await;
         let mut item = kasirmu_core::Store::new(&client)

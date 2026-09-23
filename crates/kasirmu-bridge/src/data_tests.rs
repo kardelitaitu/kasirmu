@@ -834,9 +834,8 @@ async fn restore_prepare_refuses_a_corrupt_candidate_even_with_the_right_name() 
         !restore_request_file(&live).exists(),
         "no request file may be written for a corrupt candidate"
     );
-    assert_eq!(
-        restore_status(&live).await.unwrap().pending,
-        false,
+    assert!(
+        !restore_status(&live).await.unwrap().pending,
         "status must agree that nothing is pending"
     );
 }

@@ -43,11 +43,10 @@ next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
 //! `std::sync::Mutex`, document why in the field's doc comment.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 use kasirmu_security::mask::mask_token;
 
