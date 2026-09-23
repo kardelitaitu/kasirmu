@@ -1120,3 +1120,348 @@ async fn pg_integration_stale_connection_recycled() {
         .expect("fresh connection must serve queries after recycle");
     assert_eq!(row.get::<_, i32>(0), 1);
 }
+
+// ── C7 live verification: RLS posture against a real PostgreSQL ──────────────
+
+/// A `CloudServerConfig` for the live HTTP test, built field-by-field so no
+/// stray environment variable can steer it.
+fn test_cloud_config() -> crate::config::CloudServerConfig {
+    crate::config::CloudServerConfig {
+        db_path: ":memory:".into(),
+        database_url: None,
+        require_tls: false,
+        db_pool_size: 4,
+        apply_schema: false,
+        port: 3099,
+        admin_key: None,
+        enforce_plans: false,
+        production: false,
+        log_format: crate::config::LogFormat::Plain,
+        redirect_only: false,
+        sync_redirect_url: None,
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+        api_secret: None,
+        redis_url: None,
+        admin_email: "test-admin@kasir.mu".into(),
+        smtp_host: None,
+        smtp_port: 587,
+        smtp_user: None,
+        smtp_password: None,
+        smtp_from: "no-reply@kasir.mu".into(),
+    }
+}
+
+/// C7 live verification: `rls_facts` against a real PostgreSQL server, and the
+/// verdict it produces for the dev container as it stands.
+///
+/// Commit `e7aec886c` shipped the posture logic with its SQL code-review-covered
+/// only. This is the executed form.
+///
+/// Three things, in the order that makes a failure informative:
+///
+/// 1. The facts the query returns are corroborated against an INDEPENDENT
+///    catalog read (role, superuser flag, policy count), so the query is
+///    compared against the server rather than against itself.
+/// 2. The verdict for the dev container AS IT STANDS is asserted and printed.
+/// 3. A negative control — in-process AND live — so a posture function that
+///    always returned one variant could not pass.
+///
+/// Read-only: no DDL, no role creation, and it does not run
+/// `scripts/rls-cutover.sql`. The live control uses `SET ROLE` on this test's
+/// own session (restored with `RESET ROLE`), which changes nothing in the
+/// shared schema.
+///
+/// Self-skips when Postgres is unreachable (the crate's established pattern),
+/// printing `PG integration test skipped: ...` so a skip is never mistaken for
+/// a pass.
+#[tokio::test]
+#[serial(pg_rls_cutover)]
+async fn pg_integration_rls_posture_matches_the_live_server() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    let pool = match DbPool::connect_postgres(&url, false, 4, false).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("PG integration test skipped: {e}");
+            return;
+        }
+    };
+    let client = pool.pg_client().await.expect("pg_client should succeed");
+
+    // ── 1. The facts, corroborated against an independent catalog read. ──
+    let facts = rls_facts(&client)
+        .await
+        .expect("rls_facts must succeed against a live schema");
+
+    let expected_role: String = client
+        .query_one("SELECT current_user::text", &[])
+        .await
+        .expect("current_user read should succeed")
+        .get(0);
+    let expected_super: bool = client
+        .query_one(
+            "SELECT COALESCE((SELECT rolsuper FROM pg_roles WHERE rolname = current_user), false)",
+            &[],
+        )
+        .await
+        .expect("rolsuper read should succeed")
+        .get(0);
+    // Each protected table carries exactly one `tenant_isolation` policy, so on
+    // this schema the policy count and the protected-table count must agree.
+    let policy_count: i64 = client
+        .query_one(
+            "SELECT count(*) FROM pg_policies \
+             WHERE schemaname = 'public' AND policyname = 'tenant_isolation'",
+            &[],
+        )
+        .await
+        .expect("policy count should succeed")
+        .get(0);
+
+    assert_eq!(
+        facts.role, expected_role,
+        "role must be the connection's own"
+    );
+    assert_eq!(
+        facts.is_superuser, expected_super,
+        "superuser flag must match pg_roles"
+    );
+    assert_eq!(
+        i64::from(facts.protected_tables),
+        policy_count,
+        "protected_tables must equal the tenant_isolation policy count"
+    );
+    assert!(
+        facts.forced_tables <= facts.protected_tables,
+        "forced ({}) cannot exceed protected ({})",
+        facts.forced_tables,
+        facts.protected_tables
+    );
+
+    // ── 2. The verdict for the dev container as it stands. ──
+    let posture = RlsPosture::from_facts(&facts);
+    println!(
+        "C7 live RLS posture: url={url} role={} superuser={} forced={} protected={} verdict={}",
+        facts.role,
+        facts.is_superuser,
+        facts.forced_tables,
+        facts.protected_tables,
+        posture.as_str()
+    );
+    println!("C7 live RLS message: {}", posture.message(&facts.role));
+
+    // The verdict must follow from the live facts — the mapping the review
+    // predicted, confirmed against a real catalog.
+    let expected = if facts.protected_tables == 0 {
+        RlsPosture::NoProtectedTables
+    } else if facts.is_superuser {
+        RlsPosture::BypassedBySuperuser {
+            tables: facts.protected_tables,
+        }
+    } else if facts.forced_tables >= facts.protected_tables {
+        RlsPosture::Enforced {
+            tables: facts.protected_tables,
+        }
+    } else if facts.forced_tables == 0 {
+        RlsPosture::BypassedByOwnerRole {
+            total: facts.protected_tables,
+        }
+    } else {
+        RlsPosture::PartiallyEnforced {
+            forced: facts.forced_tables,
+            total: facts.protected_tables,
+        }
+    };
+    assert_eq!(posture, expected, "verdict must follow from the live facts");
+
+    // The documented blocker, asserted only while the container is in that
+    // state (another session may legitimately change it): a superuser bypasses
+    // RLS even where FORCE is set, and no migration sets FORCE, so the shipped
+    // schema's policies are inert on this connection.
+    if facts.is_superuser {
+        assert!(
+            !posture.is_enforced(),
+            "a superuser connection must never report Enforced, got {posture:?}"
+        );
+        if facts.protected_tables > 0 {
+            assert_eq!(
+                posture,
+                RlsPosture::BypassedBySuperuser {
+                    tables: facts.protected_tables
+                },
+                "the dev container connects as a superuser: the documented bypass"
+            );
+        }
+    }
+
+    // ── 3a. Negative control (in-process): the verdict must CHANGE. ──
+    let probe = |is_superuser: bool, forced: u32| RlsFacts {
+        role: "probe".into(),
+        is_superuser,
+        forced_tables: forced,
+        protected_tables: 34,
+    };
+    let superuser_verdict = RlsPosture::from_facts(&probe(true, 34));
+    let owner_verdict = RlsPosture::from_facts(&probe(false, 0));
+    let enforced_verdict = RlsPosture::from_facts(&probe(false, 34));
+    let empty_verdict = RlsPosture::from_facts(&RlsFacts {
+        role: "probe".into(),
+        is_superuser: false,
+        forced_tables: 0,
+        protected_tables: 0,
+    });
+    assert_eq!(
+        superuser_verdict,
+        RlsPosture::BypassedBySuperuser { tables: 34 }
+    );
+    assert_eq!(owner_verdict, RlsPosture::BypassedByOwnerRole { total: 34 });
+    assert_eq!(enforced_verdict, RlsPosture::Enforced { tables: 34 });
+    assert_eq!(empty_verdict, RlsPosture::NoProtectedTables);
+    assert_ne!(
+        superuser_verdict, owner_verdict,
+        "verdict must vary with the facts"
+    );
+    assert_ne!(
+        owner_verdict, enforced_verdict,
+        "verdict must vary with the facts"
+    );
+
+    // ── 3b. Negative control (LIVE): change the connection's role and watch
+    //        the query report it. `SET ROLE` is session-scoped on this test's
+    //        own client; `RESET ROLE` restores it. ──
+    match client.execute("SET ROLE oz_app", &[]).await {
+        Ok(_) => {
+            // Capture the result BEFORE asserting: a panic between SET ROLE and
+            // RESET ROLE would return this pooled connection to the pool still
+            // wearing `oz_app`, leaking the role into another test.
+            let as_app_result = rls_facts(&client).await;
+            let _ = client.execute("RESET ROLE", &[]).await;
+            let as_app = as_app_result.expect("rls_facts must succeed after SET ROLE");
+
+            assert_eq!(
+                as_app.role, "oz_app",
+                "the query must report the switched role"
+            );
+            assert!(!as_app.is_superuser, "oz_app is not a superuser");
+            assert_ne!(
+                as_app.role, facts.role,
+                "the live control must actually change the role"
+            );
+            if facts.protected_tables > 0 {
+                assert_ne!(
+                    RlsPosture::from_facts(&as_app),
+                    posture,
+                    "the verdict must change when the connection's role changes — a \
+                     posture function that always returned one variant would fail here"
+                );
+            }
+        }
+        Err(e) => {
+            println!(
+                "C7 live role control not run: SET ROLE oz_app rejected ({e}); the \
+                 in-process control above still proves the verdict varies"
+            );
+        }
+    }
+}
+
+/// C7 live verification, end to end: `/health` carries the live RLS verdict.
+///
+/// The boot wiring logs the verdict at ERROR when it is not Enforced, and the
+/// health handler reads the same catalog through the same pool. This proves the
+/// field on the wire equals what the live query says, so the published field
+/// cannot silently drift from the query behind it.
+///
+/// Built with the crate's own router (`build_router`) and the same
+/// `CloudServerState` shape the PG branch uses in `main.rs`: a real PG pool plus
+/// the in-memory SQLite fallback that the PG branch never reads.
+#[tokio::test]
+#[serial(pg_rls_cutover)]
+async fn pg_integration_health_reports_the_live_rls_posture() {
+    let url = std::env::var("OZ_TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
+    // `connect_postgres` returns the pool enum; the PG branch is what we want.
+    let pool = match DbPool::connect_postgres(&url, false, 4, false).await {
+        Ok(DbPool::Postgres(p)) => p,
+        Ok(DbPool::Sqlite(_)) => {
+            eprintln!("PG integration test skipped: URL resolved to SQLite");
+            return;
+        }
+        Err(e) => {
+            eprintln!("PG integration test skipped: {e}");
+            return;
+        }
+    };
+
+    // The verdict the live query produces, read on a client of the same pool.
+    let client = pool.get().await.expect("pool.get should succeed");
+    let facts = rls_facts(&client).await.expect("rls_facts must succeed");
+    let expected = RlsPosture::from_facts(&facts).as_str();
+
+    // Release the client and pre-warm the pool BEFORE the request. The health
+    // handler bounds its own pool checkout to 2s (a deliberate fail-fast for the
+    // Docker healthcheck), and on a loaded container establishing a fresh
+    // connection can exceed that — which would report a degraded "unknown"
+    // posture for a reason unrelated to the posture itself. An idle connection
+    // makes that 2s bound measure the catalog query instead.
+    drop(client);
+    let warm = pool.get().await.expect("pool warm-up should succeed");
+    drop(warm);
+
+    let state = crate::CloudServerState {
+        db: std::sync::Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db())),
+        pg: Some(pool.clone()),
+        started_at: std::time::Instant::now(),
+        health_depth_cache: crate::HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+    };
+    let app = crate::build_router(
+        state,
+        crate::rate_limit::RateLimiterState::new(),
+        &test_cloud_config(),
+        Some(pool),
+    );
+
+    use tower::ServiceExt;
+    let resp = app
+        .oneshot(
+            axum::http::Request::builder()
+                .uri("/health")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("health request should complete");
+    assert_eq!(resp.status(), 200, "health always returns 200");
+
+    use http_body_util::BodyExt;
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    let field = json["rls_posture"]
+        .as_str()
+        .expect("rls_posture must be a string on /health");
+    assert_eq!(
+        field, expected,
+        "the published rls_posture must equal the live query's verdict"
+    );
+    assert_ne!(
+        field, "unknown",
+        "the health path could not read the catalog"
+    );
+    assert_ne!(
+        field, "not_applicable",
+        "the PG branch must report a real verdict, not the SQLite placeholder"
+    );
+    println!("C7 live /health rls_posture = {field}");
+}
