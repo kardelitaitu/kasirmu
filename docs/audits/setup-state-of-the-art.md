@@ -1071,3 +1071,72 @@ leaking the internal `disk full`) · `dev-mock-auth-contract` **32/32** · full 
 Negative control: deleting the two dialog handlers makes both new unit tests fail.
 
 **Commit:** `b3016f8f8`.
+---
+
+## Round 26 — the pairing screens told merchants to visit the literal text `{$url}`
+
+Chasing round 25's theme (which screens are still unreachable in a browser), I enumerated the boot
+gates and found `LicenseActivationScreen` unreachable the same way `RevokedScreen` was. Opening it
+took three flags — `?license=inactive&nousers=1&unprovisioned=1` — because the boot ladder admits a
+terminal on **any** of: usable licence, completed setup, or existing users. A seam for only the
+licence leaves the other two admitting it.
+
+The screen rendered on the first try after that, and showed the defect immediately.
+
+### The defect
+
+```
+BEFORE:  Scan this QR code with your phone or visit {$url}
+AFTER:   Scan this QR code with your phone or visit https://kasir.mu/pair?code=ABCD-1234
+```
+
+**The merchant was told to visit the literal string `{$url}`.** Fluent renders an unknown variable by
+echoing the message pattern back, so the failure is silent and looks like copy.
+
+**It looked plausible, which is why it survived.** The QR still drew — `QRCodeSVG` was handed
+`undefined` and dutifully encoded the string `"undefined"` — so the screen had a QR, a readable
+pairing code, and a sentence. A merchant scanning that code or typing that address gets nowhere.
+
+### Root cause: the mock invented a DTO
+
+`start_device_pairing` answered:
+
+```js
+{ code, poll_token, expires_at, base_url: '…', qr_payload: '…' }
+```
+
+The real contract is `PairingSessionStart` — `code`, `poll_token`, `expires_at`, **`qr_url`** — and
+**`base_url` and `qr_payload` do not exist on it** (kasirmu-core/src/desktop_link.rs:38; the licence
+server agrees at pairing.go:228). So `qr_url` was `undefined` everywhere it was read, and Fluent
+printed the pattern.
+
+### How it was found, and how it nearly wasn't
+
+Four wrong hypotheses first, each killed by measurement rather than argument:
+1. **"Fluent mis-parses the message."** No — the FTL matched a known-working example verbatim.
+2. **"`vars` isn't reaching `Localized`."** No — a unit render of the identical markup interpolated
+   correctly.
+3. **"The bundled Fluent version is broken."** No — `formatPattern` with a real arg worked on both
+   live bundles.
+4. **"A prop-stripping wrapper."** No — both screens import `Localized` straight from
+   `@fluent/react`.
+
+Then the decisive one: reproducing the *exact* call the library makes with no args returned the raw
+pattern plus `ReferenceError: Unknown variable: $url`. That pointed at the argument, not the
+machinery — and dumping the DTO showed the field was simply absent.
+
+A sub-experiment worth keeping: Fluent treats a **boxed `String` object** exactly like `undefined`
+(raw pattern + error), but a primitive, a number, and a `new String()` differ. Measured, in case a
+typed value ever flows into `vars`.
+
+### Verification
+
+**4/4 new E2E** on desktop and tablet, asserting the URL appears AND `{$url}` does not — on **both**
+screens, since both read the same DTO and both were broken · `dev-mock-auth-contract` **34/34** ·
+full UI suite **606 files / 10,354 tests pass** · `tsc` clean · lint **0 errors** · parity **0
+missing**.
+
+Negative control: restoring `qr_payload` in place of `qr_url` fails both new unit tests with the
+key-list mismatch and `expected 'undefined' to be 'string'`.
+
+**Commit:** `66486f339`.
