@@ -417,6 +417,15 @@ step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-t
 # deferred to avoid crying wolf had let the wolf in.
 # Gate: scripts/gates.json -> "records-index".
 step "records index freshness" "node scripts/generate-records-index.mjs --check" node scripts/generate-records-index.mjs --check
+# The hand table in docs/decisions/README.md has reconciled its status column
+# against ADR frontmatter by hand three times (2026-08-09 x26 empty cells,
+# 2026-09-23 x3 trailing ones), and that file's Conventions order the column
+# re-derived "with a script, never by hand". This is the script: each row's
+# status WORD against its linked ADR's frontmatter, frontmatter over header
+# line, matched by file path so the documented duplicate #43 checks both
+# files, cross-reference table excluded (prose cells). Audit open item 2,
+# green from day one (54/54). Gate: scripts/gates.json -> "adr-status".
+step "adr status drift" "python3 .agents/skills/docs-auditor/scripts/check-adr-status.py" python3 .agents/skills/docs-auditor/scripts/check-adr-status.py
 # scripts/__tests__/*.test.mjs is a whole suite that ui/package.json exposes as
 # `npm run test:scripts` and that NOTHING invoked -- not the hook, not CI, not check.sh.
 # It had been red for an unknown period for exactly that reason: verify-ci-docs-drift.test.mjs

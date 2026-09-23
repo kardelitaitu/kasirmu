@@ -7,9 +7,10 @@
 # cannot run looks exactly like a checker that found nothing, which is the failure this step
 # exists to catch. check-env-docs, check-ci-claims and check-nav-paths shipped first;
 # check-dead-refs joined on 2026-09-24 with its source-relative resolution cases (the
-# 2026-09-23 documentation audit, open item 3).
+# 2026-09-23 documentation audit, open item 3), and check-adr-status the same day for
+# open item 2 (status-word comparator; two of its cases are deliberately red).
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs; do
+for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status; do
   python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
 done

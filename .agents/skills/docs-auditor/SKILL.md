@@ -57,6 +57,16 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   listed but never registered, listed and not defined anywhere, registered but
   undocumented. Reporting them separately is the point: a single "the numbers disagree"
   count hides that three of the four need different fixes.
+- **ADR status-table drift** (when the audit touches `docs/decisions/` or its index):
+  run `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py`. It compares
+  each hand-table row's status *word* in `docs/decisions/README.md` against the linked
+  ADR's own frontmatter `status:` — the contract that file's Conventions state — with
+  frontmatter over the header line (#53's header still reads `Proposed` while its
+  frontmatter says `Adopted`), rows resolved by file path so the documented duplicate
+  #43 checks each file against its own row, and the Trial & Billing cross-reference
+  table excluded (prose cells, not status words). Added 2026-09-24 (audit open item 2)
+  after three hand-reconciliations; blocking in `check.sh` (`adr status drift`,
+  gates.json `adr-status`) with `--self-test` in `scripts/check-auditor-selftests.sh`.
 - **Unresolved path references** (any doc): run
   `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`. It indexes the tree
   once (pruned) and reports path literals and markdown link targets that resolve to

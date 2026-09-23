@@ -7,8 +7,8 @@ working tree on 2026-09-23. Peer sessions were active during the run — see
 **Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
 pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
 close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
-not touched*), plus four open items that are separate work (listed at the bottom — items 1 and 3
-have since been closed in follow-up passes, so two remain).
+not touched*), plus four open items that are separate work (listed at the bottom — items 1–3
+have since been closed in follow-up passes, so one remains).
 
 ## Scope and method
 
@@ -214,15 +214,25 @@ removing it is a different decision than a typo repair, and it is right.
    `datetime.rs`'s `C6` annotation (`26-09-26` → `23-09-26`, minted 2026-09-23).
    Plans, fixtures and deadlines (backlog eligibility, the 2026-11-06 boundary
    expiries, test/JSON data, manager-checklist dates) and this file's own quotations
-   of the superseded dates were left as they stand.
-2. **ADR status-table enforcement**: the hand table in `decisions/README.md` was
-   reconciled against frontmatter on 2026-09-23 (#55 → `Implemented`, #56 and #58 →
-   `Partially implemented`, the correction recorded in that file's Conventions the
-   way the 08-09-26 pair was), and the duplicate #43 stays by documented decision.
-   What is still missing is anything that KEEPS the match: no checker reads the
-   column against frontmatter, so the next re-audit will drift the same way. The
-   generator already parses both — a `--check`-style comparator beside it is the
-   natural home.
+   of the superseded dates were left as they stand.2. ~~**ADR status-table enforcement**~~ **Resolved 24-09-26 — the comparator is built
+   and gated.** `.agents/skills/docs-auditor/scripts/check-adr-status.py` reads the
+   hand table in `docs/decisions/README.md` (54 rows) and each linked ADR's own
+   frontmatter `status:`, applies exactly the rule that file's Conventions state —
+   the status *word* must match, what follows the word may differ — and fails on
+   disagreement. Frontmatter beats the header line (#53's header still opens
+   `Proposed` while its frontmatter was re-audited to `Adopted`); rows resolve by
+   file path, so the documented duplicate #43 checks each file against its own row;
+   the Trial & Billing cross-reference table is excluded by design (its cells are
+   prose like `Superseded for tier lineup…`, not status words); a row whose file
+   cannot be read is a finding, because cannot-verify is not agreement, and an
+   unparsable table fails rather than clearing. Chose the house-checker form over a
+   `--check` flag on the generator so the auditor self-test runner's uniform
+   `python3 --self-test` loop could run it — ten synthetic cases including two
+   deliberately red ones (drift, and unverifiable). Wired `check.sh` step
+   `adr status drift` (blocking; green from day one at 54/54) and gates.json
+   `adr-status` (local-only, like `auditor-selftests`). Same pass corrected two
+   stale claims this audit's own tools now catch: this file's roster note in
+   gates.json said three self-tests, and decisions/README said #53 had no row.
 3. ~~**The house checker itself**~~ **Resolved 24-09-26 — half shipped, half withdrawn
    on evidence.** Shipped: `check-dead-refs.py` now extracts markdown link targets and
    resolves every candidate against the source file's directory first; `./` and `../`

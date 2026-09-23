@@ -14,10 +14,12 @@ implementation-status walkthrough.
   `ADR #24`–`#29` are cited by nothing anywhere in the repo
   (re-derive: `grep -rn 'ADR #16\|ADR #2[4-9]' --include='*.md' .` → one hit, this sentence).
   They are skipped numbers, not lost documents; do not go looking for them.
-- **The hand table below is incomplete and is NOT the authority.** It has no row for **#53**,
-  which exists (`docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`) and is indexed by
-  the generated `docs/records/README.md`. Find a missing row the same way:
-  `ls docs/decisions/*adr*.md` against the `^| N |` rows below. The generated index wins.
+- **The hand table below is NOT the authority.** It used to be incomplete — **#53 had
+  no row** while the file existed on disk and in the generated `docs/records/README.md`
+  (`docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`) — and the row was added
+  2026-09-23; as of 2026-09-24 every numbered ADR file has exactly one row (re-derive:
+  match frontmatter `num:` files against the `^| N |` rows below; measured 54/54).
+  Find a missing row the same way. The generated index still wins where they disagree.
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -162,7 +164,12 @@ authoritative record.
   `Implemented (2026-07-15)` while the index called them unknown. The cells were empty
   because nobody had filled them in, and the page then supplied a tidy reason for the
   gap. An invented explanation is worse than the gap: it stops anyone looking again.
-  Re-derive the column with a script that reads the frontmatter, never by hand. A third sweep on 23-09-26 caught three more cells trailing their frontmatter — #55 read `Accepted` while the decision had shipped as `Implemented`, and #56/#58 read `Proposed` while both frontmatters had been re-audited to `Partially implemented` on 2026-09-22 — and corrected them to match. The duplicate #43 rows were left as they are: the collision is documented at the top of this file and renaming either file would break the citations counted there.
+  Re-derive the column with a script that reads the frontmatter, never by hand — and
+  since 2026-09-24 one runs in every full local matrix:
+  `.agents/skills/docs-auditor/scripts/check-adr-status.py` compares each row's status
+  word against its file's frontmatter (check.sh step `adr status drift`, gates.json
+  `adr-status`), so the next drift fails a gate instead of waiting for a re-audit.
+  A third sweep on 23-09-26 caught three more cells trailing their frontmatter — #55 read `Accepted` while the decision had shipped as `Implemented`, and #56/#58 read `Proposed` while both frontmatters had been re-audited to `Partially implemented` on 2026-09-22 — and corrected them to match. The duplicate #43 rows were left as they are: the collision is documented at the top of this file and renaming either file would break the citations counted there.
 - **On 23-09-26 the five future-dated records were re-dated to their authored dates.**
   ADRs #56–#60 had October-2026 prefixes and in-body dates no commit could produce;
   `git log -S` attribution pinned their authoring and every recorded event to 2026-09-21,
