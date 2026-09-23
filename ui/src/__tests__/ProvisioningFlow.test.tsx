@@ -74,6 +74,7 @@ vi.mock('@fluent/react', () => ({
           'setup-account-email-label': 'Account email',
           'setup-account-code-label': 'Verification code',
           'setup-account-failed': 'Failed to connect account.',
+          'setup-account-retry': 'Try again',
           'setup-provision-account-required': 'Please link your kasir.mu account before finishing setup.',
           'setup-provision-success': 'This terminal is ready.',
           'setup-provision-pin-too-short': 'Use at least 4 digits.',
@@ -181,6 +182,38 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // The retry actually recovers rather than failing the same way.
     expect(await screen.findByTestId('pairing-code-badge')).toBeInTheDocument();
   });
+  // ── A failed Google link must not dead-end the control ─────────────
+  //
+  // `link.kind === 'failed'` was set by the catch and read by nothing, so the
+  // only signal was the form-wide banner and the button looked untouched — the
+  // merchant could not tell the attempt from the first paint. Mirrors the
+  // pairing-retry test above, which fixed the same shape one branch over.
+
+  it('offers a retry when linking with Google fails', async () => {
+    vi.mocked(linkDeviceGoogle)
+      .mockRejectedValueOnce(new Error('browser closed'))
+      .mockResolvedValueOnce({
+        tenantId: 'tenant-retry-1',
+        provider: 'google',
+        email: 'retry@example.com',
+      });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Google/i }));
+
+    // The failure is named next to the control that caused it...
+    const retry = await screen.findByRole('button', { name: /Try again/i });
+    expect(screen.getByText(/Could not link this device/i)).toBeInTheDocument();
+
+    // ...and the retry recovers rather than failing the same way.
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(linkDeviceGoogle).toHaveBeenCalledTimes(2);
+      expect(screen.getByText(/Linked to retry@example\.com\./i)).toBeInTheDocument();
+    }, FAST_WAIT);
+  });
+
   it('defaults to the linked mode and requires an account before submitting', async () => {
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
 

@@ -226,8 +226,11 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
       setLink({ kind: 'linked', account });
       setLinkedAccount(account);
     } catch {
+      // No `setErrorMsg` here: the failure is rendered inline, beside the
+      // control that caused it, by the `link.kind === 'failed'` branch below.
+      // Setting both drew the same sentence twice on one screen — once in the
+      // form-wide banner at the top, once next to the button.
       setLink({ kind: 'failed' });
-      setErrorMsg(l10n.getString('setup-account-failed'));
     }
   };
 
@@ -629,6 +632,26 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   <p className="provisioning-note" role="status">
                     <Localized id="setup-account-waiting">Waiting for your browser…</Localized>
                   </p>
+                )}
+                {/* `link.kind === 'failed'` was written by linkWithGoogle and read
+                    nowhere: the union member existed, the catch set it, and the
+                    screen drew the same idle control as the first paint. The only
+                    signal was the generic banner at the top of the form, so a
+                    merchant whose Google window was closed early saw a button that
+                    looked untouched and no reason it had not worked. Same escape as
+                    the pairing branch above: say what happened, next to the control
+                    that did it, and offer the retry. */}
+                {link.kind === 'failed' && (
+                  <div className="provisioning-error" role="alert">
+                    <p style={{ margin: 0 }}>
+                      <Localized id="setup-account-failed">
+                        Could not link this device. You can try again, or continue without linking.
+                      </Localized>
+                    </p>
+                    <Button variant="secondary" type="button" onClick={() => void linkWithGoogle()}>
+                      <Localized id="setup-account-retry">Try again</Localized>
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

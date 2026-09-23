@@ -82,6 +82,7 @@ setup-account-google = Continue with Google
 setup-account-waiting = Waiting for your browser…
 setup-account-linked = Linked to { $email }.
 setup-account-failed = Could not link this device. You can try again, or continue without linking.
+setup-account-retry = Try again
 setup-account-tablet = Use the code sent to your account email to link this device.
 setup-account-email = Account email
 # Visible labels for the tablet's email/code fields. They shipped with only a

@@ -161,6 +161,7 @@ setup-account-google = Lanjutkan dengan Google
 setup-account-waiting = Menunggu browser Anda…
 setup-account-linked = Tertaut ke { $email }.
 setup-account-failed = Tidak dapat menautkan perangkat ini. Coba lagi, atau lanjutkan tanpa menautkan.
+setup-account-retry = Coba lagi
 setup-account-tablet = Gunakan kode yang dikirim ke email akun Anda untuk menautkan perangkat ini.
 setup-account-email = Email akun
 # Label terlihat untuk kolom email/kode di tablet. Sebelumnya hanya ada
