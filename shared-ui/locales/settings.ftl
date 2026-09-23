@@ -48,7 +48,6 @@ settings-license-quota-remedy-none = Nothing to change — no register of this s
 ### provisions; the nine-step wizard's later stages became in-app settings on
 ### an already-working terminal.
 setup-provision-title = Set up this terminal
-setup-provision-desc = Create your free kasir.mu account, then start selling.
 setup-provision-account-section = kasir.mu Account
 setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
 setup-provision-offline-warn = Internet connection is required to create or link your account.

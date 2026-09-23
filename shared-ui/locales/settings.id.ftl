@@ -127,7 +127,6 @@ appearance-preview-badge-label = Aktif
 
 ### First-run provisioning (ADR #56 §2.3).
 setup-provision-title = Siapkan terminal ini
-setup-provision-desc = Buat akun kasir.mu gratis Anda, lalu mulai berjualan.
 setup-provision-account-section = Akun kasir.mu
 setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
 setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.

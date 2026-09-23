@@ -455,15 +455,12 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
           <Localized id="setup-provision-title">
             <h1>Set up this terminal</h1>
           </Localized>
-          {provisionMode === 'local' ? (
-            <Localized id="setup-mode-local-desc">
-              <p>No account needed. Set up and start selling 100% offline immediately.</p>
-            </Localized>
-          ) : (
-            <Localized id="setup-provision-desc">
-              <p>Sign in to link your free kasir.mu account, then you can start selling.</p>
-            </Localized>
-          )}
+          {/* No subtitle. It used to restate whichever mode was selected — while
+              the card directly below was headed "Link your kasir.mu account",
+              and the offline one said "No account needed" above a card reading
+              "Keep this terminal completely offline". The card carries the copy
+              with more specificity in both modes, so the subtitle was a repeat of
+              one idea on a card measuring 1478px against a 1366px viewport. */}
         </header>
 
         {errorMsg && (

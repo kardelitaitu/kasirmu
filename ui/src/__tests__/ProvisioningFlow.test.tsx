@@ -57,8 +57,10 @@ vi.mock('@fluent/react', () => ({
       getString: (id: string) => {
         const map: Record<string, string> = {
           'setup-provision-title': 'Set up this terminal',
-          'setup-provision-desc': 'Sign in to link your free kasir.mu account, then you can start selling.',
-          'setup-mode-local-desc': 'No account needed. Set up and start selling 100% offline immediately.',
+          // Matches the real en bundle: this key now renders only on the mode CARD
+          // (the header subtitle that used to duplicate it was removed).
+          'setup-mode-local-desc': 'Keep this terminal completely offline. No account, no cloud sync — a free starter workspace is created on the device.',
+          'setup-mode-linked-desc': 'Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.',
           'setup-provision-mode-section': 'Setup Mode',
           'setup-provision-step-account': 'Account',
           'setup-provision-step-store': 'Shop',
@@ -358,6 +360,27 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
     expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
     expect(screen.getAllByText('✓')).toHaveLength(3);
+  });
+
+  it('does not restate the mode choice in a header subtitle', async () => {
+    // The header used to repeat whichever mode was selected, directly above the
+    // card that already said it with more specificity — a fourth repetition of one
+    // idea on a card far taller than the viewport. Measured: removing it saves the
+    // header 18px of a 1478px card. Small, but the copy was pure duplication, and
+    // this pins that it does not return.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    const header = document.querySelector('.provisioning-header');
+    expect(header).not.toBeNull();
+    // The h1 is the only text in the header; the mode copy lives on the cards.
+    // (The progress rail also renders inside the header, so assert on the h1 and
+    // on the absence of a subtitle paragraph, not on the header's whole text.)
+    expect(header!.querySelectorAll('h1')).toHaveLength(1);
+    expect(header!.querySelector('h1')!.textContent).toBe('Set up this terminal');
+    // No subtitle paragraph as a SIBLING of the h1 (the progress rail's own
+    // counter is also a <p>, but it lives inside <nav>, not directly here).
+    const h1 = header!.querySelector('h1')!;
+    expect(h1.nextElementSibling).toBeNull();
   });
 
   it('defaults to the linked mode and requires an account before submitting', async () => {
