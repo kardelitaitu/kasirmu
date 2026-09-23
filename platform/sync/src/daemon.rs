@@ -128,6 +128,38 @@ pub struct SyncDaemon {
 ///
 /// Returns `(config, pending)` where `config` is `None` if sync is not
 /// configured or disabled.
+/// Order a pending batch the way a push must send it.
+///
+/// THE ORDER, and why it is this and not merely "priority": ascending
+/// `priority` is the contract ([`SyncPriority`] derives `Ord` with
+/// Critical=0 < Normal=1 < Low=2, so lower transmits first), but priority ALONE
+/// is not a total order — it has three values and most items are `Critical`
+/// (every sale, void, refund and payment split). Ties are therefore the common
+/// case, not the corner, and an under-specified sort would let equal-priority
+/// items swap between runs.
+///
+/// So the key is total, in three parts:
+/// 1. `priority` — the P-2 contract, higher tier first;
+/// 2. `created_at` — the arrival order [`Store::list_pending_offline`] already
+///    documents and returns (`ORDER BY created_at ASC`), preserved WITHIN a tier so the
+///    oldest critical sale still goes first;
+/// 3. `id` — a UUID v7, so it is time-ordered like `created_at` and, being the
+///    primary key, is the only strictly unique field. `created_at` is millisecond
+///    precision, so two items enqueued in the same millisecond would otherwise
+///    compare equal and fall back to SQLite's unspecified row order — the one
+///    remaining source of run-to-run flip.
+///
+/// Safe to apply at the READ point: the whole batch is sorted before it is used,
+/// and every downstream consumer (the push request and the per-item outcome
+/// apply) iterates the SAME vector, so the server's index-aligned outcome list
+/// still lines up (`apps/cloud-server/src/sync_api.rs` reassembles in request order
+/// for exactly this reason).
+pub(crate) fn sort_pending_for_push(items: &mut [kasirmu_core::offline::OfflineQueueItem]) {
+    items.sort_by(|a, b| {
+        (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
+    });
+}
+
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
 ) -> (
@@ -136,7 +168,12 @@ pub(crate) fn read_config_and_pending(
 ) {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let pending = store.list_pending_offline().unwrap_or_default();
+    let mut pending = store.list_pending_offline().unwrap_or_default();
+    // OFF-09 parity with the tablet path, and the reason the priority column
+    // means the same thing on every push path: `list_pending_offline` orders by
+    // `created_at ASC` alone, so without this a Critical item queued behind a
+    // bulk one waits a full cycle.
+    sort_pending_for_push(&mut pending);
     (config, pending)
 }
 

@@ -7,6 +7,91 @@ use super::*;
 
 use std::sync::Arc;
 
+// ── C20: priority ordering on the push path ──────────────────────
+
+/// The acceptance case for the desktop push path: a LOW-priority item is
+/// queued FIRST, so `list_pending_offline` (`ORDER BY created_at ASC`) returns
+/// it at the head and it would be pushed before the Critical one. After
+/// ordering, Critical must go first.
+#[test]
+fn order_pending_for_push_puts_critical_ahead_of_an_earlier_low_item() {
+    use kasirmu_core::offline::{OfflineQueueItem, SyncPriority};
+
+    let mut items = vec![
+        OfflineQueueItem::with_priority("bulk", r#"{}"#, SyncPriority::Low),
+        OfflineQueueItem::with_priority("money", r#"{}"#, SyncPriority::Critical),
+        OfflineQueueItem::with_priority("catalog", r#"{}"#, SyncPriority::Normal),
+    ];
+
+    order_pending_for_push(&mut items);
+
+    let order: Vec<&str> = items.iter().map(|i| i.action.as_str()).collect();
+    assert_eq!(
+        order,
+        vec!["money", "catalog", "bulk"],
+        "Critical must transmit before Normal, which before Low — the priority column is what the push order is FOR"
+    );
+}
+
+/// The tie-break, stated as a test rather than left to the sort's mercy.
+/// Equal priority and equal `created_at`: the order must still be
+/// deterministic, which is what the UUID v7 `id` is for.
+#[test]
+fn order_pending_for_push_breaks_ties_deterministically() {
+    use kasirmu_core::offline::{OfflineQueueItem, SyncPriority};
+
+    let build = || {
+        let mut v = vec![
+            OfflineQueueItem::with_priority("c", r#"{}"#, SyncPriority::Critical),
+            OfflineQueueItem::with_priority("a", r#"{}"#, SyncPriority::Critical),
+            OfflineQueueItem::with_priority("b", r#"{}"#, SyncPriority::Critical),
+        ];
+        // Same instant for all three: `created_at` cannot break the tie, so the
+        // id must.
+        for i in &mut v {
+            i.created_at = "2026-01-01T00:00:00.000Z".to_owned();
+        }
+        v
+    };
+
+    let mut first = build();
+    let mut second = build();
+    order_pending_for_push(&mut first);
+    order_pending_for_push(&mut second);
+
+    let ids = |v: &[OfflineQueueItem]| v.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+    // Two independently built batches: only the tie-break decides, and it must
+    // decide the SAME way. (`id` differs between the two, so the assertion is
+    // that each is internally sorted by id, not that the two are equal.)
+    let mut sorted_first = ids(&first);
+    sorted_first.sort();
+    let mut sorted_second = ids(&second);
+    sorted_second.sort();
+    assert_eq!(ids(&first), sorted_first, "ties break on the unique id");
+    assert_eq!(ids(&second), sorted_second, "and the same way every time");
+}
+
+/// Within one tier the arrival order is preserved, so a batch of same-priority
+/// sales keeps the order the till took them.
+#[test]
+fn order_pending_for_push_preserves_arrival_order_within_a_tier() {
+    use kasirmu_core::offline::{OfflineQueueItem, SyncPriority};
+
+    let mut items = vec![
+        OfflineQueueItem::with_priority("first", r#"{}"#, SyncPriority::Critical),
+        OfflineQueueItem::with_priority("second", r#"{}"#, SyncPriority::Critical),
+        OfflineQueueItem::with_priority("third", r#"{}"#, SyncPriority::Critical),
+    ];
+    for (i, item) in items.iter_mut().enumerate() {
+        item.created_at = format!("2026-01-01T00:00:0{i}.000Z");
+    }
+
+    order_pending_for_push(&mut items);
+
+    let order: Vec<&str> = items.iter().map(|i| i.action.as_str()).collect();
+    assert_eq!(order, vec!["first", "second", "third"]);
+}
+
 #[test]
 fn sync_settings_serialize() {
     let s = SyncSettingsDto {
