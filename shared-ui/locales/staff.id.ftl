@@ -11,12 +11,10 @@ staff-permission-denied = Anda tidak memiliki izin untuk mengakses halaman ini
 
 staff-management-title = Manajemen Staf
 staff-add = Tambah Staf
-staff-edit = Ubah Staf
 staff-name = Nama
 staff-role = Peran
 staff-active = Aktif
 staff-inactive = Tidak Aktif
-staff-deactivate = Nonaktifkan
 staff-activate = Aktifkan
 
 staff-login-submit = Masuk
@@ -24,7 +22,6 @@ staff-login-submitting = Memasuki sistem…
 
 # Restaurant Menu
 staff-login-error-connection = Tidak dapat memverifikasi nama pengguna. Periksa koneksi Anda.
-staff-login-pin-min-length = PIN harus minimal 4 digit.
 staff-login-back = ← Kembali
 staff-login-copyright = © 2026 kasir.mu. Seluruh hak cipta dilindungi.
 staff-login-attempts-remaining = ({ $count } percobaan tersisa)
@@ -58,7 +55,6 @@ staff-edit-aria =
     .aria-label = Ubah { $name }
 staff-deactivate-aria =
     .aria-label = Nonaktifkan { $name }
-staff-restore = Aktifkan Kembali
 staff-restore-aria =
     .aria-label = Aktifkan kembali { $name }
 staff-modal-add-aria =
@@ -355,7 +351,6 @@ staff-delete-failed = Gagal menghapus anggota staf
 role-restored = Peran { $name } dipulihkan.
 
 # ── Impersonation (operator:impersonate) ───────────────────────────
-staff-impersonate-action = Impersonasi
 staff-impersonate-aria =
     .aria-label = Impersonasi { $name }
 staff-impersonating-banner = Meniru { $name }
