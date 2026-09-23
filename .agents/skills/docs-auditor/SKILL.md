@@ -76,8 +76,10 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   expanded, directory-format URLs) × content routes enumerated the way
   `[...slug].astro` emits them × `public/` files and `_redirects` sources — and
   resolves each markdown link against it, fence- and backtick-aware (an authoring
-  guide's example link is not a claim), fragments stripped before matching (anchors
-  unchecked, like dead-refs), fail-loud when the route table cannot be built. Added
+  guide's example link is not a claim), `#fragment`s graded against the target page's
+  real heading ids (github-slugger rules: duplicate `-1/-2` suffixes, explicit HTML
+  ids; component-rendered routes skipped — since 2026-09-24, same rules as dead-refs),
+  fail-loud when the route table cannot be built. Added
   2026-09-24 (audit open item 4); blocking in `check.sh` (`site links`, gates.json
   `site-links`) with `--self-test` in `scripts/check-auditor-selftests.sh`.
 - **Unresolved path references** (any doc): run
@@ -85,7 +87,10 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   once (pruned) and reports path literals and markdown link targets that resolve to
   nothing — link targets against the source file's directory first, with `./` and `../`
   targets anchored there (no repo-root retry, no basename fallback) since 2026-09-24 —
-  separating live docs from dated records, plans and active specs — which are not drift,
+  and a `#fragment` on any resolved markdown target must name a real id on that page
+  (github-slugger rules, duplicate `-1/-2` suffixes, explicit HTML `id=`/`name=`;
+  same-page `#links` too — since 2026-09-24, the docstring carries the rules and the
+  skip list) — separating live docs from dated records, plans and active specs — which are not drift,
   because a plan names files it intends to create. Burned down to **0 unresolved refs
   across 332 live docs (exit 0)** the same day, from 62 files on the first ad-hoc sweep.
   Two mechanisms did the work, and both decide from the repo's own rules rather than a

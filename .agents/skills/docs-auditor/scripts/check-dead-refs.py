@@ -60,7 +60,10 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     `go test -run` regex and matches twelve tests, so an exact-existence rule would report the
     one reference that is most deliberately correct as dead.
 
-  * Section anchors are not checked either, and measurement says they cannot be cheaply. Counted
+  * PROSE section references (bare `§4.2` tokens written as words) are NOT checked, and
+    measurement says the prose form cannot be checked cheaply. Markdown link fragments --
+    [x](./other.md#heading) and [x](#heading) -- ARE checked since 2026-09-24; see the
+    link-target bullet above. Counted
     2026-09-20: 1,915 `§` references across 489 files, 174 distinct tokens. Most infer their
     target from the surrounding prose ("spec 0046b §3.4" vs "ADR #54 §2.3" vs "runbook §8"),
     so a checker would first have to guess WHICH document is meant. The one unambiguous form —
@@ -97,10 +100,28 @@ KNOWN LIMITATIONS (deliberate, and worth knowing before you trust a clean run):
     the stale ../operations/... links the 2026-09-23 audit repointed by hand. A plain
     target (docs/foo.md written inside a nested page) tries the source directory first,
     then the path-literal rules below unchanged. Targets that are not filesystem paths
-    are skipped: URLs, mailto:/tel:, anchors (#...), site-absolute routes (/...), and
+    are skipped: URLs, mailto:/tel:, site-absolute routes (/...), and
     everything under website/, whose ../../login/ forms are Astro routes rather than
     paths (check-site-links.py resolves those site-aware -- audit open item 4,
     resolved 2026-09-24; extracting them here produced ~90 false findings).
+
+  * # FRAGMENTS ARE CHECKED (since 2026-09-24 -- the "anchors-unchecked stance" this
+    tool and check-site-links.py used to record is retired). When a link target
+    resolves to a tracked .md/.mdx file, the #fragment must name a real id on that
+    page: heading slugs generated with GitHub's rules -- a port of github-slugger
+    2.0.0, verified equal on all 9,003 headings in this repo (lowercase, strip
+    everything that is not a word char/space/hyphen with variation selectors
+    U+FE00-U+FE0F surviving exactly as the original keeps them, spaces to hyphens,
+    duplicate headings suffixed -1/-2/...) -- or an explicit HTML id=/name=
+    attribute. A same-page [x](#frag) link is graded the same way against the file
+    being scanned. Skipped deliberately: external URLs; a target that resolves only
+    through the basename/brace fallback or names a non-markdown file (cannot verify
+    WHICH file's headings to grade); a file that exists but cannot be read; an empty
+    # (top of page); frontmatter and fenced code are not scanned for headings;
+    setext (text + ===/---) headings are not collected -- zero are linked in this
+    corpus, and reading paragraph+--- as a heading would invent ids the author never
+    intended. Percent-encoded fragments are decoded before matching. A dead fragment
+    is reported with its full token (path#frag).
 
   Opt-out pragma: put "dead-ref: ok" in an HTML comment on the line, or on the line
   above it. Same contract as eslint-disable-next-line or #[allow(...)]: the doc states
@@ -120,6 +141,7 @@ import os
 import re
 import sys
 import pathlib
+from urllib.parse import unquote
 
 ROOT = pathlib.Path(".")
 
@@ -167,6 +189,63 @@ TOP = (r"crates|apps|ui|modules|platform|foundation|scripts|docs|website|gateway
        r"install|packaging|assets|e2e|fuzz|\.github|\.agents|\.githooks")
 
 PATH_RE = re.compile(r"(?<![\w/.~-])((?:" + TOP + r")/[\w./+~@-]*[\w])")
+
+# ---- fragment validation (since 2026-09-24) --------------------------------
+# Port of github-slugger 2.0.0 -- the library GitHub and Astro generate heading ids
+# from. Algorithm: lowercase; delete every character that is not a word char, space
+# or hyphen, keeping the variation selectors U+FE00-U+FE0F because the original's
+# remove-ranges leave them in; spaces become hyphens. Verified equal to the vendored
+# package on all 9,003 headings in this repo (2026-09-24: the first run found 44
+# emoji+VS16 divergences, which is how the keep-range below was learned).
+SLUG_KEEP = re.compile(r"[^\w\s\-\uFE00-\uFE0F]", re.U)
+ATX_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
+HTML_ID_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.I)
+LINK_IN_HEADING_RE = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
+FENCE_LINE_RE = re.compile(r"^\s*(?:```|~~~)")
+
+
+def github_slug(value, occ):
+    """One heading -> its slug, mutating the per-file occurrence map.
+
+    Duplicate headings get -1/-2 suffixes through the same while-loop github-slugger
+    uses, so a heading literally named 'foo-1' collides correctly too.
+    """
+    original = SLUG_KEEP.sub("", value.lower()).replace(" ", "-")
+    result = original
+    while result in occ:
+        occ[original] = occ.get(original, 0) + 1
+        result = "%s-%d" % (original, occ[original])
+    occ[result] = 0
+    return result
+
+
+def markdown_ids(text):
+    """Every anchor id a markdown page offers: heading slugs + explicit HTML ids.
+
+    Frontmatter and fenced code are never headings. Link/image syntax inside a
+    heading contributes its TEXT (GitHub slugs the rendered text, not the markdown).
+    """
+    lines = text.splitlines()
+    fm_close = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() in ("---", "..."):
+                fm_close = i + 1          # 1-based closing line; skip through it
+                break
+    ids, occ, fence = set(), {}, False
+    for n, line in enumerate(lines, 1):
+        if FENCE_LINE_RE.match(line):
+            fence = not fence
+            continue
+        if fence or n <= fm_close:
+            continue
+        for m in HTML_ID_RE.finditer(line):
+            ids.add(m.group(1))
+        m = ATX_RE.match(line)
+        if m:
+            ids.add(github_slug(LINK_IN_HEADING_RE.sub(lambda k: k.group(1),
+                                                       m.group(2)), occ))
+    return ids
 
 BARE_RE = re.compile(
     r"\b([\w.+-]+\.(?:sh|ps1|py|mjs|cjs|sql|toml|ya?ml|tsx|ts|rs|ftl|go|css|json))\b")
@@ -256,7 +335,10 @@ def git_ignored(candidates):
     # limit, which raised, was caught, and returned "nothing is ignored" - reporting a
     # clean result for having crashed. Small batches, and failure is LOUD.
     import tempfile
-    ordered = sorted(probes)
+    ordered = sorted(p for p in probes if p)  # an EMPTY pathspec makes git fatal
+    # for the WHOLE batch ("empty string is not a valid pathspec") -- learned when a
+    # same-page candidate "#x" split to "" and one bad arg silenced ignore-filtering
+    # for every other finding while looking merely "incomplete".
     found = set()
     failed = 0
     CHUNK = 20
@@ -381,12 +463,14 @@ def check_file(path, files, dirs, basenames, include_bare=False):
     return scan_text(path, text, files, dirs, basenames, include_bare)
 
 
-def scan_text(path, text, files, dirs, basenames, include_bare=False):
+def scan_text(path, text, files, dirs, basenames, include_bare=False, loader=None):
     """Pure core of check_file: (path, text) plus an index -> (hits, historical).
 
     Split out for --self-test, which feeds synthetic fixtures here and touches no file
     on disk -- check-nav-paths.py's rule: a self-test that mutates the tree can damage
-    the thing it is policing."""
+    the thing it is policing. loader(path)->str|None supplies OTHER files' text to the
+    fragment rules; default (None) reads from disk, so live runs and the self-test's
+    fixture dict exercise the same grading code."""
 
     # Relative resolution is anchored to the directory of the file being scanned.
     src_dir = path.rsplit("/", 1)[0] if "/" in path else ""
@@ -396,6 +480,38 @@ def scan_text(path, text, files, dirs, basenames, include_bare=False):
     links = not path.startswith("website/")
     hits = []
     lines = text.split(chr(10))
+
+    # Fragment ids: this file's own ids come from the text in memory; other files go
+    # through loader (self-test) or a disk read (live). None = unreadable, and an
+    # anchor we cannot verify is not reported as dead.
+    ids_cache = {path: markdown_ids(text)}
+
+    def file_ids(p):
+        if p not in ids_cache:
+            if loader is not None:
+                body = loader(p)
+            else:
+                try:
+                    body = (ROOT / p).read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    body = None
+            ids_cache[p] = markdown_ids(body) if body is not None else None
+        return ids_cache[p]
+
+    def frag_target(c):
+        """Resolve a fragment link's path part to ONE .md file in the index, or None
+        when it is not markdown or (resolve_ok passed only through the basename/brace
+        fallback and) no source-relative candidate exists -- then we cannot know
+        WHICH file's headings to grade, so the fragment is skipped. Precedence mirrors
+        resolve_ok: source directory first, then the plain path."""
+        p0 = c.split("#", 1)[0]
+        if not p0.endswith((".md", ".mdx")):
+            return None
+        rel = os.path.normpath(os.path.join(src_dir, p0)).replace(os.sep, "/")
+        for cand in (rel, p0):
+            if cand in files:
+                return cand
+        return None
 
     # File-level, prefix-scoped opt-out, declared once near the top of the page:
     #   <!-- dead-ref-prefix-ok: apps/mobile-tauri/gen/ -->
@@ -437,6 +553,13 @@ def scan_text(path, text, files, dirs, basenames, include_bare=False):
         if links:
             for m in LINK_RE.finditer(line):
                 tgt = m.group(1)
+                if tgt.startswith("#"):
+                    # Same-page anchor: graded against THIS file's real ids, so a
+                    # TOC row whose heading was renamed reads as dead.
+                    frag = unquote(tgt[1:])
+                    if frag and frag not in file_ids(path):
+                        hits.append((n, tgt))
+                    continue
                 if tgt.startswith(LINK_SKIP) or "://" in tgt:
                     continue
                 if PLACEHOLDER.search(tgt) or tgt in cands:
@@ -461,6 +584,16 @@ def scan_text(path, text, files, dirs, basenames, include_bare=False):
                 continue
             if not resolve_ok(c, files, dirs, basenames, src_dir):
                 hits.append((n, c.split("#")[0]))
+                continue
+            # The path resolves; if the target carries a #fragment, grade it against
+            # the target page's real ids (rules: module docstring, fragment bullet).
+            if links and "#" in c:
+                frag = unquote(c.split("#", 1)[1])
+                if frag:
+                    tp = frag_target(c)
+                    tids = file_ids(tp) if tp else None
+                    if tids is not None and frag not in tids:
+                        hits.append((n, c))
     return hits, is_historical_doc(path, text)
 
 
@@ -469,16 +602,21 @@ def self_test():
     # reads the live tree fails whenever the tree is refactored, which says nothing about
     # the resolution logic it exists to pin. Every case pins one claim from the
     # 2026-09-23 audit's open item 3 or one of the bug classes this checker shipped with.
-    files = {"docs/sub/page.md", "docs/sub/brother.md", "docs/other/ghost.md",
-             "docs/guide.md", "website/src/content/docs/en/index.md"}
+    files = {"docs/sub/page.md", "docs/sub/brother.md", "docs/sub/target.md",
+             "docs/other/ghost.md", "docs/guide.md", "website/src/content/docs/en/index.md"}
     dirs = {"docs/", "docs/sub/", "docs/other/", "website/", "website/src/",
             "website/src/content/", "website/src/content/docs/",
             "website/src/content/docs/en/"}
     basenames = {f.rsplit("/", 1)[-1] for f in files}
     idx = (files, dirs, basenames)
+    # Fragment fixtures: duplicate headings (slugs setup, setup-1) and an explicit
+    # HTML id, so the -1 suffix and id= rules are pinned without touching disk.
+    FIXTURES = {"docs/sub/target.md": (
+        "# Target\n\n## Real heading\n## Setup\n## Setup\n\n"
+        "<a id=\"custom-anchor\"></a>\n")}
 
     def hits(path, text):
-        h, _ = scan_text(path, text, *idx)
+        h, _ = scan_text(path, text, *idx, loader=FIXTURES.get)
         return h
 
     cases = []
@@ -505,6 +643,28 @@ def self_test():
                   len(hits("docs/sub/page.md",
                            "<!-- dead-ref: ok -->" + chr(10) +
                            "[g](../late/ghost.md)")) == 0))
+    # Fragment rules (2026-09-24): red on a dead anchor, green on the live forms.
+    cases.append(("dead fragment on an existing target reported",
+                  len(hits("docs/sub/page.md", "[t](./target.md#no-such-heading)")) == 1))
+    cases.append(("live fragment on an existing target clean",
+                  len(hits("docs/sub/page.md", "[t](./target.md#real-heading)")) == 0))
+    cases.append(("duplicate headings: second gets -1 and links clean",
+                  len(hits("docs/sub/page.md", "[t](./target.md#setup-1)")) == 0))
+    cases.append(("explicit HTML id accepted as an anchor",
+                  len(hits("docs/sub/page.md", "[t](./target.md#custom-anchor)")) == 0))
+    cases.append(("external URL with a fragment untouched",
+                  len(hits("docs/sub/page.md", "[e](https://x.invalid/page#nope)")) == 0))
+    cases.append(("same-page fragment graded against the page itself",
+                  len(hits("docs/sub/page.md", "## Current\n\n[c](#current)")) == 0))
+    cases.append(("same-page dead fragment reported",
+                  # NB: the anchor word must avoid NEGATIVE_MARKERS -- "#missing-here"
+                  # was skipped as prose ABOUT a missing thing, which made this case
+                  # vacuous (found by the case, not by inspection).
+                  len(hits("docs/sub/page.md", "[c](#ghost-heading)")) == 1))
+    cases.append(("pragma still suppresses a dead anchor",
+                  len(hits("docs/sub/page.md",
+                           "<!-- dead-ref: ok -->" + chr(10) +
+                           "[t](./target.md#no-such-heading)")) == 0))
     cases.append(("dated record stays historical",
                   is_historical_doc("docs/records/2026-01-01-x.md", "t") is True))
     bad = [n for n, ok in cases if not ok]
@@ -571,10 +731,29 @@ def main():
     # and a ../ argument makes git check-ignore fail its WHOLE batch of twenty, which
     # would silently drop the ignore-filtering for the other nineteen (seen as "2 git
     # check-ignore batch(es) errored" on the first run of the link rules).
-    seen = {r[2] for r in rows if not r[2].startswith(("./", "../"))}
+    # Ignore-probe keys: a same-page candidate ("#x") names no path at all -- its
+    # SOURCE file was already gitignore-filtered as a scan target -- and splitting it
+    # yields an empty string, which fails git check-ignore's entire batch (one bad
+    # arg, "results may be incomplete", and the ignore-filter silently stops working
+    # for everything else). Anchored (./ ../) targets stay excluded as before.
+    seen = set()
+    for r in rows:
+        c = r[2]
+        if c.startswith(("#", "./", "../")):
+            continue
+        k = c.split("#", 1)[0]
+        if k:
+            seen.add(k)
     ign = git_ignored(seen)
     before = len(rows)
-    rows = [r for r in rows if r[2] not in ign]
+    kept = []
+    for r in rows:
+        c = r[2]
+        if c.startswith(("#", "./", "../")):
+            kept.append(r)          # never probed above, so never ign-filtered
+        elif c.split("#", 1)[0] not in ign:
+            kept.append(r)
+    rows = kept
     ignored_hits = before - len(rows)
 
     acc = {}

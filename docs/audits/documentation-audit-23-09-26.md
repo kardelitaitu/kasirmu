@@ -286,6 +286,79 @@ removing it is a different decision than a typo repair, and it is right.
    external fetches are out of scope; `website/*.md` outside `src/content/` stays in
    dead-refs' path-literal domain.
 
+## Addendum (24-09-26): fragments are checked now
+
+Written after the four items above closed — a dated correction, not a reopened item.
+The audit's own item 4 recorded the last stated blind spot: both link checkers
+STRIPPED `#fragments`, so `[x](./other.md#no-such-heading)` passed while the anchor <!-- dead-ref: ok -->
+was dead (the "anchors-unchecked stance" both docstrings carried). Closed the way the
+other items were: probe first, then build.
+
+**What changed.** `check-dead-refs.py` and `check-site-links.py` now grade every
+`#fragment` whose target is a tracked markdown page against that page's real ids:
+heading slugs from a port of **github-slugger 2.0.0** — the library GitHub and Astro
+both generate heading ids from — verified equal on **all 9,003 headings in this repo,
+0 mismatches** (the first attempt showed 44 emoji divergences, which is how the
+`U+FE00–FE0F` variation-selector keep-range was learned); duplicate headings suffixed
+`-1/-2` exactly as the original's occurrence loop does (so a heading literally named
+`foo-1` collides correctly); explicit HTML `id=`/`name=` attributes; frontmatter and
+fenced code never yield ids; fragments percent-decoded before matching; a same-page
+`[x](#frag)` graded against the file being scanned; a dead fragment reported with its <!-- dead-ref: ok -->
+full `path#frag` token. Skipped deliberately, documented in both docstrings: external
+URLs; targets that resolve only through dead-refs' basename/brace fallback, name a
+non-markdown file, or cannot be read (cannot verify WHICH file's headings); empty
+`#`; setext (`text` + `===`/`---`) headings — zero are linked in this corpus, and
+reading `paragraph + ---` as a heading would invent ids the author never intended
+(it is ambiguous with a horizontal rule). The docstring's §-limitation paragraph
+stays as measured — it is about PROSE `§4.2` tokens, never about link fragments —
+its opening sentence now says so.
+
+**Probe.** 52 fragment-bearing markdown links across tracked `.md` files: 47 resolve,
+2 were dead, 2 were website links the probe resolved filesystem-style (site routes
+resolve through the route table; all three site fragment links grade green against
+their real headings). The two dead ones repaired in place, line counts unchanged:
+`docs/archived/design-exceptions.md` linked `#adjustable-candidates` where the heading
+is `## Adjustable Candidates (~23 violations)` → `#adjustable-candidates-23-violations`;
+`docs/operations/docker-deployment.md` linked `…msys_no_pathconv1` where `## Git Bash
+on Windows: Path Mangling (MSYS_NO_PATHCONV)` slugs without the trailing `1` — that
+one sits in a LIVE doc, so repointing it is what keeps dead-refs at its fenced 7-ref
+baseline instead of an eighth.
+
+**The new rules found their own test bug.** The first same-page red fixture used
+`#missing-here`; the line was skipped as prose *about* a missing thing (one of the
+checker's own NEGATIVE_MARKERS), making the case vacuous. Renamed `#ghost-heading` —
+the case caught it, which is what a self-test exists for. The first LIVE run then
+flagged *this addendum's own two illustrative examples* (the `./other.md` path form,
+line 293; the same-page `#frag` form, line 306) — pragma'd inline with this audit's
+own vocabulary, which is precisely the case shape-quotes exist for. That run also
+surfaced a batch-poisoning bug in the checker itself: a same-page candidate `#x`
+splits to an EMPTY path string, and one empty pathspec makes `git check-ignore` fail
+its whole batch ("results may be incomplete") while the ignore-filter silently stops
+working for everything else. Fixed both ways — same-page rows are never probed (their
+source file was already gitignore-filtered as a scan target) and `git_ignored`
+refuses empty pathspecs outright.
+
+**The baseline moved under this addendum mid-pass, and the numbers are recorded
+honestly.** Measured before the peer's commits landed: live **7 refs / 1 doc** (the
+fenced checklist). While this pass ran the peer committed that checklist (`b5685f528`)
+an incident record whose `.agents/salvage/` paths are absent from the tree
+(`incident-object-loss.md`, 3 refs), and began a CI refactor (dirty `dev-ci.yml`
++268 lines, `test-ci-routing.sh`, `ci-pipeline.md`, `releases/checklist.md` — which
+is also why mirrors and ci-drift flapped red between suite runs before returning to
+their own baselines). At commit time dead-refs reports **10 refs in 2 docs, both
+peer's** — proven this change's net contribution is zero by stashing the new checker:
+HEAD's own version reports the same 10, minus the two addendum examples now pragma'd.
+
+**Superseded by this addendum:** the "anchors-unchecked" claims in both checkers'
+docstrings, item 4's "heading fragments … out of scope" limitation, and the SKILL
+behavior bullets — all rewritten. Case counts: dead-refs `--self-test` 10 → 18
+(valid/dead anchor, duplicate `-1` slug, explicit HTML id, external URL untouched,
+same-page valid/dead, pragma suppression), site-links 20 → 27 (the five owner-named
+forms plus same-page and route-mapped variants); gates.json `site-links` note updated
+to match. State after the change: dead-refs 18/18 self-test, site-links 27/27 and live
+green (38 content docs), both repointed files line-count-identical to HEAD, live
+dead-refs at 10 refs / 2 docs — both peer's, as accounted above.
+
 ## Re-verification (all run in this session, all green unless noted)
 
 ```

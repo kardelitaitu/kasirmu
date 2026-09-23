@@ -26,10 +26,15 @@ Link extraction (markdown content only):
   * inline links/images `[text](target)`; fenced code (``` / ~~~) and inline backtick
     spans are skipped, so the authoring guide's EXAMPLE of a link is not a claim;
   * skipped, never resolved: http(s), protocol-relative //, mailto:/tel:, javascript:/
-    data:, and targets that are only `#fragment` or `?query`;
-  * fragments/queries are stripped before resolution -- `../activation/#heading`
-    checks the page, not the heading (same stance as check-dead-refs: section
-    anchors are NOT checked);
+    data:, and targets that are only `?query` (a `#fragment`-only target is not
+    skipped -- it is graded, below);
+  * a `#fragment` IS graded against the target page's real ids -- the same
+    GitHub-slugger rules check-dead-refs uses (a port of github-slugger 2.0.0:
+    duplicate headings suffixed -1/-2, explicit HTML id=/name= accepted, frontmatter
+    and fences never ids) -- so `../activation/#reinstalling-or-recovering-your-license`
+    cannot rot silently when a heading is renamed. A `#frag`-only target is graded
+    against the page being scanned; a fragment on a route that maps to a component
+    (.astro page or public/ asset) is skipped, see KNOWN LIMITATIONS;
   * an empty target `]()` is a finding: it renders as a link that goes nowhere.
 
 Resolution: a target starting with `/` is matched against the route table directly;
@@ -48,7 +53,12 @@ A content file whose locale is not one of the config's locales, or which sits in
 unmapped collection, is a per-file finding (those files are never rendered).
 
 KNOWN LIMITATIONS (stated, not hidden):
-  * heading fragments are not validated (see above);
+  * heading fragments are validated only where the route maps to a markdown source
+    (the docs and legal collections); fragments on component-rendered pages and
+    public assets are not graded (their ids live in .astro markup, which this checker
+    does not parse), and setext (text + ===/---) headings are not collected -- zero
+    are linked in the corpus, and reading paragraph+--- as a heading would invent ids
+    the author never intended;
   * .astro/.tsx component hrefs are not extracted -- this checks markdown content;
     reference-style links `[x][y]` are not extracted either (none exist in the corpus);
   * external URLs are not fetched (that is curl's job, not a gate's);
@@ -72,11 +82,22 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import unquote
 
 LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]*)\)")
 FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 INLINE_CODE_RE = re.compile(r"`[^`]*`")
 SKIP_TARGET_RE = re.compile(r"^(?:https?:|mailto:|tel:|javascript:|data:|//)")
+
+# Fragment ids: port of github-slugger 2.0.0 (GitHub/Astro heading ids). Verified
+# equal to the package vendored in website/node_modules on all 9,003 headings in this
+# repo (2026-09-24); the keep-range for variation selectors U+FE00-U+FE0F is what the
+# first run's 44 emoji divergences taught. check-dead-refs.py carries the same port
+# (standalone scripts, no cross-imports -- the family runs one file at a time).
+SLUG_KEEP = re.compile(r"[^\w\s\-\uFE00-\uFE0F]", re.U)
+ATX_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
+HTML_ID_RE = re.compile(r"<[A-Za-z][^>]*?\s(?:id|name)\s*=\s*[\"']([^\"']+)[\"']", re.I)
+LINK_IN_HEADING_RE = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 LOCALES_RE = re.compile(r"locales\s*:\s*\[([^\]]*)\]")
 PAGE_SUFFIXES = {".astro", ".ts", ".tsx", ".js", ".jsx", ".html", ".md", ".mdx"}
 CONTENT_DOC_SUFFIXES = (".md", ".mdx")
@@ -99,9 +120,56 @@ def _parse_locales(config_text: str) -> list[str] | None:
     return values or None
 
 
-def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], list[str]]:
-    """Enumerate what the built site serves. Returns (routes, fatals)."""
+def github_slug(value: str, occ: dict) -> str:
+    """One heading -> its slug, mutating the per-file occurrence map (-1/-2 dups)."""
+    original = SLUG_KEEP.sub("", value.lower()).replace(" ", "-")
+    result = original
+    while result in occ:
+        occ[original] = occ.get(original, 0) + 1
+        result = f"{original}-{occ[original]}"
+    occ[result] = 0
+    return result
+
+
+def markdown_ids(text: str) -> set[str]:
+    """Every anchor id a markdown page offers: heading slugs + explicit HTML ids.
+
+    Frontmatter and fenced code are never headings; link/image syntax inside a heading
+    contributes its TEXT (GitHub slugs the rendered text, not the markdown).
+    """
+    lines = text.splitlines()
+    fm_close = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() in ("---", "..."):
+                fm_close = i + 1  # 1-based closing line; skip through it
+                break
+    ids: set[str] = set()
+    occ: dict = {}
+    fence = False
+    for n, line in enumerate(lines, 1):
+        if FENCE_RE.match(line):
+            fence = not fence
+            continue
+        if fence or n <= fm_close:
+            continue
+        for m in HTML_ID_RE.finditer(line):
+            ids.add(m.group(1))
+        m = ATX_RE.match(line)
+        if m:
+            ids.add(github_slug(LINK_IN_HEADING_RE.sub(lambda k: k.group(1),
+                                                       m.group(2)), occ))
+    return ids
+
+
+def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], dict[str, Path], list[str]]:
+    """Enumerate what the built site serves. Returns (routes, sources, fatals).
+
+    sources maps a docs/legal route key to the markdown file that supplies its ids,
+    for fragment grading; component-rendered routes have no entry.
+    """
     routes: set[str] = set()
+    sources: dict[str, Path] = {}
     fatals: list[str] = []
     pages = site / "src" / "pages"
 
@@ -154,6 +222,19 @@ def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], list[str]]:
                     continue  # reported per-file by scan() as a finding
                 slug = posixpath.splitext(rest)[0]
                 routes.add(f"/{loc}/docs/{slug}")
+                sources[f"/{loc}/docs/{slug}"] = p
+
+    # Legal docs are rendered by src/pages/[locale]/legal/{name}.astro; map each to
+    # the content file that supplies its heading ids for fragment grading.
+    legal_dir = site / "src" / "content" / "legal"
+    if legal_dir.is_dir():
+        for suffix in CONTENT_DOC_SUFFIXES:
+            for p in sorted(legal_dir.rglob(f"*{suffix}")):
+                rel = p.relative_to(legal_dir).as_posix()
+                loc, slash, name = rel.partition("/")
+                if not slash or loc not in locales:
+                    continue
+                sources[f"/{loc}/legal/{posixpath.splitext(name)[0]}"] = p
 
     # public/ serves files (and their directories) at the site root; _redirects
     # declares Cloudflare Pages source paths that resolve via 301 at deploy time.
@@ -187,7 +268,7 @@ def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], list[str]]:
         )
     # Exact redirect sources are already in `routes`; scan() re-reads the splat
     # prefixes through _redirect_prefixes() for prefix matching.
-    return routes, fatals
+    return routes, sources, fatals
 
 
 def _redirect_prefixes(site: Path) -> list[str]:
@@ -278,10 +359,17 @@ def scan(site: Path) -> tuple[list[str], list[str]]:
             "build the route table; refusing to guess"
         ]
 
-    routes, fatals = _build_routes(site, locales)
+    routes, sources, fatals = _build_routes(site, locales)
     if fatals:
         return findings, fatals
     prefixes = _redirect_prefixes(site)
+
+    ids_of_cache: dict[Path, set[str]] = {}
+
+    def ids_of(p: Path) -> set[str]:
+        if p not in ids_of_cache:
+            ids_of_cache[p] = markdown_ids(p.read_text(encoding="utf-8", errors="replace"))
+        return ids_of_cache[p]
 
     content = site / "src" / "content"
     doc_files: list[Path] = []
@@ -293,7 +381,8 @@ def scan(site: Path) -> tuple[list[str], list[str]]:
         display = _display(path)
         raw_targets = _extract_targets(path.read_text(encoding="utf-8", errors="replace"))
 
-        checkable: list[tuple[int, str, str]] = []  # (lineno, token, path-part)
+        checkable: list[tuple[int, str, str, str]] = []  # (lineno, target, path, frag)
+        samepage: list[tuple[int, str, str]] = []        # (lineno, token, frag)
         for lineno, raw in raw_targets:
             token = raw.strip()
             parts = token.split()
@@ -301,13 +390,31 @@ def scan(site: Path) -> tuple[list[str], list[str]]:
             if not target:
                 findings.append(f"{display}:{lineno}: empty link target '[]()'")
                 continue
-            if SKIP_TARGET_RE.match(target) or target[0] in "#?":
+            if SKIP_TARGET_RE.match(target):
                 continue
+            if target[0] == "#":
+                frag = unquote(target[1:])
+                if frag:  # empty # is top-of-page, always valid
+                    samepage.append((lineno, target, frag))
+                continue
+            if target[0] == "?":
+                continue
+            frag = unquote(target.split("#", 1)[1]) if "#" in target else ""
             path_part = re.split(r"[#?]", target, maxsplit=1)[0]
             if not path_part:
                 continue
-            checkable.append((lineno, target, path_part))
+            checkable.append((lineno, target, path_part, frag))
 
+        if not checkable and not samepage:
+            continue
+        if samepage:
+            own_ids = ids_of(path)
+            for lineno, target, frag in samepage:
+                if frag not in own_ids:
+                    findings.append(
+                        f"{display}:{lineno}: dead anchor '{target}' "
+                        "(no heading or id on this page)"
+                    )
         if not checkable:
             continue
         base, base_err = _route_base(site, rel, locales)
@@ -315,16 +422,26 @@ def scan(site: Path) -> tuple[list[str], list[str]]:
             findings.append(base_err)
             continue
         assert base is not None
-        for lineno, target, path_part in checkable:
+        for lineno, target, path_part, frag in checkable:
             key = _resolve(base, path_part).rstrip("/") or "/"
-            if key in routes:
+            if key not in routes:
+                if any(key == pre or key.startswith(pre + "/") for pre in prefixes if pre):
+                    continue
+                findings.append(
+                    f"{display}:{lineno}: dead site link '{target}' "
+                    f"(resolves to '{key}', which is not a route)"
+                )
                 continue
-            if any(key == pre or key.startswith(pre + "/") for pre in prefixes if pre):
+            if not frag:
                 continue
-            findings.append(
-                f"{display}:{lineno}: dead site link '{target}' "
-                f"(resolves to '{key}', which is not a route)"
-            )
+            src = sources.get(key)
+            if src is None:
+                continue  # component page or asset: ids live in markup (documented)
+            if frag not in ids_of(src):
+                findings.append(
+                    f"{display}:{lineno}: dead anchor '{target}' "
+                    f"(no heading or id in {_display(src)})"
+                )
 
     findings.sort()
     return findings, fatals
@@ -380,7 +497,9 @@ def self_test() -> int:
         )
         _write(root / "src/pages/[locale]/legal/privacy.astro", "---\n---\n<p>privacy</p>\n")
         _write(root / "src/pages/[locale]/legal/terms.astro", "---\n---\n<p>terms</p>\n")
-        _write(root / "src/content/docs/en/cloud-sync.md", "---\ntitle: Cloud Sync\n---\n# Cloud Sync\n")
+        _write(root / "src/content/docs/en/cloud-sync.md",
+               "---\ntitle: Cloud Sync\n---\n# Cloud Sync\n\n"
+               "## Setup\n## Setup\n\n<a id=\"custom-anchor\"></a>\n")
         _write(root / "src/content/docs/id/cloud-sync.md", "---\ntitle: Sinkronisasi\n---\n# Sinkron\n")
         _write(root / "public/favicon.svg", "<svg/>")
         _write(root / "public/admin/panel.html", "<html></html>")
@@ -425,9 +544,9 @@ def self_test() -> int:
             "[bad](/en/docs/ghost/)\n", True,
         )
         run_case(
-            "external, mailto, fragment-only and query-only targets are skipped",
+            "external, mailto, empty-fragment and query-only targets are skipped",
             "[a](https://x.invalid/nope) [b](mailto:n@x.invalid) "
-            "[c](#local) [d](#) [e](?q=1)\n", False,
+            "[d](#) [e](?q=1)\n", False,
         )
         run_case(
             "empty link target is red",
@@ -468,6 +587,35 @@ def self_test() -> int:
         run_case(
             "content locale outside astro.config locales is red",
             "[x](../cloud-sync/)\n", True, stray_md,
+        )
+        # Fragment rules (2026-09-24): the anchors-unchecked stance is retired.
+        run_case(
+            "valid heading anchor on a cross-doc route",
+            "[ok](../cloud-sync/#cloud-sync)\n", False,
+        )
+        run_case(
+            "dead heading anchor on a cross-doc route",
+            "[bad](../cloud-sync/#no-such-heading)\n", True,
+        )
+        run_case(
+            "duplicate headings: second gets -1 and links clean",
+            "[ok](../cloud-sync/#setup-1)\n", False,
+        )
+        run_case(
+            "explicit HTML id accepted as an anchor",
+            "[ok](../cloud-sync/#custom-anchor)\n", False,
+        )
+        run_case(
+            "external URL with a dead-looking fragment untouched",
+            "[a](https://x.invalid/page#nope)\n", False,
+        )
+        run_case(
+            "same-page anchor resolves against this page",
+            "# Base\n\n[me](#base)\n", False,
+        )
+        run_case(
+            "same-page dead anchor is red",
+            "[me](#no-such-here)\n", True,
         )
 
         # run() exit-code parity through the same path main() uses.

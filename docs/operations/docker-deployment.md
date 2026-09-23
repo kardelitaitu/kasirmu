@@ -505,7 +505,7 @@ docker compose --project-directory . -f ops/docker/docker-compose.yml exec pos-c
 | Can't access PocketBase admin UI | No superuser created | Run the `superuser upsert` command |
 | Slow product lookups | Redis cache cold | Wait for cache to warm up (first requests are slower) |
 | `docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml up` fails | `PG_PASSWORD` not set or `pos-cloud-db` unavailable | Export `PG_PASSWORD` (required) and ensure `redis` is healthy |
-| `docker run -e OZ_DB_PATH=/tmp/...` fails inside the container with `unable to open database file: C:/Users/...` | Git Bash rewrote the POSIX path into a Windows path before Docker saw it | Prefix the command with `MSYS_NO_PATHCONV=1` (see [Git Bash on Windows](#git-bash-on-windows-path-mangling-msys_no_pathconv1)) |
+| `docker run -e OZ_DB_PATH=/tmp/...` fails inside the container with `unable to open database file: C:/Users/...` | Git Bash rewrote the POSIX path into a Windows path before Docker saw it | Prefix the command with `MSYS_NO_PATHCONV=1` (see [Git Bash on Windows](#git-bash-on-windows-path-mangling-msys_no_pathconv)) |
 
 ---
 
