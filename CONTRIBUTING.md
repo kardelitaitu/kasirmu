@@ -262,9 +262,9 @@ not a permanent exclusion:
    either live workflow, and the file that made that statement true was itself
    retired: `ci.yml` defined the job (manifest check at
    `.github/workflows/ci.yml.bak:1061-1067`) and `23c963303` renamed that whole
-   workflow to `.bak` on 2026-09-02 without a replacement. `dev-ci.yml`'s eleven jobs
-   are `changes`, `website`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`,
-   `ci-docs-drift`, `static-gates`, `release-readiness`, `release-bridge-test`, `northflank-deploy`, and
+   workflow to `.bak` on 2026-09-02 without a replacement. `dev-ci.yml`'s fourteen jobs
+   are `changes`, `website`, `rust-fmt`, `cargo-check`, `cargo-nextest`, `ui-test`, `i18n`,
+   `ci-docs-drift`, `static-gates`, `go-gate`, `ipc-parity`, `release-readiness`, `release-bridge-test`, `northflank-deploy`, and
    none of its 28 `static-gates` steps is it. Re-measure either claim with
    `grep -ci flaky .github/workflows/dev-ci.yml`, which returns **0**, and
    `check.sh` does not call it either. The script itself exists and works — run by hand it prints `PASS:

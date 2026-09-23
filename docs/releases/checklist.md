@@ -43,7 +43,10 @@
 ## Pre-Release
 
 - [ ] All CI jobs pass — `dev-ci.yml` jobs are `changes` (path router),
-      `website`, `cargo-check` (fmt → check → clippy), `cargo-nextest`,
+      `website`, `rust-fmt` (cargo fmt --check, in a job of its own so a
+      formatting nit reports in ~20s), `cargo-check` (runs cargo check with
+      all targets and all features; clippy is local-only and is not a CI step),
+      `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
       `release-bridge-test` (push-only; runs `cargo nextest run -p
       kasirmu-bridge --release`. Since the 19-09-26 ruling the release profile
@@ -52,8 +55,12 @@
       about the paid fixtures),
       `ci-docs-drift`, `static-gates` (architecture boundaries, money format,
       windows config, skill drift, healthcheck, panic inventory, release
-      workflow validation, Go fmt/vet/test), `release-readiness` (updater
-      signing chain), `northflank-deploy`.
+      workflow validation, and the other cheap Python/shell gates; the Go and
+      IPC steps left this job on 2026-09-24),
+      `go-gate` (gofmt, go vet, go test -short on license-server; path-gated on
+      the new apps/license-server/ route), `ipc-parity` (the IPC parity checker
+      and its self-test; path-gated on rust or ui),
+      `release-readiness` (updater signing chain), `northflank-deploy`.
       `release.yml` is live again as of 0.0.36 (desktop-only): `release-validate`
       → `release-build` → `release-publish`. It runs on a `v*` tag, not on a PR,
       so nothing here proves it works — see its header comment for what is and is

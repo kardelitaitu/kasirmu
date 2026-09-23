@@ -58,15 +58,15 @@
       "label": "Rust fmt",
       "status": "required",
       "runners": { "check.sh": ["cargo fmt"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-check" }
+      "ci": { "workflow": "dev-ci.yml", "job": "rust-fmt" }
     },
     {
       "id": "go",
       "label": "Go (license-server)",
       "status": "required",
       "runners": { "check.sh": ["go fmt", "go vet", "go test (short)"] },
-      "_note": "Was ci.yml#go. gofmt/go vet/go test -short now run in dev-ci.yml#static-gates, verified green locally first. The pre-commit Go gate remains the only place Go is enforced on a commit.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "_note": "Was ci.yml#go. gofmt/go vet/go test -short ran in dev-ci.yml#static-gates from 0.0.37 until 2026-09-24, when they moved to dev-ci.yml#go-gate -- the job was split because `go test -short` measured 325s on two separate runs and was 51% of a job that also gated ~25 cheap Python/shell checks. Path-gated on the new `go` route output (`^apps/license-server/`), which did not exist before: `apps/license-server/**` matched no router bucket, and the Go steps were covered only because they sat in the ungated static-gates job. The pre-commit Go gate remains the only place Go is enforced on a commit.",
+      "ci": { "workflow": "dev-ci.yml", "job": "go-gate" }
     },
     {
       "id": "website-tests",
@@ -144,8 +144,8 @@
       "id": "ipc-parity",
       "label": "IPC parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#static-gates and in check.sh; the note claiming it local-only was itself stale and was corrected here.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#ipc-parity and in check.sh; the note claiming it local-only was itself stale and was corrected here. MOVED 2026-09-24: this gate and its --self-test left dev-ci.yml#static-gates for a job of their own, because the self-test measured 209s and 216s on two runs -- 33% of a job that also gated ~25 cheap checks. The real gate runs first in the new job so an actual parity violation still reports in ~30s; the self-test, which answers a rarer question, takes the slower slot. Path-gated on rust OR ui, since a parity break can only come from crates/, apps/*/src or ui/.",
+      "ci": { "workflow": "dev-ci.yml", "job": "ipc-parity" },
       "runners": { "check.sh": ["ipc parity"] }
     },
     {

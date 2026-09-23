@@ -19,6 +19,27 @@ defaults:
 permissions:
   contents: read
 
+# ── Concurrency: cancel superseded PR runs, never a deploy ──────────────
+# This is the only workflow in the repository without one; `android.yml:43`
+# and `release.yml:67` both carry the pattern, so the absence here was an
+# oversight rather than a decision.
+#
+# `cancel-in-progress` is CONDITIONAL, and that condition is the whole point.
+# On a pull request a superseded run is pure waste -- this workflow's own
+# header measured three pushes to PR #95 at 75.2 runner-minutes, and the
+# response then was path routing, which reduces what each run does but never
+# stops a stale run from finishing. Cancelling it frees the runner for the
+# push that actually matters.
+#
+# On a push to `main` the same cancel would be a bug: `northflank-deploy`
+# fires from this workflow (`if:` at the deploy job), so cancelling a
+# superseded main run can kill a deploy mid-flight. `github.event_name ==
+# 'pull_request'` keeps that door shut -- a main run is never cancelled by a
+# later main run.
+concurrency:
+  group: dev-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # ── 0. Changes: path router ──────────────────────────────────────────
   # Every job below is gated on this one's outputs. Motivation, measured on
@@ -51,6 +72,7 @@ jobs:
       website: ${{ steps.route.outputs.website }}
       docs: ${{ steps.route.outputs.docs }}
       release: ${{ steps.route.outputs.release }}
+      go: ${{ steps.route.outputs.go }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +92,7 @@ jobs:
           # as does a change to this workflow itself -- a filter bug must never
           # be able to hide the jobs it is supposed to gate.
           all() {
-            for k in rust ui i18n website docs release; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
+            for k in rust ui i18n website docs release go; do echo "$k=true" >> "$GITHUB_OUTPUT"; done
             echo "  -> $1: running the full matrix"
             exit 0
           }
@@ -92,6 +114,20 @@ jobs:
           printf '%s\n' "$files" | grep -qE \
             '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
+
+          # Go: `apps/license-server` is a SEPARATE Go module, not a cargo
+          # workspace member (the workspace's 39 members are crates/, modules/,
+          # platform/, foundation, qris-core and the three Tauri apps), so the
+          # `rust` rule above deliberately does not cover it.
+          #
+          # Before this rule existed `apps/license-server/**` matched NO bucket
+          # at all. That was harmless only by accident: the Go steps lived in
+          # `static-gates`, which carries no `if:` and therefore ran on every
+          # PR regardless. Splitting the Go steps into their own job without
+          # this output would have silently stopped checking Go on exactly the
+          # PRs that change it -- a gate that goes quiet is worse than no gate.
+          printf '%s\n' "$files" | grep -qE '^apps/license-server/' \
+            && echo "go=true" >> "$GITHUB_OUTPUT" || echo "go=false" >> "$GITHUB_OUTPUT"
 
           # UI: `ui/` is the vitest suite's boundary, but it is NOT self-contained.
           # P9a moved the Fluent corpus to shared-ui/locales/ and ui/vite.config.ts
@@ -146,7 +182,7 @@ jobs:
 
       - name: Decisions
         run: |
-          echo "rust=${{ steps.route.outputs.rust }} ui=${{ steps.route.outputs.ui }} i18n=${{ steps.route.outputs.i18n }} website=${{ steps.route.outputs.website }}"
+          echo "rust=${{ steps.route.outputs.rust }} ui=${{ steps.route.outputs.ui }} i18n=${{ steps.route.outputs.i18n }} website=${{ steps.route.outputs.website }} docs=${{ steps.route.outputs.docs }} release=${{ steps.route.outputs.release }} go=${{ steps.route.outputs.go }}"
 
   # ── 1. Website: check + test + build ─────────────────────────────────
   website:
@@ -187,7 +223,35 @@ jobs:
       - name: SEO / head check
         run: cd website && npm run check:seo
 
-  # ── 2. Cargo Check: Fast compilation check ────────────────────────────
+  # ── 2a. Rust Fmt: cheapest Rust verdict, in a job of its own ─────────
+  #
+  # WHY NOT A STEP IN cargo-check ANY MORE. It was one, and it was correctly
+  # placed FIRST there so a formatting nit failed before the multi-minute
+  # compile. But "first inside the job" is not "fast": measured on run
+  # 35913445291, cargo-check spends 44s before its first step runs -- checkout
+  # 4s, toolchain 1s, rust-cache 14s, the 10-package apt layer 26s, plus sccache
+  # and the dist stubs -- so the fmt verdict landed at ~50s.
+  #
+  # This job skips every one of those layers. `cargo fmt` parses sources and
+  # builds nothing, so it needs no apt packages, no cargo cache, no sccache and
+  # no `ui/dist*` stubs. The toolchain action still installs the rustfmt
+  # component, which is the whole toolchain cost. Expected verdict: ~15-20s.
+  #
+  # Gate: scripts/gates.json -> "rust-fmt".
+  rust-fmt:
+    name: Rust Fmt
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          components: rustfmt
+      - name: Cargo fmt check
+        run: cargo fmt --all -- --check
+
+  # ── 2b. Cargo Check: Fast compilation check ───────────────────────────
   cargo-check:
     name: Cargo Check
     runs-on: ubuntu-latest
@@ -196,9 +260,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
-        with:
-          # Explicit: the fmt step below needs this binary.
-          components: rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -214,11 +275,6 @@ jobs:
         run: |
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
-      # Runs before `cargo check` deliberately: it is ~2s warm, so a formatting
-      # nit fails fast instead of after a multi-minute compile. Gate:
-      # scripts/gates.json -> "rust-fmt".
-      - name: Cargo fmt check
-        run: cargo fmt --all -- --check
       - name: Cargo check workspace
         run: cargo check --workspace --all-targets --all-features
 
@@ -550,12 +606,40 @@ jobs:
         continue-on-error: true
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 
-  # ── 7. Static gates that had no CI runner at all ──────────────────────
+  # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
   # so nothing enforced them on a clone that skipped setup-dev.ps1. Each was run
   # locally and verified GREEN before being wired in -- the same discipline used
   # for R36-08 -- because adding a gate that already fails turns every unrelated
   # PR red.
+  #
+  # WHY THIS JOB WAS SPLIT (2026-09-24). It used to be ONE job of 31 steps, and
+  # it was the worst time-to-red surface in the workflow. Measured on run
+  # 35913445291 it took 10m40s, of which two steps were 534s -- 84% -- of the
+  # whole job: `Go test (short)` at 325s and `IPC command parity self-test` at
+  # 209s. Both reproduce (325s again in 35909736360; the self-test 216s there),
+  # so neither is noise.
+  #
+  # The cost was never the duration; it was the ORDER. Two reds from this one
+  # job, in the same hour: 35907505615 failed at step 4 (`Skill drift guard`) and
+  # reported in 33s, while 35909736360 failed at step 31 (`Scoped command
+  # coverage`) and took 10m43s -- on a step that executes in ZERO seconds,
+  # because it sat behind both of the expensive ones. A free gate must not be
+  # reachable only after ten minutes of unrelated work.
+  #
+  # So the two expensive families moved to jobs of their own -- 7b `go-gate` and
+  # 7c `ipc-parity` -- where they still block a merge but no longer gate the
+  # cheap verdicts. This job is now the fast-red workhorse: every step below
+  # measured 0-2s except the three whole-repo scans at the end (10-11s each), so
+  # a red here reports in about 20 seconds rather than ten minutes.
+  #
+  # The comment here used to justify the absent path-gate with "these are ~5s of
+  # pure Python/shell". That was measurably false even when written: the non-Go
+  # steps alone summed to ~4m49s, and the ten promoted self-tests to ~4m21s
+  # where the note claimed "~33s". Both claims are now REMOVED rather than
+  # corrected, because the steps they described no longer live in this job -- a
+  # stale cost claim is how this file ended up justifying a ten-minute gate with
+  # a five-second one.
   #
   # Deliberately NOT in this job:
   #   e2e -- needs the Docker backend; check.sh L203 states E2E is not run there
@@ -564,12 +648,19 @@ jobs:
   # panic-inventory was excluded when this job was first written because it
   # FAILED, and is now included with its findings at zero -- see the step below.
   #
-  # Not path-gated: these are ~5s of pure Python/shell and they span rust, ui,
-  # go and docs, so routing them risks the same silent-skip failure mode the
-  # router test guards against.
+  # Still NOT path-gated, and that is now affordable rather than reckless: the
+  # job is ~1 minute and spans rust, ui, go and docs, so routing it would risk
+  # the silent-skip failure mode the router test guards against while saving
+  # almost nothing. The two jobs that DO cost minutes are the path-gated ones.
   # Gates: scripts/gates.json -> "architecture-boundaries",
   # "no-hardcoded-money-format", "windows-config", "skill-drift",
-  # "unified-healthcheck", "go".
+  # "unified-healthcheck", "panic-inventory", "release-workflow",
+  # "commit-subjects", "bundle-parity", "pg-schema-drift",
+  # "migration-column-types", "typecheck-gate", "eol-guard", "cbm-hook-guard",
+  # "test-shadow-copies", "invoke-token-parity", "topology-parity",
+  # "feature-registry", "plugin-guide-parity", "no-raw-params",
+  # "scoped-coverage", "scoped-ambient-reads-self-test",
+  # "unguarded-ambient-ipc-calls", "doc-uniqueness".
   static-gates:
     name: Static Gates
     runs-on: ubuntu-latest
@@ -612,16 +703,6 @@ jobs:
         run: python3 scripts/verify-release-workflow.py
       - name: Release workflow self-test
         run: python3 scripts/verify-release-workflow.py --self-test
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: apps/license-server/go.mod
-          cache-dependency-path: apps/license-server/go.sum
-      - name: Go fmt
-        run: test -z "$(gofmt -l apps/license-server)" || { gofmt -l apps/license-server; exit 1; }
-      - name: Go vet
-        run: go -C apps/license-server vet ./...
-      - name: Go test (short)
-        run: go -C apps/license-server test -short ./...
       # The commit-msg hook enforces the subject format locally, but
       # core.hooksPath is set by setup-dev.ps1 and is not versioned, so a fresh
       # clone that skips setup has no subject gate at all -- the hook's own header
@@ -714,24 +795,13 @@ jobs:
         run: bash scripts/test-cbm-hook.sh
       - name: Test shadow copies
         run: python3 scripts/verify-test-shadow-copies.py
-      - name: IPC command parity
-        run: python3 scripts/verify-ipc-parity.py
-      # The parity checker's own liveness cases, beside the sibling that already runs
-      # this way ("Scoped ambient reads self-test", two steps below). Blocking: the
-      # "IPC command parity" step above, scripts/check.sh and scripts/run-pre-push.py all
-      # invoke the checker WITHOUT --self-test, so until this step existed a regression in the
-      # LEG -- a parser that stops seeing the surface it claims to check, or a mask/guard
-      # rule that goes blind -- could sit red for weeks while every gate stayed green.
-      # That is exactly how the two stale expectations fixed in C55 survived. No bare run
-      # of the checker can see this class; only the self-test can. Gate: C55.
-      - name: IPC command parity self-test
-        run: python3 scripts/verify-ipc-parity.py --self-test
+      # The IPC parity pair moved to job 7c on 2026-09-24. Its self-test alone
+      # measured 209s and 216s on two runs, and it was gating this job's cheap
+      # verdicts behind three and a half minutes. The checker and its liveness
+      # proof stay together there, which is the same convention the self-test's
+      # own comment argued for ("beside the sibling that already runs this way").
       - name: IPC invoke token parity
         run: python3 scripts/verify-invoke-parity.py
-      - name: Scoped ambient reads self-test
-        run: python3 scripts/verify-scoped-reads.py --self-test
-      - name: Unguarded ambient IPC call sites
-        run: python3 scripts/verify-scoped-reads.py
       - name: Topology template parity
         run: python3 scripts/verify-topology-parity.py
       - name: Feature registry
@@ -742,6 +812,106 @@ jobs:
         run: bash scripts/verify-no-raw-params.sh
       - name: Scoped command coverage
         run: bash scripts/verify-scoped-coverage.sh
+      # ORDERING RULE FOR THIS JOB, and the reason these two sit last rather than
+      # where they used to. Every step above measured 0-2s; these two are whole-
+      # repo scans at 10s and 11s, so they are the most expensive thing left here
+      # and the least likely to be the first thing a PR breaks. Ascending cost,
+      # with the highest-signal structural gate (Architecture boundaries, 11s)
+      # kept first deliberately -- it catches a real boundary violation, and
+      # burying it would trade a 10-second saving for an extra fix-and-push cycle.
+      #
+      # `Scoped command coverage` above is the concrete case that motivated the
+      # rule: it is a ZERO-second gate that failed a real PR (35909736360) after
+      # 10m43s, purely because it ran last behind the Go test and the IPC
+      # self-test. It is still late in this job, but the job is now ~1 minute, so
+      # the worst case for it is ~55s instead of ten minutes.
+      - name: Scoped ambient reads self-test
+        run: python3 scripts/verify-scoped-reads.py --self-test
+      - name: Unguarded ambient IPC call sites
+        run: python3 scripts/verify-scoped-reads.py
+
+  # ── 7b. Go gate: the license-server module ────────────────────────────
+  #
+  # WHY ITS OWN JOB. `go test -short ./...` measured 325s on BOTH runs sampled
+  # (35913445291 and 35909736360 -- identical to the second), making it the
+  # single most expensive step in the old static-gates job and 51% of it. Here
+  # it blocks a merge exactly as before but no longer delays any other verdict.
+  #
+  # WHY IT IS PATH-GATED, AND WHY THAT IS SAFE. It carries an `if:` and the
+  # deploy job `needs` it, so the skip semantics matter. `northflank-deploy`
+  # cannot be skipped by this: the router's `all()` helper forces every route
+  # true for any non-PR event, and a deploy only ever happens on a push to main
+  # or a dispatch -- so on the only events that reach the deploy, `go` is true
+  # and this job runs. That is the same mechanism the deploy's own comment
+  # relies on for `static-gates`; what must NOT be done is dropping `go` from
+  # `all()` while keeping this `if:`, which would silently stop every deploy
+  # that does not touch Go.
+  #
+  # The route itself is new: `apps/license-server/**` matched NO bucket before,
+  # and was covered only because the Go steps happened to live in the ungated
+  # static-gates job. See the router's `go` rule.
+  #
+  # Gate: scripts/gates.json -> "go".
+  go-gate:
+    name: Go Gate (license-server)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    steps:
+      # Shallow clone is correct here: nothing in this job walks history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: apps/license-server/go.mod
+          cache-dependency-path: apps/license-server/go.sum
+      - name: Go fmt
+        run: test -z "$(gofmt -l apps/license-server)" || { gofmt -l apps/license-server; exit 1; }
+      - name: Go vet
+        run: go -C apps/license-server vet ./...
+      - name: Go test (short)
+        run: go -C apps/license-server test -short ./...
+
+  # ── 7c. IPC parity: the checker and its liveness proof ────────────────
+  #
+  # WHY ITS OWN JOB. `IPC command parity self-test` measured 209s and 216s on
+  # the two runs sampled -- 33% of the old static-gates job, and the second
+  # largest single step in it. Both steps moved here together: the repo's
+  # convention is that a checker's `--self-test` lives beside the checker it
+  # proves (see `Scoped ambient reads self-test` in 7a), and splitting them
+  # would put the liveness proof in a different job from the gate it protects.
+  #
+  # ORDER MATTERS HERE. The real gate runs FIRST (29s), so an actual parity
+  # violation -- the case a contributor will hit -- reports about 3m30s before
+  # the self-test would have finished. The self-test answers a different
+  # question ("can this gate still fail at all?") and is correspondingly rarer,
+  # so it takes the slower slot.
+  #
+  # PATH GATE. `verify-ipc-parity.py` compares the renderer's invoked command
+  # strings against each shell's `generate_handler![]`, so it can only be broken
+  # by a change under `crates/`, `apps/*/src` or `ui/`. Gated on rust OR ui for
+  # that reason. Same deploy-safety argument as 7b: the router forces both true
+  # on any non-PR event, so a deploy can never skip this job.
+  #
+  # Gate: scripts/gates.json -> "ipc-parity".
+  ipc-parity:
+    name: IPC Parity
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ui == 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: IPC command parity
+        run: python3 scripts/verify-ipc-parity.py
+      # The parity checker's own liveness cases, beside the sibling that already runs
+      # this way ("Scoped ambient reads self-test", in 7a). Blocking: the
+      # "IPC command parity" step above, scripts/check.sh and scripts/run-pre-push.py all
+      # invoke the checker WITHOUT --self-test, so until this step existed a regression in the
+      # LEG -- a parser that stops seeing the surface it claims to check, or a mask/guard
+      # rule that goes blind -- could sit red for weeks while every gate stayed green.
+      # That is exactly how the two stale expectations fixed in C55 survived. No bare run
+      # of the checker can see this class; only the self-test can. Gate: C55.
+      - name: IPC command parity self-test
+        run: python3 scripts/verify-ipc-parity.py --self-test
 
   # ── 8. Release readiness ──────────────────────────────────────────────
   # R36-11's root cause was not only that release.yml was renamed to .bak with an
@@ -795,10 +965,22 @@ jobs:
   northflank-deploy:
     name: Deploy Backend (Northflank)
     runs-on: ubuntu-latest
-    needs: [changes, website, cargo-check, cargo-nextest, ui-test, i18n, static-gates]
+    needs: [changes, website, rust-fmt, cargo-check, cargo-nextest, ui-test, i18n, static-gates, go-gate, ipc-parity]
     # A skipped dependency skips this job, and nothing skips on a deploy run: the
     # `changes` router forces every route true for all non-PR events, and
     # `static-gates` carries no `if:` at all, so neither can quietly unblock one.
+    #
+    # The 2026-09-24 split added three jobs to this list -- `rust-fmt` (was a step
+    # in `cargo-check`), `go-gate` and `ipc-parity` (were steps in `static-gates`)
+    # -- because a job that stops being a step stops being in the `needs` chain.
+    # Leaving any of them out would have SILENTLY widened the deploy gate: the
+    # steps still run, still go red, and still block a merge, but would no longer
+    # block a production deploy. The invariant to preserve is that this list
+    # covers every job that gates a merge, and the two new path-gated jobs are
+    # safe here for the reason above -- the router's `all()` forces `go` and
+    # `rust`/`ui` true on exactly the events that reach this job, so neither can
+    # be skipped on a deploy run. Dropping `go` from `all()` while keeping
+    # `go-gate`'s `if:` would break that, so the two must move together.
     # What used to be claimed here is false: workflow_dispatch is NOT the only
     # non-PR event that can reach this job. `on.push` is declared at :6-7, so a
     # merge to `main` runs this workflow and the `if:` below deploys it.
