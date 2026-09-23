@@ -261,7 +261,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `kasirmu-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/kasirmu-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
 
-Latest release: **v0.0.39** (on branch `0.0.39`).
+Latest release: **v0.0.40** (on branch `0.0.40`).
 
 See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 

@@ -301,9 +301,9 @@
   },
   "download": {
     "title": "Download kasir.mu",
-    "subtitle": "Version 0.0.39 — free forever, no signup required.",
+    "subtitle": "Version 0.0.40 — free forever, no signup required.",
     "version": "Current version",
-    "versionValue": "0.0.39",
+    "versionValue": "0.0.40",
     "platformsTitle": "Choose your platform",
     "requirementsTitle": "System requirements",
     "requirements": [

@@ -1,7 +1,7 @@
 {
   "name": "kasirmu-ui",
   "private": true,
-  "version": "0.0.39",
+  "version": "0.0.40",
   "type": "module",
   "description": "OZ-POS front-end: React 18 + Vite + TypeScript + @fluent/react.",
   "license": "SEE LICENSE IN ../LICENSE",

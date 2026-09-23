@@ -2046,7 +2046,7 @@ dependencies = [
 
 [[package]]
 name = "foundation"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "proptest",
@@ -3317,7 +3317,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-api"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -3344,7 +3344,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-app"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3401,7 +3401,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-bridge"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "foundation",
@@ -3432,7 +3432,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-cli"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "argon2",
@@ -3454,7 +3454,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-cloud"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "bytes",
@@ -3496,7 +3496,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-core"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -3537,7 +3537,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-crypto"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -3550,7 +3550,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-hal"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "hex",
@@ -3567,7 +3567,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-lan"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -3583,7 +3583,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-local-api"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -3602,7 +3602,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-logging"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "filetime",
@@ -3617,7 +3617,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-lua"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "mlua",
  "serde",
@@ -3628,7 +3628,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-media"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "image 0.25.10",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-mobile"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-notification"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "foundation",
@@ -3707,7 +3707,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-payment"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3728,7 +3728,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-plugin"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "kasirmu-lua",
@@ -3747,7 +3747,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-reporting"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "kasirmu-core",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "kasirmu-security"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "chrono",
  "hex",
@@ -4200,7 +4200,7 @@ dependencies = [
 
 [[package]]
 name = "modules-crm"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4217,7 +4217,7 @@ dependencies = [
 
 [[package]]
 name = "modules-currency"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "foundation",
  "kasirmu-core",
@@ -4233,7 +4233,7 @@ dependencies = [
 
 [[package]]
 name = "modules-giftcards"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4246,7 +4246,7 @@ dependencies = [
 
 [[package]]
 name = "modules-inventory"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4263,7 +4263,7 @@ dependencies = [
 
 [[package]]
 name = "modules-kitchen"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4276,7 +4276,7 @@ dependencies = [
 
 [[package]]
 name = "modules-loyalty"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4293,7 +4293,7 @@ dependencies = [
 
 [[package]]
 name = "modules-promotions"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4306,7 +4306,7 @@ dependencies = [
 
 [[package]]
 name = "modules-purchasing"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -4319,7 +4319,7 @@ dependencies = [
 
 [[package]]
 name = "modules-reporting"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4336,7 +4336,7 @@ dependencies = [
 
 [[package]]
 name = "modules-sales"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "modules-settings"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4370,7 +4370,7 @@ dependencies = [
 
 [[package]]
 name = "modules-staff"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4388,7 +4388,7 @@ dependencies = [
 
 [[package]]
 name = "modules-tax"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4405,7 +4405,7 @@ dependencies = [
 
 [[package]]
 name = "modules-terminal"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5230,7 +5230,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "platform-core"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "argon2",
  "chrono",
@@ -5247,7 +5247,7 @@ dependencies = [
 
 [[package]]
 name = "platform-kernel"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "foundation",
@@ -5260,7 +5260,7 @@ dependencies = [
 
 [[package]]
 name = "platform-startup"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5297,7 +5297,7 @@ dependencies = [
 
 [[package]]
 name = "platform-sync"
-version = "0.0.39"
+version = "0.0.40"
 dependencies = [
  "axum 0.8.9",
  "chrono",

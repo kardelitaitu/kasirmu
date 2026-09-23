@@ -240,7 +240,7 @@ describe('LicenseActivationScreen - Exhaustive Suite', () => {
     it('4. getVersion rejects gracefully without crashing the app', async () => {
       vi.mocked(getVersion).mockRejectedValue(new Error('Version Fail'));
       renderOnForm();
-      await waitFor(() => expect(screen.getByText('Version 0.0.39')).toBeInTheDocument(), FAST_WAIT);
+      await waitFor(() => expect(screen.getByText('Version 0.0.40')).toBeInTheDocument(), FAST_WAIT);
     });
 
     it('5. Component unmounting during getVersion fetch prevents state updates', () => {

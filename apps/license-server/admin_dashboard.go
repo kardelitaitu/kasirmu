@@ -37,7 +37,7 @@ import (
 // workspace Cargo.toml rather than against a copy of itself, so a bump that
 // misses this file goes red instead of silently misreporting.
 // scripts/bump-version.ps1 updates this line as part of a bump.
-const adminDashboardVersion = "0.0.39"
+const adminDashboardVersion = "0.0.40"
 
 // adminKeyOK validates the Authorization: Bearer <admin_key> header.
 // Reads the key from OZ_ADMIN_KEY env; a missing env or wrong key is 401.

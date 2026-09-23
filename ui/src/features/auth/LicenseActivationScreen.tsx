@@ -82,7 +82,7 @@ export default function LicenseActivationScreen({ initialError, onActivated }: L
   /** Drop the mark as soon as the user edits the field it names. */
   const clearBadField = (field: 'email' | 'phone') =>
     setBadField((prev) => (prev === field ? null : prev));
-  const [appVersion, setAppVersion] = useState<string>('0.0.39');
+  const [appVersion, setAppVersion] = useState<string>('0.0.40');
   // LAN + public addresses, each resolved independently (see useDeviceIp).
   // The offline/unresolved placeholder is derivable, so it is not state.
   const { local: localIp, public: publicIp } = useDeviceIp();
