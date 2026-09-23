@@ -27,7 +27,13 @@ migrations — the drift the loyalty work exposed):
      deterministic
    * triggers → hand-written plpgsql from TRIGGER_MAP; every dumped
      trigger needs an entry and every entry must be live (fail closed
-     both ways — the ERR-10 stale-exemption discipline)
+     both ways — the ERR-10 stale-exemption discipline). That membership
+     check is NAME-ONLY: it proves each port EXISTS, never that it MEANS
+     the same thing as the SQLite trigger it mirrors. C43 added the
+     TRIGGER_VERIFICATION gate (declared test + body digest) as the
+     compensating control; for the six older ports the named test pins
+     the SQLite trigger rather than executing the plpgsql, and that
+     residual gap is stated on that table rather than implied away.
    * RLS appendix → curated RLS_TABLES list (enabling RLS is a policy
      decision: the write path must populate tenant_id); the generator
      fails if an entry loses its table or column, and lists tenant_id
@@ -65,6 +71,7 @@ hook runs it whenever a migration file or this script is staged.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 import sys
@@ -128,6 +135,31 @@ HEADER = """\
 # Hand-written Postgres equivalents of the SQLite triggers, keyed by
 # trigger name. The generator fails closed if the dumped set and this
 # map ever disagree (missing port OR stale entry).
+#
+# WHAT THIS MAP'S GATE DOES AND DOES NOT PROVE (C43). The membership
+# check below compares trigger NAMES ONLY — it never reads a body and
+# never compares the SQLite `WHEN` clause against the plpgsql `IF`. So
+# it proves the port EXISTS, not that it MEANS the same thing; a body
+# mutated to a divergent predicate used to leave --check printing ok.
+# `TRIGGER_VERIFICATION` (below) is the compensating control, and it is
+# deliberately NOT a plpgsql parser:
+#
+#   * `verified_by` names the test that pins the predicate this port must
+#     match. Generation FAILS when that file does not exist, so a port
+#     cannot be added without naming its evidence.
+#   * `body_sha256` pins the port body. Any edit to a body without
+#     re-recording its digest fails generation, which turns a silent
+#     divergence into an explicit, reviewable act.
+#
+# Neither field is a semantic proof, and this comment is the honest
+# statement of that: the digest is a change detector (it forces
+# re-acknowledgement, and it can be re-pinned), and `verified_by` is only
+# as strong as the named test. For the C42 port
+# (stock_summary_qty_nonnegative_*) the named test EXECUTES the plpgsql
+# against real PostgreSQL. For the six older ports the named test pins
+# the SQLITE trigger's behaviour — a compensating control, NOT PG
+# execution; that gap is real and is recorded here rather than implied
+# away by a green gate.
 TRIGGER_MAP: dict[str, str] = {
     # Retention carve-out (migration 20260920, todo-global-saas-2.md P1):
     # the sweep deletes expired rows through the same
@@ -251,6 +283,67 @@ CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_insert
 CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
     BEFORE UPDATE ON stock_summary
     FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();""",
+}
+
+# Compensating control for the NAME-ONLY membership check above (C43).
+#
+# `verified_by` — the test that pins the predicate this port must match. The
+#   path is resolved from the repo root and MUST exist, so a port cannot be
+#   added without naming its evidence.
+# `body_sha256` — sha256 of the port body, newline-normalized. Any edit to a
+#   body without re-recording its digest fails generation.
+#
+# BE PRECISE ABOUT THE STRENGTH, per entry:
+#   * stock_summary_qty_nonnegative_* — the named test EXECUTES this plpgsql
+#     against a real throwaway PostgreSQL database (all three predicate
+#     cases), so the port itself is verified.
+#   * the other six — the named test pins the SQLITE trigger's behaviour.
+#     That is a compensating control, NOT PostgreSQL execution: a port that
+#     diverged from its SQLite original while keeping the same observable
+#     behaviour on those SQLite paths would still pass. Closing that for all
+#     six is C42's shape applied six more times and is deliberately NOT
+#     claimed here.
+TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
+    "audit_log_immutable_delete": {
+        "verified_by": "crates/kasirmu-core/tests/audit_integration.rs",
+        "note": "pins the SQLITE trigger (delete_audit_entry_trigger_rejects_delete); no PG execution",
+        "body_sha256": "fb6db470317bb1a1aea64f520595c8b73961c9469aa59d75078591ca36426433",
+    },
+    "audit_log_immutable_update": {
+        "verified_by": "crates/kasirmu-core/tests/audit_integration.rs",
+        "note": "pins the SQLITE trigger (update_audit_entry_trigger_rejects_update); no PG execution",
+        "body_sha256": "889d995af65ea2656ad2a7713f5abaa081d980445c467b7eb469cc5822976757",
+    },
+    "loyalty_tiers_validate_insert": {
+        "verified_by": "crates/kasirmu-core/src/migrations_tests.rs",
+        "note": "pins the SQLITE trigger (loyalty_multiplier_backfill_from_legacy_real_column); no PG execution",
+        "body_sha256": "cbe5d469ef17abe21b3d127e0c334320b4acc2dad45f6e3f6cc92df67313251d",
+    },
+    "loyalty_tiers_validate_update": {
+        "verified_by": "crates/kasirmu-core/src/migrations_tests.rs",
+        "note": "pins the SQLITE trigger (loyalty_multiplier_backfill_from_legacy_real_column); no PG execution",
+        "body_sha256": "590edd3ea39682af1e3ba60ea9ba894bb7dbf66d7420cf83639724fe94ea115f",
+    },
+    "trg_assignments_scope_id_pair": {
+        "verified_by": "crates/kasirmu-core/src/db/assignments_tests.rs",
+        "note": "pins the SQLITE trigger (scope-id pair); no PG execution",
+        "body_sha256": "021fccd42df444737cd25bb99b3fcca42a5191d6da385bd10b92bd4b833ab3a2",
+    },
+    "trg_assignments_scope_id_pair_update": {
+        "verified_by": "crates/kasirmu-core/src/db/assignments_tests.rs",
+        "note": "pins the SQLITE trigger (scope-id pair update arm); no PG execution",
+        "body_sha256": "5bf43fc06622c13ffde841a33fd94fd6ca62504c573785c892223055459ba822",
+    },
+    "stock_summary_qty_nonnegative_insert": {
+        "verified_by": "apps/cloud-server/tests/pg_stock_guard.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C42), all three predicate cases",
+        "body_sha256": "de2dbc9691b7ce8f1116a4dde18804c879f2da2085e3a49bf42caa9414343a2c",
+    },
+    "stock_summary_qty_nonnegative_update": {
+        "verified_by": "apps/cloud-server/tests/pg_stock_guard.rs",
+        "note": "EXECUTES this plpgsql against real PostgreSQL (C42), all three predicate cases",
+        "body_sha256": "e9026abf057aa52281d38685ed9b10ae80d57370b9e7b671e23b53227b6446e3",
+    },
 }
 
 # Seed timestamps younger than this are "now"-derived (the migration run
@@ -487,6 +580,99 @@ def check_rls_coverage(
             "error: stale RLS_EXEMPT entries (table is now covered or "
             "lost tenant_id — delete the exemption): " + ", ".join(stale)
         )
+
+
+def check_trigger_verification(
+    ports: dict[str, str],
+    verification: dict[str, dict[str, str]],
+    root: Path,
+) -> None:
+    """Fail closed when a trigger port carries no live verification.
+
+    The membership check in render() compares trigger NAMES only, so it
+    proves a port EXISTS and never that it MEANS the same thing. This gate is
+    the compensating control, and it is deliberately not a plpgsql parser:
+
+    1. every port must declare verified_by - a test path that EXISTS - so a
+       port cannot be added without naming the evidence that pins it;
+    2. every port must pin body_sha256 matching its current body, so an edit
+       to a body cannot ride along silently: it fails generation until the
+       author re-records the digest, which makes the change explicit and
+       reviewable rather than invisible.
+
+    Neither is a semantic proof. The digest is a change detector (and can be
+    re-pinned); verified_by is only as strong as the named test. Both are
+    stated in the TRIGGER_VERIFICATION comment rather than implied away.
+    """
+    undeclared = sorted(set(ports) - set(verification))
+    if undeclared:
+        raise SystemExit(
+            "error: trigger ports with no verification entry (declare "
+            "verified_by - the test that pins the predicate - and "
+            "body_sha256 in TRIGGER_VERIFICATION): " + ", ".join(undeclared)
+        )
+    stale = sorted(set(verification) - set(ports))
+    if stale:
+        raise SystemExit(
+            "error: stale TRIGGER_VERIFICATION entries (no such port - "
+            "delete the entry): " + ", ".join(stale)
+        )
+
+    problems: list[str] = []
+    for name in sorted(ports):
+        entry = verification[name]
+        test_path = entry.get("verified_by", "")
+        if not test_path:
+            problems.append(f"{name}: no verified_by")
+        elif not (root / test_path).is_file():
+            problems.append(
+                f"{name}: verified_by names a missing test: {test_path}")
+        declared = entry.get("body_sha256", "")
+        actual = hashlib.sha256(
+            ports[name].replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()
+        if declared != actual:
+            problems.append(
+                f"{name}: body changed (declared {declared[:12]}, actual "
+                f"{actual[:12]}) - re-record body_sha256 in TRIGGER_VERIFICATION "
+                "after confirming the port still matches the SQLite predicate"
+            )
+    if problems:
+        raise SystemExit(
+            "error: trigger verification failed (the membership check proves "
+            "presence only, never semantics):\n  - " + "\n  - ".join(problems)
+        )
+
+
+def _self_test_trigger_gate() -> None:
+    """Exercise the verification gate fail directions on synthetic sets."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "a_test.rs").write_text("// stand-in", encoding="utf-8")
+        body = "CREATE OR REPLACE TRIGGER t ..."
+        digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        good = {"t": {"verified_by": "a_test.rs", "body_sha256": digest}}
+        # The passing direction must actually pass.
+        check_trigger_verification({"t": body}, good, root)
+
+        failures = [
+            ({"t": body}, {}, "port with no verification entry"),
+            ({"t": body, "u": body}, good, "port missing from verification"),
+            ({"t": body}, {"t": good["t"], "ghost": good["t"]}, "verification entry with no port"),
+            ({"t": body}, {"t": {"verified_by": "", "body_sha256": digest}}, "blank verified_by"),
+            ({"t": body}, {"t": {"verified_by": "nope.rs", "body_sha256": digest}}, "verified_by names a missing test"),
+            ({"t": body}, {"t": {"verified_by": "a_test.rs", "body_sha256": "0" * 64}}, "body digest mismatch (the C43 mutation case)"),
+        ]
+        for ports, verification, case in failures:
+            try:
+                check_trigger_verification(ports, verification, root)
+            except SystemExit:
+                continue
+            raise SystemExit(
+                f"error: trigger verification gate self-test: {case} did not fail")
+    print("ok: trigger verification gate self-test (fail-closed in both directions)")
 
 
 def _self_test_rls_gate() -> None:
@@ -984,6 +1170,11 @@ def render() -> tuple[str, int, int, int, list[str]]:
             parts.append(f"stale TRIGGER_MAP entries: {', '.join(stale)}")
         raise SystemExit("error: trigger parity broken — " + "; ".join(parts))
 
+    # C43: the membership check above is NAME-ONLY and can never prove the port
+    # means the same thing as the SQLite trigger it mirrors. This is the
+    # compensating control — declared evidence plus a body digest.
+    check_trigger_verification(TRIGGER_MAP, TRIGGER_VERIFICATION, ROOT)
+
     ordered_names = [name for name, _, _ in ordered]
     seeds = dump_seeds(db, ordered_names)
     specs = pg_column_specs(db, ordered_names)
@@ -1019,6 +1210,7 @@ def main(argv: list[str]) -> int:
     check = "--check" in argv
     if "--self-test" in argv:
         _self_test_rls_gate()
+        _self_test_trigger_gate()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 
