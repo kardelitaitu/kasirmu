@@ -70,6 +70,7 @@ async fn token_minting_is_open_when_no_admin_key_configured() {
     let response = create_token_handler(
         State(state_with_admin_key(None)),
         HeaderMap::new(),
+        None,
         Json(request_body()),
     )
     .await
@@ -86,6 +87,7 @@ async fn token_minting_rejects_missing_admin_key_when_configured() {
     let response = create_token_handler(
         State(state_with_admin_key(Some("sekret"))),
         HeaderMap::new(),
+        None,
         Json(request_body()),
     )
     .await
@@ -98,6 +100,7 @@ async fn token_minting_rejects_wrong_admin_key() {
     let response = create_token_handler(
         State(state_with_admin_key(Some("sekret"))),
         request_with_header(Some("wrong-key")),
+        None,
         Json(request_body()),
     )
     .await
@@ -110,6 +113,7 @@ async fn token_minting_allows_matching_admin_key() {
     let response = create_token_handler(
         State(state_with_admin_key(Some("sekret"))),
         request_with_header(Some("sekret")),
+        None,
         Json(request_body()),
     )
     .await
@@ -122,6 +126,7 @@ async fn create_token_returns_200_with_jwt() {
     let response = create_token_handler(
         State(state_with_admin_key(None)),
         HeaderMap::new(),
+        None,
         Json(request_body()),
     )
     .await
@@ -148,6 +153,7 @@ async fn terminal_credentials_mint_token_without_admin_key() {
     let response = create_token_handler(
         State(state),
         HeaderMap::new(), // no admin key
+        None,
         Json(body_with_credentials(
             "pos-terminal",
             "term-1",
@@ -174,6 +180,7 @@ async fn terminal_credentials_rejected_when_secret_wrong() {
     let response = create_token_handler(
         State(state),
         HeaderMap::new(),
+        None,
         Json(body_with_credentials(
             "pos-terminal",
             "term-1",
@@ -190,6 +197,7 @@ async fn terminal_credentials_rejected_for_unknown_terminal() {
     let response = create_token_handler(
         State(state_with_admin_key(None)),
         HeaderMap::new(),
+        None,
         Json(body_with_credentials("pos-terminal", "ghost", "any-secret")),
     )
     .await
@@ -211,6 +219,7 @@ async fn create_token_defaults_expiry() {
     let response = create_token_handler(
         State(state_with_admin_key(None)),
         HeaderMap::new(),
+        None,
         Json(body),
     )
     .await
@@ -295,7 +304,7 @@ async fn admin_mint_with_read_preset_carries_permissions() {
         read_preset: Some("dashboard".into()),
         read_permissions: None,
     };
-    let response = create_token_handler(State(state), HeaderMap::new(), Json(body))
+    let response = create_token_handler(State(state), HeaderMap::new(), None, Json(body))
         .await
         .into_response();
     assert_eq!(response.status(), StatusCode::OK);
@@ -323,7 +332,7 @@ async fn admin_mint_with_unknown_preset_returns_422() {
         read_preset: Some("superuser".into()),
         read_permissions: None,
     };
-    let response = create_token_handler(State(state), HeaderMap::new(), Json(body))
+    let response = create_token_handler(State(state), HeaderMap::new(), None, Json(body))
         .await
         .into_response();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -344,7 +353,7 @@ async fn admin_mint_with_unknown_permission_returns_422() {
         read_preset: None,
         read_permissions: Some(vec!["products:read".into(), "not:a_key".into()]),
     };
-    let response = create_token_handler(State(state), HeaderMap::new(), Json(body))
+    let response = create_token_handler(State(state), HeaderMap::new(), None, Json(body))
         .await
         .into_response();
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -364,6 +373,7 @@ async fn terminal_mint_binds_terminal_preset() {
     let response = create_token_handler(
         State(state),
         HeaderMap::new(), // no admin key — terminal path
+        None,
         Json(body_with_credentials(
             "pos-terminal",
             "term-1",
@@ -387,4 +397,140 @@ async fn terminal_mint_binds_terminal_preset() {
     assert!(perms.contains(&"plan:read".to_string()));
     // Terminal preset must never carry PII-scoped keys.
     assert!(!perms.contains(&"sales:view".to_string()));
+}
+
+// ── C39: the single-tenant surface must not accept a tenant label ──────
+
+/// A request body carrying a non-default tenant, minted through the ADMIN
+/// path with a matching key — the exact shape the embedded surface accepts
+/// today.
+fn body_with_tenant(label: &str, tenant: &str) -> CreateTokenRequest {
+    CreateTokenRequest {
+        label: label.into(),
+        expiry_hours: Some(1),
+        tenant_id: Some(tenant.into()),
+        client_id: None,
+        client_secret: None,
+        read_preset: None,
+        read_permissions: None,
+    }
+}
+
+/// THE EMBEDDED SURFACE (C39): the marker is present, so a caller-supplied
+/// non-default tenant is REFUSED — the token is never minted, which is what
+/// makes the C34 trap unreachable rather than merely fenced at the write.
+///
+/// Refusal (not silent dropping) is deliberate: a dropped claim would mint a
+/// token whose scope differs from what the caller asked for, and every later
+/// request would be judged against a tenant the caller never agreed to.
+#[tokio::test]
+async fn single_tenant_surface_refuses_a_caller_supplied_tenant() {
+    let response = create_token_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        Some(Extension(SingleTenantSurface)),
+        Json(body_with_tenant("script", "tenant-other")),
+    )
+    .await
+    .into_response();
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "the single-tenant surface must not mint a token scoped to another tenant"
+    );
+    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["error"], "tenant_claim_not_supported");
+}
+
+/// The refusal must not break the surface's own tokens: the UI mint passes no
+/// tenant at all, and an explicit `"default"` is the one value this store can
+/// honour. Both must still mint.
+#[tokio::test]
+async fn single_tenant_surface_still_mints_without_a_foreign_tenant() {
+    for tenant in [None, Some("default")] {
+        let body = CreateTokenRequest {
+            label: "ui-script".into(),
+            expiry_hours: Some(1),
+            tenant_id: tenant.map(|t| t.to_string()),
+            client_id: None,
+            client_secret: None,
+            read_preset: None,
+            read_permissions: None,
+        };
+        let response = create_token_handler(
+            State(state_with_admin_key(None)),
+            HeaderMap::new(),
+            Some(Extension(SingleTenantSurface)),
+            Json(body),
+        )
+        .await
+        .into_response();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "tenant {tenant:?} must still mint on the single-tenant surface"
+        );
+    }
+}
+
+/// THE CLOUD SURFACE MUST KEEP WORKING — asserted, not assumed, because
+/// breaking the cloud mint would be a far worse defect than the one being
+/// fixed. The cloud server never inserts the marker, so the handler receives
+/// `None` and the caller-supplied tenant is minted into the claims exactly as
+/// before.
+#[tokio::test]
+async fn multi_tenant_surface_still_accepts_a_caller_supplied_tenant() {
+    let response = create_token_handler(
+        State(state_with_admin_key(None)),
+        HeaderMap::new(),
+        None, // no marker: the cloud surface
+        Json(body_with_tenant("cloud-script", "tenant-other")),
+    )
+    .await
+    .into_response();
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "the cloud surface must still mint a tenant-scoped token"
+    );
+
+    // The claim actually reaches the token — not just a 200.
+    let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let token_str = json["token"]["token"].as_str().unwrap();
+    let claims = crate::auth::validate_token(token_str).await.unwrap();
+    assert_eq!(
+        claims.tenant_id.as_deref(),
+        Some("tenant-other"),
+        "the cloud mint must carry the caller-supplied tenant into the claims"
+    );
+}
+
+/// The terminal client-credentials path takes its tenant from the registered
+/// `sync_terminals` row, never the body — so it is unaffected by the C39
+/// refusal, and it is already closed on the embedded surface by
+/// `allow_terminal_credentials = false`. This pins that the marker does not
+/// accidentally start gating it here.
+#[tokio::test]
+async fn terminal_credentials_path_is_unaffected_by_the_single_tenant_marker() {
+    let state = state_with_admin_key(Some("sekret"));
+    {
+        let conn = state.db.lock().await;
+        register_terminal(&conn, "term-1", "device-secret-abc");
+    }
+
+    let response = create_token_handler(
+        State(state),
+        HeaderMap::new(), // no admin key — terminal path
+        Some(Extension(SingleTenantSurface)),
+        Json(body_with_credentials(
+            "pos-terminal",
+            "term-1",
+            "device-secret-abc",
+        )),
+    )
+    .await
+    .into_response();
+    assert_eq!(response.status(), StatusCode::OK);
 }

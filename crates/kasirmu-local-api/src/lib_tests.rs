@@ -821,3 +821,68 @@ fn tenant_integrity_still_refuses_a_genuinely_foreign_store() {
         "the boot check must still refuse the foreign row: {msg}"
     );
 }
+
+// ── C39: the trap is closed at the mint, not only fenced at the write ──
+
+/// END-TO-END ON THE REAL EMBEDDED SURFACE. The C34 guard refuses a foreign
+/// tenant at the WRITE; this proves the token that would carry it can no
+/// longer be obtained here at all. Both halves matter: without C39 the trap is
+/// merely fenced, and without C34 a token minted elsewhere (a restored store,
+/// a token from the cloud) would still reach the stamp.
+///
+/// The marker is inserted by this crate's own layer, so the assertion is
+/// against the assembled server - not against a handler called directly.
+#[tokio::test]
+async fn embedded_surface_refuses_a_caller_supplied_tenant_at_the_mint() {
+    let dir = temp_image_dir("c39-mint");
+    let db = Arc::new(Mutex::new(kasirmu_core::migrations::fresh_db()));
+    let secret = "k".repeat(32);
+    let handle = start(
+        db,
+        PathBuf::from(":memory:"),
+        dir.clone(),
+        secret.clone(),
+        0,
+    )
+    .await
+    .unwrap();
+    let base = format!("http://127.0.0.1:{}", handle.port);
+    let client = reqwest::Client::new();
+
+    // Before C39 this returned 200 and a token whose claim named another
+    // tenant - the value the C34 guard later has to catch on the write path.
+    let refused = client
+        .post(format!("{base}/api/v1/tokens"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({"label": "script", "tenant_id": "tenant-other"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        refused.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "the embedded mint must not issue a token scoped to another tenant"
+    );
+    assert_eq!(
+        refused.json::<serde_json::Value>().await.unwrap()["error"].as_str(),
+        Some("tenant_claim_not_supported")
+    );
+
+    // The surface still mints the tokens it is FOR - no tenant at all, which
+    // is exactly what the UI's `mint_token` sends.
+    let ok = client
+        .post(format!("{base}/api/v1/tokens"))
+        .header("X-Admin-Key", &secret)
+        .json(&serde_json::json!({"label": "script"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        ok.status(),
+        reqwest::StatusCode::OK,
+        "an ordinary mint on this surface must keep working"
+    );
+
+    handle.stop();
+    let _ = std::fs::remove_dir_all(&dir);
+}

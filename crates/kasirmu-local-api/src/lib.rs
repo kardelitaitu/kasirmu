@@ -263,6 +263,20 @@ async fn reject_foreign_tenant_writes(
     next.run(req).await
 }
 
+/// Mark every request on this surface as SINGLE-TENANT (C39).
+///
+/// The shared token route reads this marker and refuses a caller-supplied
+/// `tenant_id`; the cloud server never inserts it, so the cloud mint keeps
+/// accepting one. One line here, no branch in the route that could drift.
+async fn mark_single_tenant(
+    mut req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    req.extensions_mut()
+        .insert(kasirmu_api::routes::tokens::SingleTenantSurface);
+    next.run(req).await
+}
+
 /// Read `local_api.enabled` from the settings table.
 pub fn is_enabled(conn: &Connection) -> bool {
     kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
@@ -431,6 +445,15 @@ pub async fn start_with_audit(
             async move { reject_foreign_tenant_writes(&guard_secret, req, next).await }
         }
     }))
+    // C39: declare this surface single-tenant, so the shared token route
+    // refuses a caller-supplied `tenant_id` instead of minting a token this
+    // store can never honour.
+    //
+    // Order against the C34 guard is immaterial: `Router::layer` makes the
+    // LAST call outermost, so this marker runs before the guard, and the two
+    // are independent anyway - the guard reads the TENANT CLAIM off the
+    // bearer token, the marker writes an extension the token route reads.
+    .layer(axum::middleware::from_fn(mark_single_tenant))
     // The guard is the OUTERMOST layer, so its refusal short-circuits before
     // the router's own security-headers layer runs and would otherwise be the
     // one response on this surface without them (the MED-4 finding: anything
