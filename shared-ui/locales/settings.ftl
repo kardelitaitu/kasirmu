@@ -52,7 +52,16 @@ setup-provision-desc = Create your free kasir.mu account, then start selling.
 setup-provision-account-section = kasir.mu Account
 setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
 setup-provision-offline-warn = Internet connection is required to create or link your account.
+# Step labels for the first-run progress rail. Three steps, matching the three
+# decisions the form actually gates submission on: how the terminal is linked,
+# what kind of shop it is, and who signs in. A rail is not decoration here — the
+# card is ~1420px tall on a 1366px tablet, so the submit button starts below the
+# fold and the merchant cannot see where they are without one.
 setup-provision-mode-section = Does this terminal link to your account?
+setup-provision-step-progress = Step { $current } of { $total }
+setup-provision-step-account = Account
+setup-provision-step-store = Shop
+setup-provision-step-owner = Owner
 setup-mode-local-title = Offline only
 setup-mode-local-desc = Keep this terminal completely offline. No account, no cloud sync — a free starter workspace is created on the device.
 setup-mode-linked-title = Link your kasir.mu account

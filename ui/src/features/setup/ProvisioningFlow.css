@@ -90,6 +90,82 @@
   }
 }
 
+/* ── Progress rail ──────────────────────────────────────────────────
+ * The card is 1423px tall in a 1366px tablet viewport (measured, Playwright),
+ * so the submit button and the last two fields begin below the fold. The rail is
+ * the only thing telling the merchant how much form is left.
+ *
+ * State is never colour-only, matching .provisioning-field-error's contract
+ * above: a completed step shows a check glyph and the current one carries
+ * `aria-current="step"` plus a border, so the three states survive greyscale. */
+.provisioning-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.provisioning-step-list {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.provisioning-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-fg-muted);
+}
+
+/* The step's own name, beside its marker. Added because the walker found the
+ * class used with no rule — the label would have inherited whatever the <li>
+ * set, which is not a contract. */
+.provisioning-step-label {
+  white-space: nowrap;
+}
+
+.provisioning-step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-step.is-current {
+  color: var(--color-fg-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.provisioning-step.is-current .provisioning-step-marker {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.provisioning-step.is-done .provisioning-step-marker {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-pos-on-primary);
+}
+
+.provisioning-step-progress {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
 .provisioning-header {
   text-align: center;
 }

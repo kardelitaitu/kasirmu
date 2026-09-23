@@ -131,7 +131,16 @@ setup-provision-desc = Buat akun kasir.mu gratis Anda, lalu mulai berjualan.
 setup-provision-account-section = Akun kasir.mu
 setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
 setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.
+# Label langkah untuk rel progres saat pertama kali dijalankan. Tiga langkah,
+# sesuai tiga keputusan yang benar-benar menjadi syarat pengiriman formulir:
+# cara terminal ditautkan, jenis tokonya, dan siapa yang bisa masuk. Rel ini
+# bukan hiasan — kartunya setinggi ~1420px pada tablet 1366px, jadi tombol kirim
+# dimulai di bawah lipatan layar dan merchant tidak tahu posisinya tanpa rel ini.
 setup-provision-mode-section = Apakah terminal ini ditautkan ke akun Anda?
+setup-provision-step-progress = Langkah { $current } dari { $total }
+setup-provision-step-account = Akun
+setup-provision-step-store = Toko
+setup-provision-step-owner = Pemilik
 setup-mode-local-title = Offline saja
 setup-mode-local-desc = Jaga terminal ini sepenuhnya offline. Tanpa akun, tanpa sinkronisasi — ruang kerja gratis dibuat di perangkat.
 setup-mode-linked-title = Tautkan akun kasir.mu Anda

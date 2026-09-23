@@ -79,10 +79,28 @@ test.describe('First-run provisioning', () => {
     await fillOwnerForm(page);
     await page.getByLabel(/Confirm PIN/i).fill('');
     await page.getByLabel(/^PIN/i).fill('12');
-
     // The field LABEL also contains "at least 4 digits", so scope to the error
     // element the component renders rather than matching both.
     await expect(page.locator('#provision-pin-error')).toHaveText(/at least 4 digits/i);
+  });
+
+  test('shows how much of the form is left', async ({ page }) => {
+    // Measured: the card is ~1423px tall in a 1366px viewport, so the submit
+    // button starts BELOW the fold. The rail is the only thing telling the
+    // merchant how much form remains — this asserts it is actually on screen
+    // at first paint, not merely in the DOM.
+    await expect(page.getByText(/Step 1 of 3/i)).toBeVisible();
+
+    // The first step is the current one, exposed to AT as a position.
+    const steps = page.getByRole('listitem').filter({ hasText: 'Account' });
+    await expect(steps).toHaveAttribute('aria-current', 'step');
+
+    // Completing a step advances the count and marks it done.
+    await page.getByTestId('provision-mode-local').click();
+    await expect(page.getByText(/Step 2 of 3/i)).toBeVisible();
+
+    await page.getByTestId('store-type-simple-retail').click();
+    await expect(page.getByText(/Step 3 of 3/i)).toBeVisible();
   });
 });
 
@@ -142,4 +160,5 @@ test.describe('First-run owner bootstrap', () => {
     // the field itself — the association a screen reader follows.
     await expect(page.getByLabel(/Confirm PIN/i)).toHaveAttribute('aria-invalid', 'true');
   });
+
 });

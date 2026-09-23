@@ -124,6 +124,19 @@ const STORE_TYPE_FALLBACK: Record<string, { label: string; blurb: string }> = {
   },
 };
 
+/**
+ * The three steps the progress rail names, in the order the form presents them.
+ *
+ * `fallback` matches the en bundle word for word: <Localized> swaps in the
+ * bundle's string when the id resolves, so this is only what a missing key would
+ * leave on screen — readable copy, never a raw id.
+ */
+const STEPS: { id: string; labelId: string; fallback: string }[] = [
+  { id: 'account', labelId: 'setup-provision-step-account', fallback: 'Account' },
+  { id: 'store', labelId: 'setup-provision-step-store', fallback: 'Shop' },
+  { id: 'owner', labelId: 'setup-provision-step-owner', fallback: 'Owner' },
+];
+
 export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProps) {
   const { l10n } = useLocalization();
   const { addToast } = useToast();
@@ -306,6 +319,30 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     pin.length >= 4 &&
     pin === confirmPin;
 
+  // ── Progress rail ──────────────────────────────────────────────────
+  //
+  // The three steps ARE the three groups the form already gates submission on,
+  // derived from the same values as `canSubmit` rather than from a second state
+  // machine that could disagree with it. Measured on a 1366px tablet: the card
+  // is 1423px tall, so the submit button and the last two fields start BELOW the
+  // fold. Without a rail the merchant sees a long form with no idea how much is
+  // left, and no signal that anything is still required off-screen.
+  //
+  // Step 1 has no field of its own — it is the mode choice — and on the default
+  // 'linked' mode it completes only once an account is actually linked. That is
+  // deliberate: the step is "is this terminal attached to an account", which the
+  // mode alone does not answer.
+  const stepAccountDone = provisionMode === 'local' || isLinked;
+  const stepStoreDone = storeType !== null;
+  const stepOwnerDone =
+    locationName.trim() !== '' &&
+    ownerName.trim() !== '' &&
+    ownerUsername.trim() !== '' &&
+    pin.length >= 4 &&
+    pin === confirmPin;
+  const stepDone = [stepAccountDone, stepStoreDone, stepOwnerDone];
+  const currentStep = stepDone.indexOf(false);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -380,6 +417,41 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
     <div className="provisioning-container" data-testid="provisioning-flow">
       <form className="provisioning-card" onSubmit={handleSubmit}>
         <header className="provisioning-header">
+          {/* Progress rail. `aria-current="step"` on the active one is what makes
+              it a position rather than a decoration for a screen reader; the
+              "Step N of 3" text is the same fact without relying on colour,
+              which the three dots alone would. Completed steps carry a check,
+              so the state is not conveyed by fill colour only. */}
+          <nav className="provisioning-steps" aria-label={l10n.getString('setup-provision-step-progress', { current: '1', total: String(stepDone.length) })}>
+            <ol className="provisioning-step-list">
+              {STEPS.map((step, i) => {
+                const done = stepDone[i];
+                const isCurrent = currentStep === i;
+                return (
+                  <li
+                    key={step.id}
+                    className={`provisioning-step${done ? ' is-done' : ''}${isCurrent ? ' is-current' : ''}`}
+                    aria-current={isCurrent ? 'step' : undefined}
+                  >
+                    <span className="provisioning-step-marker" aria-hidden="true">
+                      {done ? '✓' : i + 1}
+                    </span>
+                    <Localized id={step.labelId}>
+                      <span className="provisioning-step-label">{step.fallback}</span>
+                    </Localized>
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="provisioning-step-progress">
+              <Localized
+                id="setup-provision-step-progress"
+                vars={{ current: String(currentStep === -1 ? stepDone.length : currentStep + 1), total: String(stepDone.length) }}
+              >
+                {'Step { $current } of { $total }'}
+              </Localized>
+            </p>
+          </nav>
           <Localized id="setup-provision-title">
             <h1>Set up this terminal</h1>
           </Localized>

@@ -60,6 +60,9 @@ vi.mock('@fluent/react', () => ({
           'setup-provision-desc': 'Sign in to link your free kasir.mu account, then you can start selling.',
           'setup-mode-local-desc': 'No account needed. Set up and start selling 100% offline immediately.',
           'setup-provision-mode-section': 'Setup Mode',
+          'setup-provision-step-account': 'Account',
+          'setup-provision-step-store': 'Shop',
+          'setup-provision-step-owner': 'Owner',
           'setup-mode-local-title': 'Standalone (Offline)',
           'setup-mode-linked-title': 'Link kasir.mu Account (Free)',
           'setup-provision-account-section': 'kasir.mu Account',
@@ -149,6 +152,15 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     fireEvent.change(screen.getByLabelText(/^PIN/i), { target: { value: '1234' } });
     fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
   };
+
+  /** The progress-rail <li> whose visible label is `name` (it carries aria-current). */
+  function stepLi(name: string): HTMLElement {
+    const li = screen
+      .getAllByRole('listitem')
+      .find((n) => n.textContent?.trim().endsWith(name));
+    if (!li) throw new Error(`no progress step labelled "${name}"`);
+    return li;
+  }
 
   // The account is the DEFAULT path, because the free plan attaches to one.
   // "Offline only" stays reachable — a merchant with no connection still has to
@@ -277,6 +289,75 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(await screen.findByText(/That code did not work/i)).toBeInTheDocument();
     expect(screen.queryByText(/Could not send the code/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/Verification code/i)).toBeInTheDocument();
+  });
+
+  // ── The progress rail ──────────────────────────────────────────────
+  //
+  // Measured on a 1366px tablet: the card is 1423px tall, so the submit button
+  // and the last two fields start below the fold. The rail is what tells the
+  // merchant how much form is left. Its steps are derived from the SAME values
+  // `canSubmit` gates on, so the rail cannot claim "done" while the button is
+  // still disabled — the two would drift apart otherwise.
+
+  it('marks step 1 current on first paint and finishes as the form fills', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // Offering three steps, none complete, positioned at the first.
+    // The three labels are the accessible names of their <li>, and aria-current
+    // sits on the <li> — not on the inner label span `getByText` returns.
+    const steps = screen.getAllByRole('listitem');
+    expect(steps).toHaveLength(3);
+    // The <li> is what carries aria-current; its label is a child span.
+    expect(stepLi('Account')).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByText(/Step 1 of 3/i)).toBeInTheDocument();
+
+    // Choosing the offline mode completes step 1 with nothing to link.
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    expect(screen.getByText(/Step 2 of 3/i)).toBeInTheDocument();
+    expect(stepLi('Account')).not.toHaveAttribute('aria-current');
+
+    // Picking a store type advances to the owner step.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.getByText(/Step 3 of 3/i)).toBeInTheDocument();
+    expect(stepLi('Owner')).toHaveAttribute('aria-current', 'step');
+  });
+
+  it('links the rail and the submit button: the last step completes exactly when submit enables', async () => {
+    // The load-bearing property. If these ever disagree, the merchant is told the
+    // form is finished while the button refuses, which is the dead-control defect
+    // the PIN messages fixed — reintroduced by the rail.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+    fillBasicForm();
+
+    expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
+    // All three markers show a check, and no step claims to be current.
+    expect(screen.getAllByText('✓')).toHaveLength(3);
+    expect(screen.queryByText(/Step \d of 3/i)?.textContent).toContain('3');
+  });
+
+  it('never marks a step done while submit is still disabled', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-mode-local'));
+
+    // Step 1 done, but the owner step is untouched — one check only.
+    expect(screen.getAllByText('✓')).toHaveLength(1);
+    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+
+    // Now fill EVERYTHING except the PIN agreement. The owner step must stay
+    // incomplete, because `canSubmit` still refuses. This is the half that
+    // actually pins the linkage: an earlier version of this test filled only
+    // step 1, so dropping the PIN check from the rail left it green.
+    fillBasicForm();
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '9999' } });
+    expect(screen.getByTestId('provision-submit')).toBeDisabled();
+    expect(screen.getAllByText('✓')).toHaveLength(2);
+    expect(stepLi('Owner')).toHaveAttribute('aria-current', 'step');
+
+    // Agreeing completes it, and the two advance together.
+    fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
+    expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
+    expect(screen.getAllByText('✓')).toHaveLength(3);
   });
 
   it('defaults to the linked mode and requires an account before submitting', async () => {
