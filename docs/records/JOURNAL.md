@@ -12036,6 +12036,25 @@ My earlier metric (row `scrollWidth - clientWidth`) read 0 through all of that b
 - `rustfmt --edition 2021 --check <files>` printed DOZENS of diffs for the staff files and was WRONG. This workspace is edition 2024 and the staff code uses `let` chains, which rustfmt cannot parse on 2021 — a parse failure makes it emit a full-file rewrite. `cargo fmt`, which reads the edition, reports those files clean. Trusting the hand-rolled invocation would have sent me to 'fix' formatting that was already correct.
 - Piping a check through `Select-Object -First N` had silently TRUNCATED the file list in two earlier attributions of this same round, so 'the only diff is X' was never established. Both mistakes pointed the same way — at code that was fine — which is exactly the failure mode a verification step exists to prevent.
 
+## 2026-09-23 — Two workspace gates driven to green: clippy and fmt (repo)
+
+**Context:** the staff audit left three repo-wide gates red, and clippy is the one NOTHING else in this repo will fix — `dev-ci.yml` runs no clippy job, so a finding there ships silently. This round closed the two mechanical ones and left the third attributed.
+
+**CLIPPY: exit 0.** Five changes across four files, each applied to a file that was CLEAN (committed) at the time — the rule is that a dirty file means someone else is mid-edit and gets skipped and reported, which is what happened to `platform/sync/src/queue.rs` (an in-flight C3 feature, whose own transient compile errors also surfaced and then resolved when that lane finished).
+- `apps/desktop-tauri/src/state.rs`: two unused imports (`Path`, `Duration`).
+- THE CONSEQUENCE WORTH RECORDING: removing them broke the desktop test target, because `state_tests.rs` is a `#[path]` child module and its `use super::*` does NOT count as a use of the parent's imports — they had only ever been 'used' by the tests. The fix was to move the two imports into the file that actually uses them, not to re-add them to the parent and certainly not to silence the lint.
+- `apps/cloud-server/src/sync_store_tests.rs`: `let mut` that never needed `mut`.
+- `crates/kasirmu-bridge/src/data_tests.rs`: `assert_eq!(x, false, ..)` -> `assert!(!x, ..)`.
+
+**FMT: exit 0.** Two findings, both in committed files: an import order in `crates/kasirmu-core/src/db/purchase_orders.rs` and one unwrapped `assert!` in `crates/kasirmu-plugin/src/manifest_tests.rs`. `rustfmt --edition 2024` was run on those two paths ONLY, never `cargo fmt -p <crate>` — and the changed-file set was then verified by MTIME, because two other core test files are dirty with another lane's formatting work: they were last written 90 minutes earlier, so the formatter had not touched them.
+
+**Both gates were then re-run by the parent, not taken from the reports:** `CLIPPY_EXIT=0` and `FMT_EXIT=0`. Commits `b72d8d89a` (clippy, four files) and `8b9720d5a` (fmt, two files).
+
+**The quota guard now sees the door that was missed** (`4e0838f84`). `scripts/verify-quota-coverage.sh` scans INSERTs only, which is exactly why an UPDATE-based reactivation bypassed it. It gained a second narrow rule for `UPDATE users SET ... is_active = <truthy>`, graded on the SAME ladder (the existing verdicts were extracted into one `grade_site()` rather than duplicated), with file discovery widened so the rule is not blind to `bridge/staff.rs` (which gates an activation but holds no INSERT). The parent ran it: plain `sites: 19 covered: 12 known gaps: 3 violations: 4`; self-test `sites=5 covered=3 violations=2` with a gated activation reading GATED-IN-FN, an ungated one UNCOVERED, and a DEACTIVATION deliberately not a site at all. Measured correction from that run, which the subagent made against its own first draft: the real activation SQL lives only in `core/db/staff.rs::update_user_in_tx` and reads GATED-IN-CALLER, not GATED-IN-FN, because the gate lives in its callers. The 4 violations are PRE-EXISTING (proven by running HEAD's own script against the same tree: same four) and sit in the ADR-56 bootstrap path (`provision_device_inner`, `create_workspaces_in_tx`, `seed_provisioned_baseline`). The guard is wired into NO workflow, so this red is visible debt rather than a blocking gate — which is exactly what it is: four doors nobody has yet gated or excused.
+
+**Still open:** the workspace test run's peer-owned failing targets, the peers' in-flight files, the Android shell (no device, no AVD), and the dead staff FTL keys (four proven dead, plus one cited only by the corrected guide row).
+
+
 
 
 
