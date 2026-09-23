@@ -3,8 +3,13 @@
  *
  * Hostname routing:
  *   kasir.mu          → marketing site (static assets, runtime config, contact form)
+ *   www.kasir.mu      → 301 to the apex (alias with no content of its own)
  *   dashboard.kasir.mu → user dashboard (auth-gated, placeholder for now)
  *   admin.kasir.mu     → admin panel (auth-gated, placeholder for now)
+ *
+ * Any plain-http request is 301'd (308 for non-GET) to the same host over https
+ * before anything else, because the zone's `always_use_https` setting is off and
+ * the same pages were otherwise served over both schemes.
  *
  * Auth gate (ADR #42):
  *   Dashboard subdomains check for an httpOnly `oz_session` cookie. If missing:
@@ -269,20 +274,39 @@ export default {
     const url = new URL(request.url);
     const hostname = url.hostname;
 
-    // ── Canonical host: www → apex (301) ──────────────────────────────
-    // Must come first: on www there is nothing to serve, only somewhere to send
-    // the visitor, and every later branch (robots.txt, the dashboard redirect,
-    // the admin gate) assumes a host that owns its own content. Measured before
-    // this: www responded 522 to every path.
-    if (hostname === WWW_HOST) {
+    // ── Canonical origin: https on the apex ──────────────────────────
+    // Two things a request must be to reach content, both answered in ONE hop
+    // rather than as a chain:
+    //   http://<host>/…        → https://<same host>/…   (the scheme is not a
+    //                            content decision, and the same page over http
+    //                            is duplicate content on an insecure scheme)
+    //   https://www.kasir.mu/… → https://kasir.mu/…      (the alias owns no
+    //                            content of its own — see WWW_HOST)
+    // The host is preserved for everything that is not www, so
+    // http://admin.kasir.mu/settings lands back on the admin host, not on the
+    // marketing site.
+    //
+    // Must come first: every later branch (robots.txt, the dashboard redirect,
+    // the admin gate) assumes a host and scheme that own their own content.
+    // MEASURED 2026-09-23 before this: http://kasir.mu/en/ answered 200
+    // (CF-Cache-Status HIT, no Strict-Transport-Security), and the zone's
+    // `always_use_https` setting reads "off", so the redirect cannot be assumed
+    // from the edge. www answered 522 on every path.
+    const canonicalHost = hostname === WWW_HOST ? MARKETING_HOST : hostname;
+    if (url.protocol !== 'https:' || hostname !== canonicalHost) {
       // B24: single-slash, same rule as the exchange redirect below. A path like
       // '//evil.com' would otherwise make the Location header protocol-relative
       // and turn the canonical redirect into an OPEN REDIRECT.
       const path = '/' + url.pathname.replace(/^[/\\]+/, '');
+      // 301 for the methods a crawler uses; 308 for the rest so an API POST is
+      // not silently replayed as a GET by the redirect itself (a 301 on POST is
+      // allowed to become a GET, which would turn /api/contact into a 405).
+      const method = request.method.toUpperCase();
+      const status = method === 'GET' || method === 'HEAD' ? 301 : 308;
       return new Response(null, {
-        status: 301,
+        status,
         headers: {
-          Location: `https://${MARKETING_HOST}${path}${url.search}`,
+          Location: `https://${canonicalHost}${path}${url.search}`,
           // A permanent canonical redirect is meant to be cached; nothing here
           // varies per visitor.
           'Cache-Control': 'public, max-age=3600',

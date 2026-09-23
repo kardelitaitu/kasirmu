@@ -26,8 +26,12 @@ const searchDocs = toSearchDocs(allDocs, locale);
 const first = docs
   .filter((d) => d.data.category === 'gettingStarted')
   .sort((a, b) => a.data.order - b.data.order)[0];
+// Trailing slash matters: the built page lives at /<locale>/docs/<slug>/, and a
+// link without it costs every visitor and every crawler a 307 hop to the
+// canonical URL the sitemap declares. Keep this in step with the docs links in
+// src/content/docs/*/api-read-tiers.md.
 const guideTarget = first
-  ? `/${locale}/docs/${first.id.slice(locale.length + 1)}`
+  ? `/${locale}/docs/${first.id.slice(locale.length + 1)}/`
   : `/${locale}/`;
 
 // The dev portal (mdBook) is English-only and served from public/ verbatim —

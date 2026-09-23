@@ -133,6 +133,44 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Location')).toBe(expected);
   });
 
+  // ── Canonical scheme: http → https ──────────────────────────────
+
+  it('301s a plain-http request to https on the same path and query', async () => {
+    // Measured live 2026-09-23: http://kasir.mu/en/ answered 200 (the zone's
+    // always_use_https is off), so the same page existed on both schemes.
+    const res = await worker.fetch(new Request('http://kasir.mu/en/docs/offline-mode/?tab=setup'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/docs/offline-mode/?tab=setup');
+  });
+
+  it('sends http+www to the apex https in ONE hop', async () => {
+    const res = await worker.fetch(new Request('http://www.kasir.mu/en/pricing/?plan=plus'), mockEnv);
+
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/en/pricing/?plan=plus');
+  });
+
+  it('keeps the host on an http request to a subdomain', async () => {
+    const admin = await worker.fetch(new Request('http://admin.kasir.mu/settings'), mockEnv);
+    expect(admin.status).toBe(301);
+    expect(admin.headers.get('Location')).toBe('https://admin.kasir.mu/settings');
+
+    const dash = await worker.fetch(new Request('http://dashboard.kasir.mu/'), mockEnv);
+    expect(dash.status).toBe(301);
+    expect(dash.headers.get('Location')).toBe('https://dashboard.kasir.mu/');
+  });
+
+  it('preserves the method on a non-GET redirect (308, not a 301 that becomes GET)', async () => {
+    const res = await worker.fetch(
+      new Request('http://kasir.mu/api/contact', { method: 'POST', body: '{}' }),
+      mockEnv,
+    );
+
+    expect(res.status).toBe(308);
+    expect(res.headers.get('Location')).toBe('https://kasir.mu/api/contact');
+  });
+
   it('collapses a double-slash www path (B24: no protocol-relative Location)', async () => {
     const res = await worker.fetch(new Request('https://www.kasir.mu//evil.example/x'), mockEnv);
 
@@ -140,9 +178,10 @@ describe('Cloudflare Worker — worker.ts', () => {
     expect(res.headers.get('Location')).toBe('https://kasir.mu/evil.example/x');
   });
 
-  it('leaves the apex, dashboard and admin hosts alone', async () => {
+  it('leaves https apex, dashboard and admin alone (no self-redirect)', async () => {
     const apex = await worker.fetch(new Request('https://kasir.mu/en/docs'), mockEnv);
     expect(apex.status).toBe(200);
+    expect(apex.headers.get('Location')).toBeNull();
 
     const dashboard = await worker.fetch(new Request('https://dashboard.kasir.mu/'), mockEnv);
     expect(dashboard.status).toBe(302);
@@ -150,6 +189,7 @@ describe('Cloudflare Worker — worker.ts', () => {
 
     const admin = await worker.fetch(new Request('https://admin.kasir.mu/'), mockEnv);
     expect(admin.status).toBe(200);
+    expect(admin.headers.get('Location')).toBeNull();
   });
 
   // ── Auth gate (ADR #42) ─────────────────────────────────────────

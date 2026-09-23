@@ -9,7 +9,7 @@ updated: "2026-09-01"
 ## Overview
 
 Every JWT can optionally carry a `permissions` claim — a list of
-[permission-registry](/en/docs/user-roles) keys that gate GET requests.
+[permission-registry](/en/docs/user-roles/) keys that gate GET requests.
 A token without the claim keeps **full read** access (backward
 compatible — existing integrations work untouched).
 
@@ -135,7 +135,7 @@ the tiers:
 - `audit:view`
 
 Grow the system by adding keys here — never by inventing a parallel
-taxonomy. See the [user roles guide](/en/docs/user-roles) for the
+taxonomy. See the [user roles guide](/en/docs/user-roles/) for the
 full registry.
 
 ## Questions?
