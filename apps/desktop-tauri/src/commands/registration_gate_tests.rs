@@ -112,7 +112,18 @@ mod debt;
 /// and records the reason in docs/records/JOURNAL.md, which is what the ceiling pin asks of
 /// a RISE. The provenance is the point: this pass records what landed, it does not approve
 /// it.
-const REGISTERED_FLOOR: usize = 469;
+///
+/// The 469 -> 472 step is C8 S5a, the three restore IPC commands
+/// (`data::list_restore_candidates`, `data::restore_status`,
+/// `data::restore_prepare`). All three arrive ALREADY GATED, so this pass moves no
+/// ceiling, no class count and no ledger row — the same shape as the 463 -> 468
+/// step above, and for the same reason this EQUALITY is the leg that sees them.
+/// `restore_prepare` requires `SETTINGS_EDIT` (it writes the request file that
+/// replaces the database on the next boot); the two reads require
+/// `SETTINGS_READ`, which is the read half of the same family and is NOT the
+/// write permission — seeing that a restore is pending must not confer the right
+/// to request one.
+const REGISTERED_FLOOR: usize = 472;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is
