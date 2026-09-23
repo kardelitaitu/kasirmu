@@ -100,6 +100,9 @@ pub enum Command {
     /// Report (default) or delete (--confirm) credential-key rows in the settings delta ledger.
     #[command(long_about = crate::commands::credential_deltas::LONG_HELP.as_str())]
     CredentialDeltas(CredentialDeltasArgs),
+    /// Report (read-only) where stock_summary disagrees with the stock_movements ledger.
+    #[command(long_about = crate::commands::stock_variance::LONG_HELP)]
+    StockVariance(StockVarianceArgs),
 }
 
 #[derive(Debug, Args)]
@@ -123,6 +126,17 @@ pub struct CredentialDeltasArgs {
     /// Delete the matched ledger rows. Without this flag the command only reports.
     #[arg(long)]
     pub confirm: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct StockVarianceArgs {
+    /// Only report pairs whose absolute difference is at least this many units.
+    /// 0 also reports consistent pairs (difference 0).
+    #[arg(long, default_value = "1")]
+    pub min_difference: i64,
+    /// Maximum rows to return. The report's hard ceiling is 1000.
+    #[arg(long, default_value = "100")]
+    pub limit: i64,
 }
 
 #[derive(Debug, Args)]
