@@ -2419,6 +2419,21 @@ export function applyScopedAliases(): void {
 """
 
 
+# WIRING DECISION (C55, 2026-09-23): this self-test is NOT invoked by any always-run gate.
+# .github/workflows/dev-ci.yml:694, scripts/check.sh:71 and scripts/run-pre-push.py:252 all call
+# this script WITHOUT --self-test, so a case here can sit red for weeks while every gate stays
+# green -- which is exactly how the two stale expectations fixed in C55 survived. It belongs as
+# its own CI step immediately beside "IPC command parity" in dev-ci.yml, mirroring the sibling
+# that already does this: "Scoped ambient reads self-test" runs verify-scoped-reads.py
+# --self-test two steps below. What it would block is a regression in the LEG rather than in the
+# tree -- a parser that stops seeing the surface it claims to check, a mask or guard rule that
+# goes blind -- which is the class these cases exist to catch and which no bare run can see.
+# The cost is seconds and it is hermetic: every case writes to a TemporaryDirectory and rebinds
+# ALLOWLIST_PATH, so it never touches the real allowlist (asserted by the case that checks the
+# path was restored). It is deliberately NOT added to scripts/run-pre-push.py's static gates:
+# that path runs on every agent push and this is a CI-depth check, not a push-blocking one.
+# The step itself lives in dev-ci.yml, which is outside this file's fence -- filed as a
+# Fence_Request rather than assumed.
 def self_test() -> int:
     """Exercise the dev-mock parsers on synthetic sources and prove they can fail.
 
@@ -3878,31 +3893,42 @@ def self_test() -> int:
     case("fallback both arrow forms are reported together without doubling a name",
          len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
                                 {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
-    # And the real tree, so a regex that matched only its own fixture cannot pass: if a future
-    # pass registers these doors and this case goes red, delete the case after reading the
-    # print, not before -- it is the only thing here that knows the shape was ever broken.
-    real_fb = no_token_fallbacks(ui_runtime_files(), set(extract_handlers(REPO_ROOT / SHELLS["tablet"])))
-    # LINEAGE OF THE NAME, which is what licenses this case to carry a different one than it was
-    # born with: it pinned "list_scanners" until 3162b97b6 ("refactor(ui): delete the scanner
-    # hooks' no-session arms") retired that name from the else-arm -- it deleted
-    # `export const listScanners = (): Promise<ScannerInfo[]> => loggedInvoke('list_scanners')`
-    # from ui/src/api/hardware.ts along with the ternary that reached it (fallback 10->7 desktop,
-    # 5->2 tablet). The registered set never moved -- "list_scanners" is absent from BOTH shells
-    # today, exactly as it was when this case was written -- so the gate did not break and the
-    # tree did not regress: the defect this arm was written to witness was REPAIRED for the
-    # scanner trio, and a guard that keeps asserting a repaired defect is a lie that prints
-    # False. It is re-anchored here to the one no-session fallback the real tree still holds,
-    # "list_products" -- unregistered in both shells, reached at
-    # ui/src/features/products/useProducts.ts:132.
-    # THE NAME IS NOT DROPPED: `len(real_fb) >= 1` alone passes for ANY fallback, so it cannot
-    # say the specific arm this leg was written for is still reachable -- which is why this case,
-    # and not the three synthetic ones above, is the thing that knows the shape was ever broken.
-    # One named witness stays; its population now rides in the case name, so a future red prints
-    # its own denominator instead of a bare False. Move the name only under a proven red, and
-    # read the print before deleting anything.
-    case("fallback the real tablet tree exposes the shape the leg was written for "
-         f"[n={len(real_fb)} names={sorted(real_fb)}]",
-         len(real_fb) >= 1 and "list_products" in real_fb)
+    # And the real tree, so a regex that matched only its own fixture cannot pass.
+    #
+    # LINEAGE, because this case has now gone stale twice for one reason and the fix has to
+    # name it: it pinned "list_scanners" until 3162b97b6 deleted that name from the else-arm,
+    # then "list_products" until b82373a80 ("finish the scoped-catalogue migration - drop the
+    # unscoped doors") deleted the unscoped product wrappers outright. Both times the LEG was
+    # right and the TREE was better -- the defect this arm witnesses had been repaired -- and
+    # both times the case reddened anyway, because a pinned name is a guard that forbids the
+    # very repair it exists to encourage.
+    #
+    # So the anchor is the MECHANISM, not a name. What the leg guarantees, and what is asserted
+    # below, is structural: (1) production UI still reaches at least one command through a
+    # no-session branch that its own shell does not register -- the shape exists in the real
+    # tree; (2) every name reported really is unregistered in the shell that reported it, so a
+    # witness cannot be a false positive; (3) every name carries a file:line site, so a red is
+    # actionable. That is STRONGER than the count it replaces, which checked neither (2) nor
+    # (3), and it no longer forbids a repair from landing.
+    #
+    # It is measured on BOTH shells, because the population moved and pinning the shell would
+    # repeat the same mistake one level up. The tablet measures 0 today -- a CLEAN result, not a
+    # blind leg: the same function over the same files reports witnesses against the desktop
+    # shell, so the difference is the registered set and not a walk that stopped walking. The
+    # synthetic cases above are what prove the leg can still find the shape at all.
+    _fb_ui = ui_runtime_files()
+    real_fb_shells = {}
+    for _fb_shell in ("tablet", "desktop"):
+        _fb_reg = set(extract_handlers(REPO_ROOT / SHELLS[_fb_shell]))
+        real_fb_shells[_fb_shell] = (_fb_reg, no_token_fallbacks(_fb_ui, _fb_reg))
+    real_fb = {n: v for _reg, _found in real_fb_shells.values() for n, v in _found.items()}
+    real_fb_sound = all(n not in _reg for _reg, _found in real_fb_shells.values() for n in _found)
+    real_fb_by_shell = {s: sorted(f) for s, (_r, f) in sorted(real_fb_shells.items())}
+    case("fallback the real tree still exposes the shape the leg was written for "
+         f"[n={len(real_fb)} names={sorted(real_fb)} by_shell={real_fb_by_shell}]",
+         len(real_fb) >= 1
+         and real_fb_sound
+         and all(all(":" in site for site in sites) for sites in real_fb.values()))
 
     # The reachability buckets, same discipline: without the second and third cases the first
     # would pass for a classifier that counts a wrapper's own definition as one of its users,
@@ -4056,8 +4082,29 @@ def self_test() -> int:
          _blind_import_only == {})
     _blind_real_tab = extract_handlers(REPO_ROOT / SHELLS["tablet"])
     _blind_real_gaps = {c for c in extract_ui_commands() if c not in _blind_real_tab}
-    case("case 24  real tree: the leg still sees the nine shared-UI calls it found first run",
-         len(shell_blind_findings(ui_runtime_files(), _blind_real_tab, _blind_real_gaps)) == 9)
+    # The real-tree half of case 24, and the reason it does NOT pin a count. The count was 9
+    # when this case was written; C47 (464782f53) repaired three of the nine, the leg dropped
+    # them on its own with no edit here, and the tree now measures 6. A frozen number would
+    # have called that repair a regression and forbidden the leg from ever succeeding -- the
+    # same stale-expectation failure the fallback case above documents at length. What the
+    # mechanism actually guarantees is structural, and none of it is a population size:
+    #   1. it still REACHES the real tree -- a walk that silently returned {} would pass every
+    #      synthetic case in this block, so non-emptiness is what keeps them honest;
+    #   2. every name it reports is a command this shell genuinely does not register. That is
+    #      the assertion that matters, because this leg decides whether an allowlist entry is
+    #      hiding a live call: a finding outside `gaps` would be a false positive, and a false
+    #      positive here reads as somebody's legitimate exemption being wrong;
+    #   3. every name carries file:line#wrapper evidence, so a red is actionable.
+    # The population rides in the case NAME, so a future red prints its own denominator and the
+    # next reader can tell a repair (shrank) from a regression (grew) without re-deriving it.
+    _blind_real_found = shell_blind_findings(ui_runtime_files(), _blind_real_tab, _blind_real_gaps)
+    case("case 24  real tree: every shared-UI call the leg reports is one this shell cannot "
+         f"serve, and it still reports at least one [n={len(_blind_real_found)} "
+         f"names={sorted(_blind_real_found)}]",
+         len(_blind_real_found) >= 1
+         and all(name in _blind_real_gaps for name in _blind_real_found)
+         and all(all("#" in site and ":" in site for site in sites)
+                 for sites in _blind_real_found.values()))
 
     # Real tree last: the gate must still see the loop where it lives today, and it must
     # see more than the router alone. This is the assertion the shipped bug fails.
