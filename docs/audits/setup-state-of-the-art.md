@@ -820,3 +820,55 @@ the shell-owns-orientation fence is respected).
 Negative control: deleting the compact block makes the contract test fail.
 
 **Commit:** `77a955d9d`.
+
+---
+
+## Round 22 — a failed setup showed the merchant NOTHING (off-screen error)
+
+This is the most consequential defect of the audit, and it was found by measuring the one thing
+three previous rounds had never tested: **what a human actually sees when provisioning fails.**
+
+### How it was found
+
+Rounds 19-21 all measured geometry. None of them forced a *failure*. The E2E suite's completion
+test succeeds, and Playwright auto-scrolls, so both had always looked fine.
+
+Forcing `provision_device` to reject (by patching the dev-mock's own `handlers` registry in-page —
+`window.__TAURI_INTERNALS__` is the wrong seam, it bypasses the mock entirely and nothing renders)
+and then measuring where the error lands:
+
+```
+BEFORE  desktop {"scrollTop":246, "errTop":-87, "errInView":false}
+AFTER   desktop {"errTop":681, "errInView":true}
+```
+
+**On the desktop POS viewport the error rendered at `errTop: -87` — 87px ABOVE the viewport.** The
+merchant scrolls ~250px down to reach "Finish setup", presses it, provisioning fails, and the screen
+shows no change at all. The failure message existed, was correct, and was invisible.
+
+### The fix
+
+The submit failure now has its own state (`submitError`) rendered as a sibling of the submit
+button, in the gap the user is already looking at. The form-wide banner at the top of the card is
+kept for the errors raised *before* the user scrolls — chiefly
+`setup-provision-account-required`, which fires while the merchant is still at the top choosing a
+mode, where the banner is the right place. The two paths are deliberately not collapsed.
+
+### Verification
+
+**22/22 E2E** including a new test that asserts the error is `toBeInViewport` — not `toBeVisible`,
+since an off-screen element is still "visible" to Playwright and off-screen was exactly the bug ·
+`ProvisioningFlow.test.tsx` **25/25** · `screenExtraction` **272/272** · full UI suite **606 files /
+10,347 tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing**.
+
+Negative control: routing the failure back to `setErrorMsg` makes the new test fail with
+`Unable to find an element by: [data-testid="provision-submit-error"]`.
+
+### What this says about the last three rounds
+
+Rounds 19, 20 and 21 argued about pixels while this was sitting one probe away. Each of them
+tuned a layout that a merchant could not use when anything went wrong. The lesson is not "measure
+more" — I measured constantly — but **measure the failure path, not just the happy-path geometry.**
+A form that is 700px too tall is a nuisance; a form that silently swallows its own error is broken.
+
+**Commit:** `20cd628f2`.
