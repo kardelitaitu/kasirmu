@@ -381,6 +381,151 @@ async fn post_json(
         "{what} at {base_url} answered {status}"
     )))
 }
+// ── Email account auth (website-plan.md §5/§11) ───────────────────────
+//
+// The email half of the wizard's account step: prove an address by a 6-digit
+// code, or by a password the account already set. Both end in the same place —
+// a session — and both live on the licence server, so in the crate they sit
+// beside the device-link calls rather than in the shell.
+//
+// **Why Rust and not `fetch` from the WebView.** `/web/*` enforces an Origin
+// allowlist (`webOriginAllowed`, apps/license-server/web_otp.go:466). A Tauri
+// WebView sends `Origin: tauri://localhost` (desktop) or
+// `https://tauri.localhost` (Android), and neither is on it, so a browser call
+// would be refused with 403 — the same status a CORS failure wears. From here
+// there is no Origin header at all, which the server reads as a non-browser
+// caller and allows. This is the seam every other licence call already uses.
+
+/// Path an emailed sign-in code is requested on.
+pub const WEB_OTP_REQUEST_PATH: &str = "/api/v1/web/request-otp";
+/// Path an emailed sign-in code is spent on.
+pub const WEB_OTP_VERIFY_PATH: &str = "/api/v1/web/verify-otp";
+/// Path an email + password sign-in is made on.
+pub const WEB_LOGIN_PASSWORD_PATH: &str = "/api/v1/web/login";
+
+/// The session a completed email sign-in earned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebSession {
+    /// Bearer token for the `/web/*` surface.
+    pub token: String,
+}
+
+/// Asks the licence server to email a 6-digit sign-in code.
+///
+/// Register-or-login: an address with no account yet signs one up, and the
+/// reply is identical either way so the call never reveals whether the account
+/// existed. A refusal is a field validation — 429 (too many attempts), 503
+/// (no SMTP configured) — so the wizard can explain it rather than say "retry".
+#[cfg(feature = "sync-http")]
+pub async fn request_web_login_code(base_url: &str, email: &str) -> Result<(), CoreError> {
+    let body = serde_json::json!({ "email": email });
+    post_web_json(
+        base_url,
+        WEB_OTP_REQUEST_PATH,
+        &body,
+        "sign-in code request",
+        "email",
+    )
+    .await?;
+    Ok(())
+}
+
+/// Spends an emailed sign-in code and returns the session it proved.
+#[cfg(feature = "sync-http")]
+pub async fn verify_web_login_code(
+    base_url: &str,
+    email: &str,
+    code: &str,
+) -> Result<WebSession, CoreError> {
+    let body = serde_json::json!({ "email": email, "code": code });
+    let response = post_web_json(
+        base_url,
+        WEB_OTP_VERIFY_PATH,
+        &body,
+        "sign-in code check",
+        "code",
+    )
+    .await?;
+    response
+        .json()
+        .await
+        .map_err(|e| CoreError::Internal(format!("sign-in code response: {e}")))
+}
+
+/// Signs in with an email address and the account's password.
+///
+/// An account that never set a password gets the same generic 401 as a wrong
+/// one, by design (`web_password.go:17`) — so the caller must offer the code
+/// route as the way forward rather than reading a 401 as "wrong password".
+#[cfg(feature = "sync-http")]
+pub async fn login_web_password(
+    base_url: &str,
+    email: &str,
+    password: &str,
+) -> Result<WebSession, CoreError> {
+    let body = serde_json::json!({ "email": email, "password": password });
+    let response = post_web_json(
+        base_url,
+        WEB_LOGIN_PASSWORD_PATH,
+        &body,
+        "password sign-in",
+        "password",
+    )
+    .await?;
+    response
+        .json()
+        .await
+        .map_err(|e| CoreError::Internal(format!("password sign-in response: {e}")))
+}
+
+/// POSTs a JSON body to a `/web/*` endpoint, mapping refusals to typed errors.
+///
+/// Deliberately unauthenticated and Origin-free: these are the endpoints that
+/// *establish* a session, so there is no bearer key to send, and their origin
+/// allowlist admits a request that carries no `Origin` at all.
+#[cfg(feature = "sync-http")]
+async fn post_web_json(
+    base_url: &str,
+    path: &str,
+    body: &serde_json::Value,
+    what: &str,
+    field: &'static str,
+) -> Result<reqwest::Response, CoreError> {
+    let url = format!("{}{path}", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .timeout(LINK_TIMEOUT)
+        .build()
+        .map_err(|e| CoreError::Internal(format!("{what} client: {e}")))?;
+    let response =
+        client.post(&url).json(body).send().await.map_err(|e| {
+            CoreError::Internal(format!("{what} request to {base_url} failed: {e}"))
+        })?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(response);
+    }
+    // The refusals a merchant can act on: a bad or spent code, a wrong
+    // password, an attempt budget spent (429), or SMTP unconfigured (503).
+    // 403 is included because the allowlist answers with it — if it ever
+    // fires here, the message says so rather than reading as a network fault.
+    if matches!(
+        status,
+        reqwest::StatusCode::BAD_REQUEST
+            | reqwest::StatusCode::FORBIDDEN
+            | reqwest::StatusCode::UNAUTHORIZED
+            | reqwest::StatusCode::TOO_MANY_REQUESTS
+            | reqwest::StatusCode::SERVICE_UNAVAILABLE
+    ) {
+        let detail = response.text().await.unwrap_or_default();
+        return Err(CoreError::Validation {
+            field,
+            message: format!("the licence server refused {what}: {detail}"),
+        });
+    }
+    Err(CoreError::Internal(format!(
+        "{what} at {base_url} answered {status}"
+    )))
+}
 
 #[cfg(test)]
 #[path = "desktop_link_tests.rs"]

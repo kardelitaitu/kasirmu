@@ -57,6 +57,45 @@ pub async fn link_device_google(
     Ok(account)
 }
 
+// ── Email account auth (the wizard's email login) ─────────────────────
+//
+// Deliberately credential-free and stateless: these establish a session, so
+// there is no device key to read and nothing to store. They exist as commands
+// rather than as `fetch` calls because `/web/*` enforces an Origin allowlist
+// the Tauri origins are not on — see `kasirmu_core::desktop_link`.
+
+/// Emails a 6-digit sign-in code to an address (register-or-login).
+#[tauri::command]
+pub async fn request_email_login_code(email: String) -> Result<(), AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::request_web_login_code(&base_url, &email)
+        .await
+        .map_err(Into::into)
+}
+
+/// Spends an emailed sign-in code, returning the session it proved.
+#[tauri::command]
+pub async fn verify_email_login_code(
+    email: String,
+    code: String,
+) -> Result<kasirmu_core::desktop_link::WebSession, AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::verify_web_login_code(&base_url, &email, &code)
+        .await
+        .map_err(Into::into)
+}
+
+/// Signs in with an email address and the account's password.
+#[tauri::command]
+pub async fn login_with_email_password(
+    email: String,
+    password: String,
+) -> Result<kasirmu_core::desktop_link::WebSession, AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::login_web_password(&base_url, &email, &password)
+        .await
+        .map_err(Into::into)
+}
 /// Email a link code to this device's account address (ADR #54 §2.6).
 ///
 /// The no-browser route: the tablet cannot use Google's browser flows, and an account that is

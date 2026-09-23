@@ -87,6 +87,41 @@ pub async fn link_device_email_consume(
     Ok(account)
 }
 
+/// Emails a 6-digit sign-in code to an address (register-or-login).
+///
+/// Goes through Rust rather than the WebView: `/web/*` enforces an Origin
+/// allowlist the Tauri origins are not on (see `kasirmu_core::desktop_link`).
+#[tauri::command]
+pub async fn request_email_login_code(email: String) -> Result<(), AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::request_web_login_code(&base_url, &email)
+        .await
+        .map_err(Into::into)
+}
+
+/// Spends an emailed sign-in code, returning the session it proved.
+#[tauri::command]
+pub async fn verify_email_login_code(
+    email: String,
+    code: String,
+) -> Result<kasirmu_core::desktop_link::WebSession, AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::verify_web_login_code(&base_url, &email, &code)
+        .await
+        .map_err(Into::into)
+}
+
+/// Signs in with an email address and the account's password.
+#[tauri::command]
+pub async fn login_with_email_password(
+    email: String,
+    password: String,
+) -> Result<kasirmu_core::desktop_link::WebSession, AppError> {
+    let base_url = kasirmu_core::attestation::resolved_origin().url;
+    kasirmu_core::desktop_link::login_web_password(&base_url, &email, &password)
+        .await
+        .map_err(Into::into)
+}
 /// Stores the sync credential a completed link earned, when one was issued.
 ///
 /// A link that earned nothing is not an error: the account is linked either way, and the reply's
