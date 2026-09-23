@@ -1522,7 +1522,10 @@ fn write_assignment_scope_leaves_nothing_behind_when_a_later_step_fails() {
             scope_id: None,
         },
     );
-    assert!(err.is_err(), "the unknown workspace key must abort the write");
+    assert!(
+        err.is_err(),
+        "the unknown workspace key must abort the write"
+    );
 
     // The FIRST scope must still be intact — not the new branches with no
     // workspaces, and not a deleted branch set.
