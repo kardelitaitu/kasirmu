@@ -14,6 +14,8 @@ interface Props {
   identities: SignInMethod[] | null;
   unlinkingId: string | null;
   unlinkError: string | null;
+  /** The method the last successful unlink removed; drives the status line. */
+  unlinkedMethod: { id: string; provider: string } | null;
   onUnlink: (identity: SignInMethod) => void;
 }
 
@@ -25,7 +27,7 @@ interface Props {
  * states the property that makes the Unlink button safe to press: the account's
  * email code always works, so removing a linked method cannot lock anyone out.
  */
-export default function AccountSignInMethods({ labels, identities, unlinkingId, unlinkError, onUnlink }: Props) {
+export default function AccountSignInMethods({ labels, identities, unlinkingId, unlinkError, unlinkedMethod, onUnlink }: Props) {
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.signInMethods')}>
       <h2 className="text-lg font-semibold">{t(labels, 'account.signInMethods')}</h2>
@@ -58,6 +60,15 @@ export default function AccountSignInMethods({ labels, identities, unlinkingId, 
 
       {unlinkError && (
         <p className="mt-3 text-sm text-danger" role="alert">{unlinkError}</p>
+      )}
+
+      {/* Announced, not just drawn: the row is gone by now, so this is the only
+          signal that the unlink worked — and it repeats the property that makes
+          it safe (the email code still works). */}
+      {unlinkedMethod && (
+        <p className="mt-3 text-sm text-success" role="status">
+          {t(labels, 'account.methodUnlinked').replace('{provider}', providerName(labels, unlinkedMethod.provider))}
+        </p>
       )}
 
       <p className="mt-3 text-xs text-muted">{t(labels, 'account.signInMethodsAlwaysEmail')}</p>

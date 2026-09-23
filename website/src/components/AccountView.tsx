@@ -98,6 +98,7 @@ export const ACCOUNT_LABELS = [
   'account.contactSupport',
   'account.copied',
   'account.copyKey',
+  'account.deviceRevoked',
   'account.devices',
   'account.devicesHint',
   'account.downloadApp',
@@ -109,6 +110,7 @@ export const ACCOUNT_LABELS = [
   'account.invoiceSubject',
   'account.license',
   'account.licenseKey',
+  'account.methodUnlinked',
   'account.loading',
   'account.logout',
   'account.noSubscription',
@@ -273,15 +275,21 @@ export default function AccountView({ locale, labels }: Props) {
     setUseMidtrans(r === 'id' || (!r && locale === 'id'));
   }, [region, locale]);
   // Device revoke state: record id currently being revoked, plus the last
-  // failure message (shown inline on the device row).
+  // failure message (shown inline on the device row) and the machine id of the
+  // last successful revoke, which is what the row's success line reports.
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [revokedMachine, setRevokedMachine] = useState<string | null>(null);
 
   // Linked sign-in methods (ADR #54). null means "not loaded yet", which is why the
   // section renders nothing rather than an empty state while the fetch is in flight.
   const [identities, setIdentities] = useState<SignInMethod[] | null>(null);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  // The unlinked method, kept as the pair the success line needs: the row is
+  // gone from `identities` after a successful unlink, so the provider id has to
+  // survive here for the section to name it (and localise "google" → "Google").
+  const [unlinkedMethod, setUnlinkedMethod] = useState<{ id: string; provider: string } | null>(null);
 
   useEffect(() => {
     // The URL comes from the render scope (`API`, a dependency below) rather
@@ -435,12 +443,18 @@ export default function AccountView({ locale, labels }: Props) {
     if (!token) return;
     setRevokingId(device.id);
     setRevokeError(null);
+    setRevokedMachine(null);
     try {
       const res = await fetch(`${API}/api/v1/web/devices/${encodeURIComponent(device.id)}/revoke`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(`revoke failed (${res.status})`);
+      // The revoke is a destructive action with no navigation and no dialog to
+      // dismiss, so without this the only feedback was a badge flipping in a
+      // list the user may not be looking at. Measured 2026-09-23: the response
+      // refetched the list and rendered no status text at all.
+      if (mountedRef.current) setRevokedMachine(device.machine_id);
       // Mark this device revoked in local state immediately; refresh the
       // full list so any server-side ordering is preserved. If the refresh
       // fails (null), keep the existing list and just stamp the revoked
@@ -466,12 +480,16 @@ export default function AccountView({ locale, labels }: Props) {
     if (!token) return;
     setUnlinkingId(method.id);
     setUnlinkError(null);
+    setUnlinkedMethod(null);
     try {
       const res = await fetch(`${API}/api/v1/web/identities/${encodeURIComponent(method.id)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error(String(res.status));
+      // Same reason as the revoke line above: the row disappearing IS the only
+      // feedback otherwise, and it is silent to a screen reader.
+      if (mountedRef.current) setUnlinkedMethod({ id: method.id, provider: method.provider });
       // Drop the row locally, then reconcile with the server list. If the
       // refresh fails (null) the removal still stands — the DELETE succeeded.
       const fresh = await fetchIdentities(API);
@@ -638,6 +656,7 @@ export default function AccountView({ locale, labels }: Props) {
           licenseTierKey={effectiveTier}
           revokingId={revokingId}
           revokeError={revokeError}
+          revokedMachine={revokedMachine}
           onRevoke={(d) => void revokeDevice(d)}
         />
       )}
@@ -649,6 +668,7 @@ export default function AccountView({ locale, labels }: Props) {
           identities={identities}
           unlinkingId={unlinkingId}
           unlinkError={unlinkError}
+          unlinkedMethod={unlinkedMethod}
           onUnlink={(m) => void unlinkIdentity(m)}
         />
       )}

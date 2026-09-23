@@ -20,6 +20,8 @@ interface Props {
   licenseTierKey?: string;
   revokingId: string | null;
   revokeError: string | null;
+  /** machine_id of the last successful revoke; drives the section's status line. */
+  revokedMachine: string | null;
   onRevoke: (device: Device) => void;
 }
 
@@ -29,7 +31,7 @@ interface Props {
  * Presentational: revoke is a callback so the API + session lifecycle stays
  * in the parent.
  */
-export default function AccountDevices({ locale, labels, devices, licenseTierKey, revokingId, revokeError, onRevoke }: Props) {
+export default function AccountDevices({ locale, labels, devices, licenseTierKey, revokingId, revokeError, revokedMachine, onRevoke }: Props) {
   return (
     <section className="rounded-xl border border-ink/10 bg-surface/40 p-6 shadow-sm" aria-label={t(labels, 'account.devices')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,6 +95,14 @@ export default function AccountDevices({ locale, labels, devices, licenseTierKey
           ))}
           {revokeError && (
             <p className="text-xs text-danger" role="alert">{revokeError}</p>
+          )}
+          {/* `role="status"` (polite live region): a revoke has no dialog and no
+              navigation, so this line is the whole confirmation — it must be
+              announced, not just drawn. */}
+          {revokedMachine && (
+            <p className="text-xs text-success" role="status">
+              {t(labels, 'account.deviceRevoked').replace('{machine}', revokedMachine)}
+            </p>
           )}
           {devices.length > 5 && (
             <p className="text-xs text-muted text-center pt-1">+{devices.length - 5} more</p>

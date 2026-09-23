@@ -1117,6 +1117,54 @@ describe('AccountView — Devices & Invoices', () => {
       });
       expect(revokeCalls).toHaveLength(1);
       expect(revokeCalls[0]).toContain('/api/v1/web/devices/mac-1/revoke');
+      // The confirmation: a revoke has no dialog and no navigation, so without
+      // this line the only feedback was a badge flipping elsewhere in the list.
+      // It names the terminal and is announced (role="status").
+      const status = container.querySelector('[role="status"]');
+      expect(status?.textContent).toContain('Terminal MACHINE-001 revoked');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('confirms an unlink, naming the provider and repeating that the email code still works', async () => {
+    sessionStorage.setItem('oz_session', 'tok-unlink');
+    const unlinkCalls: string[] = [];
+    mockFetch((url, init) => {
+      if (url.includes('/identities') && init?.method === 'DELETE') {
+        unlinkCalls.push(url);
+        return okJson({ status: 'unlinked' });
+      }
+      if (url.includes('/identities')) {
+        return okJson({ identities: [{ id: 'id_google', provider: 'google', email: 'test@example.com' }] });
+      }
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: { key: 'OZ-TEST-0001', tierKey: 'pro', status: 'active', expiresAt: '2027-01-01' },
+        subscription: null,
+      });
+    });
+    const { container, root } = await renderAccount('en');
+    try {
+      assertText(container, 'Google');
+      const unlinkBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Unlink');
+      expect(unlinkBtn).not.toBeNull();
+      act(() => {
+        unlinkBtn!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(unlinkCalls).toHaveLength(1);
+      expect(unlinkCalls[0]).toContain('/api/v1/web/identities/id_google');
+      // The row is gone by now, so this line is the whole confirmation — it must
+      // name the provider the way the row did ('Google', not the raw 'google')
+      // and carry the reassurance that unlinking cannot lock anyone out.
+      const status = container.querySelector('[role="status"]');
+      expect(status?.textContent).toContain('Google unlinked');
+      expect(status?.textContent).toContain('email code still works');
     } finally {
       act(() => root.unmount());
       container.remove();
