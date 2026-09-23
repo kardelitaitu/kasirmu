@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
 
 /**
@@ -60,6 +60,35 @@ export default function ContactForm({ labels }: Props) {
   const [message, setMessage] = useState('');
   const [website, setWebsite] = useState(''); // honeypot — bots fill it, humans never see it
   const [status, setStatus] = useState<Status>('idle');
+  const submitRef = useRef<HTMLButtonElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  const successRef = useRef<HTMLParagraphElement | null>(null);
+  const previousStatus = useRef<Status>('idle');
+
+  /**
+   * Focus recovery for the three states this form can end up in.
+   *
+   * Measured in a browser 2026-09-23 at 390px and 1440px, en and id: the submit
+   * button carries `disabled={status === 'sending'}`, so the button the visitor
+   * had just pressed was disabled mid-request and focus fell to <body>. On
+   * success the whole form is replaced by the confirmation panel, so the button
+   * that had focus ceased to exist; on failure the form stayed but focus was
+   * not returned; and pressing "Send another message" removed that panel's only
+   * control the same way.
+   *
+   * - success: the confirmation itself, which is the outcome and the only thing
+   *   on screen afterwards (tabindex="-1"; it is NOT also a live region, or the
+   *   sentence would be announced twice).
+   * - error: the submit button, which survives and is the retry.
+   * - back to the form: the first field, so the form is usable immediately.
+   */
+  useEffect(() => {
+    const from = previousStatus.current;
+    previousStatus.current = status;
+    if (status === 'success') successRef.current?.focus();
+    else if (status === 'error') submitRef.current?.focus();
+    else if (status === 'idle' && from === 'success') nameRef.current?.focus();
+  }, [status]);
 
   const inputClass =
     'w-full rounded-md border border-ink/10 bg-surface px-3 py-2 text-sm text-ink transition';
@@ -105,7 +134,7 @@ export default function ContactForm({ labels }: Props) {
   if (status === 'success') {
     return (
       <div className="rounded-xl border border-ink/10 bg-surface/40 p-6 text-center">
-        <p className="text-sm text-ink">{t(labels, 'support.success')}</p>
+        <p ref={successRef} tabIndex={-1} className="text-sm text-ink">{t(labels, 'support.success')}</p>
         <button
           type="button"
           onClick={() => setStatus('idle')}
@@ -123,6 +152,7 @@ export default function ContactForm({ labels }: Props) {
         <label className="block">
           <span className={labelClass}>{t(labels, 'support.name')}</span>
           <input
+            ref={nameRef}
             type="text"
             required
             maxLength={100}
@@ -186,6 +216,7 @@ export default function ContactForm({ labels }: Props) {
         </div>
       )}
       <button
+        ref={submitRef}
         type="submit"
         disabled={status === 'sending'}
         className="mt-5 w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition hover:bg-primary-hover disabled:opacity-60 sm:w-auto"

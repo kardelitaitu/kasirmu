@@ -208,6 +208,97 @@ describe('ContactForm', () => {
     }
   });
 
+  it('moves focus to the confirmation when the form is replaced by it', async () => {
+    // The submit button carries `disabled={status === 'sending'}`, so the button
+    // the visitor had just pressed was disabled mid-request and focus fell to
+    // <body>; on success the whole form is replaced, so the button that had
+    // focus no longer exists (measured in a browser 2026-09-23 at 390px and
+    // 1440px, en and id).
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    const { container, root } = await renderContact('en');
+    try {
+      const submit = getSubmitButton(container);
+      act(() => submit.focus());
+      expect(document.activeElement).toBe(submit);
+
+      await act(async () => {
+        const form = container.querySelector('form') as HTMLFormElement;
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      const confirmation = container.querySelector('p[tabindex="-1"]') as HTMLParagraphElement;
+      expect(confirmation).not.toBeNull();
+      expect(document.activeElement).toBe(confirmation);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('puts focus back on the retry button when sending fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+    const { container, root } = await renderContact('en');
+    try {
+      // Focus starts in a field, not on the button: the browser moved focus to
+      // <body> when the pressed button disabled, and jsdom does not model that,
+      // so the recovery has to be asserted from somewhere it is not already.
+      const email = container.querySelector('input[type="email"]') as HTMLInputElement;
+      act(() => email.focus());
+      expect(document.activeElement).toBe(email);
+
+      await act(async () => {
+        const form = container.querySelector('form') as HTMLFormElement;
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      // The form survives and the mailto fallback is offered; focus is the
+      // button the visitor used, which is also the retry.
+      expect(container.querySelector('[role="alert"]')).not.toBeNull();
+      expect(document.activeElement).toBe(getSubmitButton(container));
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('focuses the first field when "Send another message" brings the form back', async () => {
+    // The panel's only control is removed by the press, so focus would fall to
+    // <body> and the re-rendered form would start outside it.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
+    const { container, root } = await renderContact('en');
+    try {
+      await act(async () => {
+        const form = container.querySelector('form') as HTMLFormElement;
+        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      const sendAnother = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Send another'),
+      ) as HTMLButtonElement;
+      act(() => sendAnother.focus());
+      await act(async () => {
+        sendAnother.click();
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      const firstField = container.querySelector('form input[type="text"]') as HTMLInputElement;
+      expect(document.activeElement).toBe(firstField);
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
   it('"Send another message" button returns to form', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
     const { container, root } = await renderContact('en');
