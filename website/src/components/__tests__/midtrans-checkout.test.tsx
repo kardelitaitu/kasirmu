@@ -107,6 +107,47 @@ describe('openMidtransCheckout', () => {
     await expect(openMidtransCheckout('plus', 'yearly')).rejects.toThrow('midtrans not configured');
   });
 
+  it('resolves the license API at click time, so a late runtime config still checks out', async () => {
+    // The late-config regression, measured in a browser 2026-09-23: the account
+    // dashboard renders, loads this module, and only THEN receives
+    // /__oz/runtime-config.js. A module-scope `const API = licenseApiUrl()`
+    // froze the pre-config undefined, so the click threw 'midtrans not
+    // configured' and issued no request at all — the runtime URL must win even
+    // when it arrives after import.
+    // Empty string, not undefined: an assignment of undefined to
+    // import.meta.env does not take effect under Vitest, so the build-time
+    // value would silently survive and this test would prove nothing.
+    (import.meta.env as Record<string, unknown>).PUBLIC_LICENSE_API_URL = '';
+    const { openMidtransCheckout } = await import('../midtrans');
+    window.__OZ_CONFIG__ = { licenseApiUrl: 'https://license.late' };
+    sessionStorage.setItem('oz_session', 'sess-1');
+    const pay = vi.fn();
+    (window as unknown as { snap: unknown }).snap = { pay };
+
+    try {
+      await openMidtransCheckout('plus', 'yearly');
+
+      expect(fetch).toHaveBeenCalledWith(
+        'https://license.late/api/v1/midtrans/snap',
+        expect.objectContaining({ method: 'POST' }),
+      );
+      expect(pay).toHaveBeenCalledWith('snap-token-123', expect.any(Object));
+    } finally {
+      delete (window as unknown as { snap?: unknown }).snap;
+      delete window.__OZ_CONFIG__;
+    }
+  });
+
+  it('throws when neither the runtime config nor the build-time URL is set', async () => {
+    // Empty string, not undefined: see the note in the test above.
+    (import.meta.env as Record<string, unknown>).PUBLIC_LICENSE_API_URL = '';
+    delete window.__OZ_CONFIG__;
+    const { openMidtransCheckout } = await import('../midtrans');
+    sessionStorage.setItem('oz_session', 'sess-1');
+
+    await expect(openMidtransCheckout('plus', 'yearly')).rejects.toThrow('midtrans not configured');
+  });
+
   it('uses the cookie token when sessionStorage is empty (cookie-only session)', async () => {
     // The regression: reading sessionStorage directly made the id-locale
     // checkout fail outright for a user signed in via the httpOnly cookie in a

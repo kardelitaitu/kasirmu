@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Mock runtime-config so paddle.ts's module-level `const API = licenseApiUrl()` resolves.
+// Mock runtime-config so paddle.ts resolves a license API URL. Mutable so a
+// test can model the late-config case: no URL while the module is imported,
+// a URL later (when /__oz/runtime-config.js lands).
+const runtimeConfig = { licenseApiUrl: 'https://license.test' as string | undefined };
 vi.mock('../../lib/runtime-config', () => ({
-  licenseApiUrl: () => 'https://license.test',
+  licenseApiUrl: () => runtimeConfig.licenseApiUrl,
 }));
 
 /**
@@ -17,6 +20,7 @@ let paddle: typeof import('../paddle');
 
 beforeEach(async () => {
   vi.resetModules();
+  runtimeConfig.licenseApiUrl = 'https://license.test';
   paddle = await import('../paddle');
   sessionStorage.clear();
   // Default no-Worker state: hasSession/getSessionEmail fall back to
@@ -149,6 +153,29 @@ describe('getSessionEmail', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network')));
     const email = await paddle.getSessionEmail();
     expect(email).toBeNull();
+  });
+
+  it('resolves the license API at call time, so a late runtime config still reaches /me', async () => {
+    // Same late-config class as midtrans.ts: /__oz/runtime-config.js can land
+    // after this module is evaluated, and a module-scope capture would freeze
+    // the pre-config undefined — silently returning null (no email prefilled)
+    // instead of fetching from the runtime host.
+    runtimeConfig.licenseApiUrl = undefined;
+    const late = await import('../paddle');
+    runtimeConfig.licenseApiUrl = 'https://license.late';
+    sessionStorage.setItem('oz_session', 'tok_late');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ tenant: { email: 'late@test.com' } }),
+      }),
+    );
+
+    const email = await late.getSessionEmail();
+
+    expect(email).toBe('late@test.com');
+    expect(fetch).toHaveBeenCalledWith('https://license.late/api/v1/web/me', expect.anything());
   });
 
   it('caches the email from /me into sessionStorage', async () => {

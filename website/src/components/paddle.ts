@@ -86,7 +86,6 @@ function paddleEventCallback(event: PaddleEvent): void {
 const TOKEN = import.meta.env.PUBLIC_PADDLE_CLIENT_TOKEN as string | undefined;
 const ENVIRONMENT =
   (import.meta.env.PUBLIC_PADDLE_ENVIRONMENT as string | undefined) === 'sandbox' ? 'sandbox' : 'production';
-const API = licenseApiUrl();
 
 // Neither storage key is declared here. `SESSION_STORAGE_KEY` and
 // `EMAIL_STORAGE_KEY` both live in lib/session.ts — the single owner of session
@@ -222,8 +221,14 @@ export async function getSessionEmail(): Promise<string | null> {
     const cached = window.sessionStorage.getItem(EMAIL_STORAGE_KEY);
     if (cached) return cached;
     const token = await getSessionToken();
-    if (!token || !API) return null;
-    const res = await fetch(`${API}/api/v1/web/me`, {
+    // Resolved per call, NOT at module scope: `licenseApiUrl()` reads
+    // window.__OZ_CONFIG__, which /__oz/runtime-config.js can assign after this
+    // module is evaluated (the script is deferred). A module-scope capture would
+    // freeze the pre-config undefined and silently skip the fetch, prefilling
+    // checkout with no email — the same late-config failure midtrans.ts had.
+    const api = licenseApiUrl();
+    if (!token || !api) return null;
+    const res = await fetch(`${api}/api/v1/web/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
