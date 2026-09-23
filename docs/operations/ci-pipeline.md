@@ -14,7 +14,7 @@
 > below it went unlisted. **The Workflow column is what tells you where a row
 > actually runs.**
 
-> ✅ **What is live.** GitHub executes TWO workflows, not one (repro: `ls .github/workflows/*.yml`, measured 2026-09-14; both carry a 🟢 **LIVE** row in the Workflow inventory below): `release.yml` on `v*` tags, and `dev-ci.yml` on `pull_request` + `push` to main + `workflow_dispatch`. Retired here is the claim that `dev-ci.yml` was the only workflow GitHub executes — this page's own live `release.yml` row contradicts it. For `dev-ci.yml`, Every
+> ✅ **What is live.** GitHub executes **THREE** workflows (repro: `ls .github/workflows/*.yml`, measured 2026-09-23 → `android.yml`, `dev-ci.yml`, `release.yml`): `release.yml` on `v*` tags, `dev-ci.yml` on `pull_request` + `push` to main + `workflow_dispatch`, and `android.yml` on a `v*` tag or `workflow_dispatch` only (deliberately no PR trigger — `sed -n '38,42p' .github/workflows/android.yml`). **This paragraph said TWO until 2026-09-23**, which was correct when written on 2026-09-14 and false from 2026-09-22, when `android.yml` was restored from `attic/` — a count that grows by one and is re-derived by nothing. Retired here is the earlier claim that `dev-ci.yml` was the only workflow GitHub executes. For `dev-ci.yml`, Every
 > one of its jobs now has a row here, and `verify-ci-docs-drift.py` enforces that
 > — it compares the docs against every job in every live workflow and reports any
 > it cannot find. That check **previously** compared only against a file named

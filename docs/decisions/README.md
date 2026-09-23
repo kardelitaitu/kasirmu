@@ -6,10 +6,18 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs (#1–#52) are the primary record. **Seven numbers are unused** —
-  #16 and #24–#29 are claimed by no file and cited by nothing anywhere in the repo
-  (verified: zero references to `ADR #16` or `ADR #24`–`#29` in any `*.md`). They are
-  skipped numbers, not lost documents; do not go looking for them.
+- Numbered ADRs run **#1–#60** and are the primary record. Re-derive the ceiling rather than
+  trusting it: `ls docs/decisions/*adr*.md | sed 's/.*adr\([0-9]*\).*/\1/' | sort -n | tail -1`
+  → `60` (measured 2026-09-23; the ceiling was 52 when this line was written, which is exactly
+  how a range claim rots — it grows by one per ADR and nothing re-derives it).
+- **Seven numbers are unused** — #16 and #24–#29 are claimed by no file. `ADR #16` and
+  `ADR #24`–`#29` are cited by nothing anywhere in the repo
+  (re-derive: `grep -rn 'ADR #16\|ADR #2[4-9]' --include='*.md' .` → one hit, this sentence).
+  They are skipped numbers, not lost documents; do not go looking for them.
+- **The hand table below is incomplete and is NOT the authority.** It has no row for **#53**,
+  which exists (`docs/decisions/2026-09-15-adr53-ui-vocabulary-boundary.md`) and is indexed by
+  the generated `docs/records/README.md`. Find a missing row the same way:
+  `ls docs/decisions/*adr*.md` against the `^| N |` rows below. The generated index wins.
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -77,6 +85,7 @@ implementation-status walkthrough.
 | 50 | [Sync Authentication Hardening (token refresh, gating, terminal credentials)](./2026-09-11-adr50-sync-auth-hardening.md) | Accepted (2026-09-11) - partially implemented |
 | 51 | [Sealed Settings Ingest Policy — One Funnel for Every Untrusted Settings Lane](./2026-09-11-adr51-sealed-settings-ingest-policy.md) | Accepted (2026-09-11) |
 | 52 | [Tracked Settings Funnel Refuses Cleartext Credentials](./2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md) | Accepted (2026-09-12) |
+| 53 | [The UI Vocabulary Boundary — what the application layer may say about a renderer](./2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction. **Row added 2026-09-23 (C30): it was missing from this hand table while existing on disk and in the generated index** |
 | 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 | 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Accepted (2026-09-19) |
 | 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-10-04-adr56-first-run-provisioning.md) | Proposed (2026-10-04) — nothing implemented |

@@ -41,9 +41,9 @@ oz-pos/
 │   │   │   ├── refund.rs    # Refund domain type
 │   │   │   ├── settings.rs  # Settings persistence layer
 │   │   │   ├── features.rs  # Feature enum (39 flags), registry, presets
-│   │   │   ├── migrations.rs# Embedded SQL migration runner (59 .sql files as measured 2026-09-13; ls crates/kasirmu-core/migrations/*.sql | wc -l)
+│   │   │   ├── migrations.rs# Embedded SQL migration runner (67 .sql files as measured 2026-09-23; ls crates/kasirmu-core/migrations/*.sql | wc -l)
 │   │   │   └── error.rs     # CoreError enum
-│   │   └── migrations/      # Date-stamped SQL migration files (59, 2026-08-13 → 2026-10-05)
+│   │   └── migrations/      # Date-stamped SQL migration files (67 as measured 2026-09-23)
 │   ├─ kasirmu-hal/               # Hardware Abstraction Layer
 │   │   ├─ Cargo.toml
 │   │   └─ src/
@@ -163,11 +163,12 @@ oz-pos/
   - `Product`, `Category`, `Inventory`, `Sku` — domain types with serde.
   - `Feature` — **39** toggleable feature flags (counted over the `pub enum Feature` variants in `crates/kasirmu-core/src/features.rs`; the file's own `//!` header still says 32 and is stale — a code finding, left alone) with dependency resolution, and **6** setup presets: `simple-retail`, `restaurant`, `full-store`, `cafe`, `franchise`, `custom` (keys in `shared-ui/locales/settings.ftl`, array in `ui/src/features/setup/SetupWizard.tsx:70`). This line said 5 until 08-09-26, the same stale count corrected in `docs/guides/developer/admin-guide.md` the same day.
   - `Store<'a>` — typed CRUD facade over `&Connection`. All writes inside transactions.
-- **Migrations**: 58 SQLite `.sql` files plus the generated PG file, 59 in all as measured
-  2026-09-13 (`ls crates/kasirmu-core/migrations/*.sql | wc -l`), embedded by the
-  `include_str!` list in `crates/kasirmu-core/src/migrations.rs` (59 entries: the 58 SQLite plus the
-  generated `20260813_init.pg.sql`). The 131-file history was squashed into
-  `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
+- **Migrations**: 66 SQLite `.sql` files plus the generated PG file, **67 in all as measured
+  2026-09-23** (`ls crates/kasirmu-core/migrations/*.sql | wc -l` → 67;
+  `ls crates/kasirmu-core/migrations/*.pg.sql | wc -l` → 1), embedded by the
+  `include_str!` list in `crates/kasirmu-core/src/migrations.rs`. Re-derive both numbers — this
+  line has now been corrected twice (44 → 59 → 67) because a migration lands with most slices.
+  The 131-file history was squashed into `20260813_init.sql` — not `init.sql`. `kasirmu_core::migrations::run(conn)` is invoked at
   **application-state construction**, not by a platform subsystem:
   `apps/desktop-tauri/src/state.rs:212`, `apps/mobile-tauri/src/state.rs:117`,
   `apps/cloud-server/src/db.rs:134`, `crates/kasirmu-api/src/lib.rs:457` and `crates/kasirmu-cli`.
@@ -286,7 +287,7 @@ the layout block was corrected from 19 to 44 (the same fact is stated in
 `docs/README.md`-adjacent files; `AGENTS.md` said 28 and `README.md` said 19, so three
 documents carried three different answers).
 
-> Count note (2026-09-13): the 09-08 stamp recorded 44 and that sentence stands; the measured count today is 59 (`ls crates/kasirmu-core/migrations/*.sql | wc -l`), of which 58 are SQLite and one is the generated PG file. The layout block and §Migrations now carry 59.
+> Count note (2026-09-23, C30): the 09-08 stamp recorded 44, the 2026-09-13 note corrected it to 59, and the measured count **today is 67** (`ls crates/kasirmu-core/migrations/*.sql | wc -l`), of which 66 are SQLite and one is the generated PG file. The layout block and §Migrations now carry 67. The two earlier figures are kept because they are the evidence that this number is corrected by hand and re-derived by nobody — which is the defect C30 exists to name.
 
 > last audited 08-09-26 by docs-auditor
 

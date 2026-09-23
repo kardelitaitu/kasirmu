@@ -84,10 +84,11 @@ readable at `nightly.yml.bak:547-580`: it ran `cargo bench -p oz-core` (step at
 `benchmark-output.txt` + `target/criterion/` as an artifact with 30-day retention
 (`:572-580`).
 
-Nothing in the live CI replaces it. There are exactly two live workflows —
-`dev-ci.yml` (triggers: `pull_request` targeting `main` + `workflow_dispatch`) and
-`release.yml` (trigger: `v*` tags) — neither declares a `schedule`, and neither
-runs `cargo bench`. Re-measure with
+Nothing in the live CI replaces it. There are exactly **three** live workflows —
+`dev-ci.yml` (triggers: `pull_request` targeting `main` + `push` to main + `workflow_dispatch`),
+`release.yml` (trigger: `v*` tags) and `android.yml` (trigger: `v*` tag or `workflow_dispatch`) —
+**none declares a `schedule`**, and none runs `cargo bench`. Re-measure with
+`ls .github/workflows/*.yml` (this line said "two" until 2026-09-23, C30).
 `git grep -in 'cargo bench' -- .github/workflows/dev-ci.yml .github/workflows/release.yml`
 → no matches.
 

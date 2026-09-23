@@ -166,7 +166,7 @@ Reports land in `coverage/{rust,ui}/index.html`.
 > ⚠️ **There is no CI coverage job.** This sentence previously said the CI `coverage` job
 > uploads these artifacts. It does not: a `coverage:` job exists in exactly one workflow file,
 > `.github/workflows/ci.yml.bak`, which `23c96330` retired on 09-02 and never restored, and the
-> two live workflows (`dev-ci.yml`, `release.yml`) contain no such job. Nothing uploads coverage
+> three live workflows (`dev-ci.yml`, `release.yml`, `android.yml` — `ls .github/workflows/*.yml`) contain no such job. Nothing uploads coverage
 > today, which is consistent with the line above calling coverage optional and "not part of the
 > PR gate" — the gate sentence was right and the CI sentence was not.
 >

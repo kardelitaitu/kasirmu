@@ -5,7 +5,7 @@ The two copyleft rows were re-checked against the manifests in the local registr
 both still hold in substance: unescaper is "GPL-3.0/MIT" and r-efi offers MIT, so
 "No pure copyleft licenses detected" survives, and ui/package-lock.json still has zero
 GPL-family licenses. What changed is coverage and the facts around the rows: r-efi is not an
-oz-hal dependency (getrandom pulls it), the crate count moved from 27 to 35 members,
+oz-hal dependency (getrandom pulls it), the crate count moved from 27 to 35 members (**and to 39 by 2026-09-23 — re-measure: `cargo metadata --no-deps --format-version 1`; the 35 this annotation records is a dated measurement, not a current one**),
 the UI direct-dependency count from 32 to 38, the website/ tree was never audited and does
 carry LGPL-3.0-or-later packages, and no live workflow runs cargo deny. Details in the
 Currency block below; the record above is untouched.
