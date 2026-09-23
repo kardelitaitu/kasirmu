@@ -68,7 +68,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # CICD-04 lineage: the guide lives under docs/guides/ (mdBook layout) —
 # the historical docs/plugin-guide.md path made this gate fail-closed
 # with "guide not found" on every run after the doc tree was reorganized.
-GUIDE = ROOT / "docs" / "guides" / "plugin-guide.md"
+GUIDE = ROOT / "docs" / "guides" / "developer" / "plugin-guide.md"
 MANAGER = ROOT / "crates" / "kasirmu-plugin" / "src" / "manager.rs"
 OZ_LUA_LIB = ROOT / "crates" / "kasirmu-lua" / "src" / "lib.rs"
 OZ_CLI = ROOT / "crates" / "kasirmu-cli" / "src" / "cli.rs"
