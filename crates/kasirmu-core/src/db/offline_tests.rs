@@ -254,6 +254,100 @@ fn mark_offline_synced_sets_timestamp() {
     assert!(item.synced_at.is_some(), "synced_at should be populated");
 }
 
+// ── Guarded transition (compare-and-set) ────────────────────────
+
+/// The marking must JOIN a caller-owned transaction, never open its own.
+///
+/// SQLite has no nested `BEGIN`, and the semantic is the audit-log one: an
+/// action whose transaction rolled back did not happen, so the queue row
+/// must not read `synced` afterwards. If `mark_offline_synced` opened (or
+/// autocommitted) its own transaction, the rollback below would leave the
+/// row `synced` and this test would fail — which is the point.
+#[test]
+fn mark_offline_synced_joins_caller_transaction() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn).mark_offline_synced("oq-1").unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+/// A second mark of an already-synced row must not touch it.
+///
+/// `oq-3` is seeded `synced` with a FIXED `synced_at`. A blind
+/// `UPDATE ... WHERE id = ?1` matches the row and rewrites `synced_at` to
+/// now, so the timestamp assertion below fails against the pre-CAS code.
+#[test]
+fn mark_offline_synced_is_noop_for_already_synced_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    // Idempotent by contract: `mark_offline_synced_is_idempotent` in
+    // platform/sync requires a repeat call to be Ok, not an error.
+    store(&conn).mark_offline_synced("oq-3").unwrap();
+
+    let (status, synced_at): (String, String) = conn
+        .query_row(
+            "SELECT status, synced_at FROM offline_queue WHERE id = 'oq-3'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "synced");
+    assert_eq!(
+        synced_at, "2025-01-01T11:01:00.000Z",
+        "a repeat mark must not re-stamp an already-synced row"
+    );
+}
+
+/// A dead-lettered row must never be resurrected into `synced`.
+///
+/// This is the data-losing case: `failed` is terminal (push-side failed
+/// items are not requeued), so letting a stale caller flip it to `synced`
+/// would erase the only record that the mutation never landed. `oq-4` is
+/// seeded `failed` with a retry count and an error; a blind update flips it,
+/// so every assertion here fails against the pre-CAS code.
+#[test]
+fn mark_offline_synced_refuses_to_resurrect_dead_lettered_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    store(&conn).mark_offline_synced("oq-4").unwrap();
+
+    let (status, retry_count, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-4'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry_count, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
+}
+
 // ── Mark failed ─────────────────────────────────────────────────
 
 #[test]

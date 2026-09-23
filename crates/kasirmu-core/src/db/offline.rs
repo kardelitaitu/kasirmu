@@ -602,12 +602,62 @@ impl Store<'_> {
     }
 
     /// Mark an offline queue item as synced.
+    ///
+    /// The transition is a guarded compare-and-set, not a blind write: the row
+    /// must still be `pending` for the update to land, so a stale or double
+    /// caller can neither re-mark an already-synced item nor — the case that
+    /// loses data — overwrite a dead-lettered (`failed`) row's terminal state
+    /// with `synced`. Same conditional-transition shape as `finalize_sale`
+    /// (`WHERE id = ?2 AND status = 'pending'`).
+    ///
+    /// # Transaction behaviour
+    ///
+    /// SQLite has no nested `BEGIN`, so — exactly like [`Store::log_audit`] —
+    /// this JOINS a caller-owned transaction and only opens its own in
+    /// autocommit. A caller that rolls back therefore leaves the row un-marked;
+    /// a caller with no transaction gets one, so the existence probe and the
+    /// write that depends on it are atomic.
+    ///
+    /// # Errors
+    ///
+    /// [`CoreError::NotFound`] when the id does not exist. An id that exists in
+    /// a non-pending state is an idempotent no-op returning `Ok(())` — duplicate
+    /// id replays and daemon retries must not fail, and
+    /// `mark_offline_synced_is_idempotent` pins that contract.
     pub fn mark_offline_synced(&self, id: &str) -> Result<(), CoreError> {
-        let affected = self.conn.execute(
-            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::mark_synced_on(&tx, id)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::mark_synced_on(self.conn, id)
+        }
+    }
+
+    /// The guarded `pending -> synced` write, on a connection or on a
+    /// caller-owned transaction (`Transaction` derefs to `Connection`).
+    ///
+    /// A row that exists but is not `pending` is not an error: the CAS
+    /// correctly changed nothing, and the caller gets `Ok(())`.
+    fn mark_synced_on(conn: &rusqlite::Connection, id: &str) -> Result<(), CoreError> {
+        let affected = conn.execute(
+            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?1 AND status = 'pending'",
             params![id],
         )?;
-        if affected == 0 {
+        if affected == 1 {
+            return Ok(());
+        }
+        // rows == 0: the id is absent, or it is present in a non-pending state.
+        // Only the first is an error; the second is the no-op the CAS exists to
+        // produce. Probe instead of guessing which one happened.
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if exists == 0 {
             return Err(CoreError::NotFound {
                 entity: "offline_queue",
                 id: id.to_owned(),
