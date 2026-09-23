@@ -1504,3 +1504,63 @@ regression from this audit.
 lint **0 errors from this audit** (the one error above is pre-existing and not mine).
 
 **Commit:** `17ad9a0f3`.
+---
+
+## Round 33 — a provisioned merchant was sent straight back to "Create Owner PIN"
+
+Rounds 30-32 worked on the flow itself. This round I followed it to the END — what a merchant sees
+the moment setup succeeds — which no round had examined. **It was broken.**
+
+### The defect
+
+```
+AFTER "This terminal is ready." (success toast) :
+  "Create Owner PIN"
+  "Set up the first owner account to manage your POS"
+```
+
+The merchant was asked to create the owner account **they had just created**, with the success toast
+still on screen. Both shells. Measured, not inferred.
+
+### Root cause: a boot-time read that provisioning invalidates
+
+`has_users` is read ONCE at boot. On a fresh install it answers `false` — which is exactly what opens
+owner bootstrap. The merchant then provisions, and `provision_device` **creates the owner inside its
+transaction** (ADR #56 §2.2). The shells never refresh that value, so the gate at
+`AppShell.tsx:557` / `TabletAppShell.tsx:321` still saw the stale `false` and re-rendered
+`CreatePinScreen`.
+
+**The shells have a comment anticipating this exact case** (`TabletAppShell.tsx:306-317`), reasoning
+that the branch is "UNREACHABLE" after provisioning because "the flow above cannot set
+`hasCompletedSetup` without also creating the owner". The reasoning is right about the *data* and
+wrong about the *read*: the variable is a cached boot answer, not a live query.
+
+### The fix
+
+Both `onProvisioned` callbacks now set `hasAnyUsers(true)` alongside their completion flag. That is
+the honest statement of what just happened: the flow created an owner, so "are there any users?" has
+a new answer. Two lines, each carrying the reason.
+
+### Why the existing coverage missed it
+
+`CreatePinScreen`'s own tests pass — the screen is fine. The E2E suite reached owner bootstrap and
+reached provisioning, but never **provisioned from the bootstrap state**, which is the only path that
+exposes the stale read. `?nousers=1` was added in round 18 to make bootstrap reachable; combining it
+with `?unprovisioned=1` is what composes this case, and nothing had ever done both.
+
+### Verification
+
+**26/26 provisioning E2E**, including a new test that provisions from `?nousers=1&unprovisioned=1`
+and asserts the merchant lands on the LOGIN screen with no "Create Owner PIN" present · full UI
+suite **607 files / 10,370 tests pass** · `tsc` clean.
+
+**Flake note, measured:** `SettingsPage.test.tsx > every renderSection key mounts its own screen`
+appeared twice in a row under parallel load. Run alone it takes **3.06s** — the heaviest case in the
+file, mounting 14 screens — and passes. The file contains no reference to `has_users`, `AppShell` or
+`TabletAppShell`, so it cannot be affected by this change; it is load-induced. Recorded because two
+consecutive red runs looked like a regression until measured.
+
+`npm run lint` still reports the one pre-existing error from a peer's `44c06dc55`, unchanged and not
+mine.
+
+**Commit:** `7e458eba6`.
