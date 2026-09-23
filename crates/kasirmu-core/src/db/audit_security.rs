@@ -382,10 +382,13 @@ impl Store<'_> {
     /// `cfg!(debug_assertions)`-gated), and tablet passes `false` so it never
     /// mirrors the desktop divergence.
     ///
-    /// Written through [`Store::log_audit`], so AUD-06 redaction and the
-    /// append-only triggers apply. A caller that must not let an audit
-    /// failure break authentication should log the `Err` and continue —
-    /// both clients do.
+    /// Written through [`Store::log_audit`], which JOINS a transaction already
+    /// open on this connection and OWNS one otherwise, so an in-transaction
+    /// caller gets the row inside its own transaction and loses it if that
+    /// transaction rolls back — deliberate, and explained in full on that
+    /// method. AUD-06 redaction and the append-only triggers apply either way.
+    /// A caller that must not let an audit failure break authentication should
+    /// log the `Err` and continue — both clients do.
     pub fn record_security_event(
         &self,
         event: &SecurityEvent,

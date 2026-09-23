@@ -241,6 +241,28 @@ fn build_audit_where(
     (where_sql, params, idx)
 }
 
+/// The single INSERT body shared by BOTH writer states ([`Store::log_audit`]
+/// in autocommit and inside a caller's transaction, and
+/// [`Store::log_audit_in_tx`]).
+///
+/// One body, on purpose: a second non-redacting copy of this statement would
+/// leak the secret keys AUD-06 exists to catch, and the two writers would then
+/// disagree about what an audit row may contain. Redaction happens HERE, before
+/// the statement, so neither writer can bypass it.
+fn insert_audit(conn: &rusqlite::Connection, entry: &AuditEntry) -> Result<(), CoreError> {
+    let details = sanitize_details(&entry.details);
+    conn.execute(
+        "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            entry.id, entry.user_id, entry.action,
+            entry.target_type, entry.target_id,
+            details, entry.outcome, entry.created_at,
+        ],
+    )?;
+    Ok(())
+}
+
 impl Store<'_> {
     /// The settings-table key the retention sweep sets while it deletes
     /// expired rows (migration 20260920's trigger carve-out). The
@@ -364,18 +386,36 @@ impl Store<'_> {
     /// keys are redacted and oversized payloads are truncated — so tokens,
     /// PINs, and customer data written by upstream callers never reach the
     /// audit table verbatim.
+    ///
+    /// # Transaction behaviour (deliberate, not incidental)
+    ///
+    /// SQLite has no nested `BEGIN`, so an unconditional
+    /// `unchecked_transaction()` here would fail for EVERY caller that already
+    /// holds one — `void_sale`, `update_staff_scoped` via
+    /// `record_security_event`, and the tablet staff door all do. This method
+    /// therefore branches on `is_autocommit()`:
+    ///
+    /// * in autocommit it OWNS a transaction — opens one, writes, commits;
+    /// * inside a caller's transaction it JOINS it and writes nothing outside
+    ///   it.
+    ///
+    /// That join is a compliance semantic rather than an accident: an action
+    /// whose transaction rolls back did not happen, and an audit row for it
+    /// would be a phantom — a record of an event that never occurred, which is
+    /// worse than a missing one. The cost is the mirror image: for an
+    /// in-transaction caller the row is NOT durable when this returns. The
+    /// caller must commit, and a caller that needs a row to survive its OWN
+    /// rollback must write it on its own connection after committing, or use
+    /// [`Store::log_audit_in_tx`] where the same join is the point.
     pub fn log_audit(&self, entry: &AuditEntry) -> Result<(), CoreError> {
-        let details = sanitize_details(&entry.details);
-        self.conn.execute(
-            "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                entry.id, entry.user_id, entry.action,
-                entry.target_type, entry.target_id,
-                details, entry.outcome, entry.created_at,
-            ],
-        )?;
-        Ok(())
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            insert_audit(&tx, entry)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            insert_audit(self.conn, entry)
+        }
     }
 
     /// Insert a new audit log entry inside a CALLER-OWNED transaction.
@@ -409,17 +449,7 @@ impl Store<'_> {
         tx: &rusqlite::Transaction<'_>,
         entry: &AuditEntry,
     ) -> Result<(), CoreError> {
-        let details = sanitize_details(&entry.details);
-        tx.execute(
-            "INSERT INTO audit_log (id, user_id, action, target_type, target_id, details, outcome, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                entry.id, entry.user_id, entry.action,
-                entry.target_type, entry.target_id,
-                details, entry.outcome, entry.created_at,
-            ],
-        )?;
-        Ok(())
+        insert_audit(tx, entry)
     }
 
     /// True when an audit_log row already exists for action + target_id,
