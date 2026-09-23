@@ -26,8 +26,18 @@ export interface ServerLicenseStatus {
   active: boolean;
   /**
    * Whether **this device** has been revoked by a tenant admin
-   * (ADR #58 §2.4a.2). Server-authored; the shell refuses to open a session
-   * while it is set.
+   * (ADR #58 §2.4a.2). Server-authored, for DISPLAY.
+   *
+   * The enforcement is not here and must not be re-implemented here: the shell
+   * refuses to open a session — and drops every live one — on the Rust side
+   * (`kasirmu-bridge/src/license.rs:568` calls `invalidate_all_sessions` when this
+   * or a hardware mismatch is set), because a client-side check cannot stop the
+   * session already open on a stolen tablet. This comment previously claimed the
+   * shell refuses the session, which is not what the code does and would invite
+   * someone to add a redundant client gate.
+   *
+   * Nothing reads it today. It is declared because the backend sends it and a
+   * future "this device was revoked" badge is the honest consumer.
    */
   deviceRevoked: boolean;
   expiresAt: string | null;

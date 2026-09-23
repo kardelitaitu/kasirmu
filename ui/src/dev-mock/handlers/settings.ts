@@ -54,7 +54,12 @@ export const licenseHandlers: Record<string, MockHandler> = {
   'get_license_status': () => inactiveLicenceRequested()
     ? { isActive: false, status: 'inactive', tier: null, payload: null, message: 'No licence is activated on this device.' }
     : { isActive: true, status: 'valid', tier: 'pro', payload: null, message: null },
-  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
+  // Field-for-field with `ServerLicenseStatus` (api/license.ts): tenantId, status,
+  // tier, active, deviceRevoked, expiresAt, graceUntil, maxLocations. `deviceRevoked`
+  // was absent, so this DTO did not actually match its declared type — nothing reads
+  // it yet, but a missing field on a registry typed `(args) => unknown` is exactly
+  // the drift that produced the `qr_url` defect (round 26).
+  'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, deviceRevoked: false, expiresAt: null, graceUntil: null, maxLocations: 5 }),
   'get_device_id': () => 'mock-device-id-001',
   'activate_license': () => true,
   'renew_license': () => true,

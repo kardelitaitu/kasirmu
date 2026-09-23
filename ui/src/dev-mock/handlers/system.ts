@@ -570,6 +570,33 @@ export const systemHandlers: Record<string, MockHandler> = {
   'plugin:updater|check': () => null,
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  // ── Device account linking (ADR #54 §2.5 / §2.6) ─────────────────────
+  // These three had NO handler at all, so `invoke` fell through to its
+  // unknown-command branch and returned `null` (with a console warning nobody
+  // reads). The consequence was that the entire account-linking flow was
+  // unusable in dev and E2E: measured 2026-09-23, "Continue with Google"
+  // resolved null and silently did nothing, and the tablet email path accepted
+  // an address, showed the code field, then rejected EVERY code with "That code
+  // did not work" — because `link_device_email_consume` never returned
+  // `{ tenantId, email, verified }`. A merchant could not link an account at
+  // all on a dev preview, which is the flow this whole objective is about.
+  //
+  // Shapes mirror the Rust structs (`kasirmu-core/src/desktop_link.rs`),
+  // `LinkedAccount` at :123 and `VerifiedAccount` at :137, both camelCase on the
+  // wire. `terminal` is Option<TerminalCredential> there and is omitted rather
+  // than sent as null — matching serde's skip-if-none for an absent credential.
+  'link_device_google': () => ({
+    tenantId: 'tenant-linked-google',
+    provider: 'google',
+    email: 'merchant@gmail.com',
+  }),
+  'link_device_email_request': () => undefined,
+  'link_device_email_consume': () => ({
+    tenantId: 'tenant-linked-email',
+    email: 'merchant@example.com',
+    verified: true,
+  }),
+
   // Field-for-field the Rust `PairingSessionStart`
   // (kasirmu-core/src/desktop_link.rs:38): code, poll_token, expires_at, qr_url.
   // This answered `base_url` + `qr_payload` instead — neither field exists on the

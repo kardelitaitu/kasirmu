@@ -114,6 +114,7 @@ test.describe('First-run provisioning', () => {
       (mod as { handlers: Record<string, unknown> }).handlers['provision_device'] = () => {
         throw new Error('backend exploded');
       };
+
     });
 
     await page.getByTestId('provision-mode-local').click();
@@ -128,6 +129,31 @@ test.describe('First-run provisioning', () => {
     await expect(err).toBeInViewport({ timeout: 10_000 });
     await expect(err).toHaveAttribute('role', 'alert');
     await expect(page.getByTestId('provision-submit')).toBeEnabled();
+  });
+
+  test('links an account by emailed code and finishes, end to end', async ({ page }) => {
+    // THE FLOW THE WHOLE FIRST-RUN PATH IS BUILT AROUND, and until 2026-09-23 it
+    // could not be completed in dev or E2E at all: `link_device_google`,
+    // `link_device_email_request` and `link_device_email_consume` had no dev-mock
+    // handler, so invoke() returned null for all three. The email path accepted an
+    // address, showed the code field, then rejected EVERY code with "That code did
+    // not work" — a merchant could not link an account on a dev preview.
+    await page.getByRole('tab', { name: /Email Code/i }).click();
+    await page.getByLabel(/^Account email$/i).fill('merchant@example.com');
+    await page.getByRole('button', { name: /Email me a code/i }).click();
+
+    await page.getByLabel(/Verification code/i).fill('123456');
+    await page.getByRole('button', { name: /^Verify$/i }).click();
+
+    // The link is confirmed back to the merchant, naming the address.
+    await expect(page.getByText(/Linked to merchant@example\.com\./i)).toBeVisible({ timeout: 10_000 });
+
+    // And a linked terminal can actually finish: the account step stops gating submit.
+    await fillOwnerForm(page);
+    const submit = page.getByTestId('provision-submit');
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(page.getByTestId('provisioning-flow')).toBeHidden({ timeout: 15_000 });
   });
 });
 
@@ -187,5 +213,5 @@ test.describe('First-run owner bootstrap', () => {
     // the field itself — the association a screen reader follows.
     await expect(page.getByLabel(/Confirm PIN/i)).toHaveAttribute('aria-invalid', 'true');
   });
-
 });
+
