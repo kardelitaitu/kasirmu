@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { labelMap } from '../../i18n';
+import { RUNTIME_CONFIG_EVENT } from '../../lib/runtime-config';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -731,6 +732,35 @@ describe('AuthForm — not-configured state', () => {
       // The Google entry is hidden with it: it navigates to the licence host, so
       // offering it without an API URL would only produce a 404 for the user.
       expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).toBeNull();
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('reveals the form when the config arrives after hydration', async () => {
+    // A slow /__oz/runtime-config.js hydrates the island first: the notice must
+    // give way to the real form without a reload once the config announces the
+    // URL, and the form must be the usable one (an email field plus the Google
+    // entry the notice withholds).
+    const env = import.meta.env as Record<string, unknown>;
+    env.PUBLIC_LICENSE_API_URL = '';
+    window.__OZ_CONFIG__ = undefined;
+    const { container, root } = await renderAuthForm('en');
+    try {
+      assertText(container, 'The auth API is not configured on this deployment.');
+
+      act(() => {
+        window.__OZ_CONFIG__ = { licenseApiUrl: 'https://late.example' };
+        window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      assertNoText(container, 'The auth API is not configured on this deployment.');
+      expect(container.querySelector('input[type="email"]')).not.toBeNull();
+      expect(container.querySelector('a[href*="/api/v1/web/oauth/google/start"]')).not.toBeNull();
     } finally {
       act(() => root.unmount());
       container.remove();

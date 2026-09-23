@@ -6,6 +6,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 
 /**
@@ -93,6 +94,8 @@ const regionOptions: { value: Region; labelKey: string }[] = [
 export default function SignupForm({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // Same late-arrival contract as the login form (see use-runtime-config.ts).
+  useRuntimeConfigArrival();
   const [step, setStep] = useState<Step>('form');
   const [email, setEmail] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);

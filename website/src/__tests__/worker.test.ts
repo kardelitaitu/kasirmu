@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import worker from '../../worker';
+import { RUNTIME_CONFIG_EVENT } from '../lib/runtime-config';
 
 describe('Cloudflare Worker — worker.ts', () => {
   const mockEnv = {
@@ -28,6 +29,11 @@ describe('Cloudflare Worker — worker.ts', () => {
     const text = await res.text();
     expect(text).toContain('https://license.test.kasir.mu');
     expect(text).toContain('/api/contact');
+    // The dispatch is what lets an island that hydrated first hear about the
+    // URL (see onRuntimeConfigArrived in src/lib/runtime-config.ts). Asserted
+    // against the shared constant at runtime, so the Worker's own copy of the
+    // event name cannot drift away from the client's.
+    expect(text).toContain(`window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}))`);
   });
 
   it('handles CORS OPTIONS preflight for /api/contact', async () => {

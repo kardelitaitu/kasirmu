@@ -5,6 +5,7 @@ import { clearSession, getSessionEmail, isPaddleConfigured, isPlaceholderPriceId
 import { openMidtransCheckout } from './midtrans';
 import { type Region, getRegion, getExplicitRegion, setRegion } from '../lib/region';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { getSessionToken } from '../lib/session';
 import AccountProfile from './account/AccountProfile';
 import AccountLicense from './account/AccountLicense';
@@ -175,6 +176,9 @@ interface Props {
 export default function AccountView({ locale, labels }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // ... and re-render if that read happened before the config script finished,
+  // so a late URL still loads the dashboard instead of stranding the notice.
+  useRuntimeConfigArrival();
   const [state, setState] = useState<'loading' | 'anon' | 'error' | 'ready'>('loading');
   const [me, setMe] = useState<MeResponse | null>(null);
   const [devices, setDevices] = useState<Device[] | null>(null);
@@ -280,16 +284,13 @@ export default function AccountView({ locale, labels }: Props) {
   const [unlinkError, setUnlinkError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read the URL once per run instead of closing over the render's value:
-    // `API` is a dependency below, so a render that brings a NEW url re-runs
-    // this effect against it, and the revoke/unlink handlers (which run long
-    // after mount) use whatever the latest render knew.
-    //
-    // Scope, measured in a browser 2026-09-23: `/__oz/runtime-config.js` is a
-    // deferred script in the head, so it has landed before this island
-    // hydrates and the first run already sees it. Nothing re-renders when it
-    // arrives, so a config that lands LATER than hydration does not re-run
-    // this effect — the not-configured notice stands until the page reloads.
+    // The URL comes from the render scope (`API`, a dependency below) rather
+    // than a close over one captured at mount, so both paths land here: the
+    // ordinary one (the deferred config script has already run) and the late
+    // one, where useRuntimeConfigArrival() re-renders the island with the URL
+    // and this effect re-runs against it. The revoke/unlink handlers below,
+    // which run long after mount, pass the latest render's URL for the same
+    // reason.
     const api = licenseApiUrl();
     if (!api) {
       setState('error');

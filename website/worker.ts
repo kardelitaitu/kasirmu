@@ -46,6 +46,17 @@ interface Env {
 }
 
 const RUNTIME_CONFIG_PATH = '/__oz/runtime-config.js';
+/**
+ * The event the config script dispatches once `window.__OZ_CONFIG__` is set.
+ *
+ * This is the contract that lets an island hear about a URL that arrived AFTER
+ * it rendered: the script is deferred, but the island's own module is fetched
+ * in parallel and can hydrate first, and a plain read of the global never
+ * learns better. Mirrors RUNTIME_CONFIG_EVENT in src/lib/runtime-config.ts —
+ * the Worker stays import-free, and worker.test.ts imports the shared constant
+ * and fails if these two ever disagree.
+ */
+const RUNTIME_CONFIG_EVENT = 'oz:runtime-config';
 const SESSION_PATH = '/__oz/session';
 const LOGOUT_PATH = '/__oz/logout';
 /** Health-tab platform logs — proxied to Northflank with the NF_API_KEY secret. */
@@ -862,7 +873,7 @@ export default {
       const body = `window.__OZ_CONFIG__=${JSON.stringify({
         licenseApiUrl: env.LICENSE_API_URL ?? null,
         contactEndpoint: '/api/contact',
-      })};`;
+      })};window.dispatchEvent(new Event(${JSON.stringify(RUNTIME_CONFIG_EVENT)}));`;
       return new Response(body, {
         headers: {
           'Content-Type': 'application/javascript; charset=utf-8',

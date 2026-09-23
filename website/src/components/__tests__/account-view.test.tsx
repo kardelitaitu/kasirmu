@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { labelMap } from '../../i18n';
+import { RUNTIME_CONFIG_EVENT } from '../../lib/runtime-config';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -263,6 +264,59 @@ describe('AccountView — the URL the island fetches against', () => {
       assertNoText(container, "You're not signed in.");
       assertNoText(container, 'The license API is not configured on this deployment.');
       assertText(container, 'test@example.com');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('recovers when the runtime config arrives AFTER the first render', async () => {
+    // The gap neither case above covers, and the one a browser reproduced: the
+    // island hydrates before a slow /__oz/runtime-config.js lands, reads no
+    // URL, and would otherwise sit on the notice with zero requests until the
+    // user reloads. The config script announces itself; the island must react.
+    const env = import.meta.env as Record<string, unknown>;
+    env.PUBLIC_LICENSE_API_URL = '';
+    window.__OZ_CONFIG__ = undefined;
+    sessionStorage.setItem('oz_session', 'tok-late-config');
+    mockFetch((url) => {
+      if (url === '/__oz/session') return okJson({ token: 'tok-late-config' });
+      if (url.includes('/devices')) return okJson({ devices: [] });
+      if (url.includes('/identities')) return okJson({ identities: [] });
+      return okJson({
+        tenant: { email: 'test@example.com', emailVerified: true, status: 'active' },
+        license: STUB_LICENSE,
+        subscription: null,
+      });
+    });
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const { default: AccountView, ACCOUNT_LABELS } = await import('../AccountView');
+    const labels = labelMap('en', ACCOUNT_LABELS);
+    act(() => {
+      root.render(<AccountView locale="en" labels={labels} />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    try {
+      // No URL yet: the notice is the resting state, and nothing was fetched.
+      assertText(container, 'The license API is not configured on this deployment.');
+      expect(fetchMockCalls().filter((u) => u.includes('/api/v1/web/'))).toEqual([]);
+
+      act(() => {
+        window.__OZ_CONFIG__ = { licenseApiUrl: 'https://late.example' };
+        window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+      });
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+      });
+
+      expect(fetchMockCalls()).toContain('https://late.example/api/v1/web/me');
+      assertText(container, 'test@example.com');
+      assertNoText(container, 'The license API is not configured on this deployment.');
     } finally {
       act(() => root.unmount());
       container.remove();

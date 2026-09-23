@@ -5,6 +5,7 @@ import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
 import PasswordStrength, { PASSWORD_STRENGTH_LABELS } from './PasswordStrength';
 import OtpInput from './OtpInput';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { EMAIL_STORAGE_KEY, SESSION_STORAGE_KEY } from '../lib/session';
 import { sameOriginPath } from '../lib/safe-next';
 
@@ -113,6 +114,9 @@ function oauthReasonKey(reason: string): string {
 export default function AuthForm({ locale, labels, oauthReason }: Props) {
   // Read API at component level so window.__OZ_CONFIG__ is available after hydration
   const API = licenseApiUrl();
+  // A config that lands after hydration must still reveal the form rather than
+  // leave the notice standing (see use-runtime-config.ts).
+  useRuntimeConfigArrival();
   const [view, setView] = useState<View>('login');
   const [mode, setMode] = useState<Mode>('otp');
   const [step, setStep] = useState<Step>('form');

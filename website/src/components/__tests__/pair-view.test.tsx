@@ -4,11 +4,13 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { labelMap } from '../../i18n';
 import PairView, { PAIR_LABELS } from '../PairView';
+import { RUNTIME_CONFIG_EVENT } from '../../lib/runtime-config';
 
 // React 19 requires the act environment flag for async act() to work.
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 const TEST_API = 'https://license.kasir.mu';
+const NOT_CONFIGURED = 'Pairing service is currently unavailable.';
 
 function mockFetch(handler: (url: string, init?: RequestInit) => { ok: boolean; status: number; json: () => Promise<unknown> }): void {
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string, init?: RequestInit) => handler(url, init)));
@@ -62,7 +64,31 @@ describe('PairView', () => {
     const { container, root } = await renderPairView();
     activeRoot = root;
 
-    expect(container.textContent).toContain('Pairing service is currently unavailable.');
+    expect(container.textContent).toContain(NOT_CONFIGURED);
+  });
+
+  it('recovers when the config arrives after the first render', async () => {
+    // URL-gated like the account and auth islands: hydrating before a slow
+    // config must not leave the unavailable notice standing.
+    delete window.__OZ_CONFIG__;
+    mockFetch((url) => {
+      if (url.includes('/__oz/session')) return okJson({ token: 'mock-token-123' });
+      return okJson({});
+    });
+    const { container, root } = await renderPairView();
+    activeRoot = root;
+
+    expect(container.textContent).toContain(NOT_CONFIGURED);
+
+    act(() => {
+      window.__OZ_CONFIG__ = { licenseApiUrl: TEST_API };
+      window.dispatchEvent(new Event(RUNTIME_CONFIG_EVENT));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    expect(container.textContent).not.toContain(NOT_CONFIGURED);
   });
 
   it('renders anonymous prompt with sign-in link when user is not logged in', async () => {

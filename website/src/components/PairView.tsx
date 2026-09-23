@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { licenseApiUrl } from '../lib/runtime-config';
+import { useRuntimeConfigArrival } from '../lib/use-runtime-config';
 import { getSessionToken } from '../lib/session';
 
 /**
@@ -53,6 +54,8 @@ function formatDisplayCode(raw: string): string {
 
 export default function PairView({ locale, labels }: Props) {
   const API = licenseApiUrl();
+  // Same late-arrival contract as the other URL-gated islands.
+  useRuntimeConfigArrival();
   const [state, setState] = useState<ViewState>('loading');
   const [code, setCode] = useState('');
   const [token, setToken] = useState<string | null>(null);

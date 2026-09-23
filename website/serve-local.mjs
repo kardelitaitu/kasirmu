@@ -47,7 +47,14 @@ const server = http.createServer((req, res) => {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'no-store',
       });
-      res.end('window.__OZ_CONFIG__ = { licenseApiUrl: "http://localhost:8080", contactEndpoint: "/api/contact" };');
+      // The dispatch is part of the contract, not decoration: an island that
+      // hydrated before this response landed only learns the URL from the
+      // event (see RUNTIME_CONFIG_EVENT in src/lib/runtime-config.ts). worker.ts
+      // emits the same pair in production.
+      res.end(
+        'window.__OZ_CONFIG__ = { licenseApiUrl: "http://localhost:8080", contactEndpoint: "/api/contact" };' +
+          'window.dispatchEvent(new Event("oz:runtime-config"));',
+      );
       return;
     }
 
