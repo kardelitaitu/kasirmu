@@ -504,7 +504,6 @@ RLS_TABLES = [
     "tenant_subscription",
     "users",
     "locations",
-    "user_location_access",
 ]
 
 # Deliberate non-coverage: every tenant_id-bearing table that is NOT in
@@ -605,6 +604,16 @@ RLS_EXEMPT = {
     "webhook_endpoints": (
         "no PG write path audited; cover when the admin surface "
         "writes it on PG"
+    ),
+    "user_location_access": (
+        "no writer anywhere in the repo — no production INSERT/UPDATE exists; "
+        "the only INSERTs are test fixtures (db/locations_tests.rs, "
+        "db/workspaces_tests.rs) and no dynamically built statement names it. "
+        "Every production reference is a read: the multi-store check in "
+        "db/workspaces_instances.rs only SELECTs, and the REST surface grants "
+        "but never writes. RLS is an isolation guarantee only where the write "
+        "path stamps tenant_id, so there is nothing for a policy to gate yet — "
+        "move back to RLS_TABLES when user-location assignment CRUD lands"
     ),
     "provisioning": (
         "ADR #56 first-run record; written only by the desktop/tablet "

@@ -3665,6 +3665,7 @@ ON CONFLICT DO NOTHING;
 --   snapshot_versions — no PG write path audited; cover when snapshot sync reaches PG
 --   terminals — tenant_id added schema-side (56653839) ahead of multi-tenant writes; cover when create_terminal-class PG writes arrive
 --   topology_revisions — ADR #46 desktop-side table; no PG write path yet
+--   user_location_access — no writer anywhere in the repo — no production INSERT/UPDATE exists; the only INSERTs are test fixtures (db/locations_tests.rs, db/workspaces_tests.rs) and no dynamically built statement names it. Every production reference is a read: the multi-store check in db/workspaces_instances.rs only SELECTs, and the REST surface grants but never writes. RLS is an isolation guarantee only where the write path stamps tenant_id, so there is nothing for a policy to gate yet — move back to RLS_TABLES when user-location assignment CRUD lands
 --   webhook_endpoints — no PG write path audited; cover when the admin surface writes it on PG
 --
 -- ── Row-Level Security: tenant isolation (PG-only) ─────────────────────
@@ -3678,7 +3679,7 @@ BEGIN
                             'memo_recipients', 'memos', 'midtrans_transactions', 'offline_queue', 'product_activity', 'product_bundles',
                             'product_taxes', 'product_variants', 'products', 'receipt_number_counters', 'refunds', 'sale_idempotency',
                             'sale_lines', 'sales', 'sent_reports', 'stripe_customers', 'sync_conflicts', 'sync_entity_vectors',
-                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'user_location_access', 'users']
+                            'sync_terminals', 'tax_rates', 'tenant_plans', 'tenant_subscription', 'users']
     LOOP
         EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
         IF NOT EXISTS (
