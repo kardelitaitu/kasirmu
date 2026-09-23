@@ -19,5 +19,7 @@ What moved, and where to find it:
 Sibling documents in this directory ([`MODULAR_APP_PLAN.md`](./MODULAR_APP_PLAN.md)) are
 unaffected — only this file moved its authority.
 
-> last audited 08-09-26 by docs-auditor (source content); stub written 2026-09-23 by the
-> documentation audit, which verified every ported claim's path resolves from the new home.
+Stub written 2026-09-23 by the documentation audit, which verified every ported claim's
+path resolves from the new home.
+
+> last audited 08-09-26 by docs-auditor
