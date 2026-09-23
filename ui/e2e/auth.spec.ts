@@ -309,4 +309,33 @@ test.describe('Staff Login', () => {
     await loginAs(page, 'staff', '1234');
     await expect(page.locator('.ws-header-greeting')).toContainText('Staff');
   });
+
+  test('a server outage at the PIN step shows connection copy, not internal text', async ({ page }) => {
+    // The leak this pins (measured 2026-09-23): with the login call failing at the
+    // transport level, the PIN step rendered the raw internal string "network down"
+    // to the cashier — Error.message straight from the IPC boundary. The merchant
+    // needs to know it is the connection, not their PIN, or they will keep retyping
+    // a correct PIN until the lockout trips.
+    await page.goto('/index.html');
+    await page.getByTestId('staff-login-screen').waitFor({ timeout: 30_000 });
+    await page.locator('.staff-login-input').first().fill('owner');
+    await page.locator('.staff-login-submit-btn').click();
+    await page.locator('.staff-login-pad').waitFor({ timeout: 15_000 });
+
+    // The server dies between the username check and the PIN submit.
+    await page.evaluate(async () => {
+      const mod = await import('/src/dev-mock/core/mockDispatcher.ts');
+      (mod as { handlers: Record<string, unknown> }).handlers['staff_login'] = () => {
+        throw new Error('network down');
+      };
+    });
+    for (const d of '1234') {
+      await page.locator('.staff-login-pad-key').filter({ hasText: d }).click();
+    }
+
+    const toast = page.locator('.toast--error').first();
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await expect(toast).not.toContainText('network down');
+    await expect(toast).toContainText(/offline|connection/i);
+  });
 });

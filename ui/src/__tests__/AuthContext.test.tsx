@@ -335,4 +335,51 @@ describe('AuthContext', () => {
     window.removeEventListener('error', preventJsdomError);
     spy.mockRestore();
   });
+
+  // ── What copy a failed login surfaces (ERR-05 / ERR-10) ────────────
+  //
+  // Two kinds of failure reach this provider and they must not be confused.
+  // The pre-existing test above pins the first: a server refusal's own sentence
+  // is shown verbatim. These pin the second, which leaked until 2026-09-23 —
+  // measured in a browser, the PIN step rendered the literal internal string
+  // "network down" where a connection message belonged.
+
+  it('replaces a transport failure with user-safe copy, never the internal message', async () => {
+    // A bare Error from the IPC boundary. Its `.message` is internal detail.
+    mockStaffLogin.mockRejectedValue(new Error('network down'));
+    await renderProvider();
+    fireEvent.click(screen.getByTestId('login-btn'));
+
+    await waitFor(() => {
+      const shown = screen.getByTestId('error').textContent!;
+      expect(shown).not.toBe('network down');
+      expect(shown).toMatch(/offline|connection/i);
+    });
+  });
+
+  it('treats other transport vocabulary the same way', async () => {
+    // The vocabulary `classifyRetry` already owns; each must not reach the user.
+    await renderProvider();
+    const raw = ['ECONNREFUSED', 'request timed out', 'server error', 'service unavailable'];
+    for (const message of raw) {
+      mockStaffLogin.mockRejectedValue(new Error(message));
+      fireEvent.click(screen.getByTestId('login-btn'));
+      await waitFor(() => {
+        expect(screen.getByTestId('error').textContent).not.toBe(message);
+      });
+    }
+  });
+
+  it('keeps a server refusal verbatim, because that copy is written for the user', async () => {
+    // The counterpart, and the reason the fix is not simply `plainErrorMessage`:
+    // that mapper would flatten "Invalid credentials" into generic validation
+    // copy and lose what the login screen is designed to say.
+    mockStaffLogin.mockRejectedValue(new Error('Invalid credentials'));
+    await renderProvider();
+    fireEvent.click(screen.getByTestId('login-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent).toBe('Invalid credentials');
+    });
+  });
 });

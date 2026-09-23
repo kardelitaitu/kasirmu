@@ -3,6 +3,7 @@ import { requiredLocalized } from '@/components';
 import { useAuth } from '@/contexts/AuthContext';
 import StatusBar from '@/components/StatusBar';
 import { staffLogin } from '@/api/staff';
+import { classifyRetry } from '@/utils/app-error';
 import { getVersion } from '@/api/system';
 import { Localized, useLocalization } from '@fluent/react';
 import './SessionLockScreen.css';
@@ -144,9 +145,11 @@ export default function SessionLockScreen({
         onUnlock();
       } catch (err) {
         const errObj = err as Record<string, unknown> | null;
-        const msg = errObj?.['message'] as string
-          ?? l10n.getString('session-lock-invalid-pin');
-        setError(msg);
+        // Raw is kept for parseRateLimitSeconds below (parsing is not displaying);
+        // what reaches the screen goes through classifyRetry, so a transport
+        // failure shows localized copy instead of its internal text.
+        const msg = errObj?.['message'] as string ?? l10n.getString('session-lock-invalid-pin');
+        setError(classifyRetry(err) === 'retryable' ? l10n.getString('staff-login-error-connection') : msg);
         setPin([]);
 
         // Increment local attempt counter (defense-in-depth).

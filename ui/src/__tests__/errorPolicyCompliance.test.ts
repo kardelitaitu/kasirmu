@@ -26,6 +26,9 @@ const SRC = path.resolve(process.cwd(), 'src');
 const SCAN_DIRS = ['features', 'hooks', 'contexts', 'components', 'app', 'theme'];
 const ALLOWED_EXT = ['.ts', '.tsx'];
 
+/** The single source of the allowed user-safe normalizers. */
+const NORMALIZERS = /l10nErrorMessage|userErrorMessage|plainErrorMessage|normalizeError|requiredLocalized|loginErrorMessage/;
+
 // Intentional functional-parse sites that READ raw messages for logic but
 // never display them: PaymentModal's error classification + PartialStockResult
 // extraction. Everything rendered goes through l10nErrorMessage/userErrorMessage.
@@ -43,6 +46,25 @@ const WHITELISTED_RAW_PARSE: Array<{ file: string; anchor: RegExp; context: RegE
     file: path.join(SRC, 'features/sales/PaymentModal.tsx'),
     anchor: /err instanceof Error \? err\.message : String\(err\)/,
     context: /plainErrorMessage\(err, errMsg\)/,
+  },
+  {
+    // CreatePinScreen bootstrap: reads `message` to DETECT the "already exist"
+    // case and route to login instead. The value is tested with .includes() and
+    // never rendered — the screen shows localized copy. Bracket access because
+    // the error may arrive as a plain object rather than an Error.
+    file: path.join(SRC, 'features/auth/CreatePinScreen.tsx'),
+    anchor: /String\(\(err as Record<string, unknown>\)\['message'\]\)/,
+    context: /toLowerCase\(\)\.includes\('already exist'\)/,
+  },
+  {
+    // SessionLockScreen unlock: the SAME raw read feeds parseRateLimitSeconds
+    // (logic) but is no longer what is displayed — setError() routes through
+    // classifyRetry() on the following lines, so a transport failure shows the
+    // localized connection copy. Anchored on the display guard so removing it
+    // fails this whitelist rather than silently re-leaking.
+    file: path.join(SRC, 'features/auth/SessionLockScreen.tsx'),
+    anchor: /errObj\?\.\['message'\] as string/,
+    context: /classifyRetry\(err\) === 'retryable'/,
   },
   {
     // complete() catch: reads err.message to JSON-detect PartialStockResult;
@@ -116,6 +138,28 @@ describe('error-policy compliance (ERR-10)', () => {
         // Raw error text rendered to users (display leak). The helper
         // functions in utils/app-error.ts are the allowed normalizers.
         if (/err\s+instanceof\s+Error\s+\?\s+err\.message/.test(line) && !isWhitelisted(file, n)) {
+          leaks.push(`${path.relative(SRC, file)}:${n}`);
+        }
+        // Bracket access: `(err as Record<string, unknown>)?.['message']`. This
+        // shipped as a live leak in AuthContext and the two rules above could not
+        // see it — the first wants `err instanceof Error ?`, the second wants a
+        // dot. Measured 2026-09-23: the PIN step rendered the internal string
+        // "network down" to the cashier. Flagged unless a normalizer appears on
+        // the same line or within the next three, which is how the fixed form
+        // reads (`setError(loginErrorMessage(err))` on its own line, with the
+        // mapper defined in the same file).
+        // `raw ?? mapped` is NOT a pass-through: the raw value wins and the
+        // mapper is dead code. That exact shape is what shipped in AuthContext,
+        // and a naive "normalizer on the same line" exemption hid it again on the
+        // first attempt at this rule.
+        const rawWinsOverMapper = /\?\?|\|\|/.test(line.slice(line.search(/\[\s*['"]message['"]\s*\]/))) &&
+          NORMALIZERS.test(line);
+        if (
+          /\[\s*['"]message['"]\s*\]/.test(line) &&
+          /err|error|e\b/.test(line) &&
+          (rawWinsOverMapper || (!NORMALIZERS.test(line) && !NORMALIZERS.test(lines.slice(i, i + 4).join('\n')))) &&
+          !isWhitelisted(file, n)
+        ) {
           leaks.push(`${path.relative(SRC, file)}:${n}`);
         }
         // Legacy pattern: direct `error.message` assigned into a UI error
