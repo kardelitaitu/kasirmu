@@ -570,12 +570,21 @@ export const systemHandlers: Record<string, MockHandler> = {
   'plugin:updater|check': () => null,
   'get_machine_id': () => 'mock-machine-id-001',
   'get_hardware_fingerprint': () => 'hw_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+  // Field-for-field the Rust `PairingSessionStart`
+  // (kasirmu-core/src/desktop_link.rs:38): code, poll_token, expires_at, qr_url.
+  // This answered `base_url` + `qr_payload` instead — neither field exists on the
+  // real struct, and the `qr_url` both screens read was therefore UNDEFINED.
+  // Measured 2026-09-23: the pairing instructions rendered the raw Fluent pattern
+  // "…or visit {$url}" to the merchant, on both the activation screen and the
+  // provisioning flow, because Fluent reports an unknown variable by echoing the
+  // pattern back. The QR still drew, because QRCodeSVG got undefined and encoded
+  // the string "undefined" — so the screen looked plausible while the scan target
+  // and the printed URL were both wrong.
   'start_device_pairing': () => ({
     code: 'ABCD-1234',
     poll_token: 'mock-poll-token',
     expires_at: new Date(Date.now() + 600_000).toISOString(),
-    base_url: 'https://license.kasir.mu',
-    qr_payload: 'https://kasir.mu/pair?code=ABCD-1234',
+    qr_url: 'https://kasir.mu/pair?code=ABCD-1234',
   }),
   'poll_device_pairing': () => ({
     status: 'pending',

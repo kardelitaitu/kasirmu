@@ -722,3 +722,27 @@ describe('dev-mock native dialog commands', () => {
     expect(chosen as string).not.toHaveLength(0);
   });
 });
+
+// ── start_device_pairing must match the Rust struct ────────────────────
+//
+// Field-for-field with `PairingSessionStart` (kasirmu-core/src/desktop_link.rs:38):
+// code, poll_token, expires_at, qr_url. This mock previously answered `base_url`
+// + `qr_payload` — fields that do not exist on the real struct — so `qr_url` was
+// undefined and the pairing instructions rendered the raw Fluent pattern
+// "…or visit {$url}" on both screens that show a pairing code. Fluent reports an
+// unknown variable by echoing the pattern, so the damage was silent.
+//
+// Asserting the FIELD NAMES, not merely that the call resolves: a DTO that answers
+// with the wrong shape still "works" for every caller that reads the fields it has.
+describe('dev-mock start_device_pairing contract', () => {
+  it('answers exactly the fields the Rust struct declares', async () => {
+    const session = (await invoke('start_device_pairing', {})) as unknown as Record<string, unknown>;
+    expect(Object.keys(session).sort()).toEqual(['code', 'expires_at', 'poll_token', 'qr_url']);
+  });
+
+  it('carries a non-empty qr_url, which is what the UI interpolates', async () => {
+    const session = (await invoke('start_device_pairing', {})) as unknown as { qr_url: string };
+    expect(typeof session.qr_url).toBe('string');
+    expect(session.qr_url.length).toBeGreaterThan(0);
+  });
+});

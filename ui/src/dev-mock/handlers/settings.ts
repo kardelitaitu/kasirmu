@@ -29,12 +29,31 @@
 
 import type { MockHandler } from '../core/mockDispatcher';
 
+/**
+ * True when the page was opened with `?license=inactive`.
+ *
+ * The boot gate routes to `LicenseActivationScreen` on an inactive/unknown
+ * licence, and this mock answered a hardcoded `isActive: true` — so that screen
+ * was unreachable in a browser. Same per-navigation seam as `?unprovisioned=1`,
+ * `?nousers=1` and `?revoked=1`: changes no default, read at CALL time, guarded
+ * because the handler also runs under jsdom where `search` may be empty.
+ */
+function inactiveLicenceRequested(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('license') === 'inactive';
+  } catch {
+    return false;
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // BOOT / SETUP — license group (was literal at the BOOT/SETUP banner)
 // ═══════════════════════════════════════════════════════════════
 
 export const licenseHandlers: Record<string, MockHandler> = {
-  'get_license_status': () => ({ isActive: true, status: 'valid', tier: 'pro', payload: null, message: null }),
+  'get_license_status': () => inactiveLicenceRequested()
+    ? { isActive: false, status: 'inactive', tier: null, payload: null, message: 'No licence is activated on this device.' }
+    : { isActive: true, status: 'valid', tier: 'pro', payload: null, message: null },
   'check_license_status': () => ({ tenantId: 'tenant-1', status: 'active', tier: 'Pro', active: true, expiresAt: null, graceUntil: null, maxLocations: 5 }),
   'get_device_id': () => 'mock-device-id-001',
   'activate_license': () => true,
