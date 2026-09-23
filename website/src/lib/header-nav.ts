@@ -2,7 +2,9 @@
  * Header client-side auth nav.
  *
  * Owns the swap between "Sign in" → /login and "Account" → /account for every
- * `[data-auth-nav]` link, plus the mobile-menu close-on-link-click behavior.
+ * `[data-auth-nav]` link, plus the dismissal behavior of both header menus:
+ * close-on-link-click for the mobile menu, Escape and outside-press for it too,
+ * and the Solutions disclosure in `initSolutionsDisclosure`.
  *
  * The signed-in check goes through `hasSession()` (session.ts), NOT a direct
  * sessionStorage read. sessionStorage is per-tab, so a user signed in via the
@@ -154,6 +156,58 @@ export function initSolutionsDisclosure(): void {
   });
 }
 
+let mobileMenuDismissalBound = false;
+
+/** Close every open header `<details>`; returns the first one closed, if any. */
+function closeOpenHeaderMenus(): HTMLDetailsElement | null {
+  const open = Array.from(document.querySelectorAll<HTMLDetailsElement>('header details[open]'));
+  open.forEach((details) => details.removeAttribute('open'));
+  return open[0] ?? null;
+}
+
+/**
+ * Escape closes the mobile menu and puts focus back on the summary that opened
+ * it, so the keyboard user is not dropped at the top of the document.
+ */
+export function onMobileMenuKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  const closed = closeOpenHeaderMenus();
+  closed?.querySelector<HTMLElement>('summary')?.focus();
+}
+
+/**
+ * A press outside the panel dismisses it. A press inside it — following a link —
+ * does not: the link's own close-on-click handling owns that case.
+ */
+export function onMobileMenuPointerDown(event: Event): void {
+  const open = document.querySelectorAll<HTMLDetailsElement>('header details[open]');
+  if (open.length === 0) return;
+  const target = event.target as Node | null;
+  for (const details of Array.from(open)) {
+    if (target && details.contains(target)) return;
+  }
+  closeOpenHeaderMenus();
+}
+
+/**
+ * Dismiss the mobile menu on Escape and on a press outside it.
+ *
+ * The hamburger is a native `<details>`, which is deliberate — it opens with no
+ * JavaScript at all — but a native disclosure closes only when its own
+ * `<summary>` is activated. Measured in a browser at 390px on 2026-09-23: an
+ * open panel survived Escape and a press on the page beside it, so the menu
+ * stayed over the content and the press went to whatever sat behind it — the
+ * visitor's only way out was to find the summary again. Both dismissals are
+ * delegated on `document`, once, because a ClientRouter navigation swaps the
+ * header and delegated listeners need no rebinding on the new elements.
+ */
+export function initMobileMenuDismissal(): void {
+  if (mobileMenuDismissalBound) return;
+  mobileMenuDismissalBound = true;
+  document.addEventListener('keydown', onMobileMenuKeydown);
+  document.addEventListener('pointerdown', onMobileMenuPointerDown);
+}
+
 /**
  * Wire the header once per page: initial resolve, SPA swap/page-load re-resolve,
  * cross-tab storage sync, close the mobile menu when a link inside it is
@@ -162,6 +216,7 @@ export function initSolutionsDisclosure(): void {
 export function initHeaderNav(): void {
   void updateAuthNav();
   initSolutionsDisclosure();
+  initMobileMenuDismissal();
   document.addEventListener('astro:page-load', () => {
     void updateAuthNav();
     initSolutionsDisclosure();
