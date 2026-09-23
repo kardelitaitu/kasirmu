@@ -1272,3 +1272,66 @@ needs an isolated re-run before it means anything.
 parity **0 missing** · the guard is 9/9.
 
 **Commit:** `e2e4921f7`.
+---
+
+## Round 28 — verified the setup/auth command surface has no remaining unhandled commands
+
+Two housekeeping items first, both caused by my own earlier mistakes:
+
+1. **A duplicate of this file existed in the repo.** A peer's `cd7bdaef9` ("consolidate all audits
+   into domain subfolders") added `docs/audits/setup/setup-state-of-the-art.md` as a NEW file without
+   removing the old `docs/audits/setup-state-of-the-art.md`, and the copy it committed predated my
+   round-27b repair (68821 vs 71532 bytes, missing that section). I completed their stated intent:
+   synced the subfolder copy to current and dropped the root one. **One canonical path now:**
+   `docs/audits/setup/setup-state-of-the-art.md`. **Commit:** `d05e296df`.
+2. Round 27's repair commit (`a95ff05a8`) is what restored this file after I truncated it; it is
+   intact at 1274 lines with 12 round sections.
+
+### The substantive work: is the drift class closed?
+
+Round 27 found three unhandled commands in the account-linking path. Rather than assume that was the
+only instance, I scanned **every command the setup and auth surfaces call** and classified each by
+whether it resolves:
+
+```
+SETUP (10 commands) — all resolve
+  get_device_id, get_preset_features, provision_device, start_device_pairing,
+  poll_device_pairing, link_device_google, link_device_email_request,
+  link_device_email_consume, get_first_run_state, has_users
+
+AUTH (10 commands) — all resolve or return a DELIBERATE null
+```
+
+**The setup path is clean** — round 27's three fixes closed it, and nothing else in that flow falls
+through to the unknown-command branch.
+
+### A false positive I caught before reporting it
+
+The auth scan initially flagged three commands as unhandled: `destroy_session`, `get_staff_profile`,
+and `get_own_avatar`. **All three are correct.** My probe was wrong, twice over:
+
+- it called them with `{ args: {} }` while they take a `sessionToken`, so the call did not exercise
+  the handler at all;
+- and two of them (`destroy_session: () => null`, `get_own_avatar_scoped: () => null`) return `null`
+  **by design** — the first is a `void` command, the second means "this user has no avatar", which
+  `PosScreen.tsx:208-210` already falls back from to initials.
+
+So a `null` return is not by itself evidence of a missing handler, and my first scan treated it as
+such. Re-checked with realistic arguments and against the call site before concluding anything — the
+lesson round 25 taught about misdiagnosis, applied here.
+
+### Verification
+
+**607 files / 10,363 tests pass** · the DTO conformance guard (round 27b) covers the nine DTO shapes
+these commands return · `tsc` clean · lint **0 errors** · parity **0 missing**.
+
+### Where the objective stands
+
+Across rounds 16-28 the pattern has been consistent: **the product surfaces hold up; the scaffolding
+around them does not.** Every defect found in that span was in the dev-mock, the test harness, or my
+own documentation — not in the wizard or the login flow themselves. This round's scan found no new
+product defect, which is the expected result now that the mock's command surface has been swept.
+
+Remaining known items, unchanged:
+- the provisioning card is ~700px taller than the desktop viewport (structural, needs a product call);
+- no real-hardware verification of any fix.
