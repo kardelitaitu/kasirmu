@@ -36,7 +36,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 31 | module-system | [ADR #31: Decentralized UI Feature Module Registration](../decisions/2026-07-24-decentralized-ui-module-registration.md) | Accepted (2026-07-24) |
 | 32 | database | [ADR #32: DB Layer Extraction (R2) & Platform File Split (R5)](../decisions/2026-07-25-db-extraction-and-platform-split.md) | Proposed |
 | 33 | architecture | [ADR #33: Panic Policy & Production unwrap/expect Enforcement](../decisions/2026-08-03-panic-policy.md) | Implemented (2026-08-03) |
-| 34 | topology | [ADR #34: Topology Editor as the Business Logic Builder](../decisions/2026-08-07-business-logic-topology-builder.md) | Proposed |
+| 34 | topology | [ADR #34: Topology Editor as the Business Logic Builder](../decisions/2026-08-07-adr34-business-logic-topology-builder.md) | Proposed |
 | 35 | staff | [ADR #35: RBAC — Role Assignments with Branch/Workspace Scopes and User Profile Data](../decisions/2026-08-11-adr35-rbac-role-assignments-user-profile.md) | Accepted (ratified 2026-08-11; implementation sequence in D9) |
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |

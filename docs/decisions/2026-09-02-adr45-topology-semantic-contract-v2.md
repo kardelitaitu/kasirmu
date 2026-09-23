@@ -15,7 +15,7 @@ status: Accepted — §1–§3, §4.1, §5, §4.2 storage + IPC + migration func
 
 ## Context
 
-[ADR #34](./2026-08-07-business-logic-topology-builder.md) set the goal — "make
+[ADR #34](./2026-08-07-adr34-business-logic-topology-builder.md) set the goal — "make
 valid relationships discoverable and invalid relationships difficult or
 impossible to create" — and [ADR #44](./2026-08-08-adr34-typed-connection-gating.md)
 shipped the gate, declaring `topologySemantics.json` the single source of truth
@@ -268,7 +268,7 @@ Three specific properties matter more than the consolidation itself:
 
 ### 4. Cold start is "start empty, build deliberately"
 
-This supersedes the preset stance of [ADR #34](./2026-08-07-business-logic-topology-builder.md).
+This supersedes the preset stance of [ADR #34](./2026-08-07-adr34-business-logic-topology-builder.md).
 Presets are retired: the editor opens on an empty canvas, and every wire in a
 saved graph is a relationship a human chose. That is the direct expression of
 "invalid relationships difficult to create" — a graph the merchant did not
@@ -1235,6 +1235,6 @@ deferred list.
 ## Related decisions
 
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](./2026-07-20-node-based-store-topology-builder.md)
-- [ADR #34: Topology Editor as the Business Logic Builder](./2026-08-07-business-logic-topology-builder.md) — §Presets superseded by §4 here
+- [ADR #34: Topology Editor as the Business Logic Builder](./2026-08-07-adr34-business-logic-topology-builder.md) — §Presets superseded by §4 here
 - [ADR #44: Typed Connection Gating & Live Validation](./2026-08-08-adr34-typed-connection-gating.md) — §1 completes its single-source-of-truth goal
 - [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md)

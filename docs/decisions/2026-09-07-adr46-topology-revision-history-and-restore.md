@@ -717,7 +717,7 @@ candidate list or a new ADR stub. It is never fixed inside this ADR's commits.
 ## Related decisions
 
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](./2026-07-20-node-based-store-topology-builder.md)
-- [ADR #34: Topology Editor as the Business Logic Builder](./2026-08-07-business-logic-topology-builder.md) — its "explicit publish boundary" is §5 here
+- [ADR #34: Topology Editor as the Business Logic Builder](./2026-08-07-adr34-business-logic-topology-builder.md) — its "explicit publish boundary" is §5 here
 - [ADR #44: Typed Connection Gating & Live Validation](./2026-08-08-adr34-typed-connection-gating.md)
 - [ADR #45: Topology Semantic Contract v2](./2026-09-02-adr45-topology-semantic-contract-v2.md) — §4.1 cold start is the philosophy this history serves; §4.2's device-portability critique is §8's stated limit
 - [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md)

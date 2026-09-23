@@ -15,7 +15,7 @@ status: Implemented (2026-08-08)
 
 ## Context
 
-[ADR #34 — Topology Editor as the Business Logic Builder](2026-08-07-business-logic-topology-builder.md)
+[ADR #34 — Topology Editor as the Business Logic Builder](2026-08-07-adr34-business-logic-topology-builder.md)
 establishes the target contract: nodes expose named semantic ports, wires are
 typed relationships, and the editor must make valid relationships discoverable
 and invalid ones impossible to create. It explicitly defers the internal
@@ -407,7 +407,7 @@ than only upgrading the in-memory editor state.
 
 ## Related decisions
 
-- [ADR #34: Topology Editor as the Business Logic Builder](2026-08-07-business-logic-topology-builder.md)
+- [ADR #34: Topology Editor as the Business Logic Builder](2026-08-07-adr34-business-logic-topology-builder.md)
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](2026-07-20-node-based-store-topology-builder.md)
 - [ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture](2026-07-10-workspace-type-instance-design.md)
 
