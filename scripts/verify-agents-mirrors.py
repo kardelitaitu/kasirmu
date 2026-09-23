@@ -742,7 +742,16 @@ def mirror_target_findings(text: str, rel: str, wfs: dict[str, str],
             continue
         quoted = [(m.start(), m.end()) for m in QUOTED_PHRASE_RE.finditer(line)]
         for off, sent in line_sentences(line):
-            if not re.search(r"\bmirrors?\b|\bmirroring\b", sent, re.I):
+            # The lookbehind on the verb is load-bearing. "verify-agents-mirrors.py"
+            # is a script this repo cites by name in several audit stamps, and a bare
+            # \bmirrors?\b matched the "mirrors" INSIDE that hyphenated filename -- so
+            # any sentence listing the script read as a mirror claim, and a genuine
+            # retirement record naming a .bak workflow in the same sentence was graded
+            # as a present-tense claim that the workflow is live (tdd/SKILL.md:6, found
+            # 2026-09-23 while repairing the skills audit). A hyphen before the verb is
+            # never how this repo writes the claim; "mirrors", "mirror", "mirroring"
+            # preceded by a word boundary and not by "-" still match.
+            if not re.search(r"(?<!-)\bmirrors?\b|\bmirroring\b", sent, re.I):
                 continue
             # A NEGATED, PAST-TENSE mirror sentence is the opposite of a claim that the
             # target is live: "Nothing here mirrors .github/workflows/ci.yml either" and
