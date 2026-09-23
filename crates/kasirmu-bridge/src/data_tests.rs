@@ -739,6 +739,304 @@ fn import_gate_users_rejects_at_cap_and_writes_nothing() {
     );
 }
 
+// ── C8 slice S3: the restore request surface ────────────────────────
+
+/// A scratch directory removed when the guard drops.
+///
+/// The restore surface is filesystem-shaped — generations, a request file — so
+/// unlike the rest of this module its cases cannot run over an in-memory
+/// connection. Same shape as `recovery.rs`'s `Scratch`.
+struct RestoreScratch(std::path::PathBuf);
+
+impl RestoreScratch {
+    fn new(label: &str) -> Self {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "kasirmu-bridge-restore-{label}-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        Self(dir)
+    }
+
+    fn live(&self) -> std::path::PathBuf {
+        self.0.join("store.db")
+    }
+
+    /// A migrated, file-backed database at `path` carrying `store.name`.
+    fn write_db(&self, path: &std::path::Path, store_name: &str) {
+        let mut conn = rusqlite::Connection::open(path).expect("open scratch db");
+        kasirmu_core::migrations::run(&mut conn).expect("migrate scratch db");
+        Store::new(&conn)
+            .set_store_name(store_name)
+            .expect("set the store name");
+    }
+
+    /// The current backup generation (`<db>.backup.db`) for the live path.
+    fn generation0(&self) -> std::path::PathBuf {
+        let mut path = self.live();
+        path.set_extension("backup.db");
+        path
+    }
+}
+
+impl Drop for RestoreScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A grant-bearing context, plus its token, for one `SETTINGS_EDIT` call.
+async fn settings_editor() -> (crate::testing::TestBridge, String) {
+    use crate::testing::TestBridge;
+    let bridge = TestBridge::new();
+    let token = bridge.token_granting(permissions::SETTINGS_EDIT).await;
+    (bridge, token)
+}
+
+#[tokio::test]
+async fn restore_prepare_refuses_a_corrupt_candidate_even_with_the_right_name() {
+    let scratch = RestoreScratch::new("corrupt");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // The generation the operator would pick: present, and NOT a database.
+    std::fs::write(
+        scratch.generation0(),
+        b"not a sqlite database, deliberately",
+    )
+    .expect("write the corrupt generation");
+
+    let (bridge, token) = settings_editor().await;
+    let err = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: scratch.generation0().display().to_string(),
+            // The RIGHT name: the refusal must come from validation, not
+            // from the confirmation.
+            confirm_store_name: "Kopi Senja".into(),
+        },
+    )
+    .await
+    .expect_err("a corrupt candidate must not produce a request");
+    match err {
+        BridgeError::Core { message, .. } => assert!(
+            message.contains("refusing"),
+            "the refusal must be the validator\'s own: {message}"
+        ),
+        other => panic!("expected the typed validation refusal, got {other:?}"),
+    }
+    assert!(
+        !restore_request_file(&live).exists(),
+        "no request file may be written for a corrupt candidate"
+    );
+    assert_eq!(
+        restore_status(&live).await.unwrap().pending,
+        false,
+        "status must agree that nothing is pending"
+    );
+}
+
+#[tokio::test]
+async fn restore_prepare_refuses_a_wrong_store_name_and_writes_no_request() {
+    let scratch = RestoreScratch::new("wrongname");
+    let live = scratch.live();
+    scratch.write_db(&live, "Live Store");
+    // A perfectly valid candidate that carries a DIFFERENT store name.
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    let (bridge, token) = settings_editor().await;
+    let err = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: scratch.generation0().display().to_string(),
+            // The LIVE store's name, which is the wrong answer: the candidate
+            // is what is being confirmed.
+            confirm_store_name: "Live Store".into(),
+        },
+    )
+    .await
+    .expect_err("a wrong store name must be refused");
+    match err {
+        BridgeError::Invalid(message) => assert!(
+            !message.contains("Kopi Senja"),
+            "the refusal must not hand back the answer it is checking for: {message}"
+        ),
+        other => panic!("expected a typed invalid-request refusal, got {other:?}"),
+    }
+    assert!(
+        !restore_request_file(&live).exists(),
+        "a refused confirmation must write no request file"
+    );
+}
+
+#[tokio::test]
+async fn restore_prepare_writes_a_request_naming_the_candidate() {
+    let scratch = RestoreScratch::new("valid");
+    let live = scratch.live();
+    scratch.write_db(&live, "Live Store");
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    let (bridge, token) = settings_editor().await;
+    let result = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: scratch.generation0().display().to_string(),
+            confirm_store_name: "Kopi Senja".into(),
+        },
+    )
+    .await
+    .expect("a valid candidate with the right name must prepare a request");
+    assert_eq!(result.verdict, "Acceptable");
+    assert!(result.requested_at.contains('T'), "an ISO-8601 stamp");
+
+    // The file on disk is what the boot path reads: assert its CONTENT, not
+    // just the DTO.
+    let raw = std::fs::read_to_string(restore_request_file(&live)).expect("request file exists");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("request file is JSON");
+    assert_eq!(
+        parsed["candidate_path"].as_str().unwrap(),
+        scratch.generation0().display().to_string(),
+        "the request must name the candidate that was chosen"
+    );
+    assert_eq!(parsed["verdict"], "Acceptable");
+    assert_eq!(parsed["confirmed_store_name"], "Kopi Senja");
+    assert!(parsed["requested_at"].as_str().unwrap().contains('T'));
+
+    // And status reports it back.
+    let status = restore_status(&live).await.unwrap();
+    assert!(status.pending);
+    assert_eq!(
+        status.candidate_path.as_deref(),
+        Some(scratch.generation0().display().to_string().as_str())
+    );
+    assert_eq!(status.verdict.as_deref(), Some("Acceptable"));
+    assert!(status.error.is_none());
+}
+
+#[tokio::test]
+async fn list_restore_candidates_reports_a_corrupt_generation_as_corrupt() {
+    let scratch = RestoreScratch::new("list");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // Generation 0: good. Generation 1: present but unusable — the operator
+    // has to SEE it and read why, not find it missing from the list.
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+    let generation1 = {
+        let mut path = scratch.generation0();
+        path.set_extension("1.db");
+        path
+    };
+    std::fs::write(&generation1, b"truncated by a full disk, deliberately")
+        .expect("write the corrupt generation 1");
+
+    let listed = list_restore_candidates(&live).await.unwrap();
+    assert_eq!(listed.generations_examined, BACKUP_GENERATIONS);
+    assert_eq!(
+        listed.candidates.len(),
+        2,
+        "the corrupt generation must be LISTED, not omitted"
+    );
+    let corrupt = listed
+        .candidates
+        .iter()
+        .find(|c| c.generation == 1)
+        .expect("generation 1 must appear even though it is unusable");
+    assert_eq!(corrupt.verdict, "Corrupt");
+    assert!(!corrupt.restorable);
+    assert!(
+        corrupt.reason.contains("integrity_check") || corrupt.reason.contains("cannot open"),
+        "the reason must say WHY it is unusable: {}",
+        corrupt.reason
+    );
+    let current = listed
+        .candidates
+        .iter()
+        .find(|c| c.generation == 0)
+        .expect("the current generation");
+    assert_eq!(current.verdict, "Acceptable");
+    assert!(current.restorable);
+    assert!(current.size_bytes > 0);
+    // Newest generation first.
+    assert_eq!(listed.candidates[0].generation, 1);
+}
+
+#[tokio::test]
+async fn list_restore_candidates_is_empty_when_no_backup_exists() {
+    let scratch = RestoreScratch::new("nobackup");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    let listed = list_restore_candidates(&live).await.unwrap();
+    assert!(listed.candidates.is_empty());
+    assert_eq!(listed.generations_examined, BACKUP_GENERATIONS);
+    assert!(!restore_status(&live).await.unwrap().pending);
+}
+
+#[tokio::test]
+async fn restore_prepare_requires_the_settings_edit_permission() {
+    use crate::testing::TestBridge;
+    let scratch = RestoreScratch::new("gated");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    // A token that grants DATA_EXPORT but NOT SETTINGS_EDIT: the backup
+    // permission must not be enough to request a restore.
+    let bridge = TestBridge::new();
+    let token = bridge.token_granting(permissions::DATA_EXPORT).await;
+    let err = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: scratch.generation0().display().to_string(),
+            confirm_store_name: "Kopi Senja".into(),
+        },
+    )
+    .await
+    .expect_err("DATA_EXPORT must not authorize a restore request");
+    assert!(
+        matches!(err, BridgeError::PermissionDenied(_)),
+        "expected a permission denial, got {err:?}"
+    );
+    assert!(!restore_request_file(&live).exists());
+}
+
+#[tokio::test]
+async fn restore_prepare_rejects_a_candidate_path_with_traversal() {
+    let scratch = RestoreScratch::new("traversal");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    let (bridge, token) = settings_editor().await;
+    let err = restore_prepare(
+        &bridge.ctx(),
+        &token,
+        &live,
+        RestorePrepareArgs {
+            candidate_path: "../outside.db".into(),
+            confirm_store_name: "Kopi Senja".into(),
+        },
+    )
+    .await
+    .expect_err("C-1 must reject a traversing candidate path");
+    assert!(err.to_string().contains("path traversal"), "got: {err}");
+    assert!(!restore_request_file(&live).exists());
+}
+
+/// The request file beside the live database (the writer's own naming rule).
+fn restore_request_file(live: &std::path::Path) -> std::path::PathBuf {
+    let name = live.file_name().unwrap().to_string_lossy().into_owned();
+    live.with_file_name(format!("{name}{RESTORE_REQUEST_SUFFIX}"))
+}
+
 #[test]
 fn import_gate_users_proceeds_under_cap_and_pins_the_boundary() {
     // Free staff cap 1: zero active staff -> 1 new user is exactly at the
