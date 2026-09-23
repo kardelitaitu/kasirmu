@@ -1284,4 +1284,354 @@ hand, and probe #3 is the only ground truth for what actually shipped.
   did not land, because no live workflow deploys the site and a green PR tells you
   nothing about what shipped.
 
+---
+
+## 10. Desktop SQLite — pre-upgrade pre-flight (C11b)
+
+The desktop and tablet stores are one SQLite file each, and **every app start runs the
+migration runner before anything else** — `migrations::run` is called from `AppState::new`
+before a UI exists (desktop `apps/desktop-tauri/src/state.rs:236`, tablet
+`apps/mobile-tauri/src/state.rs:177`). "Upgrading" this product therefore means "opening the
+database with a newer build", and the runner is the only component that touches live data
+before the app can refuse anything.
+
+### 10.1 The snapshot the app takes for you
+
+`platform/core/src/database/migrations.rs` copies the whole database **before it writes any
+migration SQL**:
+
+- **When** — `run` calls `snapshot_before_migration` when `will_execute_migration_sql` is
+  true (`:97-99`), i.e. when at least one registered migration is unapplied (`None`) or
+  drifted (a stored checksum that no longer matches, `:169-175`). A run whose only work is the
+  one-time legacy-checksum `UPDATE` takes **no** snapshot: that path cannot damage user data,
+  and a full copy per start is the cost that gets a feature deleted (`:153-160`).
+- **How** — rusqlite's online-backup API (`conn.backup`, `:233`): a page-level copy of a live
+  connection, not a raw file copy, which would race the `-wal` and miss every committed page
+  still sitting in it (`:203-211`).
+- **Where** — beside the database it copies, as **`<db>.pre-migration.bak`**
+  (`SNAPSHOT_SUFFIX`, `:179`; the path is derived from `Connection::path()` at `:192-201`).
+  For the desktop store that is `<app_data_dir>/kasir.db.pre-migration.bak`.
+- **Atomic** — written under a temp name (`<destination>.<pid>.<seq>.tmp`, `:224-228`) and
+  renamed into place only after the copy completed (`:239-244`), so a snapshot that fails
+  midway cannot overwrite the previous good one. A leftover temp is removed first (`:232`),
+  because the backup API would otherwise copy *into* an existing database.
+- **Fails loudly** — a snapshot that cannot be taken is an error, not a warning; the run fails
+  instead of migrating without one (`:216-217`, `:235-237`, `:241-243`).
+- **No snapshot at all** for a temporary or in-memory database: `Connection::path()` returns
+  `Some("")`, so there is no file to protect and no snapshot path (`:189-191`).
+
+> ⚠️ **`<db>.pre-migration.bak` is ONE file, not a rotation.** It is replaced in place on every
+> upgrade that writes SQL — unlike `<db>.backup.db`, which keeps three generations
+> (`BACKUP_GENERATIONS`, `crates/kasirmu-core/src/db/mod.rs:270`). If you want history across
+> upgrades, copy it somewhere else before the next one.
+
+> ⚠️ **Budget disk space for three copies, not one.** At the moment of the rename the live
+> database, the temp copy and the previous `<db>.pre-migration.bak` all exist (`:218-244`). A
+> store whose database is 800 MB needs roughly 2.4 GB free.
+
+### 10.2 Why the snapshot exists: four migrations that cannot be re-run
+
+The runner has **two** paths that execute SQL against data that already exists, and neither is
+a fresh-install-only path:
+
+1. **Drift repair** — when an already-applied migration's file no longer matches its stored
+   SHA-256, the runner re-applies the script on live data rather than hard-failing
+   (`:118-135`, `reapply_for_drift`).
+2. **Per-statement fallback** — if that re-apply fails, `reapply_script` retries
+   statement-by-statement, skipping only the statements whose effect is provably already
+   present, which **gives up per-file atomicity** (`:119-125`, and the audit note at `:5-6`).
+
+That is survivable for most of the registry and **not** survivable for four entries, which are
+pinned as a measured residual by `crates/kasirmu-core/src/migrations_tests.rs:361-366`:
+
+| Migration | Why re-running it is impossible by construction |
+|---|---|
+| `20260831_loyalty_multiplier_fixedpoint.sql` | Converts a column and then **drops the source it reads** |
+| `20260906_rename_store_to_location.sql` | **Renames the tables it reads** |
+| `20260911_memo_fk_restrict.sql` | Rebuilds `memos` reading `location_id`, which its successor then drops |
+| `20260913_memo_locations.sql` | Rebuilds a table out of a definition it replaces |
+
+All four files are present in `crates/kasirmu-core/migrations/`. The reasoning is the test's
+own (`:343-354`): each is a one-shot data/rename migration whose script **consumes the state it
+transforms**, and the forward-only contract (DB-03, `crates/kasirmu-core/src/migrations.rs:20-37`)
+already assigns that class to *backup-plus-forward-repair* rather than to re-apply.
+
+**This is why an operator must not start an upgrade without the snapshot.** A migration that
+cannot be re-run safely has no second attempt: the only recovery is the copy taken before the
+first one.
+
+### 10.3 Pre-flight (run before every upgrade)
+
+1. **Quit the app completely** — not just close the window. The snapshot is taken by the app's
+   own boot path, and the runner is the only writer you want on that file.
+2. **Confirm where the store is.** The path is `resolve_db_path(app)` = Tauri's
+   `app_data_dir()` + `kasir.db` (desktop `apps/desktop-tauri/src/state.rs:760-782`; tablet
+   `apps/mobile-tauri/src/state.rs:388-411`). The bundle identifier is `mu.kasir.app`
+   (`apps/desktop-tauri/tauri.conf.json:5`), so on Windows the path is
+   `%APPDATA%\mu.kasir.app\kasir.db` — **derived from those two verified inputs, not observed**;
+   this runbook has no way to call the OS API. The same function copies a pre-rename store from
+   `<base>/com.ozpos.app/oz-pos.db` into the new location on first boot (`:766-782`), so an old
+   install's data follows the identifier change by copy.
+3. **Free the disk** — see the 3× note above.
+4. **Take an independent copy anyway.** The app's own snapshot is taken at boot, which is
+   already *inside* the upgrade; an off-machine copy is the only thing that survives a failure
+   before that point:
+   ```bash
+   # repo script: integrity check → consistent .backup → gzip → 30-day retention
+   BACKUP_DIR=/backups bash scripts/backup-db.sh "$DB"
+   ```
+   (`scripts/backup-db.sh` usage header; `RETENTION_DAYS` overrides the 30-day default.)
+5. **Note the store's current schema position**, so "forward" and "backward" are
+   distinguishable after the fact:
+   ```bash
+   sqlite3 "$DB" "SELECT id, applied_at FROM schema_migrations ORDER BY applied_at DESC LIMIT 1;"
+   ```
+   (columns `id, applied_at, checksum` — `platform/core/src/database/migrations.rs:310-314`.)
+
+### 10.4 After the upgrade
+
+**If it succeeded**, confirm the snapshot exists and is a real database, then keep it:
+
+```bash
+ls -l "$DB.pre-migration.bak"
+sqlite3 "$DB.pre-migration.bak" "PRAGMA integrity_check;"      # want: ok
+sqlite3 "$DB" "SELECT id FROM schema_migrations ORDER BY applied_at DESC LIMIT 1;"
+```
+
+The app never deletes this file and never rotates it. Keep it until the new build has run
+through a normal business day **and** a fresh `<db>.backup.db` exists from the new build; then
+archive it off-machine rather than deleting it.
+
+**If it failed**, the app refuses to boot — a migration error propagates out of
+`AppState::new` (`apps/desktop-tauri/src/state.rs:236-237`). Do **not** re-run the upgrade and
+do not keep re-opening the app. Quit it, then restore:
+
+```bash
+kasir --db "$DB" restore --input "$DB.pre-migration.bak"
+```
+
+`kasir` is the CLI binary name (`crates/kasirmu-cli/Cargo.toml:10-12`), `--db` is the global
+database flag defaulting to `./kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
+`restore --input` takes the backup path (`:68-73`). It checkpoints the WAL, closes the
+connection, then hands the swap to `restore_from` — validate, snapshot, drop the
+`-wal`/`-shm` sidecars, stage and verify, atomic rename, re-verify, roll back on failure
+(`crates/kasirmu-cli/src/commands/backup.rs:58-96`). It prints the candidate's verdict reason
+and the pre-restore snapshot path. §11 covers the boot-time request path and the rest of the
+recovery surface.
+
+---
+
+## 11. Restore and Safe Mode (C8 S7)
+
+### 11.1 The restore request file
+
+A restore is **requested, not performed in-process**. The live connection is an
+`Arc<Mutex<Connection>>` cloned into daemons spawned detached with no handle registry
+(`apps/desktop-tauri/src/lib.rs:117-122`), so an in-process swap would fight every one of them.
+The swap therefore happens at boot, before anything opens the database.
+
+The request is a file beside the live database:
+
+- **`<db>.restore-request.json`** — writer `crates/kasirmu-bridge/src/data.rs:1001-1019`
+  (constant `:1009`); consumers `apps/desktop-tauri/src/recovery.rs:31` and
+  `apps/mobile-tauri/src/recovery.rs:36`. The suffix exists as two copies on purpose (the
+  bridge's is private) and is pinned against the **consumer's own literal** by a bridge test
+  (`crates/kasirmu-bridge/src/data_tests.rs:995-1002`).
+- **Shape** — five keys (`crates/kasirmu-bridge/src/data.rs:211-224`): `candidate_path`,
+  `requested_at`, `verdict`, `candidate_schema`, `confirmed_store_name`. The boot path
+  deserializes **only** `candidate_path` and re-validates everything itself, so a verdict
+  written by an earlier process is never trusted
+  (`apps/desktop-tauri/src/recovery.rs:58-67`).
+
+### 11.2 How a restore is requested
+
+Two mechanisms exist, and **which one you can use today is not the same for both**.
+
+**A. In-app request — the preferred path, and not yet reachable from the UI.**
+`restore_prepare` validates the candidate, checks a typed confirmation against the candidate's
+own `store.name`, requires `SETTINGS_EDIT`, and writes the request file
+(`crates/kasirmu-bridge/src/data.rs:1130-1221`). `list_restore_candidates` lists the backup
+generations with their verdicts (`:1092-1128`); `restore_status` reports what is pending
+(`:1233-1266`).
+
+> ⚠️ **UNVERIFIED AS AN OPERATOR PATH: no IPC command is registered for any of the three.**
+> Measured at this revision by reading both `invoke_handler!` blocks —
+> `apps/desktop-tauri/src/lib.rs:964-980` and `apps/mobile-tauri/src/lib.rs:644-656` register
+> `get_backup_status*`, `create_backup*`, `export_data*`, `import_*` and `create_backup_to`,
+> and **nothing else from `kasirmu_bridge::data`**; grepping
+> `list_restore_candidates|restore_prepare|restore_status` across `apps/` returns only module
+> docs and tests. The workstream checklist records the same gap as the outstanding slice S5
+> (`manager-codebase-review-checklist.md:266`). **Do not look for a restore button in
+> Settings → Data Management** — the screen there is Backup status plus one-click snapshot
+> (`ui/src/features/settings/DataManagementScreen.tsx`).
+
+**Why the in-app path is nonetheless the intended one.** On Android the default backup lands in
+app-private storage an operator cannot reach with a file manager, so a shell is not an available
+tool on that shell; that is the whole reason D5 chose a safe-mode boot consumer over an
+in-process restore (`manager-codebase-review-decisions.md:105-118`).
+
+**B. The CLI restore** — reachable today, and it does **not** use the request file. See §11.8.
+
+### 11.3 What the operator sees on the next boot
+
+The consumer runs from the setup closure **before** `AppState::new` opens and migrates the
+database (desktop `apps/desktop-tauri/src/lib.rs:116-159`; tablet
+`apps/mobile-tauri/src/lib.rs:98-140`). It never fails the boot: every outcome is a value the
+caller logs, and the app starts on the existing database either way.
+
+| Outcome | What happened | Log line |
+|---|---|---|
+| `NothingPending` | No request file — the ordinary boot. | (nothing logged) |
+| `AlreadyClaimed` | A request is pending but another boot holds the lock; this boot leaves it alone. | `warn`: "a restore request is pending but another boot holds the lock; leaving it alone" |
+| `Restored` | The candidate was promoted before the database was opened. | `info`: "pending restore request consumed — the database was replaced before it was opened" |
+| `Refused` | The request exists but was not consumed; the app boots on the existing database and the request stays. | `error`: "a pending restore request was refused; booting on the existing database and leaving the request in place" |
+
+> ⚠️ **There is no log file to read these in.** Both shells call
+> `kasirmu_logging::try_init()` (desktop `:108`, tablet `:82`), which is stdout-only. The file
+> sinks (`try_init_with_file` / `try_init_json_with_file`) have **no production caller** — the
+> only references outside their own crate are its tests
+> (`crates/kasirmu-logging/src/lib_tests.rs:201`, `:229`, `:257`). Watch the app's console
+> output, or start it from a terminal.
+
+A `Refused` reason always carries the verdict name and the validator's own sentence
+(`apps/desktop-tauri/src/recovery.rs:127-135`), e.g.
+`candidate '<path>' is Corrupt: '<path>' failed integrity_check: ...`.
+
+### 11.4 The verdict enum — never a bare bool
+
+`CandidateVerdict` (`crates/kasirmu-core/src/db/recovery.rs:50-64`) has exactly four values,
+each carrying a human-readable `reason`. The wire names are spelled out rather than derived
+from `Debug`, so a refactor cannot silently change what the file and the IPC surface say
+(`crates/kasirmu-bridge/src/data.rs:1043-1054`).
+
+| Verdict | Meaning | Restorable? | What the boot does |
+|---|---|---|---|
+| `Acceptable` | Candidate schema is exactly this build's. | yes | Promotes it. |
+| `OlderButAcceptable` | Candidate is behind this build; migrations re-apply forward. Also the verdict for a candidate with **no** `schema_migrations` at all. | yes | Promotes it; the forward runner brings it up to date. |
+| `NewerThanThisBuild` | Candidate schema is ahead — columns and tables this build cannot read. | **no** | Refuses; this is the boot-brick path. |
+| `Corrupt` | Could not be opened, or failed `PRAGMA integrity_check`. | **no** | Refuses. |
+
+`OlderButAcceptable` is what keeps a **pre-migration snapshot restorable**
+(`crates/kasirmu-core/src/db/recovery.rs:31-34`) — which is the reason §10 and this section
+compose: the file §10 protects is a legal restore candidate under §11.
+
+### 11.5 The pre-restore snapshot and the lock
+
+- **`<db>.pre-restore.db`** — `PRE_RESTORE_SUFFIX`, `crates/kasirmu-core/src/db/recovery.rs:48`,
+  path derived at `:241-249`. Taken **before** the swap and only when a live database existed
+  (`:294-304`), so it is the rollback source *and* the copy that survives a **successful**
+  restore — it holds the database that was replaced. It is one file, replaced in place on each
+  restore, not a rotation.
+- **`<db>.restore-boot.lock`** — the single-consumer claim:
+  `apps/desktop-tauri/src/recovery.rs:34` and the tablet twin
+  `apps/mobile-tauri/src/recovery.rs:39`.
+
+> ⚠️ **The lock is `<db>.restore-boot.lock`, not `<db>.restore.lock`.** The design note in
+> `manager-codebase-review-checklist.md:44` names `<db>.restore.lock`; the constant that
+> actually ships in both shells is `.restore-boot.lock`. Documenting the design name would send
+> an operator to a file that never exists.
+
+The claim is created with `create_new` so exactly one boot can win it
+(`apps/desktop-tauri/src/recovery.rs:220-236`), and it is removed on **every** exit path,
+success or refusal, because a stale lock would refuse the *next* restore request rather than a
+concurrent boot (`:211-218`, `:239-243`; pinned by `recovery_tests.rs:99-102` and `:132-135`).
+The request file is re-checked *under* the claim, so a request consumed between the existence
+check and the lock is not consumed twice (`:111-115`). After a successful swap the request is
+archived as **`<db>.restore-request.json.done`** (`:196-200`).
+
+### 11.6 The one behavioural consequence: a restore is REFUSED, not queued
+
+There is no queue, no retry loop and no background worker anywhere in this path. Two distinct
+cases, and they are not the same:
+
+- **Another boot holds `<db>.restore-boot.lock`.** This boot returns `AlreadyClaimed`, logs the
+  warning, and leaves the request untouched. Nothing is queued — the *next* boot re-attempts the
+  whole thing, because the file is still there. A lock left behind by a killed process is
+  therefore not a wedge, just one boot's deferral.
+- **Another process holds the database itself** (the app is still running, a `sqlite3` shell has
+  it open, a backup tool is mid-copy). `restore_from` deletes the `-wal`/`-shm` sidecars,
+  stages a copy beside the live file and renames over it
+  (`crates/kasirmu-core/src/db/recovery.rs:306-359`). Those are plain filesystem operations with
+  **no retry and no wait**: any failure — an open handle, a read-only directory, a permissions
+  problem — rolls the swap back from `<db>.pre-restore.db` and returns an error (`:361-375`),
+  which the boot path reports as `Outcome::Refused`. **The restore does not wait for the other
+  process to finish and does not run later.** It fails, the live database is left as it was, and
+  the request stays on disk for the next boot.
+
+### 11.7 When a restore is refused
+
+A refusal changes **not one byte** of the live database or its sidecars — the module's stated
+invariant (`crates/kasirmu-core/src/db/recovery.rs:20-21`), pinned on both shells
+(`apps/desktop-tauri/src/recovery_tests.rs:116-135`,
+`apps/mobile-tauri/src/recovery_tests.rs:141`).
+
+1. **Read the request** — plain JSON beside the database, naming what was asked for and under
+   which verdict:
+   ```bash
+   cat "$DB.restore-request.json"
+   ```
+2. **Read the reason** from the boot output (§11.3). It names the verdict and the validator's
+   sentence.
+3. **Fix the cause, or decide not to restore.** The common cases:
+   - `Corrupt` — the candidate is unusable. Choose another generation.
+     `list_restore_candidates` lists every generation that exists **including** the unusable
+     ones, precisely so you can read why (`crates/kasirmu-bridge/src/data.rs:1075-1085`). If
+     the request was written by an earlier process, it must be re-created once the trigger path
+     is available (§11.2).
+   - `NewerThanThisBuild` — the candidate came from a **newer** build. Do not force it: run the
+     newer build, or restore an older generation.
+   - "the restore request names the relative path …" or "… a path containing '..'" — the request
+     file was hand-edited or written by something else; the boot path treats it as untrusted
+     input (`apps/desktop-tauri/src/recovery.rs:152-189`).
+   - "cannot claim the restore lock …" — the lock file could not be created at all (permissions,
+     read-only volume). The request was not attempted.
+4. **Abandon the request** if you are not going to retry — delete it. Nothing has happened yet,
+   and deleting it is the only way to stop the next boot re-attempting the same candidate:
+   ```bash
+   rm "$DB.restore-request.json"
+   ```
+5. **Restore by the other route** if you need the data back now and the request path is blocked
+   — §11.8.
+
+### 11.8 The CLI restore (the currently reachable route)
+
+```bash
+# the app must be CLOSED first
+kasir --db "$DB" restore --input "/path/to/kasir.db.backup.db"
+```
+
+It prints the candidate's verdict reason and the pre-restore snapshot path
+(`crates/kasirmu-cli/src/commands/backup.rs:88-95`). It uses the **same** validator and the
+same swap as the boot path — one `validate_candidate`, one `restore_from` — so every verdict in
+§11.4 applies identically. What it does *not* do is use `<db>.restore-request.json`: it performs
+the swap directly, which is why the app must be closed.
+
+> ⚠️ **`scripts/restore-db.sh` is a third, weaker route and should not be used for a kasir.mu
+> store.** It checks `PRAGMA integrity_check` with the `sqlite3` CLI, snapshots the live file as
+> `<db>.pre-restore` (no `.db` suffix), `mv`s the candidate over the live path and drops the
+> sidecars (`scripts/restore-db.sh:44-98`). It does **not** call `validate_candidate`, so it has
+> no schema-version gate and no rollback: a newer-than-this-build candidate goes straight in and
+> bricks the next boot. §4.3 documents it for the generic SQLite case; for a store, prefer
+> `kasir restore`.
+
+### 11.9 Aftermath
+
+- `<db>.pre-restore.db` holds the database the restore replaced, on **both** outcomes. Keep it
+  until the restored database has been verified in use: it is the only copy of the data the
+  restore discarded.
+- `<db>.restore-request.json.done` is the consumed request. Safe to delete once you have read
+  it.
+- The tablet's copies sit beside its own `kasir.db` in app-private storage
+  (`apps/mobile-tauri/src/state.rs:388-411`), which is not operator-browsable — the reason the
+  in-app request path is the one that matters on that shell (§11.2).
+
+---
+
+> **Sections 10–11 added for C11b + C8 S7 (workstream date 2026-09-23) and NOT covered by the
+> 09-09-26 audit stamp above.** Every path, file name, command and line reference in these two
+> sections was read out of the source named beside it. Two steps are deliberately marked rather
+> than asserted: §11.2's in-app request trigger has no registered IPC command today, and §10.3's
+> literal Windows path is derived from the verified identifier and `app_data_dir()` join, not
+> observed by calling the OS API.
+
 > last audited 09-09-26 by docs-auditor
