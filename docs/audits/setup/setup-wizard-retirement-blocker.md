@@ -21,11 +21,11 @@ Commits so far this session: `6ac851dd4` (preset derivation fix, D), `9ef032fb2`
 
 | Path | Evidence |
 |---|---|
-| `ui/src/features/setup/SetupWizard.tsx` | No production importer. Every external reference is a *comment*. |
-| `ui/src/features/setup/components/StepAccount.tsx` | Only referenced by `SetupWizard.tsx` (2 lines) and its own tests. |
-| `ui/src/__tests__/SetupWizard.test.tsx` | 27 tests for the wizard only. |
-| `ui/src/__tests__/SetupWizardRender.test.tsx` | 3 tests, wizard only. |
-| `ui/src/__tests__/stepAccountCopy.test.tsx` | 3 tests, StepAccount only. |
+| `ui/src/features/setup/SetupWizard.tsx` | No production importer. Every external reference is a *comment*. <!-- dead-ref: ok: deleted by the retirement; table kept as the evidence record --> |
+| `ui/src/features/setup/components/StepAccount.tsx` | Only referenced by `SetupWizard.tsx` (2 lines) and its own tests. <!-- dead-ref: ok: deleted by the retirement; table kept as the evidence record --> |
+| `ui/src/__tests__/SetupWizard.test.tsx` | 27 tests for the wizard only. <!-- dead-ref: ok: deleted by the retirement; table kept as the evidence record --> |
+| `ui/src/__tests__/SetupWizardRender.test.tsx` | 3 tests, wizard only. <!-- dead-ref: ok: deleted by the retirement; table kept as the evidence record --> |
+| `ui/src/__tests__/stepAccountCopy.test.tsx` | 3 tests, StepAccount only. <!-- dead-ref: ok: deleted by the retirement; table kept as the evidence record --> |
 
 **Already done, uncommitted:** `Preset` was the *one* real coupling — `ProvisioningFlow.tsx:19`
 imported the type from `SetupWizard.tsx`. It has been relocated to `ui/src/api/settings.ts` beside
@@ -34,7 +34,7 @@ tree and **not yet committed** — it must not be lost.
 
 ## What is NOT safe yet — the blocker
 
-`ui/src/__tests__/setupWizardLandscape.test.ts` (12 tests) pins **two** contracts by reading
+`ui/src/__tests__/setupWizardLandscape.test.ts` (12 tests) pins **two** contracts by reading <!-- dead-ref: ok: test file deleted by the retirement; prose is the historical record -->
 `SetupWizard.css` as its reference full-screen sheet:
 
 1. the landscape media-query literal duplicated between CSS and `useOrientation.ts`, and

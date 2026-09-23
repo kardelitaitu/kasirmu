@@ -1,0 +1,208 @@
+# Documentation audit — the docs system itself — 23-09-26
+
+Auditor: Buffy (docs-auditor methodology). Branch `0.0.39`, executed against the live
+working tree on 2026-09-23. Peer sessions were active during the run — see
+*Deliberately not touched*.
+
+**Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
+pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
+close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
+not touched*), plus four open items that are separate work (listed at the bottom).
+
+## Scope and method
+
+475 `.md` files were inventoried (252 under `docs/`, 21 at the repository root, the rest
+in code directories, `.agents/`, and `website/`). Two independent passes:
+
+1. A strict whole-tree link scan (relative hrefs + backticked paths resolved against the
+   file's directory and the repo root, no exemptions) — 148 broken links outside
+   `.agents/`.
+2. The four house checkers, run as shipped: `check-dead-refs.py` (23 refs in 9 live
+   files), `check-orphans.py`, `check-audit-stamps.py`, and
+   `generate-records-index.mjs --check` (**red**: 148 generated vs 158 committed lines).
+
+The gap between (1) and (2) is itself a finding — see *Checker blind spots*.
+
+## What was already healthy
+
+Functional directory taxonomy (`decisions/ records/ specs/ operations/ security/ guides/
+archived/`), ADR frontmatter with a status vocabulary, audit stamps, a generated records
+index with a deterministic `--check` mode, and four purpose-built checkers — most repos
+have none of these. `check-orphans` and `verify-doc-uniqueness` were fully green at the
+start. The house style — re-derive every number, never quote it — is genuinely practiced.
+
+## P0 — was broken
+
+### 1. The declared "single entry point" carried dead links, and its gate was red
+`docs/records/README.md` linked seven dated records as siblings, but they live in
+`docs/records/snapshots/`. Root cause, confirmed by reading the code: the generator's
+records scan read only the directory's top level, so when the dated records were moved
+into `snapshots/` the committed index kept rows whose hrefs no longer resolved — and a
+refresh would have silently dropped the entire set from the entry point.
+
+**Fixed**: the scan recurses (sorted at each depth, so `--check` stays byte-stable), the
+index was regenerated, and `--check` now prints
+`ok: … (54 ADRs, 4 research, 17 phased, 0 audits, 14 scattered, 2 observability, 13 records)`.
+The escaping self-test (`scripts/test-records-index-escaping.sh`) still passes 7/7.
+
+### 2. Freshness enforcement existed in prose only
+Both `docs/records/README.md` and `docs/README.md` documented the freshness gate as
+"unbuilt by decision", and the decision text promised it would land "in the same change
+as the first record that trips it". This audit tripped it (148 vs 158 lines, ADR #60
+missing entirely).
+
+**Fixed — wired in the same change as the repair**, per the promise and inverted relative
+to the `ci-docs-drift` precedent (blocking from day one, because the drift was fixed
+before the step landed — a known-red baseline gets disabled):
+
+| Wire | Where |
+|---|---|
+| `check.sh` step `records index freshness` | local pre-push |
+| `dev-ci.yml#ci-docs-drift` step `Records index freshness check` | CI, blocking |
+| `dev-ci.yml#ci-docs-drift` step `Docs dead references` (`continue-on-error: true`) | CI, advisory |
+| gates.json `records-index` (required) + `dead-refs` (advisory, `advisory_at: step`) | manifest |
+
+`verify-ci-docs-drift.py` reports **0 drift item(s)** after the wiring; its self-test,
+`test-runner-labels.py`, and `test-ci-routing.sh` (21/21) all pass. The `dead-refs` gate
+carries an explicit flip condition in its `_note`: drop `continue-on-error` and set
+status `required` when the checker reports 0.
+
+### 3. The docs homepage had five dead links
+`docs/README.md` pointed at `guides/ARCHITECTURE.md`, `guides/EXTENDING.md`,
+`guides/QUICKSTART.md`, `plans/northflank-p1-p7-plan.md` (twice) — all moved by the
+guides reorg while the index was not repointed. Its own audit note ("all 16 linked
+targets resolve", 08-09-26) had been false since that reorg.
+
+**Fixed**: all five repointed to their post-reorg locations (the architecture link now
+goes to the canonical root file), the stale enforcement bullet rewritten with the
+history preserved, the quoted `ok:` counts refreshed with a re-derive instruction
+instead of a line range, and a dated **Correction (23-09-26)** appended to the note
+block — house style: keep what was believed, record when it stopped being true.
+
+## P1 — structural, fixed
+
+### 4. Two diverged architecture authorities
+Root `ARCHITECTURE.md` (551 lines) and `docs/architecture/ARCHITECTURE.md` (293 lines)
+differed by **841 diff lines**, both carrying audit stamps. The docs copy held four
+sections the root lacked — Module Details, Build & Run, Extensibility, License &
+Commercial Governance — and a stale directory tree (29 workspace members, the old
+`oz-pos/` root name, locales and themes at their pre-reorg paths).
+
+**Fixed by merging, not by decree**: the four unique sections were ported into the root
+file (canonical — it is the GitHub-discovery location and what CONTRIBUTING/QUICKSTART/
+EXTENDING already pointed at), with three repairs at the port: the preset citation named
+a file the wizard retirement deleted (now points at the live owners: the `Preset` union
+in `ui/src/api/settings.ts`, bundles in `preset_feature_keys`), the 505-command count
+was replaced with a pointer to `api-reference.md` which owns the number, and
+`cargo tauri dev` gained the `cd apps/desktop-tauri` prefix it needs. The stale tree was
+dropped rather than merged; the root file's current-state tree (re-verified 09-18)
+covers it. `docs/architecture/ARCHITECTURE.md` is now a pointer stub with a section map,
+so the three files citing that path (WHITEPAPER stamp, JOURNAL:78, the manager
+checklist's C30 list) still resolve. `verify-doc-uniqueness` passes.
+
+### 5. 23 dead refs in 9 live documents
+Rename/reorg fallout, swept with two different treatments:
+- **Repointed** where the document speaks in the present tense: the two launch-test
+  guides (11 links crossing `releases/`, `operations/`, `QUICKSTART` after the platform/
+  reorg, plus two audit-stamp path claims corrected under the precision rule),
+  `EXTENDING.md` (6), `QUICKSTART.md` (4), `admin-guide.md` (preset citation),
+  `MODULAR_APP_PLAN.md` (capability table: six presets, live owners), `ui/README.md`,
+  `BUSINESS_PLAN.md`, `ROADMAP.md`, `CHANGELOG-0.0.36.md`, the two decisions linking a
+  moved ARCHITECTURE, ADR #51's snapshots path, `ops/packaging/mobile/README.md`.
+- **Pragmed** (`<!-- dead-ref: ok: … -->`) where the path is deliberately wrong:
+  dated audit findings naming retired paths, negations ("No crates/oz-* exists"), and
+  the wizard-retirement evidence table (5 rows + 1 prose line) whose whole point is to
+  record what was deleted. Seven such refs remained at session close, all inside
+  `manager-codebase-review-checklist.md` — fenced, see below.
+
+A further ~25 links the house checker misses via its whole-tree basename fallback were
+repointed too (launch guides' `../operations/`, `EXTENDING`'s `../../crates/`, the
+decisions' `../guides/ARCHITECTURE.md`, `CHANGELOG-0.0.36`'s backlog path, packaging
+README's `../../apps/`…).
+
+### 6. The module CHANGELOG rule was a rule nothing satisfied
+Root `ARCHITECTURE.md` required every module to carry a `CHANGELOG.md`: 0 of 14 did,
+and no tooling reads per-module changelogs (release history lives in the single root
+`CHANGELOG.md` plus `docs/releases/CHANGELOG-0.0.XX.md`).
+
+**Fixed the other way**: the requirement was struck from the document with the reason
+recorded — a requirement nothing obeys is worse than no requirement, because it teaches
+readers that the document lies.
+
+## Checker blind spots found in passing
+
+- **Basename fallback**: a link to a nonexistent path passes if *any* file with that
+  basename exists anywhere in the tree. That hid ~25 real broken links from
+  `check-dead-refs` (its 23 vs the strict scan's 148) — including every launch-guide
+  `../operations/…` link.
+- **HTML-comment lines are not scanned**, so audit stamps can carry dead paths
+  silently (two launch-test stamps did; both precision-corrected here).
+- **Dated records are exempted** by name, which is right for history and wrong when the
+  file is a live index pointing into `snapshots/`.
+- **`docs/plans/` and `website/` resolve differently**: plan docs legitimately cite
+  paths their plans will create, and `website/src/content/docs/` links are site routes
+  resolved by the Astro build (`../../login/`, `/en/docs/…`), not filesystem paths.
+  A file-based scanner flags ~90 of them; they are not broken. The website deserves a
+  site-aware link checker — recorded as open item (4).
+
+## Deliberately not touched
+
+- **`manager-codebase-review-checklist.md` — 7 dead refs, fenced.** Line numbers
+  shifted between two runs minutes apart: a peer session was actively writing the file
+  (209 → 521 lines during this audit). The first two refs sit inside its in-flight
+  additions (an illustrative placeholder path, and a path the prose itself calls
+  nonexistent); five more arrived with a section citing pre-rename paths
+  (apps/desktop-client, crates/oz-*). <!-- dead-ref: ok: names the pre-rename paths deliberately, to describe what the peer's section cites --> Editing it would race that session; all seven
+  need pragmas the moment it goes quiet. This is the *only* file
+  `check-dead-refs` reports on — 422 of 423 scanned markdown files are clean — and
+  the reason its CI step ships advisory with a written flip condition instead of
+  blocking.
+- **`docs/plans/**`** — working documents; forward paths are not drift.
+- **`website/src/content/docs/**`** — site routes, see above.
+- **`.agents/`, `.workbuddy-ai/`** — the agent working corpus, out of scope by house rule.
+- **`](url)` literals** — three "broken links" in `seo-robots-llms-review` are a
+  scanner artifact: the text `](url)` in a table describing link shapes. <!-- dead-ref: ok: this line exists to name the scanner artifact `](url)` itself -->
+
+## Open items (bigger than a link sweep — not attempted here)
+
+1. **Five future-dated ADR files** (`2026-10-04` ×4, `2026-10-11` adr60) against today,
+   2026-09-23. Either a clock problem or a convention that now lies; needs the owner's
+   intent, not a rename.
+2. **ADR status-table drift**: the hand table in `decisions/README.md` disagrees with
+   frontmatter on #43, #55, #56, #58, plus the known duplicate #43. Generate the table
+   from frontmatter or reconcile it — the generator that would do it already reads
+   frontmatter for the records index.
+3. **The house checker itself**: teach `check-dead-refs.py` to resolve links relative to
+   the file before falling back to basename matching, and to skip-with-count (not
+   silently skip) HTML-comment lines. Both changes are small and would have caught
+   finding 5 a reorg earlier.
+4. **A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
+   told apart by a file scanner.
+
+## Re-verification (all run in this session, all green unless noted)
+
+```
+node scripts/generate-records-index.mjs --check     # ok, 54 ADRs … 13 records
+python3 scripts/verify-ci-docs-drift.py             # 0 drift item(s)
+python3 scripts/verify-ci-docs-drift.py --self-test # all cases passed
+python3 scripts/test-runner-labels.py               # enforced per-needle, fixture live
+bash scripts/test-ci-routing.sh                     # 21/21
+sh scripts/test-records-index-escaping.sh           # passed=7 failed=0
+python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
+    # 7 refs, all in manager-codebase-review-checklist.md (fenced, see above);
+    # every other scanned file is clean
+python3 .agents/skills/docs-auditor/scripts/check-orphans.py        # green
+python3 .agents/skills/docs-auditor/scripts/check-audit-stamps.py
+    # the two REAL under-reports (committed .agents/reviews footers reading
+    # 14-09-26 under a 2026-09-15 stamp) were bumped to the checker's demanded
+    # date. One residual DRIFT line remains and is a parser false positive:
+    # .workbuddy-ai/memory/2026-09-17.md:19 QUOTES the footer `30-02-26`
+    # inside a discussion of impossible dates, and the checker parses the
+    # quoted example as a footer. Left alone on purpose — untracked scratch
+    # notes of another session, and editing the sentence to silence a parser
+    # is the wrong trade. That session (or check-audit-stamps.py learning to
+    # ignore backtick-quoted footers) owns the fix.
+python3 scripts/verify-doc-uniqueness.py                          # green
+```
+
+> last audited 23-09-26 by docs-auditor

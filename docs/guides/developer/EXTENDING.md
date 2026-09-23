@@ -14,7 +14,7 @@ status of each (what is live today vs. wired-but-not-started).
 |---|---|---|
 | Change discounts / tax / order validation **inside** the register flow | Lua plugin (`crates/kasirmu-lua` + `crates/kasirmu-plugin`) | Stable — see [plugin-guide.md](./plugin-guide.md) |
 | Read/write products, stock, sales, rates from an **external process** (KDS, scanner, dashboard, sync job) | REST API (`crates/kasirmu-api`) | Live on **cloud-server**; on the **desktop app** it runs loopback-only behind Settings → Local API (off by default, §2.1); tablet: not started |
-| Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/kasirmu-cli`) | Stable — see [kasirmu-cli README](../../crates/kasirmu-cli/README.md) |
+| Batch maintenance against the local SQLite DB (migrations, backup, import/export, CRUD) | `oz` CLI (`crates/kasirmu-cli`) | Stable — see [kasirmu-cli README](../../../crates/kasirmu-cli/README.md) |
 | Drive custom hardware (printer, scanner, drawer, display) | Rust HAL traits (`crates/kasirmu-hal`) | Stable — plugin-guide §HAL |
 | Call the app's internals (Tauri IPC commands — 450 registered as measured 08-09-26: 425 desktop, 297 tablet, 272 in both — a point-in-time record; **478 distinct as measured 2026-09-14: 453 desktop, 322 tablet, 297 in both**, which is the figure [api-reference.md](./api-reference.md) now carries as current and the set `AGENTS.md` and `README.md` carry). **This moves with every command**; re-run `.agents/skills/docs-auditor/scripts/check-api-surface.py`, which prints `registered   desktop=453 tablet=322 distinct=478`, or `python scripts/verify-ipc-parity.py` for the per-shell totals (458 UI command strings / 453 registered desktop / 322 registered tablet, EXIT 0) — and note the 297 "in both" figure is neither tool's output: it comes from intersecting the two `generate_handler!` lists (`apps/desktop-tauri/src/lib.rs:845-1340`, `apps/mobile-tauri/src/lib.rs:445`) | **Not an extension surface** — internal front-end↔backend contract, no stability guarantee for third parties | — |
 
@@ -474,7 +474,7 @@ order validation), don't use the REST API — write a plugin. Sandboxed
 (Lua 5.4, 100 000-instruction / 10 MiB limits, no fs/network), permission-
 gated `oz` table, hooks like `sale.before_complete`, loaded from `plugins/`
 at startup. Full reference: [plugin-guide.md](./plugin-guide.md); runtime
-details: [crates/kasirmu-lua/README.md](../../crates/kasirmu-lua/README.md).
+details: [crates/kasirmu-lua/README.md](../../../crates/kasirmu-lua/README.md).
 
 ## 9. `oz` CLI (local batch scripting)
 
@@ -482,7 +482,7 @@ Migrations, backup/restore, CSV export, encrypted `.kasirpkg` export/import,
 and product/category/inventory/sale/customer/user CRUD straight against the
 SQLite DB — the right tool for cron-style maintenance on the terminal
 itself. Subcommand table and conventions (minor units, `--db`):
-[crates/kasirmu-cli/README.md](../../crates/kasirmu-cli/README.md).
+[crates/kasirmu-cli/README.md](../../../crates/kasirmu-cli/README.md).
 
 ## 10. Known gaps (verified 2026-09-03)
 
@@ -537,8 +537,8 @@ Documented so scripts don't build on sand:
 ---
 
 **Related:** [plugin-guide.md](./plugin-guide.md) ·
-[ARCHITECTURE.md](./ARCHITECTURE.md) ·
-[spec 0047](../specs/_active/0047-openapi-drift-guard-and-read-tiers.md) ·
-[kasirmu-api README](../../crates/kasirmu-api/README.md)
+[ARCHITECTURE.md](../../ARCHITECTURE.md) ·
+[spec 0047](../../specs/_active/0047-openapi-drift-guard-and-read-tiers.md) ·
+[kasirmu-api README](../../../crates/kasirmu-api/README.md)
 
 > last audited 08-09-26 by DSH

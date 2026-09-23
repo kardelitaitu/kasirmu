@@ -17,7 +17,7 @@ To democratize enterprise-grade, zero-downtime point-of-sale infrastructure for 
 > This section mirrors the **approved 5-tier lineup** — Free · Plus · Pro ⭐ ·
 > Premium · Enterprise — with USD/IDR prices, annual "2 months free" billing,
 > and the full quota/feature matrix, per
-> [`subscription-tiers.md`](./subscription-tiers.md) (FINAL, single source of
+> [`subscription-tiers.md`](../user/subscription-tiers.md) (FINAL, single source of
 > truth) and the live pricing page (`website/src/content/pricing/{en,id}.ts`).
 > USD and IDR are independent market prices: global customers pay the USD
 > rate; Indonesian customers the lower IDR rate.

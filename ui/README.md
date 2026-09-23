@@ -134,7 +134,7 @@ ui/src/
 
 - User-visible strings live in per-feature Fluent bundles under **`shared-ui/locales/`** (e.g.
   `shared.ftl`, `sales.ftl`, `sales.id.ftl`) — 54 `.ftl` files, `ls shared-ui/locales/*.ftl | wc -l`.
-  They were moved out of `ui/src/locales/` (P9a) because the corpus serves any UI toolkit; the
+  They were moved out of `ui/src/locales/` (P9a) because the corpus serves any UI toolkit; the <!-- dead-ref: ok: names the former location; the corpus now lives at shared-ui/locales/ -->
   directory no longer exists (`ls ui/src/locales` → No such file or directory).
 - Bundles are loaded and merged by the loader under `ui/src/i18n/` — this line said
   `src/locales/index.ts` until 2026-09-23, naming a file in a directory that no longer exists.

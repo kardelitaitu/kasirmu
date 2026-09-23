@@ -41,7 +41,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 36 | products | [ADR #36: Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](../decisions/2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | products | [ADR #37: Product Popularity Index — Weighted Activity Score for Retail Sorting](../decisions/2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | products | [ADR #38: Retail POS Row Context Menu — View Product Images in Browser](../decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/_active/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
+| 39 | subscription | [ADR #39: Midtrans QRIS Subscription Payments (Phase 2)](../decisions/2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — docs/plans/todo.md C3.1; Phase C complete (C0-C4.3 shipped) |
 | 40 | topology | [ADR #40: Multi-Terminal Peer Model](../decisions/2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | topology | [ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBA…](../decisions/2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | website | [ADR #42: Website Admin Dashboard & User Dashboard (Subdomain Architecture)](../decisions/2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented — subdomain routing + auth gate + password rotation + dashboard/admin SPAs complete (2026-08-28); invoice history and webhook delivery log remain future work (see §5 Open Questions) |
@@ -59,10 +59,11 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 53 | architecture | [ADR #53: The UI Vocabulary Boundary — what the application layer may say about a renderer](../decisions/2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction |
 | 54 | security | [ADR #54: Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](../decisions/2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 | 55 | security | [ADR #55: One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](../decisions/2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade are all shipped |
-| 56 | topology | [ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the mu…](../decisions/2026-10-04-adr56-first-run-provisioning.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22) — §2.1, §2.2, §2.6 and the local tier of §2.3/§2.4 are IMPLEMENTED; §2.3's identify leg, §2.5 pairing and §5 Q2's tablet licence gate are NOT |
-| 57 | security | [ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side…](../decisions/2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location signals are not |
-| 58 | licensing | [ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](../decisions/2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along and the per-device renewal refusal are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product, and §2.3's window ships as a UI poll gate rather than the session obligation its pseudocode specifies |
+| 56 | topology | [ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the mu…](../decisions/2026-10-04-adr56-first-run-provisioning.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the local tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's identify leg for the linked tier is NOT |
+| 57 | security | [ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side…](../decisions/2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs |
+| 58 | licensing | [ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](../decisions/2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product |
 | 59 | topology | [ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and…](../decisions/2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not |
+| 60 | frontend-architecture | [ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared…](../decisions/2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated |
 
 ### Research Notes
 
@@ -101,21 +102,17 @@ same scan that lists the other documentation directories; `README.md` itself is 
 
 | Area | Title | Status |
 | --- | --- | --- |
-| sync | [Sync settings ingest admits and the redirect that carries them](2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
-| general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
-| ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](2026-09-15-frontend-architecture-todo-appraisal.md) | — |
-| general | [Android shell audit — 2026-09-20](2026-09-20-audit-android-shell.md) | — |
-| subscription | [Licence rate-limit collapse — 2026-09-21](2026-09-21-license-ratelimit-collapse.md) | — |
-| release | [Migration init-script drift bricked startup — 2026-09-21](2026-09-21-migration-init-drift-bricked-startup.md) | — |
-| ui | [Driving the tablet UI — the method that works, and the blind one that does not — 2026-09-21](2026-09-21-tablet-ui-driving-method.md) | — |
 | general | [JOURNAL](JOURNAL.md) | — |
 | general | [ADR #7 Conditional Scoping — the Fallback Class](adr7-conditional-scoping-fallback-class.md) | — |
 | general | [Audit Closed Findings — Archive](audit-closed-findings.md) | — |
 | general | [Audit Open Findings — Consolidated](audit-open-findings.md) | — |
-| general | [Fluent Page Audit — Full Journal](fluent-page-audit.md) | — |
-| general | [SEO audit — kasir.mu marketing site (on-page, technical, content)](seo-audit-19-09-26.md) | — |
-| general | [SEO review — robots.txt and llms.txt (kasir.mu)](seo-robots-llms-review-19-09-26.md) | — |
-| general | [Skill audit — .agents/skills/ — 18-09-26](skill-audit-18-09-26.md) | — |
+| sync | [Sync settings ingest admits and the redirect that carries them](snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md) | — |
+| general | [ADR #51 From the Other Side — the Admitted Set and the Redirect's Second Writer](snapshots/2026-09-13-adr51-admitted-set-and-blind-sides.md) | — |
+| ui | [Appraisal: todo-review-type.md (Local-First & Frontend Architecture)](snapshots/2026-09-15-frontend-architecture-todo-appraisal.md) | — |
+| general | [Android shell audit — 2026-09-20](snapshots/2026-09-20-audit-android-shell.md) | — |
+| subscription | [Licence rate-limit collapse — 2026-09-21](snapshots/2026-09-21-license-ratelimit-collapse.md) | — |
+| release | [Migration init-script drift bricked startup — 2026-09-21](snapshots/2026-09-21-migration-init-drift-bricked-startup.md) | — |
+| ui | [Driving the tablet UI — the method that works, and the blind one that does not — 2026-09-21](snapshots/2026-09-21-tablet-ui-driving-method.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
 | money | [Statutory Rounding & Tax-Estimate Stamps](statutory-rounding-and-estimate-stamps.md) | — |
 
@@ -154,4 +151,4 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 - **`area:` tag:** derived from the filename slug (see `AREA_KEYWORDS` in the generator); set `area:` in YAML front-matter to override
 - **Status vocabulary:** ADRs use *proposed / accepted / implemented / superseded / re-scoped*; audits use *remediated / partially remediated / audited / open*
 - **Adding a new record:** drop the file in the right folder, then run `node scripts/generate-records-index.mjs`
-- **Records under `docs/records/`:** every `.md` here except `README.md` is listed automatically — no front matter required, and no edit to this script needed
+- **Records under `docs/records/`:** every `.md` beneath it at any depth (snapshots/ included) except `README.md` is listed automatically — no front matter required, and no edit to this script needed

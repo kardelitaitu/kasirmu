@@ -117,7 +117,7 @@ global one.
   **75** declared keys, so **54 stay admissible** from a channel that authenticates nobody (Context). An
   exclusion list can only refuse what its author thought to name; that is the shape of the rule, not a
   gap in this list. The per-name breakdown, the query that re-derives it and the self-test floor live in
-  [`docs/records/2026-09-12-sync-settings-ingest-and-redirect-census.md`](../records/2026-09-12-sync-settings-ingest-and-redirect-census.md).
+  [`docs/records/snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md`](../records/snapshots/2026-09-12-sync-settings-ingest-and-redirect-census.md).
   `sync_server_url` is on the admitted side, and it is the one admitted name whose reader carries a bearer
   secret, so the 54 are not equally boring.
 

@@ -635,7 +635,7 @@ Phase 1 (MVP)
 On-Features can be activated at any phase once the core infrastructure is in place.
 
 > [!NOTE]
-> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](./MODULAR_APP_PLAN.md)**.
+> For granular, step-by-step checklists covering admin feature configuration, restaurant workflows (`Resto POS + KDS + Inventory`), LAN peer-to-peer sync, and Docker containerized cloud server deployments (`apps/cloud-server`), see **[MODULAR_APP_PLAN.md](../../architecture/MODULAR_APP_PLAN.md)**.
 
 ---
 

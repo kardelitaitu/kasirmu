@@ -11,7 +11,7 @@
    - Create the owner account (username + PIN)
    - Choose a workspace preset — the wizard offers **six**: Simple Retail, Restaurant,
      Full Store, Cafe / Bakery, Franchise, and Custom
-     (`ui/src/features/setup/SetupWizard.tsx`, `PRESETS`). This line listed three until
+     (`ui/src/features/setup/ProvisioningFlow.tsx`; the `Preset` union now lives in `ui/src/api/settings.ts`, the preset→feature bundles in `crates/kasirmu-core/src/features.rs`). This line listed three until
      08-09-26, and the 2026-07-26 audit stamp below actively certified it as "user-facing
      guidance consistent with workspace seeds" — certifying a shortened list as correct is
      worse than not checking it, because the check is what a later reader trusts.

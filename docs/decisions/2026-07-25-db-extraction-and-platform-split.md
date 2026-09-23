@@ -245,7 +245,7 @@ platform/kernel/src/
 ## Related Documents
 
 - [ADR #30: Domain Module Extraction](2026-07-24-domain-module-extraction.md) — Original P1 modularization plan
-- [ARCHITECTURE.md](../guides/ARCHITECTURE.md) — Target architecture specification
+- [ARCHITECTURE.md](../../ARCHITECTURE.md) — Target architecture specification
 - `modules/sales/src/repository.rs` — Existing partial repository template
 - `platform/core/src/database/` — Existing sub-module directory pattern
 

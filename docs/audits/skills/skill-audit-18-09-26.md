@@ -23,7 +23,7 @@ Two items in the original pass were **wrong and are withdrawn**:
 - §7 `skill-drift-guard` "ten checks" vs 11 taxonomy kinds — **not drift.** Check 2 covers
   taxonomy kinds 2 and 3 together, so 10 checks over 11 kinds is correct.
 
-Left in place deliberately: `.agents/skills/__drift_probe__/` is another agent's live
+Left in place deliberately: `.agents/skills/__drift_probe__/` is another agent's live <!-- dead-ref: ok: probe fixture removed after this audit -->
 `dead-check-regression.bats` fixture, not drift.
 
 Method: ran the repo's own drift detector, then read all 14 `SKILL.md` files and
@@ -83,7 +83,7 @@ skill — a leftover from someone's probe run, not real drift.
 
 ## 1. HIGH — the `oz-*` → `kasirmu-*` rebrand never reached the skills
 
-All 17 workspace crates are `kasirmu-*` (plus `qris-core`). No `crates/oz-*` exists.
+All 17 workspace crates are `kasirmu-*` (plus `qris-core`). No `crates/oz-*` exists. <!-- dead-ref: ok: negated reference — the path is named to say it does not exist -->
 An agent that obeys these lines creates wrongly-named crates or hunts for files that
 were renamed years of releases ago.
 
@@ -132,7 +132,7 @@ Verified unchanged: `needs` really is 7 jobs; Node really is pinned to 24;
 
 54 `.ftl` files now live in `shared-ui/locales/`. `ui/src/locales/` **does not exist**.
 
-- `ui-components:369` folder diagram still shows `ui/src/locales/`.
+- `ui-components:369` folder diagram still shows `ui/src/locales/`. <!-- dead-ref: ok: names the moved directory as the cited drift -->
 - ~~`ui-components:319` `import salesFtl from '@/locales/sales.ftl?raw'`~~ — **withdrawn**,
   the `@/locales/` alias resolves it; see Status above.
 - `ui-components:317` `@/locales/test-utils` — actual is `ui/src/i18n/test-utils.tsx`
