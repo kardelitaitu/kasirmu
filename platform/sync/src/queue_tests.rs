@@ -2356,3 +2356,221 @@ fn apply_remote_legacy_consumes_the_three_new_arms() {
     queue.apply_remote(&store, &void).unwrap();
     assert_eq!(sale_status(&store, "sale-legacy-void"), "voided");
 }
+
+// ── C3 S4: the origin gate — a self-originated pull is not applied ────
+
+/// THE DEFECT, ASSERTED DIRECTLY. A terminal that pushes a `complete_sale`
+/// pulls its own item back; before this slice the arm deducted the stock a
+/// second time. On the tablet the daemons and checkout share one database, so
+/// the duplicate landed on the very inventory the sale already reduced.
+///
+/// The skip must also be RECEIPTED: an unreceipted return would re-run on
+/// every page, so the receipt is as much a part of the fix as the skip.
+#[test]
+fn pulled_item_originating_here_is_skipped_and_receipted() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem {
+        id: "remote-sale-self".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-self","line_items":[{"sku":"COFFEE","qty":2}]}"#.into(),
+        origin_terminal_id: Some("term-this".into()),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(
+        !queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "an item this terminal originated must not be applied"
+    );
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        50,
+        "the sale already deducted this stock here; the pull must not deduct it again"
+    );
+
+    // Durable, not merely returned: the receipt is what makes the skip hold
+    // across pages.
+    assert!(
+        store.is_remote_item_applied(&remote.id).unwrap(),
+        "the skip must be receipted, or every page re-attempts it"
+    );
+    let key: Option<String> = store
+        .conn()
+        .query_row(
+            "SELECT effect_key FROM sync_applied_items WHERE item_id = ?1",
+            rusqlite::params![remote.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        key.as_deref(),
+        Some("sale:sale-self:deduct"),
+        "the skip must record the EFFECT it suppressed, not only the delivery"
+    );
+
+    // A second pull of the same item short-circuits on the receipt.
+    assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(inventory_qty(&store, "COFFEE"), 50);
+}
+
+/// The gate must not swallow a genuinely remote sale: an item originated by a
+/// DIFFERENT terminal is exactly the case the arm exists for.
+#[test]
+fn pulled_item_originating_elsewhere_is_applied_once() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem {
+        id: "remote-sale-other".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-other","line_items":[{"sku":"COFFEE","qty":2}]}"#.into(),
+        origin_terminal_id: Some("term-other".into()),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(
+        queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "another terminal's sale must be applied here"
+    );
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+    assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        48,
+        "and applied exactly once"
+    );
+}
+
+/// THE COMPATIBILITY CASE. `origin_terminal_id` was added with no backfill, so
+/// a legacy or in-flight row carries NULL — "unknown", never "self". It must be
+/// applied exactly as it was before this slice, even on a paired install.
+#[test]
+fn pulled_item_without_origin_is_applied_as_before() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem {
+        id: "remote-sale-legacy".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-legacy","line_items":[{"sku":"COFFEE","qty":2}]}"#.into(),
+        origin_terminal_id: None,
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(
+        queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "a NULL origin means unknown, so the deduction is applied as today"
+    );
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+}
+
+/// The delivery receipt still short-circuits on its own, with the origin gate
+/// deliberately out of the way (a DIFFERENT terminal's item, re-pulled).
+#[test]
+fn already_receipted_item_still_short_circuits() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem {
+        id: "remote-sale-repull".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-repull","line_items":[{"sku":"COFFEE","qty":2}]}"#.into(),
+        origin_terminal_id: Some("term-other".into()),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+    assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+}
+
+// ── C3 S4: the complete_sale arm's SECONDARY guard (sales.terminal_id) ──
+
+/// The origin column is NULL for every row written before the schema slice and
+/// for any producer that did not stamp it, so the pre-transaction gate cannot
+/// see those. The sale's own durable row names the terminal that settled it —
+/// and this arm never creates a sales row, so a local row naming THIS terminal
+/// proves the deduction already happened on this inventory.
+#[test]
+fn complete_sale_arm_skips_a_sale_already_settled_here() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                                tendered_minor, discount_percent, discount_label, user_id,
+                                created_at, updated_at, subtotal_minor, tax_total_minor,
+                                terminal_id, tenant_id, version)
+             VALUES ('sale-settled-here', 1000, 'USD', 1, 'completed', 'CASH', 1000, 0, NULL,
+                     'user-1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1000, 0,
+                     'term-this', 'default', 1)",
+            [],
+        )
+        .unwrap();
+    let queue = SyncQueue::new();
+
+    // NO origin on the item — exactly the row the primary gate misses.
+    let remote = OfflineQueueItem {
+        id: "remote-sale-settled".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-settled-here","line_items":[{"sku":"COFFEE","qty":2}]}"#
+            .into(),
+        origin_terminal_id: None,
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    queue.apply_remote_atomic(&store, &remote).unwrap();
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        50,
+        "the sale's own row names this terminal, so the deduction already happened here"
+    );
+}
+
+/// The secondary guard is conservative in the same direction as the primary
+/// one: a sale settled by ANOTHER terminal is a deduction this terminal still
+/// owes, and it must land.
+#[test]
+fn complete_sale_arm_applies_a_sale_settled_elsewhere() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    store
+        .conn()
+        .execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                                tendered_minor, discount_percent, discount_label, user_id,
+                                created_at, updated_at, subtotal_minor, tax_total_minor,
+                                terminal_id, tenant_id, version)
+             VALUES ('sale-settled-there', 1000, 'USD', 1, 'completed', 'CASH', 1000, 0, NULL,
+                     'user-1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 1000, 0,
+                     'term-other', 'default', 1)",
+            [],
+        )
+        .unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem {
+        id: "remote-sale-settled-there".into(),
+        action: "complete_sale".into(),
+        payload: r#"{"sale_id":"sale-settled-there","line_items":[{"sku":"COFFEE","qty":2}]}"#
+            .into(),
+        origin_terminal_id: None,
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &remote).unwrap());
+    assert_eq!(inventory_qty(&store, "COFFEE"), 48);
+}

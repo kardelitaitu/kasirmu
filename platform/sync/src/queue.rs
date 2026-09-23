@@ -56,14 +56,16 @@ fn remote_sync_admits(key: &str) -> bool {
     IngestPolicy::RemoteSync.admits(key)
 }
 
-/// The payload's `sale_id` is deliberately NOT a field here: this struct is
-/// the APPLY shape (it needs the lines), while the identity of the effect —
-/// `sale_id` — is read by `remote_effect_key`, which must name the effect
-/// BEFORE the item is applied and is therefore the one reader of every
-/// identity field. A field deserialized and never read is dead weight, and
-/// `-D warnings` agrees.
+/// `sale_id` is read by two callers, both of which must name the effect
+/// WITHOUT applying it: `remote_effect_key` (which keys the receipt) and the
+/// `complete_sale` arm's secondary origin guard (C3, slice S4), which asks
+/// whether this terminal already completed that sale. It is `Option` so a
+/// payload minted before the field existed still deserializes and is applied
+/// exactly as it was.
 #[derive(Deserialize)]
 struct SalePayload {
+    #[serde(default)]
+    sale_id: Option<String>,
     #[serde(default)]
     line_items: Vec<SaleLinePayload>,
 }
@@ -346,6 +348,56 @@ fn payment_already_applied(
         )?,
     };
     Ok(exists == 1)
+}
+
+/// Whether the `complete_sale` this payload names was already completed BY
+/// THIS TERMINAL (C3, slice S4) — the arm's SECONDARY origin guard.
+///
+/// The primary gate reads `offline_queue.origin_terminal_id`, which is NULL on
+/// every row written before the schema slice and on any producer that does not
+/// stamp it, so those rows are invisible to it. `sales.terminal_id` is written
+/// by the settlement itself (`mint_receipt_code` → the INSERT in
+/// sales_checkout.rs / sales_lifecycle.rs) and is therefore available for
+/// exactly the rows the origin column cannot name.
+///
+/// Conservative by construction, like the primary gate: an absent `sale_id`, a
+/// NULL `sales.terminal_id`, an unknown sale and an unpaired install all
+/// answer `false`, so the deduction is applied exactly as it is today. Only a
+/// sale row that exists HERE and names THIS terminal proves the deduction
+/// already happened on this inventory.
+///
+/// The `complete_sale` arm never creates a `sales` row, so there is no way
+/// for this probe to suppress a deduction this terminal has not made.
+fn sale_completed_here_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    sale_id: &str,
+) -> Result<bool, CoreError> {
+    let Some(this_terminal) = Settings::get_sync_terminal_id(tx)? else {
+        return Ok(false);
+    };
+    let row: Option<(Option<String>, Option<String>)> = tx
+        .query_row(
+            "SELECT terminal_id, tenant_id FROM sales WHERE id = ?1",
+            rusqlite::params![sale_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((Some(sale_terminal), tenant)) = row else {
+        return Ok(false);
+    };
+    if sale_terminal == this_terminal {
+        return Ok(true);
+    }
+    // Two homes for the same terminal: the pairing id this install syncs
+    // under (a `terminals.id`) and the identity a session stamped onto the sale
+    // (the device id a login carried). `resolve_terminal_row_id` is the tree's
+    // one translation between them, so it is the one used here; an identity
+    // that resolves to no row is NOT proof and the deduction is applied.
+    let store = Store::new(tx);
+    let tenant = tenant.unwrap_or_else(|| "default".into());
+    let here = store.resolve_terminal_row_id(&tenant, &this_terminal)?;
+    let there = store.resolve_terminal_row_id(&tenant, &sale_terminal)?;
+    Ok(matches!((here, there), (Some(a), Some(b)) if a == b))
 }
 
 /// The EFFECT a remote item will have, derived from its action and payload (C3).
@@ -917,6 +969,51 @@ impl SyncQueue {
             return Ok(ApplyOutcome::default());
         }
 
+        // ── C3 (slice S4): THE ORIGIN GATE ──────────────────────────────
+        // A mutation THIS terminal originated has already been applied here —
+        // the sale deducted its own stock before it was ever pushed — so
+        // pulling it back and applying it again deducts a second time. On the
+        // tablet the daemons and checkout share one database, so the duplicate
+        // lands on the very inventory the sale already reduced.
+        //
+        // The gate runs BEFORE the transaction and WRITES A RECEIPT rather
+        // than merely returning: an unreceipted skip would be re-attempted on
+        // every page, and the effect would stay unrecorded; a receipt makes
+        // the skip exactly as durable as an application.
+        //
+        // A NULL origin means UNKNOWN, never "self". The column was added with
+        // no backfill and the producers that stamp it live outside this slice,
+        // so a legacy or in-flight row is applied exactly as it is today. That
+        // is the safe default: a wrongly suppressed deduction is silent stock
+        // loss, which is worse than the duplicate being fixed.
+        //
+        // The identity is the persisted sync pairing id this install already
+        // authenticates its pushes with — the same accessor the daemons read
+        // (`daemon_tick.rs`, `daemon.rs`), reachable here because the store's
+        // connection carries the settings row. It is only consulted when the
+        // item actually carries an origin, so an ordinary pull pays no extra
+        // query.
+        if let Some(origin) = item.origin_terminal_id.as_deref()
+            && Settings::get_sync_terminal_id(store.conn())?.as_deref() == Some(origin)
+        {
+            let tx = store.conn().unchecked_transaction()?;
+            store.mark_remote_item_applied_with_effect_in_tx(
+                &tx,
+                &item.id,
+                &item.action,
+                remote_effect_key(&item.action, &item.payload).as_deref(),
+            )?;
+            store.clear_remote_failure_in_tx(&tx, &item.id)?;
+            tx.commit()?;
+            tracing::debug!(
+                item_id = %item.id,
+                action = %item.action,
+                origin = %origin,
+                "skipping a pulled item this terminal originated (already applied here)"
+            );
+            return Ok(ApplyOutcome::default());
+        }
+
         let tx = store.conn().unchecked_transaction()?;
 
         // C3: the EFFECT is derived from the action and payload BEFORE the
@@ -988,6 +1085,27 @@ impl SyncQueue {
             "complete_sale" => {
                 let payload: SalePayload = serde_json::from_str(&item.payload)
                     .map_err(|e| CoreError::Internal(format!("invalid sale payload: {e}")))?;
+                // C3 (slice S4) SECONDARY guard: the origin column is absent on
+                // every row written before the schema slice and on any producer
+                // that did not stamp it, so the pre-transaction gate cannot see
+                // those. The sale's OWN durable row is a cheap second opinion —
+                // this arm never creates a sales row, so a local row for this
+                // sale_id that NAMES this terminal means this terminal already
+                // completed the sale and already deducted its stock.
+                //
+                // Same policy as the primary gate: absent, NULL or unresolvable
+                // means "not proven self-originated", never "not
+                // self-originated", so the deduction is applied as today.
+                if let Some(sale_id) = payload.sale_id.as_deref()
+                    && sale_completed_here_in_tx(tx, sale_id)?
+                {
+                    tracing::debug!(
+                        item_id = %item.id,
+                        sale_id = %sale_id,
+                        "complete_sale already applied on this terminal; not deducting again"
+                    );
+                    return Ok(());
+                }
                 for line in &payload.line_items {
                     Store::new(tx).adjust_stock_in_tx(tx, &line.sku, -line.qty)?;
                 }
