@@ -142,6 +142,115 @@ fn status_as_stored_str_all_variants() {
     assert_eq!(OfflineQueueStatus::Failed.as_stored_str(), "failed");
 }
 
+// ── C49: the ONE queue-ordering rule ─────────────────────────────
+
+/// The acceptance case: a LOW-priority item is queued FIRST, so the un-sorted
+/// read (`ORDER BY created_at ASC`) puts it at the head and it would transmit
+/// before the Critical one. After ordering, Critical leads.
+#[test]
+fn order_for_push_puts_critical_ahead_of_an_earlier_low_item() {
+    let mut items = vec![
+        OfflineQueueItem::with_priority("bulk", "{}", SyncPriority::Low),
+        OfflineQueueItem::with_priority("money", "{}", SyncPriority::Critical),
+        OfflineQueueItem::with_priority("catalog", "{}", SyncPriority::Normal),
+    ];
+
+    order_for_push(&mut items);
+
+    let order: Vec<&str> = items.iter().map(|i| i.action.as_str()).collect();
+    assert_eq!(
+        order,
+        vec!["money", "catalog", "bulk"],
+        "Critical transmits before Normal, which before Low"
+    );
+}
+
+/// THE determinism proof, and the reason the key is total rather than just
+/// priority. Every item shares ONE priority tier AND ONE millisecond, so the
+/// first two keys compare equal for every pair and only `id` can decide.
+///
+/// This is the case that a priority-only sort gets wrong: `created_at` is
+/// millisecond precision, so such a batch would fall back to SQLite's
+/// unspecified row order and could come back differently on the next read.
+/// The assertion is not "this particular permutation" but "the SAME
+/// permutation every time", checked over many independent shuffles of the same
+/// item set — the sort must be a pure function of the key.
+#[test]
+fn order_for_push_is_deterministic_for_same_priority_same_millisecond_items() {
+    const AT: &str = "2026-01-01T00:00:00.000Z";
+
+    // One item set, with every timestamp pinned to the same millisecond.
+    let items: Vec<OfflineQueueItem> = (0..12)
+        .map(|i| {
+            let mut item = OfflineQueueItem::with_priority(
+                format!("action-{i}"),
+                "{}",
+                SyncPriority::Critical,
+            );
+            item.created_at = AT.to_owned();
+            item
+        })
+        .collect();
+
+    // A stable reference: sorted by the unique id alone, which is what the
+    // total key must reduce to when the other two parts are constant.
+    let mut expected_ids: Vec<String> = items.iter().map(|i| i.id.clone()).collect();
+    expected_ids.sort();
+
+    // Every independent clone of the SAME set must produce that order, no
+    // matter what order it starts in. `rotate` gives each run a different
+    // input permutation without changing the item set.
+    for shift in 0..items.len() {
+        let mut batch = items.clone();
+        batch.rotate_left(shift);
+        order_for_push(&mut batch);
+        let got: Vec<String> = batch.iter().map(|i| i.id.clone()).collect();
+        assert_eq!(
+            got, expected_ids,
+            "same-priority, same-millisecond items must order identically every run (rotation {shift})"
+        );
+    }
+}
+
+/// Within one tier the arrival order is preserved, so a batch of same-priority
+/// sales keeps the order the till took them.
+#[test]
+fn order_for_push_preserves_arrival_order_within_a_tier() {
+    let mut items = vec![
+        OfflineQueueItem::with_priority("first", "{}", SyncPriority::Critical),
+        OfflineQueueItem::with_priority("second", "{}", SyncPriority::Critical),
+        OfflineQueueItem::with_priority("third", "{}", SyncPriority::Critical),
+    ];
+    for (i, item) in items.iter_mut().enumerate() {
+        item.created_at = format!("2026-01-01T00:00:0{i}.000Z");
+    }
+
+    order_for_push(&mut items);
+
+    let order: Vec<&str> = items.iter().map(|i| i.action.as_str()).collect();
+    assert_eq!(order, vec!["first", "second", "third"]);
+}
+
+/// It reorders the CALLER'S vector in place. That is load-bearing, not a
+/// style choice: the push sends this exact vector and the per-item outcomes
+/// are matched back by index, so a parallel sorted copy would leave the caller
+/// holding the unsorted one and mis-attribute every outcome.
+#[test]
+fn order_for_push_reorders_the_same_vector_in_place() {
+    let mut items = vec![
+        OfflineQueueItem::with_priority("bulk", "{}", SyncPriority::Low),
+        OfflineQueueItem::with_priority("money", "{}", SyncPriority::Critical),
+    ];
+    let ptr_before = items.as_ptr();
+    let len_before = items.len();
+
+    order_for_push(&mut items);
+
+    assert_eq!(items.as_ptr(), ptr_before, "same allocation, reordered");
+    assert_eq!(items.len(), len_before, "nothing added or dropped");
+    assert_eq!(items[0].action, "money");
+}
+
 #[test]
 fn queue_item_new_generates_unique_ids() {
     let a = OfflineQueueItem::new("act", "{}");

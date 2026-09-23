@@ -523,36 +523,6 @@ pub async fn test_sync_connection_scoped(
 
 // ── Scoped variants (ADR #7) ────────────────────────────────────
 
-/// Order a pending batch the way a push must send it (OFF-09).
-///
-/// THE ORDER. Ascending `priority` is the contract: `SyncPriority` derives `Ord`
-/// with Critical=0 < Normal=1 < Low=2, so lower transmits first. But priority
-/// ALONE is not a total order — it has three values and most items are
-/// `Critical` (every sale, void, refund and payment split), so ties are the
-/// common case rather than the corner. The key is therefore total, in three
-/// parts:
-/// 1. `priority` — the P-2 contract, higher tier first;
-/// 2. `created_at` — the arrival order `Store::list_pending_offline` already
-///    documents and returns (`ORDER BY created_at ASC`), preserved WITHIN a tier
-///    so the oldest critical sale still goes first;
-/// 3. `id` — a UUID v7 primary key: unique, and itself time-ordered, so two
-///    items enqueued in the same millisecond (the precision of `created_at`)
-///    cannot fall back to SQLite's unspecified row order.
-///
-/// The tablet (`apps/mobile-tauri/src/commands/offline.rs`) and the daemon
-/// (`platform/sync/src/daemon.rs` `sort_pending_for_push`) order by the SAME key.
-/// This is deliberately a second copy of that one-line comparator rather than an
-/// import: `platform-sync` is a crate this one does not depend on (see this
-/// module's header), and the tablet is outside both. The shared home that would
-/// collapse all three is `kasirmu_core::offline` — the one crate every path
-/// already depends on — and moving it there is the recorded follow-up rather
-/// than something smuggled into this slice.
-pub(crate) fn order_pending_for_push(items: &mut [kasirmu_core::offline::OfflineQueueItem]) {
-    items.sort_by(|a, b| {
-        (a.priority, &a.created_at, &a.id).cmp(&(b.priority, &b.created_at, &b.id))
-    });
-}
-
 /// Sync run (scoped — 3-phase with auth refresh).
 pub async fn sync_run_scoped(
     ctx: &BridgeCtx<'_>,
@@ -598,30 +568,15 @@ pub async fn sync_run_scoped(
         });
     }
 
-    // OFF-09: priority ordering, matching the tablet (apps/mobile-tauri/src/
-    // commands/offline.rs) and the daemon (platform/sync/src/daemon.rs
-    // `sort_pending_for_push`). Without it a Critical item queued behind a bulk
-    // one waits a whole cycle, so the value of the priority column would depend
-    // on which of the three push paths happened to run.
-    //
-    // The key is TOTAL, and it has to be: `priority` has three values and most
-    // items are Critical, so ties are the common case rather than the corner.
-    // `list_pending_offline` returns `created_at ASC`, so sorting on priority
-    // alone would be stable in the `sort_by` sense but still leave same-
-    // millisecond items in SQLite's unspecified row order. Ordering by
-    // (priority, created_at, id) makes it deterministic: `id` is a UUID v7
-    // primary key, hence unique and itself time-ordered.
-    //
-    // This is the same one-line comparator the daemon's helper uses. It is NOT
-    // imported from there: `platform-sync` is a crate this one deliberately does
-    // not depend on (see this module's header), so the two cannot share the
-    // expression without moving it to a crate both can see. That move is the
-    // real fix and is recorded as a follow-up rather than smuggled in here.
+    // C49: the ONE ordering rule, shared by every push path
+    // (`kasirmu_core::offline::order_for_push`). Without it a Critical item
+    // queued behind a bulk one waits a whole cycle, so the value of the priority
+    // column would depend on which of the push paths happened to run.
     //
     // Sorted ONCE, before the push: Phase 3 and the 401 retry below both reuse
     // this same vector, so the server's index-aligned outcome list still lines up.
     let mut pending_items = pending_items;
-    order_pending_for_push(&mut pending_items);
+    kasirmu_core::offline::order_for_push(&mut pending_items);
 
     // Phase 2: Async HTTP push (no DB lock held).
     let mut outcomes = sync_client::send_items_to_server(&config, &pending_items).await;

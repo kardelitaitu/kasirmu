@@ -335,11 +335,17 @@ pub async fn retry_offline_sync_scoped(
         });
     }
 
-    // OFF-09: critical-before-normal ordering. `Store::list_pending_offline`
-    // returns created_at ASC, so re-order the batch so Critical items
-    // always transmit before Normal/Low.
+    // C49: critical-before-normal ordering, through the ONE shared rule
+    // (`kasirmu_core::offline::order_for_push`). `Store::list_pending_offline`
+    // returns created_at ASC, so without this a Critical item queued behind a
+    // bulk one waits a whole cycle. The shared key is total — priority, then
+    // created_at, then the UUID v7 id — so same-millisecond items do not fall
+    // back to SQLite's unspecified row order.
+    //
+    // Sorted ONCE, before the push: Phase 3 below reuses this same vector, so
+    // the server's index-aligned outcome list still lines up.
     let mut pending_items = pending_items;
-    pending_items.sort_by_key(|i| i.priority);
+    kasirmu_core::offline::order_for_push(&mut pending_items);
 
     // Phase 2: Async HTTP push (no DB lock held).
     let outcomes = sync_client::send_items_to_server(&config, &pending_items).await;

@@ -144,17 +144,18 @@ pub const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// Split pending items into batches that each serialise to ≤ `max_bytes`
 /// bytes of JSON. Ensures at least one item per batch (no empty requests).
 ///
-/// Items are sorted by priority (P-2) before chunking: all Critical items
-/// transmit before any Normal item, which transmit before Low items.
-/// Within each priority tier, original arrival order is preserved.
+/// Items are ordered by the shared rule ([`kasirmu_core::offline::order_for_push`])
+/// before chunking: all Critical items transmit before any Normal item, which
+/// transmit before Low items, and within a tier the arrival order is preserved.
+///
+/// C49: this used to sort by priority alone, which is NOT a total order. See the
+/// shared function for why same-millisecond items need the id tie-break.
 pub fn build_batches(
     items: &[kasirmu_core::offline::OfflineQueueItem],
     max_bytes: usize,
 ) -> Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> {
-    // Sort by priority (Critical=0, Normal=1, Low=2) — stable sort
-    // preserves arrival order within each tier.
     let mut sorted: Vec<kasirmu_core::offline::OfflineQueueItem> = items.to_vec();
-    sorted.sort_by_key(|item| item.priority);
+    kasirmu_core::offline::order_for_push(&mut sorted);
 
     let mut batches: Vec<Vec<kasirmu_core::offline::OfflineQueueItem>> = Vec::new();
     let mut current: Vec<kasirmu_core::offline::OfflineQueueItem> = Vec::new();
