@@ -360,6 +360,69 @@ TRIGGER_VERIFICATION: dict[str, dict[str, str]] = {
     },
 }
 
+# Data statements a SQLite migration performs BEFORE a DDL statement that would
+# otherwise fail on the un-repaired rows (C38).
+#
+# WHY THIS LIST EXISTS. The generator rebuilds the PG schema from the FINAL
+# SQLite state: it re-emits tables, indexes, triggers and seeds, and it drops
+# every DML statement in the migration chain (measured: the generated file
+# contains ZERO UPDATE statements, while seven migrations carry one). That is
+# correct for a statement that only converges rows the final schema already
+# implies — but WRONG for a migration whose UPDATE exists to make a following
+# DDL statement applicable. 20261011_open_shift_uniqueness.sql closes every open
+# shift but the newest for a user BEFORE creating idx_shifts_open_per_user, and
+# its own header says why the halves must travel together: "the index without
+# its reconciliation is exactly the startup-bricking shape this file exists to
+# prevent". The PG twin carried the bare index, so a PostgreSQL database holding
+# two open shifts for one user failed at init.
+#
+# WHY NOT TRANSLATE THE DML GENERICALLY. SQLite DML does not port mechanically
+# (strftime, GLOB, row-value comparisons all differ), and a half-working
+# translation fails in exactly the way this list exists to prevent. An explicit,
+# declared, digest-pinned entry keeps the port hand-written and reviewable —
+# the same discipline TRIGGER_MAP uses.
+#
+# SHAPE: (index_name, sql, verified_by, body_sha256).
+#   * index_name    — the index this reconciliation must run BEFORE. It must
+#                     name an index the generator actually emits, so a stale
+#                     entry fails generation instead of emitting a statement
+#                     nothing depends on.
+#   * sql           — the hand-written Postgres reconciliation.
+#   * verified_by   — the test that EXECUTES it against real PostgreSQL.
+#                     Generation FAILS when the path does not exist, so a
+#                     reconciliation cannot be added without naming its
+#                     evidence (the C43/C44 rule).
+#   * body_sha256   — pins the statement, so an edit cannot ride along silently.
+#
+# The SQL is wrapped in a to_regclass guard by render_pre_index_reconciliations,
+# so it is a no-op on a fresh database (where the table does not exist yet at
+# this point) and effective on one that already holds the offending rows.
+PRE_INDEX_RECONCILIATIONS: list[dict[str, str]] = [
+    {
+        "index_name": "idx_shifts_open_per_user",
+        "sql": """\
+UPDATE shifts
+   SET status = 'closed',
+       closed_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+       closing_balance_minor = NULL,
+       expected_cash_minor = NULL,
+       cash_difference_minor = NULL,
+       notes = CASE WHEN notes = ''
+                    THEN 'auto-closed: duplicate open shift (COR-27 reconciliation)'
+                    ELSE notes || ' | auto-closed: duplicate open shift (COR-27 reconciliation)' END,
+       updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+ WHERE status = 'open'
+   AND EXISTS (
+       SELECT 1 FROM shifts newer
+        WHERE newer.user_id = shifts.user_id
+          AND newer.status = 'open'
+          AND (newer.opened_at, newer.id) > (shifts.opened_at, shifts.id)
+   );""",
+        "verified_by": "apps/cloud-server/tests/pg_init_reconciliation.rs",
+        "body_sha256": "d706e0a43cc96278c4d11f5d8e3127d2600c64f18a4ffd0d70ff8a45549c643b",
+    },
+]
+
 # Seed timestamps younger than this are "now"-derived (the migration run
 # just stamped them) and re-emitted as the PG now-expression; older
 # literals are fixed seed data and survive verbatim. 1 hour is orders of
@@ -687,6 +750,39 @@ def _self_test_trigger_gate() -> None:
             raise SystemExit(
                 f"error: trigger verification gate self-test: {case} did not fail")
     print("ok: trigger verification gate self-test (fail-closed in both directions)")
+
+
+def _self_test_pre_index_gate() -> None:
+    """Exercise the pre-index reconciliation gate fail directions."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "a_test.rs").write_text("// stand-in", encoding="utf-8")
+        sql = "UPDATE shifts SET status = 'closed';"
+        digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+        good = [{"index_name": "idx_x", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}]
+        # The passing direction must actually pass, and an empty list is legal.
+        check_pre_index_reconciliations(good, {"idx_x"}, root)
+        check_pre_index_reconciliations([], set(), root)
+
+        failures = [
+            ([{"index_name": "", "sql": sql, "verified_by": "a_test.rs", "body_sha256": digest}], {"idx_x"}, "entry with no index_name"),
+            ([{**good[0], "index_name": "idx_ghost"}], {"idx_x"}, "stale entry naming an unemitted index"),
+            ([{**good[0], "verified_by": ""}], {"idx_x"}, "blank verified_by"),
+            ([{**good[0], "verified_by": "nope.rs"}], {"idx_x"}, "verified_by names a missing test"),
+            ([{**good[0], "body_sha256": "0" * 64}], {"idx_x"}, "reconciliation digest mismatch"),
+            ([good[0], good[0]], {"idx_x"}, "duplicate entry for one index"),
+        ]
+        for entries, emitted, case in failures:
+            try:
+                check_pre_index_reconciliations(entries, emitted, root)
+            except SystemExit:
+                continue
+            raise SystemExit(
+                f"error: pre-index reconciliation gate self-test: {case} did not fail"
+            )
+    print("ok: pre-index reconciliation gate self-test (fail-closed in both directions)")
 
 
 def _self_test_rls_gate() -> None:
@@ -1117,6 +1213,97 @@ def render_reconciliation(
     return RECONCILE_TEMPLATE.replace("__ROWS__", rows)
 
 
+def check_pre_index_reconciliations(
+    entries: list[dict[str, str]],
+    emitted_indexes: set[str],
+    root: Path,
+) -> None:
+    """Fail closed when a pre-index reconciliation is undeclared or unverified.
+
+    The generator drops every DML statement in the migration chain, so a
+    reconciliation that makes a following DDL statement applicable must be
+    declared here explicitly. This gate enforces the declaration the way
+    check_trigger_verification enforces the trigger ports: a named test that
+    EXISTS (so the reconciliation cannot be added without evidence) and a body
+    digest (so an edit cannot ride along silently). It also fails a stale entry
+    naming an index the generator does not emit, which would otherwise place a
+    statement nothing depends on.
+    """
+    if not entries:
+        return
+    problems: list[str] = []
+    seen: set[str] = set()
+    for entry in entries:
+        name = entry.get("index_name", "")
+        if not name:
+            problems.append("entry with no index_name")
+            continue
+        if name in seen:
+            problems.append(f"{name}: duplicate entry")
+        seen.add(name)
+        if name not in emitted_indexes:
+            problems.append(
+                f"{name}: names an index the generator does not emit (stale entry)"
+            )
+        test_path = entry.get("verified_by", "")
+        if not test_path:
+            problems.append(f"{name}: no verified_by")
+        elif not (root / test_path).is_file():
+            problems.append(f"{name}: verified_by names a missing test: {test_path}")
+        declared = entry.get("body_sha256", "")
+        actual = hashlib.sha256(
+            entry.get("sql", "").replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()
+        if declared != actual:
+            problems.append(
+                f"{name}: reconciliation changed (declared {declared[:12]}, actual "
+                f"{actual[:12]}) — re-record body_sha256 in "
+                "PRE_INDEX_RECONCILIATIONS after confirming it still matches the "
+                "SQLite migration"
+            )
+    if problems:
+        raise SystemExit(
+            "error: pre-index reconciliation failed (a dropped DML statement that "
+            "a DDL statement depends on bricks PG init):\n  - " + "\n  - ".join(problems)
+        )
+
+
+def render_pre_index_reconciliations(index_tables: dict[str, str]) -> str:
+    """Emit each declared reconciliation, guarded, immediately before its index.
+
+    The guard is to_regclass: on a fresh database the table does not exist at
+    this point in the script (the CREATE TABLE comes later, because these
+    statements run before the DDL), so the whole block is a no-op and the
+    index is created normally. On a database that already holds the rows, the
+    reconciliation runs first and the index creation below cannot fail.
+    """
+    if not PRE_INDEX_RECONCILIATIONS:
+        return ""
+    lines = [
+        "-- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────",
+        "-- DML the SQLite chain performs before a DDL statement that would",
+        "-- otherwise fail on the un-repaired rows. The generator cannot translate",
+        "-- SQLite DML in general, so each one is hand-written, declared and",
+        "-- digest-pinned above. Each is guarded on its table existing, so it is a",
+        "-- no-op on a fresh database.",
+    ]
+    for entry in PRE_INDEX_RECONCILIATIONS:
+        lines.append("")
+        table = index_tables[entry["index_name"]]
+        lines.append(f"-- before: {entry['index_name']} (on {table})")
+        lines.append("DO $oz_pre_index$")
+        lines.append("BEGIN")
+        lines.append(
+            f"    IF to_regclass('public.{table}') IS NOT NULL THEN"
+        )
+        for stmt_line in entry["sql"].splitlines():
+            lines.append("        " + stmt_line if stmt_line else "")
+        lines.append("    END IF;")
+        lines.append("END")
+        lines.append("$oz_pre_index$;")
+    return "\n".join(lines)
+
+
 def render_obsolete_indexes() -> str:
     """Guarded DROPs for indexes a later SQLite migration removed."""
     lines = [
@@ -1146,6 +1333,9 @@ def render() -> tuple[str, int, int, int, list[str]]:
     indexes: list[str] = []
     unique_by_table: dict[str, list[str]] = defaultdict(list)
     skipped: list[str] = []
+    # C38: every emitted index name -> the table it belongs to, so a declared
+    # pre-index reconciliation can guard on its table existing.
+    index_tables: dict[str, str] = {}
     for name, tbl, sql in db.execute(
         "SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' "
         "AND sql IS NOT NULL ORDER BY name"
@@ -1163,6 +1353,7 @@ def render() -> tuple[str, int, int, int, list[str]]:
         # their columns (composite FKs target them, and PG validates at
         # CREATE TABLE time) — emit each table's unique indexes directly
         # after that table in the topological loop.
+        index_tables[name] = tbl
         if s.upper().startswith("CREATE UNIQUE INDEX"):
             unique_by_table[tbl].append(s)
         else:
@@ -1188,6 +1379,7 @@ def render() -> tuple[str, int, int, int, list[str]]:
     # means the same thing as the SQLite trigger it mirrors. This is the
     # compensating control — declared evidence plus a body digest.
     check_trigger_verification(TRIGGER_MAP, TRIGGER_VERIFICATION, ROOT)
+    check_pre_index_reconciliations(PRE_INDEX_RECONCILIATIONS, set(index_tables), ROOT)
 
     ordered_names = [name for name, _, _ in ordered]
     seeds = dump_seeds(db, ordered_names)
@@ -1205,6 +1397,12 @@ def render() -> tuple[str, int, int, int, list[str]]:
     out.extend([render_obsolete_indexes(), ""])
     out.extend([render_evolution_ops(table_renames, column_renames), ""])
     out.extend([render_reconciliation(specs), ""])
+    # C38: a declared reconciliation must run BEFORE the DDL that creates its
+    # index, and the index is emitted with its table in the topological loop
+    # below — so this block precedes the whole DDL section.
+    pre_index = render_pre_index_reconciliations(index_tables)
+    if pre_index:
+        out.extend([pre_index, ""])
     for name, _refs, stmt in ordered:
         out.extend([stmt, ""])
         for idx in unique_by_table.get(name, []):
@@ -1225,6 +1423,7 @@ def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         _self_test_rls_gate()
         _self_test_trigger_gate()
+        _self_test_pre_index_gate()
         return 0
     body, n_tables, n_indexes, n_seeds, skipped = render()
 

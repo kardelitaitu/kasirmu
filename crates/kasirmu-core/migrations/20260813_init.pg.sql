@@ -1370,6 +1370,38 @@ BEGIN
 END
 $oz_reconcile$;
 
+-- ── Pre-index reconciliations (see PRE_INDEX_RECONCILIATIONS) ──────────
+-- DML the SQLite chain performs before a DDL statement that would
+-- otherwise fail on the un-repaired rows. The generator cannot translate
+-- SQLite DML in general, so each one is hand-written, declared and
+-- digest-pinned above. Each is guarded on its table existing, so it is a
+-- no-op on a fresh database.
+
+-- before: idx_shifts_open_per_user (on shifts)
+DO $oz_pre_index$
+BEGIN
+    IF to_regclass('public.shifts') IS NOT NULL THEN
+        UPDATE shifts
+           SET status = 'closed',
+               closed_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+               closing_balance_minor = NULL,
+               expected_cash_minor = NULL,
+               cash_difference_minor = NULL,
+               notes = CASE WHEN notes = ''
+                            THEN 'auto-closed: duplicate open shift (COR-27 reconciliation)'
+                            ELSE notes || ' | auto-closed: duplicate open shift (COR-27 reconciliation)' END,
+               updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+         WHERE status = 'open'
+           AND EXISTS (
+               SELECT 1 FROM shifts newer
+                WHERE newer.user_id = shifts.user_id
+                  AND newer.status = 'open'
+                  AND (newer.opened_at, newer.id) > (shifts.opened_at, shifts.id)
+           );
+    END IF;
+END
+$oz_pre_index$;
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id          TEXT PRIMARY KEY,                          -- UUID v4
     user_id     TEXT NOT NULL,                             -- FK to users.id (nullable if action is from system)
