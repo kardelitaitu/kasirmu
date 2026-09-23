@@ -88,11 +88,11 @@ implementation-status walkthrough.
 | 53 | [The UI Vocabulary Boundary — what the application layer may say about a renderer](./2026-09-15-adr53-ui-vocabulary-boundary.md) | Adopted (2026-09-15) — Option A implemented as rule ui-framework-vocabulary at 0ca2c0f27, landing at zero findings with no baseline; the Option A premise was corrected ~22:55, see Correction. **Row added 2026-09-23 (C30): it was missing from this hand table while existing on disk and in the generated index** |
 | 54 | [Google Sign-In — web sign-in/sign-up and desktop setup-wizard account linking](./2026-09-19-adr54-google-sign-in.md) | Proposed (2026-09-19) — nothing implemented |
 | 55 | [One Server Origin — the compiled list, the fallback pair and the allowlists that must agree with it](./2026-09-19-adr55-server-origin-model.md) | Implemented (2026-09-19) — resolver, literal collapse, drift gate, attestation (endpoint and client) and the boot-time cascade all shipped |
-| 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-10-04-adr56-first-run-provisioning.md) | Partially implemented (2026-10-04; re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 and the `local` tier of §2.3/§2.4 shipped; §2.3's `identify` leg (linked tier) still pending |
-| 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-10-04-adr57-client-tamper-resistance.md) | Proposed (2026-10-04) — part implemented, part to build |
-| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-10-04-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-10-04; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
-| 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-10-04-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-10-04) — nothing implemented |
-| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-10-11) — all four tiers landed and gated; 7 sheets migrated |
+| 56 | [First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate](./2026-09-21-adr56-first-run-provisioning.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — §2.1, §2.2, §2.5, §2.6, §5 and the `local` tier of §2.3/§2.4 shipped; §2.3's `identify` leg (linked tier) still pending |
+| 57 | [Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection](./2026-09-21-adr57-client-tamper-resistance.md) | Proposed (2026-09-21) — part implemented, part to build |
+| 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
+| 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
+| 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 
 ## Research notes
 
@@ -163,6 +163,13 @@ authoritative record.
   because nobody had filled them in, and the page then supplied a tidy reason for the
   gap. An invented explanation is worse than the gap: it stops anyone looking again.
   Re-derive the column with a script that reads the frontmatter, never by hand. A third sweep on 23-09-26 caught three more cells trailing their frontmatter — #55 read `Accepted` while the decision had shipped as `Implemented`, and #56/#58 read `Proposed` while both frontmatters had been re-audited to `Partially implemented` on 2026-09-22 — and corrected them to match. The duplicate #43 rows were left as they are: the collision is documented at the top of this file and renaming either file would break the citations counted there.
+- **On 23-09-26 the five future-dated records were re-dated to their authored dates.**
+  ADRs #56–#60 had October-2026 prefixes and in-body dates no commit could produce;
+  `git log -S` attribution pinned their authoring and every recorded event to 2026-09-21,
+  so the files, status lines, the cells above and the in-body claims were corrected together
+  (line counts preserved — cross-file line anchors still hold). The superseded labels live
+  in git history; the method and the second, unfixed date cluster are recorded in
+  `docs/audits/documentation-audit-23-09-26.md`.
 - **`TODO.md` no longer exists at the repo root.** It was moved to
   `docs/plans/todo.md` by `f3d9cca60` ("tidy up project root files into docs, dev, and
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead

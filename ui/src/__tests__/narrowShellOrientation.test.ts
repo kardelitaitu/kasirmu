@@ -1,7 +1,7 @@
 /**
  * Narrow-Shell / Extreme-Aspect Verification — ADR-0001 Slice 7.
  *
- * `docs/decisions/2026-10-11-adr60-orientation-and-adaptive-layout-strategy.md#L211`, verbatim:
+ * `docs/decisions/2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md#L212`, verbatim:
  *
  *   | **7** | Narrow-shell verification | Confirm the container-query pages behave
  *   in a shell narrower than the tablet, and in a desktop window dragged to

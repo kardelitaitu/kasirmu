@@ -181,9 +181,24 @@ removing it is a different decision than a typo repair, and it is right.
 
 ## Open items (bigger than a link sweep — not attempted here)
 
-1. **Five future-dated ADR files** (`2026-10-04` ×4, `2026-10-11` adr60) against today,
-   2026-09-23. Either a clock problem or a convention that now lies; needs the owner's
-   intent, not a rename.
+1. ~~**Five future-dated ADR files**~~ **Resolved 23-09-26 — re-dated to authored dates
+   (owner's call: re-date, not bless-the-convention).** The four `2026-10-04` ADRs and
+   `2026-10-11` adr60 all carried drafting-session plan dates no commit could produce;
+   `git log -S`/`--follow` pinned authoring **and every recorded event in all five** to
+   2026-09-21 (adr60 was born that day in the old ADR series; its 2026-09-23 change was only the
+   move into `docs/decisions/`).
+   Done: files renamed to `2026-09-21-adrNN-*`, status/Date/table cells and ~70 in-body
+   claims corrected, three meta-notes rewritten in place (line counts preserved, so every
+   cross-file line anchor still holds), citations repointed (index, hand table, setup-wizard
+   audit, two UI test headers), records index regenerated. Superseded labels survive in git
+   history; the per-claim attribution table is in the re-date commit.
+   **Successor finding, not attempted — a second future-date cluster:** 2026-09-26/27
+   claims in ADR #54/#55, `docs/guides/developer/api-reference.md`,
+   `docs/operations/runbook.md`, `apps/license-server/DEPLOY.md`,
+   `.agents/skills/deploy-northflank/SKILL.md`,
+   `docs/records/snapshots/2026-09-21-license-ratelimit-collapse.md`, plus the root
+   `todo-sync-endpoint-derivation.md` dated `2026-10-06` — same disease, ~3 days ahead;
+   needs the same attribution pass.
 2. **ADR status-table enforcement**: the hand table in `decisions/README.md` was
    reconciled against frontmatter on 2026-09-23 (#55 → `Implemented`, #56 and #58 →
    `Partially implemented`, the correction recorded in that file's Conventions the

@@ -2,12 +2,12 @@
 num: 57
 area: security
 title: "ADR #57: Client Tamper Resistance Without Play Integrity — signature pinning, a bounded grace ceiling, and server-side detection"
-status: Proposed (2026-10-04) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs
+status: Proposed (2026-09-21) — §2.1 (client reporting + server classification, verified on a real device), §2.2's verdict rule, §2.3's grace ceiling, §2.5's per-device renewal refusal, §2.6's sentinel guard, §Q4's escalation fold, §Q-B's pin store and §2.4's notification AND dashboard rows for the fingerprint + device-quota signals are implemented; §2.4's product/staff/location quota signals are implemented in apps/cloud-server/src/quota_detector.rs
 ---
 
 # ADR #57: Client Tamper Resistance Without Play Integrity
 
-**Status:** Proposed (2026-10-04). **Updated 2026-09-21:** §Q4's escalation fold is implemented
+**Status:** Proposed (2026-09-21). **Updated 2026-09-21:** §Q4's escalation fold is implemented
 (`kasirmu_core::build_fingerprint`), and §Q3's gate (a) has been rewritten from *"a named person
 reads `NeedsAttention`"* to *"a violation notification exists"* — the read path was checked and the
 reader already exists in code, so the old criterion would have deferred §2.4 indefinitely without
@@ -49,13 +49,13 @@ means some of a section's signals ship and the rest are named as unbuilt; **STIL
 none of it ships. No control is claimed that this record does not either cite or name as work, and
 each marker's remainder is spelled out rather than left to the count.
 
-**⚠️ This record's dates are NOT monotonic, and that is not a defect to fix.** It was updated in
-place across several sessions, so a `2026-09-21` note can postdate a `2026-10-05` one (the
-2026-10-05 entries describe an EARLIER state — they were written to the future-dated plan dates this
-ADR was drafted against). **Read precedence as: this status block is authoritative; in-body section
-markers second; dated history blocks third.** Where a dated block contradicts a marker, the marker
-wins. The dated blocks are kept verbatim because a record of what was believed when is the only way
-to audit how a claim aged.
+**⚠️ Dates in this record were re-dated to their true commit dates on 2026-09-23** (the
+documentation audit replaced the October plan labels the drafting session used with the dates
+git shows the work actually landed; the original labels remain in git history). The record was
+also updated in place across several sessions. **Read precedence as: this status block is
+authoritative; in-body section markers second; dated history blocks third.** Where a dated block
+contradicts a marker, the marker wins. The dated blocks are kept verbatim because a record of
+what was believed when is the only way to audit how a claim aged.
 
 **Superseded reading, kept as history (2026-09-21).** An earlier note here recorded that §Q4's
 escalation fold had *no non-test caller*, and that a `grep` for
@@ -66,7 +66,7 @@ stores every non-`valid` verdict (`build_integrity.go`), §2.4's notifier and it
 ship (`build_integrity_alerts.go`, `quota_effect.go`), and §2.5 refuses a renewal to a device with a
 stored `mismatch`. The note is retained because a record of what was believed when is the only way
 to audit how a claim aged.
-**Date:** 2026-10-04
+**Date:** 2026-09-21
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #50 (sync auth hardening), ADR #55 (server origin model), ADR #56 (first-run
 provisioning — this record supplies the integrity inputs its §2.1 provisioning row can carry).
@@ -208,7 +208,7 @@ For A1–A3, the maximum value obtainable from a fully compromised client is bou
 grace window of the tier they legitimately hold: 14 days (Plus/Pro), 30 (Premium),
 60 (Enterprise).
 
-> **Correction (2026-10-04, found on review).** An earlier revision of this section listed
+> **Correction (2026-09-21, found on review).** An earlier revision of this section listed
 > "7 days (Free)" in the sequence above. That was wrong. `subscription.rs:666-669` returns
 > `true` for Free *unconditionally* ("Free tier — always within grace"), and `:977-979` marks a
 > Free tier `Active` forever. `Free.offline_grace_days()` returns 7, but the value is **never
@@ -281,7 +281,7 @@ Quota enforcement is local — **6 bridge call sites** invoke the core quota gat
 definitions are in `kasirmu-core/src/db/*.rs`, and named siblings such as
 `bridge/subscription.rs:598` are doc-comments, not call sites). A patched binary skips them.
 
-> **Corrected 2026-10-04 (audit pass 2): the count is 6, not 7.** The list beneath the original
+> **Corrected 2026-09-21 (audit pass 2): the count is 6, not 7.** The list beneath the original
 > sentence named **six** paths, so the number and its own evidence disagreed. Every one of the six
 > was re-grepped and confirmed as an enforcing call; no seventh call site exists. If a seventh gate
 > is added later, this number is the thing to update — not the list.
@@ -414,7 +414,7 @@ be extended to *check failures*.
 already bounded (§2.3) and the renewal refusal removes persistence. Locking would trade a bounded
 risk for an unbounded false-positive risk against legitimate merchants.
 
-#### IMPLEMENTED 2026-10-05, CORRECTED 2026-09-22 — §2.2's verdict is real, and §2.1's client half SHIPPED too
+#### IMPLEMENTED 2026-09-21, CORRECTED 2026-09-22 — §2.2's verdict is real, and §2.1's client half SHIPPED too
 
 > **This heading read "…§2.1's client half is not" until 2026-09-22.** That was stale: §2.1's
 > client leg is built and verified — the Android computation
@@ -508,7 +508,7 @@ release-profile check is recorded at that section.
 
 ### 2.6 `BOOTSTRAP_FREE` is constrained to Free, permanently
 
-**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-10-05 (`subscription.rs:534`;
+**IMPLEMENTED, and the test §2.6 asked for ALREADY EXISTED — verified 2026-09-21 (`subscription.rs:534`;
 corrected 2026-09-22 from `:518`, which is `verify_signature`, the next thing this section discusses):**
 
 ```rust
@@ -592,9 +592,9 @@ naming the debug short-circuit as the reason the test must not target `verify_li
 > the table disagree, **the table wins** — it is the one a reader consults when asking "are we
 > protected?".
 >
-> **The record's dates are non-monotonic** (a 2026-09-21 note may postdate a 2026-10-05 one) because
-> it was updated in place across sessions. Precedence: the **status block** at the top of the record
-> is authoritative, in-body markers second, these dated notes third.
+> **The record's dates were re-dated to true commit dates on 2026-09-23** (October plan labels
+> replaced) and it was updated in place across sessions. Precedence: the **status block** at the
+> top of the record is authoritative, in-body markers second, these dated notes third.
 
 | Residual | Bound — **as of today, not as designed** |
 |---|---|
@@ -623,9 +623,9 @@ naming the debug short-circuit as the reason the test must not target `verify_li
   permissive — but it would surface as the persistent-unknown alert rather than as a mismatch, so
   the two alerts must still be read differently.
 
-#### HISTORY — snapshot of 2026-10-05, when only the verdict rule existed
+#### HISTORY — snapshot of 2026-09-21, when only the verdict rule existed
 
-> Every "no caller / unbuilt" statement below was true on 2026-10-05 and is **false now**: the
+> Every "no caller / unbuilt" statement below was true on 2026-09-21 and is **false now**: the
 > classifier has callers on both sides (the client computes and sends; the server classifies and
 > stores), and the scanner reads the result. Kept verbatim as history, not as description.
 
@@ -726,7 +726,7 @@ server log rather than by email.
 
 ## 5. Decisions on the Former Open Questions
 
-**Status: DECIDED** (2026-10-04). Each item carries its options, the tradeoff, and a binding
+**Status: DECIDED** (2026-09-21). Each item carries its options, the tradeoff, and a binding
 decision with rationale. `[blocking]` meant the answer changes §2's mechanism; `[policy]` meant it
 needs a human owner. Both are settled except where an owner must still be *named* (§Q3), which is
 an assignment rather than a design choice.
@@ -889,7 +889,7 @@ rolled-out client would each produce `unknown` reports from legitimate devices. 
 to a human queue means the worst outcome is a support ticket — whereas an automatic lockout on the
 same bug would dark every till running the affected build. **ADR #58 §2.7** forbids the latter for
 the same reason ("Enforcement never depends on the local DB refusing to open" —
-`2026-10-04-adr58-online-licence-heartbeat-and-revocation.md` **§2.7**; cited by line as `:440-447`
+`2026-09-21-adr58-online-licence-heartbeat-and-revocation.md` **§2.7**; cited by line as `:440-447`
 until the 2026-09-22 re-measure, which lands on ADR #58's §2.4a.1 renew guard instead). This record
 has no §2.7 of its own; the earlier citation pointed at a section that does not exist here.
 
@@ -897,7 +897,7 @@ has no §2.7 of its own; the earlier citation pointed at a section that does not
 from an intermittent failure while staying inside a working day. The number is a tuning parameter,
 not a security boundary; the routing to a human *is* the boundary.
 
-**IMPLEMENTED 2026-10-05 — the escalation rule is real; the queue it feeds is not yet wired.**
+**IMPLEMENTED 2026-09-21 — the escalation rule is real; the queue it feeds is not yet wired.**
 
 `kasirmu_core::build_fingerprint` now carries the Q4 decision as a pure state machine:
 `fold_build_integrity(previous_consecutive_unknowns, verdict) -> (u32, BuildIntegritySignal)`, with
@@ -978,7 +978,7 @@ be implemented together.
 > **Correction (2026-09-21): "the same calls" are the LICENCE server's, not the sync snapshot's.**
 > Adoption of ADR #58 option C was implemented as a scheduling change, not a wire change — see the
 > §Q1 correction in
-> `2026-10-04-adr58-online-licence-heartbeat-and-revocation.md`. The sync snapshot is built and
+> `2026-09-21-adr58-online-licence-heartbeat-and-revocation.md`. The sync snapshot is built and
 > Redis/ETag-cached by the **cloud server** (`apps/cloud-server/src/sync_api.rs`), which holds no
 > licence knowledge; a verdict or integrity field placed there would be served stale or bust the
 > cache on every heartbeat.
@@ -995,7 +995,7 @@ be implemented together.
 
 ## 5b. Decisions the Repairs Require
 
-**Status: DECIDED** (2026-10-04, repair round). The defects above are corrected in place; four of
+**Status: DECIDED** (2026-09-21, repair round). The defects above are corrected in place; four of
 them exposed questions the record had not actually answered. Each carries options, the tradeoff, and
 a binding decision with rationale. `[blocking]` means the answer changes §2's mechanism or its
 storage shape and must be settled before the build starts; `[deferrable]` means it can be settled at

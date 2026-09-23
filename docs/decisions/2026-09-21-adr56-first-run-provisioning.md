@@ -2,13 +2,13 @@
 num: 56
 area: topology
 title: "ADR #56: First-Run Provisioning — identity-first onboarding, one provisioning transaction, and the retirement of the multi-boolean boot gate"
-status: Partially implemented (2026-10-04; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
+status: Partially implemented (2026-09-21; status re-audited 2026-09-22; §2.3 amended 2026-09-23) — §2.1, §2.2, §2.5, §2.6, §5 Q2 tablet licence gate, and the `local` tier of §2.3/§2.4 are IMPLEMENTED; only §2.3's `identify` leg for the `linked` tier is NOT
 ---
 
 # ADR #56: First-Run Provisioning
 
-**Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
-2026-10-05: §2.1, §2.2, §2.5, §2.6, and §5 Q2 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
+**Status: Partially implemented** (2026-09-21; status re-audited 2026-09-22). **Updated
+2026-09-21: §2.1, §2.2, §2.5, §2.6, and §5 Q2 are now IMPLEMENTED**, and §2.3's critical path is replaced — the
 `local` tier provisions a working terminal end to end.
 
 **Amended 2026-09-23 (§2.3):** the wizard component this record says is "KEPT" is confirmed
@@ -26,15 +26,15 @@ constraint the follow-up slice must honour (it cannot write from either current 
    `ProvisioningFlow.tsx`, and the operator web portal at `website/src/pages/[locale]/pair.astro`.
    §5 Q2 is also shipped: `TabletAppShell.tsx` gates `!bootAllowed` before `!hasCompletedSetup`.
 
-*Clock note: the `last audited` stamp at the foot of this record carries the host clock's date,
-2026-09-22, which trails this record's own 2026-10-05 revision notes. The stamp is the machine's
-date and not a claim about the order the work landed in.*
+*Clock note: the `last audited` stamp at the foot of this record carries the host clock's date
+(2026-09-22 at its last pass), which postdates this record's authored date of 2026-09-21. The
+stamp is the machine's date and not a claim about the order the work landed in.*
 
 The implemented halves were each verified by running tests, and the evidence is recorded per
 section rather than claimed here. Section 1 is measurement
 against the tree as it stood when the decision was taken; §2 is the decision; §3 is the consequence
 list and §4 the non-goals.
-**Date:** 2026-10-04 (implementation recorded 2026-10-05)
+**Date:** 2026-09-21 (implementation recorded 2026-09-21)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (the commit the measurements were taken at;
 `HEAD` has since advanced to `e6e254881` — "fix(license-server): key rate limits on the real
 client IP" — which touches none of the files cited below, so every §1 reading still holds. Re-derive
@@ -112,7 +112,7 @@ tests are explicit that the migration seed never verified (`auth_tests.rs:958`:
 "migration-seeded BOOTSTRAP_FREE signature never verified"). So a fresh install ships a subscription
 row whose signature is known-invalid by design.
 
-> **Anchors re-measured 2026-10-04 (audit pass 2).** Both citations above originally read
+> **Anchors re-measured 2026-09-21 (audit pass 2).** Both citations above originally read
 > `auth.rs:617` and `auth_tests.rs:892`; the lines moved as later work landed. The claim is
 > unchanged and both new anchors were read directly.
 
@@ -353,7 +353,7 @@ A failed read can no longer forge a verdict, because there is no boolean to forg
 DB yields no row, and the shell stays in `Unprovisioned`. This is what retires `boot-retry.ts`'s
 lost-response workaround (§1.4) — a retry becomes an ordinary idempotent re-read.
 
-#### IMPLEMENTED 2026-10-05 — §2.1 shipped
+#### IMPLEMENTED 2026-09-21 — §2.1 shipped
 
 The table, the record and the derived state are real, and the gate is wired on both shells.
 
@@ -418,7 +418,7 @@ latter pair. Removing them moves the registration ratchet and the
 of that generated file — and `get_enabled_features`'s ledger row at `:100` is what the feature-read
 replacement of §2.1 keeps alive.
 
-#### IMPLEMENTED 2026-10-05 — §2.2 shipped, in both halves
+#### IMPLEMENTED 2026-09-21 — §2.2 shipped, in both halves
 
 `provision_device` is one transaction over the six steps above, in that order, with the marker
 written last (`crates/kasirmu-core/src/db/provisioning.rs`). The deletion follows it, as stated.
@@ -479,7 +479,7 @@ map it already is, evaluated instead of interrogated.
 configured one. Today's wizard ends at neither — it ends at a login screen with zero users
 (`onSkip`) or at a feature-toggle write against a store that does not exist (§1.3).
 
-#### PART IMPLEMENTED 2026-10-05 — the critical path is replaced; the identity leg is not
+#### PART IMPLEMENTED 2026-09-21 — the critical path is replaced; the identity leg is not
 
 **Built:** `ui/src/features/setup/ProvisioningFlow.tsx` is now what both shells render on the
 unprovisioned path, replacing `SetupWizard` there. It asks three things — store type, shop name,
@@ -736,7 +736,7 @@ an obstacle.
 They are system-managed pseudo-locations — `transit` is explicitly so in its own `INSERT` comment —
 and are genuine fixtures rather than fiction.
 
-#### IMPLEMENTED 2026-10-05 — §2.6 option C shipped, and the coupling proved real
+#### IMPLEMENTED 2026-09-21 — §2.6 option C shipped, and the coupling proved real
 
 The three fiction seeds are gone from `crates/kasirmu-core/migrations/20260813_init.sql` (the
 `Default Store` profile, the five `default-*` workspace instances, and the `BOOTSTRAP_FREE`
@@ -838,7 +838,7 @@ an omission: provisioning creates the location and the entity together.
   about `provisioning.tenant_id`, and this record previously credited it with a decision it does
   not make. The rationale is this record's, and it has two legs: (i) #59's cache discipline —
   *"written only from a server response, never from user input or a default"*
-  (`2026-10-04-adr59-...:501-502`) — applies to the tenant key for the same reason it applies to the
+  (`2026-09-21-adr59-...:501-502`) — applies to the tenant key for the same reason it applies to the
   region, since both are values only the licence server can mint; a `local` install has no server
   response by definition, so there is nothing to cache; and (ii) §2.2's guard keys on `terminal_id`,
   so no query anywhere needs a sentinel to find an unlinked terminal. The sentinel alternative would
@@ -889,7 +889,7 @@ an omission: provisioning creates the location and the entity together.
 
 ## 5. Decisions on the former Open Questions
 
-**Status: DECIDED** (2026-10-04, sole maintainer delegation). The four questions below were open
+**Status: DECIDED** (2026-09-21, sole maintainer delegation). The four questions below were open
 in the first revision of this record. Each now carries its options, the benchmark that separates
 them, and a binding decision. `[blocking]` meant the answer changes §2; `[deferrable]` meant it
 does not. Both classes are now settled.

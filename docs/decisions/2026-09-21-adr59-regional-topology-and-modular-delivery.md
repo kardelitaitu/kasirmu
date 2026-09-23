@@ -2,18 +2,18 @@
 num: 59
 area: topology
 title: "ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam"
-status: Proposed (2026-10-04) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not
+status: Proposed (2026-09-21) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not
 ---
 
 # ADR #59: Regional Topology and Modular Delivery
 
-**Status:** Proposed (2026-10-04). **Updated 2026-10-04 (second pass): §2.1a's sequencing steps 1–3
+**Status:** Proposed (2026-09-21). **Updated 2026-09-21 (second pass): §2.1a's sequencing steps 1–3
 are now IMPLEMENTED** — the `RegionCode` vocabulary, the `tenants.region` field with its backfill,
 the admin-only change route, and the durable audit collection. The multi-region topology, the
 migration orchestration (deliberately deferred, §2.1a step 4) and the module/fiscalization work are
 **not** implemented. §1 measures what exists, §2 decides, §3 records consequences, §4 the non-goals,
 §5 the questions that need a human answer.
-**Date:** 2026-10-04
+**Date:** 2026-09-21
 **Recorded against:** branch `0.0.39` @ `2c30e735c`
 **Related:** ADR #1 (module system — the kernel this builds on), ADR #41 §2.1 (device lifecycle, the
 "Enrolled" state), ADR #55 (one server origin — the single-origin assumption this record qualifies),
@@ -263,7 +263,7 @@ order**:
 orchestration becomes real when the second region does, which is the argument for building the
 field, the audit, and the admin surface now (§ "Sequencing" below).
 
-#### Sequencing for the current stage — steps 1–3 IMPLEMENTED 2026-10-04
+#### Sequencing for the current stage — steps 1–3 IMPLEMENTED 2026-09-21
 
 1. **Add `region` to the `tenants` collection**, defaulting to `"global"`. **DONE.**
    The precedent verified in §1 — zero matches for region/country in
@@ -303,7 +303,7 @@ field, the audit, and the admin surface now (§ "Sequencing" below).
 > than claiming a move that did not happen. A test caught this; the prose had
 > conflated the two states and the code inherited it.
 
-**Verification run (2026-10-04):** `go test ./...` in `apps/license-server` →
+**Verification run (2026-09-21):** `go test ./...` in `apps/license-server` →
 **ok**, including 7 case tests over the route (unknown region, missing reason,
 idempotent no-op, auth required, 404, the positive move, and schema/Go
 vocabulary parity), 3 over the audit trail, and 2 over the field migration
@@ -563,7 +563,7 @@ propagate the confusion into the thing that must be certified.
 
 ## 5. Decisions on the Former Open Questions
 
-**Status: DECIDED** (2026-10-04). Each item carries its options, the tradeoff, and a binding
+**Status: DECIDED** (2026-09-21). Each item carries its options, the tradeoff, and a binding
 decision with rationale. `[blocking]` meant the answer changes §2.
 
 ### Q1 — Does a region boundary require its own deployment, or can it be a schema/tenant partition? `[was blocking]` — DECIDED
@@ -806,7 +806,7 @@ That sentence is the whole defect. The amendment replaces it with a statement of
 state, and adds a status note under it:
 
 > - Each module owns its vertical slice (backend + frontend + locale + migrations). **Measured
->   2026-10-04:** fourteen crates are registered in `platform/startup/src/lib.rs:94-115`. **Ten own
+>   2026-09-21:** fourteen crates are registered in `platform/startup/src/lib.rs:94-115`. **Ten own
 >   their slice** — `inventory`, `currency`, `sales`, `staff`, `loyalty`, `tax`, `terminal`,
 >   `crm`, `settings`, `reporting`. **Four are lifecycle-only placeholders** —
 >   `purchasing`, `promotions`, `giftcards`, `kitchen` — which declare their manifest, id and
@@ -828,7 +828,7 @@ measured description.
 deliverable; then the corresponding stub is extracted as ordinary product work, with a customer
 rather than a documentation motive.
 
-**Status: the amendment LANDED 2026-10-04.** `docs/decisions/2026-01-15-module-system-design.md`
+**Status: the amendment LANDED 2026-09-21.** `docs/decisions/2026-01-15-module-system-design.md`
 now carries a "Measured state of the first requirement" subsection under its Context, naming the ten
 owning modules and the four lifecycle-only ones with the `platform/startup/src/lib.rs:94-115` and
 `modules/README.md:3` citations. **§3.4's blocking edge is therefore cleared**: the first

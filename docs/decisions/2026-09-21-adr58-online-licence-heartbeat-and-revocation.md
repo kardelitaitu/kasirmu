@@ -2,12 +2,12 @@
 num: 58
 area: licensing
 title: "ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State"
-status: Partially implemented (2026-10-04; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product
+status: Partially implemented (2026-09-21; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product
 ---
 
 # ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State
 
-**Status: Partially implemented** (2026-10-04; status re-audited 2026-09-22). **Updated
+**Status: Partially implemented** (2026-09-21; status re-audited 2026-09-22). **Updated
 2026-09-21: §2.1 (`Revoked`), §2.4a.2 (the device verdict), §2.5 (the session lock), §4a Q-A's
 export twin command, §2.3's poll gate (§4a Q-B option B) and §4a Q1 option B (the ride-along) are
 all IMPLEMENTED.**
@@ -38,7 +38,7 @@ implemented and tested**; the decision was about *one* new lifecycle state and *
 timestamp, plus the policy that surrounds them. Both halves are now built — see the §Q1 and §Q-B
 implementation notes for what shipped, and for the correction that the ride-along needed no new
 wire field. IMPLEMENTED and TO BUILD are marked per item.
-**Date:** 2026-10-04 (implementation recorded 2026-10-05)
+**Date:** 2026-09-21 (implementation recorded 2026-09-21)
 **Recorded against:** branch `0.0.39` @ `2c30e735c` (anchors and the poll interval re-measured at `f5eccee27` in audit pass 2 — see §1.3a and §2.3)
 **Supersedes (in part):** ADR #41 §2.1 "State B: Registered / Enrolled Device" — specifically its
 "**Offline-First (Zero Internet Required)**" clause. See §1.5.
@@ -103,7 +103,7 @@ The ban path is substantially built. Each row is evidence.
 | Fail-open when the server is unreachable | **UI layer** — `ui/src/features/settings/LicenseSettings.tsx:206-215` catches the error, increments `pollFailures`, and only surfaces the "offline" string after `MAX_POLL_FAILURES = 3` (`:79`); it never locks. The cache-write `warn` (`crates/kasirmu-core/src/license_verification.rs:700`) is NOT this — see §1.3a | IMPLEMENTED |
 | Per-tier offline grace values | `subscription.rs:338`; Free 7 / Plus 14 / Pro 14 / Premium 30 / Enterprise 60 | IMPLEMENTED |
 
-#### 1.3a The fail-open is in the UI, not in the bridge's status cache write — corrected 2026-10-04
+#### 1.3a The fail-open is in the UI, not in the bridge's status cache write — corrected 2026-09-21
 
 An earlier revision cited the bridge's subscription-cache `tracing::warn` for *"fail-open when the
 server is unreachable."* **The citation points at the wrong layer — and, since the 2026-09-22 re-audit,
@@ -134,7 +134,7 @@ failure is not swallowed: the bridge maps it to `Err(BridgeError::Internal)` at 
 this layer the behaviour is the *opposite* of fail-open — an unreachable server is an error
 returned to the caller.
 
-**Anchor re-measured 2026-10-04 (audit pass 2).** An earlier revision of this record cited the
+**Anchor re-measured 2026-09-21 (audit pass 2).** An earlier revision of this record cited the
 transport call as `:515` and the warn as `:531`, and typed the first argument list as
 `core_check_license_status(&api_key)` — a single argument. **All three readings are stale:** the
 device-revocation work this record itself specified (§2.4a.2) added `machine_id` as a second
@@ -204,7 +204,7 @@ is locking a merchant's till for an outage that is ours.
 
 ### 2.1 `Revoked` becomes a distinct lifecycle state
 
-**The decision below shipped 2026-10-05 — see the note at the end of this section.** Add a variant
+**The decision below shipped 2026-09-21 — see the note at the end of this section.** Add a variant
 to `SubscriptionLifecycleState` (`subscription.rs:1079`; `Revoked` at `:1095`, `Canceled` at
 `:1089`), separate from `Canceled`:
 
@@ -221,7 +221,7 @@ with `as_str() -> "revoked"` (`:1063`) and the mapping at `:934` split:
 "revoked"       => return SubscriptionLifecycleState::Revoked,   // lock, no access
 ```
 
-**Blast radius is measured, and the compiler is weaker than it looks — corrected 2026-10-04.** An
+**Blast radius is measured, and the compiler is weaker than it looks — corrected 2026-09-21.** An
 earlier revision claimed *"`Canceled` has 4 uses across `subscription.rs`, `entitlements.rs`,
 `availability.rs` and their test files"* and that *"the compiler enforces that"*. **Both halves were
 wrong.**
@@ -255,7 +255,7 @@ pass the lifecycle arm of the availability verdict?"* — and a test at each. Th
 in `subscription.rs` and the two test files are ordinary compile-error work, because they do name
 the variant.
 
-#### IMPLEMENTED 2026-10-05 — §2.1 and §2.5 shipped together
+#### IMPLEMENTED 2026-09-21 — §2.1 and §2.5 shipped together
 
 The variant and the enforcement landed in one change, because either alone is inert: a `Revoked`
 state nothing consumes changes no behaviour, and an enforcement point with no distinct state cannot
@@ -334,7 +334,7 @@ makes the gate safe ships in `platform/sync/src/daemon_tick.rs`. Every arm of th
 pinned by a test. The historical note follows, because it records what the tree looked like when
 the decision was taken.
 
-**Corrected 2026-10-04: there is no NEW heartbeat, but a background poll ships
+**Corrected 2026-09-21: there is no NEW heartbeat, but a background poll ships
 today.** An earlier revision read *"There is no periodic heartbeat … the device makes no licence call
 at all."* **That is false against the tree.** `ui/src/features/settings/LicenseSettings.tsx:69-75`
 defines `POLL_INTERVAL_MS` and `:210-224` starts it with
@@ -343,7 +343,7 @@ defines `POLL_INTERVAL_MS` and `:210-224` starts it with
 `POST /api/v1/license/status`. **A licence call ships today, on a timer, whenever the Settings
 screen is open.**
 
-**Interval re-measured 2026-10-04 (audit pass 2).** This record's first revision read the constant
+**Interval re-measured 2026-09-21 (audit pass 2).** This record's first revision read the constant
 as `30_000` and reasoned from it. Commit `f5eccee27` (`fix(ui): poll the licence status every five
 minutes instead of every thirty seconds`) changed it to `300_000` — **five minutes**, not thirty
 *(hash corrected 2026-09-22: this read `f5eccee27`, whose subject is `test(license-server): assert
@@ -379,7 +379,7 @@ elif now_ledger <= expires_at            → REQUIRE a successful status check
 else                                     → past expiry: per §2.2
 ```
 
-**The `NULL` arm is not decoration — added 2026-10-04.** `expires_at` is nullable by schema:
+**The `NULL` arm is not decoration — added 2026-09-21.** `expires_at` is nullable by schema:
 `crates/kasirmu-core/migrations/20260813_init.sql:901` declares it `expires_at TEXT NULL, -- ISO
 timestamp (NULL = lifetime/free)`, and `crates/kasirmu-core/src/subscription.rs:945-947` returns
 `SubscriptionLifecycleState::Active` for it with the comment *"perpetual / lifetime"*. A perpetual
@@ -389,7 +389,7 @@ window to precede. Whatever reaches it must still be a *session* gate — §2.1'
 carries the region question — but the §2.3 window obligation is vacuous for it. Without this arm
 the pseudocode has no defined answer for a legal row shape.
 
-**On clock tampering, stated accurately — corrected 2026-10-04.** An earlier revision said the rule
+**On clock tampering, stated accurately — corrected 2026-09-21.** An earlier revision said the rule
 is *"evaluated against the monotonic ledger timestamp … so moving the OS clock forward does not
 create an obligation, and moving it back does not evade one."* The ledger choice is right; the
 reasoning for the rollback half was redundant at the chokepoint named in §2.5. `create_session`
@@ -459,7 +459,7 @@ twice.
 ### 2.4 Fail-open on transport, fail-closed on an explicit verdict
 
 **IMPLEMENTED for transport — but by the UI, not by a guard, and only incidentally
-(corrected 2026-10-04; see §1.3a; anchors re-measured 2026-10-04, audit pass 2).** The old citation
+(corrected 2026-09-21; see §1.3a; anchors re-measured 2026-09-21, audit pass 2).** The old citation
 of a bridge cache-write warn pointed at a local-database write after a *successful* response; the
 Rust path returns `Err` on transport failure (`crates/kasirmu-bridge/src/license.rs:530-532`).
 What actually keeps a till open is `ui/src/features/settings/LicenseSettings.tsx:206-215` having no
@@ -485,7 +485,7 @@ register stays open.
 
 ### 2.4a Renewal, revocation and un-revocation — corrected against the server
 
-> **Corrections (2026-10-04).** This section has been wrong twice, in opposite directions, and both
+> **Corrections (2026-09-21).** This section has been wrong twice, in opposite directions, and both
 > errors are recorded rather than erased.
 >
 > 1. The original text asserted there is no `revoked` check in the renew path and that "the ban
@@ -527,7 +527,7 @@ depend on that distinction (it does not — both are non-active and both mean no
 serviceable and needs no server work. The requirement table that stood here is **deleted, not
 deferred** — it specified a change that is not needed.
 
-#### 2.4a.2 Device revocation is dead at BOTH ends — corrected 2026-10-04
+#### 2.4a.2 Device revocation is dead at BOTH ends — corrected 2026-09-21
 
 > **CORRECTED.** An earlier revision of this section said the server *"already emits the verdict"*
 > and the client *"discards it"*, implying the fix was to add one field to `LicenseStatusResponse`.
@@ -540,11 +540,11 @@ deferred** — it specified a change that is not needed.
 route `main.go:362`) sets `tenant_machines.revoked_at` for one device. It does not touch
 `tenants.status`.
 
-> **The three "end" subsections below describe the state as found on 2026-10-04, before the fix.**
+> **The three "end" subsections below describe the state as found on 2026-09-21, before the fix.**
 > They are the evidence for the decision, not a current description — the shipped implementation is
-> recorded under **IMPLEMENTED 2026-10-04** at the end of this section. Read them in the past tense.
+> recorded under **IMPLEMENTED 2026-09-21** at the end of this section. Read them in the past tense.
 >
-> **Their anchors are as-of 2026-10-04 too, and have since drifted** (the code they cite moved).
+> **Their anchors are as-of 2026-09-21 too, and have since drifted** (the code they cite moved).
 > Re-measured 2026-09-22: `status.go:94` → `:103`, `:95-104` → `:106-133`, `:88`/`:107` → `:91`/`:119`,
 > `:151`/`:175` → `:179`/`:203`; `license_verification.rs:564-572` → `:601-627`, `:264-293` →
 > `:276-302` (`device_revoked` at `:296`); `pb_schema.json:859` → `:873`; `main.go:362` → `:417`;
@@ -627,7 +627,7 @@ create_session → load subscription → verify_signature()   [existing :619]
 `tenant_subscription` rather than a network call inside `create_session`, which §2.7 forbids from
 being able to brick a register.
 
-#### IMPLEMENTED 2026-10-04 — option A shipped
+#### IMPLEMENTED 2026-09-21 — option A shipped
 
 All three points of the protocol are now wired, and each was verified by running the tests, not by
 inspection:
@@ -673,7 +673,7 @@ enforced nowhere.
 
 #### 2.4a.3 The grant flip re-activates a revoked tenant — DELIBERATE, not a defect
 
-> **WITHDRAWN 2026-10-04.** An earlier revision of this section called the grant flip a defect
+> **WITHDRAWN 2026-09-21.** An earlier revision of this section called the grant flip a defect
 > ("a manual grant silently un-revokes") and proposed guarding it so only `suspended` was cleared.
 > **That recommendation was wrong and must not be implemented.** Verification against the tree found
 > the flip is **documented intent with a test that asserts it**; the proposed guard would have
@@ -743,7 +743,7 @@ existing guard and needs no change.
 
 ### 2.5 "Locked" means: no session, therefore no app
 
-**The session-lock half IMPLEMENTED 2026-10-05; the §2.3 window arm is NOT built.** §2.5's own
+**The session-lock half IMPLEMENTED 2026-09-21; the §2.3 window arm is NOT built.** §2.5's own
 pseudocode below marks the window arm `[new]`, and that marker is accurate: the window ships as a UI
 poll gate (`ui/src/features/settings/LicenseSettings.tsx:109`), not as a session-creation
 obligation, and there is no Rust-side window gate. Enforcement of the `Revoked` state is at
@@ -774,7 +774,7 @@ Two consequences worth stating:
   other. §2.6's export promise is therefore satisfied only by the read-only local twin §4a Q-A
   option 3 adds; it is **not** satisfied by the existing command.
 
-#### IMPLEMENTED 2026-10-05 — all three consequences hold
+#### IMPLEMENTED 2026-09-21 — all three consequences hold
 
 | Consequence | Status |
 |---|---|
@@ -815,7 +815,7 @@ This mirrors the intent already recorded for `Expired` at `subscription.rs:1008-
 data export, and sign-out remain available"* — and extends it to `Revoked` rather than replacing
 it.
 
-**The promise above was unreachable as written — corrected 2026-10-04; the path is now decided at
+**The promise above was unreachable as written — corrected 2026-09-21; the path is now decided at
 §4a Q-A.** An earlier revision simply granted export alongside §2.5's refusal of new sessions. But
 export is **session-gated at the bridge**, so "no sessions" and "export works" cannot both hold:
 
@@ -892,7 +892,7 @@ unrecoverable offline. Session refusal is reversible, diagnosable, and loses not
   `subscription.rs` and the two test files are ordinary compile-error work.
 - **The device-revocation gap is CLOSED — corrected 2026-09-22.** This bullet read *"device
   revocation is dead at both ends … the admin 'revoke device' action changes nothing on the
-  device"*, which was the state as found on 2026-10-04, before §2.4a.2's fix. It shipped the same
+  device"*, which was the state as found on 2026-09-21, before §2.4a.2's fix. It shipped the same
   day: the client sends `machine_id` (`crates/kasirmu-core/src/license_verification.rs:617`), the
   response carries `device_revoked` (`:296`), and `create_session` refuses on the cached verdict
   (`crates/kasirmu-bridge/src/auth.rs:668`), pinned by `create_session_denies_a_revoked_device`
@@ -934,7 +934,7 @@ credential issued by us** — so there is nothing for a revocation to withdraw. 
 require inventing an authority over a device that has never authenticated to us, which is a
 different product than the one ADR #56 specifies.
 
-**The exemption is honest, but it is NOT bounded — corrected 2026-10-04.** An earlier revision of
+**The exemption is honest, but it is NOT bounded — corrected 2026-09-21.** An earlier revision of
 this paragraph claimed the exposure was *"the same Free-user exposure ADR #57 §2.4 bounds by
 server-side detection."* **That bound does not exist:** ADR #57 §Q3 defers §2.4's detection until
 the fingerprint field ships **and a violation notification exists** (gate (a) rewritten 2026-09-21
@@ -964,10 +964,10 @@ it.
 
 ## 4. Decisions on the Former Open Questions
 
-**Status: DECIDED** (2026-10-04). One item was resolved by the rule as given and is marked so; the
+**Status: DECIDED** (2026-09-21). One item was resolved by the rule as given and is marked so; the
 other carries options and a binding decision.
 
-> **Repair pass (2026-10-04).** A second audit round found seven defects in this record and put
+> **Repair pass (2026-09-21).** A second audit round found seven defects in this record and put
 > four further questions to it. All are resolved in place: §1.3a (fail-open is UI-layer, not
 > the bridge's cache-write `warn`), §2.1 (the compiler does not flag `entitlements.rs`/`availability.rs`), §2.3
 > (a background poll ships today; the `NULL` expiry arm; the clock-rollback reasoning), §2.4 (the
@@ -1085,7 +1085,7 @@ Tenant-wide is `POST /api/v1/admin/tenants/{id}/revoke` (`main.go:412` → `hand
 tenant-wide behind a confirm). So C's intent holds and no new endpoint is owed; what the text gets
 wrong is the mechanism, and the missing `audit_log` scope/actor binding is still owed.
 
-## 4a. Audit questions raised against this record (2026-10-04)
+## 4a. Audit questions raised against this record (2026-09-21)
 
 **Status: DECIDED.** Four questions were put to this record by the repair audit. Two were
 **blocking** — they contradicted text already written above (Q-A against §2.6/§2.5, Q-B against
@@ -1142,7 +1142,7 @@ rejected at review. Note this is the *opposite* of §2.4a.2's device check, whic
 safe to ship — the difference is that the device check removes a capability nobody was promised,
 while the session lock removes one §2.6 explicitly grants.
 
-#### IMPLEMENTED 2026-10-05, CORRECTED 2026-09-22 — the twin exists, but its half is not finished
+#### IMPLEMENTED 2026-09-21, CORRECTED 2026-09-22 — the twin exists, but its half is not finished
 
 `export_data_without_session` exists and is registered — and **§2.5's enforcement also shipped**,
 so this block's original claim (*"§2.5 remains unbuilt… no merchant is locked out of anything
@@ -1244,7 +1244,7 @@ which is true of the poll as it stands.
 
 ### Q-C — Does an existing `revoked_at` on a DEVICE outlive a tenant un-revoke? `[deferrable]` — DECIDED
 
-**The gap — re-scoped 2026-10-04, because §2.4a.3's premise changed.** The original text said
+**The gap — re-scoped 2026-09-21, because §2.4a.3's premise changed.** The original text said
 §2.4a.3 "un-revokes at the tenant level". §2.4a.3 has since been **withdrawn as wrong**: the grant
 flip is deliberate behaviour, not a defect. That does not remove this question — it sharpens it,
 because the flip is now the *only* tenant-level un-revoke path, and it is the one an operator will
@@ -1263,7 +1263,7 @@ that follows.)
 independently: adding the device check without a clearing path converts a working un-revoke into a
 half-locked account.
 
-**IMPLEMENTED 2026-10-04 — option B shipped with the device check, not after it.** §2.4a.2's
+**IMPLEMENTED 2026-09-21 — option B shipped with the device check, not after it.** §2.4a.2's
 per-device verdict is now *enforced*, so a clearing path is not optional: without one, "the tenant
 paid" would leave an active account whose tills refuse sessions. Both halves landed together.
 
@@ -1303,7 +1303,7 @@ revoked terminals is exactly the class of change that must be reconstructable.
 ### Q-D — Which region server answers the §2.4a.2 device check once ADR #59 lands? `[deferrable]` — DECIDED
 
 **The gap:** once ADR #59 makes tenant identity `(home_region, tenant_id)`
-(`docs/decisions/2026-10-04-adr59-regional-topology-and-modular-delivery.md:113`, restated at `:195`), the §2.4a.2 check —
+(`docs/decisions/2026-09-21-adr59-regional-topology-and-modular-delivery.md:113`, restated at `:195`), the §2.4a.2 check —
 `tenant_machines[terminal_id].revoked_at` — has to be answered by *some* server, and the answer
 depends on which region holds that device's rows. Calling it directly inside `create_session`
 would put a network round-trip on the session path, which **§2.7 forbids from being able to brick a
