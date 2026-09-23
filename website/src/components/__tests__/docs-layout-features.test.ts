@@ -143,7 +143,7 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
       expect(ID_DICT.docs.feedback.thanksYes).not.toBe(EN_DICT.docs.feedback.thanksYes);
       expect(ID_DICT.docs.feedback.thanksNo).not.toBe(EN_DICT.docs.feedback.thanksNo);
       // ...and the script reads it from the injected vars.
-      expect(LAYOUT_SRC).toContain("feedbackThanksYes + '</span>'");
+      expect(LAYOUT_SRC).toContain("'✓ ' + feedbackThanksYes");
     });
   });
 
@@ -449,6 +449,36 @@ describe('DocsLayout.astro setupDocsFeatures', () => {
 
       expect(wrap.innerHTML).toContain(EN_DICT.docs.feedback.thanksYes);
       expect(wrap.querySelector('span')?.classList.contains('text-green-500')).toBe(true);
+    });
+
+    it('moves focus to the acknowledgement when the pressed button is removed', () => {
+      // Answering replaces both buttons, so the element the press landed on
+      // ceases to exist — an element that is gone cannot hold focus, and a
+      // keyboard user was dropped on <body> (measured in a browser 2026-09-23
+      // at 390px and 1440px, en and id). The acknowledgement takes focus.
+      const wrap = document.createElement('div');
+      wrap.setAttribute('data-doc-feedback-wrap', '');
+      const btnYes = document.createElement('button');
+      btnYes.setAttribute('data-doc-feedback-yes', '');
+      const btnNo = document.createElement('button');
+      btnNo.setAttribute('data-doc-feedback-no', '');
+      wrap.appendChild(btnYes);
+      wrap.appendChild(btnNo);
+      document.body.appendChild(wrap);
+
+      const script = extractSetupDocsFeatures();
+      injectScript(script);
+
+      btnYes.focus();
+      expect(document.activeElement).toBe(btnYes);
+      btnYes.click();
+
+      const ack = wrap.querySelector('span');
+      expect(ack?.textContent).toContain(EN_DICT.docs.feedback.thanksYes);
+      expect(document.activeElement).toBe(ack);
+      // tabindex="-1" so it can be focused without joining the tab order.
+      expect(ack?.getAttribute('tabindex')).toBe('-1');
+      expect(wrap.querySelector('button')).toBeNull();
     });
 
     it('shows English improvement message on No click', () => {

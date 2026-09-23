@@ -208,6 +208,42 @@ describe('AuthForm — OTP login flow', () => {
       container.remove();
     }
   });
+
+  it('clears the rejected code and returns focus to the first box after a failed verify', async () => {
+    // The boxes carry disabled={loading}, so the box the user was typing in
+    // became disabled mid-request and the browser moved focus to <body>; the
+    // rejected code also stayed in the boxes, so typing there did nothing
+    // (measured in a browser 2026-09-23 at 390px and 1440px, en and id).
+    const { container, root } = await renderAuthForm('en');
+    try {
+      setEmail(container, 'alice@example.com');
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      mockFetch(() => badRequest(401));
+      setCode(container, '999999');
+      const boxes = container.querySelectorAll<HTMLInputElement>('input[inputmode="numeric"]');
+      // Where a keyboard user actually is when the code is complete: last box.
+      act(() => boxes[boxes.length - 1].focus());
+      expect(document.activeElement).toBe(boxes[boxes.length - 1]);
+
+      clickSubmit(container);
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      const first = container.querySelector<HTMLInputElement>('#login-otp-digit-0');
+      expect(document.activeElement).toBe(first);
+      // Cleared, so the box accepts a digit again instead of silently
+      // swallowing every keystroke on a filled maxLength-limited field.
+      expect(first?.value).toBe('');
+      expect(boxes[boxes.length - 1].value).toBe('');
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
 });
 
 // ── Resend OTP cooldown ───────────────────────────────────────────────

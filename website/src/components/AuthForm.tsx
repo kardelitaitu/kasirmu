@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { t, type Labels } from '../i18n/labels';
 import { isStrongPassword, passwordsMatch } from '../lib/passwordPolicy';
 import PasswordField, { PASSWORD_FIELD_LABELS } from './PasswordField';
@@ -157,6 +157,26 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
   // "auth API is not configured" flash before the real form swapped in.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  /**
+   * Which OTP group to put focus back into once a failed verification settles.
+   *
+   * Set by the two failing handlers, consumed after `loading` returns to false
+   * — the boxes are disabled while a request is in flight, and focusing a
+   * disabled input does nothing, so this cannot be done from the handler
+   * itself.
+   */
+  const refocusOtpAfterFailure = useRef<'login' | 'reset' | null>(null);
+  useEffect(() => {
+    const which = refocusOtpAfterFailure.current;
+    if (which === null || loading) return;
+    refocusOtpAfterFailure.current = null;
+    // The rejected code is cleared so the box accepts a digit again; leaving it
+    // in place made every keystroke a no-op on a filled, maxLength-limited box.
+    if (which === 'login') setCode('');
+    else setResetCode('');
+    document.getElementById(`${which === 'login' ? 'login' : 'reset'}-otp-digit-0`)?.focus();
+  }, [loading]);
 
   if (!API && mounted) {
     return <p className="rounded-md border border-ink/10 p-4 text-sm text-muted">{t(labels, 'login.notConfigured')}</p>;
@@ -360,6 +380,15 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorVerify'));
+      // The boxes carry `disabled={loading}`, so the box the user was typing in
+      // became disabled mid-request and the browser moved focus to <body>; the
+      // rejected code also stayed in the boxes, so typing did nothing there
+      // (measured in a browser 2026-09-23 at 390px and 1440px, en and id:
+      // activeElement BODY, and retyping left the code unchanged). Clearing the
+      // code and returning to the first box is where the correction starts —
+      // done after the request settles, because a disabled input cannot take
+      // focus. See `refocusOtpAfterFailure`.
+      refocusOtpAfterFailure.current = 'login';
     } finally {
       setLoading(false);
     }
@@ -413,6 +442,10 @@ export default function AuthForm({ locale, labels, oauthReason }: Props) {
       redirectAfterAuth();
     } catch {
       setError(t(labels, 'login.errorReset'));
+      // Same strand as the sign-in code step above (the reset boxes are also
+      // `disabled={loading}` and keep the rejected code), so the same recovery
+      // applies to this prefix.
+      refocusOtpAfterFailure.current = 'reset';
     } finally {
       setLoading(false);
     }
