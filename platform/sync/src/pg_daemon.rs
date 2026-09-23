@@ -359,45 +359,7 @@ impl PgSyncDaemon {
                             let conn = db_clone.blocking_lock();
                             let store = Store::new(&conn);
                             let queue = SyncQueue::new();
-                            for (item, outcome) in pending.iter().zip(results.iter()) {
-                                match outcome {
-                                    crate::transport::PushOutcome::Accepted => {
-                                        if let Err(e) = store.mark_offline_synced(&item.id) {
-                                            tracing::error!(
-                                                item_id = %item.id,
-                                                error = %e,
-                                                "pg sync daemon: failed to mark item synced"
-                                            );
-                                        }
-                                    }
-                                    crate::transport::PushOutcome::Rejected { reason } => {
-                                        if let Err(e) = store.mark_offline_failed(&item.id, reason)
-                                        {
-                                            tracing::error!(
-                                                item_id = %item.id,
-                                                error = %e,
-                                                "pg sync daemon: failed to mark item failed"
-                                            );
-                                        }
-                                    }
-                                    crate::transport::PushOutcome::Conflict(server_item) => {
-                                        // SYNC-02 parity: route the conflict through the shared
-                                        // ADR #21 service (version LWW / sale status DAG / stock
-                                        // CRDT merge) instead of blanket mark-synced + re-enqueue,
-                                        // which could resurrect stale remote state.
-                                        if let Err(e) =
-                                            queue.apply_push_conflict(&store, item, server_item)
-                                        {
-                                            tracing::error!(
-                                                item_id = %item.id,
-                                                action = %item.action,
-                                                error = %e,
-                                                "pg sync daemon: conflict resolution failed"
-                                            );
-                                        }
-                                    }
-                                }
-                            }
+                            apply_push_outcomes(&queue, &store, &pending, &results);
                         })
                         .await;
 
@@ -710,6 +672,104 @@ fn recover_pg_snapshot(
 /// `SettingsUpdated` through `settings_sink` after its transaction commits
 /// (the same contract as the SQLite daemon), so the app can refetch a
 /// setting changed on a remote PostgreSQL terminal.
+/// Apply per-item push outcomes to the local offline queue (PG daemon).
+///
+/// The fourth push-outcome applier in the workspace, alongside
+/// `kasirmu_core::sync_client::apply_sync_outcomes` (the immediate path),
+/// `daemon::apply_push_results` (the SQLite daemon) and
+/// `apply_push_outcomes` in `lib.rs` (the `SyncEngine`). All of them MUST
+/// classify outcomes identically: a rejection rule applied by some and not
+/// others is the divergent-twin failure this shape has already produced
+/// twice (C45 on `lib.rs`, and this one).
+///
+/// Extracted from the inline loop in `run_cycle` so the classification is
+/// reachable from a unit test: `PgTransport` is a concrete struct, so an
+/// inline loop could only be exercised by standing up a live PostgreSQL.
+///
+/// # Duplicate-id replays are not rejections
+///
+/// A `Rejected` reason carrying the
+/// [`kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX`] marker means
+/// the server already holds this item id, so the mutation landed on an
+/// earlier push and only the local mark was lost (the canonical case: a
+/// crash between the server insert and `mark_offline_synced`, then a
+/// re-push). Item ids are client-generated UUIDv7 values assigned once at
+/// enqueue (`OfflineQueueItem::new`), so a duplicate id can only ever be
+/// THIS item. The correct local state is `synced`.
+///
+/// Routing it to `mark_offline_failed` is silently terminal: push-side
+/// `failed` rows have no requeue path (`list_pending_offline` selects
+/// `status = 'pending'` only), so the item would be stranded locally forever
+/// while sitting durably on the server. Same predicate, same reasoning and
+/// same call as `daemon.rs` — one definition, not a second copy.
+///
+/// # Errors
+///
+/// Per-item queue failures are logged and swallowed, not propagated: this
+/// runs inside `spawn_blocking` in the push phase, where one unwritable row
+/// must not abort the remaining items in the batch. Mirrors
+/// `daemon::apply_push_results` exactly.
+fn apply_push_outcomes(
+    queue: &SyncQueue,
+    store: &Store<'_>,
+    pending: &[OfflineQueueItem],
+    results: &[crate::transport::PushOutcome],
+) {
+    for (item, outcome) in pending.iter().zip(results.iter()) {
+        match outcome {
+            crate::transport::PushOutcome::Accepted => {
+                if let Err(e) = store.mark_offline_synced(&item.id) {
+                    tracing::error!(
+                        item_id = %item.id,
+                        error = %e,
+                        "pg sync daemon: failed to mark item synced"
+                    );
+                }
+            }
+            crate::transport::PushOutcome::Rejected { reason }
+                if kasirmu_core::sync_client::is_duplicate_id_rejection(reason) =>
+            {
+                // Idempotent replay: the server already holds this exact item,
+                // so the mutation landed. Mark synced, never failed.
+                tracing::info!(
+                    item_id = %item.id,
+                    "pg sync daemon: duplicate-id replay, item already on server, marking synced"
+                );
+                if let Err(e) = store.mark_offline_synced(&item.id) {
+                    tracing::error!(
+                        item_id = %item.id,
+                        error = %e,
+                        "pg sync daemon: failed to mark duplicate-replay item synced"
+                    );
+                }
+            }
+            crate::transport::PushOutcome::Rejected { reason } => {
+                if let Err(e) = store.mark_offline_failed(&item.id, reason) {
+                    tracing::error!(
+                        item_id = %item.id,
+                        error = %e,
+                        "pg sync daemon: failed to mark item failed"
+                    );
+                }
+            }
+            crate::transport::PushOutcome::Conflict(server_item) => {
+                // SYNC-02 parity: route the conflict through the shared
+                // ADR #21 service (version LWW / sale status DAG / stock
+                // CRDT merge) instead of blanket mark-synced + re-enqueue,
+                // which could resurrect stale remote state.
+                if let Err(e) = queue.apply_push_conflict(store, item, server_item) {
+                    tracing::error!(
+                        item_id = %item.id,
+                        action = %item.action,
+                        error = %e,
+                        "pg sync daemon: conflict resolution failed"
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn apply_pulled_page(
     store: &Store<'_>,
     page: &[OfflineQueueItem],

@@ -895,3 +895,177 @@ async fn nudge_coalesces_a_burst_into_one_permit() {
         "three nudges must coalesce into one permit; a second permit means Notify queued"
     );
 }
+
+// ── apply_push_outcomes: the PG daemon applier ───────────────
+//
+// C48: `pg_daemon` routed EVERY `Rejected` outcome to
+// `mark_offline_failed`, with no duplicate-id predicate — unlike
+// `sync_client::apply_sync_outcomes`, `daemon::apply_push_results` and
+// `lib.rs::apply_push_outcomes`. Unlike `run_sync_cycle` this daemon IS
+// wired into the desktop (`desktop-tauri/src/state.rs`), so the divergence
+// was live. These tests pin this applier to the shared rule.
+
+/// Helper: read a row's status by id.
+fn status_of(conn: &rusqlite::Connection, id: &str) -> String {
+    conn.query_row(
+        "SELECT status FROM offline_queue WHERE id = ?1",
+        rusqlite::params![id],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+
+/// A `Rejected` whose reason carries the duplicate-id prefix marks the row
+/// SYNCED, not failed, on THIS applier.
+///
+/// Pre-fix this test FAILS: the bare `Rejected` arm called
+/// `mark_offline_failed`, so the row read `failed` with the duplicate-id
+/// text as its error.
+#[test]
+fn pg_apply_push_outcomes_duplicate_id_replay_marks_synced() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let id = enqueue_item(&conn, "sale.create", "{\"total\":100}");
+    let pending = store.list_pending_offline().unwrap();
+
+    let results = vec![crate::transport::PushOutcome::Rejected {
+        reason: format!(
+            "{}{}",
+            kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+            id
+        ),
+    }];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(
+        status_of(&conn, &id),
+        "synced",
+        "a duplicate-id replay is a successful earlier push, not a rejection"
+    );
+}
+
+/// A genuine rejection still dead-letters the row — the carve-out must not
+/// swallow real failures.
+#[test]
+fn pg_apply_push_outcomes_genuine_rejection_marks_failed() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let id = enqueue_item(&conn, "sale.create", "{\"total\":100}");
+    let pending = store.list_pending_offline().unwrap();
+
+    let results = vec![crate::transport::PushOutcome::Rejected {
+        reason: "pg insert failed: deadlock detected".into(),
+    }];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(status_of(&conn, &id), "failed");
+    let err: String = conn
+        .query_row(
+            "SELECT last_error FROM offline_queue WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(err, "pg insert failed: deadlock detected");
+}
+
+/// The predicate is `starts_with`, so it must be ANCHORED: a reason that
+/// merely MENTIONS a duplicate id is still a rejection.
+#[test]
+fn pg_apply_push_outcomes_duplicate_prefix_is_anchored() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let id = enqueue_item(&conn, "sale.create", "{\"total\":100}");
+    let pending = store.list_pending_offline().unwrap();
+
+    let results = vec![crate::transport::PushOutcome::Rejected {
+        reason: "pg insert failed: duplicate id: retried".into(),
+    }];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(
+        status_of(&conn, &id),
+        "failed",
+        "the prefix is anchored: a reason that only mentions a duplicate id is still a rejection"
+    );
+}
+
+/// `Accepted` is unchanged: the row is marked synced.
+#[test]
+fn pg_apply_push_outcomes_accepted_marks_synced() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let id = enqueue_item(&conn, "sale.create", "{\"total\":100}");
+    let pending = store.list_pending_offline().unwrap();
+
+    let results = vec![crate::transport::PushOutcome::Accepted];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(status_of(&conn, &id), "synced");
+}
+
+/// The `Conflict` arm is unchanged: still routed through the shared ADR #21
+/// resolver, which marks the row resolved with an auditable tag rather than
+/// dead-lettering it.
+#[test]
+fn pg_apply_push_outcomes_conflict_uses_shared_resolver() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let id = enqueue_item(&conn, "sale.create", "{\"total\":100}");
+    let pending = store.list_pending_offline().unwrap();
+
+    // The server's copy of the same action, newer so the resolver has a
+    // defined winner.
+    let mut server_item = pending[0].clone();
+    server_item.id = "pg-server-copy".into();
+    server_item.created_at = "2030-01-01T00:00:00.000Z".into();
+
+    let results = vec![crate::transport::PushOutcome::Conflict(server_item)];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(
+        status_of(&conn, &id),
+        "synced",
+        "a conflict is resolved, not dead-lettered"
+    );
+    let err: Option<String> = conn
+        .query_row(
+            "SELECT last_error FROM offline_queue WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        err.as_deref()
+            .is_some_and(|e| e.starts_with("resolved: conflict")),
+        "the resolution must leave an auditable marker, got {err:?}"
+    );
+}
+
+/// A batch longer than the results is not misaligned: `zip` stops at the
+/// shorter side, so a truncated response leaves the trailing item PENDING
+/// rather than marking it from a neighbour's outcome.
+#[test]
+fn pg_apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
+    let conn = migrations::fresh_db();
+    let store = Store::new(&conn);
+    let queue = SyncQueue::new();
+    let first = enqueue_item(&conn, "sale.create", "{\"n\":1}");
+    let second = enqueue_item(&conn, "sale.create", "{\"n\":2}");
+    let pending = store.list_pending_offline().unwrap();
+
+    let results = vec![crate::transport::PushOutcome::Accepted];
+    apply_push_outcomes(&queue, &store, &pending, &results);
+
+    assert_eq!(status_of(&conn, &first), "synced");
+    assert_eq!(
+        status_of(&conn, &second),
+        "pending",
+        "an item with no outcome must stay pending, never inherit a neighbour's"
+    );
+}
