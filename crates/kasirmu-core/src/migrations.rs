@@ -402,6 +402,20 @@ pub const ALL: &[Migration] = &[
         id: "20261011_open_shift_uniqueness.sql",
         sql: include_str!("../migrations/20261011_open_shift_uniqueness.sql"),
     },
+    // C10b under owner decision D11: the negative-stock backstop on
+    // `stock_summary`, enforced CONDITIONALLY on the location binding's
+    // `allow_negative_stock` opt-in. NOT a CHECK: an unconditional `qty >= 0`
+    // silently re-enables the Layer-1 guard that flag exists to opt out of,
+    // which was measured (it failed
+    // `negative_stock_event_fires_when_allow_negative_enabled`). Two triggers
+    // (INSERT + UPDATE) because the upsert both writers use fires only the
+    // latter once the row exists. No table, index or row changes, so the table
+    // pin (127) and index pin (189) stand; the TRIGGER pin moves 6 -> 8.
+    // Appended after the registry tail so no earlier migration reorders.
+    Migration {
+        id: "20261012_stock_summary_qty_nonnegative.sql",
+        sql: include_str!("../migrations/20261012_stock_summary_qty_nonnegative.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

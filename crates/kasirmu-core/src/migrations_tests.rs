@@ -866,7 +866,16 @@ fn init_sql_creates_complete_schema_surface() {
         // `20260916_role_assignment_scopes.sql`. Nothing since: the
         // 20261002–20261005 tables (sync, midtrans, KDS routing) are plain
         // CREATE TABLE/INDEX DDL — no trigger shipped with them.
-        6,
+        // 20261012_stock_summary_qty_nonnegative.sql adds the third pair, +2:
+        // `stock_summary_qty_nonnegative_insert` and
+        // `..._update`, the CONDITIONAL negative-stock backstop (D11). It is a
+        // trigger rather than a CHECK because the flag it defers to lives on
+        // `workspace_inventory_locations` and is keyed by location — a
+        // cross-row predicate no table CHECK can express. Both arms are
+        // needed: the `INSERT ... ON CONFLICT DO UPDATE` shape both writers
+        // use fires only the UPDATE arm once the row exists. That file adds no
+        // table and no index, so the other two pins stand.
+        8,
         "trigger surface drifted"
     );
 }
@@ -3238,4 +3247,203 @@ fn open_shift_uniqueness_migration_reconciles_pre_existing_duplicates() {
         "expected a constraint violation, got: {err}"
     );
 }
+/// C10b / D11: the negative-stock backstop, and the reason it is a TRIGGER.
+///
+/// The condition is a cross-row predicate — "may THIS location hold a negative
+/// qty?" is answered by `workspace_inventory_locations.allow_negative_stock`, a
+/// different table keyed by `location_id`. No table CHECK can express that, and
+/// the unconditional `CHECK (qty >= 0)` the review proposed was measured to be
+/// WRONG: it silently re-enables the Layer-1 guard the flag exists to opt out
+/// of, failing `negative_stock_event_fires_when_allow_negative_enabled`.
+///
+/// Both directions, both through RAW SQL, so the TRIGGER is under test and not
+/// `Store::adjust_stock_at_location_with_reason`:
+///
+/// * a binding that did NOT opt in is REFUSED (the backstop bites), on the
+///   INSERT arm AND on the UPDATE arm — the latter is what the upsert both
+///   writers use actually fires once the row exists;
+/// * a binding that DID opt in is ACCEPTED (the feature still works);
+/// * a location with NO binding at all is ACCEPTED, which is the refinement
+///   that keeps `deactivate_inventory_location_with_negative_stock_errors`
+///   passing: the flag is a per-BINDING opt-out, so a location with no binding
+///   has no opt-out to violate, and Rust Layer 1 already refuses negatives on
+///   that path.
+#[test]
+fn stock_summary_negative_guard_is_conditional_on_the_binding() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
 
+    // A product, and three locations: bound-without-opt-in, bound-with-opt-in,
+    // and unbound. Locations are created through the real API so the fixture
+    // matches what a store actually holds (it writes no binding).
+    let s = crate::db::Store::new(&conn);
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES ('prod-c10b', 'SKU-C10B', 'C10b', 100, 'USD', 'retail')",
+        [],
+    )
+    .unwrap();
+    let bound_no = s
+        .create_inventory_location("Bound No", "store", "")
+        .unwrap();
+    let bound_yes = s
+        .create_inventory_location("Bound Yes", "store", "")
+        .unwrap();
+    let unbound = s.create_inventory_location("Unbound", "store", "").unwrap();
+
+    // A workspace instance plus one binding per bound location. The instance's
+    // `location_id` is the STORE profile (NOT NULL FK), not an inventory
+    // location — the same shape `db/inventory_tests.rs:61` uses.
+    conn.execute(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('retail', 'Retail POS')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO locations (id, name) VALUES ('loc-c10b', 'C10b Site')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
+         VALUES ('ws-c10b', 'retail', 'loc-c10b', 'C10b')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO workspace_inventory_locations \
+             (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
+         VALUES ('wil-c10b-no', 'ws-c10b', ?1, 0, 0, 0), \
+                ('wil-c10b-yes', 'ws-c10b', ?2, 0, 1, 1)",
+        rusqlite::params![bound_no, bound_yes],
+    )
+    .unwrap();
+
+    const INSERT_NEGATIVE: &str = "INSERT INTO stock_summary (item_id, location_id, qty) \
+                                   VALUES ('prod-c10b', ?1, ?2)";
+
+    // -- Direction 1: the backstop BITES on a binding that did not opt in. --
+    let err = conn
+        .execute(INSERT_NEGATIVE, rusqlite::params![&bound_no, -3])
+        .expect_err("a negative qty at a non-opted-in binding must be refused by the TRIGGER");
+    assert!(
+        matches!(
+            &err,
+            rusqlite::Error::SqliteFailure(e, _) if e.code == rusqlite::ErrorCode::ConstraintViolation
+        ),
+        "expected a constraint violation, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("allow_negative_stock"),
+        "the refusal must name the flag it defers to, got: {err}"
+    );
+
+    // The UPDATE arm: seed a non-negative row, then drive it below zero. This
+    // is the `INSERT ... ON CONFLICT DO UPDATE` shape the writers use.
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&bound_no, 1])
+        .expect("a non-negative qty is always allowed");
+    let err = conn
+        .execute(
+            "UPDATE stock_summary SET qty = -1 WHERE item_id = 'prod-c10b' AND location_id = ?1",
+            rusqlite::params![&bound_no],
+        )
+        .expect_err("driving an existing row below zero must be refused by the UPDATE arm");
+    assert!(
+        err.to_string().contains("allow_negative_stock"),
+        "the UPDATE arm must give the same refusal, got: {err}"
+    );
+
+    // -- Direction 2: the feature still works. --
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&bound_yes, -3])
+        .expect("a binding that opted in must still be able to hold negative stock");
+    // ...including through the upsert, which fires only the UPDATE arm.
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES ('prod-c10b', ?1, -9) \
+         ON CONFLICT(item_id, location_id) DO UPDATE SET qty = excluded.qty",
+        rusqlite::params![&bound_yes],
+    )
+    .expect("the opted-in upsert must pass");
+
+    // -- The refinement: no binding means no opt-out to violate. --
+    conn.execute(INSERT_NEGATIVE, rusqlite::params![&unbound, -3])
+        .expect(
+            "a location with NO binding has no opt-out to violate; refusing here would \
+             break deactivate_inventory_location_with_negative_stock_errors",
+        );
+
+    let stored: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = 'prod-c10b' AND location_id = ?1",
+            rusqlite::params![&bound_yes],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, -9, "the opted-in value must be stored verbatim");
+}
+
+/// C10b / D11: the trigger is the CONDITIONAL form, not the blanket CHECK the
+/// review proposed — pinned by reading the schema, so a later edit that
+/// "simplifies" it to an unconditional `qty >= 0` fails here rather than in
+/// production. Also pins that no blanket repair rode along: existing negative
+/// rows are legitimate oversells (D11) and must survive the migration.
+#[test]
+fn stock_summary_negative_guard_is_not_an_unconditional_check() {
+    let mut conn = fresh();
+    run(&mut conn).unwrap();
+
+    // The table DDL must NOT carry a blanket CHECK on qty.
+    let table_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'stock_summary'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        !table_sql.contains("qty >= 0"),
+        "an unconditional CHECK would re-enable the guard allow_negative_stock \
+         exists to opt out of, got: {table_sql}"
+    );
+
+    // Both arms exist and both defer to the binding.
+    for name in [
+        "stock_summary_qty_nonnegative_insert",
+        "stock_summary_qty_nonnegative_update",
+    ] {
+        let sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?1",
+                rusqlite::params![name],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|e| panic!("{name} must exist after the registry runs: {e}"));
+        let normalized = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            normalized.contains("NEW.qty < 0"),
+            "{name} must be conditional on a negative NEW.qty, got: {sql}"
+        );
+        assert!(
+            normalized.contains("allow_negative_stock = 1"),
+            "{name} must defer to the binding opt-in, got: {sql}"
+        );
+        assert!(
+            normalized.contains("workspace_inventory_locations"),
+            "{name} must consult the binding table, got: {sql}"
+        );
+    }
+
+    // No blanket repair: a pre-existing negative row is an oversell, not
+    // corruption, and nothing in the migration may rewrite it.
+    let quarantine_tables: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' \
+               AND name = 'stock_summary_negative_quarantine'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        quarantine_tables, 0,
+        "D11: no quarantine table — existing negatives are legitimate and are never repaired"
+    );
+}

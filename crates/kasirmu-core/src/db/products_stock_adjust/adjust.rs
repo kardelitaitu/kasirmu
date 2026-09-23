@@ -27,8 +27,16 @@ impl Store<'_> {
     ///    ADR-19 §3.2 audit trail: item_id, location_id, delta, reason,
     ///    inventory_transaction_id?, source_terminal_id?, source_user_id?, created_at).
     /// 2. **Upsert** `stock_summary` at the composite PRIMARY KEY
-    ///    `(item_id, location_id)` introduced by migration 089. The
-    ///    schema's `CHECK (qty >= 0)` constraint is Layer 2 negative-stock guard.
+    ///    `(item_id, location_id)` introduced by migration 089. Layer 2 lives
+    ///    in the schema as the CONDITIONAL trigger pair
+    ///    `stock_summary_qty_nonnegative_{insert,update}`
+    ///    (`20261012_stock_summary_qty_nonnegative.sql`), which refuses a
+    ///    negative qty ONLY when the location's binding has not set
+    ///    `allow_negative_stock = 1`. There is deliberately NO
+    ///    `CHECK (qty >= 0)` on this table: an unconditional constraint would
+    ///    refuse the negative this function writes on the opt-in path, and so
+    ///    silently re-enable Layer 1 — the very guard that flag exists to opt
+    ///    out of (owner decision D11).
     /// 3. **Upsert** the legacy `inventory` table at the single-PK
     ///    `(product_id)` for backward-compat callers (ADR-18 §2a's full
     ///    composite-PK inventory rebuild is deferred).
@@ -38,9 +46,16 @@ impl Store<'_> {
     ///   write, returning [`CoreError::InsufficientStockAtLocation`] with the
     ///   exact available qty if the deduction would underflow. This keeps
     ///   `PartialStockResult` aggregation O(1) without a SELECT-after-failure.
-    /// - **Layer 2 (SQLite)**: `SqliteFailure(extended_code=787)` on the
-    ///   `stock_summary` upsert is translated to the same variant (defence
-    ///   in depth against any Rust-side race in Layer 1).
+    /// - **Layer 2 (SQLite)**: a `ConstraintViolation` on the `stock_summary`
+    ///   upsert is translated to the same variant (defence in depth against
+    ///   any Rust-side race in Layer 1). It is raised by the CONDITIONAL
+    ///   trigger pair `stock_summary_qty_nonnegative_{insert,update}`
+    ///   (`20261012`), which fires only when this location's binding has NOT
+    ///   opted into `allow_negative_stock` — so it never fights the opt-in
+    ///   path. The match is on the PRIMARY code
+    ///   ([`rusqlite::ErrorCode::ConstraintViolation`], 19), which covers the
+    ///   trigger's `SQLITE_CONSTRAINT_TRIGGER` (1811) as well as a CHECK's
+    ///   787; no `CHECK (qty >= 0)` exists on this table.
     ///
     /// Returns the **post-update qty at the location** so the caller can
     /// detect post-commit state without a separate SELECT.
@@ -140,8 +155,16 @@ impl Store<'_> {
     ///    ADR-19 §3.2 audit trail: item_id, location_id, delta, reason,
     ///    inventory_transaction_id?, source_terminal_id?, source_user_id?, created_at).
     /// 2. **Upsert** `stock_summary` at the composite PRIMARY KEY
-    ///    `(item_id, location_id)` introduced by migration 089. The
-    ///    schema's `CHECK (qty >= 0)` constraint is Layer 2 negative-stock guard.
+    ///    `(item_id, location_id)` introduced by migration 089. Layer 2 lives
+    ///    in the schema as the CONDITIONAL trigger pair
+    ///    `stock_summary_qty_nonnegative_{insert,update}`
+    ///    (`20261012_stock_summary_qty_nonnegative.sql`), which refuses a
+    ///    negative qty ONLY when the location's binding has not set
+    ///    `allow_negative_stock = 1`. There is deliberately NO
+    ///    `CHECK (qty >= 0)` on this table: an unconditional constraint would
+    ///    refuse the negative this function writes on the opt-in path, and so
+    ///    silently re-enable Layer 1 — the very guard that flag exists to opt
+    ///    out of (owner decision D11).
     /// 3. **Upsert** the legacy `inventory` table at the single-PK
     ///    `(product_id)` for backward-compat callers (ADR-18 §2a's full
     ///    composite-PK inventory rebuild is deferred).
@@ -151,9 +174,16 @@ impl Store<'_> {
     ///   write, returning [`CoreError::InsufficientStockAtLocation`] with the
     ///   exact available qty if the deduction would underflow. This keeps
     ///   `PartialStockResult` aggregation O(1) without a SELECT-after-failure.
-    /// - **Layer 2 (SQLite)**: `SqliteFailure(extended_code=787)` on the
-    ///   `stock_summary` upsert is translated to the same variant (defence
-    ///   in depth against any Rust-side race in Layer 1).
+    /// - **Layer 2 (SQLite)**: a `ConstraintViolation` on the `stock_summary`
+    ///   upsert is translated to the same variant (defence in depth against
+    ///   any Rust-side race in Layer 1). It is raised by the CONDITIONAL
+    ///   trigger pair `stock_summary_qty_nonnegative_{insert,update}`
+    ///   (`20261012`), which fires only when this location's binding has NOT
+    ///   opted into `allow_negative_stock` — so it never fights the opt-in
+    ///   path. The match is on the PRIMARY code
+    ///   ([`rusqlite::ErrorCode::ConstraintViolation`], 19), which covers the
+    ///   trigger's `SQLITE_CONSTRAINT_TRIGGER` (1811) as well as a CHECK's
+    ///   787; no `CHECK (qty >= 0)` exists on this table.
     ///
     #[allow(clippy::too_many_arguments)]
     pub fn adjust_stock_at_location_with_reason(

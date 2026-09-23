@@ -212,6 +212,45 @@ CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair
 CREATE OR REPLACE TRIGGER trg_assignments_scope_id_pair_update
     AFTER UPDATE OF scope_type, scope_id ON assignments
     FOR EACH ROW EXECUTE FUNCTION assignments_scope_id_pair_fn();""",
+    # C10b / owner decision D11: the CONDITIONAL negative-stock backstop on
+    # `stock_summary`, ported from
+    # `20261012_stock_summary_qty_nonnegative.sql`. The predicate is identical:
+    # refuse a negative qty only when the location IS bound and none of its
+    # bindings opts into `allow_negative_stock`. The `EXISTS` guard is what
+    # keeps an UNBOUND location writable, which the SQLite side needs too
+    # (`deactivate_inventory_location_with_negative_stock_errors` seeds a
+    # negative at a location with no binding). Postgres shares one function
+    # between both arms, exactly as the SQLite file needs two triggers: an
+    # INSERT arm and an UPDATE arm, because the `INSERT ... ON CONFLICT DO
+    # UPDATE` shape both writers use fires only the latter once the row exists.
+    "stock_summary_qty_nonnegative_insert": """\
+CREATE OR REPLACE FUNCTION stock_summary_qty_nonnegative_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.qty < 0
+       AND EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+       )
+       AND NOT EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+              AND w.allow_negative_stock = 1
+       )
+    THEN
+        RAISE EXCEPTION 'negative stock requires allow_negative_stock on the location binding';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_insert
+    BEFORE INSERT ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();""",
+    "stock_summary_qty_nonnegative_update": """\
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
+    BEFORE UPDATE ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();""",
 }
 
 # Seed timestamps younger than this are "now"-derived (the migration run

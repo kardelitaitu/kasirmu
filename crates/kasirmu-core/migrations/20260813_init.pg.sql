@@ -3117,6 +3117,34 @@ CREATE OR REPLACE TRIGGER loyalty_tiers_validate_update
     ON loyalty_tiers
     FOR EACH ROW EXECUTE FUNCTION loyalty_tiers_validate_fn();
 
+CREATE OR REPLACE FUNCTION stock_summary_qty_nonnegative_fn() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.qty < 0
+       AND EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+       )
+       AND NOT EXISTS (
+           SELECT 1 FROM workspace_inventory_locations w
+            WHERE w.location_id = NEW.location_id
+              AND w.allow_negative_stock = 1
+       )
+    THEN
+        RAISE EXCEPTION 'negative stock requires allow_negative_stock on the location binding';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_insert
+    BEFORE INSERT ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();
+
+CREATE OR REPLACE TRIGGER stock_summary_qty_nonnegative_update
+    BEFORE UPDATE ON stock_summary
+    FOR EACH ROW EXECUTE FUNCTION stock_summary_qty_nonnegative_fn();
+
 CREATE OR REPLACE FUNCTION assignments_scope_id_pair_fn() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
