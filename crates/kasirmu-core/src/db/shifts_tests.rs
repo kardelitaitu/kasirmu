@@ -512,3 +512,153 @@ fn get_shift_report_empty_shift() {
     assert!(report.payment_breakdown.is_empty());
     assert!(report.hourly_breakdown.is_empty());
 }
+
+// ── C18 / P1.3: the duplicate check and the INSERT are one decision ──
+
+/// A migrated file-backed database, so two connections see the same rows
+/// (an in-memory database is private per connection, which is exactly what a
+/// race test cannot use).
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
+/// The invariant this slice exists for: a terminal that already hosts an open
+/// shift cannot host a second one, and the refused open leaves no row.
+#[test]
+fn open_shift_second_open_on_same_terminal_refused() {
+    let conn = fresh();
+    seed_user(&conn);
+    conn.execute_batch(
+        "INSERT INTO terminals (id, name, device_id, created_at, updated_at) VALUES
+         ('term-1', 'Front Register', 'dev-001', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+    )
+    .unwrap();
+    let s = store(&conn);
+
+    let first = s.open_shift("user-1", Some("term-1"), 100).unwrap();
+
+    let err = s.open_shift("user-1", Some("term-1"), 200).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "user_id"),
+        "expected Validation error for a second open on the same terminal, got: {err}"
+    );
+
+    // The refused open left no row: the terminal still has exactly one open
+    // shift, and it is the first one.
+    let open_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM shifts WHERE terminal_id = 'term-1' AND status = 'open'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(open_rows, 1, "the refused open must not leave a shift row");
+    assert_eq!(s.get_active_shift("user-1").unwrap().unwrap().id, first.id);
+}
+
+/// A failed open (here: a deactivated user) must leave no shift row at all —
+/// the row and its opening float are written together or not at all.
+#[test]
+fn open_shift_failed_open_leaves_no_row() {
+    let conn = fresh();
+    seed_inactive_user(&conn);
+    let s = store(&conn);
+
+    let err = s.open_shift("user-inactive", None, 100).unwrap_err();
+    assert!(matches!(err, CoreError::Validation { field, .. } if field == "user_id"));
+
+    let rows: i64 = conn
+        .query_row("SELECT COUNT(*) FROM shifts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0, "a refused open must leave no shift row");
+}
+
+/// Two opens for the same user, forced rather than hoped for.
+///
+/// Connection B stages the rival open — an uncommitted `shifts` row — under a
+/// write lock it holds until its own timer releases it. A (the second open for
+/// that user) runs on the main thread the instant B announces the lock, so its
+/// duplicate check lands inside B's window.
+///
+/// Without a transaction around the check, A reads the still-empty duplicate
+/// count (a WAL reader does not block on a writer), blocks on B's lock at the
+/// INSERT, and then inserts once B commits — two open shifts for one user.
+/// With `BEGIN IMMEDIATE` A takes the write lock before the check, waits for B,
+/// and then refuses.
+#[test]
+fn open_shift_race_cannot_create_a_second_open_shift() {
+    let dir = std::env::temp_dir().join(format!("oz_shift_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    {
+        let conn = fresh_file(&dir);
+        seed_user(&conn);
+    }
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            tx.execute(
+                "INSERT INTO shifts (id, user_id, opening_balance_minor, opened_at, created_at, updated_at, status)
+                 VALUES ('rival', 'user-1', 100, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'open')",
+                [],
+            )
+            .unwrap();
+            locked_tx.send(()).unwrap();
+            // B releases on its own timer: A is blocked inside `open_shift` and
+            // cannot signal mid-call.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    // A is the losing second open. It runs on the main thread so its write
+    // lock request lands inside B's window instead of after B's commit.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = Store::new(&conn_a).open_shift("user-1", None, 200);
+    rival.join().unwrap();
+
+    let err = outcome.expect_err("a second open shift for the same user must be refused");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "user_id"),
+        "expected Validation error for the losing open, got: {err}"
+    );
+
+    let check = Connection::open(&db_path).unwrap();
+    let open_rows: i64 = check
+        .query_row(
+            "SELECT COUNT(*) FROM shifts WHERE user_id = 'user-1' AND status = 'open'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        open_rows, 1,
+        "the losing open must not leave a second open shift"
+    );
+
+    drop(check);
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
