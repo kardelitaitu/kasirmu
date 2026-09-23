@@ -56,7 +56,9 @@ export async function updateAuthNav(): Promise<void> {
  * Now: the trigger opens and closes it (Enter/Space are a native button click),
  * Escape closes it and returns focus to the trigger, focus leaving the group
  * closes it, an outside pointer press closes it, and `aria-expanded` reflects
- * the state the panel is actually in. Hover still opens it for mouse users.
+ * the state the panel is actually in. Hover still opens it for mouse users,
+ * and a click that lands on a hover-opened panel pins it rather than closing
+ * it — see the `openedByHover` note in `initSolutionsDisclosure`.
  *
  * Bound per element with a guard rather than delegated, because ClientRouter
  * swaps the header on every client-side navigation and the new elements need
@@ -72,6 +74,20 @@ export function initSolutionsDisclosure(): void {
     group.dataset.solutionsBound = 'true';
 
     let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+    /**
+     * The panel is open because the pointer moved onto the trigger, and the
+     * click that follows has not happened yet.
+     *
+     * A mouse click is always preceded by `pointerenter`, so the plain toggle
+     * closed the panel the user was reaching for: hover opened it, the click
+     * shut it, and `aria-expanded` went back to `false` (measured in a browser
+     * 2026-09-23 — hover open, click hidden). The first click after a
+     * hover-open now PINS the panel and the click after that closes it, which
+     * is what a mouse user expects from a click on the trigger, while touch
+     * (no mouse pointerenter) and keyboard (no pointer at all) keep the plain
+     * toggle.
+     */
+    let openedByHover = false;
 
     const open = (): void => {
       clearTimeout(hoverTimer);
@@ -84,10 +100,18 @@ export function initSolutionsDisclosure(): void {
       panel.classList.remove('visible', 'opacity-100');
       panel.classList.add('invisible', 'opacity-0');
       trigger.setAttribute('aria-expanded', 'false');
+      openedByHover = false;
     };
     const isOpen = (): boolean => trigger.getAttribute('aria-expanded') === 'true';
 
-    trigger.addEventListener('click', () => (isOpen() ? close() : open()));
+    trigger.addEventListener('click', () => {
+      if (isOpen() && openedByHover) {
+        openedByHover = false;
+        return;
+      }
+      if (isOpen()) close();
+      else open();
+    });
 
     group.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !isOpen()) return;
@@ -114,7 +138,9 @@ export function initSolutionsDisclosure(): void {
     // fires pointerenter before its click, which would open and then instantly
     // toggle the panel closed again.
     group.addEventListener('pointerenter', (event: Event) => {
-      if ((event as PointerEvent).pointerType === 'mouse') open();
+      if ((event as PointerEvent).pointerType !== 'mouse') return;
+      openedByHover = true;
+      open();
     });
     group.addEventListener('pointerleave', (event: Event) => {
       if ((event as PointerEvent).pointerType !== 'mouse' || !isOpen()) return;

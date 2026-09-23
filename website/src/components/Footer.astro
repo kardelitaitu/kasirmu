@@ -28,13 +28,18 @@ const year = new Date().getFullYear();
   <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 px-4 py-8 sm:flex-row sm:items-end">
     <!-- Left: Social icons on top of Copyright -->
     <div class="flex flex-col items-center sm:items-start gap-2.5 text-center sm:text-left">
-      <!-- Social links — muted → brand color on hover, monochrome currentColor glyphs -->
-      <div class="flex items-center gap-3.5">
+      <!-- Social links — muted → brand color on hover, monochrome currentColor glyphs.
+           Each anchor is a 24×24 hit area (h-6 w-6) around its 16px glyph, so the
+           pointer target meets the WCAG 2.2 target-size minimum on every page; the
+           row's gap drops to 8px to keep the glyph pitch where the design had it
+           (16+14 before, 24+8 now). Measured 2026-09-23: the Telegram link on
+           /en/docs/ was a 16×16 target 19px from its neighbour. -->
+      <div class="flex items-center gap-2">
         <a
           href="https://discord.gg/NdWDgEzNxx"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#5865F2]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#5865F2]"
           aria-label="Discord"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -45,7 +50,7 @@ const year = new Date().getFullYear();
           href="https://x.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-ink"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-ink"
           aria-label="X (Twitter)"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -56,7 +61,7 @@ const year = new Date().getFullYear();
           href="https://www.instagram.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#E4405F]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#E4405F]"
           aria-label="Instagram"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -67,7 +72,7 @@ const year = new Date().getFullYear();
           href="https://www.facebook.com"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#1877F2]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#1877F2]"
           aria-label="Facebook"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
@@ -78,7 +83,7 @@ const year = new Date().getFullYear();
           href="https://telegram.org"
           target="_blank"
           rel="noopener noreferrer"
-          class="text-muted transition-colors duration-200 hover:text-[#229ED9]"
+          class="text-muted inline-flex h-6 w-6 items-center justify-center transition-colors duration-200 hover:text-[#229ED9]"
           aria-label="Telegram"
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">

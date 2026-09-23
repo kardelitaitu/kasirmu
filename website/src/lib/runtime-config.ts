@@ -18,6 +18,13 @@
 export interface RuntimeConfig {
   /** License-server web API base URL. */
   licenseApiUrl?: string;
+  /**
+   * Where the support contact form posts, or null when the deployment has no
+   * contact route (the Worker sends `null` when its own path is unavailable).
+   * Null is meaningful, not absent: the form then offers its mailto fallback
+   * rather than POSTing into a 404.
+   */
+  contactEndpoint?: string | null;
 }
 
 declare global {

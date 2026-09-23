@@ -128,6 +128,28 @@ describe('Solutions disclosure — state and the trigger', () => {
     expect(ctx.panel.classList.contains('invisible')).toBe(false);
   });
 
+  it('keeps a hover-opened panel open when the user then clicks the trigger', () => {
+    // Every mouse click is preceded by pointerenter, so the plain toggle closed
+    // the panel the user was reaching for — measured in a browser 2026-09-23:
+    // hover opened it, the click hid it, and aria-expanded went back to false.
+    ctx.group.dispatchEvent(pointerEvent('pointerenter', 'mouse'));
+    expect(isExpanded(ctx.trigger)).toBe(true);
+
+    activate(ctx.trigger);
+
+    expect(isExpanded(ctx.trigger)).toBe(true);
+    expect(looksOpen(ctx.panel)).toBe(true);
+  });
+
+  it('closes on the click after the pinning click', () => {
+    ctx.group.dispatchEvent(pointerEvent('pointerenter', 'mouse'));
+    activate(ctx.trigger); // pins what hover opened
+    activate(ctx.trigger); // and this one closes it
+
+    expect(isExpanded(ctx.trigger)).toBe(false);
+    expect(looksOpen(ctx.panel)).toBe(false);
+  });
+
   it('closes again on a second activation', () => {
     activate(ctx.trigger);
     activate(ctx.trigger);
