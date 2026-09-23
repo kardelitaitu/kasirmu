@@ -1002,3 +1002,72 @@ which is the correct outcome when the code is right.
   needs a product decision.
 - **No website E2E harness.** Playwright is installed and unused; wiring one needs a licence-server
   stub to be worth having.
+---
+
+## Round 25 — two blockers behind one untested screen, and a misdiagnosis I caught
+
+`RevokedScreen` is the ADR #58 §2.6 screen a SUSPENDED merchant sees to retrieve their data. It had
+unit tests but had never been loaded in a browser, for a reason that turned out to be two reasons.
+
+### Blocker 1 — the screen was unreachable
+
+It renders only when `subscriptionState === 'revoked'`, and the dev-mock answered a hardcoded
+`state: 'active'`. A new `?revoked=1` seam opens it, same shape as `?unprovisioned=1` and
+`?nousers=1`; `unavailable` (a fail-closed transport reading) is deliberately not reachable this
+way, because "we could not ask" is a different fact from "the subscription is revoked".
+
+### Blocker 2 — and then the export did nothing at all
+
+With the screen finally visible, pressing **"Export my data" did nothing**: no error, no toast, no
+page error. The cause was one layer down. The real `tauri-plugin-dialog` invokes
+`plugin:dialog|save`, which had **no mock handler**, so `mockDispatcher.invoke` hit its
+unknown-command branch:
+
+```ts
+console.warn('[TAURI MOCK] Unhandled command:', cmd);
+return null as T;
+```
+
+`pickExportPath()` therefore resolved `null`, and the screen reads `null` as "the user cancelled the
+dialog" and returns early. Four flows share that shape — export, import, backup, image-pick — so
+four dialog-driven paths were unreachable in dev and untestable in E2E. Registering the two dialog
+commands fixes all four.
+
+### ⚠️ A misdiagnosis I have to record
+
+I first concluded this was a **shipped defect**: "the merchant clicks the one control that can save
+their data and nothing happens". **That was wrong**, and I only found out by reading the real
+plugin:
+
+```js
+async function save(options = {}) {
+  return await invoke('plugin:dialog|save', { options });
+}
+```
+
+On a real device the command IS registered, so it returns a path; if the dialog host were missing it
+would **throw**, not resolve null, and the screen's catch would toast. The silent no-op existed only
+because the *mock* returns null for unknown commands. So this was a **testability gap, not
+shipped-broken behaviour** — and I had already written a paragraph asserting the stronger claim
+before checking the packaged path. Recorded because the distinction matters: one of these is a bug,
+the other is missing scaffolding, and conflating them inflates the fix.
+
+### A wrong turn worth naming
+
+I spent several probes trying to alias `@tauri-apps/plugin-dialog` to a mock module. It could not
+work: **Vite pre-bundles bare specifiers into `node_modules/.vite/deps/` before `resolve.alias`
+applies.** The served module kept importing
+`/node_modules/.vite/deps/@tauri-apps_plugin-dialog.js`, and neither `optimizeDeps.exclude` nor a
+cache purge changed that. Mocking at the IPC layer — where every other mock lives — was both
+simpler and correct. The `vite.config.ts` experiment was fully reverted; `git diff` on it is empty.
+
+### Verification
+
+**8/8 new E2E** on desktop and tablet (screen renders with its explanation, the export control has an
+accessible name, a successful export toasts, and a failed export shows "Export failed" **without**
+leaking the internal `disk full`) · `dev-mock-auth-contract` **32/32** · full UI suite **606 files /
+10,352 tests pass** · `tsc` clean · lint **0 errors** · parity **0 missing**.
+
+Negative control: deleting the two dialog handlers makes both new unit tests fail.
+
+**Commit:** `b3016f8f8`.
