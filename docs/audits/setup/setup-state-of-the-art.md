@@ -1335,3 +1335,56 @@ product defect, which is the expected result now that the mock's command surface
 Remaining known items, unchanged:
 - the provisioning card is ~700px taller than the desktop viewport (structural, needs a product call);
 - no real-hardware verification of any fix.
+---
+
+## Round 29 — the website signup → setup handoff, driven end to end for the first time
+
+Last round I said I was mostly testing my own infrastructure. This round I went back to the
+objective's own surface and drove the flow a merchant actually takes — signup on the website through
+to the app download — which no round had ever done. **It works, and I found no defect.**
+
+### What was driven (real browser, `astro dev`, Worker + licence server stubbed)
+
+```
+/en/signup   fill email + password + confirm  →  POST register {email, password, password_confirm}
+            advance to the 6-box OTP step     →  POST verify-otp {email, code: "123456"}
+            redirect                           →  /en/account
+/en/account authenticated dashboard, user's email shown, zero page errors
+```
+
+Every request payload was correct and no page error fired at any step.
+
+### The handoff a brand-new merchant actually gets
+
+The account page for a tenant with zero devices offers exactly the three paths that lead into the
+setup wizard, and all three resolve:
+
+| Control | Destination | Status |
+|---|---|---|
+| Download app | `/en/download` | 200, "Download kasir.mu" |
+| Activation guide | `/en/docs/activation` | 200, "License Activation — Documentation" |
+| Register terminal | `/en/pair` | 200, "kasir.mu — Pair a tablet" |
+
+All three also resolve in Indonesian with the correct localized titles (`Unduh kasir.mu`,
+`Aktivasi Lisensi — Dokumentasi`), so the handoff is not English-only.
+
+**This matters because it is the seam between the two halves of the objective.** Signup is the
+website's job; the setup wizard is the terminal's. A merchant crossing that seam is what round 27's
+missing `link_device_*` handlers broke, and what the `qr_url` defect broke in round 26. Verified
+intact.
+
+### Incidentally confirmed as already correct
+
+- **The OTP step is six separate inputs**, each with `aria-label="Digit N of 6"` and
+  `autocomplete="one-time-code"` on the first. A single `inputmode="numeric"` query matched all six,
+  which is how I noticed — a screen reader gets a properly-labelled sequence rather than one
+  unlabelled box.
+- **A failed hydration was my probe's fault, not the page's.** My first attempt queried the form
+  after `networkidle` and saw none; waiting for the island to mount showed the full form. Worth
+  recording because the instinct was to report "the signup island does not hydrate".
+
+### Process
+
+No code changes; the probe was deleted and the dev server stopped. `website/` shows four untracked
+files (`acct-proof.*`) belonging to another session — left untouched per the shared-checkout rule.
+The only commit this round is this record.
