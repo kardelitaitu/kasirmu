@@ -1003,3 +1003,108 @@ fn receive_po_with_lines_nonexistent_po_errors() {
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { entity, .. } if entity == "purchase_order"));
 }
+
+/// A migrated on-disk database in `dir` — the shape a forced-interleaving
+/// race test needs, since a second connection cannot be opened on the
+/// `:memory:` database `fresh_db` returns.
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
+/// C18 (slice P1.7): a status transition is a compare-and-set, forced rather
+/// than hoped for.
+///
+/// Connection B stages a rival transition to `approved` — an uncommitted
+/// `purchase_orders` write — under a write lock it holds until its own timer
+/// releases it. A (the losing transition, run on the main thread the instant B
+/// announces its lock) reads the order while B's write is still invisible, so
+/// it starts from `pending`; its write lands only after B commits.
+///
+/// Without the compare-and-set, A's unconditional `UPDATE ... WHERE id = ?`
+/// overwrites B's `approved` with `cancelled` and reports success — a lost
+/// update on the column that gates receiving and payables. With it, A's
+/// predicate no longer matches, the transition is refused, and B's status and
+/// timestamp survive exactly as B wrote them.
+#[test]
+fn update_po_status_race_cannot_overwrite_a_competing_transition() {
+    let dir = std::env::temp_dir().join(format!("oz_po_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    let po_id = {
+        let conn = fresh_file(&dir);
+        seed_supplier(&conn);
+        let po = store(&conn)
+            .create_purchase_order("PO-RACE", "sup-po", "", "", None, &[])
+            .unwrap();
+        store(&conn)
+            .update_po_status(&po.order.id, "pending")
+            .unwrap();
+        po.order.id
+    };
+
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let po_id = po_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE purchase_orders SET status='approved', updated_at=?1 WHERE id=?2",
+                    params!["2020-01-01T00:00:00.000Z", po_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the staged order");
+            locked_tx.send(()).unwrap();
+            // B releases on its own timer: A is blocked inside
+            // `update_po_status` and cannot signal mid-call.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    locked_rx.recv().unwrap();
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = store(&conn_a).update_po_status(&po_id, "cancelled");
+    rival.join().unwrap();
+
+    let err = outcome.expect_err("a transition that lost the race must be refused");
+    assert!(
+        matches!(err, CoreError::Conflict { entity, .. } if entity == "purchase_order"),
+        "expected a Conflict for the losing transition, got: {err}"
+    );
+
+    let (status, updated_at): (String, String) = conn_a
+        .query_row(
+            "SELECT status, updated_at FROM purchase_orders WHERE id = ?1",
+            params![po_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "approved", "the winner's status must survive");
+    assert_eq!(
+        updated_at, "2020-01-01T00:00:00.000Z",
+        "the refused transition must leave the row untouched"
+    );
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
+}
