@@ -270,6 +270,54 @@ fn a_failed_settings_write_rolls_back_the_new_tier() {
         "a failed activation must not leave the new tier enforcing quotas"
     );
 }
+
+/// The renewal lane has the same all-or-nothing requirement as activation.
+///
+/// `renew_license` persists to the same two stores in the same order, and
+/// the same trap applied: `store_subscription` in autocommit followed by
+/// `Settings::set_batch` in its own transaction. A failure between them
+/// left the renewed `tenant_subscription` durable beside the PREVIOUS
+/// payload — quota gates reading Pro while the licence status check reads
+/// the old expiry. Both writes now share one transaction.
+#[test]
+fn a_failed_settings_write_rolls_back_a_renewal_too() {
+    let conn = crate::testing::temp_conn();
+    let payload = r#"{
+        "tenant_id": "default",
+        "tier_key": "premium",
+        "status": "active",
+        "max_locations": 9,
+        "max_pos_instances": 9,
+        "allowed_types": ["restaurant-pos", "store-pos", "admin"],
+        "starts_at": "2026-07-12T00:00:00Z",
+        "expires_at": "2031-07-12T00:00:00Z",
+        "grace_until": "2031-07-26T00:00:00Z",
+        "issued_at": "2026-07-12T00:00:00Z"
+    }"#;
+    let before = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("bootstrap row")
+        .tier;
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store_subscription(&tx, "default", payload, "SIG_PREMIUM").expect("subscription write");
+    conn.execute_batch("DROP TABLE settings;").expect("drop settings");
+    assert!(
+        Settings::set_batch(&tx, &[(keys::LICENSE_PAYLOAD.to_string(), payload.to_string())])
+            .is_err(),
+        "the settings write must fail against a dropped table"
+    );
+    drop(tx); // unwinds, as the caller's `?` would
+
+    let after = TenantSubscription::load(&conn, "default")
+        .expect("load")
+        .expect("row still present")
+        .tier;
+    assert_eq!(
+        after, before,
+        "a failed renewal must not leave a higher tier enforcing quotas"
+    );
+}
 // ── store_subscription → TenantSubscription round-trip ───────
 
 #[test]

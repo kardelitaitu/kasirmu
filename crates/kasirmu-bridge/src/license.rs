@@ -326,13 +326,22 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
         .await
         .map_err(|e| BridgeError::Internal(e.to_string()))?;
 
-    // Persist the renewed subscription to both stores.
+    // Persist the renewed subscription to both stores, in ONE transaction.
+    //
+    // The same all-or-nothing requirement as the activate lane, and for the
+    // same reason: `store_subscription` runs its INSERT in autocommit while
+    // `Settings::set_batch` opens its own transaction, so without this
+    // wrapper a failure between them left the renewed `tenant_subscription`
+    // durable beside the PREVIOUS payload and signature. That state is worse
+    // than a failed renewal: the quota gates read Pro while the licence
+    // status check reads the old expiry, and nothing ever reconciles the two.
     let conn = ctx.lock_global().await;
+    let tx = conn.unchecked_transaction()?;
 
     // tenant_subscription (quota enforcement) — no key argument, same rule as
     // the activate lane: `api_key` above exists to call the server, not to be
     // copied into a second table in the clear.
-    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature).map_err(|e| {
+    store_subscription(&tx, "default", &resp.signed_payload, &resp.signature).map_err(|e| {
         BridgeError::Internal(format!("failed to persist renewed subscription: {e}"))
     })?;
 
@@ -347,14 +356,16 @@ pub async fn renew_license(ctx: &BridgeCtx<'_>, new_key: String) -> Result<bool,
             .and_then(|v| v.get("tenant_id")?.as_str().map(String::from));
 
     let mut settings_entries = vec![
-        ("license.payload".to_string(), resp.signed_payload),
-        ("license.signature".to_string(), resp.signature),
+        (keys::LICENSE_PAYLOAD.to_string(), resp.signed_payload),
+        (keys::LICENSE_SIGNATURE.to_string(), resp.signature),
     ];
     if let Some(tid) = renewed_tenant_id {
-        settings_entries.push(("license.tenant_id".to_string(), tid));
+        settings_entries.push((keys::LICENSE_TENANT_ID.to_string(), tid));
     }
 
-    Settings::set_batch(&conn, &settings_entries)?;
+    // Same transaction, then commit: a renewal lands in full or not at all.
+    Settings::set_batch(&tx, &settings_entries)?;
+    tx.commit()?;
 
     Ok(true)
 }
