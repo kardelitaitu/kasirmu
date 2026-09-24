@@ -57,7 +57,6 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "done-todo-project-folder-restructure.md",
     "todo-open-debt-program.md", "todo-review-type.md",
     "todo-owner-rulings.md", "todo-sync-endpoint-derivation.md",
-    "todo-logo-mark-optical-centring.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
