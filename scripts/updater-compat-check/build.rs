@@ -1,4 +1,4 @@
-// ── OZ-POS Updater Compatibility Check — Windows manifest (build script) ──
+// ── kasir.mu Updater Compatibility Check — Windows manifest (build script) ──
 //
 // Embeds `app.manifest` (a `<requestedExecutionLevel level="asInvoker"/>`
 // assembly manifest) into the Windows exe. Without an embedded manifest,

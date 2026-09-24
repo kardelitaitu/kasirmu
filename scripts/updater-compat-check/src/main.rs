@@ -1,4 +1,4 @@
-// ── OZ-POS Updater Compatibility Check (AUDIT-28 RELEASE-04) ─────────────
+// ── kasir.mu Updater Compatibility Check (AUDIT-28 RELEASE-04) ─────────────
 //
 // This harness replicates — line for line — the signature verification path
 // the REAL Tauri updater client runs, using the SAME crate and version the
