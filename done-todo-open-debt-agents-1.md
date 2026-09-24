@@ -168,7 +168,7 @@ closes for NOT WORK rows.
 
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
-| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **62 of 69 bodies EXECUTED 2026-09-25**, ratchet lowered 69 → 7 in two sweeps: 50 bodies gating via `require_permission_for_session` split into `resolve_session` → gate → `resolve_store` (12 files), then `tax`'s 7 and `history`'s 5 — which were KIND fixes too, `history`'s five having gated with `require_permission_for_user` over the store db (no `users` rows there, so it could only ever deny) while the bridge twin uses the scope-aware form. The last 7 (`categories` 3, `products` 3, `inventory_counts` 1) gate through a domain wrapper or a `user_id` the session already carries. Gate-ORDER **EXECUTED for `customers`** — see below. |
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **CLOSED 2026-09-25 — 69 of 69 bodies**, ratchet lowered 69 → 19 → 7 → **0** in three sweeps: 50 bodies via `require_permission_for_session` (12 files), then `tax`'s 7 and `history`'s 5 (KIND fixes too), then the last 7 (`categories` 3, `products` 3, `inventory_counts` 1). Four module-local gate wrappers were deleted as they became dead. The floor is now 0 and is a **permanent pin**: any body that opens the store before gating fails the run. Gate-ORDER **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
@@ -343,6 +343,40 @@ seven tax bodies called; the migration deleted it because the shared
 deleted helper directly and would not compile. Their actual subject was *"does a tax door
 find the user's role in the GLOBAL db"*, so they now drive the shared helper the commands
 call — the subject preserved, the spelling discarded.
+
+**Third sweep, 7 → 0: R10's gate-ORDER half is CLOSED, and the floor is now a permanent
+pin rather than a countdown.** The last seven were exactly the two groups the previous
+round predicted, and both collapsed into the same edit once read: every helper they called
+was a module-local wrapper that took a `user_id` and asked the **global** db, so replacing
+the call with the shared `authz::require_permission_for_session` preserved the permission
+and added the scope — and the wrapper became dead. Four wrappers were deleted as they went:
+`require_tax_permission` (previous sweep), `require_category_permission`,
+`require_inventory_count_permission`, plus the direct `require_permission_for_user` calls
+in `products` and `history`.
+
+**One KIND divergence was left in this group, and it was `products`, not `categories`.**
+`crates/kasirmu-bridge/src/products.rs` gates its three write doors scope-aware
+(`:668`, `:674`, `:889`, `:895`, `:1006`) while the shell asked the store db, so those
+three are KIND+ORDER fixes. `categories` was the opposite: the bridge's own write doors use
+the same **non**-scope-aware helper (`kasirmu-bridge/src/categories.rs:193`, `:221`, `:251`),
+so only the order moved. Guessing from the module name would have got that backwards.
+
+**Two module headers carried premises this change falsifies, and both are corrected rather
+than deleted.** `inventory_counts.rs` said the port was ledger-neutral *because* the gate
+kind matched on both sides and that a scope-aware form "would have tightened a gate and been
+refused" — true when written, false now, and the header now says the surviving door is
+deliberately **stricter** than the nine delegated ones until the bridge's helper is migrated.
+`categories.rs` carried an ADR #49 parity reading of **1 / 6** whose numerator was the shared
+gate helper; that helper no longer exists on the shell side, so the figure reads **0 / 6**
+today. The reading is left as the dated record it was and the correction is recorded forward,
+per this file's own rule.
+
+**The zero pin is regression-tested, which is the only thing that makes a zero worth having.**
+Reintroducing `resolve_scope` in `delete_product_scoped` fails the run immediately:
+*"1 bodies open the store before gating, above the pinned floor of 0 … Per-file census:
+{"products.rs": 1}"*. At zero the upper bound is the whole test, so the ratchet stops being a
+countdown and becomes the guard it was always aiming at; the lower bound stays as
+documentation of the broken-pattern hazard even though `bodies >= 0` is now trivially true.
 
 ---
 
