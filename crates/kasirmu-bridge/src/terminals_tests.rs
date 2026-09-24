@@ -22,10 +22,111 @@ use crate::testing::{TestBridge, temp_conn};
 use crate::testing::{assert_refused_by_the_seeded_row, seeded_row_loads};
 
 use kasirmu_core::session::SessionContext;
+use kasirmu_security::Keyring;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
     temp_conn()
+}
+
+// ── Device-binding HMAC: constant-time verification ──────────────────
+
+/// A forged binding signature must be refused, and a genuine one accepted.
+///
+/// `verify_binding` used to re-sign and compare the two hex strings, which
+/// short-circuits on the first differing byte. The verdict is not internal —
+/// it surfaces to the operator as `DeviceBindingDto::signature_valid` — so a
+/// caller who can read that flag gets a byte-at-a-time oracle for free. The
+/// pair below is the behavioural contract: it fails if the comparison ever
+/// becomes "sign and `==`" again in the direction that matters (a near-miss
+/// forgery must NOT be accepted).
+#[test]
+fn verify_binding_accepts_the_real_signature_and_refuses_a_forgery() {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    let signature = sign_binding(&keyring, "term-1", "store-a", "ws-a-1").unwrap();
+
+    assert!(
+        verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &signature).unwrap(),
+        "the signature we just minted must verify"
+    );
+
+    // Every byte position of a near-miss forgery: the LAST character differs,
+    // then the FIRST — the two ends the short-circuit treated most and least
+    // cheaply. All must be refused.
+    for pos in [0usize, 1, signature.len() / 2, signature.len() - 1] {
+        let mut forged = signature.clone().into_bytes();
+        forged[pos] = if forged[pos] == b'0' { b'1' } else { b'0' };
+        let forged = String::from_utf8(forged).unwrap();
+        assert_ne!(forged, signature);
+        assert!(
+            !verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &forged).unwrap(),
+            "a forgery differing at byte {pos} must be refused"
+        );
+    }
+
+    // A signature for a DIFFERENT binding must not verify against this one.
+    let other = sign_binding(&keyring, "term-1", "store-b", "ws-b-1").unwrap();
+    assert!(
+        !verify_binding(&keyring, "term-1", "store-a", "ws-a-1", &other).unwrap(),
+        "a signature bound to another store/instance must be refused"
+    );
+
+    // Malformed input is a refusal, never an error and never an accept.
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "not-hex").unwrap());
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "").unwrap());
+}
+
+/// With no secret in the keyring, nothing can verify — and the check must not
+/// CREATE one. `verify_binding` is called from the diagnostic DTO builder, so a
+/// read that minted a secret would make a probe mutate the device.
+#[test]
+fn verify_binding_refuses_when_no_secret_exists_and_stores_nothing() {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    assert!(!verify_binding(&keyring, "term-1", "store-a", "ws-a-1", "00").unwrap());
+    assert_eq!(
+        keyring.get_secret(DEVICE_BINDING_KEYRING_NAME).unwrap(),
+        None,
+        "verification must not mint the secret it failed to find"
+    );
+}
+
+/// The device-binding verifier must compare in CONSTANT TIME.
+///
+/// A SOURCE pin, not a behavioural one, and that is the whole point: the
+/// naive `expected == signature` this replaced was not a *logic* bug — it
+/// accepted and rejected exactly the same inputs, so no black-box test can
+/// tell the two apart. What it leaked was TIME: string equality returns at
+/// the first differing byte, so a forger learns how many leading characters
+/// were already right. The pair in
+/// `verify_binding_accepts_the_real_signature_and_refuses_a_forgery` passes
+/// against BOTH implementations — verified by running it that way — so it
+/// guards the contract while this guards the property.
+///
+/// `Mac::verify_slice` is the answer already carrying the sibling site
+/// (`workspaces::verify_binding_hmac`, whose doc records the same repair).
+/// Written as a source scan because a timing oracle is not observable from a
+/// unit test.
+#[test]
+fn verify_binding_compares_in_constant_time() {
+    let src = include_str!("terminals.rs");
+    let start = src
+        .find("fn verify_binding(")
+        .expect("verify_binding must exist");
+    let body = &src[start..];
+    let end = body.find("\n}").expect("verify_binding must have a body");
+    let body = &body[..end];
+
+    assert!(
+        body.contains("verify_slice"),
+        "verify_binding must use Mac::verify_slice (constant-time); a string
+         comparison short-circuits and leaks the mismatch position: {body}"
+    );
+    for bad in ["== signature", "signature ==", "== hex::encode"] {
+        assert!(
+            !body.contains(bad),
+            "verify_binding has a short-circuiting comparison ({bad}): {body}"
+        );
+    }
 }
 
 #[test]

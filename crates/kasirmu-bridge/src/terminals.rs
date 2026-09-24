@@ -75,6 +75,25 @@ fn sign_binding(
 }
 
 /// Verify a device binding HMAC signature.
+///
+/// Constant-time, and it must stay that way. The obvious implementation —
+/// re-sign and compare the two hex strings — is what this used to do, and it
+/// short-circuits on the first differing byte, so the time to rejection leaks
+/// how many leading hex characters of a forgery were correct. That is a
+/// byte-at-a-time oracle against a value the caller can submit as often as it
+/// likes. [`crate::workspaces::verify_binding_hmac`] already does this
+/// correctly via `Mac::verify_slice` and its module records the same repair;
+/// this is the second site, and the only one that still had it.
+///
+/// The verdict is not merely internal: it surfaces to the operator as
+/// [`DeviceBindingDto::signature_valid`], so an attacker who can read that
+/// flag gets the oracle's output back directly rather than having to time it.
+///
+/// # Errors
+///
+/// [`BridgeError::Internal`] when the keyring cannot be read (a missing secret
+/// is created on first use, exactly as [`sign_binding`] does) or the submitted
+/// signature is not hex.
 fn verify_binding(
     keyring: &dyn kasirmu_security::Keyring,
     terminal_id: &str,
@@ -82,8 +101,32 @@ fn verify_binding(
     instance_id: &str,
     signature: &str,
 ) -> Result<bool, BridgeError> {
-    let expected = sign_binding(keyring, terminal_id, store_id, instance_id)?;
-    Ok(expected == signature)
+    let secret = keyring
+        .get_secret(DEVICE_BINDING_KEYRING_NAME)
+        .map_err(|e| BridgeError::Internal(format!("keyring read failed: {e}")))?;
+    // No secret yet means no binding could have been signed with one, so a
+    // submitted signature cannot match. Refusing here (rather than letting
+    // `sign_binding` mint a secret as a side effect of a READ) also keeps this
+    // fn free of writes: `verify_binding` is called from the diagnostic DTO
+    // builder, and a probe must not mutate the device.
+    let Some(secret) = secret else {
+        return Ok(false);
+    };
+
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| BridgeError::Internal(format!("HMAC init failed: {e}")))?;
+    mac.update(terminal_id.as_bytes());
+    mac.update(b":");
+    mac.update(store_id.as_bytes());
+    mac.update(b":");
+    mac.update(instance_id.as_bytes());
+
+    // A malformed (non-hex) submission is a failed verification, not an error:
+    // `hex::decode` returning Err must not become a distinguishable outcome.
+    let Ok(expected) = hex::decode(signature) else {
+        return Ok(false);
+    };
+    Ok(mac.verify_slice(&expected).is_ok())
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────
