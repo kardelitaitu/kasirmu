@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # generate-license-keys.sh
-# ── OZ-POS License Key Generator ────────────────────────────────────
+# ── kasir.mu License Key Generator ────────────────────────────────────
 # Generates an RSA-2048 key pair for the license server (ADR #9).
 #
 # Outputs:
@@ -28,7 +28,7 @@ GRAY='\033[0;90m'
 NC='\033[0m' # No Color
 
 echo -e "${CYAN}====================================================${NC}"
-echo -e "${CYAN}  OZ-POS License Key Generator (ADR #9)${NC}"
+echo -e "${CYAN}  kasir.mu License Key Generator (ADR #9)${NC}"
 echo -e "${CYAN}====================================================${NC}"
 echo ""
 

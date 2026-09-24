@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    OZ-POS Flamegraph Profiling Helper (Windows/PowerShell)
+    kasir.mu Flamegraph Profiling Helper (Windows/PowerShell)
 
 .DESCRIPTION
-    Wraps cargo-flamegraph with sane defaults for OZ-POS targets.
+    Wraps cargo-flamegraph with sane defaults for kasir.mu targets.
     Supports profiling benchmarks, binaries, and running processes by PID.
 
 .PARAMETER Bench
@@ -14,7 +14,7 @@
     Binary package name to profile (e.g. "kasirmu-app", "kasirmu-cloud", "kasirmu-mobile").
 
 .PARAMETER PID
-    Process ID of a running OZ-POS process to attach to. Requires Administrator privileges.
+    Process ID of a running kasir.mu process to attach to. Requires Administrator privileges.
 
 .PARAMETER Frequency
     Sampling frequency in Hz (default: 997, the prime-number default suggested by perf).
@@ -157,7 +157,7 @@ if ($PID -gt 0 -and $Root) {
 
 Write-Host ""
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host " OZ-POS Flamegraph Profiling" -ForegroundColor Cyan
+Write-Host " kasir.mu Flamegraph Profiling" -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
 # Build argument array for cargo flamegraph (safe splatting, no Invoke-Expression)

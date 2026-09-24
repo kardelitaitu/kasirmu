@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  start-desktop.bat — launches the OZ-POS desktop client in dev mode.
+REM  start-desktop.bat — launches the kasir.mu desktop client in dev mode.
 REM
 REM  Run from project root (or any directory). It will cd to the Rust crate,
 REM  then `cargo tauri dev` which builds the Rust binary in debug profile,

@@ -132,7 +132,7 @@ function main() {
   const totalStart = Date.now();
 
   console.log(`\n${BOLD}${CYAN}═══════════════════════════════════════${NC}`);
-  console.log(`${BOLD}${CYAN}  OZ-POS — UI Validation Gates${NC}`);
+  console.log(`${BOLD}${CYAN}  kasir.mu — UI Validation Gates${NC}`);
   console.log(`${BOLD}${CYAN}═══════════════════════════════════════${NC}\n`);
 
   // ── 0. Data-testid compliance ─────────────────────────────────────────

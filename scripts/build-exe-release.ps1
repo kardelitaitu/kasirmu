@@ -1,4 +1,4 @@
-# build-exe-release.ps1 — Build Windows EXE for OZ-POS Desktop Client
+# build-exe-release.ps1 — Build Windows EXE for kasir.mu Desktop Client
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
@@ -20,7 +20,7 @@ $WorkspaceRoot = Split-Path -Parent $ScriptDir
 $DesktopClientDir = Join-Path $WorkspaceRoot "apps\desktop-tauri"
 
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host " Building OZ-POS Windows EXE (Release)" -ForegroundColor Cyan
+Write-Host " Building kasir.mu Windows EXE (Release)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 # Verify Rust toolchain

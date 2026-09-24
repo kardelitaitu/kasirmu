@@ -1,4 +1,4 @@
-# cargo-nextest configuration for OZ-POS
+# cargo-nextest configuration for kasir.mu
 # Docs: https://nexte.st/book/configuration.html
 #
 # Usage:
@@ -42,7 +42,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # nothing, at a location nobody was told.
 [profile.default.junit]
 path = "junit.xml"
-report-name = "oz-pos-test"
+report-name = "kasirmu-test"
 
 # CI profile: stricter settings
 [profile.ci]

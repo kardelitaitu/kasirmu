@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/diagnose-pr.py — One-Shot PR Failure Diagnoser for OZ-POS
+scripts/diagnose-pr.py — One-Shot PR Failure Diagnoser for kasir.mu
 
 Extracts failed checks, fetches the exact failure log snippets from GitHub Actions,
 and outputs the exact local commands to reproduce and fix each failure.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-page Fluent health scanner for OZ-POS ui/ (rev 2).
+"""Per-page Fluent health scanner for kasir.mu ui/ (rev 2).
 
 rev 1 counted every English JSX text node as a violation, which is wrong:
 `<Localized id="k"><th>Assigned Tax Rates</th></Localized>` is the project's

@@ -1,4 +1,4 @@
-# ── OZ-POS .dockerignore ────────────────────────────────────────────
+# ── kasir.mu .dockerignore ────────────────────────────────────────────
 #
 # Exclude everything that is not needed for building the cloud-server
 # binary: node_modules, Tauri build artifacts, IDE configs, etc.

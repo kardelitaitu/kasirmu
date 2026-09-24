@@ -1,4 +1,4 @@
--- Happy Hour Pricing Script for OZ-POS Lua Engine
+-- Happy Hour Pricing Script for kasir.mu Lua Engine
 -- Example: Apply a 15% discount to all items between 14:00 and 17:00 UTC.
 --
 -- Hook: apply_discount

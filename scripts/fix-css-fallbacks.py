@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix all mismatched CSS fallback values across the OZ-POS UI.
+Fix all mismatched CSS fallback values across the kasir.mu UI.
 
 Replaces known-bad fallbacks in var(--token, fallback) with the correct
 value from tokens.css. For tokens that are always defined on :root,
@@ -156,7 +156,7 @@ def fix_file(filepath: Path, rules: list[tuple[re.Pattern, str]]) -> bool:
 
 def main():
     print("=" * 72)
-    print("  OZ-POS CSS Fallback Fix Script")
+    print("  kasir.mu CSS Fallback Fix Script")
     print("=" * 72)
     print()
 

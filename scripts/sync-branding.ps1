@@ -80,7 +80,7 @@ function New-IcnsFromPng {
         @{code="ic09"; size=512}
     )
 
-    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "oz-icns-$([System.Guid]::NewGuid().ToString())"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "kasir-icns-$([System.Guid]::NewGuid().ToString())"
     New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
     try {
@@ -176,7 +176,7 @@ $tokens     = $manifest.themeTokens
 $assets     = $manifest.assets
 
 Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "| OZ-POS Brand Sync: $($brandId.PadRight(32))|" -ForegroundColor Cyan
+Write-Host "| kasir.mu Brand Sync: $($brandId.PadRight(32))|" -ForegroundColor Cyan
 Write-Host "| App: $($appName.PadRight(41))|" -ForegroundColor Cyan
 Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""

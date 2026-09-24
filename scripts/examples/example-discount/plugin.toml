@@ -2,7 +2,7 @@
 name = "example-discount"
 version = "1.0.0"
 description = "Example: applies 10% discount on Tuesdays"
-author = "OZ-POS"
+author = "kasir.mu"
 license = "MIT"
 
 [capabilities]

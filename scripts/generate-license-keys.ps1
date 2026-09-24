@@ -1,5 +1,5 @@
 # generate-license-keys.ps1
-# ── OZ-POS License Key Generator ────────────────────────────────────
+# ── kasir.mu License Key Generator ────────────────────────────────────
 # Generates an RSA-2048 key pair for the license server (ADR #9).
 #
 # Outputs:
@@ -19,7 +19,7 @@ $publicKeyPath  = "crates/kasirmu-core/oz-license.key.pub"
 $privateKeyPath = "crates/kasirmu-core/oz-license-private.pem"
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  OZ-POS License Key Generator (ADR #9)"            -ForegroundColor Cyan
+Write-Host "  kasir.mu License Key Generator (ADR #9)"            -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 

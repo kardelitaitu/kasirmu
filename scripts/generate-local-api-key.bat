@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================================
-REM  generate-local-api-key.bat — generates a local API token for OZ-POS sync.
+REM  generate-local-api-key.bat — generates a local API token for kasir.mu sync.
 REM
 REM  Run after `scripts\start-local-sync.bat` is up and running.
 REM  Calls `POST http://localhost:3099/api/v1/tokens` to create a 10-year JWT

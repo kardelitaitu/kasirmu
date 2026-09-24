@@ -1,4 +1,4 @@
-# Rust toolchain pin for OZ-POS.
+# Rust toolchain pin for kasir.mu.
 #
 # This file enforces the project's minimum-supported Rust version (MSRV).
 # The workspace uses edition = "2024" and the `rust-version` field in

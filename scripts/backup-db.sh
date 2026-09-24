@@ -32,7 +32,7 @@ fi
 mkdir -p "$BACKUP_DIR"
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/oz-pos-${TIMESTAMP}.db.gz"
+BACKUP_FILE="$BACKUP_DIR/kasir-${TIMESTAMP}.db.gz"
 
 echo "backup-db: backing up $DB_FILE → $BACKUP_FILE"
 
@@ -68,9 +68,9 @@ fi
 
 # Prune old backups
 echo "backup-db: pruning backups older than $RETENTION_DAYS days..."
-DELETED=$(find "$BACKUP_DIR" -name "oz-pos-*.db.gz" -mtime +"$RETENTION_DAYS" -delete -print | wc -l)
+DELETED=$(find "$BACKUP_DIR" \( -name "kasir-*.db.gz" -o -name "oz-pos-*.db.gz" \) -mtime +"$RETENTION_DAYS" -delete -print | wc -l)
 echo "backup-db: removed $DELETED old backup(s)"
 
 # List remaining backups
-COUNT=$(find "$BACKUP_DIR" -name "oz-pos-*.db.gz" | wc -l)
+COUNT=$(find "$BACKUP_DIR" \( -name "kasir-*.db.gz" -o -name "oz-pos-*.db.gz" \) | wc -l)
 echo "backup-db: $COUNT backup(s) retained"

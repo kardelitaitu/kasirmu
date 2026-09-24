@@ -107,7 +107,7 @@ if "%MODE%"=="foreground" (
     echo [OK] Campaign finished - this window can be closed.
 ) else (
     REM Launcher: hand off to a minimized wsl.exe console, return now.
-    start "OZ-POS hfuzz overnight" /min wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/tools/fuzz/hfuzz' && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1"
+    start "kasir.mu hfuzz overnight" /min wsl.exe %DISTRO_ARGS% bash -lc "!EXPORTS! cd '!WSL_ROOT!/tools/fuzz/hfuzz' && ./run_overnight.sh > /tmp/hfuzz-overnight.out 2>&1"
     echo [OK] Launched. This window can be closed.
     echo   watch progress from WSL:  tail -f /tmp/hfuzz-overnight.out
 )

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── OZ-POS Updater Client Compatibility Check (AUDIT-28 RELEASE-04) ─────
+// ── kasir.mu Updater Client Compatibility Check (AUDIT-28 RELEASE-04) ─────
 //
 // End-to-end proof that signatures produced by `scripts/generate-latest-json.mjs`
 // are accepted by the REAL Tauri updater client verification code path:
@@ -122,7 +122,7 @@ const argv = process.argv.slice(2);
 const noBuild = argv.includes("--no-build");
 const keepTemp = argv.includes("--keep-temp");
 
-console.log("=== OZ-POS updater client compatibility check ===");
+console.log("=== kasir.mu updater client compatibility check ===");
 console.log(`Harness: ${EXE}`);
 
 // 1. Build the harness (unless --no-build).
@@ -196,7 +196,7 @@ try {
   const testPubkeyB64 = buildMinisignPubkey(raw, keyid);
   const dummyInstaller = join(workdir, "dummy-installer.bin");
   writeFileSync(dummyInstaller, Buffer.concat([
-    Buffer.from("OZ-POS fake installer payload for compat check\n"),
+    Buffer.from("kasir.mu fake installer payload for compat check\n"),
     Buffer.alloc(1024, 0x5a),
   ]));
   const version = "9.9.9";

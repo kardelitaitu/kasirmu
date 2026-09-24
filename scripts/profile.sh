@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# OZ-POS Flamegraph Profiling Helper (Linux/macOS)
+# kasir.mu Flamegraph Profiling Helper (Linux/macOS)
 #
-# Wraps cargo-flamegraph with sane defaults for OZ-POS targets.
+# Wraps cargo-flamegraph with sane defaults for kasir.mu targets.
 # Supports profiling benchmarks, binaries, and running processes by PID.
 #
 # Usage:
@@ -152,7 +152,7 @@ fi# ── Build and run command ───────────────�
 
 echo ""
 echo -e "${CYAN}=============================================${NC}"
-echo -e "${CYAN} OZ-POS Flamegraph Profiling${NC}"
+echo -e "${CYAN} kasir.mu Flamegraph Profiling${NC}"
 echo -e "${CYAN}=============================================${NC}"
 
 # Build argument array (safe — no eval)

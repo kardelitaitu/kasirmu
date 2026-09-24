@@ -1,5 +1,5 @@
 # generate-tenant-keys.ps1
-# ── OZ-POS Tenant Key Generator ─────────────────────────────────────
+# ── kasir.mu Tenant Key Generator ─────────────────────────────────────
 # Generates a cryptographically secure API key and formatted License Key
 # for manually registering a new tenant in PocketBase.
 #
@@ -25,7 +25,7 @@ if ($Tier -notin $validTiers) {
 }
 
 Write-Host "====================================================" -ForegroundColor Cyan
-Write-Host "  OZ-POS Tenant & License Key Generator"            -ForegroundColor Cyan
+Write-Host "  kasir.mu Tenant & License Key Generator"            -ForegroundColor Cyan
 Write-Host "====================================================" -ForegroundColor Cyan
 Write-Host ""
 

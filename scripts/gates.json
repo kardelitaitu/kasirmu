@@ -212,7 +212,7 @@
       "label": "Docker build smoke (--docker-dry-run)",
       "status": "required",
       "runners": { "check.sh": ["docker build"] },
-      "_note": "Local-only by necessity, not by oversight. check.sh:405 runs `docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
+      "_note": "Local-only by necessity, not by oversight. check.sh:564 runs `docker build -f ops/docker/Dockerfile.server -t kasir-cloud:local`; every container workflow in .github/workflows is retired to .bak (docker-*.yml.bak), so no live job builds an image and there is nowhere to cite. Recorded here so the absence is a decision rather than a gap: on a clone without core.hooksPath nothing builds the server image before merge."
     },
     {
       "id": "migration",

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    One-time developer environment setup for OZ-POS on Windows.
+    One-time developer environment setup for kasir.mu on Windows.
 
 .DESCRIPTION
     Automates the common onboarding steps:
@@ -38,7 +38,7 @@ if (-not (Test-Path "Cargo.toml")) {
 }
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  OZ-POS Developer Setup" -ForegroundColor Cyan
+Write-Host "  kasir.mu Developer Setup" -ForegroundColor Cyan
 Write-Host "  Workspace: $WorkspaceRoot" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 

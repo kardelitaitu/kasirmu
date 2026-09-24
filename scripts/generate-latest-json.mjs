@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── OZ-POS Updater Manifest Generator ─────────────────────────────────
+// ── kasir.mu Updater Manifest Generator ─────────────────────────────────
 //
 // Generates a Tauri v2 updater `latest.json` manifest with minisign-format
 // Ed25519 signatures over the installer binaries. Used by the release
@@ -11,7 +11,7 @@
 //   node scripts/generate-latest-json.mjs --self-test
 //
 // Examples:
-//   node scripts/generate-latest-json.mjs 0.1.0 "Bug fixes" windows-x86_64 ./bundle/nsis/OZ-POS_0.1.0_x64-setup.exe --min-version 0.0.18
+//   node scripts/generate-latest-json.mjs 0.1.0 "Bug fixes" windows-x86_64 ./bundle/nsis/kasir.mu_0.1.0_x64-setup.exe --min-version 0.0.18
 //   # Multi-platform: run once per platform, merging into one manifest:
 //   node scripts/generate-latest-json.mjs 0.1.0 "Notes" linux-x86_64 ./x.AppImage --verify-pubkey "$PUBKEY" > latest.json
 //   node scripts/generate-latest-json.mjs 0.1.0 "Notes" windows-x86_64 ./x-setup.exe --merge latest.json --verify-pubkey "$PUBKEY" > latest.json.tmp && mv latest.json.tmp latest.json
@@ -106,7 +106,7 @@ function mergeManifest(existing, fragment) {
 // ── Self-test: proves sign → derive → verify round-trip ───────────
 function selfTest() {
   const { seed, raw, keyid } = testKeypair();
-  const payload = Buffer.from("oz-pos updater self-test payload", "utf8");
+  const payload = Buffer.from("kasir.mu updater self-test payload", "utf8");
 
   if (raw.length !== 32 || keyid.length !== 8) {
     console.error("FAIL test keypair derivation");

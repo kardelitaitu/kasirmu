@@ -2,7 +2,7 @@
 # scripts/verify-docker-digests.sh — pinned-image digest drift gate.
 #
 # Re-resolves every `image:tag@sha256:...` reference pinned across the
-# OZ-POS Dockerfiles and Compose files (DOCKER-02) and fails when any
+# kasir.mu Dockerfiles and Compose files (DOCKER-02) and fails when any
 # upstream tag now resolves to a DIFFERENT digest than what the repo pins.
 #
 # The pinning policy (see .trivyignore and Dockerfile comments) is: pin

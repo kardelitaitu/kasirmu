@@ -35,7 +35,7 @@ fail() { printf "${RED}✘ %s${NC}\n" "$1"; }
 
 overall=0
 
-echo "═══ OZ-POS Docker verification gate (audit/26) ═══"
+echo "═══ kasir.mu Docker verification gate (audit/26) ═══"
 
 # ═══════════════════════════════════════════════════════════════════
 # 1/4 — Persistence (DOCKER-11)

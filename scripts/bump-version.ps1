@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Automates version bumping across the entire OZ-POS codebase.
+    Automates version bumping across the entire kasir.mu codebase.
 
 .DESCRIPTION
     This script finds all occurrences of the current codebase version (read dynamically from Cargo.toml)

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Dev code-signing for OZ-POS Windows exes - the FREE route.
+  Dev code-signing for kasir.mu Windows exes - the FREE route.
 
 .DESCRIPTION
   Generates (or reuses) a self-signed Authenticode code-signing certificate
@@ -24,7 +24,7 @@
     * This script is the dev/CI-internal route; SignPath is the public route.
 
 .PARAMETER Name
-  Certificate subject (CN). Default "OZ-POS Development".
+  Certificate subject (CN). Default "kasir.mu Development".
 
 .PARAMETER Exe
   One or more .exe files to sign. Accepts a single path, a comma-separated
@@ -69,7 +69,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Name = "OZ-POS Development",
+  [string]$Name = "kasir.mu Development",
   [Parameter(Mandatory = $true, Position = 0)]
   [string[]]$Exe,
   [ValidateSet("CurrentUser", "LocalMachine")]

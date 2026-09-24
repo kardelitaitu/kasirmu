@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── OZ-POS Updater Signature Verifier (AUDIT-28 RELEASE-04/06) ────────
+// ── kasir.mu Updater Signature Verifier (AUDIT-28 RELEASE-04/06) ────────
 //
 // Verifies that an installer/update asset matches the signature recorded in
 // a Tauri updater `latest.json` manifest, using the public key embedded in

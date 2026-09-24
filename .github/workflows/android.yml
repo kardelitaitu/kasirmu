@@ -1,6 +1,6 @@
 # ── Android Build Pipeline ─────────────────────────────────────────────
 #
-# Builds the Android APK for the OZ-POS tablet client (apps/mobile-tauri).
+# Builds the Android APK for the kasir.mu tablet client (apps/mobile-tauri).
 #
 # RESTORED 2026-09-22 from .github/workflows/attic/android.yml.bak, which
 # 23c963303 retired on 2026-09-02 and 54f64de83 parked in attic/. It is NOT a
@@ -142,10 +142,10 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           cd apps/mobile-tauri/gen/android
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > oz-pos-release.keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > kasirmu-release.keystore
           echo "keyAlias=$KEY_ALIAS" > keystore.properties
           echo "password=$KEYSTORE_PASSWORD" >> keystore.properties
-          echo "storeFile=$(pwd)/oz-pos-release.keystore" >> keystore.properties
+          echo "storeFile=$(pwd)/kasirmu-release.keystore" >> keystore.properties
 
       # ── Build ───────────────────────────────────────────────────
       # `--target aarch64` matches the single-ABI path the guides measure
@@ -160,7 +160,7 @@ jobs:
       - name: Remove decoded signing material
         if: always()
         run: |
-          rm -f apps/mobile-tauri/gen/android/oz-pos-release.keystore
+          rm -f apps/mobile-tauri/gen/android/kasirmu-release.keystore
           rm -f apps/mobile-tauri/gen/android/keystore.properties
 
       # ── THE ASSERTION ───────────────────────────────────────────

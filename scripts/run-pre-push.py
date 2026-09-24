@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/run-pre-push.py — Parallel local pre-push orchestrator for OZ-POS.
+scripts/run-pre-push.py — Parallel local pre-push orchestrator for kasir.mu.
 
 Runs all static gates, UI checks, Rust checks, and i18n lints concurrently
 across available CPU cores on multi-core hardware.
