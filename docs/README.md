@@ -15,6 +15,7 @@
 | [`specs/`](./specs/) | Active and completed specs — workspace-settings phases, audit plans, module manifests | [`_active/`](./specs/_active/) — in-progress specs |
 | [`operations/`](./operations/) | Production runbook, deployment guides, platform build/test guides | [`runbook.md`](./operations/runbook.md) — unified Northflank deployment runbook |
 | [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
+| [`legal/`](./legal/) | Corporate and compliance documents, scoped by jurisdiction | [`README.md`](./legal/README.md) — jurisdiction index; [`id/`](./legal/id/) — PT Perorangan (Indonesia) |
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
@@ -133,3 +134,10 @@ branch, kept on purpose and recorded as such in the script rather than quietly r
 > their post-reorg locations) and superseded the 08-09-26 "all 16 linked targets
 > resolve" note, which had been false since the guides reorg moved its three named
 > files. Full findings: `docs/audits/documentation-audit-23-09-26.md`. <!-- dead-ref: ok: the four backticked paths above cite the links AS THEY WERE before repointing -->
+>
+> **Addition (26-09-26):** `legal/` joined the curated set — the row this page was missing
+> for a directory that had been sitting outside it. It is now **12 curated, 3 excluded,
+> 15 present**, superseding the 08-09-26 counts of 11/3/14 in both places they appear in
+> that note. Not an audit: the directory is new and its contents are founder-side working
+> drafts, not documentation of shipped behaviour. Content carries its own status markers
+> (`[UNVERIFIED]`/`[PENDING]`/`[DECIDED]`) — see [`legal/README.md`](./legal/README.md).
