@@ -1,10 +1,7 @@
-﻿<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (0 findings, claims verified) · assets/source-icon.png exists at repo root; expected hardware files receipt-logo-58mm.png + receipt-logo-80mm.png present; generation commands match sync-branding.ps1:415-416; beta-retail manifest omits invoiceWatermark key but README only documents expected spec, not asserting file presence -->
-
 # Hardware Assets - ACME POS (acme-tenant)
 
-This directory holds specialized bitmap assets for thermal receipt printers
-and invoice watermarks. These are generated from the master source icon
-(assets/source-icon.png) via the whitelabel pipeline.
+This directory holds the brand's print assets. The receipts and invoices are
+produced by the app; these files are the artwork that goes on them.
 
 ## Expected files
 
@@ -18,10 +15,8 @@ and invoice watermarks. These are generated from the master source icon
 
 To generate receipt bitmaps from the master source icon:
 
-`powershell
+```powershell
 # Requires ImageMagick
-magick convert assets/source-icon.png -resize 384x100 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-58mm.png
-magick convert assets/source-icon.png -resize 576x150 -threshold 50% assets/branding/%brandId%/hardware/receipt-logo-80mm.png
-`
-
-> last audited 24-07-26 by Hermes-Agent
+magick convert assets/source-icon.png -resize 384x100! -threshold 50% assets/branding/acme-tenant/hardware/receipt-logo-58mm.png
+magick convert assets/source-icon.png -resize 576x150! -threshold 50% assets/branding/acme-tenant/hardware/receipt-logo-80mm.png
+```
