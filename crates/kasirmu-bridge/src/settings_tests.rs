@@ -2027,3 +2027,99 @@ fn credit_sale_dto_emits_the_camel_case_wire_the_retail_list_reads() {
         "an open tab must emit settledAt: null rather than omitting the key"
     );
 }
+
+// ── R10 gate-KIND: the scoped settings WRITERS are scope-aware ──────────
+
+/// A `settings:edit` holder whose only assignment covers a DIFFERENT branch is
+/// denied, and the store DB is never opened.
+///
+/// **This is the guard for R10's gate-KIND half on `settings`** (owner ruling
+/// 2026-09-20, `done-todo-owner-rulings.md:272`). Every scoped setter used to gate
+/// with the non-scope-aware `BridgeCtx::require_permission_for_user` over a store
+/// `Store` it could only obtain *after* `open_store`, while this module's own
+/// readers ran the scope-aware `require_session_permission`. The two forms agree on
+/// a role that simply lacks `settings:edit` — which is why the existing
+/// `denies_staff_without_settings_edit` tests could not see the difference, and why
+/// they stay green if this migration is reverted. This test asks the one question
+/// only the scope-aware form answers: the caller HAS the permission, and is refused
+/// because their assignment does not cover the store they addressed.
+///
+/// Mutation-tested rather than assumed: restoring `require_permission_for_user` at
+/// `settings.rs` makes this fail with `Ok(())` — the write lands in another branch's
+/// store.
+#[tokio::test]
+async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
+    use kasirmu_core::db::assignments::{AssignmentSpec, ScopeMode, ScopeType};
+    use kasirmu_core::session::SessionContext;
+
+    let conn = crate::testing::temp_conn();
+    {
+        let store = Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-scoped-editor', 'ScopedEditor', 'Settings editor, one branch', '[\"settings:edit\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-scoped-editor', 'editor', 'hash', 'Editor', 'role-scoped-editor', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    // The assignment names store-a; the session below addresses store-b.
+    Store::new(&conn)
+        .set_assignment(
+            "user-scoped-editor",
+            "role-scoped-editor",
+            &AssignmentSpec {
+                scope_mode: ScopeMode::Scoped,
+                branches_all: false,
+                branches: vec!["store-a".into()],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: ScopeType::Organization,
+                scope_id: None,
+            },
+        )
+        .unwrap();
+
+    // `TestBridge::new()` supplies its own unique store directory, so the
+    // session's store is created on first `open_store` — which is exactly what
+    // this test must NOT reach.
+    let bridge = crate::testing::TestBridge::new().with_conn(conn);
+    bridge.sessions().write().unwrap().insert(
+        "editor-token".into(),
+        SessionContext::new(
+            "user-scoped-editor".into(),
+            "role-scoped-editor".into(),
+            "terminal-1".into(),
+            "store-b".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+
+    let result = set_receipt_settings_scoped(
+        &bridge.ctx(),
+        "editor-token",
+        ReceiptSettingsDto {
+            show_currency: true,
+            decimal_separator: "dot".into(),
+            show_tax: true,
+            footer: String::new(),
+            paper_width: "standard".into(),
+            show_table_number: false,
+            margin_top: 0,
+            margin_bottom: 0,
+            margin_left: 0,
+            margin_right: 0,
+            tax_rounding_mode: None,
+        },
+    )
+    .await;
+
+    assert!(
+        matches!(result, Err(BridgeError::PermissionDenied(_))),
+        "a settings:edit holder scoped to store-a must be denied for store-b, got {result:?}"
+    );
+}

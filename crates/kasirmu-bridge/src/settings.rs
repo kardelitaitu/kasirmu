@@ -8,14 +8,27 @@
 //! shim conversion of the readers both land in E1b; the shared surface is hoisted
 //! whole so that move is a pure command-body port.
 //!
-//! Two permission behaviours coexist here by design and must NOT be unified:
-//!  * the session-gated readers run the SCOPE-AWARE
-//!    BridgeCtx::require_session_permission (settings:read) - except
-//!    list_credit_sales_scoped, which keeps sales:view exactly as the shell has it;
-//!  * get_user_preferences_scoped only resolves the session (the shell never gated it),
-//!    and the six global-DB readers (get_receipt_settings, get_store_settings,
+//! The session-gated doors run the SCOPE-AWARE
+//! BridgeCtx::require_session_permission - readers on settings:read (except
+//! list_credit_sales_scoped, which keeps sales:view exactly as the shell has it), and
+//! since 2026-09-25 the WRITERS too, on settings:edit (R10's gate-KIND half: they used
+//! the non-scope-aware require_permission_for_user over a store db that only
+//! `open_store` could supply, so the gate ran after filesystem work and ignored the
+//! caller's branch/workspace assignment). The one remaining unscoped call is the
+//! DEPRECATED `set_setting`, which takes a caller-supplied `user_id` and a global-db
+//! `Store` and has no session to scope against - retiring it is a separate decision, not
+//! a gate migration.
+//!
+//! Two doors carry no gate at all, and that is deliberate, not an omission:
+//!  * get_user_preferences_scoped only resolves the session (the shell never gated it);
+//!  * the six global-DB readers (get_receipt_settings, get_store_settings,
 //!    get_credit_settings, get_hardware_settings, get_setting, gateway_status) carry no
 //!    gate at all. No gate is invented here.
+//!
+//! set_user_preferences_scoped is in the same position — it resolves a session and writes
+//! through the store db WITHOUT a gate. Same class of open question as the reader above,
+//! and deliberately not folded into R10's sweep, which is about the FORM of existing gates
+//! rather than about inventing new ones.
 //!
 //! get_hardware_settings and get_hardware_settings_scoped take the profile directory
 //! as base_dir: BridgeCtx carries the app CACHE dir, which is a different directory
@@ -1068,6 +1081,14 @@ pub async fn set_receipt_settings_scoped(
     args: ReceiptSettingsDto,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25): scope-aware gate BEFORE the store is
+    // opened, matching this module's own readers. The unscoped form checked the
+    // permission but not the caller's branch/workspace assignment, and it could only run
+    // after `open_store` — which is not free (it creates the directory, the db file and
+    // runs migrations), so an out-of-scope caller got filesystem work and an
+    // `Internal("opening store db")` instead of `PermissionDenied`.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -1075,8 +1096,6 @@ pub async fn set_receipt_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = kasirmu_core::db::Store::new(&db);
-    ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     run_set_receipt_settings(&db, &args)
 }
 
@@ -1087,6 +1106,11 @@ pub async fn set_store_settings_scoped(
     args: StoreSettingsDto,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25), as in `set_receipt_settings_scoped`:
+    // scope-aware, and before `open_store` so an out-of-scope caller cannot make the
+    // store do filesystem work on its way to being refused.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -1094,8 +1118,6 @@ pub async fn set_store_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = kasirmu_core::db::Store::new(&db);
-    ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     run_set_store_settings(&db, &args)
 }
 
@@ -1106,6 +1128,9 @@ pub async fn set_credit_settings_scoped(
     args: CreditSettingsDto,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25): scope-aware, before `open_store`.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -1113,8 +1138,6 @@ pub async fn set_credit_settings_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = kasirmu_core::db::Store::new(&db);
-    ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     let tx = db.unchecked_transaction()?;
     Settings::set_credit_enabled(&tx, args.enabled)?;
     Settings::set_credit_reminder_interval(&tx, args.reminder_interval_hours)?;
@@ -1130,6 +1153,9 @@ pub async fn settle_credit_scoped(
     sale_id: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25): scope-aware, before `open_store`.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
     let conn = ctx
         .db_manager
         .open_store(&session.store_id)
@@ -1137,8 +1163,6 @@ pub async fn settle_credit_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = kasirmu_core::db::Store::new(&db);
-    ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
     let tx = db.unchecked_transaction()?;
     let now = chrono::Utc::now().to_rfc3339();
     tx.execute(
@@ -1172,18 +1196,13 @@ pub async fn set_hardware_settings_scoped(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    // Permission check requires the store-scoped DB.
-    {
-        let conn = ctx
-            .db_manager
-            .open_store(&session.store_id)
-            .map_err(|e| BridgeError::Internal(format!("opening store db: {e}")))?;
-        let db = conn
-            .lock()
-            .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = kasirmu_core::db::Store::new(&db);
-        ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
-    }
+    // R10 gate-KIND + gate-ORDER (2026-09-25): the scope-aware gate authorizes against
+    // the GLOBAL identity db, so it needs no store connection at all — the temporary
+    // store open that used to exist only to run the unscoped check is gone with it. The
+    // `hardware_profiles` write below still uses the global db, which is where that table
+    // lives.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
 
     let profile = TerminalProfile::from(args);
     let json = serde_json::to_string(&profile)
@@ -1293,6 +1312,12 @@ pub async fn set_setting_scoped(
     value: &str,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25): scope-aware, and before the store is
+    // opened. This door used to check `require_permission_for_user` over the store db,
+    // which ignores the caller's branch/workspace assignment and could only run after
+    // `open_store` had already done filesystem work.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
 
     // Extract terminal_id before locking the store DB to avoid
     // holding a non-Send MutexGuard across an .await point.
@@ -1314,8 +1339,6 @@ pub async fn set_setting_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = kasirmu_core::db::Store::new(&db);
-        ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         run_set_setting(&db, key, value, &terminal_id)?
     }; // db, store, conn dropped here — safe to .await below
 
@@ -1360,6 +1383,10 @@ pub async fn set_settings_scoped(
     entries: HashMap<String, String>,
 ) -> Result<(), BridgeError> {
     let session = ctx.resolve_session(session_token)?;
+    // R10 gate-KIND + gate-ORDER (2026-09-25), as in `set_setting_scoped`: scope-aware,
+    // and before `open_store`.
+    ctx.require_session_permission(&session, permissions::SETTINGS_EDIT)
+        .await?;
 
     let terminal_id = ctx
         .terminal_id
@@ -1382,8 +1409,6 @@ pub async fn set_settings_scoped(
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        let store = kasirmu_core::db::Store::new(&db);
-        ctx.require_permission_for_user(&store, &session.user_id, permissions::SETTINGS_EDIT)?;
         let tx = db.unchecked_transaction()?;
         let written = run_set_settings_batch(&tx, &entries, &terminal_id)?;
         tx.commit()?;
