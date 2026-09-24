@@ -49,6 +49,27 @@ pub trait PaymentProcessor: Send + Sync {
     /// Capture an authorized payment that was previously held.
     ///
     /// `transaction_id` is the value returned by [`authorize`](Self::authorize).
+    ///
+    /// # Why there is no `idempotency_key`, and what that costs a caller
+    ///
+    /// Unlike [`refund`](Self::refund), this method takes **no key**, so a driver
+    /// has nothing the gateway could deduplicate on. The consequence is the same
+    /// one `refund`'s doc names — *"a timeout+retry may double the refund"* — and
+    /// here it is **a double capture**: a capture that committed server-side but
+    /// timed out before the answer arrived will be applied a second time if the
+    /// caller retries.
+    ///
+    /// Two things follow, and they are the reason this paragraph exists rather
+    /// than the parameter:
+    ///
+    /// * **`ResilientProcessor` treats this method as single-shot**
+    ///   (`resilience.rs`, `RetryPolicy::SingleShot`). It does NOT consume its
+    ///   retry budget here, because retrying would risk the second capture. That
+    ///   is a deliberate REDUCTION of the decorator's behaviour, not an oversight.
+    /// * **A caller that must retry has to make that safe itself** — by
+    ///   reconciling on a status query before re-issuing, the way the QRIS charge
+    ///   path reconciles a quiet terminal. Adding a key parameter is design doc §9
+    ///   item 5, an open question; until it is taken, this doc is the contract.
     async fn capture(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError>;
 
     /// Execute an immediate sale (authorize + capture in one call).
@@ -86,6 +107,15 @@ pub trait PaymentProcessor: Send + Sync {
     ) -> Result<PaymentResult, PaymentError>;
 
     /// Void / reverse a pending authorization (before capture).
+    ///
+    /// Takes no key, for the same reason [`capture`](Self::capture) does not, and
+    /// carries the same cost: a void that committed server-side and timed out is
+    /// applied again on a retry. [`ResilientProcessor`](crate::ResilientProcessor)
+    /// therefore treats it as single-shot as well.
+    ///
+    /// Note this is the *payment-crate* `void`. The card-terminal trait's void
+    /// (`kasirmu_hal::EdcTerminal::void`) is a different method on a different
+    /// device class and has its own contract.
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError>;
 
     /// Return a receipt for a completed transaction.
