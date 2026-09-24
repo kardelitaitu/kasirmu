@@ -112,6 +112,10 @@ const EXPECTED_KEYS: Record<string, string> = {
   'oz-dev-mock:topology-revisions': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:user-prefs': 'dev-mock/core/mockDatabase.ts',
   'oz-dev-mock:workspaces': 'dev-mock/core/mockDatabase.ts',
+  // The DevToolbar's tier switch. Dev-only, but persisted on purpose: the
+  // selection has to outlive the reload that switch performs, or every tier
+  // change would bounce straight back to the default.
+  'kasirmu-dev-tier': 'dev-mock/core/mockTier.ts',
 };
 
 const KEY_DECL =

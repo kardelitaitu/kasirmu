@@ -107,6 +107,20 @@
   flex-shrink: 0;
 }
 
+/* The tier row reuses the theme buttons but carries FIVE labels, not two.
+   Wrapping keeps every tier reachable instead of overflowing the fixed
+   256px panel, and `flex: 1 1 auto` lets a short label (Free, Plus) share a
+   line while a long one (Enterprise) still fits. */
+.dev-toolbar-tier-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0_5);
+}
+
+.dev-toolbar-tier-row .dev-toolbar-theme-btn {
+  flex: 1 1 auto;
+}
+
 /* ── Badge + swatches row (collapsed) ─────────────── */
 .dev-toolbar-bottom {
   display: flex;
