@@ -154,6 +154,34 @@ pub async fn provision_device(
         .map_err(Into::into)
 }
 
+/// Re-seed the default role presets for this session's store.
+///
+/// **Registered here under R3 (owner, 2026-09-20; `done-todo-owner-rulings.md:100`),
+/// option (ii).** R3's option (i) — seeding as part of the setup completion path —
+/// is satisfied already and by a later design than the ruling assumed: ADR #56
+/// §2.2/§2.3 retired `complete_setup`/`write_setup` outright, and the replacement
+/// `provision_device` seeds inside its own transaction
+/// (`kasirmu-core/src/db/provisioning.rs:443`, step 2, before the owner that
+/// references them). So the fresh-install hole R3 measured is closed.
+///
+/// What remained is R3's own reachability gap: the desktop registered this command
+/// (`apps/desktop-tauri/src/lib.rs:1196`) and the tablet did not, so a tablet had no
+/// path to re-seed on demand. This is that path, and it is a shim over the one bridge
+/// implementation, so both shells now offer the same surface.
+///
+/// **Requires `staff:manage_roles`**, enforced in the bridge against the global
+/// identity db before the store is opened.
+#[command]
+pub async fn seed_default_roles_scoped(
+    session_token: String,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::setup::seed_default_roles_scoped(&ctx, &session_token)
+        .await
+        .map_err(Into::into)
+}
+
 // ── Retired by ADR #56 §2.2 ──────────────────────────────────────────
 //
 // `dismiss_setup_wizard` and `get_setup_status` were REMOVED here. Both

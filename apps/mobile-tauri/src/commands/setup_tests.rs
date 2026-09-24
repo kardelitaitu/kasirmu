@@ -143,3 +143,68 @@ fn a_linked_provision_payload_carries_its_tenant_and_credential() {
     assert_eq!(args.tenant_id.as_deref(), Some("tenant-abc"));
     assert_eq!(args.device_credential_id.as_deref(), Some("cred-1"));
 }
+
+// ── R3 (ii): the re-seed door exists on this shell, and is gated ──────
+
+/// `seed_default_roles_scoped` is registered on the tablet and refuses a caller
+/// without `staff:manage_roles`.
+///
+/// **Why this test exists here rather than in the bridge.** The bridge body and its
+/// gate are shared with the desktop, but the *reachability* defect R3 named is
+/// per-shell: the desktop registered the command
+/// (`apps/desktop-tauri/src/lib.rs:1196`) and the tablet did not, so no tablet path
+/// could re-seed on demand. A bridge-side test would have passed the whole time the
+/// gap was open, which is exactly the shape of miss this file guards. The check is
+/// therefore on the shell surface, and it drives the shell's own command.
+///
+/// The deny leg is the load-bearing half: a `staff:manage_roles` holder is a rota
+/// manager, and this command upserts over every preset row
+/// (`kasirmu-core/src/db/staff.rs:69`), so an ungated door would let one rewrite the
+/// presets a tenant relies on.
+#[tokio::test]
+async fn seed_default_roles_scoped_is_reachable_and_gated_on_the_tablet() {
+    use kasirmu_core::session::SessionContext;
+    use tauri::Manager as _;
+
+    // The registration itself: the name must be in this shell's own handler list.
+    let lib = include_str!("../lib.rs");
+    assert!(
+        lib.contains("commands::setup::seed_default_roles_scoped"),
+        "R3 (ii): the tablet must register seed_default_roles_scoped, or it has no re-seed path at all while the desktop has one"
+    );
+
+    let conn = kasirmu_core::migrations::fresh_db();
+    {
+        let store = kasirmu_core::db::Store::new(&conn);
+        store.seed_default_roles().unwrap();
+    }
+    conn.execute_batch(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at) VALUES ('user-cashier', 'cashier', 'hash', 'Cashier', 'role-staff', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+
+    let state = AppState::for_test_with_conn(conn);
+    state.session_store.write().unwrap().insert(
+        "cashier-token".into(),
+        SessionContext::new(
+            "user-cashier".into(),
+            "role-staff".into(),
+            "terminal-1".into(),
+            "default".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let denied = seed_default_roles_scoped("cashier-token".into(), app.state()).await;
+    assert!(
+        matches!(denied, Err(AppError::PermissionDenied(_))),
+        "a cashier must not be able to re-seed the role presets: got {denied:?}"
+    );
+}
