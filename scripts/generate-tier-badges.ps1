@@ -223,9 +223,24 @@ foreach ($tier in $Tiers) {
     foreach ($scale in $ScaleList) {
         $px = $built.Width * $scale
         $pngPath = Join-Path $pngDir "tier-$key@$($scale)x.png"
-        # -depth 8 is load-bearing: ImageMagick Q16 writes 16-bit PNGs by
-        # default, and tauri's icon decoder panics on a 16-bit RGBA image.
-        & $Script:MagickPath "$svgPath" -background none -resize "$($px)x" -depth 8 -strip $pngPath
+
+        # -density is load-bearing, and getting it wrong is invisible in the file
+        # METADATA: the PNG still comes out 234x120 either way. Without it,
+        # ImageMagick rasterises the SVG at its intrinsic 78x40 (the width/height
+        # attributes) and then UPSCALES that bitmap to the target, so the glyph
+        # edges are interpolated from a 1x render and the export looks like a
+        # small picture blown up. Rendering at the target density first makes the
+        # -resize a no-op that only trims rounding, and the antialiasing is done
+        # at full resolution. Measured on pro@3x: 775 unique colours vs 621, and
+        # a smaller file because the smeared upscale compresses worse.
+        #
+        # 72 is ImageMagick's default DPI, so density = 72 * scale is the exact
+        # multiplier that makes 1 SVG user unit map to `scale` device pixels.
+        #
+        # -depth 8 is the other load-bearing flag: ImageMagick Q16 writes 16-bit
+        # PNGs by default, and tauri's icon decoder panics on a 16-bit RGBA image.
+        $density = 72 * $scale
+        & $Script:MagickPath -background none -density $density "$svgPath" -resize "$($px)x" -depth 8 -strip $pngPath
         if ($LASTEXITCODE -ne 0) { $failures += "PNG export failed for $key @$($scale)x" }
     }
     Write-Host "         PNG @$($ScaleList -join 'x, ')x" -ForegroundColor DarkGray
