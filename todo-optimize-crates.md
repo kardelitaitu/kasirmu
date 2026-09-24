@@ -1,7 +1,7 @@
 # Optimize our own crates — census (round 1)
 
-**Status:** OPEN — census round complete (§1–§6); scale-review journal appended 2026-09-25 (§7). No code touched, no axis chosen.
-**Date:** 2026-09-25 · **Branch:** `0.0.40` · **Recorded against:** HEAD at time of measurement.
+**Status:** OPEN — census round complete (§1–§6); scale-review journal appended 2026-09-25 (§7, §8). No code touched, no axis chosen.
+**Date:** 2026-09-25 · **Branch:** `0.0.40` · **Recorded against:** `c7767e73e` (§8). §1–§7 recorded against HEAD at their own time of measurement.
 
 ---
 
@@ -665,3 +665,344 @@ the real guard.
   pending spot-check. Nothing below High has been re-read yet.
 - **No crate code has been changed.** This section is the journal-first record the pass was
   asked for; fixes are unfunded until entries are picked from it.
+
+---
+
+## 8. Scale-review journal — round 3 (2026-09-25)
+
+**This round runs the pass §7 left open:** the support crates, the 14 `modules/*` verticals and
+`foundation`. Four audit agents read the production `.rs` files of their cluster (`*_tests.rs`
+and `tests/` skipped unless a production bug was only visible there); I then re-read the cited
+lines of every entry I ranked High and of the Medium entries that carry a claim a fix would be
+built on. **No crate code has been changed.**
+
+**Provenance legend, same as §7:** ✔ = I re-read the cited lines on this date and the code
+matches the entry. ◦ = the entry carries the audit pass's line references; spot-check pending.
+Round-3 agent ids (`3A-nn` … `3D-nn`) are kept alongside each journal id so a reviewer can trace
+an entry back to the pass that produced it.
+
+### The wiring calibration, stated before the list — it changes what these entries are worth
+
+An audit of unwired code is an audit of intent, not of behaviour. Call-site checks run this
+round:
+
+| crate | wired? |
+|---|---|
+| `kasirmu-notification` | `run_scheduler_loop` **is** wired (`apps/desktop-tauri/src/lib.rs:400-403`); the event handlers are inert, feature-gated off (`lib.rs:12-19`) |
+| `modules-currency` | **live** — the only `modules/*` crate referenced outside `modules/` (both shells) |
+| `kasirmu-logging` | only `try_init()` is wired (both shells); the file writer, syslog and eventlog paths are unwired |
+| `kasirmu-hal`, `-payment`, `-plugin`, `-lan`, `-cli`, `-local-api`, `qris-core`, `-crypto` | production crates, reachable |
+| `kasirmu-reporting`, `kasirmu-media` | **no production caller** — own tests only |
+| `modules/*` other than `currency` | **no non-test caller**; `InventoryStockHandler`, `ReportingService` and `ReportingRepository` have no subscriber outside their own tests |
+
+So a defect in `kasirmu-reporting` is a defect in a library nobody calls *today*, and one in
+`kasirmu-notification`'s scheduler is a defect that runs on every desktop till. Entries below say
+which they are. Latent entries are still worth fixing — the four stub verticals instruct future
+work to "move tables and queries into `repository.rs`", so this is the code that becomes the
+runtime — but they should not outrank live ones when a phase is funded.
+
+### High — likely to bite within months
+
+**O-H23 · kasirmu-notification — the scheduled email report holds the process-wide DB mutex
+across ten aggregate queries** — `crates/kasirmu-notification/src/email_scheduler.rs:71-81` ✔
+(3C-01) · **LIVE**, wired at `apps/desktop-tauri/src/lib.rs:400-403` ✔
+Scope 2 takes `db.lock().await` — the same `Arc<Mutex<Connection>>` every UI command, the sync
+daemon and the image-push daemon share — and holds it across
+`generate_filtered_report_email`, which runs ten sequential aggregates (`daily_revenue`,
+`weekly_revenue`, `monthly_revenue`, `top_products`, `hourly_heatmap`, `category_breakdown`, two
+alert lists, `category_popularity`, `category_forecast`) plus HTML and text rendering. Every
+other DB consumer on the till stalls for that whole window, and the cost grows with sales
+history. *Fix:* run the export on a dedicated connection, or snapshot the rows and drop the lock
+before rendering; bound the export by date bucket regardless.
+
+```rust
+71      let (report, recipients) = {
+72          let conn = db.lock().await;
+...
+78          let report = email_sender::generate_filtered_report_email(&store, &schedule, &name)
+79              .map_err(|e| format!("Report gen: {e}"))?;
+```
+
+**O-H24 · kasirmu-payment — processor fallback advances on `Transient`, the double-charge
+class** — `crates/kasirmu-payment/src/registry.rs:100-114` ✔ (3A-06)
+`execute_with_fallback` falls through to the next processor on any non-`Terminal` error, and
+`ErrorClass::Transient` is precisely the class where the request may have reached the gateway.
+The crate states this itself, in `resilience.rs:293-298` ✔: *"a `Transient` error is precisely the
+class where the request may have reached the gateway … Retrying it is not resilience; it is
+double-billing with a retry's reputation."* A timeout after gateway #1 committed therefore
+re-sends the money-moving operation to gateway #2, and the two share no idempotency key. Graded
+Medium by the pass; **promoted here**, because the blast radius is money and the crate's own
+design doc already rules the behaviour out. *Fix:* fall through only on `Terminal`/
+`Unsupported`, or require a caller-supplied gateway key before a `Transient` fall-through.
+
+```rust
+104                Err(err) => {
+105                    let class = err.classify();
+106                    // On terminal decline or bad card, do not silently switch processor
+107                    if class == ErrorClass::Terminal && !matches!(err, PaymentError::Unsupported(_))
+```
+
+**O-H25 · modules-reporting — daily report hard-codes USD, sums across currencies, and cannot
+use an index** — `modules/reporting/src/repository.rs:31-54` ✔ (3D-05) · **latent**, zero
+non-test callers
+Three defects in one query. `strftime('%Y-%m-%d', created_at) = ?1` wraps the column in a
+function, so any index on `created_at` is unusable and each report is a full scan growing with
+history. `SUM(total_minor)` has no `GROUP BY currency`, so a multi-currency day adds IDR to USD.
+The result is then stamped `Currency(*b"USD")` unconditionally — an IDR store's revenue is
+labelled dollars. *Fix:* sargable half-open range (`created_at >= ?1 AND created_at < ?2`), group
+by currency, and resolve the store's currency instead of hard-coding.
+
+```rust
+33               FROM sales WHERE strftime('%Y-%m-%d', created_at) = ?1 AND status = 'completed'",
+...
+49                  currency: Currency(*b"USD"),
+```
+
+### Medium — likely to bite within years
+
+**O-M40 · kasirmu-hal — `probe_all` walks the USB bus four times** —
+`crates/kasirmu-hal/src/transport/usb.rs:274-286` (with `:199-210`) ✔ (3A-01). Scanners cost two
+walks (`CLASS_HID` + `CLASS_VENDOR_SPECIFIC`), scales a third `CLASS_HID`, printers a fourth,
+and each walk opens every matching device to read three string descriptors (`:162-173`).
+*Fix:* enumerate once into a `Vec<UsbDeviceInfo>` and classify in memory.
+
+**O-M41 · kasirmu-hal — one full bus enumeration per device connect** —
+`crates/kasirmu-hal/src/transport/usb.rs:320-337` ✔ (3A-02). `open_device` builds a fresh
+`rusb::Context` and lists every device to find one VID/PID; it is the connect path for
+`UsbReceiptPrinter::ensure_connected` and `UsbHidBarcodeScanner::connect`, so every reconnect
+after `NoDevice` re-walks the bus. *Fix:* open by `rusb::Device` from the cached enumeration.
+
+**O-M42 · kasirmu-hal — serial barcode read is one syscall per byte** —
+`crates/kasirmu-hal/src/drivers/serial_scanner.rs:136-137` ✔ (3A-03), same block at
+`drivers/bt_scanner.rs:144-145` ◦. A 13-character barcode costs 13 blocking `read()` calls, and
+the dead `Ok(n)` arm (`:155-166`) shows a multi-byte read was intended. *Fix:* read into a
+`[u8; 64]` and scan the returned slice for the terminator.
+
+**O-M43 · kasirmu-hal — the Android JNI `VM` mutex is held across blocking connect and read** —
+`crates/kasirmu-hal/src/transport/bt_android.rs:63-86` ✔ (3A-05). The guard is taken for
+`attach_current_thread` *and* the whole closure, which includes `BtRfcommStream::connect`
+(multi-second) and `read` (blocks until data). One printer read stalls every Bluetooth operation
+in the process. *Fix:* lock only long enough to clone the `JavaVM`, then attach and block
+outside the guard.
+
+**O-M44 · kasirmu-hal — `discover_all()` per configured USB printer at startup** —
+`crates/kasirmu-hal/src/bootstrap.rs:299-302` ◦ (3A-07). N printers means N complete bus
+enumerations, each returning the same list, of which only element 0 is kept. *Fix:* hoist one
+`discover_all()` above the loop.
+
+**O-M45 · kasirmu-payment — backoff has no jitter and `max_retries` is uncapped** —
+`crates/kasirmu-payment/src/resilience.rs:337-341` ◦ (3A-11). Every terminal in a fleet retries
+on the same beat, and `1 << (attempt - 1)` with a `u32` config overflow-panics in debug past 64.
+*Fix:* clamp at construction, add jitter.
+
+**O-M46 · kasirmu-local-api — the audit sink writes through the handlers' DB mutex, one
+unbounded task per event** — `crates/kasirmu-local-api/src/lib.rs:528-571` ✔ (3B-01). Every
+mutating request queues an extra blocking `INSERT` behind the single connection the handlers use,
+and each `record` spawns a task that clones the event and only `warn!`s on failure. *Fix:*
+dedicated connection or a bounded channel with one writer; count failures rather than log them.
+
+```rust
+533          tokio::spawn(async move {
+...
+566              let conn = store.lock().await;
+567              if let Err(e) = kasirmu_core::Store::new(&conn).log_audit(&entry) {
+568                  tracing::warn!(error = %e, "local API audit write failed");
+```
+
+**O-M47 · kasirmu-plugin — `validate_sql` compiles ~16 regexes per statement** —
+`crates/kasirmu-plugin/src/db.rs:214-224`, `:323-330` ✔ (3B-03). `contains_word` builds a
+`format!` pattern and calls `Regex::new` for 13 blocked keywords plus PRAGMA plus two
+ALTER/TABLE checks on every plugin `exec`/`query`, while the ten table patterns a few lines away
+are correctly cached in `OnceLock`s. *Fix:* cache the keyword regexes, or word-scan on bytes and
+drop the `to_uppercase()`.
+
+**O-M48 · kasirmu-plugin — plugin `query` is unbounded and clones each column name per cell** —
+`crates/kasirmu-plugin/src/db.rs:93-128` ✔ (3B-04). No row cap; the whole result set is
+materialised into `Vec<Value>` and `name.clone()` runs once per cell. *Fix:* enforce a row
+ceiling and intern names once per query.
+
+**O-M49 · kasirmu-cli — `kasirpkg` import probes existence per row, per table** —
+`crates/kasirmu-cli/src/commands/kasirpkg.rs:346-372` ✔ (3B-05, also `:316-343`, `:398-457` ◦).
+Two statements per row where one `INSERT … ON CONFLICT DO UPDATE` would do, plus a deep
+`serde_json::Value` clone and a fresh RFC-3339 `String` per row. *Fix:* prepared upserts,
+`into_iter()`, hoist `now`.
+
+**O-M50 · kasirmu-cli — export deep-clones the payload and `.ok()`s a failure into an empty
+array** — `crates/kasirmu-cli/src/commands/kasirpkg.rs:120-128` ◦ (3B-06). A serialisation
+failure reports success with zero rows. *Fix:* move the `Vec` out in one step and propagate.
+
+**O-M51 · kasirmu-lan — replay buffer clones its key on every hit and evicts by full scan** —
+`crates/kasirmu-lan/src/replay.rs:136`, `:160-166` ◦ (3B-07). `entry(key.clone())` on the hot
+path; once the 8,192 cap is reached, eviction is `min_by_key` over all queues. *Fix:* `entry_ref`,
+plus a global FIFO index for O(log n) eviction.
+
+**O-M52 · kasirmu-plugin — `read_entry` fallback is O(n²) with an allocation per entry** —
+`crates/kasirmu-plugin/src/package.rs:330-339` ◦ (3B-09). *Fix:* keep the filename index built
+during parse.
+
+**O-M53 · kasirmu-notification — the message is rebuilt per recipient and the SMTP transport
+per tick** — `crates/kasirmu-notification/src/email_scheduler.rs:118-150` (clones `:135`, `:140`;
+transport `:116`) ✔ (3C-02) · **LIVE**. Both bodies cloned per recipient, one round trip each,
+TCP+TLS re-established every tick. *Fix:* build the two `SinglePart`s once; cache the transport.
+
+**O-M54 · kasirmu-reporting — every predicate is non-sargable and two queries are unbounded** —
+`crates/kasirmu-reporting/src/daily_summary.rs:130` ✔ (with `:79-88`, `:124-133`;
+`menu_engineering.rs:88-108`; `margin.rs:76-88` ◦) (3C-04) · **latent**, no production caller.
+`DATE(s.created_at) BETWEEN ?1 AND ?2` cannot use an index; only `query_top_products` has a
+`LIMIT`, so `query_daily_summary`, `query_sales_by_hour` and `query_menu_engineering` materialise
+the whole history. *Fix:* half-open range predicates plus paging.
+
+```sql
+130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
+```
+
+**O-M55 · kasirmu-reporting — menu engineering sorts the same key four times** —
+`crates/kasirmu-reporting/src/menu_engineering.rs:127-141`, `:170-171`, `:181-182` ◦ (3C-05).
+*Fix:* keep merge order, drop the caller's re-sort, use `select_nth_unstable` on one buffer.
+
+**O-M56 · kasirmu-media — `trim_borders` does per-pixel bounds-checked `get_pixel` over four
+full-frame passes** — `crates/kasirmu-media/src/crop.rs:169-211` ◦ (3C-06). ~160 M calls at the
+40 MP cap before the solid-colour guard fires. *Fix:* walk `as_raw()` rows, bail out early.
+
+**O-M57 · kasirmu-logging — syslog layer allocates per field and blocks per record** —
+`crates/kasirmu-logging/src/syslog.rs:119-141`, `visitor.rs:27-49` ◦ (3C-07). One `CString` and
+one blocking `libc::syslog()` per record on the emitting thread. *Fix:* `non_blocking`, `write!`
+into a reused buffer.
+
+**O-M58 · kasirmu-logging — eventlog layer allocates a `Vec<u16>` and blocks per record** —
+`crates/kasirmu-logging/src/eventlog.rs:108-115` ◦ (3C-08). *Fix:* thread-local scratch buffer,
+worker thread.
+
+**O-M59 · kasirmu-logging — the JSON+file init path skips the writability preflight the text path
+has** — `crates/kasirmu-logging/src/lib.rs:307-343` vs `:260` ✔ (3C-09). `try_init_with_file`
+calls `ensure_log_dir_writable(log_dir)?` (`:260`); `try_init_json_with_file` never does, so on
+an unwritable `log_dir` the non-blocking writer silently drops every line and the caller still
+gets `Ok(())` — exactly the failure LOG-2 was added to catch. *Fix:* call the same preflight at
+the top of the JSON variant.
+
+**O-M60 · kasirmu-logging — retention runs once at init against hourly rotation** —
+`crates/kasirmu-logging/src/lib.rs:262`, `:280-282`, `:317`, `:339-341` ✔ (3C-10). Hourly
+rotation is 24 files/day with no count or size cap, and cleanup is a detached thread spawned once
+— a process up for weeks never prunes. Deletion failures are discarded at `:207` ◦. *Fix:*
+periodic timer or a rotation policy with a max-file limit; log the `remove_file` error.
+
+**O-M61 · kasirmu-notification — unbounded `tokio::spawn` per event, and `RateLimited` is never
+matched** — `crates/kasirmu-notification/src/handlers.rs:98-125`, `:179-212`, `:249-275`;
+`lib.rs:60-67` ◦ (3C-11). No concurrency cap or retry; `NotificationError::RateLimited {
+retry_after_seconds }` is constructed but no non-test code matches on it, so the `Retry-After`
+value is computed and thrown away. *Fix:* bounded queue with a semaphore; honour `Retry-After`
+with a capped attempt count.
+
+**O-M62 · modules-currency — the live IPC command ships the entire rate history** —
+`modules/currency/src/repository.rs:50-72` ✔ (3D-01) · **LIVE** via both shells'
+`exchange_rates.rs`. No `LIMIT`, no date window, no pair filter — and the crate's own doc at
+`:74-83` says the function "grows without bound" and that consumers should use
+`list_latest_exchange_rates` instead. *Fix:* bound the query, or move the remaining callers to
+`list_latest_exchange_rates` the way CUR-11 already did for `PaymentModal`.
+
+**O-M63 · modules-inventory — the DB mutex is held across the whole sale-deduction
+transaction** — `modules/inventory/src/handlers.rs:220-241` ✔ (3D-02) · **latent**. Every line,
+every BOM ingredient and the `commit()` run under one guard, so a single `sale.completed`
+serialises all other access to that connection. *Fix:* pool or `spawn_blocking`; scope the guard
+to one transaction.
+
+**O-M64 · modules-inventory — the same UPDATE is re-`prepare`d per line and per ingredient** —
+`modules/inventory/src/handlers.rs:155`, `:187` ✔ (3D-03). A 20-line sale with a 4-ingredient BOM
+compiles identical SQL ~100 times; `prepare_cached` is used nowhere in `foundation/` or
+`modules/`. *Fix:* hoist one prepared statement above both loops.
+
+**O-M65 · modules-inventory — two lookups per line, plus one query per ingredient purely for a
+log field** — `modules/inventory/src/handlers.rs:69-93`, `:177-184` ✔ (3D-04). `SELECT id` then
+`SELECT product_type` could be one; the ingredient `SELECT sku` exists only to make the `info!`
+at `:197` readable. *Fix:* fold the pair, drop or join the ingredient lookup.
+
+**O-M66 · modules-staff — every permission check re-parses the grants JSON** —
+`modules/staff/src/models.rs:52-69` ◦ (3D-06). A full `serde_json` parse plus a `Vec<String>` per
+call, and `unwrap_or_default()` turns malformed JSON into "authorises nothing" silently.
+`platform_core::rbac::has_permission` then allocates a second `String` per call
+(`platform/core/src/rbac.rs:259-265`). *Fix:* parse once into a `HashSet`; surface the parse
+error.
+
+### Low — harmless today; a senior reviewer would still flag it
+
+**O-L12 · kasirmu-hal — a fresh Java `byte[]` per Bluetooth read** —
+`crates/kasirmu-hal/src/transport/bt_android.rs:291-314` (write `:265`) ◦ (3A-08). *Fix:* one
+`GlobalRef` per stream.
+
+**O-L13 · qris-core — a money percentage validated with `parse::<f64>()`** —
+`crates/qris-core/src/validate.rs:58-62` ◦ (3A-09). Accepts `"1e3"`, `"inf"`, `"NaN"`, which the
+exact-decimal fee parser (`amount.rs:98`) rejects — so validation can pass a payload that fails
+later. It is also `f64` on money, which `amount.rs:76-81` records as a rule the crate broke
+itself out of. *Fix:* validate with the same parser the fee path uses.
+
+**O-L14 · qris-core — CRC-16 is the bit-by-bit form** — `crates/qris-core/src/crc.rs:11-24` ◦
+(3A-10). Runs twice per QRIS round trip. *Fix:* table-driven.
+
+**O-L15 · kasirmu-crypto — `master_key_from_env()` runs per encrypt/decrypt call** —
+`crates/kasirmu-crypto/src/lib.rs:87-91`, `:112`, `:162-168` ✔ (3A-12). An env lookup, a hex
+decode and a `Vec<[u8;32]>` per call. *Fix:* `OnceLock`; try the master-derived key first.
+
+**O-L16 · kasirmu-hal — `barcode()` truncates the length with `n as u8`** —
+`crates/kasirmu-hal/src/drivers/escpos.rs:92-100` ◦ (3A-13). Over 255 bytes emits a wrong GS k
+length byte and prints garbage silently — the same truncation class round 2 recorded as O-M30 for
+discounts. *Fix:* error above 255, as `encode_field` does for the 99-byte TLV limit.
+
+**O-L17 · kasirmu-plugin — `fire_event` clones the hook list and linear-scans each owner** —
+`crates/kasirmu-plugin/src/manager.rs:499-515` ◦ (3B-08). *Fix:* id→index map, borrow the list.
+
+**O-L18 · kasirmu-cli — `copy_reference_data` inserts row by row with no transaction** —
+`crates/kasirmu-cli/src/seed_demo.rs:218-227` ◦ (3B-10). One implicit transaction and WAL commit
+per row, per table, per store DB. *Fix:* one transaction per table, stream from the cursor.
+
+**O-L19 · kasirmu-lan — a fresh `String`/`Vec<u8>` per event per peer** —
+`crates/kasirmu-lan/src/noise.rs:206-224` ◦ (3B-11). *Fix:* reusable per-connection buffer.
+
+**O-L20 · kasirmu-reporting — money crosses into `f64` at the median boundary** —
+`crates/kasirmu-reporting/src/menu_engineering.rs:73-77`, `:176-208` ◦ (3C-12). `median_margin`
+is a public `f64` and quadrant classification compares `(margin_minor as f64) >= median_margin`.
+*Fix:* keep medians in `i64` minor units.
+
+**O-L21 · truncating `as` casts on computed numerics** —
+`crates/kasirmu-reporting/src/daily_summary.rs:137` ✔ (`hour` i64→u8);
+`crates/kasirmu-media/src/thumbnail.rs:94-95` ◦ (u64→u32, unclamped) (3C-13). *Fix:* `try_from`
+with an explicit clamp.
+
+**O-L22 · modules-sales — status string via a `serde_json` round trip; INSERT re-prepared per
+line** — `modules/sales/src/repository.rs:148-151`, `:180-201` ◦ (3D-07). `as_stored_str()`
+returns `&'static str` for free. *Fix:* use it; hoist a `prepare_cached`.
+
+**O-L23 · modules-sales — `as i64` casts on the sale write path** —
+`modules/sales/src/models.rs:173`, `:189` ◦ (3D-08). *Fix:* `i64::try_from` with an explicit
+clamp.
+
+### Cross-cutting reading (round 3)
+
+- **The same three defect classes recur, in crates nobody had looked at.** Per-item work where
+  a batch was meant (O-M41, O-M49, O-M64, O-M65), constant-factor re-derivation per call
+  (O-M47, O-L15, O-M66), and unbounded reads (O-M48, O-M62, O-M54). §7 said one fix shape covers
+  almost all of the first class; round 3 extends that to the support tier and confirms it rather
+  than qualifying it.
+- **Lock-held-across-work appears once more, and it is the same shape as §7's O-H22.** The global
+  DB mutex taken across a long read (O-H23) or a long write (O-M63) is now recorded in four
+  places across two rounds: `platform/core` migrations, mobile checkout, the email scheduler, the
+  inventory handler. If a second phase is funded after the batching class, this is the candidate
+  — it is the only class whose failures are user-visible stalls rather than slowdowns.
+- **Two entries are correctness, not scale, and outrank their size:** O-H24 (double charge) and
+  O-H25 (currency mislabelled). Both were graded Medium by the pass; I promoted them. Cheap to
+  fix, expensive to ship.
+- **The module tier is confirmed clean on money.** `foundation/src` and all `modules/*/src`
+  production code contain **zero `f32`/`f64`**; all money is `i64` minor units and all rates are
+  fixed-point (`rate_millionths`, `rate_bps`, `earn_multiplier_millionths`). The two float-money
+  entries in this round (O-L13, O-L20) are both outside that tier, in `qris-core` and
+  `kasirmu-reporting`.
+- **Stub confirmation, closing the §7 F4 note:** `kitchen`, `purchasing`, `giftcards` and
+  `promotions` are each a single `lib.rs` of 82–90 lines — kernel registration plus a dependency
+  list and three `info!` lifecycle logs. No repository, service, models or handlers. No findings
+  were manufactured for them.
+- **Verified-count honesty:** 21 of the 42 round-3 entries carry ✔ — every High (3/3), plus the
+  Medium entries a fix would be built on and 2 of the 12 Low. The remaining 21 carry ◦ and the
+  audit pass's line references. Nothing in this section was written from recollection.
+- **No crate code has been changed.** Fixes are unfunded until entries are picked from this
+  journal. §5's axes and §6's rules still stand unchanged; O-H23/O-H24/O-H25 are candidates for
+  funding ahead of any axis work, because they are correctness and availability rather than
+  optimization.
