@@ -331,6 +331,76 @@ the committed version passes).
 
 **Commit:** `a45af101a` (BRIDGE-5, bridge).
 
+### Bridge fifth pass — 24-09-26 (non-constant-time comparison)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-6 | MEDIUM | `src/terminals.rs:85` — `verify_binding` | **The device-binding HMAC was compared with `expected == signature`** — `str` equality, which returns at the first differing byte, so the time to rejection leaked how many leading hex characters of a forgery were already correct. That is a byte-at-a-time oracle, and the caller controls the submitted signature. **The verdict is not internal:** it surfaces to the operator as `DeviceBindingDto::signature_valid` (`terminals.rs:370`), so an attacker who can read that flag gets the oracle's answer back directly rather than having to time it. |
+
+**Why this is a genuine finding and not a duplicate.** `workspaces.rs` has its OWN
+binding verifier (`verify_binding_hmac`, `:796`) and it is CORRECT — it uses
+`Mac::verify_slice`, and its doc comment records that the `hex::encode(..) ==`
+form was *replaced there* precisely because it "short-circuits on the first
+differing byte". So the repair was applied to one of two copies;
+`terminals.rs` — the module the keyring constant is actually named for, and
+whose `DEVICE_BINDING_KEYRING_NAME` the `workspaces.rs` copy is documented as a
+"deliberate duplicate" of — kept the defect. The module header even asserts the
+duplication "is not unified here", so nothing was going to converge on its own.
+
+**A workspace-wide sweep for the same shape returned exactly one site.**
+`== (signature|sig|expected|hex_signature|mac|hmac)` and the reversed form both
+match `terminals.rs:86` and nothing else (the other hits are a test helper's
+slice search and `subscription.rs:534`'s comparison against a compiled-in
+`BOOTSTRAP_FREE_SIGNATURE` constant, which is not attacker-controlled).
+
+**How it is pinned, and why two different pins were needed.** A behavioural
+test cannot catch this: the naive comparison accepts and rejects exactly the
+same inputs, so it is a *timing* defect, not a logic one. I verified that
+directly by restoring the old implementation and re-running — the
+accept-the-real-signature / refuse-the-forgery pair passed against BOTH. So the
+suite carries both:
+
+* `verify_binding_accepts_the_real_signature_and_refuses_a_forgery` — the
+  behavioural contract. It now walks byte positions `0, 1, mid, last` of a
+  near-miss forgery (the two ends the short-circuit treated most and least
+  cheaply), plus a signature valid for a DIFFERENT binding, plus malformed and
+  empty input. It guards the contract even though it cannot see the defect.
+* `verify_binding_compares_in_constant_time` — a SOURCE pin (`include_str!` of
+  the module, scanning the verifier body for `verify_slice` and for the three
+  spellings of a string comparison). Same technique
+  `data_tests::import_data_propagates_every_row_write` uses. **Watched to FAIL**
+  by reintroducing the short-circuit, then pass once restored.
+
+**A second, smaller repair in the same function, found while writing the
+tests.** The old `verify_binding` delegated to `sign_binding`, which MINTS a
+keyring secret when none exists. `verify_binding` is called from
+`build_device_binding_dto` — a diagnostic READ — so probing an unbound device
+wrote a secret as a side effect. It now returns `Ok(false)` when no secret
+exists (nothing can have been signed with one) and never writes. Pinned by
+`verify_binding_refuses_when_no_secret_exists_and_stores_nothing`.
+
+**Read:** `terminals.rs` (830, full) and `purchasing.rs` (787, full).
+`purchasing.rs` is clean: every scoped command is the same `resolve_scope` →
+gate → store-lock → single `Store` call, the write paths take
+`PURCHASING_MANAGE` rather than `VIEW` where they mutate (including
+`receive_purchase_order_with_lines_scoped`, with a comment saying why), and
+money is `i64` minor throughout.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- terminals::
+workspaces::` → **50 passed, 0 failed**. My files are clippy-clean.
+
+*Caveat, not mine, and now WORSE than last pass:* the crate-wide run is
+**1381 passed / 14 failed**, every failure in `kds::*` / `kds_routing::*`, all
+from one cause — `table kds_devices has no column named pairing_token_hash`. A
+concurrent agent has the migration (`20261014_kds_drop_pairing_tokens.sql`) and
+the rewritten `kds_devices.rs` **uncommitted** while the previously-applied
+`20261013_kds_pairing_consumption.sql` is already in the tree, so their
+in-flight state is internally inconsistent. Nothing in it touches my modules.
+The already-committed `sync.rs:74` `clippy::collapsible_if` (from
+`5cbcb436d`) also still stands and is likewise theirs.
+
+**Commit:** `cac8658c8` (BRIDGE-6, bridge).
+
 
 
 
