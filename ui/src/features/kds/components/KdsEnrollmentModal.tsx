@@ -36,12 +36,24 @@ type EnrollmentStep = 'form' | 'generating' | 'qr' | 'error';
 const EXIT_MS = 200;
 
 /**
- * KdsEnrollmentModal — handles new KDS device registration via QR-code
- * pairing. The flow is:
- * 1. User enters a display name and selects stations
+ * KdsEnrollmentModal — registers a new KDS display device.
+ *
+ * This is **device registration**, not routing. It answers "which physical
+ * screen is this, and which stations does it display" and nothing more; the
+ * shop's route and hierarchy live in the topology editor. The flow is:
+ * 1. Operator enters a display name and selects stations
  * 2. System generates a time-limited pairing token
- * 3. QR code is displayed for the KDS device to scan
- * 4. KDS device connects with the token, completing enrollment
+ * 3. The code is shown for the operator to record against that screen
+ *
+ * SUPERSEDED DESIGN, do not implement from it: this comment used to end with
+ * "4. KDS device connects with the token, completing enrollment", describing a
+ * scanner client that does not exist and is not needed — a screen does not
+ * have to redeem anything, because the POS registers it here. Nothing in the
+ * codebase consumes the displayed token today. Kept as a note rather than
+ * deleted because the promise is still in the Fluent string
+ * (`kds-enrollment-scan-instruction`: "Scan this QR code with the KDS
+ * device") and in `kds_devices`' `pairing_token_hash`/`pairing_expires_at`
+ * columns — so the next reader meets the same contradiction I did.
  */
 /**
  * Add a station name to the list. Trims whitespace, rejects empty strings and

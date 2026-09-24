@@ -153,6 +153,20 @@ impl Store<'_> {
     /// Order matters: the token is validated (hash + expiry) *before* the
     /// claim, so a wrong code never consumes a good one. A replayed code hits
     /// the `IS NULL` guard and is refused as already-consumed.
+    ///
+    /// **On testing this.** No test races two redemptions, and that is
+    /// deliberate rather than an omission: both shells hand out a single
+    /// connection behind one mutex (`apps/mobile-tauri/src/state.rs:22-25` —
+    /// "a single-connection placeholder"), so two callers serialize *before*
+    /// reaching SQLite. A threaded test would therefore be measuring the mutex
+    /// and would pass even if this WHERE clause were removed — a test that
+    /// cannot fail proves nothing about the guard it claims to cover.
+    ///
+    /// That changes the day connection pooling lands (the same doc comment
+    /// names `r2d2_sqlite`/`deadpool-sqlite` as the intended switch). With
+    /// real concurrent writers this CAS stops being belt-and-braces and
+    /// becomes the only thing preventing a double redemption, and a race test
+    /// becomes both meaningful and necessary. Add it with the pool, not before.
     pub fn consume_pairing_token(
         &self,
         token: &str,

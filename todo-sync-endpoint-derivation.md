@@ -322,17 +322,29 @@ both Tauri commands registered in both shells.
 So the missing piece was never a trust boundary. It was **the last mile: writing the paired
 credential into sync settings**, which §10 records as done (`store_linked_terminal`).
 
-**Two notes for whoever reads this next.**
+**Retraction — an earlier draft of this section slandered a correct document.** I wrote that
+`manager-codebase-review.md:415` was stale because it records the pairing routes as falling through
+to a 404. **It is not stale, and I was reading one paragraph out of context.** That section
+*records the defect and its fix*: the Caddy carve-out was reconciled under commit `65f69112f`, the
+checker `scripts/check-unified-routes.mjs` was added as a required gate, and it demonstrates its own
+non-vacuity by failing when the handle is removed. Re-verified this round:
+`node scripts/check-unified-routes.mjs` → *OK — 7 licence-server route prefix(es), each resolving
+to :8080*, including `/api/v1/pairing/*` (`apps/unified/Caddyfile:66`). The document is accurate and
+current; the error was mine.
 
-1. `manager-codebase-review.md:415` still records these pairing routes as falling through to a
-   plain axum 404. That is stale — they are registered and covered by
-   `apps/license-server/pairing_test.go` (including a re-claim-rejected case at `:115`). Do not
-   trust that file's route census without re-deriving it.
-2. KDS pairing was a **separate, genuinely broken** mechanism and is unrelated to the above.
-   Repaired in `ef0a6ca11`: it had a UI-side producer (`KdsEnrollmentModal.tsx:212-232`) but **no
-   production consumer at all**, and its validator mutated nothing, so a code was replayable for
-   its whole TTL. `issue_pairing_token` and `consume_pairing_token` close both halves. The scanned
-   QR is still not redeemed by anything — that remains open, and is a KDS concern, not a sync one.
+**One note that does stand.** KDS pairing was a separate, genuinely broken mechanism, unrelated to
+the above, and repaired in `ef0a6ca11`. But its shape was **not** what I first wrote either: the
+producer existed (UI-side, `KdsEnrollmentModal.tsx:212-232`) and the validator was correct on hash
+and expiry — the genuine defect was that validation **mutated nothing**, so a code stayed
+replayable for its whole TTL. `issue_pairing_token` and `consume_pairing_token` close that gap.
+
+**There is no missing QR consumer, and no unbuilt surface.** I claimed there was; that was wrong.
+`kds_devices` is **device registration**, not routing: `kds.rs:216-221` — a device is enrolled to
+answer *which physical screen is this, and which stations does it display*. The route and hierarchy
+live in the **topology editor** (`topology.rs`, nodes/wires/stations, vendored contract with a UI
+parity gate). Registration happens from the POS side via `registerKdsDeviceScoped`; nothing needs to
+scan the QR. The four-step comment at `KdsEnrollmentModal.tsx:40-44` still describes a scanner
+client, which is stale prose from a superseded design, not a missing deliverable.
 
 ## 10. Automated Sync Activation upon Linked Enrollment — Implemented (2026-09-25)
 
