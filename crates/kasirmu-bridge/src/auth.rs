@@ -158,6 +158,23 @@ pub struct RefreshPickerTicketResult {
 /// (`require_audit_tier`). It cannot smuggle a real Free tenant into the
 /// table: `apply_debug_upgrade` is `cfg!(debug_assertions)`-gated, so only a
 /// dev build promotes its own active Free row.
+///
+/// MEASURED 2026-09-24, and this is why the value is NOT drift: the flag is a
+/// documented PER-CLIENT policy, not an inconsistency. The shared store says so
+/// itself (`kasirmu-core/src/db/audit_security.rs:379-383`: *"desktop's dev
+/// Free->Premium promotion records in a debug build ... and tablet passes `false`
+/// so it never mirrors the desktop divergence"*). Flipping this site alone — which
+/// R11 asks for on its face, that an audit record must not depend on the build
+/// profile — would collapse a two-shell policy in one line and silently change what
+/// a desktop debug build writes into the security trail.
+///
+/// `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins the asymmetry as text on
+/// all three legs (tablet call, this call, the store doc) and says explicitly that
+/// *"flipping one call site is not a decision about the other"*. So R11 is
+/// SATISFIED IN SCOPE, NOT IN APPLICATION: the tablet already passes `false` and
+/// never mirrors the divergence, which is R11's actual requirement. Merging the two
+/// values is a different decision needing its own ruling, and its own edit to the
+/// store's per-client paragraph.
 pub fn record_security_event(store: &Store, event: &SecurityEvent) {
     match store.record_security_event(event, true) {
         Ok(true) => {}
@@ -828,9 +845,30 @@ pub async fn verify_pin(
 /// session token — proving the caller has already authenticated. The new
 /// ticket is bound to the session's `user_id`, so identity is preserved.
 ///
+/// It is SYNC, and that is the whole reason it needs its own account check
+/// rather than trusting the token. `resolve_session` would verify the account
+/// is still live, but it also takes the identity-DB lock, which a sync fn
+/// cannot `await`; the port therefore dropped the check and kept only the
+/// in-memory lookup. A session minted before a manager DEACTIVATED the account
+/// stays in the map until its TTL (up to 24h) or the 30s revalidation window
+/// happens to be crossed by some OTHER command — so this call laundered a dead
+/// account's token into a fresh 5-minute picker ticket, and the ticket is a
+/// bearer credential for the pre-session workspace picker. The ticket itself
+/// carries no account state, so nothing downstream can re-check it.
+///
+/// The check is done here with `try_lock` rather than by making the fn async.
+/// The grant is a *downgrade* of an existing session, not an authentication,
+/// so a busy identity DB must not become a new failure mode (the same
+/// fail-open posture `revalidate_account` takes). Failing open here is not a
+/// hole: the ticket only reaches the picker, and `create_session` re-derives
+/// the caller's live authority from the database on the next step.
+///
 /// # Errors
 ///
-/// Returns [`BridgeError::InvalidSession`] for an unknown/expired token.
+/// Returns [`BridgeError::InvalidSession`] for an unknown/expired token, and
+/// the same error for an account that is no longer on the live roster
+/// (trashed or deactivated) — identical to `resolve_session`, so a dead
+/// account cannot tell the two apart.
 pub fn refresh_picker_ticket(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
@@ -838,6 +876,27 @@ pub fn refresh_picker_ticket(
     // Verify the existing session token — this proves the caller is already
     // authenticated (STAFF-01 / ADR #4).
     let session = ctx.resolve_session(session_token)?;
+
+    // resolve_session's account check is skipped on the first resolve of a
+    // token (it only starts the window) and is a 30s-cached backstop after
+    // that, so confirm liveness against the row itself.
+    if let Ok(db) = ctx.db.try_lock() {
+        let live = db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM users \
+                 WHERE id = ?1 AND deleted_at IS NULL AND is_active = 1)",
+                rusqlite::params![session.user_id],
+                |row| row.get::<_, bool>(0),
+            )
+            .unwrap_or(true); // fail open on a read error: see the doc above
+        if !live {
+            tracing::warn!(
+                user_id = %session.user_id,
+                "picker ticket refresh denied — account is no longer on the live roster"
+            );
+            return Err(BridgeError::InvalidSession);
+        }
+    }
 
     let now_ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
