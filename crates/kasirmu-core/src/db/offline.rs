@@ -672,6 +672,16 @@ impl Store<'_> {
     /// belongs to a different tenant — a cross-tenant mutation is treated
     /// exactly like a missing item so the client queue boundary is safe by
     /// construction even in a multi-tenant process.
+    ///
+    /// The `status = 'pending'` half of the predicate is not optional and is the
+    /// whole reason this matches [`Self::mark_offline_synced`]: without it a
+    /// tenant-scoped caller resurrected a dead-lettered row, writing
+    /// `status = 'synced'` and an invented `synced_at` over a row whose
+    /// `retry_count` and `last_error` still recorded the failure — an
+    /// internally contradictory row, and one the queue-status summary
+    /// (`SUM(retry_count) WHERE status = 'failed'`) silently stops counting.
+    /// A row that exists but is NOT pending is the idempotent no-op the CAS is
+    /// built to produce, so it returns `Ok(())` rather than erroring.
     pub fn mark_offline_synced_for_tenant(
         &self,
         id: &str,
@@ -679,15 +689,30 @@ impl Store<'_> {
     ) -> Result<(), CoreError> {
         let affected = self.conn.execute(
             "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-             WHERE id = ?1 AND tenant_id = ?2",
+             WHERE id = ?1 AND tenant_id = ?2 AND status = 'pending'",
             params![id, tenant_id],
         )?;
-        if affected == 0 {
+        if affected == 1 {
+            return Ok(());
+        }
+        // rows == 0: one of three cases, and only one is an error. The row is
+        // absent, it belongs to another tenant, or it is present in a
+        // non-pending state. Only the FIRST is NotFound — the same
+        // "probe instead of guessing which one happened" shape
+        // [`Self::mark_synced_on`] uses, narrowed to the tenant.
+        let exists: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE id = ?1 AND tenant_id = ?2",
+            params![id, tenant_id],
+            |row| row.get(0),
+        )?;
+        if exists == 0 {
             return Err(CoreError::NotFound {
                 entity: "offline_queue",
                 id: id.to_owned(),
             });
         }
+        // Present and ours, but not pending: the CAS correctly changed
+        // nothing, which is the no-op it exists to produce.
         Ok(())
     }
 

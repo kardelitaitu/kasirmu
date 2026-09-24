@@ -348,6 +348,51 @@ fn mark_offline_synced_refuses_to_resurrect_dead_lettered_row() {
     assert_eq!(synced_at, "", "no sync timestamp may be invented");
 }
 
+
+/// The TENANT-SCOPED mark must preserve the terminal state exactly as its
+/// unscoped sibling does.
+///
+/// The unscoped variant is a guarded compare-and-set
+/// (`WHERE id = ?1 AND status = 'pending'`) and its doc says why: a stale or
+/// double caller must not "overwrite a dead-lettered (`failed`) row's terminal
+/// state with `synced`". The tenant-scoped variant guards only on `tenant_id`,
+/// so it DID resurrect a failed row — proven by probe: a `failed` row with
+/// `retry_count = 3` and `last_error = 'server error'` came back as
+/// `status = 'synced'` with an invented `synced_at`, while the retry count and
+/// the error text stayed behind, i.e. an internally contradictory row. The
+/// unscoped call on the same row correctly left it `failed`.
+///
+/// Nothing else reads `status = 'failed'` — the dead-letter quarantine lives in
+/// `sync_remote_failures.dead_lettered`, a different table, and retries are
+/// driven from there — so the damage is confined to the queue-status summary
+/// (`SUM(retry_count) WHERE status = 'failed'`), which silently stops counting
+/// the row. That is the same hidden-failure state COR-20 forbids elsewhere in
+/// this module.
+#[test]
+fn tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row() {
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute_batch(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id)
+         VALUES ('oq-f', 'sale.create', '{}', 'failed', 3, 'server error', '2025-01-01T10:00:00.000Z', '', 'tenant-a');"
+    )
+    .unwrap();
+
+    s.mark_offline_synced_for_tenant("oq-f", "tenant-a").unwrap();
+
+    let (status, retry, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-f'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
+}
+
 // ── Mark failed ─────────────────────────────────────────────────
 
 #[test]
