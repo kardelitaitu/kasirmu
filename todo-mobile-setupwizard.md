@@ -26,7 +26,7 @@ All files live at `ui/src/features/setup/mobile/`.
 - [x] Shared CSS module with full dark token palette — `MobileWelcomeFlow.module.css`
 - [x] 44 English FTL strings (`setup-mobile-*`) — `shared-ui/locales/settings.ftl`
 - [x] 44 Indonesian FTL strings — `shared-ui/locales/settings.id.ftl`
-- [x] 11 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx`
+- [x] 12 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx`
 - [x] TypeScript clean — `tsc --noEmit` exit 0
 - [x] ESLint clean — 0 errors
 - [x] Portrait / landscape adaptive CSS — commit `69f80d70f`
