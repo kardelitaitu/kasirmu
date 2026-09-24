@@ -59,7 +59,7 @@ static NEXT_BRIDGE_ID: AtomicU64 = AtomicU64::new(0);
 /// colliding on the same `store-<id>.sqlite` file (the manager creates the
 /// directory lazily on first `open_store`). Leftover directories are left
 /// for the OS temp cleaner, exactly like `AppState::for_test`'s store files.
-fn unique_store_dir() -> PathBuf {
+pub(crate) fn unique_store_dir() -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())

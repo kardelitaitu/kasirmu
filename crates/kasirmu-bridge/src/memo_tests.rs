@@ -8,6 +8,8 @@
 use super::*;
 
 use crate::testing::TestBridge;
+use kasirmu_core::migrations;
+use platform_core::StoreDatabaseManager;
 
 fn memo_dto(location_ids: Vec<String>, published_at: Option<String>) -> MemoDto {
     MemoDto {
@@ -889,3 +891,127 @@ async fn an_unresolved_device_never_pairs_and_falls_back_to_the_stored_key() {
         None
     );
 }
+// -- End to end: the PRODUCTION wiring, where the store database does not
+// exist yet. Every case above builds its bridge with `TestBridge::new()`,
+// whose `provisioned_store_manager()` takes an EMPTY directory and immediately
+// calls `open_store(default)` to seed the baseline. That one call CREATES
+// `<dir>/store-default.sqlite`, so the store database always exists by the time
+// a command runs and the `store_db_exists` guard in
+// `store_registered_terminals` is always satisfied.
+//
+// Production does not do that. `AppState::setup` seeds its baseline into the
+// GLOBAL identity DB (`seed_primary_store` writes the `locations` row into
+// `kasir.db`), while `StoreDatabaseManager` for that same install is handed the
+// same directory and names its files `store-<id>.sqlite`. The two are different
+// files, and nothing creates the second one before the first scoped command.
+//
+// The case below reproduces production: a global DB carrying the seeded
+// baseline, a store manager over the same directory with nothing opened yet.
+#[tokio::test]
+async fn publish_resolves_the_store_terminals_when_the_store_db_is_not_open_yet() {
+    // Global identity DB: migrated + `seed_provisioned_baseline`, exactly what
+    // `AppState::setup` leaves behind (`migrations::run` then `seed_primary_store`).
+    let conn = crate::testing::temp_conn();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_user(&conn, "user-staff", "role-staff");
+
+    // The store manager of the SAME install: a directory that already exists
+    // (as `app_data_dir()` does) but holds no store database yet.
+    let store_dir = crate::testing::unique_store_dir();
+    std::fs::create_dir_all(&store_dir).unwrap();
+    let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
+    let store_db = manager.store_db_path("store-a");
+    assert!(!store_db.exists(), "the premise: nothing has opened this store yet");
+
+    let tb = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    tb.sessions().write().unwrap().insert(
+        "author-tok".into(),
+        session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
+    );
+
+    // The real registration command writes into `store-store-a.sqlite` --
+    // creating it, because a user just asked for a terminal.
+    let registered = register_terminal_scoped(
+        &tb.ctx(),
+        "author-tok",
+        RegisterTerminalArgs {
+            name: "Front POS".into(),
+            device_id: "RESTAURANT-POS".into(),
+            terminal_secret: None,
+            metadata: None,
+        },
+    )
+    .await;
+    if !crate::testing::seeded_row_loads() {
+        crate::testing::assert_refused_by_the_seeded_row(&tb, registered, "free").await;
+        return;
+    }
+    let registered = registered.expect("a manager holds `terminals:register`");
+    assert!(store_db.exists(), "registration creates the store db");
+
+    let memo_id = publish_org_memo(&tb, "author-tok").await;
+
+    let recipients: Vec<String> = {
+        let db = tb.ctx().lock_global().await;
+        let mut s = db
+            .prepare("SELECT terminal_id FROM memo_recipients WHERE memo_id = ?1")
+            .unwrap();
+        s.query_map(rusqlite::params![&memo_id], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(
+        recipients,
+        vec![registered.id.clone()],
+        "a terminal registered in the store db must receive the memo: the fan-out only addresses the global `terminals` table, so the publish has to mirror it there first -- and it only knows about it if the store db is read",
+    );
+}
+// -- The window the `store_db_exists` guard actually creates. --
+//
+// `store_registered_terminals` returns an empty list WITHOUT opening anything
+// when the session's store database is not on disk. That is the right call for
+// the memo read path (opening would create the file), but it also means a
+// publish from such a store reads no store terminals and mirrors none. If the
+// global identity DB already holds terminals, the fan-out still resolves them
+// and the memo is delivered -- so nothing is lost. This case pins that,
+// because the guard is the kind of early return that could start dropping
+// recipients if the fan-out ever moved off the global table.
+#[tokio::test]
+async fn publishing_from_a_store_whose_db_is_absent_still_reaches_global_terminals() {
+    let conn = crate::testing::temp_conn();
+    seed_user(&conn, "user-manager", "role-manager");
+    seed_terminal(&conn, "term-global-1", "DESKTOP-AUTHOR");
+
+    let store_dir = crate::testing::unique_store_dir();
+    let manager = StoreDatabaseManager::new(store_dir, migrations::ALL);
+    let tb = TestBridge::new().with_conn(conn).with_db_manager(manager);
+    tb.sessions().write().unwrap().insert(
+        "author-tok".into(),
+        session_for_device("user-manager", "role-manager", "DESKTOP-AUTHOR"),
+    );
+    let store_id = tb.ctx().resolve_session("author-tok").unwrap().store_id;
+    assert!(
+        !tb.ctx().db_manager.store_db_exists(&store_id),
+        "premise: the session's store db is absent",
+    );
+
+    let memo_id = publish_org_memo(&tb, "author-tok").await;
+    let recipients: Vec<String> = {
+        let db = tb.ctx().lock_global().await;
+        let mut s = db
+            .prepare("SELECT terminal_id FROM memo_recipients WHERE memo_id = ?1")
+            .unwrap();
+        s.query_map(rusqlite::params![&memo_id], |r| r.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(
+        recipients,
+        vec!["term-global-1".to_string()],
+        "a terminal already in the global table must receive the memo even when the session's own store db has never been created",
+    );
+}
+
+

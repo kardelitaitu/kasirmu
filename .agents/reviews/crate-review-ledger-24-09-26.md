@@ -2333,3 +2333,66 @@ bodies actually live.
 **No probe was needed.** Findings are three mechanical sweeps plus a full read of
 the two files that define the crate's contract; no test file was modified and
 `git status --porcelain -- crates/kasirmu-bridge` is empty.
+---
+
+## Pass 35 — `license_verification.rs` (1,194) and the memo store-DB guard
+
+**Method:** full module read of `crates/kasirmu-core/src/license_verification.rs`,
+then a hypothesis-driven trace of the `store_db_exists` guard in
+`crates/kasirmu-bridge/src/memo.rs`.
+
+### Cleared: `license_verification.rs`
+
+| Surface | Verdict |
+|---|---|
+| `verify_license_signature` | Clean. The `#[cfg(debug_assertions)]` sentinel short-circuit is documented as debug-only; the release policy lives in `TenantSubscription::verify_signature` (`subscription.rs:534`) and honours the sentinel only for `tier_key() == "free", so a sentinel-signed *paid* row falls through to base64 decode and is rejected. |
+| `verify_crl_signature` / `_with_pem` | Clean. Real PKCS1v15 + SHA-256 verify against the embedded PEM **before** the payload is parsed — parse-after-verify, not before. |
+| `is_revoked_in_crl_payload` | Clean. Tenant, device, and license key by exact value *and* SHA-256 digest. |
+| `apply_crl_to_cache` | Clean. Delegates to `refresh_subscription_status_from_server` instead of duplicating the revocation write, so the CRL path and the status path cannot drift. |
+| `apply_license_verdict_to_cache` | Clean. Cache write precedes the return by design (section 2.5 ordering), fail-open on write failure, `hardware_verified == Some(false)` folded into `device_revoked`. |
+| `store_subscription` | Clean, and the `tenant_subscription.api_key` cleartext window is **already documented** at lines 1004-1024 as parked, with its reason (dropping the column mutates hosted merchant DBs). Not a new finding. |
+
+### Disproved lead: the `store_db_exists` guard in `store_registered_terminals`
+
+**Hypothesis (WRONG).** `crates/kasirmu-bridge/src/memo.rs:254` short-circuits on
+`!store_db_exists(store_id)`. I claimed a fresh install's store DB does not exist
+when the first memo is published, so a store-registered terminal would be silently
+un-mirrored and the memo delivered to nobody.
+
+**How it was tested.** Reproduced the production wiring in a new test: a global DB
+carrying the provisioned baseline, plus a `StoreDatabaseManager` over a directory
+with **no** `store-a.sqlite`, then ran the real `register_terminal_scoped` and
+`publish_memo_scoped`. Measured at publish time:
+
+```
+DBG store_id=store-a store_db_exists=true    <- the guard is SATISFIED
+DBG foreign_keys=1
+DBG recipients-rows=1
+DBG global-terminals-AFTER=1
+DBG registered-in-global=1                   <- the mirror happened
+```
+
+**Why the premise fails.** `register_terminal_scoped` is a *scoped* command: it
+calls `open_store`, which **creates** `store-<id>.sqlite` before publish ever runs.
+So the 'store DB absent' window cannot survive any terminal registration — and if
+no terminal was ever registered there is no terminal to miss, in which case the
+zero-recipient fan-out refusal fires correctly. The guard is sound.
+
+**Kept anyway, as pins rather than repros.** Two tests added to `memo_tests.rs`.
+They pass against HEAD and are documented as regression pins for a guard that is
+easy to invalidate by moving the fan-out off the global table:
+
+- `publish_resolves_the_store_terminals_when_the_store_db_is_not_open_yet`
+- `publishing_from_a_store_whose_db_is_absent_still_reaches_global_terminals`
+
+Harness deltas, kept minimal: `mod testing` widened to `pub(crate)` and
+`unique_store_dir` to `pub(crate)`, so a test can build the production directory
+shape. No `pub` was introduced.
+
+**Lesson (recurring).** A setup command that *exercises the code under test* can
+erase the very precondition the test is built on: `register_terminal_scoped`
+created the store DB the hypothesis needed to be absent. Probe the precondition
+**at the moment of the act**, not at setup.
+
+**Tally:** 19 findings fixed (5 HIGH), 8 leads disproved.
+

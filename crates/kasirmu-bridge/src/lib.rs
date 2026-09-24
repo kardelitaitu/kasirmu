@@ -159,4 +159,4 @@ pub mod tables;
 pub mod terminals;
 
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
