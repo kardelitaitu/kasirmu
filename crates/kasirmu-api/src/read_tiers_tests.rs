@@ -230,28 +230,65 @@ fn dashboard_preset_disjoint_from_pii_routes() {
 
 #[test]
 fn read_key_map_covers_all_protected_get_routes() {
-    // Every image + product + reference GET route in the router must have
-    // a read-key entry. This mirrors the OpenAPI drift-guard assertion.
-    let expected_paths = [
-        "/api/v1/products",
-        "/api/v1/products/{sku}",
-        "/api/v1/categories",
-        "/api/v1/exchange-rates",
-        "/api/v1/exchange-rates/latest",
-        "/api/v1/exchange-rates/latest/{from}/{to}",
-        "/api/v1/tenants/me/plan",
-        "/api/v1/sales/{id}",
-        "/api/v1/images:pack",
-        "/api/v1/images:missing",
-        "/api/v1/images/{hash16}",
+    // API-B: this test used to assert against a HAND-TYPED list of paths, so
+    // adding a route to the router without adding it to READ_KEY_MAP changed
+    // nothing and the suite stayed green — which is how GET /api/v1/memos/active
+    // came to be unmapped while the gate passed it through unchecked. It now
+    // reads the ROUTER SOURCE and derives the route set from it.
+    //
+    // Parsing source is the available option: axum does not expose route
+    // enumeration on `Router`. The parse is deliberately dumb (find `.route(`,
+    // take the quoted path, look for a `get(` in the same call) and its failure
+    // mode is a MISSED route, not a false alarm — so it can only under-report,
+    // never wrongly fail.
+    let src = include_str!("lib.rs");
+
+    // Routes that are intentionally NOT in READ_KEY_MAP: public (no auth), or
+    // GET-with-no-read-key because the handler does its own gate.
+    let exempt: &[&str] = &[
+        "/api/v1/health",       // public
+        "/api/v1/settings",     // admin-key gated in the handler
+        "/api/openapi.json",    // public document
+        "/api/v1/terminals",    // POST-only registration
+        "/api/v1/tokens",       // POST-only mint
     ];
-    for p in &expected_paths {
-        assert!(
-            READ_KEY_MAP.iter().any(|e| e.path == *p),
-            "READ_KEY_MAP missing route {}",
-            p
-        );
+
+    let mut get_routes: Vec<String> = Vec::new();
+    for chunk in src.split(".route(").skip(1) {
+        // The path is the first quoted literal in the call.
+        let Some(open) = chunk.find('"') else { continue };
+        let rest = &chunk[open + 1..];
+        let Some(close) = rest.find('"') else { continue };
+        let path = &rest[..close];
+        // Only GET routes are read-gated. The call's own text runs to the next
+        // `.route(` boundary; look for a `get(` there.
+        if chunk.contains("get(") {
+            get_routes.push(path.to_string());
+        }
     }
+
+    assert!(
+        get_routes.len() >= 10,
+        "the router parse found only {} GET routes — the parse itself broke,          so this test would pass vacuously: {get_routes:?}",
+        get_routes.len()
+    );
+
+    let mut missing: Vec<&String> = Vec::new();
+    for path in &get_routes {
+        if exempt.contains(&path.as_str()) {
+            continue;
+        }
+        if !READ_KEY_MAP.iter().any(|e| e.path == path) {
+            missing.push(path);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "READ_KEY_MAP is missing GET route(s) that the router registers, so the \
+         read gate would pass them through unchecked (API-A): {missing:?}. Add a \
+         ReadKeyEntry for each, or add it to the `exempt` list with a reason."
+    );
 }
 
 // ── Tier matrix (spec 0047 F3) ──────────────────────────────────────

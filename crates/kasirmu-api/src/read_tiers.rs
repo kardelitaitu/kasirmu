@@ -93,6 +93,17 @@ pub const READ_KEY_MAP: &[ReadKeyEntry] = &[
         key: "sales:view",
         pii: true, // customer refs + notes can ride sale payloads
     },
+    // ── Memos (API-A) ────────────────────────────────────────────
+    // This route is on the protected router but was MISSING from this map, and
+    // the gate passes any unmapped path through — so a read-scoped token
+    // reached it with no permission check. It carries terminal-scoped
+    // operational messages, so it belongs to the sales read tier.
+    ReadKeyEntry {
+        method: "GET",
+        path: "/api/v1/memos/active",
+        key: "sales:view",
+        pii: false,
+    },
     // ── Images (spec 0046b) ──────────────────────────────────────
     ReadKeyEntry {
         method: "GET",
