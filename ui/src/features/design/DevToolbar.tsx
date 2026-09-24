@@ -66,7 +66,7 @@ const THEMES: ThemeOption[] = [
   { key: 'dark', label: 'Dark', icon: <MoonIcon />, swatches: ['#080e16', '#5a9fd4', '#cddff0'] },
 ];
 
-const STORAGE_POS = 'oz-pos-dev-toolbar-pos';
+const STORAGE_POS = 'kasirmu-dev-toolbar-pos';
 
 // The toolbar is a fixed 256×256 panel (DevToolbar.css). Clamping keeps
 // at least the drag handle on-screen: without it, a position saved on a

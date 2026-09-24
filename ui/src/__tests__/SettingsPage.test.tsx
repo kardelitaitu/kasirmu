@@ -138,7 +138,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version_scoped') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
     // Unscoped legacy twins — BrandProvider/SettingsContext hit these when no
     // session token is present (and BrandContext.tsx:54 always uses the
@@ -166,7 +166,7 @@ const { invokeMock, defaultImpl, failCommands } = vi.hoisted(() => {
       return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
     }
     if (cmd === 'version') {
-      return Promise.resolve({ name: 'oz-pos', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
+      return Promise.resolve({ name: 'kasirmu-app', version: '0.0.4', rustVersion: '1.80', target: 'x86_64' });
     }
     return Promise.resolve(undefined);
   };

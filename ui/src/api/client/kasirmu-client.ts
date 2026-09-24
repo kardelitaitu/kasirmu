@@ -1,9 +1,9 @@
-//! Main OZ-POS API client — typed access to all 20+ cloud server endpoints.
+//! Main kasir.mu API client — typed access to all 20+ cloud server endpoints.
 //!
 //! ```ts
-//! import { OZPosClient } from '@/api/client';
+//! import { KasirMuClient } from '@/api/client';
 //!
-//! const client = new OZPosClient({ baseUrl: 'http://localhost:3099' });
+//! const client = new KasirMuClient({ baseUrl: 'http://localhost:3099' });
 //! client.setToken('eyJ...');
 //!
 //! // Health — no auth needed
@@ -53,7 +53,7 @@ import { SalesClient } from './sales';
 import { SyncClient } from './sync';
 import { WebhooksClient } from './webhooks';
 
-export class OZPosClient {
+export class KasirMuClient {
   private readonly http: HttpClient;
 
   /** Health endpoints — no auth required. */

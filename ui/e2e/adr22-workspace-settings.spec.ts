@@ -79,7 +79,7 @@ test.describe('ADR #22 — Topology surface (Locations dashboard)', () => {
     // Park the DevToolbar off-screen before the app boots: it floats
     // bottom-right by default and can swallow clicks aimed at the page.
     await page.addInitScript(() => {
-      localStorage.setItem('oz-pos-dev-toolbar-pos', JSON.stringify({ x: -400, y: -400 }));
+      localStorage.setItem('kasirmu-dev-toolbar-pos', JSON.stringify({ x: -400, y: -400 }));
     });
     await loginAs(page, 'admin', '9999');
     await selectWorkspace(page, WORKSPACES.ADMIN);

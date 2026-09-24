@@ -1,15 +1,15 @@
-//! Barrel export for the OZ-POS API client SDK.
+//! Barrel export for the kasir.mu API client SDK.
 //!
 //! ```ts
-//! import { OZPosClient } from '@/api/client';
+//! import { KasirMuClient } from '@/api/client';
 //!
-//! const client = new OZPosClient({ baseUrl: 'http://localhost:3099' });
+//! const client = new KasirMuClient({ baseUrl: 'http://localhost:3099' });
 //! client.setToken('eyJ...');
 //! const health = await client.health.check();
 //! const products = await client.products.list();
 //! ```
 
-export { OZPosClient } from './oz-pos-client';
+export { KasirMuClient } from './kasirmu-client';
 export { ApiError, HttpClient, type ClientConfig, type HttpMethod } from './client';
 export type * from './types';
 export type { TaxRate } from './tax';

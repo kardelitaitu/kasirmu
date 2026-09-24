@@ -1,4 +1,4 @@
-//! Shared types for the OZ-POS cloud server API client.
+//! Shared types for the kasir.mu cloud server API client.
 //!
 //! All types are derived from the OpenAPI 3.1 specification served at
 //! `GET /api/openapi.json`. They are hand-maintained here to provide

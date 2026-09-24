@@ -1,4 +1,4 @@
-//! Integration tests for the OZ-POS API client SDK.
+//! Integration tests for the kasir.mu API client SDK.
 //!
 //! Uses MSW (Mock Service Worker) to intercept HTTP requests and
 //! verify typed request/response contracts for all 20+ endpoints.
@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { OZPosClient, ApiError } from '@/api/client';
+import { KasirMuClient, ApiError } from '@/api/client';
 
 const BASE_URL = 'http://test-server';
 
@@ -16,8 +16,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function createClient(): OZPosClient {
-  return new OZPosClient({ baseUrl: BASE_URL });
+function createClient(): KasirMuClient {
+  return new KasirMuClient({ baseUrl: BASE_URL });
 }
 
 // ── Health ─────────────────────────────────────────────────────────

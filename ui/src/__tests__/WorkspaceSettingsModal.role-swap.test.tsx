@@ -104,7 +104,7 @@ vi.mock('@/api/settings', () => ({
 vi.mock('@/api/offline', () => ({ getSyncSettingsScoped: vi.fn(() => Promise.resolve({ serverUrl: null, hasApiKey: false, enabled: false })) }));
 vi.mock('@/api/currency', () => ({ listCurrenciesScoped: vi.fn(() => Promise.resolve([{ code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' }])) }));
 vi.mock('@/api/branding', () => ({ getBrandSettingsScoped: vi.fn(() => Promise.resolve({ primary_colour: '#147EFB', logo_path: null, store_name: '' })) }));
-vi.mock('@/api/system', () => ({ getVersionScoped: vi.fn(() => Promise.resolve({ name: 'oz-pos', version: '0.0.19', rustVersion: '1.80', target: 'x86_64' })) }));
+vi.mock('@/api/system', () => ({ getVersionScoped: vi.fn(() => Promise.resolve({ name: 'kasirmu-app', version: '0.0.19', rustVersion: '1.80', target: 'x86_64' })) }));
 
 // ── Minimal Fluent l10n ─────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Playwright configuration for OZ-POS E2E tests.
+ * Playwright configuration for kasir.mu E2E tests.
  *
  * Tests run against the Vite dev server (port 1421 by default) which serves the
  * React app with mocked Tauri IPC (`dev-mock/tauri-api.ts`).  No Rust

@@ -209,7 +209,7 @@ const { invokeMock, defaultImpl } = vi.hoisted(() => {
         return { primary_colour: '#147EFB', logo_path: null, store_name: '' };
       case 'get_app_version':
       case 'version_scoped':
-        return { name: 'oz-pos', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' };
+        return { name: 'kasirmu-app', version: '0.0.9', rustVersion: '1.80', target: 'x86_64' };
       case 'check_license_status':
         return { tier: 'pro', tenantId: 'tenant-1', status: 'active', active: true, expiresAt: null, maxLocations: 5 };
       case 'pending_sync_count':

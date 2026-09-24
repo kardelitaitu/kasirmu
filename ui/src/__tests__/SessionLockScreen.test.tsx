@@ -32,7 +32,7 @@ vi.mock('@/api/license', () => ({
 vi.mock('@/api/system', () => ({
   getVersion: () =>
     Promise.resolve({
-      name: 'oz-pos',
+      name: 'kasirmu-app',
       version: '0.0.36',
       rustVersion: '1.80',
       target: 'x86_64',

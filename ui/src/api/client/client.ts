@@ -1,10 +1,10 @@
-//! Typed HTTP API client for the OZ-POS cloud server.
+//! Typed HTTP API client for the kasir.mu cloud server.
 //!
 //! Usage:
 //! ```ts
-//! import { OZPosClient } from '@/api/client';
+//! import { KasirMuClient } from '@/api/client';
 //!
-//! const client = new OZPosClient({ baseUrl: 'http://localhost:3099' });
+//! const client = new KasirMuClient({ baseUrl: 'http://localhost:3099' });
 //! client.setToken('eyJ...');
 //!
 //! const products = await client.products.list();
@@ -63,7 +63,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * Core HTTP client with Bearer token management.
  *
  * Applications should use the domain-specific sub-clients
- * exposed through {@link OZPosClient} rather than calling
+ * exposed through {@link KasirMuClient} rather than calling
  * `request()` directly.
  */
 export class HttpClient {
