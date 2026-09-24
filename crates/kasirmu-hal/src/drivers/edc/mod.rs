@@ -19,6 +19,7 @@ next: real vendor protocol handlers, then registry-driven registration from the 
 //! for every operation — deliberately fail-closed so an unimplemented
 //! terminal can never be mistaken for one that approved a card.
 
+pub mod loopback;
 pub mod protocol;
 pub mod wired;
 pub mod wireless;
@@ -26,6 +27,7 @@ pub mod wireless;
 pub use protocol::{
     ProtocolCodec, ProtocolMessage, ingenico::IngenicoCodec, pax::PaxCodec, verifone::VerifoneCodec,
 };
+pub use loopback::{EdcBehaviour, LoopbackEdcTerminal};
 pub use wired::WiredEdcTerminal;
 pub use wireless::{WirelessEdcTerminal, WirelessTarget};
 
