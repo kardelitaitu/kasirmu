@@ -6,3 +6,4 @@ export { MobileGoogleAuthModal } from './MobileGoogleAuthModal';
 export type { GoogleAccount } from './MobileGoogleAuthModal';
 export { MobileEmailAuthModal } from './MobileEmailAuthModal';
 export { MobileQrPairingModal } from './MobileQrPairingModal';
+export { registerMobileSetupFeature } from './register';

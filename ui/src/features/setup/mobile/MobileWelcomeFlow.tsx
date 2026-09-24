@@ -15,6 +15,9 @@ export interface MobileWelcomeFlowProps {
   pairingUrl?: string | undefined;
   pairingCode?: string | undefined;
   googleAccounts?: readonly GoogleAccount[] | undefined;
+  isLoading?: boolean | undefined;
+  error?: string | null | undefined;
+  onRefreshPairing?: (() => void) | undefined;
 }
 
 export function MobileWelcomeFlow({
@@ -24,6 +27,9 @@ export function MobileWelcomeFlow({
   pairingUrl,
   pairingCode,
   googleAccounts,
+  isLoading,
+  error,
+  onRefreshPairing,
 }: MobileWelcomeFlowProps) {
   const [screen, setScreen] = useState<MobileScreenState>(initialScreen);
 
@@ -71,6 +77,8 @@ export function MobileWelcomeFlow({
             onBack={() => goTo('hub')}
             onSelectAccount={handleGoogleAccountSelected}
             {...(googleAccounts !== undefined ? { accounts: googleAccounts } : {})}
+            {...(isLoading !== undefined ? { isLoading } : {})}
+            {...(error !== undefined ? { error } : {})}
           />
         )}
 
@@ -78,6 +86,8 @@ export function MobileWelcomeFlow({
           <MobileEmailAuthModal
             onBack={() => goTo('hub')}
             onSubmit={handleEmailSubmitted}
+            {...(isLoading !== undefined ? { isLoading } : {})}
+            {...(error !== undefined ? { error } : {})}
           />
         )}
 
@@ -86,6 +96,9 @@ export function MobileWelcomeFlow({
             onBack={() => goTo('hub')}
             {...(pairingUrl !== undefined ? { pairingUrl } : {})}
             {...(pairingCode !== undefined ? { pairingCode } : {})}
+            {...(isLoading !== undefined ? { isLoading } : {})}
+            {...(error !== undefined ? { error } : {})}
+            {...(onRefreshPairing !== undefined ? { onRefresh: onRefreshPairing } : {})}
           />
         )}
       </div>

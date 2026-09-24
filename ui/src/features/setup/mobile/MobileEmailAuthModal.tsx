@@ -6,12 +6,16 @@ export interface MobileEmailAuthModalProps {
   onBack: () => void;
   onSubmit: (credentials: { email: string; password?: string | undefined }) => void;
   onForgotPassword?: (() => void) | undefined;
+  isLoading?: boolean | undefined;
+  error?: string | null | undefined;
 }
 
 export function MobileEmailAuthModal({
   onBack,
   onSubmit,
   onForgotPassword,
+  isLoading = false,
+  error,
 }: MobileEmailAuthModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,10 +23,10 @@ export function MobileEmailAuthModal({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      if (!email.trim()) return;
+      if (!email.trim() || isLoading) return;
       onSubmit({ email: email.trim(), password });
     },
-    [email, password, onSubmit],
+    [email, password, isLoading, onSubmit],
   );
 
   return (
@@ -42,6 +46,13 @@ export function MobileEmailAuthModal({
       </nav>
 
       <section className={styles['authModalCard']} aria-labelledby="email-auth-heading">
+        {error && (
+          <div className={styles['errorMessage']} role="alert" data-testid="mobile-email-error">
+            <span aria-hidden="true">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className={styles['modalTitleSection']}>
           <h2 id="email-auth-heading" className={styles['modalTitle']}>
             <Localized id="setup-mobile-auth-email-title">
@@ -72,6 +83,7 @@ export function MobileEmailAuthModal({
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
+              disabled={isLoading}
               data-testid="mobile-email-input"
             />
           </div>
@@ -87,6 +99,7 @@ export function MobileEmailAuthModal({
                   type="button"
                   className={styles['forgotPasswordLink']}
                   onClick={onForgotPassword}
+                  disabled={isLoading}
                   data-testid="mobile-forgot-password-link"
                 >
                   <Localized id="setup-mobile-email-forgot">
@@ -103,6 +116,7 @@ export function MobileEmailAuthModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
+              disabled={isLoading}
               data-testid="mobile-password-input"
             />
           </div>
@@ -111,12 +125,19 @@ export function MobileEmailAuthModal({
             type="submit"
             className={styles['primaryCtaBtn']}
             style={{ marginTop: 'var(--space-2)' }}
-            disabled={!email.trim()}
+            disabled={!email.trim() || isLoading}
             data-testid="mobile-email-submit-btn"
           >
-            <Localized id="setup-mobile-email-submit">
-              <span>Masuk →</span>
-            </Localized>
+            {isLoading ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <span className={styles['spinner']} aria-hidden="true" />
+                <span>Memproses...</span>
+              </span>
+            ) : (
+              <Localized id="setup-mobile-email-submit">
+                <span>Masuk →</span>
+              </Localized>
+            )}
           </button>
         </form>
 

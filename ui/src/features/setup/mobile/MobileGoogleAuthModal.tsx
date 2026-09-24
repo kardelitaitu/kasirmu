@@ -30,12 +30,16 @@ export interface MobileGoogleAuthModalProps {
   onBack: () => void;
   onSelectAccount: (email: string) => void;
   accounts?: readonly GoogleAccount[] | undefined;
+  isLoading?: boolean | undefined;
+  error?: string | null | undefined;
 }
 
 export function MobileGoogleAuthModal({
   onBack,
   onSelectAccount,
   accounts = DEFAULT_ACCOUNTS,
+  isLoading = false,
+  error,
 }: MobileGoogleAuthModalProps) {
   return (
     <div className={styles['authModalRoot']} data-testid="mobile-google-auth-view">
@@ -58,6 +62,13 @@ export function MobileGoogleAuthModal({
           Google
         </div>
 
+        {error && (
+          <div className={styles['errorMessage']} role="alert" data-testid="mobile-google-error">
+            <span aria-hidden="true">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         <div className={styles['modalTitleSection']}>
           <h2 id="google-auth-title" className={styles['modalTitle']}>
             <Localized id="setup-mobile-google-title">
@@ -72,6 +83,23 @@ export function MobileGoogleAuthModal({
         </div>
 
         <div className={styles['accountsList']} role="list">
+          {isLoading && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 'var(--space-2)',
+                padding: 'var(--space-3)',
+              }}
+              data-testid="mobile-google-loading"
+            >
+              <span className={styles['spinner']} aria-hidden="true" />
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
+                Menghubungkan akun Google...
+              </span>
+            </div>
+          )}
           {accounts.map((acc, index) => {
             const letter = acc.avatarLetter ?? acc.name.charAt(0).toUpperCase();
             const color = acc.avatarColor ?? '#3b82f6';
@@ -82,6 +110,7 @@ export function MobileGoogleAuthModal({
                 type="button"
                 className={styles['accountCardBtn']}
                 onClick={() => onSelectAccount(acc.email)}
+                disabled={isLoading}
                 data-testid={testId}
               >
                 <div

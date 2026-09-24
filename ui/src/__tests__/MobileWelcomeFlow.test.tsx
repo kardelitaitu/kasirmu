@@ -147,5 +147,56 @@ describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
     fireEvent.click(screen.getByTestId('google-account-admin'));
     expect(onProvisioned).toHaveBeenCalledTimes(1);
   });
+
+  it('displays error and loading spinner in Google Auth view', () => {
+    renderWithFluentSync(
+      <MobileWelcomeFlow
+        initialScreen="google"
+        isLoading={true}
+        error="Gagal menghubungkan ke server Google"
+      />,
+      settingsFtl,
+    );
+
+    expect(screen.getByTestId('mobile-google-error')).toBeInTheDocument();
+    expect(screen.getByText('Gagal menghubungkan ke server Google')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-google-loading')).toBeInTheDocument();
+  });
+
+  it('displays error and disabled loading state in Email Auth view', () => {
+    renderWithFluentSync(
+      <MobileWelcomeFlow
+        initialScreen="email"
+        isLoading={true}
+        error="Kredensial email tidak valid"
+      />,
+      settingsFtl,
+    );
+
+    expect(screen.getByTestId('mobile-email-error')).toBeInTheDocument();
+    expect(screen.getByText('Kredensial email tidak valid')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-email-input')).toBeDisabled();
+    expect(screen.getByTestId('mobile-password-input')).toBeDisabled();
+    expect(screen.getByTestId('mobile-email-submit-btn')).toBeDisabled();
+  });
+
+  it('renders camera video element and handles skeleton state in QR Pairing view', () => {
+    renderWithFluentSync(
+      <MobileWelcomeFlow
+        initialScreen="qr"
+        isLoading={true}
+        error="Kamera tidak dapat diakses"
+        onRefreshPairing={vi.fn()}
+      />,
+      settingsFtl,
+    );
+
+    expect(screen.getByTestId('mobile-qr-error')).toBeInTheDocument();
+    expect(screen.getByText('Kamera tidak dapat diakses')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-qr-video')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-qr-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-qr-retry-btn')).toBeInTheDocument();
+  });
 });
+
 
