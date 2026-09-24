@@ -26,6 +26,68 @@ fn sql_validation_regexes_compile() {
     }
 }
 
+// ── PLG-A: comments cannot hide a table reference ───────────────────
+
+/// Every comment form that used to defeat the extraction regexes must now be
+/// rejected. The regexes anchor the table name to its keyword with whitespace,
+/// so a comment between the two extracted ZERO tables and the statement passed
+/// validation — reaching the core schema with no quoting at all.
+#[test]
+fn validate_sql_rejects_comments_between_keyword_and_table() {
+    let prefix = "plugin_my_plugin_";
+    let bypasses = [
+        "DELETE FROM/**/sales",
+        "SELECT * FROM--x\n sales",
+        "CREATE TABLE/**/sales (id INT)",
+        "UPDATE/**/users SET x=1",
+        "INSERT INTO/**/products VALUES (1)",
+        "SELECT * FROM plugin_my_plugin_a JOIN/**/sales ON 1",
+        "DELETE FROM /* c */ sales",
+    ];
+    for sql in bypasses {
+        let result = validate_sql(sql, prefix);
+        assert!(
+            result.is_err(),
+            "comment-hidden core table must be rejected: {sql:?} -> {result:?}"
+        );
+    }
+}
+
+/// The prefixed form must still pass once comments are stripped — the fix
+/// removes comments, it does not refuse every commented statement.
+#[test]
+fn validate_sql_still_accepts_prefixed_tables_behind_comments() {
+    let prefix = "plugin_my_plugin_";
+    for sql in [
+        "SELECT * FROM/**/plugin_my_plugin_items",
+        "UPDATE/* c */plugin_my_plugin_items SET x=1",
+    ] {
+        assert!(
+            validate_sql(sql, prefix).is_ok(),
+            "a prefixed table behind a comment must still pass: {sql:?}"
+        );
+    }
+}
+
+/// A comment marker inside a string literal is data, not a comment: stripping
+/// must not eat the rest of the statement.
+#[test]
+fn strip_sql_comments_leaves_string_literals_intact() {
+    let stripped = strip_sql_comments("SELECT '--not a comment' FROM plugin_x_items");
+    assert!(
+        stripped.contains("--not a comment"),
+        "a quoted comment marker must survive: {stripped:?}"
+    );
+    assert!(
+        stripped.contains("plugin_x_items"),
+        "the table after the literal must survive: {stripped:?}"
+    );
+    // And a real comment is still removed.
+    let stripped = strip_sql_comments("SELECT 1 -- gone\nFROM plugin_x_items");
+    assert!(!stripped.contains("gone"), "a real line comment must go");
+    assert!(stripped.contains("plugin_x_items"));
+}
+
 // ── SQL Validator Tests ─────────────────────────────────────────────
 
 #[test]
