@@ -582,17 +582,42 @@ fn catalog_count(conn: &rusqlite::Connection) -> i64 {
 #[test]
 fn import_data_propagates_every_row_write() {
     let src = include_str!("data.rs");
-    let mut offenders: Vec<(usize, String)> = Vec::new();
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim();
-        if t.starts_with("let _ = tx.execute(") {
-            offenders.push((i + 1, t.to_string()));
+    // WHITESPACE-NORMALISED, for the reason the sibling `pos_tests.rs` scan
+    // records: a line-based scan is evaded by FORMATTING ALONE. This one tested
+    // `t.starts_with("let _ = tx.execute(")` line by line, so writing the
+    // discarded result as
+    //
+    //     let _ =
+    //     tx.execute(
+    //
+    // restored BRIDGE-1 in full — every row-write error discarded while the
+    // counter still incremented — and this test PASSED. Verified by doing exactly
+    // that. Collapsing whitespace first makes the scan independent of wrapping.
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // A FLOOR so it cannot pass by finding nothing: the nine import arms each
+    // write inside this transaction, so a healthy tree must show several calls.
+    // Without it, a rename that stops the pattern matching reads as a clean
+    // sweep — the "decoration wearing a drift pin" failure mode.
+    let call_sites = flat.matches("tx.execute(").count();
+    assert!(
+        call_sites >= 5,
+        "expected several tx.execute() calls in data.rs, found {call_sites} - the scan is reading a file that no longer spells them, so this test would pass vacuously"
+    );
+
+    let mut offenders: Vec<&str> = Vec::new();
+    for needle in [
+        "let _ = tx.execute(",
+        "let _ = tx.execute (",
+        "let _ =tx.execute(",
+    ] {
+        if flat.contains(needle) {
+            offenders.push(needle);
         }
     }
     assert!(
         offenders.is_empty(),
-        "a discarded tx.execute() in import_data reports rows the database \
-         refused as imported; propagate with '?' instead: {offenders:?}"
+        "a discarded tx.execute() in import_data reports rows the database refused as imported; propagate with '?' instead: {offenders:?}"
     );
 }
 

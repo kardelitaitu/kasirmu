@@ -116,6 +116,22 @@ fn verify_binding_compares_in_constant_time() {
     let end = body.find("\n}").expect("verify_binding must have a body");
     let body = &body[..end];
 
+    // A FLOOR, load-bearing here rather than decorative: the two expects above
+    // prove the MARKER was found, not that the extracted region is the function.
+    // A body sliced short - an earlier `\n}` closing a nested block, a reordered
+    // signature - satisfies both while containing none of the code under test, and
+    // every assertion below would then pass by inspecting nothing. Same failure
+    // mode the sibling scans in `pos_tests.rs` and `data_tests.rs` now guard too.
+    assert!(
+        body.len() > 200,
+        "extracted only {} bytes for verify_binding, which cannot be the whole function - the scan is reading a region that no longer holds it",
+        body.len()
+    );
+    assert!(
+        body.contains("keyring"),
+        "the extracted region does not look like the verifier body: {body}"
+    );
+
     assert!(
         body.contains("verify_slice"),
         "verify_binding must use Mac::verify_slice (constant-time); a string
