@@ -17,7 +17,10 @@
 
 param(
     [string]$OutDir = "assets/tier-badges",
-    [int[]]$Scales = @(1, 2, 3),
+    # A [int[]] here is a trap: `-File script.ps1 -Scales 1,2,4` passes the
+    # literal string '1,2,4', which PowerShell coerces to the single int 124.
+    # Taking a string and splitting it makes the documented CLI work.
+    [string]$Scales = "1,2,3",
     [switch]$SvgOnly
 )
 
@@ -66,6 +69,21 @@ $Tiers = @(
        Dark  = @{ Fill = "#1a3534"; Ink = "#10B981"; Stroke = "#17634f" }
        Light = @{ Fill = "#e7f8f2"; Ink = "#107d59"; Stroke = "#93e0c6" } }
 )
+
+# -- Normalise -Scales --------------------------------------------------------
+$ScaleList = @(
+    $Scales -split ',' |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' } |
+        ForEach-Object {
+            $n = 0
+            if (-not [int]::TryParse($_, [ref]$n) -or $n -lt 1) {
+                throw "-Scales expects positive integers, got '$_'"
+            }
+            $n
+        }
+)
+if ($ScaleList.Count -eq 0) { throw "-Scales must name at least one scale" }
 
 # -- WCAG relative luminance / contrast --------------------------------------
 function Get-Luminance {
@@ -131,7 +149,8 @@ function New-TierBadgeSvg {
 # -- Generate -----------------------------------------------------------------
 $svgDir = Join-Path $OutDir "svg"
 $pngDir = Join-Path $OutDir "png"
-New-Item -ItemType Directory -Force -Path $svgDir, $pngDir | Out-Null
+New-Item -ItemType Directory -Force -Path $svgDir | Out-Null
+if (-not $SvgOnly) { New-Item -ItemType Directory -Force -Path $pngDir | Out-Null }
 
 Write-Host "+------------------------------------------------+" -ForegroundColor Cyan
 Write-Host "| kasir.mu Tier Badge Generator                  |" -ForegroundColor Cyan
@@ -177,7 +196,7 @@ foreach ($tier in $Tiers) {
             continue
         }
 
-        foreach ($scale in $Scales) {
+        foreach ($scale in $ScaleList) {
             $px = $built.Width * $scale
             $pngPath = Join-Path $pngDir "tier-$label@$($scale)x.png"
             # -depth 8 is load-bearing: ImageMagick Q16 writes 16-bit PNGs by
@@ -185,7 +204,7 @@ foreach ($tier in $Tiers) {
             & $Script:MagickPath "$svgPath" -background none -resize "$($px)x" -depth 8 -strip $pngPath
             if ($LASTEXITCODE -ne 0) { $failures += "PNG export failed for $label @$($scale)x" }
         }
-        Write-Host "         PNG @$($Scales -join 'x, ')x" -ForegroundColor DarkGray
+        Write-Host "         PNG @$($ScaleList -join 'x, ')x" -ForegroundColor DarkGray
     }
 }
 
@@ -202,7 +221,7 @@ $manifest = @{
         paddingX      = $PadX
         fontFamily    = "Inter"
     }
-    scales = $Scales
+    scales = $ScaleList
     badges = $manifestEntries
 }
 # ConvertTo-Json emits CRLF on Windows, but .gitattributes pins this tree to
