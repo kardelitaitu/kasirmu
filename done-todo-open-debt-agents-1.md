@@ -168,7 +168,7 @@ closes for NOT WORK rows.
 
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
-| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **50 of 69 bodies EXECUTED 2026-09-25**, ratchet lowered 69 → 19: the 50 that gate via `require_permission_for_session` were split into `resolve_session` → gate → `resolve_store` across 12 files. The remaining 19 gate through a `user_id`-taking helper (9) or a domain wrapper (10), so reordering them changes what the helper authorises against — the next sweep, not a park. Gate-ORDER **EXECUTED for `customers`** — see below. |
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **62 of 69 bodies EXECUTED 2026-09-25**, ratchet lowered 69 → 7 in two sweeps: 50 bodies gating via `require_permission_for_session` split into `resolve_session` → gate → `resolve_store` (12 files), then `tax`'s 7 and `history`'s 5 — which were KIND fixes too, `history`'s five having gated with `require_permission_for_user` over the store db (no `users` rows there, so it could only ever deny) while the bridge twin uses the scope-aware form. The last 7 (`categories` 3, `products` 3, `inventory_counts` 1) gate through a domain wrapper or a `user_id` the session already carries. Gate-ORDER **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
@@ -305,6 +305,44 @@ helper that takes a `user_id` or a domain-specific wrapper, so reordering them m
 changing *what the helper authorises against* — a behaviour question per site, not a
 mechanical move. Folding them into the same sweep would have hidden that behind a uniform
 diff.
+
+**Second sweep, 19 → 7: `tax` and `history`, and both were KIND fixes as well as ORDER.**
+`crates/kasirmu-bridge/src/tax.rs` already gates with the non-scope-aware helper, so the
+tablet and the bridge **agreed** on tax's KIND and only its ORDER was wrong — a useful
+negative result, because it is the opposite of what the `history` pair shows.
+`crates/kasirmu-bridge/src/history.rs` gates all five doors with the scope-aware
+`require_session_permission` (`:68`, `:169`, `:227`, `:248`, `:306`), while the tablet
+gated them with `require_permission_for_user` against the **store** db — a db that carries
+no `users` rows, because identity lives only in the global db. So the tablet's history gate
+could not succeed for any user; it could only ever deny. That is R10 shape 3
+(*"`history`'s five export doors … both differ"*) reproduced in the shell, and the fix is
+the bridge's own form: session → scope-aware gate → store.
+
+**The fixture had been arranged to match the broken gate, and the fix is what exposed it.**
+Six `history_tests` cases failed after the change, all on their *allow* leg, with
+`PermissionDenied("user not found")`. The cause is not the gate: `history_state()` seeded
+`user-full`/`role-full` into the **store** database, which is the only place the old
+store-db gate would have found them and is not where the product keeps identity. The
+identities moved to the global db, and the allow leg now proves the door finds them there.
+**Worth stating plainly because "the test failed so I moved the data" is exactly how a
+fixture gets weakened to fit**: the assertion that changed is not the one asserting the
+behaviour — the deny legs are untouched and still deny. The evidence that the tests did not
+get weaker is the mutation below.
+
+**Mutation-tested, and it caught something better than a pass/fail flip.** Removing
+`list_sales_scoped`'s gate entirely (leaving the store open and the body otherwise intact)
+fails the **deny** leg with a full `SaleListResponse` containing the seeded sale — i.e. a
+session without `sales:view` was served the store's sales. The test that guards this door
+is a guard on the gate's existence, not merely on its spelling, so the retargeting did not
+soften it. Reverted; `history.rs` carries its five gates.
+
+**Two tax tests were retargeted rather than deleted, and the reason is that the subject was
+never the wrapper.** `require_tax_permission` was a module-local five-line helper that the
+seven tax bodies called; the migration deleted it because the shared
+`authz::require_permission_for_session` does the same job plus scope. Two tests called the
+deleted helper directly and would not compile. Their actual subject was *"does a tax door
+find the user's role in the GLOBAL db"*, so they now drive the shared helper the commands
+call — the subject preserved, the spelling discarded.
 
 ---
 
