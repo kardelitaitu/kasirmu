@@ -34,6 +34,55 @@ fn insert_user_with_role(conn: &Connection, user_id: &str, role_id: &str) {
     .unwrap();
 }
 
+/// A member in the TRASH must not pin a role in the trash with them.
+///
+/// The two halves of the same feature have to agree, and this is the pair that
+/// did not: the roster, the picker and the holder list all read LIVE accounts,
+/// while the referrer counts that gate `soft_delete_role` read raw rows — so a
+/// soft-deleted member kept both his `users` row and his `assignments` row and
+/// answered "reassign those rows before deleting it" about an account nobody
+/// could see, name, reassign, or wait out (the purge only erases people; it
+/// never clears their assignment). The role was undeletable for good.
+///
+/// The restore is checked too, because the fix must not trade one leak for the
+/// other: putting the member back has to put the block back with him.
+#[test]
+fn reference_counts_ignore_a_trashed_member_but_restoring_them_blocks_again() {
+    let conn = fresh();
+    store(&conn).seed_default_roles().unwrap();
+    insert_authored_role(&conn, "[]");
+    insert_user_with_role(&conn, "holder", AUTHORED);
+    // Deactivate, then trash. The member keeps his `users` row AND his
+    // `assignments` row — `update_user` keeps the assignment's role in sync,
+    // and the trash stamps rather than deletes — so both referrers are still on
+    // disk and only the live-only `users` predicate moves.
+    store(&conn)
+        .update_user("holder", "holder", "Holder", AUTHORED, false)
+        .unwrap();
+    store(&conn).soft_delete_user("holder").unwrap();
+    assert!(
+        store(&conn).list_users().unwrap().is_empty(),
+        "the trashed member leaves the live roster"
+    );
+
+    store(&conn)
+        .soft_delete_role(AUTHORED)
+        .expect("a trashed member must not block deleting the role");
+
+    store(&conn).restore_role(AUTHORED).unwrap();
+    store(&conn).restore_user("holder").unwrap();
+    // Restored INACTIVE, exactly as the delete found him — but a holder all
+    // the same, and the reference count gates deletion, not activity.
+    assert!(
+        !store(&conn).get_user("holder").unwrap().unwrap().is_active,
+        "restore never re-grants access"
+    );
+    assert!(matches!(
+        store(&conn).soft_delete_role(AUTHORED).unwrap_err(),
+        CoreError::Validation { .. }
+    ));
+}
+
 // ── update_role ────────────────────────────────────────────────────────
 
 #[test]

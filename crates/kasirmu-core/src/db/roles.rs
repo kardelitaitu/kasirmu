@@ -47,16 +47,46 @@ use crate::{Role, Store};
 /// thing it can be correct against.
 pub use platform_core::rbac::is_builtin_role_id;
 
-/// The tables that point at a role, in the order diagnostics list them.
+/// The tables that point at a role, in the order diagnostics list them, each
+/// with the predicate that decides whether a row is LIVE.
 ///
-/// Each declares `REFERENCES roles(id)` with the default NO ACTION, so
-/// SQLite would raise a bare constraint violation on any of them. Reading
-/// the counts first is what turns that into a message naming the referrer.
-const ROLE_REFERRERS: [&str; 4] = [
-    "users",
-    "assignments",
-    "role_workspace_types",
-    "role_workspaces",
+/// Each declares `REFERENCES roles(id)` with the default NO ACTION, so SQLite
+/// would raise a bare constraint violation on any of them. Reading the counts
+/// first is what turns that into a message naming the referrer.
+///
+/// The `Option<&str>` half exists because the FOREIGN KEY and the LIVE row are
+/// not the same set, and `users` is the one table where they differ. A
+/// soft-deleted account keeps its `users` row — the trash stamps
+/// `deleted_at`, it never deletes, precisely so history keeps resolving — so
+/// counting raw rows let a trashed member pin a role in the trash for good:
+/// the authoring UI refused the delete, `role_holders` named nobody (it reads
+/// the live roster), and `purge_expired_roles` only ever purges roles that are
+/// ALREADY trashed. The role was undeletable for as long as the tombstone
+/// existed, which is forever.
+///
+/// `assignments` is the second such table, and it needs an EXISTS rather than
+/// a column test: the row carries no `deleted_at` of its own and is NOT
+/// `ON DELETE CASCADE` from `users` at migration time (a table-level `DELETE`
+/// rebuild cannot be ordered under the `inventory_*` / `audit_log` RESTRICT
+/// edges, so the intended cascade is not what is armed). A trashed member
+/// therefore keeps a real assignment row, and it is not decoration: the trash
+/// leaves `users` in place, so `assignment_for_user` still resolves it. An
+/// assignment belongs to its ACCOUNT, so it is live exactly when that account
+/// is — the same line `list_users` draws.
+///
+/// The two `role_*` grant tables declare no trash column and must NOT be
+/// given a predicate: a grant row is REMOVED when revoked, so the filter is
+/// `None` exactly where absence of the column means absence of the concept —
+/// writing `deleted_at IS NULL` against them is a runtime `SqlInputError`,
+/// not a harmless no-op.
+const ROLE_REFERRERS: [(&str, Option<&str>); 4] = [
+    ("users", Some("deleted_at IS NULL")),
+    (
+        "assignments",
+        Some("EXISTS (SELECT 1 FROM users u WHERE u.id = assignments.user_id AND u.deleted_at IS NULL)"),
+    ),
+    ("role_workspace_types", None),
+    ("role_workspaces", None),
 ];
 
 /// The largest holder list [`Store::role_holders`] returns in one call.
@@ -181,9 +211,12 @@ impl Store<'_> {
         id: &str,
     ) -> Result<Vec<(&'static str, i64)>, CoreError> {
         let mut out = Vec::new();
-        for table in ROLE_REFERRERS {
+        for (table, live) in ROLE_REFERRERS {
+            // The predicate comes from the table literal above, never from a
+            // caller, so the interpolation adds no injection surface.
+            let filter = live.map_or(String::new(), |p| format!(" AND {p}"));
             let count: i64 = conn.query_row(
-                &format!("SELECT COUNT(*) FROM {table} WHERE role_id = ?1"),
+                &format!("SELECT COUNT(*) FROM {table} WHERE role_id = ?1{filter}"),
                 params![id],
                 |row| row.get(0),
             )?;
