@@ -86,7 +86,13 @@ pub fn query_menu_engineering(
     end_date: &str,
 ) -> Result<MenuEngineeringResult, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT p.id AS product_id, p.sku, p.name,
+        // REP-A: LEFT JOIN, keyed on the SKU (which is what sale_lines carries)
+        // with the SKU as the name/id fallback. An INNER join erased the whole
+        // menu history of any product later deleted, while margin reporting and
+        // daily_summary still counted those lines (reproduced: 0 rows after
+        // delete_product). `sale_lines.sku` has no foreign key to products.
+        "SELECT COALESCE(p.id, sl.sku) AS product_id, sl.sku AS sku,
+                COALESCE(p.name, sl.sku) AS name,
                 COALESCE(SUM(sl.qty), 0) AS total_volume,
                 sl.unit_minor AS unit_price_minor,
                 COALESCE(sl.cost_minor, p.cost_minor, 0) AS unit_cost_minor,
@@ -95,10 +101,10 @@ pub fn query_menu_engineering(
                 SUM(sl.line_minor) AS total_revenue_minor
          FROM sale_lines sl
          JOIN sales s ON sl.sale_id = s.id
-         JOIN products p ON sl.sku = p.sku
+         LEFT JOIN products p ON sl.sku = p.sku
          WHERE s.status = 'completed'
            AND DATE(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.id, sl.unit_minor
+         GROUP BY COALESCE(p.id, sl.sku), sl.unit_minor
          ORDER BY total_revenue_minor DESC",
     )?;
 
@@ -148,7 +154,12 @@ fn merge_same_product_rows(rows: Vec<MenuEngineeringRow>) -> Vec<MenuEngineering
                 existing.total_volume += row.total_volume;
                 existing.total_margin_minor += row.total_margin_minor;
                 existing.total_revenue_minor += row.total_revenue_minor;
-                // Keep the first unit price/cost (most common / representative).
+                // REP-B: keep the first-seen unit price/cost. That is the row
+                // the SQL ordered first — the HIGHEST-REVENUE price point, not
+                // "the most common" as this comment used to claim. The merged
+                // margin_per_unit is therefore representative of the biggest
+                // price point rather than of the product overall; derive it from
+                // total_revenue/total_volume if an average is wanted.
             }
             Entry::Vacant(entry) => {
                 entry.insert(row);

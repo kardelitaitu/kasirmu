@@ -151,16 +151,22 @@ pub fn query_top_products(
     limit: i64,
 ) -> Result<Vec<TopProductRow>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT p.sku,
-                p.name,
+        // REP-A: LEFT JOIN, with the SKU as the name fallback. An INNER join
+        // dropped every line whose product was later deleted, so removing a
+        // discontinued item silently erased its historical sales from the
+        // leaderboard while daily_summary and margin reporting still counted
+        // them (reproduced: 0 rows after delete_product). `sale_lines.sku` has
+        // no foreign key, so the join is a lookup, not a constraint.
+        "SELECT sl.sku AS sku,
+                COALESCE(p.name, sl.sku) AS name,
                 COALESCE(SUM(sl.qty), 0) AS total_qty,
                 COALESCE(SUM(sl.line_minor), 0) AS total_revenue_minor
          FROM sale_lines sl
          JOIN sales s ON sl.sale_id = s.id
-         JOIN products p ON sl.sku = p.sku
+         LEFT JOIN products p ON sl.sku = p.sku
          WHERE s.status = 'completed'
            AND DATE(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY p.sku
+         GROUP BY sl.sku
          ORDER BY total_qty DESC
          LIMIT ?3",
     )?;

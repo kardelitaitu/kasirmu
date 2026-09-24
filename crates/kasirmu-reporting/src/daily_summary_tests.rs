@@ -50,6 +50,50 @@ fn complete_sale_with_date(
     sale.id
 }
 
+// ── REP-A: a deleted product keeps its sales history ─────────────────
+
+/// REP-A: deleting a product must not erase its historical sales from the
+/// leaderboard or the menu-engineering matrix.
+///
+/// Both queries used an INNER join on `products`, while `sale_lines.sku` has no
+/// foreign key — so removing a discontinued item dropped its past sales out of
+/// two of the four reports, while `daily_summary` and `margin` still counted
+/// them.
+#[test]
+fn deleted_product_still_appears_in_product_reports() {
+    let conn = fresh();
+    seed_product(&conn, "SKU-GONE", "Discontinued Item");
+    complete_sale_with_date(&conn, "SKU-GONE", 3, 1000, "2026-03-01");
+
+    // Baseline: the product exists and both reports see it.
+    assert_eq!(
+        query_top_products(&conn, "2026-03-01", "2026-03-31", 10)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    kasirmu_core::db::Store::new(&conn)
+        .delete_product("SKU-GONE")
+        .unwrap();
+
+    let top = query_top_products(&conn, "2026-03-01", "2026-03-31", 10).unwrap();
+    assert_eq!(top.len(), 1, "a deleted product must keep its sales history");
+    assert_eq!(top[0].sku, "SKU-GONE");
+    assert_eq!(top[0].name, "SKU-GONE", "name falls back to the SKU");
+    assert_eq!(top[0].total_revenue_minor, 3000);
+
+    let menu =
+        crate::menu_engineering::query_menu_engineering(&conn, "2026-03-01", "2026-03-31").unwrap();
+    assert_eq!(menu.rows.len(), 1, "menu engineering must keep the history too");
+    assert_eq!(menu.rows[0].sku, "SKU-GONE");
+    assert_eq!(menu.rows[0].total_revenue_minor, 3000);
+
+    // And the reports agree with each other, which is the point.
+    let ds = query_daily_summary(&conn, "2026-03-01", "2026-03-31").unwrap();
+    assert_eq!(ds.total_revenue_minor, 3000);
+}
+
 // ── Daily summary ────────────────────────────────────────────
 
 #[test]

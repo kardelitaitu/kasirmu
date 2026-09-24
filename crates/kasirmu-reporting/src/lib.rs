@@ -12,8 +12,12 @@ next: none | perf: N/A
 //! offline-first guarantee; cloud sync of pre-aggregated reports is
 //! planned as a separate service.
 //!
-//! This crate is a scaffold — reports are added once the cart, sale,
-//! payment, and inventory tables stabilize.
+//! The implemented query surfaces are [`daily_summary::query_daily_summary`],
+//! [`daily_summary::query_sales_by_hour`], [`daily_summary::query_top_products`],
+//! [`menu_engineering::query_menu_engineering`] and [`margin::query_sale_lines_with_margin`].
+//! (REP-C: this paragraph used to call the crate "a scaffold — reports are added
+//! once the ... tables stabilize", which stopped being true when those four
+//! landed.)
 
 #![deny(unsafe_code)]
 
