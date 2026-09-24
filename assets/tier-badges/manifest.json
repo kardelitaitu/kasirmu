@@ -1,124 +1,59 @@
 {
     "badges":  [
                    {
-                       "width":  74,
-                       "height":  40,
-                       "key":  "free",
-                       "label":  "FREE",
-                       "fill":  "#f0f1f3",
-                       "stroke":  "#b9c0cb",
-                       "scheme":  "light",
-                       "contrast":  4.61,
-                       "ink":  "#5e6e82",
-                       "svg":  "svg/tier-free-light.svg"
-                   },
-                   {
-                       "width":  74,
-                       "height":  40,
-                       "key":  "free",
-                       "label":  "FREE",
-                       "fill":  "#262b35",
-                       "stroke":  "#3c4553",
-                       "scheme":  "dark",
-                       "contrast":  4.58,
-                       "ink":  "#8993a5",
-                       "svg":  "svg/tier-free-dark.svg"
-                   },
-                   {
                        "width":  76,
                        "height":  40,
+                       "border":  "#C7CDD6",
+                       "key":  "free",
+                       "label":  "FREE",
+                       "fill":  "#FFFFFF",
+                       "contrast":  4.76,
+                       "ink":  "#64748B",
+                       "svg":  "svg/tier-free.svg"
+                   },
+                   {
+                       "width":  78,
+                       "height":  40,
+                       "border":  "",
                        "key":  "plus",
                        "label":  "PLUS",
-                       "fill":  "#e8f2ff",
-                       "stroke":  "#95c5fd",
-                       "scheme":  "light",
-                       "contrast":  4.58,
-                       "ink":  "#146bd1",
-                       "svg":  "svg/tier-plus-light.svg"
+                       "fill":  "#EDE9FE",
+                       "contrast":  7.57,
+                       "ink":  "#5B21B6",
+                       "svg":  "svg/tier-plus.svg"
                    },
                    {
-                       "width":  76,
+                       "width":  70,
                        "height":  40,
-                       "key":  "plus",
-                       "label":  "PLUS",
-                       "fill":  "#1b2c45",
-                       "stroke":  "#194985",
-                       "scheme":  "dark",
-                       "contrast":  4.58,
-                       "ink":  "#3f94fb",
-                       "svg":  "svg/tier-plus-dark.svg"
-                   },
-                   {
-                       "width":  68,
-                       "height":  40,
+                       "border":  "",
                        "key":  "pro",
                        "label":  "PRO",
-                       "fill":  "#e6f4f7",
-                       "stroke":  "#90cedc",
-                       "scheme":  "light",
-                       "contrast":  4.51,
-                       "ink":  "#087896",
-                       "svg":  "svg/tier-pro-light.svg"
+                       "fill":  "#0471F1",
+                       "contrast":  4.53,
+                       "ink":  "#FFFFFF",
+                       "svg":  "svg/tier-pro.svg"
                    },
                    {
-                       "width":  68,
+                       "width":  114,
                        "height":  40,
-                       "key":  "pro",
-                       "label":  "PRO",
-                       "fill":  "#192f3a",
-                       "stroke":  "#135164",
-                       "scheme":  "dark",
-                       "contrast":  4.6,
-                       "ink":  "#2da1bc",
-                       "svg":  "svg/tier-pro-dark.svg"
-                   },
-                   {
-                       "width":  112,
-                       "height":  40,
+                       "border":  "",
                        "key":  "premium",
                        "label":  "PREMIUM",
-                       "fill":  "#f3effe",
-                       "stroke":  "#cbb6fb",
-                       "scheme":  "light",
-                       "contrast":  4.52,
-                       "ink":  "#7c52dd",
-                       "svg":  "svg/tier-premium-light.svg"
+                       "fill":  "#F5C518",
+                       "contrast":  8.12,
+                       "ink":  "#3F2D00",
+                       "svg":  "svg/tier-premium.svg"
                    },
                    {
-                       "width":  112,
+                       "width":  138,
                        "height":  40,
-                       "key":  "premium",
-                       "label":  "PREMIUM",
-                       "fill":  "#2c2844",
-                       "stroke":  "#4d3a82",
-                       "scheme":  "dark",
-                       "contrast":  4.54,
-                       "ink":  "#a17df6",
-                       "svg":  "svg/tier-premium-dark.svg"
-                   },
-                   {
-                       "width":  134,
-                       "height":  40,
+                       "border":  "",
                        "key":  "enterprise",
                        "label":  "ENTERPRISE",
-                       "fill":  "#e7f8f2",
-                       "stroke":  "#93e0c6",
-                       "scheme":  "light",
-                       "contrast":  4.66,
-                       "ink":  "#107d59",
-                       "svg":  "svg/tier-enterprise-light.svg"
-                   },
-                   {
-                       "width":  134,
-                       "height":  40,
-                       "key":  "enterprise",
-                       "label":  "ENTERPRISE",
-                       "fill":  "#1a3534",
-                       "stroke":  "#17634f",
-                       "scheme":  "dark",
-                       "contrast":  5.17,
-                       "ink":  "#10B981",
-                       "svg":  "svg/tier-enterprise-dark.svg"
+                       "fill":  "#12141A",
+                       "contrast":  16.8,
+                       "ink":  "#F1F5F9",
+                       "svg":  "svg/tier-enterprise.svg"
                    }
                ],
     "scales":  [
@@ -128,13 +63,12 @@
                ],
     "generatedBy":  "scripts/generate-tier-badges.ps1",
     "geometry":  {
-                     "fontFamily":  "Inter",
-                     "strokeWidth":  1.5,
-                     "fontWeight":  600,
-                     "height":  40,
+                     "paddingX":  18,
+                     "radius":  8,
                      "fontSize":  15,
-                     "radius":  19.25,
                      "letterSpacing":  0.9,
-                     "paddingX":  18
+                     "textOutlined":  true,
+                     "fontWeight":  700,
+                     "height":  40
                  }
 }
