@@ -72,7 +72,7 @@ This skill audits **any project document** (`README.md`, `ARCHITECTURE.md`, `doc
   each other with Astro ROUTES (`../cloud-sync/`, `../../pricing/`, `/en/docs/…`) — a
   filesystem lens flagged ~90 of them in the 2026-09-23 audit while every one resolved,
   and cannot see a ghost slug either way. This checker builds the route table the site
-  actually serves — `i18n.locales` from `astro.config.mjs` × `src/pages/` (`[locale]`
+  actually serves — `i18n.locales` from `astro.config.mjs` × `website/src/pages/` (`[locale]`
   expanded, directory-format URLs) × content routes enumerated the way
   `[...slug].astro` emits them × `public/` files and `_redirects` sources — and
   resolves each markdown link against it, fence- and backtick-aware (an authoring
