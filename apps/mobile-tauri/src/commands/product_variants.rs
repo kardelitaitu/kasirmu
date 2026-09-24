@@ -157,8 +157,9 @@ pub async fn create_product_variant_scoped(
         variant = variant.with_sort_order(order);
     }
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -191,8 +192,9 @@ pub async fn update_product_variant_scoped(
 ) -> Result<UpdateProductVariantResult, AppError> {
     validate_not_empty("sku", &args.sku).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

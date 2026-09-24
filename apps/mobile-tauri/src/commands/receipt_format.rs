@@ -74,8 +74,9 @@ pub async fn set_receipt_layout_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let conn = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -141,8 +142,9 @@ pub async fn set_receipt_content_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<EffectiveReceiptFormat, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let conn = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

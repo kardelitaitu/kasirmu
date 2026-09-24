@@ -262,9 +262,10 @@ pub async fn list_terminals_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<TerminalDto>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // Checked before the store connection is locked: no await inside that lock.
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    // Checked before the store connection is locked: no await inside that lock.
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -286,8 +287,9 @@ pub async fn get_terminal_scoped(
 ) -> Result<Option<TerminalDto>, AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -327,7 +329,9 @@ pub async fn register_terminal_scoped(
     };
     sub.verify_signature()?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_REGISTER).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::register_terminal_scoped`, and
     // the settings T4-1 fix in shape: this command used to take
     // `user_id: String` and check `require_permission_for_user(&store, &user_id,
@@ -335,7 +339,6 @@ pub async fn register_terminal_scoped(
     // `{ sessionToken, args }`, so Tauri rejected the call before the body ran —
     // "missing required key user_id" — and the actor the caller could name was
     // anyway a forgeable input. The session now supplies both.
-    require_permission_for_session(&state, &session, permissions::TERMINALS_REGISTER).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -361,14 +364,15 @@ pub async fn update_terminal_scoped(
 ) -> Result<UpdateTerminalResult, AppError> {
     validate_not_empty("id", &args.id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::update_terminal_scoped`, and the
     // T4-1 shape again: `user_id: String` was a required argument the wrapper at
     // `ui/src/api/terminals.ts:63` never sends, so the call was rejected before
     // its body ran. Gating on the session also moves the check ahead of the
     // store lock, which is why a not-found id now reports the permission result
     // first when the caller lacks `terminals:edit`.
-    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -415,10 +419,11 @@ pub async fn ping_terminal_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::ping_terminal_scoped`: a ping
     // touches the device, so it is gated at the read tier the bridge chose.
-    require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -441,14 +446,15 @@ pub async fn delete_terminal_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_DELETE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_scoped`. This is
     // the most destructive command on the surface, and it carried both halves of
     // the settings T4-1 defect at once: `user_id: String` was required while
     // `ui/src/api/terminals.ts:79` sends only `{ sessionToken, id }`, so the
     // delete never reached its body on a tablet; and the actor whose permission
     // was checked was whichever user id the caller chose to name.
-    require_permission_for_session(&state, &session, permissions::TERMINALS_DELETE).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -472,9 +478,10 @@ pub async fn list_terminal_overrides_scoped(
     validate_not_empty("terminal_id", &terminal_id)
         .map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `kasirmu_bridge::terminals::list_terminal_overrides_scoped`.
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::TERMINALS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    // F-017 parity with `kasirmu_bridge::terminals::list_terminal_overrides_scoped`.
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -500,12 +507,13 @@ pub async fn set_terminal_override_scoped(
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017 parity with `kasirmu_bridge::terminals::set_terminal_override_scoped`;
     // `ui/src/api/terminals.ts` sends `{ sessionToken, terminalId, feature,
     // enabled }`, so the dropped `user_id` was never supplied and the write was
     // rejected before it ran.
-    require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -536,9 +544,10 @@ pub async fn delete_terminal_override_scoped(
         .map_err(|e| AppError::Invalid(e.to_string()))?;
     validate_not_empty("feature", &feature).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
-    // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_override_scoped`.
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::TERMINALS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    // F-017 parity with `kasirmu_bridge::terminals::delete_terminal_override_scoped`.
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

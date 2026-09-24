@@ -91,8 +91,9 @@ pub async fn set_local_payment_methods_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<EffectivePaymentRail>, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let submitted: Vec<NewPaymentRail> = rails
         .into_iter()
         .map(|r| NewPaymentRail {

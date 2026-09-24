@@ -136,8 +136,9 @@ pub async fn create_kds_order_from_sale_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<KdsOrder>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::KDS_UPDATE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let orders = {
         let db_guard = conn_arc
             .lock()

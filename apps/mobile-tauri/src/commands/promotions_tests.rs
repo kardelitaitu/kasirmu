@@ -231,3 +231,73 @@ async fn scoped_promotion_write_path_actually_writes_for_an_owner() {
         "the delete must take effect in the store, not merely answer Ok"
     );
 }
+
+// ── R10 gate-ORDER (BR-X4): the gate runs BEFORE the store is opened ──────
+
+/// With an UNOPENABLE store, an unauthorised caller is refused by the GATE, not
+/// by the store.
+///
+/// **This is the guard for R10's gate-ORDER half, and it is the only kind of test
+/// that can see it.** The sibling test above proves the four writes deny a Staff
+/// session — but it passes with the gate before *or* after `resolve_scope`, because
+/// both orders end in `PermissionDenied` when the store opens fine. Order is only
+/// observable when opening the store FAILS: before this sweep the body called
+/// `state.resolve_scope` first, so an unauthorised caller got
+/// `Internal("opening store db: …")` — an authorisation failure surfacing as an
+/// infrastructure error — and `open_store` had already created the directory and the
+/// database file, i.e. done filesystem work for a caller who was never going to be
+/// allowed in (`platform/core/src/database/manager.rs:73-103`).
+///
+/// The store is made unopenable by putting a FILE where the manager expects its
+/// directory, which makes `open_store` fail for every store id without touching the
+/// permissions of the caller. The assertion is therefore exact: an unauthorised
+/// caller must be refused for the authorisation reason, which can only happen if the
+/// gate ran first.
+#[tokio::test]
+async fn scoped_promotion_write_gates_before_it_opens_the_store() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    seed_identity(&conn);
+    // A regular FILE where the store-manager's directory would go: `open_store`
+    // cannot create or use it, so every store id fails to open.
+    let temp = tempfile::tempdir().unwrap();
+    let blocked = temp.path().join("not-a-directory");
+    std::fs::write(&blocked, b"a file, not a store dir").unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(blocked.clone(), kasirmu_core::migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "cashier-token".into(),
+        SessionContext::new(
+            "user-cashier".into(),
+            "role-staff".into(),
+            "terminal-1".into(),
+            "store-promotions".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = create_promotion_scoped(
+        "cashier-token".into(),
+        create_args("Denied Promo"),
+        app.state(),
+    )
+    .await;
+
+    // A control, so a pass cannot come from `open_store` quietly succeeding:
+    // with the store pointed at a file, resolving it directly must fail.
+    assert!(
+        app.state::<AppState>().resolve_store("cashier-token").is_err(),
+        "the fixture must make the store genuinely unopenable, or this test proves nothing"
+    );
+    assert!(
+        matches!(result, Err(AppError::PermissionDenied(_))),
+        "an unauthorised caller must be refused by the GATE, not by the store: got {result:?}"
+    );
+}

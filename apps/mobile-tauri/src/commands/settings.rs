@@ -461,11 +461,12 @@ pub async fn get_receipt_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<ReceiptSettingsDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -483,8 +484,9 @@ pub async fn set_receipt_settings_scoped(
     // is also scope-aware (ADR #35 D5), so this is strictly stronger than the
     // `user_id` argument it replaces — and that argument was unfillable from the
     // renderer, which sends only `{ sessionToken, args }`.
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -497,11 +499,12 @@ pub async fn get_store_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<StoreSettingsDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -515,8 +518,9 @@ pub async fn set_store_settings_scoped(
     args: StoreSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -529,11 +533,12 @@ pub async fn get_credit_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<CreditSettingsDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -551,8 +556,9 @@ pub async fn set_credit_settings_scoped(
     args: CreditSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -590,11 +596,12 @@ pub async fn list_credit_sales_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<CreditSaleDto>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SALES_VIEW).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -608,8 +615,9 @@ pub async fn settle_credit_scoped(
     sale_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -629,11 +637,12 @@ pub async fn get_hardware_settings_scoped(
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<HardwareSettingsDto, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -655,8 +664,9 @@ pub async fn set_hardware_settings_scoped(
     args: HardwareSettingsDto,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -677,11 +687,12 @@ pub async fn get_setting_scoped(
     key: String,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // F-017/T10: the `kasirmu_bridge::settings` twin gates this command and this shell
     // resolved the session, bound it to a store, then ignored it. Gated here before
     // the store lock is taken, so no await sits inside a held lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_READ).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -704,10 +715,11 @@ pub async fn set_setting_scoped(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     // The permission check is awaited BEFORE the store conn is locked, so no
     // await is ever held inside that lock.
-    require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -762,8 +774,9 @@ pub async fn set_settings_scoped(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

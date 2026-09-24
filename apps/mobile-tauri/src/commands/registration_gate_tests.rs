@@ -1641,12 +1641,27 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
 /// authoritative and says the gate-order half is folded in explicitly, so this
 /// population is the remaining work rather than a park.
 ///
+/// **FIXED DOWN TO 19 on 2026-09-25, the first sweep of that population.** The 69
+/// split by gate shape, measured rather than assumed: **50 gate via
+/// `require_permission_for_session`**, 9 via a caller-supplied-`user_id` helper, and
+/// 10 via a domain helper. The 50 share one exact textual form —
+/// `let (session, conn_arc) = state.resolve_scope(&session_token)?;` followed by the
+/// gate — because `resolve_scope` IS `resolve_session` + `open_store`
+/// (`state.rs:290-300`), so the split is mechanical: `resolve_session` → GATE →
+/// `resolve_store`. All 50 were converted, in 12 files, with no body needing a
+/// bespoke edit.
+///
+/// The remaining 19 are NOT the same shape and are left deliberately: they gate
+/// through a helper that takes a `user_id` (9) or a domain-specific wrapper (10), so
+/// reordering them means changing what the helper authorises against, not merely
+/// where the call sits. They are the next sweep, not a park.
+///
 /// This is a RATCHET, not a fix: it pins the population so a new open-before-gate
 /// body cannot be added silently, and it fails when the count DROPS too, forcing the
 /// floor down in the same commit that fixes a body. That second leg is the one that
 /// matters — a floor that only checks an upper bound lets the sweep rot to zero and
 /// still pass, which is the failure mode this file's own header describes.
-const OPEN_BEFORE_GATE_FLOOR: usize = 69;
+const OPEN_BEFORE_GATE_FLOOR: usize = 19;
 
 /// Does this body call the combined session+store resolver before it names a
 /// permission?

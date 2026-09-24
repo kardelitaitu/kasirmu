@@ -310,8 +310,9 @@ pub async fn retry_offline_sync_scoped(
 ) -> Result<SyncResult, AppError> {
     // Phase 1: Read pending items and config from DB (brief lock).
     let (pending_items, config_opt) = {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
-        require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -423,8 +424,9 @@ pub async fn delete_offline_item_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("id", &id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -456,8 +458,9 @@ pub async fn requeue_remote_failure_scoped(
 ) -> Result<(), AppError> {
     validate_not_empty("itemId", &args.item_id).map_err(|e| AppError::Invalid(e.to_string()))?;
 
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
