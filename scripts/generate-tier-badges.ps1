@@ -205,7 +205,11 @@ $manifest = @{
     scales = $Scales
     badges = $manifestEntries
 }
-[IO.File]::WriteAllText((Join-Path $OutDir "manifest.json"), ($manifest | ConvertTo-Json -Depth 5))
+# ConvertTo-Json emits CRLF on Windows, but .gitattributes pins this tree to
+# LF: an unconverted write leaves the file permanently dirty against its own
+# committed blob after every run. Normalise before writing.
+$manifestJson = ($manifest | ConvertTo-Json -Depth 5) -replace "`r`n", "`n"
+[IO.File]::WriteAllText((Join-Path $OutDir "manifest.json"), $manifestJson)
 
 if ($failures.Count -gt 0) {
     Write-Host ""
