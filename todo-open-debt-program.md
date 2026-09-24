@@ -88,15 +88,21 @@ This file uses the **any-depth** form and says so where it quotes a number.
 
 ### A census is not a work count — read this before quoting either
 
-**Measured 2026-09-24 at HEAD `e4476d9f4`, both forms agreeing: 16 open / 25 ticked.**
+**Measured 2026-09-25 at HEAD `15192c315`, both forms agreeing: 15 open / 26 ticked.**
 
 ```bash
-grep -cE '^[[:space:]]*[-*][[:space:]]+\[ \]' todo-open-debt-program.md   # 16
-grep -cE '^[[:space:]]*[-*][[:space:]]+\[[xX]\]' todo-open-debt-program.md  # 25
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[ \]' todo-open-debt-program.md   # 15
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[[xX]\]' todo-open-debt-program.md  # 26
 ```
 
+**One open box left this census on 2026-09-25 without this pass touching it:** the
+nextest-retry box (`:562`) was ticked by `15192c315`, which wired
+`verify-pg-tests-ran.py --nextest-junit` into `.github/workflows/dev-ci.yml` and so
+completed R14. Recorded because a census in a shared checkout is a racing value — the same
+reason this file's own dated censuses disagree with each other.
+
 **The open figure is not the backlog, and treating it as one is what has kept this file
-un-renamable.** Six of the sixteen open boxes are **NOT WORK** — rows that restate a rule
+un-renamable.** Six of the fifteen open boxes are **NOT WORK** — rows that restate a rule
 already binding every worker, which can be neither done nor undone. The file's own
 precedent at `:454` is explicit that they stay un-ticked with their reason: a tick was
 once landed on one and reverted, because *"a tick claims completed work and this clause
@@ -109,7 +115,7 @@ reports an open box it can never close.
 | **NOT WORK** | **6** | A restated rule. Permanent `[ ]`; must be excluded from the work count. |
 | **SUPERSEDED** | **3** | Killed by a ruling. Stays `[ ]` per `:285`; not work. |
 | **NEEDS A RULING** | **5** | Owner decision, not a lane's task. |
-| **OUTSTANDING** | **1** | One named CI edit, deferred by owner. |
+| **OUTSTANDING** | **0** | R14's one CI edit LANDED 2026-09-25 (`15192c315`). |
 | **CONDITIONAL** | **1** | R15: waits on funding, which no pass can satisfy. |
 
 **Per phase, work-open vs total-open** — the column that decides `done-`:
@@ -120,7 +126,7 @@ reports an open box it can never close.
 | 2 | 2 | 1 NOT WORK (`:210`), 1 INVARIANT (`:209`) | **0** |
 | 3 | 3 | 1 NOT WORK (`:270`), 2 SUPERSEDED (`:267`, `:268`) | **0** |
 | 4 | 1 | 1 NOT WORK (`:355`) | **0** |
-| 5 | 4 | 1 NOT WORK (`:574`), 1 SUPERSEDED (`:573`) | **2** (`:562`, `:566`) |
+| 5 | 3 | 1 NOT WORK (`:574`), 1 SUPERSEDED (`:573`) | **1** (`:566`) |
 | dead-class section | 5 | 5 NEEDS A RULING | **0** (owner's) |
 
 **The consequence, stated plainly, because it inverts how this file has been read:**
@@ -148,7 +154,7 @@ closes for NOT WORK rows.
 |---|---|---|---|
 | **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half open: tablet still calls the non-scope-aware `require_customer_permission` at 6 sites, and the bridge's `settings.rs` setters still call the unscoped `require_permission_for_user` at 8 (R10 named 4; it has grown). Gate-ORDER half **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
-| **R14** | Wire the nextest JUnit receipt into CI | **NO** | Deferred by owner direction; `.github/workflows/dev-ci.yml` has no `verify-pg-tests-ran` invocation (`grep -c` → 0). |
+| **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **NO** | Still one 780-line file. Blocked on the NOT WORK boxes, now dispositioned above. |
 | **R3** | Default-role seeding in `complete_setup` | **NO** | Divergence stands; the tablet file carries an unresolved-tension comment rather than a fix. |
 
