@@ -1182,6 +1182,63 @@ printed.
 
 **No commit** beyond this ledger entry.
 
+### Core twenty-seventh pass — 24-09-26 (refunds read in full: clean, and unusually so)
+
+**No defect.** `db/refunds.rs` (994 lines) read end to end — the largest unread
+money-path module in `kasirmu-core`. It is the strongest file this audit has
+inspected, and worth recording in some detail because the reasons generalise.
+
+**`create_refund` (460 lines) — every bound derived and argued, none asserted.**
+
+* **IMMEDIATE, not DEFERRED** (`:69`), with the reason stated: the guard is a read
+  and the refund is a write, so a deferred BEGIN losing the race fails with
+  `SQLITE_BUSY_SNAPSHOT` instead of waiting out the busy_timeout. Correct hazard
+  analysis, not a default.
+* **THREE cumulative bounds, all read inside the transaction**, and the header
+  explains why two cannot substitute for each other: the MONEY bound
+  (`SUM(refunds.total_minor) <= sales.total_minor`) does not imply the QUANTITY
+  bound, because a repeatedly under-priced partial refund stays inside the money
+  ceiling while pushing more units back into stock than were ever deducted.
+* **A per-line money RANGE, not an equality** (`:283-338`), both reasons verified
+  by file:line — a price override legitimately stores `line_minor != unit * qty`,
+  and the UI rounds in one place and estimates fractionally in another. The
+  one-unit tolerance absorbs that; an equality would reject legitimate refunds.
+  The residual it accepts is stated, and what absorbs it is named.
+* **Booked value, never clamped** (`:309-317`): refuse above the ceiling, store the
+  supplied figure unchanged below it, because clamping would silently rewrite a
+  receipt.
+* **The SKU-identity check closes a mint** (`:204-247`): both quantity bounds are
+  measured against a NAMED sale line, so they are only as good as that line
+  identity — refund one product line claiming another and the ceiling becomes
+  units-of-any-product minted at the default location. A whitespace-only recorded
+  sku REFUSES rather than falling back to the caller, with the trade stated: the
+  row is the defect, not the refund.
+* **`refunded_qty_for_sale_line_in_tx` excludes the refund under construction**
+  (`:550-568`) because rows are inserted BEFORE the stock credit, so a bound read
+  inside the credit path would count this refund twice.
+* **i128, no float** (`:328-338`), with `max(1)` keeping the division infallible
+  without relying on the schema CHECK.
+* **Tenant copied from the SALE row**, not a literal and not a second lookup:
+  `refunds.tenant_id` is RLS-covered in PostgreSQL, so a hardcoded value files a
+  multi-store refund under the wrong tenant (`:351-361`).
+
+**Prior findings confirmed fixed, not merely claimed.** The header records COR-25
+(over-refund guard moved inside the transaction; was outside with `unwrap_or(0)` —
+fail-OPEN on a money guard) and COR-26 (currency mismatch now rejected; the sale
+currency was read then discarded). Both are present as described, at `:117-143`
+and `:105-116`. Checked rather than trusting the stamp.
+
+**A sweep for this audit own classes returned only prose.** The
+float/unwrap pattern over the file yields THREE hits, all of them comments
+explaining why those constructs are ABSENT — including the COR-25 note at `:118`
+about `unwrap_or(0)` being indistinguishable from no-refunds-yet. Zero real
+instances.
+
+**Verified:** `cargo test -p kasirmu-core --lib -- db::refunds` → **51 passed, 0
+failed**. No code changed.
+
+**No commit** beyond this ledger entry.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
