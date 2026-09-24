@@ -114,6 +114,47 @@ pub use kds_sync::{
     PeerSubscription, event_station_scope, should_deliver,
 };
 
+/// Whether a bind address is loopback-only (LAN-A).
+///
+/// Accepts the host forms the app can produce: `127.0.0.1`, `localhost`,
+/// `::1`, and an empty host (which `TcpListener::bind` treats as
+/// "all interfaces", so it is NOT loopback and must be rejected). A host that
+/// cannot be parsed as an IP is treated as non-loopback unless it is literally
+/// `localhost`, so an unknown hostname fails closed.
+fn bind_addr_is_loopback(addr: &str) -> bool {
+    // Split host from an optional port. IPv6 literals are bracketed: [::1]:9180.
+    let host = if let Some(rest) = addr.strip_prefix('[') {
+        // Bracketed IPv6: [::1] or [::1]:9180.
+        match rest.split_once(']') {
+            Some((h, _)) => h,
+            None => return false,
+        }
+    } else if addr.matches(':').count() > 1 {
+        // An UNBRACKETED IPv6 literal (e.g. "::1", "::"). It carries no port,
+        // so splitting on ':' would mangle it — take it whole. This is the case
+        // that made "::1" fail the loopback check.
+        addr
+    } else {
+        // IPv4 or hostname, optionally with a port.
+        match addr.rsplit_once(':') {
+            Some((h, _)) => h,
+            None => addr,
+        }
+    };
+    if host.is_empty() {
+        // "…:9180" with no host means all interfaces.
+        return false;
+    }
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => ip.is_loopback(),
+        // An unparseable hostname is not proven loopback; fail closed.
+        Err(_) => false,
+    }
+}
+
 /// Maximum number of pending broadcast messages before old ones are
 /// dropped (avoids unbounded memory growth for slow peers).
 const CHANNEL_CAPACITY: usize = 256;
@@ -301,6 +342,22 @@ impl LanEventForwarder {
     /// 4. Sends heartbeat pings every 5s
     /// 5. Buffers events on write failure and exits
     pub async fn run(self) {
+        // LAN-A: refuse to serve an unauthenticated non-loopback bind. The
+        // caller used to be trusted to pair "external address" with "a PSK" —
+        // the desktop app did so with an exact-string check for `"0.0.0.0"`,
+        // which any other external spelling (`"::"`, a LAN IP, `"0.0.0.0:9180"`)
+        // would slip past, exposing every event as cleartext. The check belongs
+        // here, where the actual bind address is known and cannot be compared
+        // wrongly by a caller.
+        if self.psk.is_none() && !bind_addr_is_loopback(&self.bind_addr) {
+            tracing::error!(
+                address = %self.bind_addr,
+                "refusing to serve the LAN forwarder without a PSK on a non-loopback address — \
+                 events would be readable by anyone on the network; bind 127.0.0.1 or configure a PSK"
+            );
+            return;
+        }
+
         let listener = match TcpListener::bind(&self.bind_addr).await {
             Ok(l) => {
                 tracing::info!(address = %self.bind_addr, "LAN event forwarder started");

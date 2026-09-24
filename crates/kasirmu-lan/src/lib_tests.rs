@@ -1,5 +1,36 @@
 use super::replay::MAX_OFFLINE_BUFFER_PER_PEER;
 use super::*;
+
+// ── LAN-A: unauthenticated non-loopback binds are refused ───────────
+
+/// The loopback classifier must accept only genuinely loopback hosts.
+///
+/// `run()` refuses to serve without a PSK on a non-loopback address, and this
+/// is the predicate that decides it — so a host that slips through is an
+/// unauthenticated cleartext event stream. An empty host (all interfaces) and
+/// an unparseable hostname must both fail closed.
+#[test]
+fn bind_addr_is_loopback_accepts_only_real_loopback() {
+    for ok in ["127.0.0.1:9180", "127.0.0.1", "localhost:9180", "[::1]:9180", "::1"] {
+        assert!(bind_addr_is_loopback(ok), "{ok} must count as loopback");
+    }
+    for not_ok in [
+        "0.0.0.0:9180",
+        "0.0.0.0",
+        "::",
+        ":9180",
+        "192.168.1.50:9180",
+        "10.0.0.1",
+        "some-host.example",
+    ] {
+        assert!(
+            !bind_addr_is_loopback(not_ok),
+            "{not_ok} must NOT count as loopback — it would expose the event stream"
+        );
+    }
+}
+
+
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
