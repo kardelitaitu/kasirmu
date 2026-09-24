@@ -603,6 +603,16 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
                   >
                     <Localized id="setup-tab-email">Email Code</Localized>
                   </button>
+                  <button
+                    type="button"
+                    className="provisioning-subtab"
+                    data-testid="provisioning-open-wizard-btn"
+                    onClick={() => {
+                      window.location.hash = '#/mobile-setup';
+                    }}
+                  >
+                    <Localized id="setup-tab-wizard">Setup Wizard</Localized>
+                  </button>
                 </div>
 
                 {tabletTab === 'pair' ? (

@@ -236,6 +236,20 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
+  useEffect(() => {
+    const syncFromHash = () => {
+      const raw = window.location.hash.replace(/^#\/?/, '');
+      if (!raw) return;
+      const route = raw.split('?')[0]!;
+      if (getPage(route)) {
+        setCurrentRoute(route);
+      }
+    };
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock
@@ -292,6 +306,47 @@ export default function TabletAppShell() {
         />
       </LazyBoundary>
     );
+  }
+
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the tab bar or active workspace requirement.
+  // When an unprovisioned tablet enters mobile-setup, completing the flow marks the device provisioned.
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration.label}
+          requiredRole={pageRegistration.requiredRole ?? ''}
+          requiredPermission={pageRegistration.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <div className="workspace-fullscreen" key={currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <PageComponent
+                onProvisioned={() => {
+                  setHasCompletedSetup(true);
+                  setHasAnyUsers(true);
+                  setCurrentRoute('pos');
+                  window.location.hash = '';
+                }}
+              />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
   }
 
   // ── First-run provisioning runs BEFORE the login gate (ADR #41 §2.1, ADR #56 §2.3) ──
@@ -351,39 +406,6 @@ export default function TabletAppShell() {
         <StaffLoginScreen />
       </LazyBoundary>
     );
-  }
-
-  // Render the current page from the registry, or null if not found.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
-
-  // Fullscreen pages render without the tab bar or active workspace requirement.
-  if (pageRegistration?.fullscreen) {
-    if (pageDenied) {
-      return (
-        <PermissionDenied
-          action={pageRegistration.label}
-          requiredRole={pageRegistration.requiredRole ?? ''}
-          requiredPermission={pageRegistration.requiredPermission}
-        />
-      );
-    }
-    const isCustomerKiosk = currentRoute === 'kiosk';
-    return PageComponent ? (
-      <>
-        {!isCustomerKiosk && <MemoBanner />}
-        <div className="workspace-fullscreen" key={currentRoute}>
-          {renderPageLayout(
-            <LazyBoundary>
-              <PageComponent />
-            </LazyBoundary>,
-            pageRegistration.layout,
-            orientation.isLandscape,
-          )}
-        </div>
-      </>
-    ) : null;
   }
 
   // ADR #4 Phase 3b: Workspace routing — same pattern as desktop AppShell.

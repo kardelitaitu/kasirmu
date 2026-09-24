@@ -151,3 +151,34 @@ test.describe('Mobile Setup Wizard (E2E)', () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
 });
+
+test.describe('Tablet First-Run Integration (E2E)', () => {
+  test('unprovisioned tablet shell can navigate directly to mobile-setup wizard and complete onboarding', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    // Navigate to mobile tablet shell in unprovisioned state
+    await page.goto('/index.mobile.html?unprovisioned=1');
+
+    // The tablet provisioning screen mounts with the wizard button
+    const wizardBtn = page.getByTestId('provisioning-open-wizard-btn');
+    await expect(wizardBtn).toBeVisible({ timeout: 20_000 });
+    await wizardBtn.click();
+
+    // The mobile welcome flow is mounted fullscreen
+    await expect(page.getByTestId('mobile-welcome-flow-container')).toBeVisible();
+    await expect(page.getByTestId('mobile-welcome-screen')).toBeVisible();
+
+    // Progress to Hub -> Google account selection to complete setup
+    await page.getByTestId('mobile-welcome-start-btn').click();
+    await expect(page.getByTestId('mobile-setup-hub')).toBeVisible();
+
+    await page.getByTestId('mobile-hub-google-btn').click();
+    await expect(page.getByTestId('mobile-google-auth-view')).toBeVisible();
+
+    // Select Joko account to provision
+    await page.getByTestId('google-account-joko').click();
+
+    // Device is now marked provisioned; verify it transitions past the wizard
+    await expect(page.getByTestId('mobile-welcome-flow-container')).not.toBeVisible({ timeout: 10_000 });
+  });
+});
+

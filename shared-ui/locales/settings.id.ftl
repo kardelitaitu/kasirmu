@@ -146,6 +146,7 @@ setup-mode-linked-title = Tautkan akun kasir.mu Anda
 setup-mode-linked-desc = Daftar atau masuk untuk menautkan terminal ini ke akun Anda, untuk sinkronisasi antarperangkat, backup cloud, dan paket Anda.
 setup-tab-pair = Pasangkan QR
 setup-tab-email = Kode Email
+setup-tab-wizard = Panduan Wizard
 setup-provision-store-type = Jenis usaha apa ini?
 setup-store-type-simple-retail = Toko
 setup-store-type-simple-retail-blurb = Barcode, tunai, struk, stok, pajak

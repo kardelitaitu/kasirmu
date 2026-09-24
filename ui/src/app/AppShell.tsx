@@ -650,7 +650,13 @@ export default function AppShell() {
         <div className="workspace-fullscreen" key={currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
-              <PageComponent />
+              <PageComponent
+                onProvisioned={() => {
+                  setSetupKnownComplete(true);
+                  setCurrentRoute('products');
+                  window.location.hash = '';
+                }}
+              />
             </LazyBoundary>,
             pageRegistration.layout,
             orientation.isLandscape,

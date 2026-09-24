@@ -67,6 +67,7 @@ setup-mode-linked-title = Link your kasir.mu account
 setup-mode-linked-desc = Sign up or sign in to attach this terminal to your account, for multi-device sync, cloud backup, and your plan.
 setup-tab-pair = QR Pairing
 setup-tab-email = Email Code
+setup-tab-wizard = Setup Wizard
 setup-provision-store-type = What kind of shop is this?
 setup-store-type-simple-retail = Shop
 setup-store-type-simple-retail-blurb = Barcode, cash, receipt, inventory, tax
