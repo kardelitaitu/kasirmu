@@ -756,16 +756,22 @@ export default function AppShell() {
       <>
         {!isCustomerKiosk && <MemoBanner />}
         {bootBadges}
-        {renderPageLayout(
-          <LazyBoundary>
-            <PageComponent />
-          </LazyBoundary>,
-          pageRegistration.layout,
-          orientation.isLandscape,
-        )}
+        {/* T5: wrap in workspace-fullscreen so registry fullscreen pages
+            (mobile-setup, kiosk, …) get the same ws-page-enter animation
+            as hardcoded fullscreen workspaces. key= re-triggers on route change. */}
+        <div className="workspace-fullscreen" key={currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <PageComponent />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
       </>
     ) : null;
   }
+
 
   return (
     <>

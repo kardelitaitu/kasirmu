@@ -164,8 +164,20 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  /* Entry: rotating spin */
   .btn__spinner {
     animation: btn-spin var(--duration-600) var(--ease-linear) infinite;
+  }
+
+  /* T6: exit mirror — fade + scale down when processing ends */
+  @keyframes btn-spinner-out {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.6); }
+  }
+
+  .btn__spinner--exiting {
+    animation: btn-spinner-out var(--duration-150) var(--ease-out) both;
+    pointer-events: none;
   }
 }
 
