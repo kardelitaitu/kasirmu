@@ -21,16 +21,26 @@ import { Localized } from '@fluent/react';
  * Keep the markup and inline styles synchronized with both HTML entry
  * files (`.app-splash` rules in their `<head>` style blocks).
  */
-export function AppBootSplash() {
+export interface AppBootSplashProps {
+  exiting?: boolean | undefined;
+}
+
+export function AppBootSplash({ exiting = false }: AppBootSplashProps) {
   useEffect(() => {
     document.getElementById('boot-splash')?.remove();
   }, []);
 
   return (
-    <div className="app-splash" role="status" aria-live="polite" aria-busy="true">
+    <div
+      className={`app-splash${exiting ? ' app-splash--exiting' : ''}`}
+      role="status"
+      aria-live="polite"
+      aria-busy={!exiting}
+    >
       <Localized id="shared-loading">
         <span className="app-splash__label">Loading&hellip;</span>
       </Localized>
     </div>
   );
 }
+

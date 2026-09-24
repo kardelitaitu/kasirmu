@@ -9,6 +9,7 @@ import { getPage, isPageAccessible, type PageRegistration } from '@/registries/p
 import PermissionDenied from '@/components/PermissionDenied';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import { useSplashExit } from '@/hooks/useSplashExit';
 import MemoBanner from '@/features/memo/MemoBanner';
 import { isAnyAriaModalOpen, consumeShortcut } from '@/utils/modal-guard';
 import { useOrientation } from '@/hooks/useOrientation';
@@ -260,13 +261,16 @@ export default function TabletAppShell() {
     );
   }
 
+  const { splashMounted, splashExiting } = useSplashExit(loading);
+
   if (loading) {
     // Branded boot splash (stage 2) — mirrors the desktop shell gate
     // and the static stage-1 splash from index.mobile.html.
     return <AppBootSplash />;
   }
 
-  // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
+  const renderActiveView = () => {
+    // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
   // rather than the login screen. The merchant cannot log in but CAN
   // export their data via the no-session twin (export_data_without_session).
   if (subscriptionState === 'revoked') {
@@ -465,5 +469,13 @@ export default function TabletAppShell() {
       {/* The modal portals itself, so it does not matter which branch hosts it. */}
       {settingsModal}
     </TabletAppLayout>
+  );
+  };
+
+  return (
+    <>
+      {splashMounted && <AppBootSplash exiting={splashExiting} />}
+      {renderActiveView()}
+    </>
   );
 }

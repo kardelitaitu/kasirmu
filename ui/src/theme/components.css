@@ -1505,6 +1505,8 @@
 .app-splash {
   position: fixed;
   inset: 0;
+  z-index: var(--z-splash, 9999);
+  background-color: var(--color-bg-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1517,6 +1519,28 @@
 .app-splash__label {
   font-size: var(--text-sm);
 }
+
+/* T3: Boot splash exit crossfade (fade out to reveal interactive shell underneath) */
+@keyframes app-splash-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app-splash--exiting {
+    animation: app-splash-out var(--duration-200) var(--ease-out) both;
+    pointer-events: none;
+  }
+}
+
+.app-splash--exiting {
+  pointer-events: none;
+}
+
 /* Kept here: .lazy-boundary__spinner (below) reuses the
    app-splash-spin keyframes. */
 @keyframes app-splash-spin {

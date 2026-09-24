@@ -21,6 +21,7 @@ import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
 import { AppBootSplash } from '@/components/AppBootSplash';
+import { useSplashExit } from '@/hooks/useSplashExit';
 import { toWorkspaceType, type WorkspaceType } from '@/features/settings/workspaceType';
 import { getLicenseStatus } from '@/api/license';
 import { hasUsers } from '@/api/staff';
@@ -516,14 +517,7 @@ export default function AppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  // P12-4: Session lock screen takes precedence over all other views.
-  // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
-  // login and lock screens — a locked terminal must not display ops memos to
-  // anyone standing at it. (This mount previously cited the memo spec's
-  // session-alive reasoning; the ruling supersedes it.)
-  if (isLocked && session) {
-    return <SessionLockScreen onUnlock={handleUnlock} />;
-  }
+  const { splashMounted, splashExiting } = useSplashExit(loading);
 
   if (loading) {
     // Branded boot splash (stage 2) — visually continues the static
@@ -531,6 +525,16 @@ export default function AppShell() {
     // round-trips resolve. Replaces the former bare-text gate.
     return <AppBootSplash />;
   }
+
+  const renderActiveView = () => {
+    // P12-4: Session lock screen takes precedence over all other views.
+    // Memo surface (owner ruling 2026-09-08): the banner is app-wide EXCEPT the
+    // login and lock screens — a locked terminal must not display ops memos to
+    // anyone standing at it. (This mount previously cited the memo spec's
+    // session-alive reasoning; the ruling supersedes it.)
+    if (isLocked && session) {
+      return <SessionLockScreen onUnlock={handleUnlock} />;
+    }
 
   // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
   // rather than the re-activation or login screen. The merchant cannot log in
@@ -801,6 +805,14 @@ export default function AppShell() {
         ) : null}
       </AppLayout>
       {settingsModal}
+    </>
+  );
+  };
+
+  return (
+    <>
+      {splashMounted && <AppBootSplash exiting={splashExiting} />}
+      {renderActiveView()}
     </>
   );
 }

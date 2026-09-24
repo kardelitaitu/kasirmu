@@ -46,4 +46,14 @@ describe('AppBootSplash', () => {
     await renderInAct(withFluent(<AppBootSplash />, sharedFtl));
     expect(document.getElementById('boot-splash')).toBeNull();
   });
+
+  it('applies app-splash--exiting and marks aria-busy="false" when exiting=true', async () => {
+    await renderInAct(withFluent(<AppBootSplash exiting={true} />, sharedFtl));
+    const splash = document.querySelector('.app-splash');
+    expect(splash).toBeInTheDocument();
+    expect(splash).toHaveClass('app-splash--exiting');
+    const region = screen.getByRole('status');
+    expect(region).toHaveAttribute('aria-busy', 'false');
+  });
 });
+
