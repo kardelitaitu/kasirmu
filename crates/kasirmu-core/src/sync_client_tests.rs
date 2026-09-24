@@ -43,17 +43,28 @@ fn sync_pending_marks_items_synced() {
         api_key: None,
     };
     // No server running locally — sync should fail with a transport error.
+    //
+    // This case used to assert `failed == 1` and `status == Failed`. That was
+    // the destructive policy: `failed` is TERMINAL for a push item (nothing
+    // writes `status = 'pending'` again anywhere in the repo), so recording a
+    // transport error as a verdict stranded the queued sale forever. The
+    // daemon never did this, and neither does the plan-gate arm above. See
+    // `sync_pending_keeps_items_pending_on_a_transport_error`.
     let result = sync_pending(&store, &config).unwrap();
     assert_eq!(result.synced, 0);
-    assert_eq!(result.failed, 1);
+    assert_eq!(result.failed, 0, "a transport error is not a verdict");
     assert!(result.error.is_some(), "should report a network error");
 
-    // Item should be marked as failed (no longer pending).
+    // The item stays in the retry set, and is never labelled a failure.
     let pending = store.list_pending_offline().unwrap();
-    assert!(pending.is_empty(), "failed item is no longer pending");
+    assert_eq!(pending.len(), 1, "item stays pending for the next cycle");
     let all = store.list_all_offline().unwrap();
-    assert_eq!(all.len(), 1, "item still in queue with failed status");
-    assert_eq!(all[0].status, crate::offline::OfflineQueueStatus::Failed);
+    assert_eq!(all.len(), 1, "item still in queue");
+    assert_eq!(
+        all[0].status,
+        crate::offline::OfflineQueueStatus::Pending,
+        "a dropped connection must not mark the item failed"
+    );
 }
 
 /// ADR sync-plan-gating: the legacy blocking path must ALSO treat a
@@ -195,10 +206,18 @@ fn sync_pending_multiple_items() {
         api_key: None,
     };
     let result = sync_pending(&store, &config).unwrap();
-    // No server running — all items fail.
+    // No server running — the batch cannot be delivered, so it reports an
+    // error and leaves BOTH items pending for the next cycle (see
+    // `sync_pending_keeps_items_pending_on_a_transport_error`). Counting them
+    // as failures would mark the whole queue terminal on one dropped packet.
     assert_eq!(result.synced, 0);
-    assert_eq!(result.failed, 2);
+    assert_eq!(result.failed, 0, "a transport error is not a per-item verdict");
     assert!(result.error.is_some(), "should report a network error");
+    assert_eq!(
+        store.list_pending_offline().unwrap().len(),
+        2,
+        "both items must remain retryable"
+    );
 }
 
 #[test]
@@ -1072,3 +1091,58 @@ fn probe_auth_reports_unauthenticated_without_a_key() {
     let health = rt.block_on(probe_sync_auth("https://license.kasir.mu", Some("")));
     assert_eq!(health, SyncAuthHealth::Unauthenticated);
 }
+/// A TRANSPORT error is not a verdict on the item, so it must not be recorded
+/// as one.
+///
+/// `mark_all_failed` sets `status = 'failed'`, and nothing in this repo ever
+/// writes `status = 'pending'` again (verified: no `SET status = 'pending'`
+/// exists anywhere). `list_pending_offline` selects `status = 'pending'` only,
+/// so a `failed` push item is terminal: the queued sale never reaches the cloud
+/// again, silently. Two other places in this crate already say so in prose —
+/// `apply_sync_outcomes` ("push-side `failed` items have no requeue path") and
+/// the SQLite daemon ("push-side failed items are terminal (no requeue)").
+///
+/// The daemon therefore leaves items `pending` on a transport error
+/// (`daemon_tick.rs:107` -> `(0, Some(retry_err.to_string()))` and its
+/// `Err(e)` arm at `:291`), and the plan-gate arm here does the same on purpose
+/// ("a plan gate is not a failure"). A dropped connection, a 502 from a
+/// restarting container, or a build with `sync-http` compiled out are the SAME
+/// kind of transient condition and must not destroy the queue.
+#[test]
+fn sync_pending_keeps_items_pending_on_a_transport_error() {
+    let store = setup();
+    store
+        .enqueue_offline("complete_sale", r#"{"id":"transient"}"#)
+        .unwrap();
+
+    // Nothing is listening on this port: a pure transport failure.
+    let config = SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    };
+    let result = sync_pending(&store, &config).unwrap();
+
+    assert_eq!(result.synced, 0);
+    assert!(
+        result.error.is_some(),
+        "the transport error must still be reported"
+    );
+
+    // The load-bearing assertion: the item is still reachable by the next
+    // retry cycle.
+    let pending = store.list_pending_offline().unwrap();
+    assert_eq!(
+        pending.len(),
+        1,
+        "a transient transport error must leave the item PENDING, not failed: \
+         `failed` is terminal here (nothing writes status back to 'pending'), so \
+         marking it failed loses the queued sale permanently"
+    );
+    let all = store.list_all_offline().unwrap();
+    assert_eq!(
+        all[0].status,
+        crate::offline::OfflineQueueStatus::Pending,
+        "a dropped connection is not a verdict on the item"
+    );
+}
+

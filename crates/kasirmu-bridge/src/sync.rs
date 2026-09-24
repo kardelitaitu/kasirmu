@@ -694,11 +694,9 @@ pub async fn sync_run_scoped(
             error: Some("cloud sync requires a paid plan".into()),
             plan_required: true,
         }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item. See `sync_client::undelivered_batch`.
+        Err(e) => Ok(sync_client::undelivered_batch(&e)),
     }
 }
 

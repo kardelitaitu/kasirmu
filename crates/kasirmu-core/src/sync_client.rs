@@ -367,7 +367,55 @@ pub fn apply_sync_outcomes(
     })
 }
 
+/// The result for a push batch that could not be DELIVERED.
+///
+/// A transport failure is not a verdict on any item in the batch: the server
+/// never saw them. Every push entry point must therefore report the error and
+/// leave the queue untouched, so the next retry cycle re-lists the same items.
+///
+/// This exists as one shared function because the three shells (`kasirmu-core`,
+/// `kasirmu-bridge`, `apps/mobile-tauri`) each had their own copy of the arm,
+/// and all three had the destructive one — `mark_all_failed`.
+///
+/// **Why `mark_all_failed` is the wrong answer here.** It writes
+/// `status = 'failed'`, and nothing in this repo ever writes `status = 'pending'`
+/// again (no such `UPDATE` exists), while `list_pending_offline` selects
+/// `status = 'pending'` only. A `failed` push item is therefore TERMINAL: the
+/// queued sale never reaches the cloud again, silently and permanently. That is
+/// the correct outcome for an item the server *examined and rejected*
+/// ([`apply_sync_outcomes`], `PushOutcome::Rejected`) and the wrong one for a
+/// dropped connection, a 502 from a restarting container, or a build with
+/// `sync-http` compiled out.
+///
+/// The SQLite daemon already behaves this way (`daemon_tick.rs`: `Err(e) =>
+/// { pushed = 0; ... }`, and its post-auth-refresh retry returns
+/// `(0, Some(err))`), so this aligns the immediate path with the daemon.
+/// `mark_all_failed` is kept for callers that genuinely hold a per-item verdict.
+pub fn undelivered_batch(error: &SyncHttpError) -> SyncAttemptResult {
+    // The plan gate is a distinct, non-error state the UI renders as an upgrade
+    // prompt rather than a fault; it keeps its own flag and wording.
+    if matches!(error, SyncHttpError::PlanRequired) {
+        return SyncAttemptResult {
+            synced: 0,
+            failed: 0,
+            error: Some("cloud sync requires a paid plan".into()),
+            plan_required: true,
+        };
+    }
+    SyncAttemptResult {
+        synced: 0,
+        failed: 0,
+        error: Some(error.to_string()),
+        plan_required: false,
+    }
+}
+
 /// Mark all pending items as failed with the given error message.
+///
+/// **Only for callers holding a per-item verdict.** `failed` is terminal for a
+/// push item — nothing writes `status = 'pending'` again — so using this for a
+/// batch that was never delivered loses the queue. Use [`undelivered_batch`]
+/// for transport failures.
 pub fn mark_all_failed(
     store: &Store,
     pending: &[OfflineQueueItem],
@@ -414,7 +462,24 @@ pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptRes
             error: Some("cloud sync requires a paid plan".into()),
             plan_required: true,
         }),
-        Err(e) => mark_all_failed(store, &pending, &e.to_string()),
+        // A TRANSPORT error is not a verdict on the item, so it must not be
+        // recorded as one. `mark_all_failed` writes `status = 'failed'`, and
+        // nothing in this repo ever writes `status = 'pending'` again, while
+        // `list_pending_offline` selects `status = 'pending'` only — so a
+        // `failed` push item is TERMINAL and the queued sale never reaches the
+        // cloud again. That is the right answer for a server that looked at the
+        // item and rejected it (`apply_sync_outcomes`, `Rejected`), and the
+        // wrong one for a dropped connection, a 502 from a restarting
+        // container, or a build with `sync-http` compiled out.
+        //
+        // The SQLite daemon already takes this position on the identical
+        // failure (`daemon_tick.rs`: `Err(e) => { pushed = 0; ... }`, and its
+        // retry helper returns `(0, Some(err))`), and so does the plan-gate arm
+        // directly above. This arm was the outlier: same transient condition,
+        // opposite policy, and the destructive one. Reporting the error while
+        // leaving the items `pending` keeps the retry cycle intact — the next
+        // cycle re-lists them and tries again.
+        Err(e) => Ok(undelivered_batch(&e)),
     }
 }
 

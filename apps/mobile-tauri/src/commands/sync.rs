@@ -270,20 +270,11 @@ pub async fn sync_run_scoped(
             &pending_items,
             &outcomes,
         )?),
-        // ADR sync-plan-gating: a free tenant is gated, not broken. Do NOT
-        // mark the items failed — they stay `pending` and sync automatically
-        // once the tenant upgrades.
-        Err(sync_client::SyncHttpError::PlanRequired) => Ok(SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        }),
-        Err(e) => Ok(sync_client::mark_all_failed(
-            &store,
-            &pending_items,
-            &e.to_string(),
-        )?),
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item, and nothing writes `status = 'pending'`
+        // again. The helper also carries the plan-gate arm (a free tenant is
+        // gated, not broken). See `sync_client::undelivered_batch`.
+        Err(e) => Ok(sync_client::undelivered_batch(&e)),
     }
 }
 

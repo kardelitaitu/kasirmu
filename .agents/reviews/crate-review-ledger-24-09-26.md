@@ -2488,3 +2488,61 @@ documents that a Windows backslash literal in `ends_with` silently never matches
 **Tally:** 20 findings fixed (5 HIGH), 8 leads disproved, 1 pin hardened after it
 was proven evadable.
 
+---
+
+## Pass 37 — `sync_client.rs` (949): a transport error destroyed the offline sale queue
+
+### MSL-12 (HIGH, FIXED): `mark_all_failed` on a transport error made the push queue terminal
+
+`sync_pending`'s error arm called `mark_all_failed`, which writes
+`status = 'failed'`. **Nothing in this repository ever writes `status = 'pending'`
+again** — a whole-repo grep for `SET status = 'pending'` returns **zero** hits — and
+`list_pending_offline` selects `status = 'pending'` only. So a `failed` push item is
+**terminal**: the queued sale never reaches the cloud again, silently and permanently.
+
+A transport error was routed into that arm. A dropped connection, a 502 from a
+restarting container, or a build with `sync-http` compiled out are all conditions
+under which the server **never saw the item** — they are not verdicts on it.
+
+**The divergence that proves the intent.** The SQLite daemon already refuses this
+policy on the identical failure: `daemon_tick.rs`'s `Err(e)` arm does
+`pushed = 0; sync_error = Some(...)` and never marks anything, and its plan-gate
+sibling in the same function keeps items `pending` with the comment "a plan gate is
+not a failure". Three shells (`kasirmu-core`, `kasirmu-bridge`, `apps/mobile-tauri`)
+each carried their own copy of the destructive arm — five call sites in total — while
+the daemon, the one path that runs every 60-120s, had it right.
+
+**Two independent authors had already written the property down without acting on it.**
+`sync_client.rs:324` says *"push-side `failed` items have no requeue path, so marking a
+successful replay `failed` would strand it permanently"*, and `daemon.rs:236` repeats
+*"push-side failed items are terminal (no requeue)"*. Both treat it as a constraint to
+route around; neither asked whether the transport arm should be subject to it.
+
+**What changed.** A new shared `sync_client::undelivered_batch(error) -> SyncAttemptResult`
+holds the one policy (report the error, touch no rows, carry the plan-gate arm) and all
+five call sites route through it, so the shells cannot drift again. `mark_all_failed`
+remains for callers holding a genuine per-item verdict and now says so in its doc.
+
+**Test.** `sync_pending_keeps_items_pending_on_a_transport_error` asserts the item is
+still returned by `list_pending_offline` after a connection-refused. It was written
+FIRST and observed to FAIL against the old code (`left: 0, right: 1` — the item had
+been marked and dropped out of the retry set), then pass after the fix.
+
+**Two existing tests pinned the destructive behaviour and were corrected, not deleted.**
+`sync_pending_marks_items_synced` asserted `failed == 1` and `status == Failed` for a
+missing server — despite its name it never tested syncing. `sync_pending_multiple_items`
+asserted `failed == 2`. Both now assert the items stay `pending`, with the reasoning in
+the test body and a pointer to the new case.
+
+**Left alone, recorded:** `platform/sync/src/image_push.rs` also calls its own
+`mark_all_failed` on a network error, but that is a hash-indexed image drain with its own
+`enqueue`/`drain` cycle, not the sale queue — a different lifecycle that does not share
+`list_pending_offline`. Its `drain_once_enqueues_and_marks_failed_on_network_error` test
+still passes. If the image drain loses retries the same way, that is its own finding.
+
+**Verified:** 52 `sync_client` tests, 9 bridge `offline::` tests, 427 `platform-sync`
+tests all pass; clippy clean on the touched crates (`sync.rs:74` is another agent's
+committed warning, untouched).
+
+**Tally:** 21 findings fixed (6 HIGH), 8 leads disproved.
+

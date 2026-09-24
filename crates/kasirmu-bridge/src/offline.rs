@@ -16,7 +16,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use kasirmu_core::sync_client::{self, SyncAttemptResult, SyncConfig};
+use kasirmu_core::sync_client::{self, SyncConfig};
 
 use kasirmu_core::{OfflineQueueItem, RemoteSyncFailure, Store, SyncPriority};
 
@@ -379,13 +379,11 @@ pub async fn retry_offline_sync_scoped(
     let store = Store::new(&db);
     let attempt = match outcomes {
         Ok(outcomes) => sync_client::apply_sync_outcomes(&store, &pending_items, &outcomes)?,
-        Err(sync_client::SyncHttpError::PlanRequired) => SyncAttemptResult {
-            synced: 0,
-            failed: 0,
-            error: Some("cloud sync requires a paid plan".into()),
-            plan_required: true,
-        },
-        Err(e) => sync_client::mark_all_failed(&store, &pending_items, &e.to_string())?,
+        // A batch the server never saw is retried, not condemned: `failed` is
+        // terminal for a push item, and nothing writes `status = 'pending'`
+        // again. The helper also carries the plan-gate arm (a free tenant is
+        // gated, not broken). See `sync_client::undelivered_batch`.
+        Err(e) => sync_client::undelivered_batch(&e),
     };
     drop(db);
 
