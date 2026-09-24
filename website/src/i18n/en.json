@@ -509,6 +509,7 @@
   },
   "about": {
     "title": "Why we built kasir.mu",
+    "eyebrow": "About kasir.mu",
     "subtitle": "Most point-of-sale software treats a working internet connection as a given. We built kasir.mu the other way round: the sale happens on the register, the cloud is the backup, and the hardware you already own is fast enough.",
     "factsTitle": "At a glance",
     "facts": [

@@ -513,6 +513,7 @@
   },
   "about": {
     "title": "Kenapa kami membangun kasir.mu",
+    "eyebrow": "Tentang kasir.mu",
     "subtitle": "Sebagian besar aplikasi kasir menganggap koneksi internet selalu tersedia. Kami membangun kasir.mu dengan asumsi sebaliknya: transaksi terjadi di mesin kasir, cloud hanya cadangan, dan perangkat yang sudah Anda miliki cukup cepat.",
     "factsTitle": "Sekilas",
     "facts": [
