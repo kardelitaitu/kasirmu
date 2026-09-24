@@ -2,7 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 import { renderWithFluentSync } from './test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
-import { MobileWelcomeFlow } from '@/features/setup/mobile';
+import { MobileWelcomeFlow, registerMobileSetupFeature } from '@/features/setup/mobile';
+import { getPage } from '@/registries/page-registry';
 
 describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
   beforeEach(() => {
@@ -196,6 +197,14 @@ describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
     expect(screen.getByTestId('mobile-qr-video')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-qr-skeleton')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-qr-retry-btn')).toBeInTheDocument();
+  });
+
+  it('registers mobile-setup page route via registerMobileSetupFeature()', () => {
+    registerMobileSetupFeature();
+    const page = getPage('mobile-setup');
+    expect(page).toBeDefined();
+    expect(page?.route).toBe('mobile-setup');
+    expect(page?.fullscreen).toBe(true);
   });
 });
 
