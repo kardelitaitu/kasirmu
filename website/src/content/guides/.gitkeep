@@ -1,0 +1,10 @@
+The guides layer (website SEO plan, track A) lands as scaffolding: the
+collection, the routes and the gate rules exist, no articles yet.
+
+This file keeps the directory present so Astro's glob loader has a base to read
+on a fresh checkout — an empty collection is valid, a missing one is not. Delete
+this file once the first guide lands; the directory keeps itself alive after
+that.
+
+Layout: src/content/guides/<locale>/<slug>.md, one file per locale per guide,
+because the owner ruled that guides are drafted in both languages together.

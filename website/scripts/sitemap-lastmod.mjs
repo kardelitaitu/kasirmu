@@ -10,8 +10,8 @@
  * per URL and returns `undefined` when it cannot, rather than inventing one.
  *
  * Sources, in order:
- *   1. Docs pages → the authored `updated` frontmatter date. That is the same
- *      value the page itself renders (DocsLayout), so the sitemap and the page
+ *   1. Docs and guide pages → the authored `updated` frontmatter date. That is
+ *      the same value the page itself renders, so the sitemap and the page
  *      cannot disagree with each other.
  *   2. Everything else → the newest git commit date for the page's source file.
  *   3. No date available → `undefined`; the field is omitted for that URL.
@@ -25,12 +25,17 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { GUIDE_SEGMENT } from '../src/lib/guides.ts';
 
 const HERE = import.meta.dirname; // website/scripts
 const WEBSITE = join(HERE, '..'); // website
 const REPO = join(WEBSITE, '..'); // repo root
 
 const DOCS_PREFIX = 'website/src/content/docs/';
+// Guides take their lastmod from front matter for the same reason docs do: the
+// git date of a repo-wide commit is not the date the advice on the page
+// changed, and a guide is edited for accuracy rather than for features.
+const GUIDES_PREFIX = 'website/src/content/guides/';
 
 /**
  * Repo-relative source file for a sitemap URL, or null when the URL has no
@@ -52,6 +57,13 @@ export function sourceFileFor(url) {
   if (parts[0] === 'docs') {
     if (parts.length === 1) return 'website/src/pages/[locale]/docs/index.astro';
     return `${DOCS_PREFIX}${locale}/${parts.slice(1).join('/')}.md`;
+  }
+  // Guides: the segment is translated (`/id/panduan/`, `/en/guides/`), so the
+  // locale in the URL decides whether this path is a guide at all — which is
+  // why the mapping lives in src/lib/guides.ts rather than being spelled here.
+  if (GUIDE_SEGMENT[locale] && parts[0] === GUIDE_SEGMENT[locale]) {
+    if (parts.length === 1) return 'website/src/pages/[locale]/[guideSegment]/index.astro';
+    return `${GUIDES_PREFIX}${locale}/${parts.slice(1).join('/')}.md`;
   }
   return `website/src/pages/[locale]/${parts.join('/')}.astro`;
 }
@@ -137,7 +149,9 @@ export function createLastmodResolver() {
   return (url) => {
     const rel = sourceFileFor(url);
     if (!rel) return undefined;
-    if (rel.startsWith(DOCS_PREFIX)) return frontmatterUpdated(join(REPO, rel));
+    if (rel.startsWith(DOCS_PREFIX) || rel.startsWith(GUIDES_PREFIX)) {
+      return frontmatterUpdated(join(REPO, rel));
+    }
     gitDates ??= gitDatesByPath();
     return gitDates.get(rel);
   };

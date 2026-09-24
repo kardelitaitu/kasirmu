@@ -167,13 +167,14 @@
 //
 // SPEED: reads every built page, the sitemap and the docs corpus — ~40 ms. It is
 // a post-build step, not a crawler.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { accessibilityIssues } from '../src/lib/accessibility.ts';
 import { outlineIssues, renderedHeadings } from '../src/lib/heading-outline.ts';
 import { collectScriptSources, scriptControlVerdict } from '../src/lib/script-controls.ts';
 import { LANDING_CONTRACTS } from '../src/lib/landings.ts';
+import { GUIDE_CONTRACT, GUIDE_SEGMENT } from '../src/lib/guides.ts';
 import { NON_PUBLIC_PAGES, SITE, isNonPublic } from '../src/lib/site.ts';
 import { DESCRIPTION_BUDGET, TITLE_BUDGET } from '../src/lib/seo.ts';
 import { FOOTER_COLUMNS } from '../src/lib/footer-nav.ts';
@@ -271,6 +272,54 @@ const { docs: docsCorpus, unbuildable } = (() => {
   }
 })();
 
+// The guides corpus, for the same reason the docs corpus is read rather than
+// pattern-matched: a guide is whatever the collection loads, at any depth, so
+// `/id/panduan/a/b/` is a guide and not a marketing page. Front matter is
+// parsed here too, because check 15 judges a guide against what it DECLARES —
+// its target query and the commercial page it supports — not only against what
+// it happened to render.
+//
+// Absent directory is allowed on purpose: the layer ships as scaffolding, so a
+// checkout with no guides yet has no corpus and no guides to judge.
+const GUIDES_SOURCE = new URL('../src/content/guides/', import.meta.url);
+
+function readGuidesCorpus() {
+  const guides = new Map(); // built URL path -> { source, locale, slug, target, commercialParent }
+  for (const name of readdirSync(GUIDES_SOURCE, { recursive: true })) {
+    const relative = String(name).split(sep).join('/');
+    if (!relative.endsWith('.md')) continue;
+    const source = `src/content/guides/${relative}`;
+    const segments = relative.slice(0, -'.md'.length).split('/');
+    // Outside any locale directory: the route could never build it. Reported as
+    // a source-level finding rather than silently skipped.
+    if (segments.length < 2) {
+      guides.set(`__unbuildable__${source}`, { source, locale: null, slug: null, target: null, commercialParent: null });
+      continue;
+    }
+    const [locale, ...rest] = segments;
+    const slug = rest.join('/');
+    const frontmatter = (() => {
+      try {
+        return /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(new URL(relative, GUIDES_SOURCE), 'utf8'))?.[1] ?? '';
+      } catch {
+        return '';
+      }
+    })();
+    const field = (key) =>
+      frontmatter.match(new RegExp(`^${key}:[ \\t]*["']?([^"'\\n]*?)["']?[ \\t]*$`, 'm'))?.[1]?.trim();
+    guides.set(`/${locale}/${GUIDE_SEGMENT[locale] ?? 'guides'}/${slug}/`, {
+      source,
+      locale,
+      slug,
+      target: field('target'),
+      commercialParent: field('commercialParent'),
+    });
+  }
+  return guides;
+}
+
+const guidesCorpus = existsSync(GUIDES_SOURCE) ? readGuidesCorpus() : new Map();
+
 function classify(url) {
   if (SELF_HEAD_PAGES[url]) return { url, ...SELF_HEAD_PAGES[url] };
   const tree = HEADLESS_TREES.find((entry) => url.startsWith(entry.prefix));
@@ -279,13 +328,16 @@ function classify(url) {
   if (!locale) return null;
   const path = dirUrl(url);
   // A docs article is one the corpus builds. The docs hub (/xx/docs/) is a page
-  // in its own right and stays a plain content page.
-  return { url, kind: docsCorpus.has(path) ? 'docs article' : 'content', locale, canonicalPath: path };
+  // in its own right and stays a plain content page. A guide is the same idea
+  // for the guides collection, whose segment differs per locale.
+  const kind = docsCorpus.has(path) ? 'docs article' : guidesCorpus.has(path) ? 'guide' : 'content';
+  return { url, kind, locale, canonicalPath: path };
 }
 
 const isPricing = (url) => /^\/(?:en|id)\/pricing\/$/.test(url);
 /** A page served under a locale prefix: the ones the locale rules apply to. */
-const isLocalePage = (rec) => rec.kind === 'content' || rec.kind === 'docs article';
+const isLocalePage = (rec) =>
+  rec.kind === 'content' || rec.kind === 'docs article' || rec.kind === 'guide';
 /** Pages that ship a shared <head> (SiteHead): the ones the head checks apply to. */
 const hasHead = (rec) => isLocalePage(rec) || rec.kind === 'root stub' || rec.kind === '404';
 
@@ -428,6 +480,15 @@ for (const [url, source] of docsCorpus) {
 }
 for (const { source, because } of unbuildable) {
   add('page classes', source, `is loaded by the docs collection but can never be built: ${because}`);
+}
+for (const [url, entry] of guidesCorpus) {
+  if (url.startsWith('__unbuildable__')) {
+    add('page classes', entry.source, `is loaded by the guides collection but can never be built: it sits outside any locale directory`);
+    continue;
+  }
+  if (!builtPaths.has(url)) {
+    add('page classes', entry.source, `is loaded as a guide (the route would build ${url}) but the build produced no page for it — is its directory a locale the site serves?`);
+  }
 }
 
 // 1. canonical ⇄ og:url.
@@ -602,6 +663,10 @@ const requiredTypes = (rec) => {
   // shape.
   if (rec.kind === 'docs article') return ['BreadcrumbList', 'Article'];
   const base = ['SoftwareApplication', 'Organization', 'WebSite'];
+  // A guide is a content page AND an article: it renders through Base, which
+  // contributes the three entity blocks, and its route adds the two an article
+  // owes. Marketing pages are not articles and must not claim to be.
+  if (rec.kind === 'guide') return [...base, 'BreadcrumbList', 'Article'];
   return isPricing(rec.path) ? [...base, 'Product'] : base;
 };
 
@@ -819,6 +884,66 @@ for (const page of pages.filter((p) => p.rec?.kind === 'docs article')) {
   }
 }
 
+// 9b. Guides: what a guide owes over and above being a valid page.
+//
+//     (a) A UNIQUE `target`. Two pages declaring the same query in the same
+//         language are two pages competing with each other, and that is the one
+//         content defect no amount of copy can fix — Google picks one, usually
+//         neither of the ones you wanted. Checked per locale: an Indonesian
+//         query and its English translation are not the same query.
+//     (b) A BODY LINK to the commercial page it declares as its parent. This is
+//         the rule that makes the whole layer earn its keep. The docs layer has
+//         the same rule pointing at /download/ and /pricing/; a guide points at
+//         the page its own subject supports, and it is authored in the markdown
+//         so the sentence around the link is the argument for clicking it.
+//
+//     Both are judged against the source, not only the render, so a guide whose
+//     front matter lies is named even while it still renders correctly.
+const guideTargets = new Map();
+for (const [url, entry] of guidesCorpus) {
+  if (!entry.locale) continue;
+  if (!entry.target) {
+    add(
+      'guide contract',
+      entry.source,
+      'declares no `target` — a guide with no query it exists to answer cannot be told apart from the pages it will end up competing with',
+    );
+    continue;
+  }
+  const key = `${entry.locale}|${entry.target.toLowerCase()}`;
+  if (guideTargets.has(key)) {
+    add(
+      'guide contract',
+      entry.source,
+      `declares the target query "${entry.target}", the same as ${guideTargets.get(key)} — two ${entry.locale} pages competing for one query`,
+    );
+  } else {
+    guideTargets.set(key, entry.source);
+  }
+}
+
+for (const page of pages.filter((p) => p.rec?.kind === 'guide')) {
+  const entry = guidesCorpus.get(page.rec.path);
+  if (!entry) continue;
+  const locale = page.rec.locale;
+  const hrefs = [...page.articleHtml.matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((m) => m[1]);
+  if (!entry.commercialParent) {
+    add('guide contract', page.url, 'declares no `commercialParent` — a guide that supports no commercial page is content with no route into the product');
+    continue;
+  }
+  const parentPath = `/${locale}/${entry.commercialParent.replace(/^\/+|\/+$/g, '')}/`;
+  if (!builtPaths.has(parentPath)) {
+    add('guide contract', page.url, `declares commercialParent "${entry.commercialParent}", which is not a built page (${parentPath})`);
+  }
+  if (!hrefs.some((href) => href === parentPath || href === `${SITE}${parentPath}`)) {
+    add(
+      'guide contract',
+      page.url,
+      `declares commercialParent "${entry.commercialParent}" but its body never links to ${parentPath} — the traffic this guide earns has nowhere to go`,
+    );
+  }
+}
+
 // 10. Retired brand: no page may name the product by a name it no longer has.
 //     Scanned on `body` — the script-stripped, tag-stripped text — so an href to
 //     the repository is not a finding, and only words the visitor actually reads
@@ -846,6 +971,21 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
 //     which was true of `/kasir-qris/`, whose four `how` steps sat in the
 //     dictionary behind a wrapper condition that did not test `v.how`.
 for (const page of pages.filter((p) => p.rec && isLocalePage(p.rec))) {
+  // Guides carry their own floor (src/lib/guides.ts) rather than a landing
+  // contract: they are not selling pages, but they compete against competitor
+  // long-form, so the same "too thin to explain anything" failure applies.
+  if (page.rec.kind === 'guide') {
+    const guideWords = page.main.split(' ').filter(Boolean).length;
+    if (guideWords < GUIDE_CONTRACT.minWords) {
+      add(
+        'content depth',
+        page.url,
+        `has ${guideWords} words of body copy (floor ${GUIDE_CONTRACT.minWords}) — the pages ranking for this kind of query are long-form, and a stub cannot displace one`,
+      );
+    }
+    continue;
+  }
+
   const contract = LANDING_CONTRACTS.find(
     (candidate) => page.rec.path === `/${page.rec.locale}${candidate.slug}`,
   );
@@ -972,6 +1112,7 @@ const checks = [
   'titles',
   'locale copy',
   'docs next step',
+  'guide contract',
   'retired brand',
   'content depth',
   'headings',

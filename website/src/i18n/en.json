@@ -158,6 +158,14 @@
       ]
     }
   },
+  "guides": {
+    "hubTitle": "Guides for warung, shops and cafes",
+    "hubDescription": "Practical guides for running a small Indonesian shop: selling offline, daily reports, stock, QRIS and choosing a POS — written for warung and toko owners.",
+    "hubHeading": "Guides",
+    "hubIntro": "Short, practical answers to the questions small shop owners ask before they choose a point-of-sale system. No jargon, no pitch — start with the problem you actually have.",
+    "updated": "Updated",
+    "readGuide": "Read the guide"
+  },
   "hero": {
     "badge": "Not backed by Y Combinator",
     "title": "The Lightweight, Easy, Free POS",

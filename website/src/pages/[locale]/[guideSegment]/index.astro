@@ -1,0 +1,68 @@
+---
+/**
+ * The guides hub for one locale: `/id/panduan/`, `/en/guides/`.
+ *
+ * The segment is a route param, not a literal, because the two locales do not
+ * share a word for it — see src/lib/guides.ts. `getStaticPaths` only ever emits
+ * the segment that belongs to its own locale, so `/en/panduan/` and
+ * `/id/guides/` are not built at all rather than built and left dangling.
+ */
+import { getCollection } from 'astro:content';
+import Base from '../../../layouts/Base.astro';
+import { locales, t } from '../../../i18n';
+import { guideSegment as segmentFor } from '../../../lib/guides';
+
+export async function getStaticPaths() {
+  const guides = await getCollection('guides');
+  return locales.flatMap((locale) => {
+    const mine = guides.filter((entry) => entry.id.startsWith(`${locale}/`));
+    // No hub without articles. An empty hub would be an indexable page with
+    // nothing on it — the exact thing this whole layer exists to avoid — so the
+    // hub appears only once there is something to list.
+    if (!mine.length) return [];
+    return [
+      {
+        params: { locale, guideSegment: segmentFor(locale) },
+        props: {
+          entries: mine
+            .sort((a, b) => a.data.order - b.data.order)
+            .map((entry) => ({
+              slug: entry.id.slice(locale.length + 1),
+              title: entry.data.title,
+              description: entry.data.description,
+            })),
+        },
+      },
+    ];
+  });
+}
+
+const { entries } = Astro.props;
+const locale = Astro.params.locale ?? 'en';
+// The counterpart hub lives under the other locale's word for "guide".
+const alternatePaths = Object.fromEntries(locales.map((code) => [code, `${segmentFor(code)}/`]));
+---
+
+<Base
+  title={`kasir.mu — ${t(locale, 'guides.hubTitle')}`}
+  description={t(locale, 'guides.hubDescription')}
+  locale={locale}
+  alternatePaths={alternatePaths}
+>
+  <div class="mx-auto max-w-3xl px-4 py-16">
+    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">{t(locale, 'guides.hubHeading')}</h1>
+    <p class="mt-4 text-muted">{t(locale, 'guides.hubIntro')}</p>
+    <ul class="mt-10 flex flex-col gap-6">
+      {
+        entries.map((entry) => (
+          <li class="rounded-lg border border-ink/10 p-5">
+            <a href={`/${locale}/${segmentFor(locale)}/${entry.slug}/`} class="text-lg font-semibold hover:text-primary">
+              {entry.title}
+            </a>
+            <p class="mt-2 text-sm text-muted">{entry.description}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</Base>
