@@ -17,9 +17,9 @@
                        "border":  "",
                        "key":  "plus",
                        "label":  "PLUS",
-                       "fill":  "#EDE9FE",
-                       "contrast":  7.57,
-                       "ink":  "#5B21B6",
+                       "fill":  "#8655F6",
+                       "contrast":  4.52,
+                       "ink":  "#FFFFFF",
                        "svg":  "svg/tier-plus.svg"
                    },
                    {

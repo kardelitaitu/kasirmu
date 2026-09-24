@@ -55,7 +55,7 @@ $BaselineK   = 0.36                           # optical baseline offset as a fra
 # fill keeps the logo hue and saturation and drops lightness to 48.1%.
 $Tiers = @(
     @{ Key = "free";       Label = "FREE";       Fill = "#FFFFFF"; Ink = "#64748B"; Border = "#C7CDD6" }
-    @{ Key = "plus";       Label = "PLUS";       Fill = "#EDE9FE"; Ink = "#5B21B6"; Border = "" }
+    @{ Key = "plus";       Label = "PLUS";       Fill = "#8655F6"; Ink = "#FFFFFF"; Border = "" }
     @{ Key = "pro";        Label = "PRO";        Fill = "#0471F1"; Ink = "#FFFFFF"; Border = "" }
     @{ Key = "premium";    Label = "PREMIUM";    Fill = "#F5C518"; Ink = "#3F2D00"; Border = "" }
     @{ Key = "enterprise"; Label = "ENTERPRISE"; Fill = "#12141A"; Ink = "#F1F5F9"; Border = "" }
