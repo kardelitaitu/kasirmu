@@ -916,6 +916,63 @@ CODEBASE, not a null result: the remaining risk is concentrated where those
 defences are absent, and finding those places is now more about locating GAPS IN
 THE GUARDS than about reading more code.
 
+### Bridge fifteenth pass — 24-09-26 (guard coverage, and a change the guards REJECTED)
+
+Following the fourteenth pass's recommendation — target guard coverage rather
+than more module reads — I looked for security-relevant lists that lack a
+completeness test, and found the opposite: a guard so tight it rejected a
+"tidy-up" I was about to ship.
+
+**The candidate change.** Eight production `Settings::get` calls in `license.rs`
+(`:205`, `:295`, `:298`, `:536`, `:780`, `:781`, `:928`, `:963`) pass credential
+keys as **raw string literals** (`"license.api_key"`) rather than through the
+`keys::LICENSE_*` constants declared in `platform/core/src/settings/keys.rs`. I
+had replaced exactly these literals with constants in the two WRITE sites during
+the tenth pass, so the reads looked like a leftover. I replaced all eight.
+
+**It compiled, and the guard failed.**
+`settings::license_writer_literals_are_swept_from_license_rs_not_from_a_transcription`
+went red with *"the sweep read no key-shaped literal out of license.rs: the
+include_str path moved or the parser broke."* Reading it explains why the
+literals are load-bearing: the test's job is to prove that what `license.rs`
+SPELLS matches what `keys.rs` DECLARES, and it does that by lifting the literals
+out of the file as TEXT (`include_str!`) and comparing them to the registry. Its
+own doc records that the first version compared a hand-typed transcription — *"it
+could only go red by being edited, and stayed green while `license.rs` drifted,
+which is a decoration wearing a drift pin's name"*. Replacing every literal with
+the constant would have made the sweep find nothing, i.e. would have rebuilt
+exactly the decoration the test exists to prevent. Reverted; guard green again.
+
+**So the same review act produced two opposite conclusions, and the guard decided
+between them.** Read locally, the raw literals look like drift that a careful
+engineer should normalise. Read against the guard, they are the test's INPUT, and
+normalising them disarms it. The guard's `>= 5 literals` assertion is what makes
+the difference detectable at all — without it the "fix" would have shipped green
+and silently converted a live drift pin into a no-op.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib
+license_writer_literals` → **1 passed** after the revert (FAILED with my change).
+`license::` → **24 passed**.
+
+**What this pass actually establishes about guard coverage.** The three guards I
+checked this round and last are all stronger than a module read would have told
+me:
+
+* `read_key_map_covers_all_protected_get_routes` — derives routes from ROUTER
+  SOURCE, exempts with reasons, asserts a floor so it cannot pass vacuously.
+* `license_writer_literals_are_swept_from_license_rs_not_from_a_transcription` —
+  sweeps the producer as text, asserts it found something, and is proven live by
+  the failure above.
+* `every_credential_family_key_declared_in_keys_rs_is_blocked` — forward, reverse
+  AND set-equality legs, plus a parallel table test that must equal the swept set
+  (`LICENSE_PHONE` was once a constant behind, and the comment records it).
+
+Each has the two properties that separate a guard from a decoration: it derives
+its subject from the real source rather than a transcription, and it asserts a
+floor so it cannot pass by finding nothing. That is a substantive answer to the
+question the last pass raised, and it is the fourth round running whose conclusion
+is that the codebase's guard layer is already ahead of the audit.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
