@@ -1022,6 +1022,55 @@ than shipped product code, because the CONSEQUENCE is live: an evadable pin leav
 BRIDGE-8 (a money defect) reintroducible. A guard that cannot fail is worse than
 no guard, since it reads as coverage.
 
+### Bridge seventeenth pass — 24-09-26 (the other two source pins were evadable too)
+
+Applied the sixteenth pass's recommendation: run the same inverted question —
+"can this guard pass by inspecting nothing?" — against the OTHER source-derived
+pins. **Two of the three failed it.**
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-12 | LOW | `src/data_tests.rs:583` — the BRIDGE-1 pin | **Evadable by formatting, exactly like BRIDGE-11.** It tested `t.starts_with("let _ = tx.execute(")` one line at a time, so writing the discarded result as `let _ =` newline `tx.execute(` restored BRIDGE-1 IN FULL — every row-write error discarded while the counter still incremented — and the test **PASSED**. Verified by doing exactly that. Also had **no floor**, so the moment the pattern stopped matching it would have read as a clean sweep. |
+| BRIDGE-13 | LOW | `src/terminals_tests.rs:110` — the BRIDGE-6 pin | **No floor, and its two `.expect()`s do not compensate.** They prove the MARKER `fn verify_binding(` was found, not that the extracted region IS the function: a body sliced short by an earlier `\n}` (a nested block) satisfies both while containing none of the code under test, and every assertion below would then pass by inspecting nothing. |
+
+**Fixed, both proven load-bearing by disabling them.**
+
+* `data_tests.rs` — whitespace-normalised (`split_whitespace().join(" ")`), the
+  needle set widened to three spellings, and `assert!(call_sites >= 5)` so the
+  scan cannot read a file that no longer spells `tx.execute(`. The evasive shape
+  that defeated the old version now **FAILS** it.
+* `terminals_tests.rs` — `assert!(body.len() > 200)` plus a shape check for
+  `keyring`. Raising the bound to 200000 makes it fail with *"extracted only 1370
+  bytes ... the scan is reading a region that no longer holds it"*; restored, it
+  passes.
+
+**One hypothesis I formed and disproved inside this pass.** My first reading was
+that the BRIDGE-1 pin was ALREADY vacuous — `data.rs` contains zero literal
+`let _ = tx.execute(` matches since my own sixth-pass fix. But the calls it must
+watch are inside `import_data`, and reverting one site to the pre-fix form DOES
+trip it (verified: `[(749, "let _ = tx.execute(")]`). The pin was live for the
+reversion it was written for; what it could not see was a REFORMATTED reversion.
+Recording the distinction because "the pattern finds nothing today" and "the pin
+is dead" are different claims, and only the second would have justified deleting
+it.
+
+**The pattern across three passes.** Every source pin this audit has written or
+inherited was shaped as a LINE-BASED TEXT SCAN, and every one of them could be
+defeated by ordinary `cargo fmt` output. That is now three for three. The
+recurring fix is the same two ingredients: **normalise whitespace before
+matching, and assert a floor so the scan cannot pass by finding nothing.** Both
+belong in the pattern for any future pin, and the licence-literal sweep in
+`settings_tests.rs` already had them — it is the one that was written right, and
+the one whose doc comment names the failure mode the others then repeated.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- data::
+terminals:: pos::` → **124 passed, 0 failed**, with all three hardened assertions
+green and each watched red when disabled. Clippy clean on both changed files.
+`data.rs` itself is untouched — `git hash-object` equals `HEAD:` (the probes were
+reverted).
+
+**Commit:** `ef8f22f17` (BRIDGE-12/13, bridge tests).
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
