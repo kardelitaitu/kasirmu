@@ -2,18 +2,14 @@
 //!
 //! Delegates to `kasirmu_core::db::Store` for all CRUD operations.
 //!
-//! # ADR #49 status — 1 of 7 doors extracted, 6 refused
+//! # ADR #49 status — 2 of 7 doors extracted, 5 refused
 //!
-//! Only [`list_customers_scoped`] delegates to `kasirmu-bridge`. The other six are
-//! **refused** under ADR #49 §4 — not merely unported. Two distinct reasons, and the
-//! second one is now half-repaired:
+//! [`list_customers_scoped`] and — since 2026-09-25 — [`get_customer_scoped`]
+//! delegate to `kasirmu-bridge`. The remaining five are **refused** under ADR #49 §4,
+//! not merely unported, and for one reason: their gate ORDER is fixed but their gate
+//! KIND still differs from no shell, because the bridge twins gate with the same
+//! non-scope-aware helper this module uses.
 //!
-//! * `get_customer_scoped` — the bridge twin gates with the scope-aware
-//!   `require_session_permission`; this shell gates with the non-scope-aware
-//!   `require_customer_permission`. §4: *"Gates that are not scope-aware stay
-//!   not scope-aware; an extraction is not the place to widen a gate."* Still open:
-//!   this is the gate-KIND half, and R10 (owner, 2026-09-20) rules the scope-aware
-//!   form authoritative, so it is a funded change rather than a parked fork.
 //! * `create_customer_scoped`, `update_customer_scoped`,
 //!   `delete_customer_scoped`, `search_customers_scoped`,
 //!   `get_customer_history_scoped` — the gate-ORDER half, **FIXED 2026-09-24 under
@@ -25,10 +21,22 @@
 //!   db")` where the bridge answers `PermissionDenied` — an authorisation failure
 //!   surfacing as an infrastructure error. That leak is what closed it.
 //!
-//! The remaining difference is gate KIND only, and R10 settles it: the scope-aware
-//! gate is authoritative wherever the two shells disagree. Delegating is still
-//! gated on that change landing on both shells at once, per ADR #49 §4's ban on an
-//! extraction widening or narrowing a gate.
+//! **The gate-KIND half is now CLOSED, and it turned out to be one door rather than
+//! six.** R10 shape 1 (owner, 2026-09-20; `done-todo-owner-rulings.md:258`) named
+//! exactly one case: `get_customer_scoped` gated non-scope-aware where its bridge
+//! twin gated scope-aware. Measured at this tip, the bridge's `customers.rs` gates
+//! scope-aware in **one** place only — `get_scoped` at `:430` — while
+//! `list_scoped` (`:400`) and the four mutations (`:461`, `:491`, `:519`, `:548`,
+//! `:582`) call the same non-scope-aware `require_customer_permission` this module
+//! does. So the two shells already AGREED on the other five, and there was no
+//! divergence to adopt; the honest size of R10's gate-KIND half is 1 door, not 6.
+//! That is a correction to the census the ruling table carried, recorded here rather
+//! than back-edited there.
+//!
+//! Adopting the scope-aware form by delegating also makes the two shells agree by
+//! construction instead of by two hand-kept bodies, which is what §4 actually protects.
+//! A scoped member whose session is out of scope is now denied fail-closed on the
+//! tablet exactly as on the desktop.
 //!
 //! The bridge's ordering came from the **desktop** shell, which disagreed with
 //! this one long before the campaign started; the bridge is not at fault and
@@ -84,31 +92,34 @@ pub async fn list_customers_scoped(
 
 /// Get one customer, resolved from the session token (ADR #7) — the CRM-02 residual.
 ///
-/// The legacy command above was the only customer read still registered
-/// without a session/permission/scope gate on the tablet (the desktop
-/// had already moved to this shape). Gated on `customers:view` like
-/// every other customer read.
+/// The legacy command was the only customer read registered without a
+/// session/permission/scope gate on the tablet (the desktop had already
+/// moved to this shape). Gated on `customers:view` like every other
+/// customer read.
 ///
-/// ADR #49 §4: **not delegated.** `kasirmu_bridge::customers::get_scoped` gates
-/// with the scope-aware `require_session_permission`; this body gates with
-/// the non-scope-aware `require_customer_permission`. Delegating would widen
-/// the gate, which §4 forbids outright.
+/// **Delegated 2026-09-25 under R10's gate-KIND half** (`done-todo-owner-rulings.md:272`),
+/// which rules the scope-aware gate authoritative wherever the two shells disagree.
+/// This body used to gate with the non-scope-aware `require_customer_permission`
+/// while `kasirmu_bridge::customers::get_scoped` gated with the scope-aware
+/// `require_session_permission` — the last divergence in this module, and ADR #49 §4
+/// forbids an extraction from narrowing a gate. R10 makes the scope-aware form the
+/// design, so the shell adopts it by delegating rather than by re-implementing: the
+/// two shells now agree by construction, and a scoped member whose session is out of
+/// scope is denied fail-closed here exactly as on the desktop.
+///
+/// `get_customer_scoped` is the only customer door whose bridge twin was already
+/// scope-aware; the create/update/delete/search/history twins gate with the same
+/// non-scope-aware helper this module still uses, so no other door moved.
 #[command]
 pub async fn get_customer_scoped(
     id: String,
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<Option<CustomerDto>, AppError> {
-    let session = state.resolve_session(&session_token)?;
-    require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
-    let conn = state.resolve_store(&session_token)?;
-    let db = conn
-        .lock()
-        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let customer = store.get_customer(&id)?;
-    drop(db);
-    Ok(customer.map(CustomerDto::from))
+    let ctx = state.bridge_ctx();
+    kasirmu_bridge::customers::get_scoped(&ctx, &id, &session_token)
+        .await
+        .map_err(Into::into)
 }
 
 // ── Store-scoped mutations (ADR #7) ─────────────────────────────────

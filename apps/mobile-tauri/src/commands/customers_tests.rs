@@ -843,3 +843,74 @@ async fn get_customer_scoped_denies_user_without_view_permission() {
     let result = get_customer_scoped("cust-1".into(), "kitchen-token".into(), app.state()).await;
     assert!(matches!(result, Err(AppError::PermissionDenied(_))));
 }
+
+/// **The gate-KIND half of R10, proved by the behaviour it changed rather than
+/// by the call it deleted** (owner ruling 2026-09-20, `done-todo-owner-rulings.md:272`).
+///
+/// `get_customer_scoped` was the one customer door whose bridge twin gated
+/// scope-aware while the shell gated with the non-scope-aware helper. The test
+/// above proves a *permission* denial, which BOTH gate forms produce — so it
+/// cannot tell the delegation from the code it replaced, and a revert of this
+/// command's body would leave it green. This test is the one that fails if the
+/// body goes back: the caller holds `customers:view` outright, and is denied only
+/// because their scoped assignment covers a DIFFERENT branch. The non-scope-aware
+/// gate has no opinion about that and would have returned the customer, so a pass
+/// here is evidence the scope-aware gate is genuinely on the path.
+#[tokio::test]
+async fn get_customer_scoped_denies_view_holder_out_of_scope() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    let store = Store::new(&conn);
+    store.seed_default_roles().unwrap();
+    // A role that genuinely grants the read, so nothing but scope can deny it.
+    conn.execute_batch(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at) VALUES
+            ('role-reader', 'Reader', 'Can read customers', '[\"customers:view\"]', '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');
+         INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
+         VALUES ('user-scoped', 'scoped', 'hash', 'Scoped', 'role-reader', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+    )
+    .unwrap();
+    // Scoped, not global: the only branch in scope is someone else's.
+    store
+        .set_assignment(
+            "user-scoped",
+            "role-reader",
+            &kasirmu_core::db::assignments::AssignmentSpec {
+                scope_mode: kasirmu_core::db::assignments::ScopeMode::Scoped,
+                branches_all: false,
+                branches: vec!["store-somewhere-else".into()],
+                workspaces_all: true,
+                workspaces: vec![],
+                scope_type: kasirmu_core::db::assignments::ScopeType::Organization,
+                scope_id: None,
+            },
+        )
+        .unwrap();
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let mut state = AppState::for_test_with_conn(conn);
+    state.db_manager =
+        StoreDatabaseManager::new(temp_dir.path().to_path_buf(), kasirmu_core::migrations::ALL);
+    state.session_store.write().unwrap().insert(
+        "scoped-token".into(),
+        SessionContext::new(
+            "user-scoped".into(),
+            "role-reader".into(),
+            "terminal-1".into(),
+            "store-here".into(),
+            "instance-1".into(),
+            "pos".into(),
+            None,
+            0,
+        ),
+    );
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = get_customer_scoped("cust-1".into(), "scoped-token".into(), app.state()).await;
+    assert!(
+        matches!(result, Err(AppError::PermissionDenied(_))),
+        "a customers:view holder scoped to another branch must be denied, got {result:?}"
+    );
+}
