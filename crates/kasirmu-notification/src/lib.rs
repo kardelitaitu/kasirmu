@@ -9,6 +9,15 @@ next: none | perf: N/A
 //! Provides a notification abstraction with a mock driver for testing
 //! and a real WhatsApp Cloud API client for production use.
 //!
+//! # Wiring status (NOT-D)
+//!
+//! The whole surface is currently INERT. The event-bus handlers are wired by
+//! `platform/startup` behind the `whatsapp-notifications` feature, that
+//! crate's `default = []`, and neither `apps/desktop-tauri` nor
+//! `apps/mobile-tauri` enables it — so no shipped binary sends a notification.
+//! Every handler is also opt-in per configured phone number (see the wiring):
+//! an unset recipient skips its handler rather than messaging a placeholder.
+//!
 //! # Quick start
 //!
 //! ```ignore

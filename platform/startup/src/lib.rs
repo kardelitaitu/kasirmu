@@ -205,32 +205,56 @@ pub fn init_module_system(
                             ),
                         ),
                     );
-                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
-                        "sale.completed",
-                        Box::new(kasirmu_notification::handlers::PaymentReceiptHandler::new(
-                            client.clone(),
-                            std::env::var("WHATSAPP_RECEIPT_PHONE")
-                                .unwrap_or_else(|_| "+15550000000".into()),
-                        )),
-                    );
+                    // NOT-B: register the receipt handler ONLY when a recipient
+                    // is configured. It used to default to a hard-coded
+                    // "+15550000000", so an install that enabled the feature
+                    // without setting the var built messages addressed to a
+                    // dummy US number and tried to send them. Skipping is the
+                    // same fail-closed shape OrderConfirmationHandler uses when
+                    // its store phone is absent.
+                    match std::env::var("WHATSAPP_RECEIPT_PHONE") {
+                        Ok(phone) if !phone.trim().is_empty() => {
+                            bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+                                "sale.completed",
+                                Box::new(
+                                    kasirmu_notification::handlers::PaymentReceiptHandler::new(
+                                        client.clone(),
+                                        phone,
+                                    ),
+                                ),
+                            );
+                        }
+                        _ => tracing::warn!(
+                            "WHATSAPP_RECEIPT_PHONE not set — payment-receipt handler skipped"
+                        ),
+                    }
                     // Default threshold: alert when ≤ 5 items remaining.
                     let threshold: i64 = std::env::var("WHATSAPP_STOCK_ALERT_THRESHOLD")
                         .ok()
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(5);
-                    let manager_phone = std::env::var("WHATSAPP_MANAGER_PHONE")
-                        .unwrap_or_else(|_| "+15550000000".into());
-                    bus.subscribe::<kasirmu_core::events::StockAdjusted>(
-                        "stock.adjusted",
-                        Box::new(kasirmu_notification::handlers::StockLowAlertHandler::new(
-                            client,
-                            threshold,
-                            manager_phone,
-                        )),
-                    );
+                    // NOT-B: same rule for the manager alert — no phone, no
+                    // handler, rather than a message to a placeholder.
+                    match std::env::var("WHATSAPP_MANAGER_PHONE") {
+                        Ok(phone) if !phone.trim().is_empty() => {
+                            bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+                                "stock.adjusted",
+                                Box::new(
+                                    kasirmu_notification::handlers::StockLowAlertHandler::new(
+                                        client,
+                                        threshold,
+                                        phone,
+                                    ),
+                                ),
+                            );
+                        }
+                        _ => tracing::warn!(
+                            "WHATSAPP_MANAGER_PHONE not set — low-stock alert handler skipped"
+                        ),
+                    }
 
                     tracing::info!(
-                        "WhatsApp notification handlers wired (3 handlers on sale.completed + stock.adjusted)"
+                        "WhatsApp notification handlers wired (opt-in per configured phone number)"
                     );
                 }
                 Err(e) => {

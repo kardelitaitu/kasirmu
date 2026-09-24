@@ -45,9 +45,14 @@ use crate::{NotificationClient, TemplateParameter};
 
 /// Handler that sends an order confirmation via WhatsApp when a sale completes.
 ///
-/// Uses the `order_confirmed` WhatsApp template. If the sale has a
-/// `customer_id`, the handler looks it up via a phone number resolver.
-/// Otherwise it uses the `store_phone` fallback or skips.
+/// Uses the `order_confirmed` WhatsApp template, sent to `store_phone`.
+///
+/// NOT-A: the doc used to claim "If the sale has a `customer_id`, the handler
+/// looks it up via a phone number resolver. Otherwise it uses the
+/// `store_phone` fallback or skips." There is no resolver and `customer_id` is
+/// never read — the handler sends to `store_phone` or skips. The wiring
+/// confirms the actual behaviour: `platform/startup` passes
+/// `WHATSAPP_STORE_PHONE`, so every confirmation goes to the store.
 #[derive(Debug)]
 pub struct OrderConfirmationHandler {
     /// The notification client (WhatsApp or mock).

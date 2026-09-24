@@ -10,6 +10,16 @@ next: none | perf: N/A
 //! (PAN) in compliance with PCI-DSS requirement 3.3 — display only the
 //! first six and last four digits.
 //!
+//! # Wiring status (SEC-A)
+//!
+//! Only [`mask_token`] has callers today (the session-token log paths in
+//! `desktop-tauri`, `mobile-tauri` and `kasirmu-bridge`). [`mask_pan`],
+//! [`is_valid_pan`], [`mask_name`] and [`mask_cvv`] are implemented and tested
+//! but currently inert: no PAN reaches this app, because card data is captured
+//! by the payment gateway / EDC terminal rather than keyed into the register.
+//! They are kept ready for a card-present or keyed-entry surface; do not read
+//! their presence as evidence that this app handles PANs.
+//!
 //! # Example
 //!
 //! ```

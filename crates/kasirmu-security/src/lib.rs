@@ -20,9 +20,11 @@ next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/
 //! "secrets": a keychain entry is an OS credential store addressed by name,
 //! while the settings columns are encoded by `kasirmu-crypto` under a derived key.
 //! They are not wired to each other — the entry this crate rotates is read
-//! back only to report rotation status (three functions in
-//! `crates/kasirmu-bridge/src/security.rs`), and it is NOT the key that any
-//! settings or PII ciphertext is derived from.
+//! back to report rotation status AND rotated on demand (the keyring command
+//! bodies in `crates/kasirmu-bridge/src/security.rs`), and it is NOT the key
+//! that any settings or PII ciphertext is derived from. (SEC-B: this paragraph
+//! said "read back only to report rotation status", which understated the
+//! surface — that file also drives `rotate_key`.)
 //!
 //! # Keyring
 //!
@@ -251,6 +253,12 @@ impl Keyring for InMemoryKeyring {
         Ok(map.remove(name).is_some())
     }
 
+    /// SEC-B note: this override does NOT use the staged ordering the trait
+    /// documents as the SEC-4 contract — it archives `{name}-prev` and then
+    /// overwrites `name` directly, with no staging slot. That is safe here
+    /// because the whole map sits behind one `Mutex` and no interleaving is
+    /// possible, but it is a deliberate divergence rather than an example of
+    /// the contract, and the trait doc should not be read as this method's spec.
     fn rotate_key(&self, name: &str) -> Result<RotationInfo, SecurityError> {
         let mut key_bytes = [0u8; 32];
         rand::thread_rng()

@@ -468,12 +468,29 @@ pub(crate) fn run_import_kasirpkg(
     // reaches `Settings::set`. No raw `Settings::set` on this path is ever
     // reached by a key the policy would refuse.
     let mut settings_skipped = 0usize;
+    let mut settings_failed = 0usize;
     if let Some(ref settings) = payload.settings {
         for val in settings {
             match importable_settings_row(val) {
                 Some((key, value)) => {
-                    let _ = Settings::set(&tx, key, value);
-                    total += 1;
+                    // CLI-A: a FAILED write must not be counted as imported. The
+                    // previous `let _ = Settings::set(...)` discarded the error
+                    // and still incremented `total`, so the summary reported a
+                    // record the database never received. Every other data type
+                    // in this function propagates with `?`; a settings row is
+                    // admitted by policy and then may still fail, which is
+                    // neither a refusal nor a success.
+                    match Settings::set(&tx, key, value) {
+                        Ok(()) => total += 1,
+                        Err(e) => {
+                            settings_failed += 1;
+                            tracing::warn!(
+                                key = %key,
+                                error = %e,
+                                "settings row admitted by policy but failed to write"
+                            );
+                        }
+                    }
                 }
                 None => settings_skipped += 1,
             }
@@ -482,6 +499,12 @@ pub(crate) fn run_import_kasirpkg(
 
     tx.commit().context("committing import transaction")?;
 
+    if settings_failed > 0 {
+        eprintln!(
+            "  {settings_failed} settings row(s) FAILED to write (admitted by policy, rejected by \
+             the database) — the import is committed but those rows are missing; see the warnings above."
+        );
+    }
     if settings_skipped > 0 {
         eprintln!(
             "  {settings_skipped} settings row(s) skipped: secrets, device-bound ids \n             (machine_id, sync_terminal_id, local_api.secret, license.*, \n             gateway keys) and lifecycle-manager keys (local_api.*, lan_server.*) \n             never travel in a portable package (MED-2 / ingest policy)."
