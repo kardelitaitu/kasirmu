@@ -313,12 +313,43 @@ function readGuidesCorpus() {
       slug,
       target: field('target'),
       commercialParent: field('commercialParent'),
+      pair: field('pair'),
     });
   }
   return guides;
 }
 
 const guidesCorpus = existsSync(GUIDES_SOURCE) ? readGuidesCorpus() : new Map();
+
+/** `/id/panduan/` and `/en/guides/` — the hub of the guides layer, per locale. */
+const isGuideHub = (path, locale) => path === `/${locale}/${GUIDE_SEGMENT[locale] ?? 'guides'}/`;
+
+/**
+ * The counterpart URL of a guide page in `lang`, or null when it has none.
+ *
+ * Guides are the one surface on this site whose two locales do not share a
+ * path: the segment is translated (§ /id/panduan/ ↔ /en/guides/) and the slug
+ * may be too, which is what front-matter `pair` is for. So the hreflang rule
+ * cannot compute the counterpart by swapping the locale prefix the way it does
+ * for every other page — it has to ask the corpus. A guide with no counterpart
+ * is a finding, because the owner ruled they are drafted together (R2).
+ */
+function guideCounterpart(path, lang) {
+  const self = guidesCorpus.get(path);
+  if (self?.locale) {
+    const slug = self.slug;
+    for (const [url, other] of guidesCorpus) {
+      if (other.locale !== lang || !other.slug) continue;
+      const otherPaired = other.pair ?? other.slug;
+      const selfPaired = self.pair ?? slug;
+      if (otherPaired === slug || selfPaired === other.slug) return url;
+    }
+    return null;
+  }
+  const hub = /^\/([a-z]{2})\/[^\/]+\/$/.exec(path);
+  if (hub && isGuideHub(path, hub[1])) return `/${lang}/${GUIDE_SEGMENT[lang] ?? 'guides'}/`;
+  return null;
+}
 
 function classify(url) {
   if (SELF_HEAD_PAGES[url]) return { url, ...SELF_HEAD_PAGES[url] };
@@ -554,8 +585,25 @@ for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
   if (!isLocalePage(rec)) continue;
   const rest = page.path.slice(`/${rec.locale}`.length); // '/cafe/'
   for (const lang of ['en', 'id']) {
-    const expected = `${SITE}/${lang}${rest}`;
+    // Its own locale is always itself; the corpus is only asked about the
+    // OTHER locale, which is the one whose path cannot be derived by swapping
+    // the prefix — see guideCounterpart.
+    const counterpart =
+      lang === rec.locale
+        ? page.path
+        : rec.kind === 'guide' || isGuideHub(page.path, rec.locale)
+          ? guideCounterpart(page.path, lang)
+          : `/${lang}${rest}`;
     const actual = alternates.find((a) => a.lang === lang)?.href;
+    if (!counterpart) {
+      add(
+        'hreflang',
+        page.url,
+        `is a guide with no ${lang} counterpart — guides are drafted in both locales, so one missing half breaks the pair (check its \`pair\` front matter)`,
+      );
+      continue;
+    }
+    const expected = `${SITE}${counterpart}`;
     if (actual !== expected) {
       add('hreflang', page.url, `hreflang="${lang}" is ${actual} but the ${lang} variant of this page is ${expected}`);
     }

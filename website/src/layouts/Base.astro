@@ -130,7 +130,7 @@ const desc = description ?? t(locale, 'meta.description');
     >
       {t(locale, 'nav.skipToContent')}
     </a>
-    <Header locale={locale} searchDocs={searchDocs} />
+    <Header locale={locale} searchDocs={searchDocs} alternatePaths={alternatePaths} />
     <main id="main" class="flex-1">
       <slot />
     </main>

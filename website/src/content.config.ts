@@ -55,6 +55,13 @@ const guides = defineCollection({
     target: z.string(),
     /** Locale-less slug of the commercial page this guide supports. */
     commercialParent: z.string(),
+    /**
+     * This guide's slug in the OTHER locale, when the two are not the same
+     * word (`aplikasi-kasir-offline` / `offline-pos-app`). Omit it and the
+     * slug is reused as-is. The hreflang reciprocity rule in `check:seo` is
+     * what proves the pair actually points back.
+     */
+    pair: z.string().optional(),
     /** ISO date the advice last changed — drives the sitemap's <lastmod>. */
     updated: z.string().optional(),
     order: z.number().default(0),

@@ -5,11 +5,22 @@ import { locales, t } from '../i18n';
 interface Props {
   /** Page locale, threaded down by Header so the active pill matches it. */
   locale?: string;
+  /**
+   * Per-locale counterpart paths. Omitted by every page except the guides
+   * layer, whose two locales do not share a path — `/id/panduan/x/` and
+   * `/en/guides/y/` are one article with a translated segment and possibly a
+   * translated slug. Without this the switcher emits `/en/panduan/x/`, which
+   * does not exist: measured 2026-09-24, four broken internal links, caught by
+   * `npm run check:links`.
+   */
+  alternatePaths?: Record<string, string>;
 }
 
 const locale = (Astro.props.locale ?? Astro.currentLocale ?? 'en') as 'en' | 'id';
 const path = Astro.url.pathname.replace(/^\/(?:en|id)(?:\/|$)/, '');
 const target = !path || path.replace(/^\/+/, '').startsWith('404') ? '/' : path;
+/** The path to hand `getRelativeLocaleUrl` for one locale: the counterpart when the page declares one. */
+const pathFor = (code: string) => Astro.props.alternatePaths?.[code] ?? target;
 const activeIndex = locales.indexOf(locale);
 ---
 
@@ -29,7 +40,7 @@ const activeIndex = locales.indexOf(locale);
   {
     locales.map((code, i) => (
       <a
-        href={getRelativeLocaleUrl(code, target)}
+        href={getRelativeLocaleUrl(code, pathFor(code))}
         aria-current={locale === code ? 'page' : undefined}
         class:list={[
           'relative z-10 flex-1 min-w-[40px] px-3 py-[5px] rounded-lg text-[13px] font-semibold transition-colors duration-200 text-center',

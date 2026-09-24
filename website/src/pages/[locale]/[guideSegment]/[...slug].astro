@@ -40,8 +40,12 @@ const slug = guide.id.slice(locale.length + 1);
 const { Content } = await render(guide);
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 const hubUrl = new URL(`/${locale}/${segmentFor(locale)}/`, Astro.site).toString();
+// Counterparts only: this page's own hreflang entry must stay the path it
+// computed for itself. `pair` carries the other locale's slug when the two
+// titles are not the same words.
+const counterpartSlug = guide.data.pair ?? slug;
 const alternatePaths = Object.fromEntries(
-  locales.map((code) => [code, guideAlternatePath(code, slug)]),
+  locales.filter((code) => code !== locale).map((code) => [code, guideAlternatePath(code, counterpartSlug)]),
 );
 ---
 
