@@ -34,6 +34,7 @@ use crate::types::{PaymentMethod, PaymentReceipt, PaymentRequest, PaymentResult}
 pub struct MockPaymentProcessorBuilder {
     decline_next: bool,
     simulate_timeout: bool,
+    unsupported: bool,
 }
 
 impl MockPaymentProcessorBuilder {
@@ -49,6 +50,19 @@ impl MockPaymentProcessorBuilder {
         self
     }
 
+    /// If `true`, EVERY method returns [`PaymentError::Unsupported`].
+    ///
+    /// **Persistent, not one-shot**: this models a driver that has not been
+    /// implemented yet, which is what the shipped non-mock drivers actually do
+    /// (`drivers/qris.rs` and friends fail closed per the HAL convention). The
+    /// fallback chain treats `Unsupported` as a reason to try the NEXT processor
+    /// rather than to stop (`registry.rs`'s carve-out), and that exception to the
+    /// terminal-stop rule had no test because no mock could produce this error.
+    pub fn unsupported(mut self, unsupported: bool) -> Self {
+        self.unsupported = unsupported;
+        self
+    }
+
     /// Build the [`MockPaymentProcessor`].
     pub fn build(self) -> MockPaymentProcessor {
         MockPaymentProcessor {
@@ -59,6 +73,7 @@ impl MockPaymentProcessorBuilder {
             receipt_calls: AtomicUsize::new(0),
             decline_next: Mutex::new(self.decline_next),
             simulate_timeout: Mutex::new(self.simulate_timeout),
+            unsupported: self.unsupported,
         }
     }
 }
@@ -76,6 +91,8 @@ pub struct MockPaymentProcessor {
     receipt_calls: AtomicUsize,
     decline_next: Mutex<bool>,
     simulate_timeout: Mutex<bool>,
+    /// Persistent flag: every method answers `Unsupported` when set.
+    unsupported: bool,
 }
 
 impl MockPaymentProcessor {
@@ -109,6 +126,16 @@ impl MockPaymentProcessor {
         self.void_calls.load(Ordering::Relaxed)
     }
 
+    /// The unimplemented-driver answer, when the builder asked for it.
+    fn check_unsupported(&self) -> Result<(), PaymentError> {
+        if self.unsupported {
+            return Err(PaymentError::Unsupported(
+                "mock: driver not implemented".into(),
+            ));
+        }
+        Ok(())
+    }
+
     fn check_decline(&self) -> Result<(), PaymentError> {
         // SAFETY: mock driver — lock poison is the intended failure signal in a test double.
         let mut decline = self.decline_next.lock().unwrap();
@@ -140,6 +167,7 @@ impl Default for MockPaymentProcessor {
 impl PaymentProcessor for MockPaymentProcessor {
     async fn authorize(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
         self.authorize_calls.fetch_add(1, Ordering::Relaxed);
+        self.check_unsupported()?;
         self.check_timeout()?;
         self.check_decline()?;
 
