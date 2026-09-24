@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import styles from './MobileWelcomeFlow.module.css';
 import { MobileWelcomeScreen } from './MobileWelcomeScreen';
 import { MobileSetupHub } from './MobileSetupHub';
-import { MobileGoogleAuthModal } from './MobileGoogleAuthModal';
+import { MobileGoogleAuthModal, type GoogleAccount } from './MobileGoogleAuthModal';
 import { MobileEmailAuthModal } from './MobileEmailAuthModal';
 import { MobileQrPairingModal } from './MobileQrPairingModal';
 
@@ -14,6 +14,7 @@ export interface MobileWelcomeFlowProps {
   onProvisioned?: (() => void) | undefined;
   pairingUrl?: string | undefined;
   pairingCode?: string | undefined;
+  googleAccounts?: readonly GoogleAccount[] | undefined;
 }
 
 export function MobileWelcomeFlow({
@@ -22,6 +23,7 @@ export function MobileWelcomeFlow({
   onProvisioned,
   pairingUrl,
   pairingCode,
+  googleAccounts,
 }: MobileWelcomeFlowProps) {
   const [screen, setScreen] = useState<MobileScreenState>(initialScreen);
 
@@ -68,6 +70,7 @@ export function MobileWelcomeFlow({
           <MobileGoogleAuthModal
             onBack={() => goTo('hub')}
             onSelectAccount={handleGoogleAccountSelected}
+            {...(googleAccounts !== undefined ? { accounts: googleAccounts } : {})}
           />
         )}
 

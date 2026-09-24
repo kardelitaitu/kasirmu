@@ -102,4 +102,50 @@ describe('MobileWelcomeFlow (Figma 720x1280 Mobile Setup Wizard)', () => {
     fireEvent.click(copyBtn);
     expect(writeTextMock).toHaveBeenCalledWith('https://kasir.mu/login?=TEST-1234');
   });
+
+  it('disables signup button when onSignUp is not provided, enables when provided', () => {
+    const { unmount } = renderWithFluentSync(
+      <MobileWelcomeFlow initialScreen="welcome" />,
+      settingsFtl,
+    );
+    expect(screen.getByTestId('mobile-welcome-signup-btn')).toBeDisabled();
+    unmount();
+
+    const onSignUp = vi.fn();
+    renderWithFluentSync(
+      <MobileWelcomeFlow initialScreen="welcome" onSignUp={onSignUp} />,
+      settingsFtl,
+    );
+    const signupBtn = screen.getByTestId('mobile-welcome-signup-btn');
+    expect(signupBtn).not.toBeDisabled();
+    fireEvent.click(signupBtn);
+    expect(onSignUp).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders custom google accounts when provided', () => {
+    const onProvisioned = vi.fn();
+    renderWithFluentSync(
+      <MobileWelcomeFlow
+        initialScreen="google"
+        onProvisioned={onProvisioned}
+        googleAccounts={[
+          {
+            name: 'Custom Admin',
+            email: 'admin@kasirmu.com',
+            avatarColor: '#6366f1',
+            testId: 'google-account-admin',
+          },
+        ]}
+      />,
+      settingsFtl,
+    );
+
+    expect(screen.getByTestId('google-account-admin')).toBeInTheDocument();
+    expect(screen.getByText('Custom Admin')).toBeInTheDocument();
+    expect(screen.getByText('admin@kasirmu.com')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('google-account-admin'));
+    expect(onProvisioned).toHaveBeenCalledTimes(1);
+  });
 });
+

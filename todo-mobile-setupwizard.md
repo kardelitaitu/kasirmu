@@ -22,37 +22,6 @@ All files live at `ui/src/features/setup/mobile/`.
 
 ## Open issues (from code review)
 
-### 🔴 P1 — Bugs / Correctness
-
-- [ ] **#3 — Auth modal root class wrong**  
-  `MobileGoogleAuthModal`, `MobileEmailAuthModal`, and `MobileQrPairingModal` all use
-  `.hubContainer` as their root `<div>`.  
-  In landscape `.hubContainer` becomes `flex-direction: row` with `.heroCard` pinned sticky-left —
-  a layout that makes no sense for auth modals (they have no heroCard child).  
-  **Fix:** give each auth modal its own `.authModalRoot` class (flex column, no 2-col split).
-
-- [ ] **#2 — `onSignUp` called even when `undefined`**  
-  `MobileWelcomeScreen.tsx` line 44: `onClick={onSignUp}` — React accepts `undefined` here without
-  error but it is semantically wrong (button appears clickable).  
-  **Fix:** `onClick={onSignUp ?? undefined}` _and_ add `disabled={!onSignUp}` so the button is
-  inert when the prop is absent, or hide it entirely with a conditional render.
-
-### 🟡 P2 — Missing real data / props
-
-- [ ] **#1 — Google account list is hardcoded**  
-  `MobileGoogleAuthModal.tsx` lines 49–83: two static demo accounts (`jokosusilo@gmail.com`,
-  `valentino1234@gmail.com`).  
-  **Fix:** add `accounts: GoogleAccount[]` prop (type: `{ name: string; email: string; avatarColor?: string }`).
-  When `accounts` is empty, show an "Add Google account" placeholder button.  
-  Wire real accounts from the Tauri IPC `list_google_accounts` command when available.
-
-- [ ] **#4 — `hubSectionPrompt` used as `aria-labelledby` target in email modal**  
-  `MobileEmailAuthModal.tsx` line 45: the `<p>` with class `.hubSectionPrompt` is referenced by
-  `aria-labelledby="email-auth-heading"` but `.hubSectionPrompt` gets `display: none` in landscape,
-  which removes the accessible name from the section entirely.  
-  **Fix:** swap to a dedicated `<h2>` heading styled separately, or use `.modalTitle` class which
-  is always visible.
-
 ### 🟢 P3 — Integration / wiring
 
 - [ ] **#5 — No route or `register.tsx` — component is dead code**  
@@ -89,10 +58,14 @@ All files live at `ui/src/features/setup/mobile/`.
 - [x] Shared CSS module with full dark token palette — `MobileWelcomeFlow.module.css`
 - [x] 44 English FTL strings (`setup-mobile-*`) — `shared-ui/locales/settings.ftl`
 - [x] 44 Indonesian FTL strings — `shared-ui/locales/settings.id.ftl`
-- [x] 6 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx`
+- [x] 8 unit tests passing — `ui/src/__tests__/MobileWelcomeFlow.test.tsx`
 - [x] TypeScript clean — `tsc --noEmit` exit 0
 - [x] ESLint clean — 0 errors
 - [x] Portrait / landscape adaptive CSS — commit `69f80d70f`
   - `@media (orientation: landscape)` → 2-col split (Welcome brand|actions, Hub hero|auth-list)
   - `@media (orientation: landscape) and (max-height: 480px)` → ultra-compact for small devices
 - [x] figma-bridge skill written — `.agents/skills/figma-bridge/SKILL.md` — commit `a2460e0cb`
+- [x] #1: Dynamic `googleAccounts: GoogleAccount[]` prop + fallback defaults in `MobileGoogleAuthModal`
+- [x] #2: `onSignUp` semantic button fix (`disabled={!onSignUp}` + `onClick={onSignUp}`)
+- [x] #3: Auth modal root class separation (`.authModalRoot` instead of `.hubContainer`) and responsive `.qrPairingLayout`
+- [x] #4: Email modal heading accessibility fix (dedicated `.modalTitleSection` h2 visible in landscape & portrait)

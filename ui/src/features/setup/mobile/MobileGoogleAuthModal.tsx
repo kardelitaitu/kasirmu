@@ -1,14 +1,44 @@
 import { Localized } from '@fluent/react';
 import styles from './MobileWelcomeFlow.module.css';
 
+export interface GoogleAccount {
+  name: string;
+  email: string;
+  avatarColor?: string | undefined;
+  avatarLetter?: string | undefined;
+  testId?: string | undefined;
+}
+
+const DEFAULT_ACCOUNTS: readonly GoogleAccount[] = [
+  {
+    name: 'Joko Susilo',
+    email: 'jokosusilo@gmail.com',
+    avatarColor: '#3b82f6',
+    avatarLetter: 'A',
+    testId: 'google-account-joko',
+  },
+  {
+    name: 'Valentino',
+    email: 'valentino1234@gmail.com',
+    avatarColor: '#10b981',
+    avatarLetter: 'K',
+    testId: 'google-account-valentino',
+  },
+];
+
 export interface MobileGoogleAuthModalProps {
   onBack: () => void;
   onSelectAccount: (email: string) => void;
+  accounts?: readonly GoogleAccount[] | undefined;
 }
 
-export function MobileGoogleAuthModal({ onBack, onSelectAccount }: MobileGoogleAuthModalProps) {
+export function MobileGoogleAuthModal({
+  onBack,
+  onSelectAccount,
+  accounts = DEFAULT_ACCOUNTS,
+}: MobileGoogleAuthModalProps) {
   return (
-    <div className={styles['hubContainer']} data-testid="mobile-google-auth-view">
+    <div className={styles['authModalRoot']} data-testid="mobile-google-auth-view">
       <nav className={styles['topNav']}>
         <button
           type="button"
@@ -42,45 +72,32 @@ export function MobileGoogleAuthModal({ onBack, onSelectAccount }: MobileGoogleA
         </div>
 
         <div className={styles['accountsList']} role="list">
-          {/* Account 1 */}
-          <button
-            type="button"
-            className={styles['accountCardBtn']}
-            onClick={() => onSelectAccount('jokosusilo@gmail.com')}
-            data-testid="google-account-joko"
-          >
-            <div
-              className={styles['accountAvatar']}
-              style={{ backgroundColor: '#3b82f6' }}
-              aria-hidden="true"
-            >
-              A
-            </div>
-            <div className={styles['accountInfo']}>
-              <strong className={styles['accountName']}>Joko Susilo</strong>
-              <span className={styles['accountEmail']}>jokosusilo@gmail.com</span>
-            </div>
-          </button>
-
-          {/* Account 2 */}
-          <button
-            type="button"
-            className={styles['accountCardBtn']}
-            onClick={() => onSelectAccount('valentino1234@gmail.com')}
-            data-testid="google-account-valentino"
-          >
-            <div
-              className={styles['accountAvatar']}
-              style={{ backgroundColor: '#10b981' }}
-              aria-hidden="true"
-            >
-              K
-            </div>
-            <div className={styles['accountInfo']}>
-              <strong className={styles['accountName']}>Valentino</strong>
-              <span className={styles['accountEmail']}>valentino1234@gmail.com</span>
-            </div>
-          </button>
+          {accounts.map((acc, index) => {
+            const letter = acc.avatarLetter ?? acc.name.charAt(0).toUpperCase();
+            const color = acc.avatarColor ?? '#3b82f6';
+            const testId = acc.testId ?? `google-account-${index}`;
+            return (
+              <button
+                key={acc.email}
+                type="button"
+                className={styles['accountCardBtn']}
+                onClick={() => onSelectAccount(acc.email)}
+                data-testid={testId}
+              >
+                <div
+                  className={styles['accountAvatar']}
+                  style={{ backgroundColor: color }}
+                  aria-hidden="true"
+                >
+                  {letter}
+                </div>
+                <div className={styles['accountInfo']}>
+                  <strong className={styles['accountName']}>{acc.name}</strong>
+                  <span className={styles['accountEmail']}>{acc.email}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         <p className={styles['privacyFootnote']}>

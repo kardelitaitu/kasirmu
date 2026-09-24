@@ -207,6 +207,13 @@
   transform: scale(0.98);
 }
 
+.primaryCtaBtn:disabled,
+.secondaryCtaBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .ctaCaption {
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
@@ -365,8 +372,15 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   3. GOOGLE AUTH MODAL VIEW
+   3. AUTH MODAL SHARED WRAPPER & GOOGLE AUTH MODAL VIEW
    ═══════════════════════════════════════════════════════════════════ */
+
+.authModalRoot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+}
 
 .authModalCard {
   display: flex;
@@ -558,6 +572,13 @@
 /* ═══════════════════════════════════════════════════════════════════
    5. QR CODE / LOGIN CODE PAIRING VIEW
    ═══════════════════════════════════════════════════════════════════ */
+
+.qrPairingLayout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+}
 
 .qrScannerSection {
   display: flex;
@@ -799,7 +820,18 @@
     flex: 1 1 auto;
   }
 
-  /* ── 3. AUTH MODALS (Google / Email / QR) — compact card ─────── */
+  /* ── 3. AUTH MODALS (Google / Email / QR) ─────── */
+
+  .authModalRoot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .authModalRoot .topNav {
+    align-self: flex-start;
+  }
 
   .authModalCard {
     max-width: 36rem;
@@ -807,12 +839,27 @@
     gap: var(--space-4);
   }
 
+  .qrPairingLayout {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--space-6);
+    width: 100%;
+  }
+
+  .qrScannerSection {
+    flex: 0 0 42%;
+    position: sticky;
+    top: var(--space-4);
+    gap: var(--space-3);
+  }
+
   .scannerReticleBox {
     max-width: 18rem;
   }
 
-  .qrScannerSection {
-    gap: var(--space-3);
+  .instructionsGroup {
+    flex: 1 1 58%;
   }
 }
 
@@ -880,8 +927,16 @@
   }
 
   /* Auth modals */
+  .authModalRoot {
+    gap: var(--space-3);
+  }
+
   .authModalCard {
     padding: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .qrPairingLayout {
     gap: var(--space-3);
   }
 

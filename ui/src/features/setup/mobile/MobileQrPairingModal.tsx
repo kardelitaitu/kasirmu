@@ -28,7 +28,7 @@ export function MobileQrPairingModal({
   }, [pairingUrl]);
 
   return (
-    <div className={styles['hubContainer']} data-testid="mobile-qr-pairing-view">
+    <div className={styles['authModalRoot']} data-testid="mobile-qr-pairing-view">
       <nav className={styles['topNav']}>
         <button
           type="button"
@@ -43,8 +43,9 @@ export function MobileQrPairingModal({
         </button>
       </nav>
 
-      {/* Camera Live Feed / Scanner Placeholder */}
-      <section className={styles['qrScannerSection']}>
+      <div className={styles['qrPairingLayout']}>
+        {/* Camera Live Feed / Scanner Placeholder */}
+        <section className={styles['qrScannerSection']}>
         <div className={styles['scannerReticleBox']} data-testid="mobile-qr-reticle-box">
           <div className={styles['viewfinderFrame']}>
             <div className={styles['reticleCornerTL']} aria-hidden="true" />
@@ -139,6 +140,7 @@ export function MobileQrPairingModal({
             </button>
           </div>
         </section>
+      </div>
       </div>
 
       <div className={styles['telemetryFooter']}>

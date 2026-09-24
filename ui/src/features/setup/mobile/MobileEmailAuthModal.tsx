@@ -26,7 +26,7 @@ export function MobileEmailAuthModal({
   );
 
   return (
-    <div className={styles['hubContainer']} data-testid="mobile-email-auth-view">
+    <div className={styles['authModalRoot']} data-testid="mobile-email-auth-view">
       <nav className={styles['topNav']}>
         <button
           type="button"
@@ -42,13 +42,20 @@ export function MobileEmailAuthModal({
       </nav>
 
       <section className={styles['authModalCard']} aria-labelledby="email-auth-heading">
-        <p id="email-auth-heading" className={styles['hubSectionPrompt']} style={{ padding: 0 }}>
-          <Localized id="setup-mobile-email-intro">
-            <span>
-              Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
-            </span>
-          </Localized>
-        </p>
+        <div className={styles['modalTitleSection']}>
+          <h2 id="email-auth-heading" className={styles['modalTitle']}>
+            <Localized id="setup-mobile-auth-email-title">
+              <span>Masuk dengan Email & Password</span>
+            </Localized>
+          </h2>
+          <p className={styles['modalSubtitle']}>
+            <Localized id="setup-mobile-email-intro">
+              <span>
+                Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
+              </span>
+            </Localized>
+          </p>
+        </div>
 
         <form className={styles['emailForm']} onSubmit={handleSubmit}>
           {/* Email input */}

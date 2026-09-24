@@ -42,6 +42,7 @@ export function MobileWelcomeScreen({ onStartSetup, onSignUp }: MobileWelcomeScr
             type="button"
             className={styles['secondaryCtaBtn']}
             onClick={onSignUp}
+            disabled={!onSignUp}
             data-testid="mobile-welcome-signup-btn"
           >
             <Localized id="setup-mobile-welcome-signup">
