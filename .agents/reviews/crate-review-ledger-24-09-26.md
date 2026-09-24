@@ -1071,6 +1071,62 @@ reverted).
 
 **Commit:** `ef8f22f17` (BRIDGE-12/13, bridge tests).
 
+### Bridge eighteenth pass — 24-09-26 (the shell gates could false-green too)
+
+The seventeenth pass established the pattern "three for three" on source pins and
+recommended applying it elsewhere. This pass took the obvious next step: the
+SHELL gates are guards too, and neither had been audited for the same evadability.
+**Both failed.**
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-14 | MEDIUM | `scripts/verify-scoped-coverage.sh:186` | **The gate could not distinguish "101 commands, all covered" from "0 commands found".** Its subject comes from grepping `lib.rs` for `commands::a::b,`. An empty derivation makes the loop run zero times, leaving `violations` at 0, and the gate prints **PASS** and exits 0. `set -e` does not save it — verified: the derivation ends in `grep -v`, which exits 0 on empty input, so nothing aborts. **Proven** by feeding it an empty subject and watching it print `PASS` with exit 0. |
+| BRIDGE-15 | MEDIUM | `scripts/verify-scoped-authorization.sh:117` | **The same hole in the gate I wrote in the seventh pass.** The `find "$SRC"` subject empties if the directory moves, awk scans zero functions, `unreasoned` stays 0, and the gate exits 0. |
+
+**Severity MEDIUM rather than LOW, and higher than the source-pin findings.**
+BRIDGE-11/12/13 are pins inside a Rust test suite, where an evaded pin still
+leaves the surrounding suite running. These two are Tier-0 **gates**: H-1 is the
+gate that keeps every registered command paired with a `_scoped` twin, and H-1b
+is the one that keeps every `_scoped` twin honest. A gate that false-greens is
+worse than an absent gate, because pre-push and `check.sh` report it as
+satisfied and the protections it stands for are recorded as verified.
+
+**Fixed with the same ingredient the pins needed — a floor — and the numbers are
+measured, not guessed.** `verify-scoped-coverage.sh` fails below **50** derived
+commands (currently 101); `verify-scoped-authorization.sh` fails below **150**
+scanned fns (currently 348). Both messages name the measured value, the source
+path, and the date of measurement, so a future reader can tell a real regression
+from a threshold that has gone stale. The H-1b floor exits **2**, distinct from
+its "unreasoned fn" exit 1, so the two failures are not conflated.
+
+**Proof, both directions, per gate.** Normal run: H-1 prints
+`(derived 101 registered unscoped command(s))` and PASSes; H-1b prints
+`scanned: 348 explained: 35 UNREASONED: 0` and exits 0. Floor raised above the
+measured value: H-1 prints `FAIL: derived only 101 registered command(s) ... the
+derivation is broken, so this gate would pass by checking nothing` and exits 1;
+H-1b prints `FAIL: scanned only 348 _scoped fn(s) in
+crates/kasirmu-bridge/src - the scan is reading nothing, so this gate would pass
+vacuously` and exits 2. Both restored and re-verified green.
+
+**The pattern, now five for five.** Every text-derived guard in this repository
+that I have inspected — three Rust source pins and two shell gates — could be
+defeated by a change that removes its SUBJECT rather than by one that defeats its
+LOGIC, and every one of them reported success in that state. The two ingredients
+that fix it are uniform: derive the subject from the real source (all five already
+do), and **assert a floor so an empty subject cannot read as a clean sweep** (none
+of the five did, until these passes). That second half is the whole finding, and
+it is worth stating as a rule for this repo: a guard that iterates a derived set
+must assert the set was non-empty, and name a measured value so the floor itself
+can go stale loudly rather than silently.
+
+**Verified:** `bash scripts/verify-scoped-coverage.sh` → PASS, exit 0.
+`bash scripts/verify-scoped-authorization.sh --strict` → exit 0. Report mode →
+exit 0. Both floors exercised in both directions. No source changed, so no test
+suite is affected; the probe file used for the false-green demonstration was
+removed (`git status` clean).
+
+**Commit:** `ab4a48761` (BRIDGE-14/15, gates).
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
