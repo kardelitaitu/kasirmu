@@ -14,6 +14,9 @@ use crate::types::{PaymentReceipt, PaymentRequest, PaymentResult};
 
 struct FlakyMockProcessor {
     call_count: AtomicU32,
+    /// Counts for the keyless-parameter methods, which have no key to key on.
+    capture_count: AtomicU32,
+    void_count: AtomicU32,
     fail_until_attempt: u32,
     fail_with: PaymentError,
     /// The gateway key each `authorize` call was handed, in order.
@@ -28,6 +31,8 @@ impl FlakyMockProcessor {
     fn new(fail_until_attempt: u32, fail_with: PaymentError) -> Self {
         Self {
             call_count: AtomicU32::new(0),
+            capture_count: AtomicU32::new(0),
+            void_count: AtomicU32::new(0),
             fail_until_attempt,
             fail_with,
             keys_seen: std::sync::Mutex::new(Vec::new()),
@@ -36,6 +41,36 @@ impl FlakyMockProcessor {
 
     fn calls(&self) -> u32 {
         self.call_count.load(Ordering::SeqCst)
+    }
+
+    /// How many times `capture` reached the driver.
+    fn captures(&self) -> u32 {
+        self.capture_count.load(Ordering::SeqCst)
+    }
+
+    /// How many times `void` reached the driver.
+    fn voids(&self) -> u32 {
+        self.void_count.load(Ordering::SeqCst)
+    }
+
+    /// The shared failure decision for a method with no key parameter.
+    ///
+    /// Reuses the same attempt budget as `authorize` so a decorator that retried
+    /// `capture` would be visible as extra driver calls rather than as a different
+    /// error.
+    fn maybe_fail(&self) -> Result<(), PaymentError> {
+        let count = self.call_count.fetch_add(1, Ordering::SeqCst) + 1;
+        if count > self.fail_until_attempt {
+            return Ok(());
+        }
+        // `PaymentError` is not `Clone`, so the variant is rebuilt exactly as
+        // `authorize` above does it — the same conversion, not a second one.
+        match &self.fail_with {
+            PaymentError::Network(msg) => Err(PaymentError::Network(msg.clone())),
+            PaymentError::Timeout(ms) => Err(PaymentError::Timeout(*ms)),
+            PaymentError::Declined(msg) => Err(PaymentError::Declined(msg.clone())),
+            other => Err(PaymentError::Unsupported(other.to_string())),
+        }
     }
 
     /// The gateway key of every `authorize` attempt, in call order.
@@ -74,6 +109,8 @@ impl PaymentProcessor for FlakyMockProcessor {
     }
 
     async fn capture(&self, _transaction_id: &str) -> Result<PaymentResult, PaymentError> {
+        self.capture_count.fetch_add(1, Ordering::SeqCst);
+        self.maybe_fail()?;
         Ok(PaymentResult {
             success: true,
             transaction_id: Some("tx_123".into()),
@@ -99,6 +136,8 @@ impl PaymentProcessor for FlakyMockProcessor {
     }
 
     async fn void(&self, _transaction_id: &str) -> Result<PaymentResult, PaymentError> {
+        self.void_count.fetch_add(1, Ordering::SeqCst);
+        self.maybe_fail()?;
         Ok(PaymentResult {
             success: true,
             transaction_id: None,
@@ -413,5 +452,75 @@ async fn keyed_call_is_retried_and_the_driver_sees_one_key() {
         flaky.keys_seen(),
         vec![Some("charge-key-1".to_string()); 2],
         "both attempts must carry the SAME gateway key, or the retry is a second charge"
+    );
+}
+
+// ── §8 row 3: capture and void are single-shot ────────────────────────
+
+/// `capture` reaches the driver exactly ONCE even on a transient failure.
+///
+/// **Red-first, per the design doc's §8 row *"`capture`/`void` are single-shot"***
+/// (`docs/plans/_active/payment-resilience-design.md:219`), marked **failing
+/// today**.
+///
+/// `capture` takes a bare `transaction_id` and has **no key parameter**, so a
+/// retry after a timeout has nothing the gateway could dedupe on — it would
+/// capture the same authorisation twice. The doc names this consequence at `:117`
+/// and calls the resulting behaviour change a REDUCTION rather than an
+/// improvement, which is why it is worth an assertion instead of a comment.
+///
+/// The count is the evidence: a test asserting only `is_err()` would pass on a
+/// decorator that captured twice and reported the second failure.
+#[tokio::test]
+async fn capture_is_single_shot_even_on_a_transient_failure() {
+    let flaky = Arc::new(FlakyMockProcessor::new(
+        5,
+        PaymentError::Network("connection dropped mid-capture".into()),
+    ));
+    let config = ResilientProcessorConfig {
+        max_retries: 3,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 5,
+        failure_threshold: 5,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let resilient = ResilientProcessor::with_config(flaky.clone(), config);
+
+    let res = resilient.capture("tx_123").await;
+    assert!(matches!(res, Err(PaymentError::Network(_))));
+    assert_eq!(
+        flaky.captures(),
+        1,
+        "a keyless capture must not be retried: a second attempt can double-capture"
+    );
+}
+
+/// `void` likewise reaches the driver exactly once.
+///
+/// The companion to the capture case, and separate because they are separate
+/// methods with separate call sites: a fix applied to one is not evidence about
+/// the other, and this is the pair that would catch a future edit routing one of
+/// them back through the retry budget.
+#[tokio::test]
+async fn void_is_single_shot_even_on_a_transient_failure() {
+    let flaky = Arc::new(FlakyMockProcessor::new(
+        5,
+        PaymentError::Network("connection dropped mid-void".into()),
+    ));
+    let config = ResilientProcessorConfig {
+        max_retries: 3,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 5,
+        failure_threshold: 5,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let resilient = ResilientProcessor::with_config(flaky.clone(), config);
+
+    let res = resilient.void("tx_123").await;
+    assert!(matches!(res, Err(PaymentError::Network(_))));
+    assert_eq!(
+        flaky.voids(),
+        1,
+        "a keyless void must not be retried: a second attempt can re-void a settled sale"
     );
 }
