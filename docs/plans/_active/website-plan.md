@@ -529,7 +529,7 @@ Live at `https://ozpos.my.id` until the custom domain is bought.
 |---------|-------|
 | Platform | Workers static assets (`wrangler deploy` from `website/`) |
 | Config | `website/wrangler.toml` (built in) |
-| CI | **check + build only, on a PR.** `dev-ci.yml#website` runs asset hygiene, `npm ci`, typecheck/lint, unit tests and `npm run build`, path-gated on the `changes` router (`.github/workflows/dev-ci.yml:137-163`). **Nothing deploys this site.** `.github/workflows/website.yml` (the check+deploy workflow this row named) has been inert `.github/workflows/website.yml.bak` since `23c963303` on 2026-09-02, GitHub never executes a `.bak`, and `dev-ci.yml` has no push trigger — so "build+deploy on main" describes a pipeline that no longer exists. Deploy is `npm run deploy` from `website/` → `scripts/wrangler-deploy.sh`, run by a person; it is still fail-closed, but on env vars, not GitHub secrets (`scripts/wrangler-deploy.sh:42-43`) |
+| CI | **check + build only, on a PR.** `dev-ci.yml#website` runs asset hygiene, `npm ci`, typecheck/lint, unit tests and `npm run build`, path-gated on the `changes` router (`.github/workflows/dev-ci.yml:137-163`). **Deploy:** `.github/workflows/website.yml` ("Website Deploy", restored 2026-09-24 from the `.bak` it became on 2026-09-02) gates the build and deploys on push to main path-filtered to `website/**` + `prototypes/**`, and on manual dispatch — fail-closed on the `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` GitHub secrets, with a token-verify step before the build. `npm run deploy` from `website/` → `scripts/wrangler-deploy.sh` remains for a manual redeploy and reads the same names from env (`scripts/wrangler-deploy.sh:42-43`) |
 | Framework | Astro |
 | Build command | `npm run build` |
 | Output | `dist/` |
@@ -550,7 +550,7 @@ Live at `https://ozpos.my.id` until the custom domain is bought.
 
 ### Environment Variables
 
-**Cloudflare (site) — Workers static assets (deployed by hand with `npm run deploy` from `website/`; the workflow that used to run it is inert `.github/workflows/website.yml.bak`):**
+**Cloudflare (site) — Workers static assets (deployed by `.github/workflows/website.yml` on push to main, or by hand with `npm run deploy` from `website/`):**
 
 | Variable | Value | Purpose |
 |----------|-------|---------|

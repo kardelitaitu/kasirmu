@@ -112,6 +112,8 @@ ozpos/
 │   └── workflows/
 │       ├── dev-ci.yml          # active: PR + push to main + manual dispatch
 │       ├── release.yml         # active: v* tag → signed desktop installers
+│       ├── android.yml         # active: v* tag + manual dispatch (Android APK)
+│       ├── website.yml         # active: push to main (website paths) + dispatch
 │       └── attic/              # dormant *.yml.bak references (ci, security, deploy, …)
 └── scripts/                    # local dev scripts (PowerShell + bash)
 ```
@@ -236,13 +238,14 @@ chore: bump tauri to v2.1 and refresh lockfile
 
 ## CI pipeline
 
-There are **three active workflows** (re-counted 22-09-26; this said "two" until `android.yml` was restored):
+There are **four active workflows** (re-counted 24-09-26; this said "three" until `website.yml` was restored, and "two" before that until `android.yml` was):
 
 | Workflow | Triggers | Purpose |
 |---|---|---|
 | `.github/workflows/dev-ci.yml` ("Dev CI") | `pull_request` → `main`, `push` → `main`, `workflow_dispatch` | The eleven-job main gate. |
 | `.github/workflows/release.yml` | `v*` tags | Signed desktop installers and updater manifests. |
 | `.github/workflows/android.yml` ("Android Build") | `push` tags `v*`, `workflow_dispatch` — **no PR trigger** | Compiles the tablet app for Android and fails if no APK is produced. Restored 2026-09-22 from `attic/android.yml.bak` |
+| `.github/workflows/website.yml` ("Website Deploy") | `push` → `main` (path-filtered: `website/**`, `prototypes/**`), `workflow_dispatch` — **no PR trigger** | One job `deploy`: gates the Astro build, then deploys it to the `oz-pos` Worker and verifies the routes. Restored 2026-09-24 from `attic/website.yml.bak` |
 
 `android.yml` has **one** job (`android-build`) and deliberately carries no `pull_request` trigger, so a workflow nobody can exercise locally cannot block a merge — a PR that breaks the Android build is caught later, on the tag. Its header states it has never been run and passes only `actionlint`. Everything else is dormant, and it lives one level down: the retired references are in `.github/workflows/attic/` as `*.yml.bak` (ci, security, deploy, nightly, android, …) — do not treat those as active.
 
@@ -359,7 +362,7 @@ Drafts go straight into `_active/` (there is no `_template/` directory). Specs m
 
 ## Adding a new CI check — checklist
 
-- [ ] Define the check in one of the **three active workflows** — `.github/workflows/dev-ci.yml` (PR, push to `main`, manual dispatch), `.github/workflows/release.yml` (`v*` tags), or `.github/workflows/android.yml` (`v*` tags + dispatch, Android build only) — or record it as a dormant follow-up under `.github/workflows/attic/`.
+- [ ] Define the check in one of the **four active workflows** — `.github/workflows/dev-ci.yml` (PR, push to `main`, manual dispatch), `.github/workflows/release.yml` (`v*` tags), `.github/workflows/android.yml` (`v*` tags + dispatch, Android build only), or `.github/workflows/website.yml` (push to `main` on website paths + dispatch) — or record it as a dormant follow-up under `.github/workflows/attic/`.
 - [ ] Add the corresponding local script under `scripts/` and wire it into `scripts/check.sh` (and `check.ps1` when it applies to Windows).
 - [ ] Document the check in this skill (so future contributors know it exists).
 - [ ] Update the pre-push checklist at the bottom of this file if it's a blocking check.
