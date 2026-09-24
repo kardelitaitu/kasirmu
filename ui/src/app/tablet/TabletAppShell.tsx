@@ -349,6 +349,39 @@ export default function TabletAppShell() {
     );
   }
 
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the tab bar or active workspace requirement.
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration.label}
+          requiredRole={pageRegistration.requiredRole ?? ''}
+          requiredPermission={pageRegistration.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        <div className="workspace-fullscreen" key={currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <PageComponent />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
+  }
+
   // ADR #4 Phase 3b: Workspace routing — same pattern as desktop AppShell.
   // If no workspace is active, show the picker. Fullscreen types render
   // directly. Sidebar types use TabletAppLayout with dynamic tabs.
@@ -405,10 +438,6 @@ export default function TabletAppShell() {
 
   // Sidebar-type workspaces (inventory, admin) — use TabletAppLayout
   // with a dynamic bottom tab bar from workspace_type_screens.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
-
   return (
     <TabletAppLayout
       route={currentRoute}

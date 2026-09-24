@@ -616,6 +616,46 @@ export default function AppShell() {
     );
   }
 
+  // Render the current page from the registry, or null if not found.
+  const pageRegistration = getPage(currentRoute);
+  const PageComponent = pageRegistration?.component ?? null;
+  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
+
+  // Fullscreen pages render without the AppLayout wrapper and without requiring an active workspace.
+  // The memo banner follows them — EXCEPT the customer-facing kiosk, where memos are internal
+  // staff communication that must not display to customers (owner ruling
+  // 2026-09-08: banner everywhere except login + lock + kiosk).
+  if (pageRegistration?.fullscreen) {
+    if (pageDenied) {
+      return (
+        <PermissionDenied
+          action={pageRegistration!.label}
+          requiredRole={pageRegistration!.requiredRole!}
+          requiredPermission={pageRegistration!.requiredPermission}
+        />
+      );
+    }
+    const isCustomerKiosk = currentRoute === 'kiosk';
+    return PageComponent ? (
+      <>
+        {!isCustomerKiosk && <MemoBanner />}
+        {bootBadges}
+        {/* T5: wrap in workspace-fullscreen so registry fullscreen pages
+            (mobile-setup, kiosk, …) get the same ws-page-enter animation
+            as hardcoded fullscreen workspaces. key= re-triggers on route change. */}
+        <div className="workspace-fullscreen" key={currentRoute}>
+          {renderPageLayout(
+            <LazyBoundary>
+              <PageComponent />
+            </LazyBoundary>,
+            pageRegistration.layout,
+            orientation.isLandscape,
+          )}
+        </div>
+      </>
+    ) : null;
+  }
+
   if (!activeWorkspace) {
     return (
       <div className="workspace-home-wrapper">
@@ -627,11 +667,6 @@ export default function AppShell() {
       </div>
     );
   }
-
-  // Render the current page from the registry, or null if not found.
-  const pageRegistration = getPage(currentRoute);
-  const PageComponent = pageRegistration?.component ?? null;
-  const pageDenied = pageRegistration && !isPageAccessible(pageRegistration, userRole, userPermissions);
 
   // Workspace fullscreen — restaurant POS hides the sidebar.
   // KDS is a separate workspace screen, navigated to via the chef button in PosScreen.
@@ -735,41 +770,6 @@ export default function AppShell() {
         {settingsModal}
       </>
     );
-  }
-
-  // Fullscreen pages render without the AppLayout wrapper. The memo banner
-  // follows them — EXCEPT the customer-facing kiosk, where memos are internal
-  // staff communication that must not display to customers (owner ruling
-  // 2026-09-08: banner everywhere except login + lock + kiosk).
-  if (pageRegistration?.fullscreen) {
-    if (pageDenied) {
-      return (
-        <PermissionDenied
-          action={pageRegistration!.label}
-          requiredRole={pageRegistration!.requiredRole!}
-          requiredPermission={pageRegistration!.requiredPermission}
-        />
-      );
-    }
-    const isCustomerKiosk = currentRoute === 'kiosk';
-    return PageComponent ? (
-      <>
-        {!isCustomerKiosk && <MemoBanner />}
-        {bootBadges}
-        {/* T5: wrap in workspace-fullscreen so registry fullscreen pages
-            (mobile-setup, kiosk, …) get the same ws-page-enter animation
-            as hardcoded fullscreen workspaces. key= re-triggers on route change. */}
-        <div className="workspace-fullscreen" key={currentRoute}>
-          {renderPageLayout(
-            <LazyBoundary>
-              <PageComponent />
-            </LazyBoundary>,
-            pageRegistration.layout,
-            orientation.isLandscape,
-          )}
-        </div>
-      </>
-    ) : null;
   }
 
 
