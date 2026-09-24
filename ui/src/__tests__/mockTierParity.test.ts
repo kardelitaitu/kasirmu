@@ -41,6 +41,21 @@ const RUST_VARIANTS = ['Free', 'Plus', 'Pro', 'Premium', 'Enterprise'] as const;
 const rustSource = fs.readFileSync(SUBSCRIPTION_RS, 'utf8');
 
 /**
+ * The Rust variant and TS tier for each table row, positionally paired.
+ *
+ * ONE helper rather than an index loop per test: under `noUncheckedIndexedAccess`
+ * `RUST_VARIANTS[i]` is `string | undefined`, so every hand-rolled loop needed
+ * its own dance to satisfy the compiler. Zipping once keeps the assertions
+ * about the table rather than about TypeScript.
+ */
+function tierPairs(): Array<{ rust: string; tier: MockTierKey }> {
+  return RUST_VARIANTS.map((rust, i) => ({
+    rust,
+    tier: MOCK_TIER_KEYS[i] as MockTierKey,
+  }));
+}
+
+/**
  * Extract one accessor's `match` arms, keyed by the variant each answers for.
  *
  * TWO shapes exist in `subscription.rs` and both must be handled:
@@ -70,18 +85,20 @@ function extractArms(source: string, fnSignature: string): Map<string, string> {
   // next). So find the `matches!(` line — the `self,` may not share it — then
   // accumulate until the parens balance.
   for (let i = 0; i < afterSig.length; i += 1) {
-    if (afterSig[i].trim() === '}') break;
-    if (!/^\s*matches!\(/.test(afterSig[i])) continue;
-    const collected = [afterSig[i].replace(/^\s*matches!\(/, '')];
+    const probe = afterSig[i] ?? '';
+    if (probe.trim() === '}') break;
+    if (!/^\s*matches!\(/.test(probe)) continue;
+    const collected = [probe.replace(/^\s*matches!\(/, '')];
     let depth = 1;
-    for (const ch of collected[0]) {
+    for (const ch of collected[0] ?? '') {
       if (ch === '(') depth += 1;
       if (ch === ')') depth -= 1;
     }
     while (depth > 0 && i + 1 < afterSig.length) {
       i += 1;
-      collected.push(afterSig[i]);
-      for (const ch of afterSig[i]) {
+      const next = afterSig[i] ?? '';
+      collected.push(next);
+      for (const ch of next) {
         if (ch === '(') depth += 1;
         if (ch === ')') depth -= 1;
       }
@@ -94,7 +111,7 @@ function extractArms(source: string, fnSignature: string): Map<string, string> {
   // Shape 1: a `match self { ... }` block.
   let sawMatch = false;
   for (let i = startIdx; i < lines.length; i += 1) {
-    const line = lines[i];
+    const line = lines[i] ?? '';
     if (!sawMatch) {
       if (line.trim() === 'match self {') sawMatch = true;
       continue;
@@ -107,11 +124,11 @@ function extractArms(source: string, fnSignature: string): Map<string, string> {
     // optional group, which the greedy capture defeats.
     const arm = /^\s*([^=]+?)\s*=>\s*(.+)\s*$/.exec(line);
     if (!arm) continue;
-    const variants = [...arm[1].matchAll(/Self::(\w+)/g)].map((v) => v[1]);
+    const variants = [...(arm[1] ?? '').matchAll(/Self::(\w+)/g)].map((v) => v[1] ?? '');
     if (variants.length === 0) continue;
     // Trailing `//` comments are common on these arms (e.g. `Some(90), // 3 months`).
     // Strip them BEFORE the comma so the value parses as the Rust expression it is.
-    const value = arm[2].replace(/\/\/.*$/, '').replace(/,$/, '').trim();
+    const value = (arm[2] ?? '').replace(/\/\/.*$/, '').replace(/,$/, '').trim();
     for (const v of variants) arms.set(v, value);
   }
   if (arms.size === 0) throw new Error(`no arms extracted for ${fnSignature}`);
@@ -123,10 +140,10 @@ function parseOptionI64(expr: string): number | null {
   const trimmed = expr.trim().replace(/,$/, '').trim();
   if (trimmed === 'None') return null;
   const some = /^Some\(\s*([0-9_]+)\s*\)$/.exec(trimmed);
-  if (some) return Number(some[1].replace(/_/g, ''));
+  if (some?.[1]) return Number(some[1].replace(/_/g, ''));
   // `Some(5 * 365)` — the one arithmetic form in the table (Pro sales history).
   const mul = /^Some\(\s*([0-9_]+)\s*\*\s*([0-9_]+)\s*\)$/.exec(trimmed);
-  if (mul) return Number(mul[1].replace(/_/g, '')) * Number(mul[2].replace(/_/g, ''));
+  if (mul?.[1] && mul[2]) return Number(mul[1].replace(/_/g, '')) * Number(mul[2].replace(/_/g, ''));
   throw new Error(`unhandled Option<i64> expression: ${expr}`);
 }
 
@@ -141,7 +158,7 @@ function parseBool(expr: string, variant: string): boolean {
   const norm = trimmed.replace(/\s+/g, ' ');
   const matches = /^matches!\(\s*(?:self\s*,\s*)?([^)]+)\)$/.exec(norm);
   if (matches) {
-    const set = [...matches[1].matchAll(/Self::(\w+)/g)].map((v) => v[1]);
+    const set = [...(matches[1] ?? '').matchAll(/Self::(\w+)/g)].map((v) => v[1] ?? '');
     return set.includes(variant);
   }
   throw new Error(`unhandled bool expression: ${expr}`);
@@ -164,10 +181,10 @@ describe('dev-mock tier table matches the Rust subscription tiers', () => {
   it('names each tier as SubscriptionTier::name() does', () => {
     const sig = 'pub fn name(&self)';
     const arms = extractArms(rustSource, sig);
-    for (let i = 0; i < RUST_VARIANTS.length; i += 1) {
-      const literal = /^"([^"]+)"$/.exec(armFor(arms, RUST_VARIANTS[i], sig))?.[1];
-      expect(literal, `name() arm for ${RUST_VARIANTS[i]}`).toBeDefined();
-      expect(MOCK_TIER_NAMES[MOCK_TIER_KEYS[i]]).toBe(literal);
+    for (const { rust, tier } of tierPairs()) {
+      const literal = /^"([^"]+)"$/.exec(armFor(arms, rust, sig))?.[1];
+      expect(literal, `name() arm for ${rust}`).toBeDefined();
+      expect(MOCK_TIER_NAMES[tier]).toBe(literal);
     }
   });
 
@@ -184,10 +201,9 @@ describe('dev-mock tier table matches the Rust subscription tiers', () => {
 
     for (const [sig, read, field] of accessors) {
       const arms = extractArms(rustSource, sig);
-      for (let i = 0; i < RUST_VARIANTS.length; i += 1) {
-        const tier = MOCK_TIER_KEYS[i];
+      for (const { rust, tier } of tierPairs()) {
         expect(read(tier), `${tier}.${field} disagrees with ${sig}`).toBe(
-          parseOptionI64(armFor(arms, RUST_VARIANTS[i], sig)),
+          parseOptionI64(armFor(arms, rust, sig)),
         );
       }
     }
@@ -207,10 +223,9 @@ describe('dev-mock tier table matches the Rust subscription tiers', () => {
 
     for (const [sig, read] of accessors) {
       const arms = extractArms(rustSource, sig);
-      for (let i = 0; i < RUST_VARIANTS.length; i += 1) {
-        const tier = MOCK_TIER_KEYS[i];
+      for (const { rust, tier } of tierPairs()) {
         expect(read(tier), `${tier} disagrees with ${sig}`).toBe(
-          parseBool(armFor(arms, RUST_VARIANTS[i], sig), RUST_VARIANTS[i]),
+          parseBool(armFor(arms, rust, sig), rust),
         );
       }
     }
@@ -219,21 +234,17 @@ describe('dev-mock tier table matches the Rust subscription tiers', () => {
   it('matches max_products, which the caps DTO does not carry', () => {
     const sig = 'pub fn max_products(&self)';
     const arms = extractArms(rustSource, sig);
-    for (let i = 0; i < RUST_VARIANTS.length; i += 1) {
-      const tier = MOCK_TIER_KEYS[i];
-      expect(MOCK_TIER_MAX_PRODUCTS[tier]).toBe(
-        parseOptionI64(armFor(arms, RUST_VARIANTS[i], sig)),
-      );
+    for (const { rust, tier } of tierPairs()) {
+      expect(MOCK_TIER_MAX_PRODUCTS[tier]).toBe(parseOptionI64(armFor(arms, rust, sig)));
     }
   });
 
   it('matches offline_grace_days, which returns a bare i64', () => {
     const sig = 'pub fn offline_grace_days(&self)';
     const arms = extractArms(rustSource, sig);
-    for (let i = 0; i < RUST_VARIANTS.length; i += 1) {
-      const tier = MOCK_TIER_KEYS[i];
+    for (const { rust, tier } of tierPairs()) {
       expect(MOCK_TIER_CAPS[tier].offlineGraceDays).toBe(
-        Number(armFor(arms, RUST_VARIANTS[i], sig).replace(/_/g, '')),
+        Number(armFor(arms, rust, sig).replace(/_/g, '')),
       );
     }
   });
