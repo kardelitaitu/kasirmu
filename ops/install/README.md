@@ -1,4 +1,4 @@
-# OZ-POS install scripts
+# kasir.mu install scripts
 
 <!-- dead-ref-prefix-ok: install/uninstall · this is the English phrase "One-line install/uninstall", not a path; `install/` is a top-level prefix so the checker extracts it. Suppressed at the page head, where check-dead-refs.py reads the opt-out (first 40 lines). Every other reference on this page is still checked. -->
 
@@ -28,7 +28,7 @@ curl -fsSL https://github.com/kardelitaitu/kasirmu/releases/latest/download/inst
 ```
 
 Both installers default to a **per-user, no-elevation** install:
-`%LOCALAPPDATA%\Programs\OZ-POS` on Windows (NSIS `currentUser`),
+`%LOCALAPPDATA%\Programs\kasir.mu` on Windows (NSIS `currentUser`),
 `~/.local/bin` + launcher entry on Linux (AppImage), `/Applications` on
 macOS (DMG). `--system` / `-System` opts into a per-machine install where
 the platform supports it (`.deb`/`/opt` on Linux, MSI on Windows).

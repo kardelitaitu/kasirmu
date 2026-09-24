@@ -9,13 +9,13 @@
 > policy while iOS has never been generated. So **every `gen/apple/...` path below
 > describes output of `cargo tauri ios init`, which must be run on a macOS host first.**
 > The project filename is also not stable: this guide says `kasirmu-mobile.xcodeproj`
-> while `docs/guides/platform/ios-build-guide.md` says `OZ-POS.xcodeproj`, and neither can be
+> while `docs/guides/platform/ios-build-guide.md` says `kasir.mu.xcodeproj`, and neither can be
 > verified until the scaffold exists. Prefer discovery over a hardcoded name:
 > `find apps/mobile-tauri/gen/apple -maxdepth 1 -name "*.xcodeproj"`.
 
-# OZ-POS Mobile Build & Deployment Guide
+# kasir.mu Mobile Build & Deployment Guide
 
-> Build OZ-POS for Android tablets and iPads using Tauri v2 mobile.
+> Build kasir.mu for Android tablets and iPads using Tauri v2 mobile.
 
 ---
 
@@ -183,14 +183,14 @@ IPA:  apps/mobile-tauri/gen/apple/build/kasirmu-mobile.ipa
    ```
 2. Select the target → **Signing & Capabilities**
 3. Choose your **Team** from the dropdown
-4. Use a unique **Bundle Identifier** (e.g., `com.yourcompany.ozpos.tablet`)
+4. Use a unique **Bundle Identifier** (e.g., `com.yourcompany.kasir.tablet`)
 5. Ensure the provisioning profile matches your distribution method
 
 ---
 
 ## CI/CD Pipelines
 
-OZ-POS provides two GitHub Actions workflows for automated mobile builds:
+kasir.mu provides two GitHub Actions workflows for automated mobile builds:
 
 ### Android CI (`android.yml`)
 
@@ -240,7 +240,7 @@ Pipeline steps:
 | Secret | Purpose |
 |--------|---------|
 | `APPLE_TEAM_ID` | Apple Developer team ID |
-| `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `com.ozpos.tablet`) |
+| `APPLE_BUNDLE_ID` | Bundle identifier (e.g., `mu.kasir.tablet`) |
 | `APPLE_PROV_PROFILE_BASE64` | Base64-encoded provisioning profile |
 | `APPLE_CERT_BASE64` | Base64-encoded distribution certificate p12 |
 | `APPLE_CERT_PASSWORD` | Certificate password |
@@ -359,8 +359,8 @@ The `useKeyboardAvoidance` hook detects keyboard open/close on mobile and scroll
 Generate a keystore for signing release builds:
 
 ```bash
-keytool -genkey -v -keystore oz-pos.keystore \
-  -alias oz-pos -keyalg RSA -keysize 2048 -validity 10000
+keytool -genkey -v -keystore kasirmu.keystore \
+  -alias kasir -keyalg RSA -keysize 2048 -validity 10000
 ```
 
 **Security notes:**
@@ -421,7 +421,7 @@ the APK/AAB builds unsigned.
 | `cargo tauri android init fails` | Already initialized | Delete `gen/android/` and re-init |
 | APK size > 100 MB | Debug symbols included | Build `--release` to strip |
 | App crashes on launch | WAL SQLite issue | Check `adb logcat` for native crashes |
-| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | App already installed | Uninstall first: `adb uninstall com.ozpos.tablet` |
+| `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | App already installed | Uninstall first: `adb uninstall mu.kasir.tablet` |
 
 ### iOS Build Issues
 

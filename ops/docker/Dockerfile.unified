@@ -1,4 +1,4 @@
-# ── OZ-POS Unified Image (auth + sync in one container) ──────────────
+# ── kasir.mu Unified Image (auth + sync in one container) ──────────────
 #
 # Builds both functions into a single image and runs them under one
 # supervisor behind a single caddy reverse proxy:

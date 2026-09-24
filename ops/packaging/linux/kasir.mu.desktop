@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=OZ-POS
+Name=kasir.mu
 Comment=Point-of-sale framework
 Exec=kasirmu-app
 Icon=oz-pos

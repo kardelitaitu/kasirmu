@@ -1,6 +1,6 @@
-# ── OZ-POS Reverse Proxy + TLS (Caddy) — example configuration ────────
+# ── kasir.mu Reverse Proxy + TLS (Caddy) — example configuration ────────
 #
-# The OZ-POS services speak plain HTTP; TLS is terminated by a reverse
+# The kasir.mu services speak plain HTTP; TLS is terminated by a reverse
 # proxy in front of the stack. Caddy is recommended because it obtains
 # and renews Let's Encrypt certificates automatically for public domains.
 #

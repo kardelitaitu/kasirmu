@@ -1,6 +1,6 @@
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths verified) · all referenced paths exist: ops/packaging/linux/oz-pos.desktop, ops/packaging/linux/deb/postinst, ops/packaging/linux/deb/prerm, ops/packaging/mobile/, oz-pos-updater.key, .github/workflows/release.yml; bundle list (deb,appimage,msi,nsis,dmg) and /var/lib/oz-pos/ DB path consistent with release workflow + Tauri defaults -->
+<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings, paths verified) · all referenced paths exist: ops/packaging/linux/kasir.mu.desktop, ops/packaging/linux/deb/postinst, ops/packaging/linux/deb/prerm, ops/packaging/mobile/, oz-pos-updater.key, .github/workflows/release.yml; bundle list (deb,appimage,msi,nsis,dmg) and /var/lib/oz-pos/ DB path consistent with release workflow + Tauri defaults -->
 
-# OZ-POS Packaging
+# kasir.mu Packaging
 
 Platform installer metadata for Tauri bundler output.
 
@@ -9,7 +9,7 @@ Platform installer metadata for Tauri bundler output.
 ```
 ops/packaging/
 ├── linux/
-│   ├── oz-pos.desktop    # Freedesktop .desktop entry
+│   ├── kasir.mu.desktop    # Freedesktop .desktop entry
 │   └── deb/
 │       ├── postinst      # Post-install script
 │       └── prerm         # Pre-removal script

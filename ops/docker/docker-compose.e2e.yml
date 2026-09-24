@@ -1,4 +1,4 @@
-# ── OZ-POS E2E Test Stack — Docker Compose ───────────────────────────
+# ── kasir.mu E2E Test Stack — Docker Compose ───────────────────────────
 #
 # Lightweight backend for end-to-end tests.  Starts the cloud server
 # with SQLite (no PostgreSQL needed for testing) and the license server.

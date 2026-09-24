@@ -1,4 +1,4 @@
-# ── OZ-POS Cloud Server ──────────────────────────────────────────────
+# ── kasir.mu Cloud Server ──────────────────────────────────────────────
 #
 # Multi-stage Dockerfile that builds the headless cloud-sync binary
 # (kasirmu-cloud) and packages it into a minimal runtime image.
