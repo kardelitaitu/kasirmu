@@ -11,6 +11,7 @@
  */
 
 import type { MockHandler } from '../core/mockDispatcher';
+import { getMockTier, getMockTierCaps } from '../core/mockTier';
 import pkg from '../../../package.json';
 
 function unwrapArgs<T extends Record<string, unknown> = Record<string, unknown>>(args: unknown): T {
@@ -622,80 +623,98 @@ export const systemHandlers: Record<string, MockHandler> = {
   'poll_device_pairing': () => ({
     status: 'pending',
   }),
+  // Pause/resume report the SELECTED tier: a paused subscription keeps its
+  // tier rather than dropping to a literal, so pausing while on Enterprise
+  // does not silently reprice the preview to Plus.
   'pause_subscription': () => ({
     status: 'paused',
-    tierKey: 'plus',
+    tierKey: getMockTier(),
     pausedAt: new Date().toISOString(),
     pausedUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   }),
   'resume_subscription': () => ({
     status: 'active',
-    tierKey: 'plus',
+    tierKey: getMockTier(),
   }),
-  'get_subscription_capabilities': () => ({
-    tier: 'premium',
-    status: revokedRequested() ? 'revoked' : 'active',
-    state: revokedRequested() ? 'revoked' : 'active',
-    // C+D-RES-1: trial state + feature-grant map ride the caps payload.
-    // The mock tenant is a paid premium subscription: not a trial, no
-    // payload feature overrides - exactly the null/empty-when-absent
-    // shape the api-subscription-contract test pins (no invented defaults).
-    isTrial: false,
-    trialEndsAt: null,
-    features: {},
-    maxLocations: null,
-    maxPosInstances: null,
-    maxWarehouses: null,
-      // Per-location KDS cap; null = unlimited, matching the Premium fixture this
-      // block returns (SubscriptionTier::max_kds_screens: Free/Plus 0, Pro 2,
-      // Premium/Enterprise unlimited).
-      maxKdsScreens: null,
-    maxStaffUsers: null,
-    salesHistoryDays: null,
-    supportsQris: true,
-    supportsAnalytics: true,
-    supportsLoyalty: true,
-    supportsDailyDashboard: true,
-    supportsCloudSync: true,
-    offlineGraceDays: 30,
-    expiresAt: null,
-    graceUntil: null,
-    isExpired: false,
-    locationCount: 1,
-    staffCount: 1,
-    terminalCount: 1,
-    addons: [],
-  }),
+  // Every quota and feature field is DERIVED from the one tier table, so the
+  // payload can never describe a tier other than the selected one. This block
+  // used to hand-write all fifteen fields as Premium's unlimited/true answer,
+  // which made every gate below Premium unreachable in a browser.
+  'get_subscription_capabilities': () => {
+    const caps = getMockTierCaps();
+    return {
+      tier: getMockTier(),
+      status: revokedRequested() ? 'revoked' : 'active',
+      state: revokedRequested() ? 'revoked' : 'active',
+      // C+D-RES-1: trial state + feature-grant map ride the caps payload.
+      // The mock tenant is a paid subscription with no payload overrides -
+      // exactly the null/empty-when-absent shape the
+      // api-subscription-contract test pins (no invented defaults).
+      isTrial: false,
+      trialEndsAt: null,
+      features: {},
+      maxLocations: caps.maxLocations,
+      maxPosInstances: caps.maxPosInstances,
+      maxWarehouses: caps.maxWarehouses,
+      // Per-location KDS cap; null = unlimited. Free/Plus are 0, not null —
+      // they cannot run KDS at all, which is a different fact from unlimited.
+      maxKdsScreens: caps.maxKdsScreens,
+      maxStaffUsers: caps.maxStaffUsers,
+      salesHistoryDays: caps.salesHistoryDays,
+      supportsQris: caps.supportsQris,
+      supportsAnalytics: caps.supportsAnalytics,
+      supportsLoyalty: caps.supportsLoyalty,
+      supportsDailyDashboard: caps.supportsDailyDashboard,
+      supportsCloudSync: caps.supportsCloudSync,
+      offlineGraceDays: caps.offlineGraceDays,
+      expiresAt: null,
+      graceUntil: null,
+      isExpired: false,
+      locationCount: 1,
+      staffCount: 1,
+      terminalCount: 1,
+      addons: [],
+    };
+  },
 
-  // Mock tenant is Premium + active with unlimited quotas, so every known
-  // feature is available (reason null) — consistent with the premium caps
-  // above. An unknown key is rejected rather than echoed back as available,
-  // mirroring the real command's fail-closed AppError::Invalid.
+  // Answers from the SAME tier table the caps block reads, so a verdict can
+  // never contradict the payload beside it. This used to answer `available:
+  // true` for every key unconditionally, which meant the Free/Plus/Pro locked
+  // states had no preview at all. An unknown key is still rejected rather than
+  // echoed back as available, mirroring the real command's fail-closed
+  // AppError::Invalid.
   'explain_feature_availability_scoped': (raw) => {
     const { feature } = (raw as { feature?: string }) ?? {};
-    const known: string[] = [
-      'supports_qris',
-      'supports_analytics',
-      'supports_loyalty',
-      'supports_daily_dashboard',
-      'supports_cloud_sync',
-      'sales_history_days',
-      'locations',
-      'staff_users',
-      'pos_instances',
-      'warehouses',
-    ];
-    if (!feature || !known.includes(feature)) {
+    const caps = getMockTierCaps();
+    // Each gate reads its own Rust accessor's answer: a boolean predicate, or
+    // a quota limit where the gate is a cap rather than a flag. `null` limit
+    // means unlimited. Mirrors AvailabilityFeature in
+    // crates/kasirmu-core/src/availability.rs.
+    const gates: Record<string, { available: boolean; limit: number | null }> = {
+      supports_qris: { available: caps.supportsQris, limit: null },
+      supports_analytics: { available: caps.supportsAnalytics, limit: null },
+      supports_loyalty: { available: caps.supportsLoyalty, limit: null },
+      supports_daily_dashboard: { available: caps.supportsDailyDashboard, limit: null },
+      supports_cloud_sync: { available: caps.supportsCloudSync, limit: null },
+      sales_history_days: { available: true, limit: caps.salesHistoryDays },
+      locations: { available: true, limit: caps.maxLocations },
+      staff_users: { available: true, limit: caps.maxStaffUsers },
+      pos_instances: { available: true, limit: caps.maxPosInstances },
+      warehouses: { available: true, limit: caps.maxWarehouses },
+    };
+    const gate = feature ? gates[feature] : undefined;
+    if (!feature || !gate) {
       throw new Error(`unknown feature key ${JSON.stringify(feature)}`);
     }
     return {
       feature,
-      available: true,
-      reason: null,
+      available: gate.available,
+      // A false-gate is a TIER refusal, matching AvailabilityReason::Tier.
+      reason: gate.available ? null : 'tier',
       detail: {
-        tier: 'premium',
+        tier: getMockTier(),
         state: 'active',
-        limit: null,
+        limit: gate.limit,
         usage: null,
         permission: null,
         scopeGranted: null,
