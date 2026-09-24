@@ -41,9 +41,9 @@ Semua template telah disusun sesuai standar perundang-undangan Indonesia, siap d
 ## 3. Keputusan Strategis yang Telah Ditetapkan (`[DECIDED]`)
 
 1. **Bentuk Badan Usaha**: **PT Perorangan** (Perseroan Terbatas untuk Usaha Mikro dan Kecil) didirikan mandiri melalui AHU Online tanpa akta notaris berbiaya tinggi.
-2. **Arsitektur Modal**: 
-   * **Jalur Utama (A)**: Modal tunai Rp50.000.000,- s.d. Rp100.000.000,- disetor via rekening giro PT. Hak Cipta didaftarkan atas nama pribadi founder dan dilisensikan secara eksklusif ke PT (*Asset Protection Pattern*).
-   * Meninggalkan klaim modal Rp3,1 Miliar berbasis *opportunity cost* yang berisiko memicu sanksi dan pemeriksaan pajak pribadi oleh KPP Pratama.
+2. **Arsitektur Permodalan 2 Tahap (The 2-Phase Capital Roadmap)**: 
+   * **Fase 1 (Peluncuran Bersih Hari Ini)**: Modal tunai Rp50.000.000,- disetor via rekening giro PT. Hak Cipta atas nama pribadi founder dan dilisensikan secara eksklusif ke PT (*Asset Protection Pattern*). Menghemat fee appraisal KJPP Rp10–20 juta di awal dan bebas dari risiko pemeriksaan pajak *opportunity cost*.
+   * **Fase 2 (Inbreng Menyusul di Masa Depan)**: Peningkatan modal inbreng dieksekusi di kemudian hari via Pernyataan Perubahan di AHU Online (voucher Rp50.000) setelah memiliki traksi omzet stabil atau saat masuknya investor, menggunakan metode *Income Approach* yang dibiayai dari kas PT.
 3. **Rezim Perpajakan**:
    * Memanfaatkan **PPh Final 0.5% (PP 55/2022)** selama 4 tahun pertama.
    * Menjaga status **Non-PKP** (omzet ≤ Rp4,8 Miliar) sehingga langganan Kasir.mu bebas dari beban tambahan PPN 12% bagi merchant UMKM.

@@ -138,3 +138,24 @@ Tujuan: Memastikan operasional perseroan berjalan bersih dan mempertahankan stat
   - [ ] Transfer dividen ke rekening pribadi founder (tanpa dipotong PPh 0%).
   - [ ] Lakukan reinvestasi di instrumen domestik (deposito / SBN / saham BEI / sektor riil) selama minimal 3 tahun.
   - [ ] Laporkan e-Reporting Realisasi Investasi Dividen via DJP Online setahun sekali.
+
+---
+
+## Fase 8 — Inbreng Menyusul & Peningkatan Modal (Skala Lanjutan / Masa Depan)
+
+Tujuan: Mengonversi lisensi software menjadi modal inbreng resmi bernilai miliaran rupiah setelah memiliki traksi pasar stabil / masuknya investor.
+
+- [ ] **Persiapan Valuasi Berbasis Traksi (Income Approach)**:
+  - [ ] Dokumentasikan metrik bisnis: Jumlah merchant aktif, *Monthly Recurring Revenue* (MRR), *churn rate*, dan proyeksi arus kas.
+  - [ ] Tunjuk Kantor Jasa Penilai Publik (KJPP) berizin Penilaian Bisnis dari Kemenkeu.
+  - [ ] Bayar fee jasa KJPP menggunakan kas operasional PT (dibukukan sebagai beban usaha PT).
+  - [ ] Dapatkan Buku Laporan Penilaian Resmi berstempel basah KJPP.
+- [ ] **Pendaftaran Peningkatan Modal di AHU Kemenkumham**:
+  - [ ] Buat Keputusan Pemegang Saham Tunggal tentang Peningkatan Modal Disetor via Inbreng Software.
+  - [ ] Beli voucher PNBP *Pernyataan Perubahan Perseroan Perorangan* (Rp50.000) di `ptp.ahu.go.id`.
+  - [ ] Input penambahan modal inbreng sesuai nilai laporan KJPP.
+  - [ ] Unduh Sertifikat Pernyataan Perubahan Perseroan Perorangan resmi Kemenkumham.
+- [ ] **Sinkronisasi Pasca-Perubahan**:
+  - [ ] Lakukan sinkronisasi data modal baru pada portal OSS-RBA.
+  - [ ] Perbarui data modal perseroan di bank tempat rekening giro berada.
+  - [ ] Catat di neraca PT: Debit Aset Tak Berwujud (Software), Kredit Tambahan Modal Disetor.

@@ -1,30 +1,36 @@
 # Entity Setup — PT Perorangan (Panduan Pendirian Entitas)
 
 > **Status:** `[DECIDED]` & `[VERIFIED]` against UU No. 40/2007 jo. UU No. 6/2023 (UU Cipta Kerja), PP No. 8/2021, and PP No. 7/2021.
-> **Tujuan:** Menetapkan badan hukum resmi Perseroan Terbatas Perorangan secara mandiri, cepat, berbiaya minimal, dan memiliki fondasi legal yang kokoh.
+> **Tujuan:** Menetapkan badan hukum resmi Perseroan Terbatas Perorangan secara mandiri, cepat, berbiaya minimal, dan memiliki peta jalan permodalan bertahap (Pendirian Bersih Hari Ini ➔ Inbreng Menyusul Nanti).
 
 ---
 
-## 1. Penentuan Arsitektur Modal (Capital Architecture)
+## 1. Peta Jalan Permodalan 2 Tahap (The 2-Phase Capital Roadmap)
 
-Sebelum mengisi formulir pendaftaran di Kemenkumham, founder harus memilih salah satu dari dua jalur struktur modal berikut:
+Untuk mendirikan badan hukum yang kuat tanpa membuang uang belasan juta rupiah untuk jasa penilai publik di awal, kasir.mu menerapkan **Strategi Permodalan 2 Tahap**:
 
-| Parameter | Jalur A (Direkomendasikan): Clean Cash + Lisensi | Jalur B: Inbreng Biaya Riil (Out-of-Pocket) |
-|---|---|---|
-| **Modal Disetor** | **Rp50.000.000,- s.d. Rp100.000.000,-** | **Rp350.000.000,- s.d. Rp400.000.000,-** (~$25,000) |
-| **Bentuk Setoran** | 100% Tunai via transfer bank saat rekening PT buka | Non-tunai (Inbreng aset software berbasis bukti kas keluar) |
-| **Status Skala Usaha** | **Usaha Mikro** (Modal ≤ Rp1 Miliar) | **Usaha Mikro** (Modal ≤ Rp1 Miliar) |
-| **Status Hak Cipta** | Tetap atas nama pribadi founder; dilisensikan eksklusif ke PT | Dialihkan hak kepemilikannya menjadi aset perseroan |
-| **Beban KJPP** | **Nol (Tidak perlu penilai publik)** | Rendah / Defensif (didukung bukti kuitansi riil) |
-| **Risiko Audit DJP** | **Nol / Paling Aman** | Rendah (karena berbasis bukti kas keluar riil) |
+```
+[TAHAP 1: SEKARANG — PENDIRIAN AWAL BERSIH]
+ ├── Modal Disetor: Rp50.000.000,- Tunai (100% Saham Pendiri Tunggal)
+ ├── Status Usaha: Usaha Mikro (Kriteria Modal ≤ Rp1 Miliar)
+ ├── Hak Cipta Software: Terdaftar atas nama Pribadi Founder (e-HakCipta Rp200.000)
+ ├── Hubungan Software: Perjanjian Lisensi Eksklusif (Founder -> PT)
+ └── HASIL: PT langsung sah 100%, NIB terbit, rekening giro buka, ZERO biaya KJPP.
 
-> [!IMPORTANT]
-> **Mengapa Rencana Awal Rp3,1 Miliar Ditinggalkan:**
-> 1. Angka Rp3,1 Miliar didominasi klaim "opportunity cost" jam kerja sebesar $246,000 yang **secara mutlak ditolak oleh Ditjen Pajak** sebagai biaya perolehan aset.
-> 2. Menetapkan modal Rp3,1 Miliar tanpa laporan resmi dari Kantor Jasa Penilai Publik (KJPP) akan memicu surat cinta SP2DK dari KPP Pratama dan potensi tuduhan pelaporan harta fiktif pada SPT Pribadi.
-> 3. Di bawah rezim PPh Final 0.5% (PP 55/2022), amortisasi aset software Rp3,1 Miliar **tidak dapat dipakai untuk mengurangi pajak**.
-> 
-> **Pilihan Terbaik:** Gunakan **Jalur A** (Rp50–100 Juta Tunai) dengan perjanjian lisensi software eksklusif dari founder ke perseroan.
+                               │
+                               ▼ (Setelah 1–2 Tahun: Omzet Rutin / Ada Investor)
+
+[TAHAP 2: MASA DEPAN — INBRENG MENYUSUL (SUBSEQUENT INBRENG)]
+ ├── Status: Peningkatan Modal Disetor via "Pernyataan Perubahan di AHU" (Voucher Rp50.000)
+ ├── Metode Valuasi: Income Approach / DCF (Berdasarkan omzet langganan SaaS & jumlah merchant)
+ ├── Pembiayaan KJPP: Dibayar resmi dari kas operasional PT (Bukan uang pribadi founder)
+ └── HASIL: Valuasi software melesat ke angka Miliaran Rupiah secara sah & diakui DJP.
+```
+
+### Mengapa Skema Ini yang Terbaik?
+1. **Tidak Membuang Uang Belasan Juta di Awal**: Biaya penilai publik (KJPP) sebesar Rp10–20 juta tidak perlu dikeluarkan saat belum ada pendapatan. Uang disimpan untuk operasional dan akuisisi merchant.
+2. **Kecepatan Peluncuran Produk**: PT bisa beroperasi komersial minggu ini juga tanpa harus menunggu 2–3 minggu proses appraisal repo Git.
+3. **Valuasi Jauh Lebih Tinggi di Masa Depan**: Menilai software yang sudah memiliki ratusan merchant berbayar (*Monthly Recurring Revenue*) menghasilkan angka valuasi yang jauh lebih tinggi dan defensif dibanding hanya menilai baris kode di Git.
 
 ---
 
@@ -49,9 +55,8 @@ Waktu: **±15 Menit** (Sistem Otomatis)
      * *PT Inovasi Kasirmu Indonesia*
 5. **Pengisian Data Domisili & Modal**:
    * Alamat domisili lengkap perseroan.
-   * Modal Dasar dan Modal Disetor:
-     * Jika Jalur A: Masukkan nominal misal **Rp50.000.000,-** (Lima Puluh Juta Rupiah).
-     * Jika Jalur B: Masukkan nominal misal **Rp350.000.000,-** (Tiga Ratus Lima Puluh Juta Rupiah).
+   * **Modal Dasar dan Modal Disetor**: Masukkan nominal **Rp50.000.000,-** (Lima Puluh Juta Rupiah).
+   * Nilai nominal per lembar saham: Rp100.000,- (500 lembar saham dimiliki 100% oleh Pendiri).
 6. **Input 5 Kode KBLI**:
    Masukkan 5 kode KBLI berikut (uraian detail di [`kbli-codes.md`](./kbli-codes.md)):
    * `62010` (Aktivitas Pemrograman Komputer)
@@ -60,7 +65,7 @@ Waktu: **±15 Menit** (Sistem Otomatis)
    * `46511` (Perdagangan Besar Komputer, Perlengkapan Komputer dan Piranti Lunak)
    * `47401` (Perdagangan Eceran Komputer dan Perlengkapannya)
 7. **Penerbitan Sertifikat Pendirian**:
-   Setelah konfirmasi, sistem langsung menerbitkan **Sertifikat Pernyataan Pendirian Perseroan Perorangan** yang ditandatangani secara elektronik oleh Menteri Hukum dan HAM RI lengkap dengan nomor registrasi (AHU-xxxx.AH.xx.xx.Tahun). Download dan cetak dokumen ini.
+   Setelah konfirmasi, sistem langsung menerbitkan **Sertifikat Pernyataan Pendirian Perseroan Perorangan** yang ditandatangani secara elektronik oleh Menteri Hukum dan HAM RI lengkap dengan nomor registrasi (AHU-xxxx.AH.xx.xx.Tahun). Unduh dan cetak dokumen ini.
 
 ---
 
@@ -84,40 +89,44 @@ Waktu: **±20 Menit** (Persetujuan Otomatis)
    * **Persetujuan Tata Ruang (KKPR)**: Untuk skala UMK, Konfirmasi Kesesuaian Kegiatan Pemanfaatan Ruang (KKPR) disetujui otomatis oleh sistem.
    * **Komitmen Lingkungan (SPPL)**: Sistem OSS secara otomatis menerbitkan Surat Pernyataan Kesanggupan Pengelolaan dan Pemantauan Lingkungan Hidup (SPPL) otomatis untuk skala risiko rendah.
 5. **Penerbitan Nomor Induk Berusaha (NIB)**:
-   OSS menerbitkan dokumen legalitas tunggal: **Nomor Induk Berusaha (NIB)**.
+   OSS menerbitkan dokumen legalitas tunggal: **Nomor Induk Berusaha (NIB)** yang juga berlaku sebagai API-U (Angka Pengenal Importir Umum) dan Akses Kepabeanan Bea Cukai.
 
 ---
 
-## 4. Kepastian Hukum: Fungsi NIB sebagai API-U (Hak Impor)
+## 4. Langkah 3: Pembukaan Rekening Giro Bank & Penyetoran Modal
 
-> [!NOTE]
-> **Jawaban Resmi atas Pertanyaan Impor:**
-> Berdasarkan **Pasal 175 PP No. 5 Tahun 2021** jo. **Permendag No. 75 Tahun 2018**:
-> * **NIB secara otomatis berlaku sebagai Angka Pengenal Importir Umum (API-U)** dan Hak Akses Kepabeanan ke Ditjen Bea dan Cukai.
-> * Anda **TIDAK PERLU** mengajukan izin API terpisah ke instansi bea cukai.
-> * *Namun*, untuk memasukkan perangkat kasir berkoneksi nirkabel (Wi-Fi/Bluetooth/4G), tetap berlaku kewajiban sertifikasi tipe dari Ditjen SDPPI Kominfo sebelum barang dapat dirilis dari pelabuhan (lihat [`kbli-codes.md`](./kbli-codes.md)).
+Setelah Sertifikat AHU dan NIB terbit, perseroan membuka rekening giro bank atas nama PT.
 
----
-
-## 5. Langkah 3: Pembukaan Rekening Giro Perusahaan (Corporate Bank Account)
-
-Setelah Sertifikat AHU dan NIB terbit, perseroan wajib memiliki rekening bank terpisah atas nama PT untuk menyetorkan modal dan menampung omzet usaha.
-
-### 5.1 Pilihan Bank Rekomendasi
-* **BCA**: Fasilitas KlikBCA Bisnis sangat stabil untuk integrasi payment gateway.
-* **Bank Mandiri**: MCM (Mandiri Cash Management) ramah untuk korporasi baru.
-* **BRI / Bank Jatim**: Biaya administrasi ringan dan akses luas ke UMKM.
-
-### 5.2 Berkas Persyaratan ke Kantor Cabang Bank
+### 4.1 Dokumen Pembukaan Rekening ke Bank (BCA / Mandiri / BRI)
 1. Cetak Asli Sertifikat Pernyataan Pendirian Perseroan Perorangan dari AHU Kemenkumham.
 2. Cetak Dokumen NIB ber-QR Code dari OSS.
 3. Cetak Surat Keterangan Terdaftar (SKT) & Kartu NPWP Badan dari DJP.
 4. KTP dan Kartu NPWP Asli milik Direktur Utama.
-5. Nomor Induk Berusaha (NIB) lampiran KBLI.
-6. Setoran awal tunai pembukaan giro (umumnya Rp500.000 s.d. Rp1.000.000 tergantung bank).
+5. Setoran awal tunai pembukaan giro (umumnya Rp500.000 s.d. Rp1.000.000,- tergantung bank).
 
-### 5.3 Pelaksanaan Setoran Modal
-Setelah rekening giro atas nama perseroan resmi aktif:
-1. Lakukan transfer dari rekening pribadi founder ke rekening giro PT sebesar nilai modal disetor yang tercantum di AHU (misal: Rp50.000.000,-).
-2. Tulis berita transfer: *"Setoran Modal Awal Perseroan PT [Nama PT]"*.
-3. Simpan mutasi rekening koran bulan pertama tersebut di dalam arsip permanen hukum perseroan sebagai bukti materil bahwa kewajiban penyetoran modal telah terpenuhi 100%.
+### 4.2 Pelaksanaan Setoran Modal Tunai
+Setelah rekening giro atas nama PT aktif:
+1. Transfer dana modal disetor dari rekening pribadi founder ke rekening giro PT sebesar **Rp50.000.000,-**.
+2. Berita transfer: *"Setoran Modal Awal Perseroan PT [Nama PT]"*.
+3. Simpan mutasi rekening koran tersebut di dalam arsip permanen hukum perseroan sebagai bukti materil bahwa modal telah disetor 100%. Uang Rp50 juta ini tetap milik Anda dan digunakan untuk kas operasional perusahaan.
+
+---
+
+## 5. Prosedur Inbreng Menyusul di Masa Depan (Tahap 2)
+
+Ketika kasir.mu sudah berjalan 1–2 tahun, memiliki omzet stabil, atau bersiap menerima suntikan dana investor:
+
+1. **Penugasan KJPP**:
+   * Direksi PT menunjuk KJPP resmi berizin Penilaian Bisnis dari Kemenkeu.
+   * Biaya jasa appraisal dibayarkan langsung dari rekening giro PT dan dibukukan sebagai beban operasional PT.
+   * KJPP menerbitkan Laporan Penilaian Resmi berbasis *Income Approach / Relief from Royalty* (misal menilai software sebesar Rp3 Miliar).
+2. **Pengajuan Perubahan di AHU Online**:
+   * Login ke `https://ptp.ahu.go.id`.
+   * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
+   * Pilih menu **Perubahan Modal Disetor** ➔ Masukkan penambahan modal inbreng sebesar angka laporan KJPP.
+   * Sistem AHU menerbitkan **Sertifikat Pernyataan Perubahan Perseroan Perorangan**.
+3. **Sinkronisasi OSS & Perbankan**:
+   * Buka OSS, lakukan sinkronisasi data modal usaha terbaru.
+   * Serahkan salinan sertifikat perubahan ke bank tempat rekening giro berada.
+4. **Pencatatan Akuntansi**:
+   * Di neraca PT dibukukan: Debit Aset Tak Berwujud (Software) Rp3 Miliar, Kredit Tambahan Modal Disetor Rp3 Miliar.

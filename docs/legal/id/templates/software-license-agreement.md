@@ -56,11 +56,16 @@ MAKA, Para Pihak sepakat mengikatkan diri dalam ketentuan-ketentuan berikut:
 1. Selama masa inkubasi dan pengembangan awal perseroan (Tahun ke-1 sampai dengan Tahun ke-3), Para Pihak sepakat bahwa lisensi komersialisasi ini diberikan atas dasar **Bebas Royalti (*Royalty-Free Incubation Scheme*)**, guna memaksimalkan reinvestasi arus kas perseroan untuk ekspansi operasional.
 2. Setelah tahun ke-3 atau apabila perseroan telah mencatatkan peredaran bruto melampaui batas tertentu, Para Pihak dapat menetapkan adendum tersendiri mengenai pembagian royalti yang wajar secara komersial.
 
-### PASAL 5: JANGKA WAKTU & PENGAKHIRAN
-1. Perjanjian ini berlaku terhitung sejak tanggal penandatanganan untuk jangka waktu **5 (lima) tahun**, dan akan diperpanjang secara otomatis untuk periode yang sama kecuali disepakati lain oleh Para Pihak secara tertulis.
+### PASAL 5: OPSI KONVERSI INBRENG MENYUSUL (SUBSEQUENT INBRENG OPTION)
+1. Para Pihak sepakat bahwa di masa depan, Pemberi Lisensi memiliki hak opsi tunggal untuk mengonversikan status lisensi eksklusif ini menjadi pengalihan hak kepemilikan mutlak (*transfer of ownership / inbreng*) sebagai bentuk penyetoran modal tambahan perseroan.
+2. Pelaksanaan inbreng menyusul tersebut akan dituangkan dalam Keputusan Pemegang Saham dan didaftarkan melalui Pernyataan Perubahan Perseroan Perorangan pada sistem AHU Kementerian Hukum dan HAM RI.
+3. Penetapan nilai valuasi inbreng menyusul akan didasarkan pada Laporan Penilaian Resmi dari Kantor Jasa Penilai Publik (KJPP) independen terdaftar, dengan seluruh biaya appraisal menjadi beban perseroan (Penerima Lisensi).
+
+### PASAL 6: JANGKA WAKTU & PENGAKHIRAN
+1. Perjanjian ini berlaku terhitung sejak tanggal penandatanganan untuk jangka waktu **5 (lima) tahun**, dan akan diperpanjang secara otomatis untuk periode yang sama kecuali disepakati lain oleh Para Pihak secara tertulis atau telah dikonversikan menjadi inbreng modal penuh sesuai Pasal 5.
 2. Perjanjian ini dapat diakhiri sewaktu-waktu atas kesepakatan tertulis Para Pihak atau apabila Penerima Lisensi dibubarkan secara hukum.
 
-### PASAL 6: HUKUM YANG BERLAKU & PENYELESAIAN SENGKETA
+### PASAL 7: HUKUM YANG BERLAKU & PENYELESAIAN SENGKETA
 Perjanjian ini diatur dan ditafsirkan berdasarkan hukum Negara Republik Indonesia. Segala perselisihan yang timbul dari pelaksanaan Perjanjian ini akan diselesaikan secara musyawarah mufakat.
 
 ---

@@ -1,79 +1,76 @@
 # Inbreng & Software Valuation Analysis (Analisis Valuasi & Inbreng HAKI)
 
 > **Status:** `[DECIDED]` & `[VERIFIED]` against UU No. 40/2007 Pasal 34 (Setoran Modal Selain Uang), UU PPh Pasal 10 (Harga Perolehan Harta), and Standar Penilaian Indonesia (SPI).
-> **Tujuan:** Memberikan analisis objektif mengenai penilaian aset perangkat lunak kasir.mu, membongkar kelemahan klaim valuasi lama, serta menetapkan dasar hukum yang kokoh dan defensif dari sisi perpajakan.
+> **Tujuan:** Menetapkan posisi hukum dan strategi valuasi perangkat lunak kasir.mu, membongkar kelemahan valuasi dini yang boros biaya, serta memandu pelaksanaan inbreng menyusul di masa depan secara objektif dan defensif.
 
 ---
 
-## 1. Analisis Kritis: Mengapa Valuasi Rp3,1 Miliar Lama Sangat Berbahaya
+## 1. Analisis Kritis: Mengapa Melakukan Inbreng Hari Ini adalah Pemborosan
 
-Draf awal dokumen menetapkan valuasi perangkat lunak sebesar **$200,000 USD (Rp3.100.000.000,-)** dengan rincian:
-* *Opportunity cost* jam kerja (4.927 jam @ ~$50/jam): $246,000 USD
-* Pengeluaran modal nyata (*Out-of-Pocket*): $25,000 USD
-* Diskon efisiensi UMK: −$53,000 USD
+Draf awal pendirian sempat merencanakan penyetoran modal non-tunai (*inbreng*) langsung pada hari pertama pendirian PT dengan valuasi $200,000 USD (Rp3,1 Miliar). 
 
-### Cacat Hukum & Fiskal di Hadapan Otoritas Pajak (DJP) & Hukum Perdata:
-1. **"Opportunity Cost" Bukan Beban yang Diakui Secara Fiskal**:
-   Berdasarkan Pasal 10 UU PPh, harga perolehan atau harga penjualan dalam hal terjadi pengalihan harta adalah jumlah yang sesungguhnya dikeluarkan atau diterima. *Opportunity cost* adalah konsep teoretis ekonomi mikro mengenai potensi pendapatan yang hilang, **bukan pengeluaran riil**. Di mata pemeriksa pajak, angka $246,000 tidak memiliki bukti potong PPh 21, tidak ada slip transfer bank, dan tidak ada bukti kas keluar.
-2. **Ketiadaan Sertifikasi Kantor Jasa Penilai Publik (KJPP)**:
-   Sesuai Pasal 34 ayat (2) UU No. 40/2007 (UU PT):
-   > *"Penyetoran atas modal saham dapat dilakukan dalam bentuk lainnya... Penilaian besarnya setoran modal ditentukan berdasarkan nilai wajar yang ditetapkan sesuai dengan harga pasar atau oleh **ahli yang tidak terafiliasi dengan Perseroan**."*
-   Penilaian sepihak oleh founder sendiri untuk kepentingan perseroan yang dimilikinya sendiri (*self-assessment without independent appraisal*) cacat secara formil dalam pembuktian hukum perdata perseroan.
-3. **Pemicu SP2DK Pajak Penghasilan Pribadi Founder**:
-   Jika seorang individu menyetorkan aset tak berwujud senilai Rp3,1 Miliar ke badan usaha, KPP Pratama akan mencocokkannya dengan Surat Pemberitahuan (SPT) Tahunan Pajak Pribadi tahun-tahun sebelumnya. Apabila aset Rp3,1 Miliar ini belum pernah dilaporkan di kolom daftar harta SPT pribadi, DJP dapat menganggap timbulnya aset tersebut berasal dari **penghasilan yang belum dilaporkan**, lalu menerbitkan SP2DK dengan potensi tagihan PPh Orang Pribadi hingga 35%.
-4. **Ilusi Manfaat Amortisasi Fiskal**:
-   Klaim bahwa nilai Rp3,1 Miliar ini akan diamortisasi Rp775 juta/tahun untuk menghemat pajak **gugur total** karena PT Perorangan berhak memakai fasilitas **PPh Final 0.5% (PP 55/2022)**. Pada skema PPh Final 0.5%, beban amortisasi tidak mengurangi kewajiban pajak apa pun.
+Ketika diteliti secara hukum dan bisnis, melakukan inbreng langsung saat ini menghadapi **dua kendala fatal**:
+
+1. **Jebakan Valuasi Repo Git & Biaya KJPP (Rp10–20 Juta)**:
+   * Jika dinilai hari ini sebelum ada omzet komersial, yang ada hanyalah baris kode di repo Git.
+   * Kantor Jasa Penilai Publik (KJPP) hanya bisa menggunakan **Metode Biaya Penggantian (*Cost Approach*)**, yaitu menghitung jam kerja developer (misal: gaji pasar engineer Rp50jt × 12 bulan = Rp600 juta).
+   * Untuk sekadar mengesahkan angka tersebut, founder harus membayar fee KJPP sebesar **Rp10.000.000,- s.d. Rp20.000.000,- dari kantong pribadi**. Ini adalah pemborosan modal tunai awal yang sangat tidak efisien.
+2. **Klaim "Opportunity Cost" Ditolak DJP**:
+   * Jika tidak menggunakan KJPP dan founder mengklaim sendiri jam kerjanya senilai ratusan juta rupiah, Ditjen Pajak (DJP) akan menolak biaya tersebut berdasarkan Pasal 10 UU PPh karena tidak ada bukti potong PPh 21 dan tidak ada bukti kas keluar riil. Ini memicu potensi surat teguran SP2DK pada SPT Pajak Pribadi founder.
 
 ---
 
-## 2. Perbandingan Tiga Jalur Solusi
+## 2. Strategi Juara: Inbreng Menyusul (*Subsequent Inbreng Strategy*)
 
-| Kriteria | Opsi 1 (Sangat Direkomendasikan): Lisensi Eksklusif | Opsi 2 (Alternatif Defensif): Inbreng Biaya Riil | Opsi 3: Inbreng Rp3,1 Miliar via KJPP Formal |
-|---|---|---|---|
-| **Mekanisme** | Modal disetor tunai (Rp50–100 Juta). Software dilisensikan eksklusif dari founder ke PT. | Software dialihkan hak miliknya ke PT dengan nilai riil kas keluar (~$25.000 / Rp380 Juta). | Menunjuk KJPP resmi untuk menerbitkan Laporan Penilaian Aset Tak Berwujud Rp3,1 Miliar. |
-| **Kepemilikan HAKI** | **Pribadi Founder** (Aset terlindungi jika PT bermasalah). | **Milik PT** (Menjadi aset badan hukum). | **Milik PT**. |
-| **Biaya Tambahan** | **Rp0,-** (Cukup kontrak lisensi internal). | **Rp0,-** (Kompilasi kuitansi internal). | **Rp20.000.000 s.d. Rp45.000.000** (Fee jasa KJPP berizin Kemenkeu). |
-| **Ketahanan Audit DJP** | **100% Solid & Tidak Ada Titik Lemah**. | **Sangat Kuat** (Didukung bukti transaksi nyata). | Kuat (jika SPT Pribadi founder sudah sinkron). |
-| **Dampak Neraca Awal** | Kas: Rp50–100 Juta<br>Modal: Rp50–100 Juta. | Aset Tak Berwujud: Rp380 Juta<br>Modal: Rp380 Juta. | Aset Tak Berwujud: Rp3,1 Miliar<br>Modal: Rp3,1 Miliar. |
+Solusi terbaik yang digunakan startup teknologi terkemuka adalah **memisahkan antara waktu pendirian PT dengan waktu pelaksanaan inbreng**.
 
----
+```
+HARI INI (FASE PELUNCURAN)                       MASA DEPAN (FASE SCALE-UP)
+┌──────────────────────────────────────┐          ┌──────────────────────────────────────┐
+│  PT Berdiri: Modal Tunai Rp50 Juta   │          │  Peningkatan Modal Inbreng di AHU    │
+│  Hak Cipta: Milik Pribadi Founder    │          │  Nilai: Rp2 Miliar s.d. Rp5 Miliar   │
+│  Hubungan: Lisensi Eksklusif         │ ───────> │  Metode: Income Approach (Dari MRR)  │
+│  Biaya KJPP: Rp0,- (Hemat Maksimal!) │          │  Biaya KJPP: Dibayar Kas PT          │
+│  Status Pajak: PPh Final 0.5% Aman   │          │  Kekuatan: Mutlak Diakui Pasar & DJP │
+└──────────────────────────────────────┘          └──────────────────────────────────────┘
+```
 
-## 3. Rincian Biaya Riil (Out-of-Pocket Basis) untuk Opsi 2
+### Mengapa Inbreng Menyusul Jauh Lebih Unggul?
 
-Jika founder memilih **Opsi 2** (menyetorkan software sebagai modal inbreng secara defensif), maka nilai valuasi wajib diturunkan menjadi nilai pengeluaran riil historis yang memiliki jejak digital kuitansi/invoice pembayaran (*Substantiated Cost Basis*):
-
-| Komponen Pengeluaran Riil | Deskripsi & Dasar Pembuktian | Nilai (USD) | Estimasi (IDR) |
-|---|---|---|---|
-| **R&D Hardware Deployment Assets** | Pengadaan perangkat uji coba kasir (MacBook dev, PC desktop testing, thermal receipt printers, 2D barcode scanners, Android test tablets, EDC test units). | $15,000 | Rp235.000.000,- |
-| **AI R&D CapEx** | Biaya komputasi dan langganan API AI (Anthropic Claude, OpenAI, GitHub Copilot, Cursor) untuk akselerasi rekayasa kode arsitektur Rust/Tauri. | $7,000 | Rp110.000.000,- |
-| **Cloud Infrastructure & Utilities** | Biaya server staging, database cloud PostgreSQL, Cloudflare Workers/R2, domain, sertifikat SSL, dan konektivitas pita lebar berkecepatan tinggi. | $3,000 | Rp47.000.000,- |
-| **TOTAL VALUASI BERTAHAN (DEFENSIBLE)** | **Total Pengeluaran Kas Nyata yang Terdokumentasi** | **$25,000** | **Rp392.000.000,-** |
-
-*Catatan: Nilai ini dapat dibulatkan menjadi **Rp350.000.000,-** atau **Rp380.000.000,-** pada Akta/Pernyataan Pendirian, dan masuk secara sah sebagai modal kategori Usaha Mikro (≤ Rp1 Miliar).*
-
----
-
-## 4. Prosedur Jika Memilih Opsi 3 (Jalur KJPP Formal)
-
-Jika di masa depan terdapat investor ventura (*Venture Capital*) atau mitra strategis yang mewajibkan valuasi HAKI dicatat sebesar miliaran rupiah di neraca PT:
-1. **Penunjukan Lembaga**: Wajib menunjuk Kantor Jasa Penilai Publik (KJPP) yang terdaftar di Otoritas Jasa Keuangan (OJK) dan Asosiasi MAPPI (Masyarakat Profesi Penilai Indonesia).
-2. **Metodologi Penilaian Standar**:
-   * *Relief from Royalty Method* (pendekatan pendapatan berdasarkan penghematan royalti di masa depan); atau
-   * *Depreciated Replacement Cost Method* (biaya penggantian reproduksi sistem jika dikerjakan oleh software house komersial pihak ketiga dengan standar gaji engineer pasar).
-3. **Dokumentasi yang Dibutuhkan KJPP**:
-   * Sertifikat Pencatatan Hak Cipta resmi dari DJKI Kemenkumham.
-   * Laporan Arsitektur Teknis Lengkap (*System Architecture & Code Base Metric Report*).
-   * Laporan Pengujian Sistem & Dokumen UAT (*User Acceptance Test*).
-   * Proyeksi Finansial Pendapatan SaaS 3–5 tahun ke depan.
-4. **Pencatatan**: Laporan Penilaian Independen KJPP dilampirkan sebagai lampiran tak terpisahkan dari Berita Acara RUPS / Keputusan Pemegang Saham Tunggal atas penyetoran modal non-tunai.
+| Dimensi Evaluasi | Inbreng Hari Ini (Baru Ada Kode Git) | Inbreng Menyusul (Sudah Ada Merchant & Omzet) |
+|---|---|---|
+| **Metode Penilaian KJPP** | *Cost Approach* (Menghitung jam kerja & baris kode). | **Income Approach / DCF** (Menghitung arus kas & MRR nyata). |
+| **Plafon Valuasi yang Diakui** | Terbatas di kisaran **Rp500–700 Juta**. | Melesat ke kisaran **Rp2 Miliar s.d. Rp5 Miliar+**. |
+| **Sumber Biaya Appraisal** | Keluar dari **kantong pribadi founder** (Rp10–20jt). | Dibayar resmi dari **kas operasional PT** (beban perseroan). |
+| **Dampak ke Jadwal Rilis** | Tertunda 2–3 minggu menunggu laporan KJPP. | **Rilis instan hari ini**, PT langsung jalan. |
+| **Perlindungan Aset** | Software langsung jadi milik PT (rentan disita jika rugi). | Software aman di tangan pribadi selama masa inkubasi. |
 
 ---
 
-## 5. Rekomendasi Eksekusi Final
+## 3. Landasan Hukum & Prosedur Inbreng Menyusul
 
-Untuk kecepatan, efisiensi modal, dan ketenangan pajak:
-* **Gunakan Opsi 1 (Lisensi Eksklusif)** untuk pendirian awal PT Perorangan saat ini.
-* Daftarkan Hak Cipta di DJKI atas nama founder pribadi.
-* Terbitkan perjanjian lisensi software eksklusif dari founder ke PT Kasirmu (draf tersedia di [`templates/software-license-agreement.md`](./templates/software-license-agreement.md)).
-* Daftarkan PT dengan modal tunai bersih **Rp50.000.000,-** di AHU dan OSS.
-* Dengan demikian, perseroan memiliki struktur hukum yang 100% tahan uji, tidak ada risiko denda pajak, dan aset intelektual founder terlindungi secara sempurna.
+Di bawah payung hukum Indonesia (UU No. 40/2007 Pasal 41–43 jo. PP No. 8/2021 tentang PT Perorangan), penambahan modal disetor melalui inbreng di kemudian hari diatur sebagai berikut:
+
+### 3.1 Prosedur Eksekusi di AHU Kemenkumham
+1. **Keputusan Pemegang Saham Tunggal**:
+   Founder membuat Keputusan Pemegang Saham Tunggal tentang Penyetoran Modal Non-Tunai dan Peningkatan Modal Disetor Perseroan.
+2. **Laporan Valuasi KJPP**:
+   KJPP menerbitkan Laporan Penilaian Resmi berbasis *Discounted Cash Flow (DCF)* atau *Relief from Royalty Method* berdasarkan data historis traksi merchant kasir.mu.
+3. **Pendaftaran Perubahan di AHU Online**:
+   * Akses `https://ptp.ahu.go.id`.
+   * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
+   * Masukkan nilai penambahan modal disetor non-tunai sesuai nilai laporan KJPP.
+   * Sertifikat Pernyataan Perubahan terbit otomatis.
+
+### 3.2 Jembatan Hukum Selama Masa Tunggu
+Selama periode sebelum inbreng menyusul dieksekusi:
+* Gunakan **Perjanjian Lisensi Eksklusif Hak Cipta Perangkat Lunak** ([`templates/software-license-agreement.md`](./templates/software-license-agreement.md)).
+* Perjanjian ini memberikan hak komersial 100% kepada PT untuk menjual langganan kasir.mu ke merchant tanpa perlu mengalihkan kepemilikan aset terlebih dahulu.
+* Pada Pasal 5 perjanjian lisensi, telah dicantumkan klausul konversi otomatis menjadi inbreng ketika perseroan memutuskan melakukan peningkatan modal resmi di AHU.
+
+---
+
+## 4. Kesimpulan Keputusan Eksekutif
+
+1. **Hari Ini**: Batalkan inbreng dini Rp3,1 Miliar dan tolak pengeluaran fee KJPP Rp10–20 juta di muka. Daftarkan PT dengan modal tunai bersih **Rp50.000.000,-** dan tandatangani Perjanjian Lisensi Eksklusif.
+2. **Masa Depan**: Lakukan inbreng menyusul saat kasir.mu telah memiliki traksi pasar yang solid dan valuasi komersial yang dapat dinilai miliaran rupiah secara objektif oleh KJPP dengan pembiayaan dari kas PT.
