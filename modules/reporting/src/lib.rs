@@ -7,16 +7,21 @@ next: none | perf: N/A
 
 //! Reporting Module — generates and exports sales, inventory, and financial reports.
 //!
-//! This module subscribes to the `sale.completed` domain event to capture
-//! sale data into a dedicated report table (`report_sales`), enabling
-//! downstream aggregation for daily summaries, hourly trends, and exports.
-//!
 //! ## Current state
 //!
 //! The ReportingModule implements the [`Module`] trait and is registered
-//! with the kernel during application startup. The `SaleCompletedReporter`
-//! handler is subscribed to the `sale.completed` event bus topic so that
-//! every completed sale is captured for reporting.
+//! with the kernel during application startup.
+//!
+//! This module no longer subscribes to `sale.completed`. It used to maintain a
+//! `report_sales` projection, but that table had no reader anywhere in the tree
+//! while the handler paid a lazy `CREATE TABLE` plus an unbounded append on
+//! every completed sale (MSL-11). The daily/weekly/monthly aggregates are
+//! computed directly from `sales` and `refunds` by
+//! `kasirmu_core::db::reports`, which groups by currency, honours the store's
+//! UTC offset, and joins refunds so a refund-only day still produces a row.
+//!
+//! What remains here is the read-only surface: the report DTOs and
+//! [`ReportingRepository`], a thin query layer over the live tables.
 //!
 //! ## Module manifest
 //!
@@ -42,8 +47,8 @@ use tracing::info;
 /// The Reporting module.
 ///
 /// Implements the [`Module`] trait to participate in the kernel
-/// lifecycle. Registers the `SaleCompletedReporter` event handler
-/// to capture sale data for reporting purposes.
+/// lifecycle. It owns no event handlers: the `report_sales` projection was
+/// removed with MSL-11 because nothing read it (see the module docs).
 #[derive(Debug)]
 pub struct ReportingModule;
 

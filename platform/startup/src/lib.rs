@@ -169,12 +169,14 @@ pub fn init_module_system(
                 handler_conn.clone(),
             )),
         );
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
-            "sale.completed",
-            Box::new(modules_reporting::handlers::SaleCompletedReporter::new(
-                handler_conn.clone(),
-            )),
-        );
+        // MSL-11: the `report_sales` projection handler was REMOVED. It wrote
+        // every completed sale into a table with no reader anywhere in the tree
+        // (no Rust, UI, or export path) while paying a lazy `CREATE TABLE` per
+        // sale, and it dropped `event.store_id` so multi-store deployments lost
+        // the store attribution. The aggregates it was meant to serve are
+        // computed directly from `sales`/`refunds` by
+        // `kasirmu_core::db::reports` (currency-grouped, store-offset aware,
+        // refund-aware).
         bus.subscribe::<kasirmu_core::events::SaleCompleted>(
             "sale.completed",
             Box::new(crate::event_handlers::LoyaltyEarnHandler::new(handler_conn)),

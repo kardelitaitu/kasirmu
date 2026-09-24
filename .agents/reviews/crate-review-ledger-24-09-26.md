@@ -2396,3 +2396,95 @@ created the store DB the hypothesis needed to be absent. Probe the precondition
 
 **Tally:** 19 findings fixed (5 HIGH), 8 leads disproved.
 
+---
+
+## Pass 36 — `modules/reporting` / `loyalty` / `staff`: the write-only projection
+
+### MSL-11 (MEDIUM, FIXED): `SaleCompletedReporter` wrote a table nothing reads
+
+`platform/startup/src/lib.rs` subscribed `modules_reporting::handlers::SaleCompletedReporter`
+to the live `sale.completed` topic. Every completed sale appended a row to
+`report_sales`. Three independent problems, all verified:
+
+1. **The table has one writer and zero readers.** A whole-workspace grep for
+   `report_sales` returns the DDL, the INSERT, and the handler's own tests —
+   nothing else. No Rust path, no UI path (`ui/` has **0** hits), and no export
+   path ever selects from it. The one apparent exception,
+   `custom_report_sales_basic`, is an unrelated export test whose *function name*
+   contains the substring.
+
+   The sibling handlers on the same topic are the control group, and they prove
+   this is not a convention: `AuditLogHandler` writes `audit_log` (**35** readers),
+   `LoyaltyEarnHandler` writes `loyalty_accounts` (read by the loyalty engine), and
+   `SaleSyncEnqueuer` writes the sync queue (drained by the sync daemon).
+   `report_sales` is the only write-only table of the four.
+
+2. **A lazy `CREATE TABLE IF NOT EXISTS` ran on every sale.** The handler called
+   `ensure_table` at the top of `handle`, so every completed sale paid a DDL
+   batch prepare on the hot path — the `perf: DDL per event` note the 25-07
+   audit already recorded and left.
+
+3. **It discarded `event.store_id`.** `SaleCompleted` carries `store_id`
+   (`foundation/src/events.rs:18`), and the handler holds the **global identity**
+   DB connection (`open_handler_connection(state.db_path)`, where `db_path` is
+   `<app_data_dir>/kasir.db`). So in multi-store mode every store's sales landed
+   in one shared table with no store attribution — the exact defect CORE-F fixed
+   for `SaleSyncEnqueuer` in this same audit.
+
+**Why removing it is correct rather than a stopgap.** The aggregates it claimed to
+serve already exist, correctly, in `crates/kasirmu-core/src/db/reports/revenue.rs`:
+`daily_revenue` reads `sales`/`refunds` directly, groups **BY CURRENCY**, applies
+the store's UTC offset (REP-03), joins refunds `FULL OUTER` so a refund-only day
+still yields a row (REP-04), and validates its date bounds. A projection table can
+only ever be a stale duplicate of that.
+
+**What changed.** The handler, its `report_sales` DDL, its 5 tests, and the startup
+subscription are gone. `modules/reporting/src/handlers.rs` is kept at the same path
+as an intentionally empty module so the crate layout stays stable. Module docs in
+`lib.rs`, the subscription site, and `README.md` were corrected — the README had
+documented the dead handler as live.
+
+**Regression pin.** `platform/startup/src/startup_tests.rs::report_sales_projection_stays_removed`
+walks every `.rs` file in the workspace, **strips line comments**, normalises
+whitespace, and asserts no file outside a two-entry allowlist mentions the table.
+
+**The pin was itself a caught evadable guard.** My first version exempted
+`platform/startup/src/lib.rs` wholesale. A deliberate probe — `let _probe =
+"INSERT INTO report_sales (sale_id) VALUES (?1)";` inserted at that path —
+**passed** the pin. That is the fourth instance of this class in the audit (after
+`pos_tests`, `data_tests`, `terminals_tests`), with the same root cause every time:
+a blanket exemption wider than the thing being exempted. Fixed by matching on
+**comment-stripped code** rather than by exempting files, and by dropping every
+exempted path that could host a real writer.
+
+Proof the corrected pin bites: with the probe present it FAILS naming
+`platform/startup/src/lib.rs`; with the probe removed it passes. A floor
+(`scanned >= 200`) stops it passing vacuously if the walk breaks. The pin also
+documents that a Windows backslash literal in `ends_with` silently never matches.
+
+### Cleared / recorded
+
+- `modules/loyalty`: `models.rs` is exemplary — the MSL-10 `GiftCard.pin` fix is
+  real (`skip_serializing` + `default`) and pinned by a test that also proves a
+  legacy payload still deserializes to an empty pin. `earn_multiplier_millionths`
+  is fixed-point i64, never a float. The real earn/redeem logic is in
+  `kasirmu-core/src/db/loyalty.rs`.
+- `modules/loyalty`'s own `LoyaltyRepository`/`LoyaltyService` have **zero
+  production callers** — only their own tests. Same for `StaffRepository` and
+  `ReportingRepository`.
+- **`db/mod.rs:197` is misleading for reporting, and was left as an open note.**
+  The ADR-#30 note names `ReportingRepository` among the repositories new code
+  should prefer, but its `generate_daily_report` is materially worse than the real
+  implementation: it hardcodes `Currency(*b"USD")` instead of parsing the sale
+  currency, ignores the store's UTC offset, and counts refunds as revenue. Core's
+  own convention is to *parse* the code and fall back to USD (`gift_cards.rs:24`,
+  `loyalty.rs:21`, `email_report.rs:748`), so the hardcode is a local deviation,
+  not a repo-wide one. Unmoneyed only because both are dead. **Not fixed** —
+  out of this pass's scope and a doc/decision call.
+- Eight modules export `*Repository`/`*Service` with no callers outside their own
+  crate: `staff`, `reporting`, `tax`, `terminal`, `settings`, `sales`, `inventory`,
+  `crm`.
+
+**Tally:** 20 findings fixed (5 HIGH), 8 leads disproved, 1 pin hardened after it
+was proven evadable.
+

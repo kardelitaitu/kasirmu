@@ -343,3 +343,108 @@ fn spawn_once_runs_the_future_to_completion() {
         "finished"
     );
 }
+// ── MSL-11: no write-only event projections ───────────────────────────
+
+/// A handler that appends to a table nothing reads is pure cost, and it is
+/// the kind of cost that grows forever without anyone noticing: the table
+/// fills, every sale pays for it, and no query ever benefits.
+///
+/// `SaleCompletedReporter` was exactly that. It was subscribed to the live
+/// `sale.completed` bus and wrote one `report_sales` row per completed sale,
+/// running a lazy `CREATE TABLE IF NOT EXISTS` on the hot path each time,
+/// while `report_sales` had no reader anywhere in the tree — no Rust, UI, or
+/// export path ever selected from it (`audit_log`, by contrast, has readers;
+/// the loyalty and sync-queue projections are likewise drained). It also
+/// discarded `event.store_id`, so in multi-store mode every store's sales
+/// landed in the global identity DB with no store attribution.
+///
+/// This test fails if the `report_sales` projection or its subscription is
+/// ever reintroduced. It is a SOURCE scan over the whole workspace rather
+/// than a runtime assertion because the defect is the *absence* of a reader,
+/// which no single call can observe.
+#[test]
+fn report_sales_projection_stays_removed() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
+
+    let mut hits: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if matches!(
+                    name.as_str(),
+                    "target" | ".git" | "node_modules" | "docs" | ".agents"
+                ) {
+                    continue;
+                }
+                stack.push(path);
+                continue;
+            }
+            if !name.ends_with(".rs") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            scanned += 1;
+            // Normalise whitespace so a rustfmt reflow cannot split the
+            // pattern away from a line-based match (the evadable-guard rule).
+            // Strip line comments before matching, so a file may DOCUMENT
+            // the removal ("the `report_sales` projection was removed")
+            // without tripping the pin, while any real code use still hits.
+            // This is the difference between a guard and a file-level
+            // exemption: exempting `startup/lib.rs` wholesale let a probe
+            // `INSERT INTO report_sales` through, which is exactly the
+            // evadable-guard failure this audit has already hit three times.
+            let code: String = text
+                .lines()
+                .map(|l| l.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let flat: String = code.split_whitespace().collect::<Vec<_>>().join(" ");
+            if flat.contains("report_sales") {
+                hits.push(path.display().to_string());
+            }
+        }
+    }
+
+    // Floor: if the walk silently found almost nothing, the assertion below
+    // would pass vacuously. Measured in this workspace at well over 300 files.
+    assert!(
+        scanned >= 200,
+        "source scan found only {scanned} .rs files - the walk is broken, so this pin proves nothing"
+    );
+
+    // After comment-stripping, the only files that can legitimately still
+    // mention the table are: modules/reporting (its docs are `//!` block
+    // comments and so are stripped, but the emptied handlers module keeps the
+    // word in its header), this pin itself, and one unrelated export test
+    // whose *function name* `custom_report_sales_basic` contains the
+    // substring. Everything else is a new writer and fails.
+    //
+    // Note the exempted set is deliberately tiny and contains no file that
+    // could host a real writer of this table.
+    let permitted = |p: &str| {
+        let norm = p.replace('\\', "/");
+        (p.contains("modules") && p.contains("reporting"))
+            || norm.ends_with("platform/startup/src/startup_tests.rs")
+            || norm.ends_with("kasirmu-core/src/export/mod_tests.rs")
+    };
+    let offenders: Vec<String> = hits.into_iter().filter(|p| !permitted(p)).collect();
+    assert!(
+        offenders.is_empty(),
+        "the report_sales projection was reintroduced outside modules/reporting: {offenders:?}. \
+         That table has no reader, so a writer for it is an unbounded cost on every \
+         completed sale. If you are adding a real reader, wire it first and then delete \
+         this pin with a note explaining what reads the table."
+    );
+}
+
