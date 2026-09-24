@@ -7,9 +7,10 @@ estimated. Scope chosen by the owner on 2026-09-24: (A) new informational conten
 (B) the technical/hosting leftovers. Deliberately out of scope: deepening the
 existing commercial pages and the meta-description copy pass. -->
 
-**Status: IN PROGRESS.** Phases 1–2 are implemented and committed (2026-09-24);
-the rulings that unblocked them are recorded in §7a. Article drafting (phase 4)
-is next and waits on §3.1.
+**Status: IN PROGRESS.** Phases 1–2 are implemented and committed (2026-09-24)
+and the first Tier 1 article is live; the rulings that unblocked them are in §7a.
+Next: §3.1 (the Search Console query export), which re-orders the remaining
+eleven article targets — articles 2–12 are drafts, not facts, until it lands.
 
 ---
 
@@ -364,9 +365,28 @@ pass; `astro check` 0 errors. The new checks are currently vacuous — they hold
 nothing until article 1 lands, which is exactly why article 1 must land next:
 an unexercised gate proves nothing.
 
+**Article 1 shipped** — `/id/panduan/aplikasi-kasir-offline/` (690 words) and
+`/en/guides/offline-pos-app/` (842 words), Tier 1, targeting the offline wedge.
+Build after it: **93 pages, 76 sitemap urls, 15/15 checks ok, no broken internal
+links.** Both new gate arms were proven by breaking them on purpose: removing the
+parent link produced `guide contract: … its body never links to /id/kasir-gratis/`,
+and a second guide with the same `target` produced `two id pages competing for one
+query`.
+
+**One defect the translated segment caused, and its fix.** `LocaleSwitcher.astro`
+derived the other locale's URL by swapping the prefix, so it emitted
+`/en/panduan/…` — four broken internal links, caught by `check:links` and nothing
+else. It now takes the same `alternatePaths` map as `SiteHead`, threaded
+`guide route → Base → Header → LocaleSwitcher`. Any future surface that builds a
+locale counterpart URL from `Astro.url.pathname` needs the same treatment.
+
 **Not yet done (track A4):** guides are absent from `llms.txt` and from the ⌘K
 search index. Both are data-driven and listed in §3 A4; the llms.txt coverage
 test now skips the `[guideSegment]` subtree on purpose.
+
+**Known thin page.** The hub is 54 words (`/id/panduan/`) and 62 (`/en/guides/`)
+with one guide. It grows with every article — roughly 25 words each — so it is
+not worth a floor until the corpus is bigger; it is worth one by article six.
 
 ## 9. Open risks
 
