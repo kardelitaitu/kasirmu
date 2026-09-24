@@ -377,7 +377,7 @@ export default function WorkspaceHome() {
    *  `.agents/archived/done-todo/done-todo-tools.md:733`): this card is
    *  a front door deliberately stricter than the route, so hiding it here does
    *  NOT mean the route would refuse. Owner ruling 2026-09-20
-   *  (`todo-owner-rulings.md` R20): the rank stays authoritative for the home
+   *  (`done-todo-owner-rulings.md` R20): the rank stays authoritative for the home
    *  grid, and the policy is cited at the site. */
   const canAddWorkspace = roleAtLeast(roleName, 'manager') && sortedWorkspaces.length === 0;
 

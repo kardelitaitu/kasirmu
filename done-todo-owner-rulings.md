@@ -1,7 +1,8 @@
-# Owner rulings needed — the decision queue behind the open work
+# done-todo-owner-rulings.md — Owner rulings (completed & archived)
 
-**Document:** `todo-owner-rulings.md`
-**Role:** Decision queue. Every item below is blocked on a human choice, not on work.
+<!-- Audit stamp: 2026-09-24 · status: RULED & ARCHIVED · All 21 owner rulings (R1-R21) decided and recorded on 2026-09-20. Reference document for open debt program. -->
+**Document:** `done-todo-owner-rulings.md`
+**Role:** Decision queue. Every item below was decided and recorded.
 **How to use it:** each entry is `what is blocked` → `the fork` → `the options` → `recommendation` → `the price`. A ruling is recorded by writing one line under the entry and dating it; do not edit an entry's measured text, correct it forward.
 **Provenance:** every entry was re-derived in this checkout at HEAD `19437867c` (2026-09-18). The commands that produced each measurement are printed beside it, so a reader checks rather than trusts. Sibling records: `todo-open-debt-program.md` (the program these phases belong to), `docs/records/audit-open-findings.md` (the `BR-*` findings the ADR #49 ceilings cite), `docs/decisions/` (ADRs, for anything that graduates to a decision record). **R20 was added after publication**, at HEAD `83540df69`, and carries its own provenance — it is numbered last rather than folded into Phase 3 so that no existing entry's number moves.
 
