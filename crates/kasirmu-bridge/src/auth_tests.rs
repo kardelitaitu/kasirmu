@@ -714,6 +714,74 @@ async fn create_session_rejects_tampered_subscription_signature() {
     }
 }
 
+/// A DEACTIVATED account must not be able to launder its token into a fresh
+/// picker ticket.
+///
+/// This is the hole a sync fn opens. `resolve_session` does verify the account
+/// is still live, but only from the SECOND resolve onward and at most once per
+/// 30s — and the first resolve of any token deliberately spends no query. So a
+/// token minted before a manager deactivated the account kept resolving here,
+/// and this call turned it into a fresh 5-minute picker ticket. The ticket is a
+/// bearer credential for the pre-session workspace picker, and it carries no
+/// account state, so nothing downstream could re-check it.
+///
+/// The probe that found it: the ORIGINAL token was refused by a real command
+/// (`list_staff_scoped` → `PermissionDenied("user is inactive")`) at the very
+/// moment `refresh_picker_ticket` was handing out a signed ticket, so the two
+/// disagreed about whether the account existed. Deactivation and trashing are
+/// the same fact to this check, exactly as `revalidate_account` treats them.
+#[tokio::test]
+async fn refresh_picker_ticket_is_refused_for_a_deactivated_account() {
+    let conn = crate::testing::temp_conn();
+    seed_owner(&conn);
+    let app = test_app(conn);
+
+    let settled = create_session(
+        &app.ctx(),
+        &CreateSessionArgs {
+            user_id: "user-owner".into(),
+            role_id: "role-owner".into(),
+            store_id: "default".into(),
+            instance_id: "default-restaurant-pos".into(),
+            type_key: "restaurant-pos".into(),
+            terminal_id: "terminal-1".into(),
+            picker_ticket: test_picker_ticket("user-owner"),
+            org_id: None,
+        },
+    )
+    .await;
+    if !seeded_row_loads() {
+        return;
+    }
+    let session_token = settled.unwrap().session_token;
+
+    // A manager deactivates the account. The token stays in the in-memory map
+    // until its TTL, which is the whole point.
+    {
+        let db = app.ctx().lock_global().await;
+        Store::new(&db)
+            .update_user("user-owner", "owner", "Owner", "role-owner", false)
+            .unwrap();
+    }
+
+    // The live roster no longer admits this account — a real command says so.
+    let denied = crate::staff::list_staff_scoped(&app.ctx(), &session_token)
+        .await
+        .expect_err("a deactivated account must not run commands");
+    assert!(
+        matches!(denied, BridgeError::PermissionDenied(_)),
+        "got: {denied:?}"
+    );
+
+    // So the ticket grant must be refused too — with the SAME error a dead or
+    // unknown token gets, so a deactivated account learns nothing new.
+    let refreshed = refresh_picker_ticket(&app.ctx(), &session_token);
+    assert!(
+        matches!(refreshed, Err(BridgeError::InvalidSession)),
+        "a deactivated account must not mint a picker ticket: {refreshed:?}"
+    );
+}
+
 // ── refresh_picker_ticket ───────────────────────────────────────────
 
 #[tokio::test]
