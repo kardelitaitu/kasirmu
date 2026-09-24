@@ -109,7 +109,8 @@ mod tests {
             .merchant_category_code("5812")
             .build()
             .unwrap()
-            .to_qris_string();
+            .to_qris_string()
+            .unwrap();
 
         let png = to_png(&payload, 300).unwrap();
         assert_eq!(
@@ -128,7 +129,8 @@ mod tests {
             .merchant_category_code("5812")
             .build()
             .unwrap()
-            .to_qris_string();
+            .to_qris_string()
+            .unwrap();
 
         let svg = to_svg(&payload).unwrap();
         assert!(svg.contains("<svg"), "output must contain an <svg> element");

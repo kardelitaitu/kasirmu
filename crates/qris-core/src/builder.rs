@@ -23,7 +23,8 @@ use crate::{
 ///     .build()
 ///     .unwrap();
 ///
-/// println!("{}", payload.to_qris_string());
+/// println!("{}", payload.to_qris_string()?);
+/// # Ok::<(), qris_core::QrisError>(())
 /// ```
 #[derive(Debug, Default)]
 pub struct QrisBuilder {
@@ -330,7 +331,7 @@ mod tests {
         assert_eq!(p.nmid(), "ID1020001234567");
         assert!(p.is_static());
         // CRC must be valid
-        assert!(QrisPayload::is_valid_crc(&p.to_qris_string()));
+        assert!(QrisPayload::is_valid_crc(&p.to_qris_string().unwrap()));
     }
 
     #[test]
@@ -413,7 +414,7 @@ mod tests {
         assert_eq!(p.postal_code.as_deref(), Some("61363"));
         assert!(p.is_dynamic());
 
-        let raw = p.to_qris_string();
+        let raw = p.to_qris_string().unwrap();
         assert!(raw.contains("936001140000088872"));
         assert!(raw.contains("61363"));
         assert!(QrisPayload::is_valid_crc(&raw));

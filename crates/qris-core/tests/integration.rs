@@ -5,6 +5,61 @@ use qris_core::{
     nmid::NmidInfo,
 };
 
+// ── QRIS-A/B/C: byte lengths, fallible encode, safe CRC slice ────────
+
+/// QRIS-A: a non-ASCII field must round-trip.
+///
+/// The encoder wrote the value's BYTE length while the parser counted
+/// CHARACTERS, so any multi-byte value (an Indonesian merchant name) produced
+/// a length the parser disagreed with and the payload failed to parse at all.
+#[test]
+fn multibyte_merchant_name_round_trips() {
+    let p = QrisBuilder::new()
+        .nmid("ID1020001234567")
+        .merchant_name("Warung Kopi \u{2018}Nyak\u{2019}")
+        .merchant_city("Kab. Demak")
+        .merchant_category_code("5812")
+        .build()
+        .unwrap();
+    let s = p.to_qris_string().unwrap();
+    let parsed = QrisPayload::parse(&s).expect("a non-ASCII payload must parse");
+    assert_eq!(parsed.merchant_name, "Warung Kopi \u{2018}Nyak\u{2019}");
+    assert_eq!(parsed.merchant_city, "Kab. Demak");
+}
+
+/// QRIS-B: an over-long field is an error, not a panic.
+///
+/// `encode_field` used to `assert!` on a value over 99 bytes, reachable from
+/// safe APIs (`build()` then `to_qris_string()`) whose signatures gave the
+/// caller no warning.
+#[test]
+fn overlong_field_is_an_error_not_a_panic() {
+    let p = QrisBuilder::new()
+        .nmid("ID1020001234567")
+        .merchant_name("X".repeat(100))
+        .merchant_city("Jakarta")
+        .merchant_category_code("5812")
+        .build()
+        .unwrap();
+    let err = p
+        .to_qris_string()
+        .expect_err("a 100-byte merchant name must not fit the 2-digit length field");
+    assert!(
+        matches!(err, qris_core::QrisError::FieldTooLong { .. }),
+        "expected FieldTooLong, got {err:?}"
+    );
+}
+
+/// QRIS-C: `is_valid_qris` must return false, not panic, on a payload whose
+/// last four bytes are not a char boundary.
+#[test]
+fn crc_verify_does_not_panic_on_multibyte_tail() {
+    // Four U+2019 characters: 12 bytes, and `len - 4` lands mid-codepoint.
+    assert!(!is_valid_qris("\u{2019}\u{2019}\u{2019}\u{2019}"));
+    // A short ASCII string is likewise false, not a panic.
+    assert!(!is_valid_qris("abcd"));
+}
+
 /// Ground-truth payload scanned directly from the real Bank Jatim QRIS sticker.
 const REAL_BANK_JATIM_STATIC_QRIS: &str = "00020101021126710019ID.CO.BANKJATIM.WWW0215ID102300088575201189360011400000888720303UKE51440014ID.CO.QRIS.WWW0215ID10232699107000303UKE5204939953033605802ID5917082 PUSK TROWULAN6009MOJOKERTO61056136362070703A016304A923";
 
@@ -110,7 +165,7 @@ fn test_generate_dynamic_with_pan_postal_and_fixed_fee() {
     assert_eq!(ad.terminal_label.as_deref(), Some("A01"));
     assert_eq!(ad.bill_number.as_deref(), Some("INV-2026-0001"));
 
-    let qris_str = payload.to_qris_string();
+    let qris_str = payload.to_qris_string().unwrap();
     assert!(is_valid_qris(&qris_str));
 
     // Verify raw wire contents
@@ -162,7 +217,7 @@ fn test_percentage_fee_generation_and_parsing() {
             percent: "0.7".to_string()
         })
     );
-    let s = payload.to_qris_string();
+    let s = payload.to_qris_string().unwrap();
     assert!(s.contains("55020357030.7")); // Tag 55 indicator 03, Tag 57 percent 0.7
 
     let parsed = QrisPayload::parse(&s).unwrap();
@@ -211,7 +266,7 @@ fn test_percentage_fee_0_01_accuracy_and_rounding_up() {
         .build()
         .unwrap();
 
-    let raw = qris.to_qris_string();
+    let raw = qris.to_qris_string().unwrap();
     assert!(raw.contains("55020357040.01")); // Tag 55 "03", Tag 57 "0.01" (length 04)
     assert!(is_valid_qris(&raw));
 
@@ -245,7 +300,7 @@ fn test_sticker_mutation_into_dynamic_preserves_pan_and_postal() {
     assert_eq!(dynamic.postal_code.as_deref(), Some("61363"));
     assert_eq!(dynamic.issuer(), "Bank Jatim");
 
-    let dynamic_str = dynamic.to_qris_string();
+    let dynamic_str = dynamic.to_qris_string().unwrap();
     assert!(is_valid_qris(&dynamic_str));
 
     // Also test clearing amount switches back to static and removes fees
@@ -270,7 +325,7 @@ fn test_tamper_detection_rejects_altered_fields() {
         .amount("50000")
         .build()
         .unwrap()
-        .to_qris_string();
+        .to_qris_string().unwrap();
 
     assert!(is_valid_qris(&valid_dynamic));
 

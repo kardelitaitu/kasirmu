@@ -46,9 +46,20 @@ pub(crate) fn verify(full_payload: &str) -> Result<(), crate::error::QrisError> 
             got: full_payload.len(),
         });
     }
+    // QRIS-C: the four CRC characters are four BYTES, and slicing a `str` at a
+    // byte index panics when it is not a char boundary. A payload whose last
+    // four bytes land mid-codepoint (any non-ASCII text near the end) used to
+    // abort `is_valid_qris`/`parse` instead of returning `false`/`Err`.
     let split = full_payload.len() - 4;
-    let pre_crc = &full_payload[..split];
-    let crc_hex = &full_payload[split..];
+    let (pre_crc, crc_hex) = match full_payload.split_at_checked(split) {
+        Some(pair) => pair,
+        None => {
+            return Err(crate::error::QrisError::CrcMismatch {
+                expected: 0,
+                computed: 0,
+            });
+        }
+    };
 
     let expected =
         u16::from_str_radix(crc_hex, 16).map_err(|_| crate::error::QrisError::CrcMismatch {

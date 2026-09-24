@@ -233,73 +233,81 @@ impl QrisPayload {
     // ── Serialisation ─────────────────────────────────────────────────────
 
     /// Serialise to a valid QRIS string (CRC recalculated automatically).
-    pub fn to_qris_string(&self) -> String {
+    ///
+    /// # Errors
+    ///
+    /// [`QrisError::FieldTooLong`] when a field's value exceeds the TLV's
+    /// 99-byte length limit. This used to be an `assert!` inside
+    /// `encode_field` (QRIS-B), so an over-long merchant name panicked here
+    /// even though neither this signature nor `QrisBuilder::build` warned the
+    /// caller.
+    pub fn to_qris_string(&self) -> Result<String, QrisError> {
         let mut out = String::new();
 
         // 00: Payload Format Indicator
-        out.push_str(&tlv::encode_field(TAG_PAYLOAD_FORMAT, "01"));
+        out.push_str(&tlv::encode_field(TAG_PAYLOAD_FORMAT, "01")?);
         // 01: Initiation Method
         out.push_str(&tlv::encode_field(
             TAG_INITIATION_METHOD,
             self.initiation.to_wire(),
-        ));
+        )?);
 
-        // 26–51: Merchant Account Info
+        // 26-51: Merchant Account Info
         for slot in &self.merchant_accounts {
-            out.push_str(&slot.to_tlv_string());
+            out.push_str(&slot.to_tlv_string()?);
         }
 
         // 52: MCC
-        out.push_str(&tlv::encode_field(TAG_MCC, &self.merchant_category_code));
+        out.push_str(&tlv::encode_field(TAG_MCC, &self.merchant_category_code)?);
         // 53: Currency
-        out.push_str(&tlv::encode_field(TAG_CURRENCY, &self.currency));
+        out.push_str(&tlv::encode_field(TAG_CURRENCY, &self.currency)?);
 
         // 54: Amount (dynamic only)
         if let Some(ref a) = self.amount {
-            out.push_str(&tlv::encode_field(TAG_AMOUNT, a));
+            out.push_str(&tlv::encode_field(TAG_AMOUNT, a)?);
         }
 
-        // 55–57: Tip
+        // 55-57: Tip
         if let Some(ref tip) = self.tip {
             match tip {
                 Tip::Fixed { amount } => {
-                    out.push_str(&tlv::encode_field(TAG_TIP_INDICATOR, "02"));
-                    out.push_str(&tlv::encode_field(TAG_FEE_FIXED, amount));
+                    out.push_str(&tlv::encode_field(TAG_TIP_INDICATOR, "02")?);
+                    out.push_str(&tlv::encode_field(TAG_FEE_FIXED, amount)?);
                 }
                 Tip::Percentage { percent } => {
-                    out.push_str(&tlv::encode_field(TAG_TIP_INDICATOR, "03"));
-                    out.push_str(&tlv::encode_field(TAG_FEE_PERCENT, percent));
+                    out.push_str(&tlv::encode_field(TAG_TIP_INDICATOR, "03")?);
+                    out.push_str(&tlv::encode_field(TAG_FEE_PERCENT, percent)?);
                 }
             }
         }
 
         // 58: Country
-        out.push_str(&tlv::encode_field(TAG_COUNTRY, &self.country_code));
+        out.push_str(&tlv::encode_field(TAG_COUNTRY, &self.country_code)?);
         // 59: Merchant Name
-        out.push_str(&tlv::encode_field(TAG_MERCHANT_NAME, &self.merchant_name));
+        out.push_str(&tlv::encode_field(TAG_MERCHANT_NAME, &self.merchant_name)?);
         // 60: Merchant City
-        out.push_str(&tlv::encode_field(TAG_MERCHANT_CITY, &self.merchant_city));
+        out.push_str(&tlv::encode_field(TAG_MERCHANT_CITY, &self.merchant_city)?);
 
         // 61: Postal Code
         if let Some(ref pc) = self.postal_code {
-            out.push_str(&tlv::encode_field(TAG_POSTAL_CODE, pc));
+            out.push_str(&tlv::encode_field(TAG_POSTAL_CODE, pc)?);
         }
 
         // 62: Additional Data
         if let Some(ref ad) = self.additional_data
             && !ad.is_empty()
         {
-            let nested = ad.to_nested_string();
-            out.push_str(&tlv::encode_field(TAG_ADDITIONAL_DATA, &nested));
+            let nested = ad.to_nested_string()?;
+            out.push_str(&tlv::encode_field(TAG_ADDITIONAL_DATA, &nested)?);
         }
 
-        // Extra unknown tags — emit before CRC
+        // Extra unknown tags - emit before CRC
         for (t, v) in &self.extra {
-            out.push_str(&tlv::encode_field(*t, v));
+            out.push_str(&tlv::encode_field(*t, v)?);
         }
 
         // 63: CRC (appended by crc::append_crc)
-        crc::append_crc(out)
+        Ok(crc::append_crc(out))
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────
@@ -307,13 +315,13 @@ impl QrisPayload {
     /// Render to a PNG image (`pixel_size × pixel_size`). Requires the `render` feature.
     #[cfg(feature = "render")]
     pub fn to_qr_png(&self, pixel_size: u32) -> Result<Vec<u8>, QrisError> {
-        crate::render::to_png(&self.to_qris_string(), pixel_size)
+        crate::render::to_png(&self.to_qris_string()?, pixel_size)
     }
 
     /// Render to an SVG string. Requires the `render` feature.
     #[cfg(feature = "render")]
     pub fn to_qr_svg(&self) -> Result<String, QrisError> {
-        crate::render::to_svg(&self.to_qris_string())
+        crate::render::to_svg(&self.to_qris_string()?)
     }
 
     /// Render to a PNG image with a logo overlaid in the centre. Requires the `render` feature.
@@ -325,7 +333,7 @@ impl QrisPayload {
         pixel_size: u32,
         logo_bytes: &[u8],
     ) -> Result<Vec<u8>, QrisError> {
-        crate::render::to_png_with_logo(&self.to_qris_string(), pixel_size, logo_bytes)
+        crate::render::to_png_with_logo(&self.to_qris_string()?, pixel_size, logo_bytes)
     }
 
     // ── Validation ────────────────────────────────────────────────────────
@@ -457,13 +465,14 @@ mod tests {
             .build()
             .unwrap()
             .to_qris_string()
+            .unwrap()
     }
 
     #[test]
     fn parse_and_round_trip() {
         let s = minimal_payload();
         let p = QrisPayload::parse(&s).unwrap();
-        let s2 = p.to_qris_string();
+        let s2 = p.to_qris_string().unwrap();
         assert_eq!(s, s2, "round-trip must be identity");
     }
 
@@ -482,7 +491,7 @@ mod tests {
         assert!(dyn_p.is_dynamic());
         assert_eq!(dyn_p.amount.as_deref(), Some("50000"));
         // The serialised result must still have a valid CRC
-        assert!(QrisPayload::is_valid_crc(&dyn_p.to_qris_string()));
+        assert!(QrisPayload::is_valid_crc(&dyn_p.to_qris_string().unwrap()));
     }
 
     #[test]
