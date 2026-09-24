@@ -169,7 +169,7 @@ closes for NOT WORK rows.
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
 | **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **YES** | **ALL FOUR SHAPES EXECUTED 2026-09-25.** Shape 1 (customers gate-KIND) — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **CLOSED 2026-09-25 — 69 of 69 bodies**, ratchet lowered 69 → 19 → 7 → **0** in three sweeps: 50 bodies via `require_permission_for_session` (12 files), then `tax`'s 7 and `history`'s 5 (KIND fixes too), then the last 7 (`categories` 3, `products` 3, `inventory_counts` 1). Four module-local gate wrappers were deleted as they became dead. The floor is now 0 and is a **permanent pin**: any body that opens the store before gating fails the run. Gate-ORDER **EXECUTED for `customers`** — see below. |
-| **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
+| **R11** | An audit record must not depend on the build profile | **SATISFIED — and the literal fix is DECLINED, deliberately** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
 | **R3** | Default-role seeding in `complete_setup` | **YES** | Both options executed 2026-09-25. **(i) was already satisfied, by a later design than the ruling assumed:** ADR #56 §2.2/§2.3 retired `complete_setup`/`write_setup` outright, and the replacement `provision_device` seeds inside its own transaction (`kasirmu-core/src/db/provisioning.rs:443`, step 2, before the owner that references them) — so the fresh-install hole R3 measured is closed without a one-line mirror. **(ii)** was still open and is now closed: `seed_default_roles_scoped` was registered on the desktop only (`apps/desktop-tauri/src/lib.rs:1196`), so the tablet had no re-seed path; it is now a shim over the same bridge body and is registered at `apps/mobile-tauri/src/lib.rs:759`. Guarded by `seed_default_roles_scoped_is_reachable_and_gated_on_the_tablet`, which asserts both the registration and the `staff:manage_roles` refusal. |
@@ -199,6 +199,41 @@ desktop divergence) was **already satisfied**; what the ruling's wording invites
 different decision — merging a two-shell policy — which needs its own ruling and its own
 edit to the store's per-client paragraph. The change was reverted and the reason recorded
 at the call site (`3f8674c96`).
+
+**R11 is CLOSED as `SATISFIED — enforcement declined, deliberately`, and the pins it leaves
+behind are the deliverable.** Re-read at this tip, all four legs of
+`the_debug_upgrade_policy_is_per_client_by_design` (`auth_tests.rs:1325`) hold exactly as
+written: the tablet passes `false` (1 site), the bridge passes `true` (1 site), the tablet
+passes `true` **nowhere** (0 sites, which is what makes the shell's single definition real),
+and the store's per-client paragraph still gives the difference its reason
+(`kasirmu-core/src/db/audit_security.rs:379-383`). So R11's *requirement* — an audit record
+must not depend on the build profile, and the tablet must not mirror the desktop divergence —
+is met, and was met before this pass began.
+
+**What is NOT done is the thing R11's wording invites, and it is declined on the pin's own
+instructions rather than on my judgement.** The literal reading says flip the bridge's
+`debug_upgrade: true` to `false`. That was attempted
+(`3f8674c96`) and **two tests failed**, both asserting the divergence on purpose — the second
+being this very pin, whose failure message names the precondition: *"If the policies are
+genuinely being merged, change `crates/kasirmu-core/src/db/audit_security.rs`'s per-client
+paragraph and T5-3 in `.agents/reviews/done-todo-refactor-oz-pos-app-agents-3.md` in the same
+pass — flipping one call site is not a decision about the other."* That sentence is an owner
+instruction, not a lane's to satisfy: merging the two shells' audit policy is a **new
+ruling**, and the store doc's own words ("the flag is the caller's per-client policy, passed
+through unchanged") say the current split is the design rather than drift.
+
+**The pin earns its keep by naming its own blind spot, which is why it is cited here rather
+than merely counted.** It does not and cannot assert the runtime *effect* of the flag: that
+needs a validly-signed Active Free subscription row, and the only fixture that mints one lives
+behind the bridge's private `#[cfg(test)] mod testing`, unreachable from the mobile crate. The
+effect is pinned on the bridge side instead, by
+`staff_login_on_free_records_only_because_a_debug_build_promotes_it`. A reader who finds one
+test and assumes it proves the behaviour should read that second citation — the pair is the
+assertion, not either half.
+
+**No code changed for R11 this pass, and that is the correct outcome.** It is recorded as a
+closed ruling so a future lane does not re-derive the same failed attempt from the same
+wording; the revert at `auth.rs` already carries the reason at the call site.
 
 **R3 was already half-executed by work that superseded its premise, and finding that out was
 the whole task.** Both options were ruled on 2026-09-20
