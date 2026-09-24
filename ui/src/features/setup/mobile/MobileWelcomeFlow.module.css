@@ -101,7 +101,7 @@
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
   opacity: 0.55;
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   user-select: none;
 }
 
@@ -160,13 +160,12 @@
   align-items: center;
   justify-content: center;
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-accent-fg);
   border: none;
   border-radius: var(--radius-xl);
   font-size: var(--text-base);
   font-weight: var(--font-weight-bold);
   cursor: pointer;
-  box-shadow: var(--shadow-sm);
   transition:
     transform var(--duration-100) var(--ease-out),
     opacity var(--duration-150) var(--ease-out);
@@ -184,15 +183,19 @@
   display: inline-block;
   width: 1.15rem;
   height: 1.15rem;
-  border: 2px solid rgba(255, 255, 255, 0.25);
+  border: 2px solid color-mix(in srgb, var(--color-accent-fg) 25%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+@media (prefers-reduced-motion: no-preference) {
+  .spinner {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 }
 
@@ -238,7 +241,7 @@
 .welcomeBlurb {
   font-size: var(--text-sm);
   color: var(--color-fg-muted);
-  line-height: 1.5;
+  line-height: var(--leading-normal);
   max-width: 32rem;
   margin-inline: auto;
   margin-bottom: var(--space-4);
@@ -263,7 +266,6 @@
   border: 1px solid color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
   border-radius: var(--radius-2xl);
   padding: var(--space-6);
-  box-shadow: var(--shadow-sm);
 }
 
 .heroTitle {
@@ -271,14 +273,14 @@
   font-weight: var(--font-weight-bold);
   color: var(--color-fg-primary);
   margin: 0;
-  line-height: 1.2;
+  line-height: var(--leading-condensed);
 }
 
 .heroSubtitle {
   font-size: var(--text-sm);
   color: var(--color-fg-muted);
   margin: 0;
-  line-height: 1.4;
+  line-height: var(--leading-snug);
 }
 
 .featureList {
@@ -350,7 +352,7 @@
 .authCardPrimary {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-accent-fg);
 }
 
 .authCardPrimary:hover {
@@ -359,11 +361,11 @@
 }
 
 .authCardPrimary .authCardTitle {
-  color: #ffffff;
+  color: var(--color-accent-fg);
 }
 
 .authCardPrimary .authCardDesc {
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--color-accent-fg) 85%, transparent);
 }
 
 .authCardTitle {
@@ -383,7 +385,7 @@
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
   text-align: center;
-  line-height: 1.4;
+  line-height: var(--leading-snug);
   margin-top: var(--space-2);
 }
 
@@ -406,7 +408,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
-  box-shadow: var(--shadow-md);
   width: 100%;
   margin-inline: auto;
   box-sizing: border-box;
@@ -416,13 +417,13 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: color-mix(in srgb, var(--color-danger, #ef4444) 12%, var(--color-bg-surface));
-  border: 1px solid color-mix(in srgb, var(--color-danger, #ef4444) 30%, var(--color-border));
-  color: var(--color-danger, #f87171);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-bg-surface));
+  border: 1px solid color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+  color: var(--color-danger);
   border-radius: var(--radius-lg);
   padding: var(--space-3) var(--space-4);
   font-size: var(--text-xs);
-  line-height: 1.4;
+  line-height: var(--leading-snug);
   width: 100%;
   box-sizing: border-box;
 }
@@ -432,8 +433,8 @@
   align-items: center;
   gap: var(--space-2);
   align-self: flex-start;
-  background: #ffffff;
-  color: #1e293b;
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-weight: var(--font-weight-bold);
   font-size: var(--text-sm);
   padding: var(--space-1) var(--space-4);
@@ -496,7 +497,7 @@
   justify-content: center;
   font-weight: var(--font-weight-bold);
   font-size: var(--text-base);
-  color: #ffffff;
+  color: var(--color-accent-fg);
   flex-shrink: 0;
 }
 
@@ -520,7 +521,7 @@
 .privacyFootnote {
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
-  line-height: 1.4;
+  line-height: var(--leading-snug);
   margin: 0;
 }
 
@@ -596,7 +597,7 @@
   font-size: var(--text-xs);
   color: var(--color-fg-muted);
   text-align: center;
-  line-height: 1.4;
+  line-height: var(--leading-snug);
   margin-top: var(--space-2);
 }
 
@@ -732,7 +733,7 @@
   gap: var(--space-2);
   font-size: var(--text-sm);
   color: var(--color-fg);
-  line-height: 1.4;
+  line-height: var(--leading-snug);
 }
 
 .copyCodeRow {
@@ -763,15 +764,19 @@
   background: var(--color-bg-input);
   border: 1px dashed var(--color-border);
   border-radius: var(--radius-md);
-  animation: pulseSkeleton 1.5s ease-in-out infinite;
 }
 
-@keyframes pulseSkeleton {
-  0%, 100% {
-    opacity: 0.45;
+@media (prefers-reduced-motion: no-preference) {
+  .codeSkeleton {
+    animation: pulseSkeleton 1.5s ease-in-out infinite;
   }
-  50% {
-    opacity: 0.85;
+  @keyframes pulseSkeleton {
+    0%, 100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 0.85;
+    }
   }
 }
 
@@ -801,7 +806,7 @@
                      QR scanner shrunk to fit in one viewport
    ═══════════════════════════════════════════════════════════════════ */
 
-@media (orientation: landscape) {
+@media (min-aspect-ratio: 4/3) {
   /* ── Shared shell ─────────────────────────────────────────────── */
 
   .root {
@@ -929,7 +934,7 @@
    Covers phones in landscape and small tablets.
    ═══════════════════════════════════════════════════════════════════ */
 
-@media (orientation: landscape) and (max-height: 480px) {
+@media (min-aspect-ratio: 4/3) and (max-height: 480px) {
   .root {
     padding-inline: var(--space-3);
     padding-block: var(--space-2);
@@ -980,7 +985,7 @@
   }
 
   .heroTitle {
-    font-size: 1.15rem;
+    font-size: var(--text-base);
   }
 
   .authCard {

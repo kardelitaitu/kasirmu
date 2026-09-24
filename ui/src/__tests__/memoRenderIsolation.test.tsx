@@ -235,7 +235,8 @@ async function settleRenders(read: () => number): Promise<number> {
   const startedAt = Date.now();
   let previous = -1;
   let current = read();
-  while (previous !== current || Date.now() - startedAt < 150) {
+  // Floor of 250ms accommodates the 200ms AppBootSplash exit animation (T3)
+  while (previous !== current || Date.now() - startedAt < 250) {
     previous = current;
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 60));

@@ -131,7 +131,7 @@ function tokenOf(constName: string): string {
 /** The permission constant a scoped export command actually checks, or null. */
 function checkedPermission(fnName: string): string | null {
   const m = /permissions::([A-Z_]+)/.exec(
-    rustFn(read(TABLET_HISTORY), fnName).match(/require_permission_for_user\([^)]*\)/)?.[0] ?? '',
+    rustFn(read(TABLET_HISTORY), fnName).match(/require_permission_for_(?:session|user)\([^)]*\)/)?.[0] ?? '',
   );
   return m?.[1] ?? null;
 }

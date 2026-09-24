@@ -200,7 +200,6 @@ export function MobileQrPairingModal({
               <>
                 <span
                   className={styles['codeLinkBox']}
-                  title={pairingUrl ?? ''}
                   data-testid="mobile-qr-link-text"
                 >
                   {pairingUrl} {pairingCode ? `(${pairingCode})` : ''}

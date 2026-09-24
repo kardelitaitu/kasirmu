@@ -179,7 +179,9 @@
   --font-weight-semibold: 600;
   --font-weight-bold:     700;
 
+  --leading-condensed: 1.2;
   --leading-tight:   1.25;
+  --leading-snug:    1.4;
   --leading-normal:  1.5;
   --leading-relaxed: 1.625;
 
@@ -316,6 +318,7 @@
   --z-modal:     400;
   --z-toast:     500;
   --z-tooltip:   600;
+  --z-splash:    700;
 
   /* ── POS Brand (stable across themes) ─────────────────────── */
   --color-primary-pos:        #1e3a5f;

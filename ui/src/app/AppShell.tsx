@@ -640,6 +640,7 @@ export default function AppShell() {
       );
     }
     const isCustomerKiosk = currentRoute === 'kiosk';
+    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
     return PageComponent ? (
       <>
         {!isCustomerKiosk && <MemoBanner />}
@@ -650,7 +651,7 @@ export default function AppShell() {
         <div className="workspace-fullscreen" key={currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
-              <PageComponent
+              <FullscreenPageComponent
                 onProvisioned={() => {
                   setSetupKnownComplete(true);
                   setCurrentRoute('products');

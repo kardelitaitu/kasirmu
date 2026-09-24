@@ -236,20 +236,6 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
-  useEffect(() => {
-    const syncFromHash = () => {
-      const raw = window.location.hash.replace(/^#\/?/, '');
-      if (!raw) return;
-      const route = raw.split('?')[0]!;
-      if (getPage(route)) {
-        setCurrentRoute(route);
-      }
-    };
-    syncFromHash();
-    window.addEventListener('hashchange', syncFromHash);
-    return () => window.removeEventListener('hashchange', syncFromHash);
-  }, []);
-
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock
@@ -265,6 +251,11 @@ export default function TabletAppShell() {
     setIsLocked(false);
   }, []);
 
+  // Must be called unconditionally before any early return (rules-of-hooks).
+  // Returns splashMounted=false, splashExiting=false when loading is false,
+  // so calling it here (before the lock-screen and loading gates) is safe.
+  const { splashMounted, splashExiting } = useSplashExit(loading);
+
   // The lock screen takes precedence over every branch, exactly as the desktop
   // shell does: a locked terminal renders nothing else.
   if (isLocked && session) {
@@ -274,8 +265,6 @@ export default function TabletAppShell() {
       </LazyBoundary>
     );
   }
-
-  const { splashMounted, splashExiting } = useSplashExit(loading);
 
   if (loading) {
     // Branded boot splash (stage 2) — mirrors the desktop shell gate
@@ -326,13 +315,14 @@ export default function TabletAppShell() {
       );
     }
     const isCustomerKiosk = currentRoute === 'kiosk';
+    const FullscreenPageComponent = PageComponent as React.ComponentType<{ onProvisioned?: () => void }>;
     return PageComponent ? (
       <>
         {!isCustomerKiosk && <MemoBanner />}
         <div className="workspace-fullscreen" key={currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
-              <PageComponent
+              <FullscreenPageComponent
                 onProvisioned={() => {
                   setHasCompletedSetup(true);
                   setHasAnyUsers(true);

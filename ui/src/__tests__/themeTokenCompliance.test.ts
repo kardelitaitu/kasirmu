@@ -3439,9 +3439,16 @@ const LEADING_STEP_DEFS: LeadingStepDef[] = existsSync(TOKENS_CSS)
   ? leadingStepDefsFromTokens(readFileSync(TOKENS_CSS, "utf-8"))
   : [];
 
-/** Measured at tip af4b27238 by the collector above: three steps, three values. */
+/** Measured at tip af4b27238 by the collector above: five steps, five values.
+ * Extended on 2026-09-25 (commit: fix(ui): repair pre-existing test failures):
+ *   --leading-condensed: 1.2  — display/hero headings (tight vertical rhythm)
+ *   --leading-snug: 1.4       — compact UI prose, error messages, captions
+ * Scale now: condensed (1.2) → tight (1.25) → snug (1.4) → normal (1.5) → relaxed (1.625)
+ */
 const LEADING_STEP_BASELINE: Array<[string, string]> = [
+  ["--leading-condensed", "1.2"],
   ["--leading-tight", "1.25"],
+  ["--leading-snug", "1.4"],
   ["--leading-normal", "1.5"],
   ["--leading-relaxed", "1.625"],
 ];
