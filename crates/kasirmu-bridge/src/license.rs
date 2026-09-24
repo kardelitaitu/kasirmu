@@ -162,20 +162,35 @@ pub async fn activate_license(
     // tenant_subscription carries quota facts only. The live key is sealed
     // into `license.api_key` below and nowhere else — passing it here would
     // write a second, cleartext copy for no reader.
-    store_subscription(&conn, "default", &resp.signed_payload, &resp.signature)
+    //
+    // ONE TRANSACTION, and that is the whole point of this block. The write
+    // order below was already chosen to keep the two stores consistent ("this
+    // write comes BEFORE Settings::set_batch so a partial failure doesn't leave
+    // the system in an inconsistent state"), but ordering alone cannot deliver
+    // that: `store_subscription` runs its INSERT in AUTOCOMMIT and
+    // `Settings::set_batch` opens its OWN transaction, so a failure in the
+    // second one left the FIRST already durable. The state the comment set out
+    // to prevent is precisely what a mid-way failure produced — a Pro
+    // `tenant_subscription` row enforcing Pro quotas beside the old Free
+    // payload, which `get_subscription_capabilities` and every tier gate read.
+    // Joining both writers to one transaction makes the ordering claim true
+    // instead of merely stated.
+    let tx = conn.unchecked_transaction()?;
+    store_subscription(&tx, "default", &resp.signed_payload, &resp.signature)
         .map_err(|e| BridgeError::Internal(format!("failed to persist subscription: {e}")))?;
 
-    // Store in settings table
+    // Store in settings table — same transaction, so activation is all-or-nothing.
     Settings::set_batch(
-        &conn,
+        &tx,
         &[
-            ("license.payload".to_string(), resp.signed_payload),
-            ("license.signature".to_string(), resp.signature),
-            ("license.tenant_id".to_string(), resp.tenant_id),
-            ("license.api_key".to_string(), encrypted_api_key),
-            ("license.phone".to_string(), phone_clone),
+            (keys::LICENSE_PAYLOAD.to_string(), resp.signed_payload),
+            (keys::LICENSE_SIGNATURE.to_string(), resp.signature),
+            (keys::LICENSE_TENANT_ID.to_string(), resp.tenant_id),
+            (keys::LICENSE_API_KEY.to_string(), encrypted_api_key),
+            (keys::LICENSE_PHONE.to_string(), phone_clone),
         ],
     )?;
+    tx.commit()?;
 
     Ok(true)
 }
