@@ -13,7 +13,7 @@ The box asked for this doc and asserted there was *"no `ResilientProcessor`"*. *
 
 | | State, measured |
 |---|---|
-| `ResilientProcessor`, `CircuitBreaker` (Closed/Open/HalfOpen), `ResilientProcessorConfig` | **implemented** — `crates/kasirmu-payment/src/resilience.rs`, 256 lines |
+| `ResilientProcessor`, `CircuitBreaker` (Closed/Open/HalfOpen), `ResilientProcessorConfig` | **implemented** — `crates/kasirmu-payment/src/resilience.rs`. **397 lines as of 2026-09-25**; it was 256 when this table was written. The growth is the §2 retry guard, the §5 probe flag, and `with_shared_breaker` (§4's seam), all landed under R9 — the number is corrected here rather than left as a stale reading, because this is the table a reader uses to judge whether the artefact is real. |
 | re-exported | **yes** — `crates/kasirmu-payment/src/lib.rs:70` |
 | `method -> Vec<processor>` chain | **implemented** — `register_method_fallback` / `method_processors` / `execute_with_fallback`, `crates/kasirmu-payment/src/registry.rs:57-119` |
 | **wired into any dispatch path** | **no** — `grep -c "resilience\|Resilient" crates/kasirmu-payment/src/registry.rs` → **0** |
@@ -25,10 +25,13 @@ The box asked for this doc and asserted there was *"no `ResilientProcessor`"*. *
 ```bash
 grep -rn "execute_with_fallback\|register_method_fallback\|ResilientProcessor" \
   --include=*.rs crates/ platform/ apps/ | grep -v "registry.rs\|resilience"
-# → 4 hits, ALL in crates/kasirmu-payment/src/registry_tests.rs
+# → 4 hits when this was written; 13 on 2026-09-25, still ALL inside
+#   crates/kasirmu-payment/src (registry_tests.rs plus the §2/§5/§4 guards
+#   added under R9). The count moved because the TESTS grew, not because a
+#   production caller appeared — re-run it before quoting either figure.
 ```
 
-So the entire fallback-and-resilience layer is **test-only today**, and its three green tests (`resilient_processor_retries_transient_error_and_succeeds`, `resilient_processor_does_not_retry_terminal_error`, `circuit_breaker_trips_and_fails_fast`) are evidence that it compiles and that its author's model of it is self-consistent — not that the payment path is protected. It is not.
+So the entire fallback-and-resilience layer is **test-only today**. Its tests are evidence that it compiles and that its author's model of it is self-consistent — not that the payment path is protected. **It still is not, re-measured 2026-09-25:** `AppState.processor` holds a concrete `QrisPaymentProcessor` (`payment_api.rs:79`), built by `build_qris_processor` (`:127`), and the handler calls `sale()` on it directly (`:291`). The three tests this paragraph used to name are now **twelve** in `resilience_tests.rs` plus **eight** in `registry_tests.rs` (both counted rather than estimated), and that growth is the §2 retry guard, the §5 single-probe rule, and the §4 shared-breaker seam — hardening that buys nothing until something wires the decorator in.
 
 **An unwired resilience decorator is the worst of the three states.** Wired, it buys fault isolation. Deleted, it buys nothing and costs nothing. Unwired, it carries the full maintenance cost of shipped code, invites a reader to believe money is protected, and defers every decision below to whoever wires it, with no doc to check it against. That is the state today, and it is why R9 recommends *write the doc, then wire it* rather than *leave it*.
 
