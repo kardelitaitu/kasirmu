@@ -524,3 +524,116 @@ async fn void_is_single_shot_even_on_a_transient_failure() {
         "a keyless void must not be retried: a second attempt can re-void a settled sale"
     );
 }
+
+// ── §8 row 5: two decorators over one gateway share one breaker ────────
+
+/// Two decorators built with one breaker TRIP TOGETHER.
+///
+/// **Red-first, per the design doc's §8 row *"two decorators over one gateway
+/// share one breaker"*** (`docs/plans/_active/payment-resilience-design.md:221`),
+/// marked **failing today** — `with_config` built its own, so the doc's §4 says the
+/// API "actively prevents the right design" (`:161`). `with_shared_breaker` is that
+/// seam.
+///
+/// **Why the sharing is the requirement and not a convenience.** A breaker is a
+/// statement about ONE gateway's health. If two decorators fronting the same
+/// gateway keep private counters, each needs `failure_threshold` failures before
+/// either fails fast — so a gateway that is genuinely down takes twice as long to
+/// stop being hammered, and the second decorator keeps sending traffic into a
+/// known-bad endpoint. The threshold stops meaning what §4 says it means.
+///
+/// Asserted from the OUTSIDE, through the public `breaker()` handle: a test that
+/// reached into private state would still pass if the two decorators shared a
+/// counter but not the state machine the callers consult.
+#[tokio::test]
+async fn two_decorators_over_one_gateway_share_one_breaker() {
+    let config = ResilientProcessorConfig {
+        max_retries: 0,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 2,
+        failure_threshold: 2,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let shared = Arc::new(CircuitBreaker::new(
+        config.failure_threshold,
+        config.cooldown_duration,
+    ));
+
+    let a = ResilientProcessor::with_shared_breaker(
+        Arc::new(FlakyMockProcessor::new(100, PaymentError::Timeout(1))),
+        config.clone(),
+        shared.clone(),
+    );
+    let b = ResilientProcessor::with_shared_breaker(
+        Arc::new(FlakyMockProcessor::new(100, PaymentError::Timeout(1))),
+        config,
+        shared.clone(),
+    );
+
+    let req = PaymentRequest {
+        amount: Money::from_major(10, FlakyMockProcessor::usd()).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("shared-key".into()),
+    };
+
+    // One failure each — two in total, which is the SHARED threshold.
+    let _ = a.authorize(&req).await;
+    assert_eq!(
+        a.breaker().state().await,
+        CircuitState::Closed,
+        "one failure is below the shared threshold"
+    );
+    let _ = b.authorize(&req).await;
+
+    // Both now see Open: B's failure carried A over the line, which can only
+    // happen if the counter is shared.
+    assert_eq!(
+        a.breaker().state().await,
+        CircuitState::Open,
+        "A must observe the failure B contributed — a private breaker would still read Closed"
+    );
+    assert_eq!(b.breaker().state().await, CircuitState::Open);
+}
+
+/// The counter-evidence: decorators built the ordinary way do NOT share.
+///
+/// Without this, the test above could pass on an implementation that made every
+/// breaker global — which would be worse than the defect, because then ONE
+/// tenant's revoked credential would fail fast for every tenant on the platform
+/// (the exact scenario §4 is written to prevent). Pinning the isolation half keeps
+/// the sharing a deliberate opt-in.
+#[tokio::test]
+async fn separately_built_decorators_do_not_share_a_breaker() {
+    let config = ResilientProcessorConfig {
+        max_retries: 0,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 2,
+        failure_threshold: 2,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let a = ResilientProcessor::with_config(
+        Arc::new(FlakyMockProcessor::new(100, PaymentError::Timeout(1))),
+        config.clone(),
+    );
+    let b = ResilientProcessor::with_config(
+        Arc::new(FlakyMockProcessor::new(100, PaymentError::Timeout(1))),
+        config,
+    );
+
+    let req = PaymentRequest {
+        amount: Money::from_major(10, FlakyMockProcessor::usd()).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("isolated-key".into()),
+    };
+
+    let _ = a.authorize(&req).await;
+    let _ = b.authorize(&req).await;
+    assert_eq!(
+        a.breaker().state().await,
+        CircuitState::Closed,
+        "each decorator counts its own failures: one each is below a threshold of two"
+    );
+    assert_eq!(b.breaker().state().await, CircuitState::Closed);
+}

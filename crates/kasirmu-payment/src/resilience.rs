@@ -216,7 +216,7 @@ pub enum RetryPolicy {
 pub struct ResilientProcessor {
     inner: Arc<dyn PaymentProcessor>,
     config: ResilientProcessorConfig,
-    breaker: CircuitBreaker,
+    breaker: Arc<CircuitBreaker>,
 }
 
 impl ResilientProcessor {
@@ -227,9 +227,39 @@ impl ResilientProcessor {
     }
 
     /// Create a new resilient processor with custom configuration.
+    ///
+    /// Builds its OWN breaker. Two decorators made this way have two independent
+    /// breakers even when they front the same gateway — use
+    /// [`Self::with_shared_breaker`] when they must agree about that gateway's
+    /// health (design doc §3, `payment-resilience-design.md:125`).
     #[must_use]
     pub fn with_config(inner: Arc<dyn PaymentProcessor>, config: ResilientProcessorConfig) -> Self {
         let breaker = CircuitBreaker::new(config.failure_threshold, config.cooldown_duration);
+        Self::with_shared_breaker(inner, config, Arc::new(breaker))
+    }
+
+    /// Wrap `inner` with a breaker the CALLER supplies and owns.
+    ///
+    /// **This is the seam §4 needs, added without deciding §4's question.** The doc
+    /// names one API change as the thing actively preventing the right design:
+    /// *"`ResilientProcessor::with_config` constructs its breaker internally, so the
+    /// breaker cannot be shared or keyed as written"* (`:161`). Splitting the
+    /// constructor removes that obstacle while leaving the KEY entirely to the
+    /// caller — whichever map shape §4 settles on (per gateway, per
+    /// `(tenant, gateway)`, or something else), it is built outside this type and
+    /// handed in here. Nothing in this crate has to change to adopt it.
+    ///
+    /// The config's `failure_threshold` and `cooldown_duration` are ignored on this
+    /// path: a breaker that is shared cannot read its thresholds from two decorators
+    /// at once, and silently applying one caller's config to another's breaker is
+    /// exactly the kind of quiet divergence this seam exists to prevent. They are
+    /// the shared breaker's own, fixed at its construction.
+    #[must_use]
+    pub fn with_shared_breaker(
+        inner: Arc<dyn PaymentProcessor>,
+        config: ResilientProcessorConfig,
+        breaker: Arc<CircuitBreaker>,
+    ) -> Self {
         Self {
             inner,
             config,
@@ -238,8 +268,11 @@ impl ResilientProcessor {
     }
 
     /// Reference to the underlying circuit breaker.
+    ///
+    /// Returns the SHARED handle, so a caller that supplied one can observe the
+    /// state both decorators are acting on rather than a private copy.
     #[must_use]
-    pub fn breaker(&self) -> &CircuitBreaker {
+    pub fn breaker(&self) -> &Arc<CircuitBreaker> {
         &self.breaker
     }
 
