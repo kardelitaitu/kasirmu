@@ -1660,17 +1660,39 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
 /// `:306`) uses the scope-aware `require_session_permission` for all five. They
 /// now do too, via the shell's `require_permission_for_session`.
 ///
-/// The last 7 are NOT the same shape and are left deliberately: `categories` (3)
-/// and `products` (3) gate through a domain wrapper, and `inventory_counts` (1)
-/// gated with a `user_id` the session already carries. Reordering those means
-/// changing what the helper authorises against, not merely where the call sits.
+/// **THIRD SWEEP, 7 → 0 on 2026-09-25: R10's gate-ORDER half is CLOSED.** The last
+/// seven fell into the two groups the previous note predicted, and both turned out
+/// to be the same edit after all — the helper each body called was a module-local
+/// wrapper that ignored its `user_id` and asked the GLOBAL db, so replacing the call
+/// with the shared `authz::require_permission_for_session` preserved the permission
+/// and added the scope, and the wrapper became dead code. Four such wrappers were
+/// deleted: `require_category_permission` (categories), `require_tax_permission`
+/// (tax, previous sweep), `require_inventory_count_permission`
+/// (inventory_counts), plus the direct `require_permission_for_user` calls in
+/// `products` and `history`.
+///
+/// `products` was the one KIND divergence left: its three write doors asked the
+/// STORE db while `crates/kasirmu-bridge/src/products.rs` asks the scope-aware gate
+/// (`:668`, `:674`, `:889`, `:895`, `:1006`). `categories` was NOT a divergence —
+/// the bridge's own write doors use the same non-scope-aware helper
+/// (`kasirmu-bridge/src/categories.rs:193`, `:221`, `:251`), so only the order
+/// moved there.
+///
+/// **The floor is now 0, and it is a pin rather than a target.** At zero the upper
+/// bound is the whole test: any body that opens the store before it gates fails the
+/// run, which is the regression this ratchet has been counting down toward since it
+/// was written at 69. The lower bound stays for the reason it always existed — a
+/// sweep that stops matching reports 0 from a broken pattern as readily as from a
+/// clean tree, and `bodies >= 0` alone cannot tell those apart, so the two-sided
+/// form is retained as documentation of that hazard even though it is now
+/// trivially true.
 ///
 /// This is a RATCHET, not a fix: it pins the population so a new open-before-gate
 /// body cannot be added silently, and it fails when the count DROPS too, forcing the
 /// floor down in the same commit that fixes a body. That second leg is the one that
 /// matters — a floor that only checks an upper bound lets the sweep rot to zero and
 /// still pass, which is the failure mode this file's own header describes.
-const OPEN_BEFORE_GATE_FLOOR: usize = 7;
+const OPEN_BEFORE_GATE_FLOOR: usize = 0;
 
 /// Does this body call the combined session+store resolver before it names a
 /// permission?

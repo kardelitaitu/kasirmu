@@ -16,7 +16,7 @@ use foundation::validate_not_empty;
 
 use kasirmu_core::permissions;
 
-use crate::commands::authz::require_permission_for_user;
+use crate::commands::authz::require_permission_for_session;
 use crate::error::AppError;
 use crate::state::AppState;
 
@@ -410,10 +410,25 @@ pub async fn create_product_scoped(
     args: CreateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<CreateProductResult, AppError> {
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: the session and BOTH gates are resolved
+    // BEFORE the scope block opens the store, and with the scope-aware form the bridge
+    // twin uses (`kasirmu-bridge/src/products.rs:668`, `:674`). The gates are `await`s,
+    // so they cannot live inside the block that exists to keep `Store` (!Send) off an
+    // await point — that constraint is exactly why the old code gated after opening the
+    // store, and why the store was opened for callers who were never authorised.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_CREATE).await?;
+    // ADR #36 D7: setting a cost (HPP) requires the manager-only
+    // products:edit_cost permission — staff can create products without
+    // ever touching cost.
+    if args.cost_minor != 0 {
+        require_permission_for_session(&state, &session, permissions::PRODUCTS_EDIT_COST).await?;
+    }
+
     // Scope the DB borrow so Store (which is !Send) is dropped before
     // the next .await point when we lock the kernel for event publishing.
     {
-        let (session, conn_arc) = state.resolve_scope(&session_token)?;
+        let conn_arc = state.resolve_store(&session_token)?;
         // Quota: the tier's product/menu cap (subscription-tiers.md
         // §Numeric Limits) is enforced per-location catalog before
         // creation. Tier from the global identity DB, count from the
@@ -431,13 +446,6 @@ pub async fn create_product_scoped(
         let db = &*db_guard;
         let store = Store::new(&db);
 
-        require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_CREATE)?;
-        // ADR #36 D7: setting a cost (HPP) requires the manager-only
-        // products:edit_cost permission — staff can create products without
-        // ever touching cost.
-        if args.cost_minor != 0 {
-            require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
-        }
         store.enforce_product_quota(
             &Entitlements::from_subscription(&sub, UsageCounts::default()).tier,
         )?;
@@ -510,20 +518,24 @@ pub async fn update_product_scoped(
     args: UpdateProductArgs,
     state: State<'_, AppState>,
 ) -> Result<UpdateProductResult, AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge twin
+    // uses (`kasirmu-bridge/src/products.rs:889`, `:895`) and run BOTH gates BEFORE the
+    // store is opened. The cost gate is conditional, so it has to be asked here rather
+    // than hoisted into a helper.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
+    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
+    // products:edit_cost permission. A PATCH that does not touch cost
+    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
+    if args.cost_minor.is_some() {
+        require_permission_for_session(&state, &session, permissions::PRODUCTS_EDIT_COST).await?;
+    }
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-
-    require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_UPDATE)?;
-    // ADR #36 D7: changing a product's cost (HPP) requires the manager-only
-    // products:edit_cost permission. A PATCH that does not touch cost
-    // (cost_minor absent) stays open to PRODUCTS_UPDATE holders.
-    if args.cost_minor.is_some() {
-        require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_EDIT_COST)?;
-    }
 
     let currency: kasirmu_core::Currency = args
         .currency
@@ -622,13 +634,16 @@ pub async fn delete_product_scoped(
     args: DeleteProductArgs,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn_arc) = state.resolve_scope(&session_token)?;
+    // R10 gate-KIND + gate-ORDER, 2026-09-25: adopt the scope-aware form the bridge twin
+    // uses (`kasirmu-bridge/src/products.rs:1006`) and run it BEFORE the store is opened.
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
     let db_guard = conn_arc
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    require_permission_for_user(&store, &session.user_id, permissions::PRODUCTS_DELETE)?;
     store.delete_product(&args.sku)?;
     Ok(())
 }
