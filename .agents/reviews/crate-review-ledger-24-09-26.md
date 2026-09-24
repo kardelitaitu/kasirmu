@@ -520,6 +520,74 @@ still PASSES, so the existing gate is unaffected.
 
 **Commit:** `2b97e2722` (script).
 
+### Bridge eighth pass — 24-09-26 (the gate now enforces)
+
+The seventh pass committed the checker in REPORT mode with a stated
+precondition: wire `--strict` into the gates once the backlog reaches zero.
+This pass cleared the backlog and wired it.
+
+**31 -> 0.** Every ungated `_scoped` fn now carries a machine-readable reason,
+as an `// ungated-ok:` marker inside its body. **The changes are comment-only —
+no behaviour moved**, which is the correct scope: the review established these
+are deliberate policy, and changing 31 authorization decisions is a product
+ruling, not a repair.
+
+**How the 35 explained entries break down, by the reason actually recorded:**
+
+* **Deliberate shell asymmetry** — `promotions.rs` reads (3). The module header
+  already said so in prose ("the deliberate gate asymmetry preserved verbatim
+  from the shell"); the marker makes it checkable.
+* **Documented module policy** — `tables.rs` reads (3, "the ungated reads (no
+  session gate by design)"), `offline.rs` reads (5, where the header names
+  exactly four gated write paths and the 4 gates are present), `scale.rs`
+  (2, per-register hardware), `workspaces.rs` (4, the workspace PICKER, which
+  every authenticated role must reach and which is assignment-scoped and
+  tier-filtered inside).
+* **Per-INSTALL or compile-time values** — `license.rs`, `health.rs`,
+  `currency.rs`, `features.rs`: the answer is the same on every store, so there
+  is no store to scope it to.
+* **Self-scoped** — `avatars.rs`, `memo.rs`, `settings.rs`, `shifts.rs`,
+  `pos.rs`: keyed on the session identity, so they cannot name another actor.
+* **One KNOWN OPEN GAP, deliberately NOT laundered as safe** — the 9 hardware
+  device commands. Their marker reads "KNOWN GAP (BRIDGE-7) - device access is
+  currently open to any authenticated operator. Gating it is a product ruling,
+  not a repair." That phrasing is load-bearing: the marker's job is to make an
+  exception VISIBLE, and a marker that reads like a justification would do the
+  opposite.
+
+**A correction to the seventh pass's own reasoning, found while doing this.**
+I first concluded the hardware set needed `enforce_pos_writable`-style gates
+like `offline::enqueue_offline_scoped`. That was wrong for most of them:
+`enqueue_offline_scoped` is a WRITE (it mutates the sync queue) and its gate is
+a §B read-only lock, whereas `list_scanners_scoped` reads a device id set. They
+are not the same defect. Only `print_sales_receipt_scoped` and
+`print_receipt_scoped` share the "acts on real hardware" shape, and they are
+recorded in the same KNOWN GAP rather than split, because the ruling that
+decides them decides all nine.
+
+**Wired in (this is the part that closes the blind spot for good):**
+
+* `scripts/run-pre-push.py` — added to Tier 0 static gates as
+  `verify-scoped-authorization (H-1b)`, run with `--strict`.
+* `scripts/check.sh` — a step immediately after the H-1 coverage step.
+* `scripts/gates.json` — registered as `scoped-authorization`, status
+  `required`, with a note recording the measured numbers (348 scanned, 0
+  unreasoned) and naming the hardware gap so a future reader does not mistake
+  the pass for a claim that all 348 are safe.
+* `.githooks/pre-push` — the skipped-gates message now names H-1b too.
+
+**Verified:** `bash scripts/verify-scoped-authorization.sh --strict` → **exit
+0**, 348 scanned / 35 explained / **0 unreasoned**. `bash
+scripts/verify-scoped-coverage.sh` → still PASSES (the existing gate is
+unaffected). `python -c "json.load(...)"` on `gates.json` → valid.
+`cargo check -p kasirmu-bridge --all-features` → clean.
+`cargo test -p kasirmu-bridge --all-features --lib -- terminals:: workspaces::
+tables:: scale:: promotions:: offline::` → **93 passed, 0 failed**, covering
+every module I touched.
+
+**Commits:** `f40c78a7c` (43 lines of markers across 9 files, comment-only),
+`0c6ff94b2` (gate wiring across 4 files).
+
 
 
 
