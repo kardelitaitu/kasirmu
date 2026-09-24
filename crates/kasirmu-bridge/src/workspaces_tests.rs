@@ -245,6 +245,105 @@ async fn list_workspaces_for_store_scoped_uses_session_role() {
     );
 }
 
+// ── Pre-session screen listing: the account and the store are both checked ──
+//
+// The ticket is verified in both this fn and `list_workspaces`; only the
+// sibling went on to resolve the account. `list_workspace_screens` answered
+// for a DEACTIVATED member and for a store the caller has no relationship
+// with, so the pair disagreed about whether the caller existed and what they
+// could reach. These two cases pin the halves back together.
+
+/// Seed one screen row for `store-pos` in `store_id`, so a permitted call has
+/// something to return and a refusal is distinguishable from an empty table.
+fn seed_screens(tb: &TestBridge, store_id: &str) {
+    let conn = tb.db_manager().open_store(store_id).unwrap();
+    let db = conn.lock().unwrap();
+    db.execute(
+        "INSERT INTO workspace_type_screens (type_key, screen_key, sort_order) \
+         VALUES ('store-pos', 'pos', 0)",
+        [],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn list_workspace_screens_refuses_a_deactivated_account() {
+    let tb = picker_state(|_| {});
+    seed_screens(&tb, "store-a");
+    let secret = tb.ctx().picker_ticket_secret.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    // The owner is live, so the ticket works...
+    let live = list_workspace_screens(
+        &tb.ctx(),
+        crate::picker::sign_picker_ticket(&secret, "user-owner", now + 300),
+        "store-pos".into(),
+        "store-a".into(),
+    )
+    .await
+    .expect("a live account with store access may list screens");
+    assert!(!live.is_empty());
+
+    // ...then deactivated. The signature is unchanged and still valid, so only
+    // a real account check can refuse this.
+    {
+        let db = tb.ctx().lock_global().await;
+        Store::new(&db)
+            .update_user("user-owner", "owner", "Owner", "role-owner", false)
+            .unwrap();
+    }
+    let denied = list_workspace_screens(
+        &tb.ctx(),
+        crate::picker::sign_picker_ticket(&secret, "user-owner", now + 300),
+        "store-pos".into(),
+        "store-a".into(),
+    )
+    .await;
+    assert!(
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
+        "a deactivated account must not list screens: {denied:?}"
+    );
+}
+
+#[tokio::test]
+async fn list_workspace_screens_refuses_a_store_outside_the_callers_access() {
+    // The cashier carries `user_location_access` rows naming store-a only, so
+    // store-b is out of reach — the same fail-closed rule the session path
+    // applies. A ticket alone used to answer for either store.
+    let tb = picker_state(|conn| {
+        // `location_id` is a real FK, so the locations row must exist first.
+        conn.execute_batch(
+            "INSERT INTO locations (id, name, address, currency, timezone) \
+                  VALUES ('store-a', 'Store A', '', 'USD', 'UTC');
+             INSERT INTO user_location_access (user_id, location_id, access_level) \
+                  VALUES ('user-cashier', 'store-a', 'operator');",
+        )
+        .unwrap();
+    });
+    seed_screens(&tb, "store-a");
+    seed_screens(&tb, "store-b");
+    let secret = tb.ctx().picker_ticket_secret.clone();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let ticket = || crate::picker::sign_picker_ticket(&secret, "user-cashier", now + 300);
+
+    list_workspace_screens(&tb.ctx(), ticket(), "store-pos".into(), "store-a".into())
+        .await
+        .expect("store-a is in the caller's access set");
+
+    let denied =
+        list_workspace_screens(&tb.ctx(), ticket(), "store-pos".into(), "store-b".into()).await;
+    assert!(
+        matches!(denied, Err(BridgeError::PermissionDenied(_))),
+        "store-b is outside the caller's access: {denied:?}"
+    );
+}
+
 // ── Scoped-sessions follow-up: post-login listings ────────────────────
 //
 // TDD red: a scoped member must not be able to switch into an

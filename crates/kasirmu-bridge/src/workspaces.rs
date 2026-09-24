@@ -170,6 +170,27 @@ pub async fn list_workspaces(
 /// List screens (nav items) for a workspace type during boot/workspace
 /// selection. The store ID is explicit so the read is routed to the correct
 /// store database.
+///
+/// The ticket is verified AND the account behind it is resolved from the
+/// global identity DB, exactly as its sibling [`list_workspaces`] does. That
+/// is not belt-and-braces: a ticket is a bearer credential that outlives the
+/// account decisions made after it was minted, so verifying only the signature
+/// answered for a DEACTIVATED member, and for a store they have no
+/// relationship with. Both halves are refused here — the same two facts the
+/// sibling rejects, on the same evidence (the live row plus the
+/// `user_location_access` set the session path also honours).
+///
+/// The screens themselves are the static `workspace_type_screens` table, so
+/// this discloses layout metadata rather than business data. It is gated
+/// anyway because the sibling is, and an inconsistent pair is what lets the
+/// stricter one be relaxed later by someone who reads the looser one as
+/// precedent.
+///
+/// # Errors
+///
+/// Returns [`BridgeError::PermissionDenied`] for a forged/expired ticket, an
+/// account that is no longer live, or a store the caller may not reach, and
+/// [`BridgeError::Core`] on DB errors.
 pub async fn list_workspace_screens(
     ctx: &BridgeCtx<'_>,
     ticket: String,
@@ -180,8 +201,53 @@ pub async fn list_workspace_screens(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
-        .ok_or_else(|| BridgeError::PermissionDenied("invalid or expired picker session".into()))?;
+    let user_id = crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
+        .ok_or_else(|| {
+            BridgeError::PermissionDenied("invalid or expired picker session".into())
+        })?;
+
+    // Resolve the REAL user and require live access to the named store,
+    // mirroring `list_workspaces` step 2. The picker has not chosen an
+    // instance yet, so the store-level question is asked directly: the account
+    // must exist and be active, and when it carries `user_location_access`
+    // rows at all the named store must be among them — the same fail-closed
+    // rule `verify_instance_access` applies to a session.
+    {
+        let db = ctx.lock_global().await;
+        let store = Store::new(&db);
+        let user = store.get_user(&user_id)?.ok_or_else(|| {
+            BridgeError::PermissionDenied("picker session user no longer exists".into())
+        })?;
+        if !user.is_active {
+            return Err(BridgeError::PermissionDenied(
+                "picker session user is inactive".into(),
+            ));
+        }
+        let has_access_rows: bool = db.query_row(
+            "SELECT COUNT(*) > 0 FROM user_location_access WHERE user_id = ?1",
+            rusqlite::params![user.id],
+            |row| row.get(0),
+        )?;
+        if has_access_rows {
+            let allowed: bool = db.query_row(
+                "SELECT COUNT(*) > 0 FROM user_location_access \
+                 WHERE user_id = ?1 AND location_id = ?2",
+                rusqlite::params![user.id, store_id],
+                |row| row.get(0),
+            )?;
+            if !allowed {
+                tracing::warn!(
+                    user_id = %user.id,
+                    store_id = %store_id,
+                    "pre-session screen listing denied — store outside the caller access"
+                );
+                return Err(BridgeError::PermissionDenied(
+                    "store is outside the caller access".into(),
+                ));
+            }
+        }
+    }
+
     let conn = ctx
         .db_manager
         .open_store(&store_id)
