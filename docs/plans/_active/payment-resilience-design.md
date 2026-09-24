@@ -1,7 +1,7 @@
 # Payment resilience — the design the code was written before
 
 **Status:** design doc, first draft. **Not** an ADR — nothing here is decided by a lane.
-**Author's brief:** `todo-open-debt-program.md` Phase 4 box `:276`, *"an R5 design doc"*. Owner ruling: **R9** in `todo-owner-rulings.md`.
+**Author's brief:** `todo-open-debt-program.md` Phase 4 box `:276`, *"an R5 design doc"*. Owner ruling: **R9** in `done-todo-owner-rulings.md:246`.
 **Provenance:** every measurement below was taken in this checkout at HEAD `cd638e98f` (2026-09-18). Each is paired with the command that produced it, so a reader checks rather than trusts.
 **Sibling records:** `docs/plans/payment-methods-plan.md` (the method/rail configuration this decorates), `docs/records/audit-open-findings.md` (the `BR-*` findings), `crates/kasirmu-payment/src/resilience.rs` (the code this describes).
 
@@ -174,7 +174,7 @@ Under a sustained outage, after `cooldown_duration` every concurrent request is 
 
 **Rule.** `HalfOpen` admits **one** probe. Concurrent callers fail fast until it resolves; success closes the breaker, failure re-opens it. This needs a `probe_in_flight` flag on `BreakerInternal` and an explicit transition on the probe's resolution. It is the one item here that changes the behaviour of already-shipped code rather than adding wiring.
 
-**Why the existing test cannot catch it.** `circuit_breaker_trips_and_fails_fast` drives the breaker **sequentially**. Sequential driving cannot observe a concurrency defect, so the test is green and silent on this — the same class of gap that `todo-owner-rulings.md` R20 found in the Tools parity test: a green test that does not test the property its name implies.
+**Why the existing test cannot catch it.** `circuit_breaker_trips_and_fails_fast` drives the breaker **sequentially**. Sequential driving cannot observe a concurrency defect, so the test is green and silent on this — the same class of gap that `done-todo-owner-rulings.md:181` (R20) found in the Tools parity test: a green test that does not test the property its name implies.
 
 ---
 
@@ -244,7 +244,7 @@ Named so nothing here reads as a ruling it is not.
 
 This is a design deliverable, so its acceptance is a reading, not a build. It is accepted when:
 
-1. Each §0 "wired? no" row has an owner ruling either way, recorded in `todo-owner-rulings.md` R9.
+1. Each §0 "wired? no" row has an owner ruling either way, recorded in `done-todo-owner-rulings.md:246` (R9).
 2. §2.1 is either implemented or explicitly declined with the double-charge risk accepted in writing.
 3. §4's keying is settled, because it is the decision most expensive to change after wiring — the breaker map's shape leaks into every construction site.
 4. The §8 rows marked *fails today* are written or scheduled with an owner and a date.
