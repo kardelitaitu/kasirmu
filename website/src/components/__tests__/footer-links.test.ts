@@ -44,19 +44,30 @@ function resolve(dict: Record<string, unknown>, key: string): unknown {
     );
 }
 
-/** Every i18n key the footer renders: four headings, sixteen links, one nav name. */
+/** Every i18n key the footer renders: five headings, twenty-one links, one nav name. */
 const COPY_KEYS = [
   'footer.sitemap',
   ...FOOTER_COLUMNS.map((column) => column.heading),
   ...FOOTER_LINKS.map((link) => link.label),
 ];
 
+/**
+ * Keys whose two locales are deliberately the SAME string.
+ *
+ * "Media Kit" is a loanword in Indonesian and is what press contacts there
+ * write, so translating it would invent a term nobody searches for. Spelled
+ * out here rather than by loosening the shared-label assertion below: any other
+ * key that stops differing is still a bug, and an empty exception list was the
+ * expectation until this page existed.
+ */
+const SHARED_LABEL_OK = ['footer.link.mediaKit'];
+
 // ─── Sitemap data ────────────────────────────────────────────────────
 
 describe('footer sitemap data', () => {
-  it('has four columns and sixteen links', () => {
-    expect(FOOTER_COLUMNS).toHaveLength(4);
-    expect(FOOTER_LINKS).toHaveLength(16);
+  it('has five columns and twenty-one links', () => {
+    expect(FOOTER_COLUMNS).toHaveLength(5);
+    expect(FOOTER_LINKS).toHaveLength(21);
   });
 
   it('has no duplicate slug (two links to one page read as a broken column)', () => {
@@ -64,7 +75,7 @@ describe('footer sitemap data', () => {
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 
-  it('covers the product, solutions, business and help groupings', () => {
+  it('covers the product, solutions, business, help and company groupings', () => {
     for (const slug of [
       'features',
       'pricing',
@@ -82,6 +93,11 @@ describe('footer sitemap data', () => {
       'support',
       'cara',
       'perbandingan',
+      'about',
+      'media-kit',
+      'contact',
+      'legal/terms',
+      'legal/privacy',
     ]) {
       expect(FOOTER_LINKS.map((link) => link.slug), `missing ${slug}`).toContain(slug);
     }
@@ -96,9 +112,30 @@ describe('footer sitemap data', () => {
     expect(FOOTER_SRC).toContain('FOOTER_COLUMNS');
   });
 
-  it('renders 2 legal links (privacy and terms)', () => {
-    expect(FOOTER_SRC).toContain("'legal/privacy'");
-    expect(FOOTER_SRC).toContain("'legal/terms'");
+  it('keeps Privacy and Terms in the Company column, and only there', () => {
+    // They used to sit in a second <nav> under the sitemap with their own
+    // aria-label. That row is gone; the destinations moved into the Company
+    // column, so this asserts the data — not the markup — is what carries them,
+    // and that no other column duplicates them.
+    const company = FOOTER_COLUMNS.find((column) => column.heading === 'footer.col.company');
+    expect(company, 'the Company column is gone').toBeDefined();
+    expect(company?.links.map((link) => link.slug)).toEqual([
+      'about',
+      'media-kit',
+      'contact',
+      'legal/terms',
+      'legal/privacy',
+    ]);
+    const legalLinks = FOOTER_LINKS.filter((link) => link.slug.startsWith('legal/'));
+    expect(legalLinks.map((link) => link.slug)).toHaveLength(2);
+  });
+
+  it('no longer renders a separate legal nav', () => {
+    // The row's own accessible name (`footer.legal`) is gone with it; a
+    // leftover <nav> would be a second landmark naming the same two links.
+    expect(FOOTER_SRC).not.toContain("'footer.legal'");
+    expect(FOOTER_SRC).not.toContain("'legal/privacy'");
+    expect(FOOTER_SRC).not.toContain("'legal/terms'");
   });
 });
 
@@ -151,14 +188,14 @@ describe('footer copy is localized', () => {
     }
   });
 
-  it('shares no label between the locales', () => {
+  it('shares no label between the locales, except the ones named here', () => {
     // The regression this catches: the footer rendering one language for every
     // locale — which it did, in Indonesian, until the label keys landed. An
-    // empty list is the expectation; if a future label is deliberately the same
-    // in both languages (a proper noun, say), name it here explicitly rather
-    // than loosening the assertion to a count.
+    // empty list is the expectation; a label that is deliberately the same in
+    // both languages is named in SHARED_LABEL_OK rather than the assertion
+    // being loosened to a count.
     const shared = COPY_KEYS.filter((key) => resolve(enJson, key) === resolve(idJson, key));
-    expect(shared).toEqual([]);
+    expect(shared).toEqual(SHARED_LABEL_OK);
   });
 
   it('keeps localized column headings (they were inline ternaries before)', () => {

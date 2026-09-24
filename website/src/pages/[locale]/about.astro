@@ -1,0 +1,186 @@
+---
+export function getStaticPaths() {
+  return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
+}
+/**
+ * About — the problem kasir.mu exists to solve.
+ *
+ * This page is the one place on the site that argues from the ENGINEERING
+ * rather than from a feature list: every other page sells a capability ("works
+ * offline", "prints receipts"), and this page explains why those capabilities
+ * hold up where a cloud-first client's offline mode does not. The argument runs
+ * from how the product is actually built — a native client with an embedded
+ * database, deterministic sync, direct hardware access, a light footprint, and
+ * a server with no runtime pauses — and each item is paired with what it means
+ * on the shop floor, because a merchant buys the second half.
+ *
+ * The comparisons are of APPROACHES, never of named competitors: the
+ * competitor-by-competitor page is /perbandingan, so this page cannot drift
+ * into claims about how a specific product is implemented.
+ *
+ * Copy lives in the dictionaries (`about.*`) in both locales. Scalars resolve
+ * through `t(locale, …)` inline, exactly as the other pages read theirs; the
+ * four structured blocks are read with `dict()` and named back through `t()` in
+ * a `data-i18n-key` attribute, which is what keeps them visible to
+ * `scripts/audit-i18n.mjs` (it collects literals inside `t(…)`, and a key read
+ * only through `dict()` is invisible to it).
+ */
+import Base from '../../layouts/Base.astro';
+import { getRelativeLocaleUrl } from 'astro:i18n';
+import { t, dict } from '../../i18n';
+
+const locale = Astro.currentLocale ?? 'en';
+// The whole document title. Composing `kasir.mu — ` on top of it would name the
+// brand twice (the title already says "…built kasir.mu"), which reads as a
+// mistake in a search result and spends characters of the ~60 a SERP shows.
+const pageTitle = t(locale, 'about.title');
+
+interface Differentiator {
+  title: string;
+  body: string;
+  value: string;
+}
+
+interface AboutCopy {
+  problems: string[];
+  items: Differentiator[];
+  table: { feature: string; value: string }[];
+  principles: { title: string; body: string }[];
+}
+
+const about = dict(locale).about as AboutCopy;
+// Array order is the argument's order — storage → sync → hardware → footprint →
+// server, each building on the previous. It is authoring order in the
+// dictionary, so both locales render the same sequence.
+const { problems, items, table, principles } = about;
+
+const downloadHref = getRelativeLocaleUrl(locale, 'download');
+const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
+const contactHref = getRelativeLocaleUrl(locale, 'contact');
+---
+
+<Base title={pageTitle} description={t(locale, 'pageDesc.about')}>
+  <section class="mx-auto max-w-4xl px-4 py-16">
+    <div data-reveal class="text-center">
+      <h1 class="text-4xl font-bold sm:text-5xl">{pageTitle}</h1>
+      <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{t(locale, 'about.subtitle')}</p>
+    </div>
+
+    <!-- The problem, named before the product is mentioned. Each item is a
+         failure mode a merchant has already lived through once. -->
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.problems')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.problemTitle')}</h2>
+      <p class="mt-3 text-muted">{t(locale, 'about.problemIntro')}</p>
+      <ul class="mt-6 space-y-3">
+        {
+          problems.map((problem) => (
+            <li class="flex gap-3 rounded-xl border border-ink/10 bg-surface/40 p-5 text-sm leading-relaxed text-muted">
+              <span aria-hidden="true" class="mt-0.5 shrink-0 font-semibold text-danger">
+                ✗
+              </span>
+              <span>{problem}</span>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+
+    <!-- What we did instead. Each card is the engineering fact plus the outcome
+         it buys, because the fact alone is not why anyone switches. -->
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.items')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.approachTitle')}</h2>
+      <p class="mt-3 text-muted">{t(locale, 'about.approachIntro')}</p>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
+        {
+          items.map((item, i) => (
+            <article class="rounded-xl border border-ink/10 bg-surface/40 p-6 transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)] hover:border-ink/20 hover:shadow-md">
+              <h3 class="text-lg font-semibold">
+                <span aria-hidden="true" class="mr-2 text-primary">
+                  {i + 1}.
+                </span>
+                {item.title}
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{item.body}</p>
+              <p class="mt-4 flex gap-2 border-t border-ink/10 pt-4 text-sm font-medium text-ink">
+                <span aria-hidden="true" class="text-success">
+                  ✓
+                </span>
+                <span>{item.value}</span>
+              </p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+
+    <!-- The same five points as one column of engineering and one column of
+         consequence, for a reader who wants the summary rather than the essay.
+         A real table with scoped headers, so a screen reader announces the pair
+         instead of reading eleven loose cells. -->
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.table')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.tableTitle')}</h2>
+      <p class="mt-3 text-muted">{t(locale, 'about.tableIntro')}</p>
+      <div class="mt-6 overflow-x-auto rounded-2xl border border-ink/10">
+        <table class="w-full min-w-[520px] border-collapse text-left text-sm">
+          <thead>
+            <tr class="border-b border-ink/10 bg-ink/[0.03]">
+              <th scope="col" class="px-5 py-4 font-semibold">{t(locale, 'about.tableFeature')}</th>
+              <th scope="col" class="px-5 py-4 font-semibold">{t(locale, 'about.tableValue')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {
+              table.map((row) => (
+                <tr class="border-b border-ink/5 last:border-0">
+                  <th scope="row" class="px-5 py-4 font-normal text-muted">
+                    {row.feature}
+                  </th>
+                  <td class="px-5 py-4 font-medium text-ink">{row.value}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.principles')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.principlesTitle')}</h2>
+      <div class="mt-6 grid gap-4 sm:grid-cols-3">
+        {
+          principles.map((principle) => (
+            <article class="rounded-xl border border-ink/10 bg-surface/40 p-6">
+              <h3 class="font-semibold">{principle.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{principle.body}</p>
+            </article>
+          ))
+        }
+      </div>
+    </div>
+
+    <div data-reveal class="mt-16 rounded-2xl border border-ink/10 bg-surface/60 p-8 text-center sm:p-10">
+      <h2 class="text-2xl font-bold">{t(locale, 'about.closingTitle')}</h2>
+      <p class="mx-auto mt-3 max-w-2xl text-muted">{t(locale, 'about.closingBody')}</p>
+      <div class="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
+        <a
+          href={downloadHref}
+          class="rounded-md bg-primary px-6 py-3 font-semibold text-on-primary transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:opacity-90 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'hero.ctaPrimary')}
+        </a>
+        <a
+          href={pricingHref}
+          class="rounded-md border border-ink/15 px-6 py-3 font-semibold text-ink transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:bg-ink/5 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'hero.ctaSecondary')}
+        </a>
+        <a
+          href={contactHref}
+          class="rounded-md border border-ink/15 px-6 py-3 font-semibold text-ink transition-all duration-[120ms] ease-[cubic-bezier(0.2,0,0,1)] hover:bg-ink/5 hover:scale-[1.03] active:scale-[0.97]"
+        >
+          {t(locale, 'about.contactCta')}
+        </a>
+      </div>
+    </div>
+  </section>
+</Base>

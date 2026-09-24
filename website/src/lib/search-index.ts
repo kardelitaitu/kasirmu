@@ -85,6 +85,13 @@ function pageItems(locale: string): SearchItem[] {
     { id: 'cara', title: id ? 'Cara Pakai kasir.mu' : 'How to Use kasir.mu', category: 'pages', url: `/${locale}/cara`, keywords: 'cara pakai install jualan qris stok offline shift how to guide tutorial' },
     { id: 'perbandingan', title: id ? 'Perbandingan kasir.mu vs Lainnya' : 'kasir.mu vs Others Compared', category: 'pages', url: `/${locale}/perbandingan`, keywords: 'perbandingan vs moka majoo olsera qasir pawoon compare alternatif murah' },
 
+    // Company pages. "about" is keyword-heavy on purpose: a visitor looking for
+    // why the app is native searches for the symptoms (offline, lag, hardware,
+    // memory) rather than for the company.
+    { id: 'about', title: id ? 'Tentang kasir.mu' : 'About kasir.mu', category: 'pages', url: `/${locale}/about`, keywords: 'about rust native offline arsitektur architecture lag memory hardware perusahaan why built lean tidak berat' },
+    { id: 'media-kit', title: id ? 'Media Kit' : 'Media Kit', category: 'pages', url: `/${locale}/media-kit`, keywords: 'media kit press logo brand aset assets warna colour typography boilerplate jurnalis pers' },
+    { id: 'contact', title: id ? 'Kontak' : 'Contact', category: 'pages', url: `/${locale}/contact`, keywords: 'contact hubungi kontak email sales support discord enterprise penawaran quote invoice faktur' },
+
     // Vertical solutions
     { id: 'kasir-gratis', title: id ? 'Kasir Gratis Selamanya' : 'Free POS Forever', category: 'pages', url: `/${locale}/kasir-gratis`, keywords: 'kasir gratis free umkm warung murah mudah ringan offline' },
     { id: 'kasir-murah', title: id ? 'Kasir Murah Tanpa Biaya Tersembunyi' : 'Cheap POS With No Hidden Fees', category: 'pages', url: `/${locale}/kasir-murah`, keywords: 'kasir murah harga price cheap affordable plus pro gratis' },

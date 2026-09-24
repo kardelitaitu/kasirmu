@@ -1,7 +1,13 @@
 ---
 /**
- * Site footer: socials + copyright on the left, the sitemap and the legal
- * links on the right.
+ * Site footer: socials + copyright on the left, the five-column sitemap on the
+ * right.
+ *
+ * There is no separate legal row any more. Terms and Privacy used to sit on
+ * their own line under the sitemap; they are now two of the links in the
+ * Company column (see FOOTER_COLUMNS in ../lib/footer-nav), so the footer has
+ * one navigation instead of two and every destination is reachable by the same
+ * path. The `/legal/…` URLs are unchanged.
  *
  * The sitemap is DATA (`FOOTER_COLUMNS` in ../lib/footer-nav), not markup, and
  * every visible string resolves through `t(locale, …)` — including the column
@@ -60,7 +66,7 @@ const year = new Date().getFullYear();
       </p>
     </div>
 
-    <!-- Right: Sitemap + Legal Links -->
+    <!-- Right: Sitemap (five columns, Company last) -->
     <div class="flex flex-col items-center gap-6 sm:items-end">
       <nav class="flex flex-wrap items-start justify-center gap-x-10 gap-y-4 text-xs sm:justify-end" aria-label={t(locale, 'footer.sitemap')}>
         {
@@ -78,16 +84,6 @@ const year = new Date().getFullYear();
             </div>
           ))
         }
-      </nav>
-      <nav class="flex items-center gap-6 text-xs text-muted" aria-label={t(locale, 'footer.legal')}>
-        <a href={getRelativeLocaleUrl(locale, 'legal/privacy')} class="footer-link relative transition-colors duration-200 hover:text-ink">
-          {t(locale, 'footer.privacy')}
-          <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
-        </a>
-        <a href={getRelativeLocaleUrl(locale, 'legal/terms')} class="footer-link relative transition-colors duration-200 hover:text-ink">
-          {t(locale, 'footer.terms')}
-          <span class="footer-underline absolute -bottom-0.5 left-0 h-px w-0 bg-primary transition-all duration-200 ease-[cubic-bezier(0.2,0,0,1)]"></span>
-        </a>
       </nav>
     </div>
   </div>

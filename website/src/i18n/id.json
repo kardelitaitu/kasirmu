@@ -44,6 +44,9 @@
     "support": "Dapatkan bantuan kasir.mu — dukungan email dan jawaban untuk pertanyaan paling umum.",
     "cara": "Panduan cara pakai kasir.mu langkah demi langkah: install, transaksi pertama, QRIS, stok, dan jualan offline.",
     "perbandingan": "Perbandingan jujur kasir.mu vs aplikasi kasir lain: Moka, Majoo, Olsera, Qasir, dan Pawoon — harga, fitur, dan offline.",
+    "about": "Kenapa kasir.mu dibangun sebagai aplikasi native: offline sejak awal, akses langsung ke perangkat, dan tetap ringan di perangkat yang sudah Anda miliki.",
+    "mediaKit": "Aset merek kasir.mu: cara menulis namanya, logo dan kartu sosial untuk diunduh, warna merek, dan tipografi.",
+    "contact": "Hubungi kasir.mu — dukungan, penjualan, dan kanal komunitas, lengkap dengan alamat email masing-masing.",
     "login": "Masuk ke akun kasir.mu Anda hanya dengan email.",
     "account": "Lisensi, langganan, dan informasi penagihan kasir.mu Anda.",
     "privacy": "Bagaimana kasir.mu mengumpulkan, menggunakan, dan melindungi data Anda.",
@@ -481,13 +484,13 @@
     "rights": "Hak cipta dilindungi.",
     "privacy": "Privasi",
     "terms": "Ketentuan",
-    "legal": "Legal",
     "sitemap": "Peta situs",
     "col": {
       "product": "Produk",
       "solutions": "Solusi Kasir",
       "business": "Jenis bisnis",
-      "help": "Bantuan"
+      "help": "Bantuan",
+      "company": "Perusahaan"
     },
     "link": {
       "kasirGratis": "Kasir Gratis",
@@ -495,7 +498,10 @@
       "kasirQris": "Kasir QRIS",
       "kasirAndroid": "Kasir Android",
       "cara": "Cara Pakai",
-      "perbandingan": "Perbandingan"
+      "perbandingan": "Perbandingan",
+      "about": "Tentang kami",
+      "mediaKit": "Media Kit",
+      "contact": "Kontak"
     }
   },
   "legal": {
@@ -504,6 +510,154 @@
     "effective": "Mulai berlaku",
     "version": "Versi",
     "placeholder": "Halaman ini masih placeholder. Teks hukum akan ditambahkan sebelum peluncuran."
+  },
+  "about": {
+    "title": "Kenapa kami membangun kasir.mu",
+    "subtitle": "Sebagian besar aplikasi kasir menganggap koneksi internet selalu tersedia. Kami membangun kasir.mu dengan asumsi sebaliknya: transaksi terjadi di mesin kasir, cloud hanya cadangan, dan perangkat yang sudah Anda miliki cukup cepat.",
+    "problemTitle": "Masalah aplikasi kasir berbasis cloud",
+    "problemIntro": "Di halaman produk, semua aplikasi kasir terlihat sama. Bedanya baru terasa saat jam sibuk, di toko dengan satu router lemah, pada anggaran perangkat, dan pada apa yang sebenarnya Anda bayar setiap bulan.",
+    "problems": [
+      "Mode offline hanya tambalan browser. Aplikasi web yang tetap melayani transaksi dari localStorage lalu mengirim ulang antreannya berisiko kehilangan penjualan, menggandakan struk, atau mencatat urutan yang salah saat koneksi kembali.",
+      "Periferal butuh penerjemah di latar belakang. Untuk mencetak struk, membuka laci kas, atau membaca scanner barcode dari aplikasi web, Anda harus menjalankan layanan lokal tambahan di setiap register — satu lagi yang bisa mati di tengah jam ramai.",
+      "Aplikasinya lebih berat dari pekerjaannya. Klien berbasis browser butuh tablet modern atau mini PC i5 agar terasa ringan, artinya adopsi berarti mengganti mesin kasir yang sebenarnya masih bekerja.",
+      "Stok saat jam sibuk jadi rebutan kunci database. Ketika dua kasir menjual unit terakhir pada saat yang sama, backend cloud berebut lock baris — stok bisa lebih terjual saat permintaan timeout.",
+      "Biaya infrastruktur masuk ke harga langganan. Server yang disiapkan untuk hari teramai dibayar sepanjang tahun, dan marginnya diambil dari harga yang Anda bayar."
+    ],
+    "approachTitle": "Cara kami menyelesaikannya",
+    "approachIntro": "kasir.mu adalah aplikasi native: bahasa sistem yang sama di mesin kasir dan di server, basis data tertanam di mesin kasir itu sendiri, dan akses langsung ke perangkat kerasnya.",
+    "items": [
+      {
+        "title": "Mesin kasir tidak pernah menunggu jaringan",
+        "body": "Mesin kasir menjalankan basis datanya sendiri. Transaksi ditulis lokal begitu kasir menekan tombolnya, jadi datanya sudah utuh sebelum jaringan dilibatkan.",
+        "value": "Toko tetap bisa berjualan sepanjang hari walau internet mati — tidak ada penjualan hilang, dan tidak ada transaksi ganda saat koneksi kembali."
+      },
+      {
+        "title": "Sinkronisasi yang deterministik",
+        "body": "Setiap register mengantre perubahannya dan berdamai dengan register lain serta cloud lewat satu protokol berurutan, sehingga event yang sama diproses dua kali tetap memberi hasil yang sama.",
+        "value": "Beberapa register di satu toko mencatat angka yang sama, walau sehari penuh tanpa internet."
+      },
+      {
+        "title": "Akses langsung ke perangkat",
+        "body": "Printer struk, laci kas, scanner barcode, dan mesin kartu diakses langsung oleh aplikasi — tanpa jembatan localhost, tanpa sandbox browser di tengahnya.",
+        "value": "Struk tercetak seketika dan pencarian barcode langsung muncul, tanpa layanan latar belakang yang harus dijaga."
+      },
+      {
+        "title": "Jejak memori yang ringan",
+        "body": "Kliennya aplikasi native kecil, bukan browser yang dibundel, sehingga pemakaian memori dihitung puluhan megabita, bukan ratusan.",
+        "value": "Mesin kasir yang sudah ada tetap terpakai — PC spesifikasi rendah, tablet murah, atau mini PC tanpa kipas."
+      },
+      {
+        "title": "Performa yang stabil saat jam sibuk",
+        "body": "Server tidak punya garbage collector dan tidak perlu warm-up, jadi latensinya tetap datar ketika semua register bertransaksi bersamaan.",
+        "value": "Jam makan siang dan tutup toko berjalan seperti hari biasa, dengan stok yang sama di semua cabang."
+      }
+    ],
+    "tableTitle": "Yang ada di balik layar",
+    "tableIntro": "Sisi teknisnya urusan kami. Ini artinya di lantai toko.",
+    "tableFeature": "Dibangun dengan",
+    "tableValue": "Yang Anda dapatkan",
+    "table": [
+      {
+        "feature": "Mesin penyimpanan lokal, tanpa jeda runtime",
+        "value": "Layar tidak membeku dan tidak lag saat jam makan siang tersibuk."
+      },
+      {
+        "feature": "Basis data tertanam dengan sinkronisasi antar register",
+        "value": "Toko tidak pernah berhenti berjualan, walau internet mati sehari penuh."
+      },
+      {
+        "feature": "Kontrol langsung printer, scanner, dan laci kas",
+        "value": "Struk dan scan barcode seketika, tanpa layanan jembatan yang bisa mati."
+      },
+      {
+        "feature": "Klien native yang kecil",
+        "value": "Jalan di perangkat kasir murah atau yang sudah Anda miliki."
+      },
+      {
+        "feature": "Server efisien, tanpa tumpukan kontainer",
+        "value": "Akurasi stok multi-cabang yang stabil dengan harga yang tetap murah."
+      }
+    ],
+    "principlesTitle": "Prinsip kami",
+    "principles": [
+      {
+        "title": "Offline adalah bawaan",
+        "body": "Fitur yang tidak bisa jalan tanpa koneksi adalah fitur yang tidak bisa diandalkan saat toko sedang melayani."
+      },
+      {
+        "title": "Data Anda milik Anda",
+        "body": "Catatan toko tersimpan lebih dulu di mesin toko. Cloud adalah rekan sinkronisasi dan cadangan, bukan penjaga pintu."
+      },
+      {
+        "title": "Perangkat murah sudah cukup",
+        "body": "Perangkat lunak tidak boleh jadi alasan mesin kasir yang masih bekerja dibuang."
+      }
+    ],
+    "closingTitle": "Coba di perangkat Anda sendiri",
+    "closingBody": "Unduh kasir.mu, buat satu transaksi, cabut kabel jaringan, lalu lanjutkan. Itu intinya.",
+    "contactCta": "Hubungi kami"
+  },
+  "mediaKit": {
+    "title": "Media Kit",
+    "docTitle": "Media Kit & Aset Merek",
+    "subtitle": "Semua yang Anda butuhkan untuk menulis tentang kasir.mu: cara menulis namanya, aset yang bisa diunduh, warnanya, dan fakta yang bisa dikutip.",
+    "nameTitle": "Nama",
+    "nameBody": "Tulis dengan huruf kecil sebagai satu kata dengan titik: kasir.mu. Bukan Kasir.mu, KasirMu, kasir mu, atau Kasir MU.",
+    "boilerplateTitle": "Cara mendeskripsikannya",
+    "boilerplateShortTitle": "Satu baris",
+    "boilerplateShort": "kasir.mu adalah aplikasi kasir ringan untuk kafe, restoran, dan ritel di Indonesia yang tetap bisa berjualan tanpa koneksi internet.",
+    "boilerplateLongTitle": "Satu paragraf singkat",
+    "boilerplateLong": "kasir.mu adalah aplikasi kasir dan inventaris native untuk ritel dan kuliner di Indonesia. Aplikasinya berjalan di mesin kasir itu sendiri, sehingga penjualan, shift, dan stok tetap bisa dipakai saat internet mati, lalu tersinkron ke register lain, cabang lain, dan cloud begitu koneksi kembali. Berjalan di Windows, Linux, macOS, dan Android, termasuk perangkat spesifikasi rendah.",
+    "assetsTitle": "Logo dan gambar",
+    "assetsIntro": "Unduh aset yang memang disajikan situs ini. Untuk set logo vektor lengkap dan ekspor ikon aplikasi, minta langsung ke kami.",
+    "assetMark": "Logo mark (SVG)",
+    "assetMarkNote": "Berbentuk persegi, untuk avatar, ikon aplikasi, dan cetak ukuran kecil.",
+    "assetSocial": "Kartu sosial (PNG)",
+    "assetSocialNote": "1200×630, untuk pratinjau artikel dan tautan yang dibagikan.",
+    "download": "Unduh",
+    "previewAlt": "Logo mark kasir.mu",
+    "socialPreviewAlt": "Kartu berbagi sosial kasir.mu",
+    "colorsTitle": "Warna",
+    "colorsIntro": "Antarmuka kami dibangun di atas token ini. Kalau hanya memakai satu warna, pakai biru primernya.",
+    "colorPrimary": "Primer",
+    "colorAccent": "Aksen",
+    "colorInk": "Teks",
+    "colorSurface": "Permukaan",
+    "typoTitle": "Tipografi",
+    "typoBody": "Judul dan isi tulisan memakai Inter. Kode, tata letak struk, dan angka memakai JetBrains Mono. Keduanya font open source yang gratis diunduh.",
+    "usageTitle": "Aturan pemakaian logo",
+    "usageDoTitle": "Lakukan",
+    "usageDo": [
+      "Beri ruang kosong di sekeliling logo setinggi titik pada kata-kata kasir.mu.",
+      "Pakai logo di atas putih, di atas biru merek, atau di atas permukaan gelap yang kontras.",
+      "Tautkan ke https://kasir.mu saat logo dipakai di halaman tentang kami."
+    ],
+    "usageDontTitle": "Jangan",
+    "usageDont": [
+      "Jangan tarik, putar, atau ganti warnanya — bentuk dan birunya tetap.",
+      "Jangan tambah efek: tanpa bayangan, gradien, garis luar, atau bevel.",
+      "Jangan pakai dengan cara yang seolah menyatakan kerja sama yang belum kami setujui."
+    ],
+    "contactTitle": "Pers dan kerja sama",
+    "contactBody": "Untuk wawancara, unit ulasan, atau paket aset lengkap, kirim pesan dan akan dijawab oleh orang, bukan bot.",
+    "contactCta": "Hubungi kami"
+  },
+  "contact": {
+    "title": "Kontak",
+    "subtitle": "Ada pertanyaan soal harga, pindah dari aplikasi kasir lain, atau cara menyiapkan kasir.mu? Kirim pesan — dibaca oleh orang.",
+    "formTitle": "Kirim pesan",
+    "channelsTitle": "Cara lain menghubungi kami",
+    "supportTitle": "Dukungan produk",
+    "supportNote": "Masalah pemasangan, aktivasi lisensi, bug, dan pertanyaan penagihan.",
+    "salesTitle": "Penjualan dan enterprise",
+    "salesNote": "Pemasangan multi-cabang, penawaran harga, dan faktur pajak resmi.",
+    "salesEmail": "sales@kasir.mu",
+    "communityTitle": "Kanal komunitas",
+    "communityNote": "Tanya sesama pengguna kasir.mu, dan dapat kabar rilis lebih dulu.",
+    "communityCta": "Gabung Discord",
+    "hoursTitle": "Kapan kami membalas",
+    "hours": "Pesan kami jawab berurutan sesuai kedatangan, tujuh hari seminggu, dan biasanya dalam satu hari kerja. Dukungan tersedia dalam bahasa Indonesia dan Inggris.",
+    "faqCta": "Baca FAQ dulu"
   },
   "notFound": {
     "title": "Halaman tidak ditemukan",
