@@ -1626,3 +1626,106 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
         vocabulary.len(),
     );
 }
+
+/// How many command bodies open the store BEFORE they gate, and the floor that
+/// stops the sweep from going quiet.
+///
+/// MEASURED 2026-09-24, the pass that fixed the `customers` five under R10's BR-X4:
+/// **69 bodies** resolve the session AND the store in one call (`state.resolve_scope`,
+/// `ctx.resolve_scope`) and only then name a permission, so the store is opened
+/// before the caller is authorised. `open_store` is not free — on a cache miss it
+/// creates the data directory, creates the database file and runs migrations
+/// (`platform/core/src/database/manager.rs:73-103`) — so an UNAUTHORIZED caller both
+/// triggers filesystem work and sees `Internal("opening store db")` where the bridge
+/// answers `PermissionDenied`. R10 rules the scope-aware, gate-first order
+/// authoritative and says the gate-order half is folded in explicitly, so this
+/// population is the remaining work rather than a park.
+///
+/// This is a RATCHET, not a fix: it pins the population so a new open-before-gate
+/// body cannot be added silently, and it fails when the count DROPS too, forcing the
+/// floor down in the same commit that fixes a body. That second leg is the one that
+/// matters — a floor that only checks an upper bound lets the sweep rot to zero and
+/// still pass, which is the failure mode this file's own header describes.
+const OPEN_BEFORE_GATE_FLOOR: usize = 69;
+
+/// Does this body call the combined session+store resolver before it names a
+/// permission?
+///
+/// Textual, matching the rest of this file: the combined helper's NAME is the
+/// signal, because `resolve_scope` is exactly the call that opens the store as a
+/// side effect of resolving the session.
+fn opens_store_before_gating(text: &str) -> bool {
+    // COMMENTS MUST GO FIRST, and this is not tidiness — the first draft of this
+    // test scored a false positive on every body the R10 fix had just repaired,
+    // because the explanatory comment beside the corrected call says "`resolve_scope`
+    // calls `open_store`, which ...". A naive `find("resolve_scope")` reads that
+    // prose as a call site, so the five fixed commands stayed flagged and the ratchet
+    // measured the comment, not the code. Strip each line at its `//` before matching.
+    let code: String = text
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let Some(scope_at) = code.find("resolve_scope") else {
+        return false;
+    };
+    let Some(perm_at) = code.find("require_") else {
+        return false;
+    };
+    // The resolver sits ABOVE the first guard name. A body that gates first and
+    // resolves after is the shape R10 wants, and is not counted here.
+    scope_at < perm_at
+}
+
+#[test]
+fn drift_pin_open_before_gate_population_matches_its_floor() {
+    let commands_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands");
+    let mut bodies = 0usize;
+    let mut by_file: BTreeMap<String, usize> = BTreeMap::new();
+
+    for path in rust_files(&commands_dir) {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        // Test files describe the surface; they are not it.
+        if name.ends_with("_tests.rs") {
+            continue;
+        }
+        let src = read(&path);
+        // Count at the `pub async fn` boundaries so a body is never merged with its
+        // neighbour, which would let one gated body hide an ungated one beside it.
+        let chunks: Vec<&str> = src
+            .split("pub async fn ")
+            .skip(1)
+            .map(|c| c.split("pub async fn ").next().unwrap_or(c))
+            .collect();
+        for chunk in chunks {
+            if opens_store_before_gating(chunk) {
+                bodies += 1;
+                *by_file.entry(name.clone()).or_default() += 1;
+            }
+        }
+    }
+
+    assert!(
+        bodies >= OPEN_BEFORE_GATE_FLOOR,
+        "the open-before-gate sweep found {bodies} bodies, below the pinned floor of \
+         {OPEN_BEFORE_GATE_FLOOR}. A sweep that finds fewer has stopped matching, not \
+         had its subject repaired: if you FIXED bodies, lower the floor in the same \
+         commit and say so here. Per-file census: {by_file:?}",
+    );
+    // NO SLACK, deliberately. An earlier draft allowed +4 and a mutation test caught
+    // it: reintroducing the defect in one command moved the count 75 -> 76, sailed
+    // under the bound, and the ratchet stayed green. Any headroom here is headroom
+    // for exactly the regression this test exists to refuse.
+    assert!(
+        bodies <= OPEN_BEFORE_GATE_FLOOR,
+        "{bodies} bodies open the store before gating, above the pinned floor of \
+         {OPEN_BEFORE_GATE_FLOOR}. A newly added body inherits the defect R10 (BR-X4) \
+         is closing: resolve the session, GATE, then resolve the store. If you FIXED \
+         bodies, lower the floor in the same commit. Per-file census: {by_file:?}",
+    );
+}
