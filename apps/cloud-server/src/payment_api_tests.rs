@@ -435,3 +435,78 @@ fn payment_state_carries_acquirer_setting_from_cloud_state() {
         "configured acquirer must reach the processor"
     );
 }
+
+// ── R9(a): the gateway idempotency key is never absent ────────────────
+
+/// The charge body carries a DETERMINISTIC, tenant-scoped `order_id` even when
+/// the caller sends no idempotency key.
+///
+/// **This is the guard for R9(a)** (owner, 2026-09-20;
+/// `done-todo-owner-rulings.md:246`). Before it, `idempotency_key` was copied
+/// straight off the request body, so a caller that omitted it got `None` — and the
+/// driver mints a FRESH `order_id` for a `None` key
+/// (`crates/kasirmu-payment/src/drivers/qris.rs:347-351`). A timeout followed by a
+/// retry of the same sale therefore produced a second live QR against the same
+/// `sale_id`: a double-charge path that needed no bug on the client at all, only a
+/// timeout.
+///
+/// The assertion is on the WIRE body, not on the derived string, because the
+/// derivation is only half the contract — the driver sanitises and truncates the key
+/// before it becomes `order_id`, so a test that stopped at the `format!` would pass
+/// while the value that actually reaches Midtrans differed.
+#[tokio::test]
+async fn charge_derives_a_stable_gateway_key_when_the_caller_sends_none() {
+    let mock = midtrans_mock().await;
+    let api_base = format!("{}/v2", mock.uri());
+    let processor = build_qris_processor("sk-test", true, None, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(processor),
+    };
+    let app = payment_router(state);
+
+    // Two calls with the SAME body and no key: a retry.
+    let send = || {
+        authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-1","amount_minor":15000}"#,
+            Some("tenant-A"),
+        )
+    };
+    for _ in 0..2 {
+        let resp = app.clone().oneshot(send()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    let received = mock.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2, "one charge body per request");
+    let bodies: Vec<serde_json::Value> = received
+        .iter()
+        .map(|r| serde_json::from_slice(&r.body).expect("charge body is JSON"))
+        .collect();
+
+    let first = bodies[0]["transaction_details"]["order_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("order_id must be a string, body: {}", bodies[0]));
+    let second = bodies[1]["transaction_details"]["order_id"]
+        .as_str()
+        .unwrap_or_else(|| panic!("order_id must be a string, body: {}", bodies[1]));
+
+    assert_eq!(
+        first, second,
+        "a retry of the same sale must reuse the same gateway key, or it mints a \
+         second live QR"
+    );
+    assert!(
+        first.contains("sale-1"),
+        "the derived key must be traceable to the sale it belongs to, got {first:?}"
+    );
+    assert!(
+        first.contains("tenant-A"),
+        "the key must be tenant-scoped: `sale_id` is device-generated and only \
+         unique within a tenant, so two tenants may legitimately both use 'sale-1'. \
+         Got {first:?}"
+    );
+}

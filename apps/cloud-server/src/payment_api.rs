@@ -236,6 +236,34 @@ async fn qris_charge_handler(
         "MIDTRANS_SERVER_KEY not configured; QRIS charges are disabled".into(),
     ))?;
 
+    // R9(a) (owner, 2026-09-20): the GATEWAY idempotency key is never `None` here.
+    //
+    // `sale_id` is required and already sent as `reference`, so a retry has a stable
+    // input to key on. Leaving this `None` is what made an existing retry unsafe: the
+    // driver mints a fresh `order_id` per call
+    // (`crates/kasirmu-payment/src/processor.rs:78-80`), so a timeout-plus-retry against
+    // the same sale produced a SECOND live QR and could double-charge it. Deriving the
+    // key from `sale_id` makes the retry re-use the same QR (PAY-2) with no schema, type
+    // or client change, which is why the ruling lets this half proceed on its own.
+    //
+    // The caller's key still WINS when supplied, so this is additive for the contract
+    // this endpoint already documents (`ChargeRequest::idempotency_key`, above) rather
+    // than a redefinition of it.
+    //
+    // NOT the `payments` row's `idempotency_key`: that one is deliberately optional and
+    // stays so (contract at `20261001_sale_idempotency.sql:18`). The ruling says
+    // *gateway key* explicitly for exactly this reason — the two share a field name.
+    //
+    // The separator is `-` and NOT `:`, deliberately: the driver SANITISES the key
+    // before use (`drivers/qris.rs:338-352` keeps only `[A-Za-z0-9_-]` and truncates to
+    // 44 chars), so a colon or a space would be DELETED rather than preserved —
+    // collapsing `tenant-A/sale-1` and `tenant-AB/sale1` onto one key. Tenant is
+    // prefixed because `sale_id` is device-generated and only unique per tenant.
+    let gateway_idempotency_key = body
+        .idempotency_key
+        .clone()
+        .unwrap_or_else(|| format!("qris-{}-{}", tenant_id, body.sale_id));
+
     let request = PaymentRequest {
         amount: Money {
             minor_units: amount_minor,
@@ -243,7 +271,7 @@ async fn qris_charge_handler(
         },
         reference: Some(body.sale_id.clone()),
         description: body.description.clone(),
-        idempotency_key: body.idempotency_key.clone(),
+        idempotency_key: Some(gateway_idempotency_key),
     };
 
     // `sale` is the honest two-phase entry point: it charges and returns as

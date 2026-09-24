@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use rusqlite::OptionalExtension as _;
 use rusqlite::params;
 use serde::Serialize;
 use tokio::sync::Mutex;
@@ -61,9 +62,66 @@ fn now_ms() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
+/// Decide whether an existing `order_id` row is a REPLAY of the call in hand or a
+/// COLLISION with a different charge.
+///
+/// Extracted so the Postgres and SQLite arms cannot drift: they read the same
+/// four columns and must reach the same verdict, and a rule written twice is a
+/// rule that will eventually be one rule and one bug.
+///
+/// `None` means the row vanished between the conflict and the read — treated as a
+/// collision, because the alternative is reporting success for a write that is
+/// not there.
+fn check_replay(
+    existing: Option<(String, String, i64, String)>,
+    order_id: &str,
+    tenant_id: &str,
+    sale_id: &str,
+    amount_minor: i64,
+    currency: &str,
+) -> Result<(), String> {
+    let Some((t, s, a, c)) = existing else {
+        return Err(format!(
+            "ledger row for {order_id} disappeared between the insert conflict and the replay read"
+        ));
+    };
+    if t == tenant_id && s == sale_id && a == amount_minor && c == currency {
+        // The same charge, retried. The ledger already says exactly this.
+        return Ok(());
+    }
+    Err(format!(
+        "ledger order_id collision: {order_id} is already recorded for tenant {t}, \
+         sale {s}, {a} {c}, but this charge is tenant {tenant_id}, sale {sale_id}, \
+         {amount_minor} {currency} — refusing to re-point it"
+    ))
+}
+
 impl LedgerDb {
-    /// Record a freshly issued QR. Fails if the `order_id` already exists —
-    /// a duplicate means a retry that must not silently re-point the ledger.
+    /// Record a freshly issued QR.
+    ///
+    /// **Idempotent on a replay, strict on a collision** (R9(a), owner
+    /// 2026-09-20; `done-todo-owner-rulings.md:246`). The two cases used to be
+    /// one, and that was a latent defect the gate-key derivation exposed: since
+    /// the driver now reuses the gateway key on a retry
+    /// (`drivers/qris.rs:338-352`), a timeout-plus-retry arrives with the SAME
+    /// `order_id` — and a bare INSERT answered `UNIQUE constraint failed`, so a
+    /// charge that had already been issued was reported as
+    /// `500 charge issued but not journaled`. That is the worst possible
+    /// outcome: the QR is live, the caller sees a failure, and the recovery it
+    /// asks for is manual reconciliation of a row that is already correct.
+    ///
+    /// So an existing row is compared field by field. Identical
+    /// `(tenant_id, sale_id, amount_minor, currency)` is a REPLAY and returns
+    /// `Ok(())` — the ledger already says exactly what this call would write.
+    /// Any difference is a genuine collision on a primary key two different
+    /// charges are claiming, which must still fail loudly, because silently
+    /// re-pointing `order_id` would attribute one sale's settlement to another.
+    /// The original invariant is therefore preserved rather than relaxed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` on a connection, transaction or write failure, and on a
+    /// collision whose stored facts differ from the ones supplied.
     pub async fn record_issue(
         &self,
         order_id: &str,
@@ -87,27 +145,70 @@ impl LedgerDb {
             tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
                 .await
                 .map_err(|e| format!("ledger tenant scope: {e}"))?;
-            tx.execute(
-                "INSERT INTO midtrans_transactions
-                    (order_id, tenant_id, sale_id, amount_minor, currency, status, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, 'issued', $6, $6)",
-                &[&order_id, &tenant_id, &sale_id, &amount_minor, &currency, &now],
-            )
-            .await
-            .map_err(|e| format!("ledger insert: {e}"))?;
+            // ON CONFLICT DO NOTHING makes the replay a no-op at the storage
+            // layer; the follow-up read then decides replay vs collision.
+            let inserted = tx
+                .execute(
+                    "INSERT INTO midtrans_transactions
+                        (order_id, tenant_id, sale_id, amount_minor, currency, status, created_at, updated_at)
+                     VALUES ($1, $2, $3, $4, $5, 'issued', $6, $6)
+                     ON CONFLICT (order_id) DO NOTHING",
+                    &[&order_id, &tenant_id, &sale_id, &amount_minor, &currency, &now],
+                )
+                .await
+                .map_err(|e| format!("ledger insert: {e}"))?;
+            if inserted == 0 {
+                let row = tx
+                    .query_opt(
+                        "SELECT tenant_id, sale_id, amount_minor, currency
+                         FROM midtrans_transactions WHERE order_id = $1",
+                        &[&order_id],
+                    )
+                    .await
+                    .map_err(|e| format!("ledger replay read: {e}"))?;
+                check_replay(row.as_ref().map(|r| {
+                    (
+                        r.get::<_, String>(0),
+                        r.get::<_, String>(1),
+                        r.get::<_, i64>(2),
+                        r.get::<_, String>(3),
+                    )
+                }), order_id, tenant_id, sale_id, amount_minor, currency)?;
+            }
             tx.commit()
                 .await
                 .map_err(|e| format!("ledger commit: {e}"))?;
             return Ok(());
         }
         let conn = self.db.lock().await;
-        conn.execute(
-            "INSERT INTO midtrans_transactions
-                (order_id, tenant_id, sale_id, amount_minor, currency, status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'issued', ?6, ?6)",
-            params![order_id, tenant_id, sale_id, amount_minor, currency, now],
-        )
-        .map_err(|e| format!("ledger insert: {e}"))?;
+        let inserted = conn
+            .execute(
+                "INSERT INTO midtrans_transactions
+                    (order_id, tenant_id, sale_id, amount_minor, currency, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'issued', ?6, ?6)
+                 ON CONFLICT (order_id) DO NOTHING",
+                params![order_id, tenant_id, sale_id, amount_minor, currency, now],
+            )
+            .map_err(|e| format!("ledger insert: {e}"))?;
+        if inserted == 0 {
+            let existing: Option<(String, String, i64, String)> = conn
+                .query_row(
+                    "SELECT tenant_id, sale_id, amount_minor, currency
+                     FROM midtrans_transactions WHERE order_id = ?1",
+                    params![order_id],
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, i64>(2)?,
+                            r.get::<_, String>(3)?,
+                        ))
+                    },
+                )
+                .optional()
+                .map_err(|e| format!("ledger replay read: {e}"))?;
+            check_replay(existing, order_id, tenant_id, sale_id, amount_minor, currency)?;
+        }
         Ok(())
     }
 
