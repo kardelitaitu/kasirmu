@@ -172,7 +172,7 @@ closes for NOT WORK rows.
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
-| **R3** | Default-role seeding in `complete_setup` | **NO** | Divergence stands; the tablet file carries an unresolved-tension comment rather than a fix. |
+| **R3** | Default-role seeding in `complete_setup` | **YES** | Both options executed 2026-09-25. **(i) was already satisfied, by a later design than the ruling assumed:** ADR #56 §2.2/§2.3 retired `complete_setup`/`write_setup` outright, and the replacement `provision_device` seeds inside its own transaction (`kasirmu-core/src/db/provisioning.rs:443`, step 2, before the owner that references them) — so the fresh-install hole R3 measured is closed without a one-line mirror. **(ii)** was still open and is now closed: `seed_default_roles_scoped` was registered on the desktop only (`apps/desktop-tauri/src/lib.rs:1196`), so the tablet had no re-seed path; it is now a shim over the same bridge body and is registered at `apps/mobile-tauri/src/lib.rs:759`. Guarded by `seed_default_roles_scoped_is_reachable_and_gated_on_the_tablet`, which asserts both the registration and the `staff:manage_roles` refusal. |
 
 **What R10's gate-order half covered when it was executed — and how much is left.**
 Fixed 2026-09-24 in `43c0154be`: the five `customers` commands now run
@@ -199,6 +199,41 @@ desktop divergence) was **already satisfied**; what the ruling's wording invites
 different decision — merging a two-shell policy — which needs its own ruling and its own
 edit to the store's per-client paragraph. The change was reverted and the reason recorded
 at the call site (`3f8674c96`).
+
+**R3 was already half-executed by work that superseded its premise, and finding that out was
+the whole task.** Both options were ruled on 2026-09-20
+(`done-todo-owner-rulings.md:100`): (i) mirror the bridge's leading `seed_default_roles()`
+into `write_setup` as leg 0, and (ii) register `seed_default_roles_scoped` on the mobile
+shell. Re-read at this tip:
+
+* **(i) needs no work, because its subject no longer exists.** ADR #56 §2.2/§2.3 **retired**
+  `write_setup` and `complete_setup` outright — the file now carries a "Retired by ADR #56"
+  block where those bodies were — and the replacement `provision_device` seeds inside the
+  provisioning transaction (`kasirmu-core/src/db/provisioning.rs:443`, step 2, commented as
+  "roles before the owner who references them"). So the fresh-install hole R3 measured is
+  closed, and closed by the *right* mechanism: not a mirrored line in a shell, but one shared
+  implementation both shells call.
+* **(ii) was genuinely still open, and it is a reachability defect.** Measured:
+  `seed_default_roles_scoped` was registered at `apps/desktop-tauri/src/lib.rs:1196` and
+  absent from the tablet's handler list. The bridge body and its `staff:manage_roles` gate
+  were already correct and shared; only the second shell's registration was missing. Added as
+  a shim (`apps/mobile-tauri/src/commands/setup.rs:175`) and registered at
+  `apps/mobile-tauri/src/lib.rs:759`.
+
+**The guard is on the shell surface, and that is deliberate, not incidental.** A bridge-side
+test of `seed_default_roles_scoped` would have passed for the entire period the tablet could
+not reach it, because the defect was never in the body — it was in which shells wired it up.
+`seed_default_roles_scoped_is_reachable_and_gated_on_the_tablet` therefore asserts two
+things: the name appears in this shell's own handler list, and a cashier session is refused
+with `PermissionDenied`. Mutation-tested both ways — removing the registration fails the run
+with *"R3 (ii): the tablet must register seed_default_roles_scoped, or it has no re-seed path
+at all while the desktop has one"*, and the deny leg covers the gate.
+
+**One thing this did NOT do, stated so it is not mistaken for finished work.** `ui/src/api/settings.ts:243`
+already exports `seedDefaultRolesScoped` and **nothing in the UI calls it** — the client was
+written against the desktop surface. Registering the command makes that client functional
+rather than dead on the tablet, but *surfacing* a re-seed action in the tablet UI is a product
+decision that R3 did not ask for and this pass did not take.
 
 **The general lesson, worth carrying past this file:** a ruling is a claim about intent,
 and executing one still requires reading the code it lands on. Two of the five above
