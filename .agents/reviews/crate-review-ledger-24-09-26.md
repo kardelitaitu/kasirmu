@@ -851,6 +851,71 @@ confirmed independently.**
 verification — recorded because a disproved lead costs the same effort to find and
 would have been worse to report as real.
 
+### Bridge fourteenth pass — 24-09-26 (the API crate, and a third disproved lead)
+
+**No defect fixed.** Moved to `kasirmu-api` as recommended — the crate with only
+first-pass coverage. The specific target was `pg.rs` (2,760 lines, never read).
+
+**Read:** `pg.rs` head + `create_user` + `verify_terminal_credentials`, the whole
+of `auth.rs` (335), the whole of `read_tiers.rs` (233) and its completeness test,
+`routes/tokens.rs` `admin_key_authorised`, `routes/terminals.rs` `hash_secret`,
+and `routes/settings.rs` both handlers.
+
+**Verified good, with one that was worth checking against a claim:**
+
+* `admin_key_authorised` (`routes/tokens.rs:101`) is genuinely constant-time —
+  HMAC-SHA256 digests under a fixed domain-separation key compared with
+  `verify_slice`. The file header claims this as **API-2 FIXED**, and the claim
+  holds: this is the same defect class as BRIDGE-6, already repaired here, and
+  the doc even names the reason ("a plain `==` on strings short-circuits on the
+  first differing byte"). I checked rather than trusting the stamp.
+* **Swept the whole API crate for that class**: `== *(secret|key|admin|token|
+  signature|supplied|provided)` and the reversed form return **zero** hits.
+  `verify_slice` appears exactly once, at the one site that needs it.
+* `hash_secret` SHA-256s the device secret and the comparison happens IN SQL
+  (`secret_hash = $2`), so there is no in-process string compare to time.
+* `verify_terminal_credentials` handles the pre-tenant RLS read explicitly
+  (BYPASSRLS discovery-role check before the lookup) and rolls back on drop.
+* `create_user` is transactional, RLS-scoped via `set_config(..., true)`, checks
+  the role exists before the insert, and distinguishes unique-vs-FK violations.
+
+**The disproved lead — and it is the most instructive one yet.** I found that
+`/api/v1/settings` (GET) is the ONE protected GET route absent from
+`READ_KEY_MAP`, and `read_gate_middleware` fails OPEN on an unmapped path ("Route
+not in the map — sync, public, or write — pass through"). The map's own comment
+documents that this exact gap was hit once before: *"This route is on the
+protected router but was MISSING from this map, and the gate passes any unmapped
+path through — so a read-scoped token reached it with no permission check"* (the
+memos route, fixed as API-A). So the shape, the precedent and the fail-open
+design all pointed at a live hole.
+
+**Wrong, and twice over.** First, `get_settings_handler` gates ITSELF —
+`admin_key_authorised` is the first statement (`routes/settings.rs:225`), so a
+read-scoped JWT is rejected before any read. Second, and better: the completeness
+question is ALREADY under test. `read_key_map_covers_all_protected_get_routes`
+(`read_tiers_tests.rs:232`) parses the ROUTER SOURCE, derives the GET route set,
+exempts `/api/v1/settings` with the reason spelled out
+(`"/api/v1/settings", // admin-key gated in the handler`), and fails on anything
+unmapped. It asserts the parse found ≥10 routes so it cannot pass vacuously, and
+its comment records that the FIRST version asserted a HAND-TYPED list — *"which is
+how GET /api/v1/memos/active came to be unmapped while the gate passed it through
+unchecked"*. That is the same lesson as BRIDGE-6's source pin and BRIDGE-8's
+call-site scan, already learned and already applied in this crate.
+
+**Verified:** `cargo test -p kasirmu-api --all-features
+read_key_map_covers` → **1 passed, 0 failed**.
+
+**The pattern worth naming.** Three consecutive passes (12th, 13th, 14th) produced
+no defect, and each died the same way: a plausible defect shape, correctly
+identified, that verification showed was ALREADY GUARDED — by a handler-level
+gate, by a source-derived completeness test, by a documented exemption. The
+bridge and the API both already carry the two defences this audit has been
+building toward (a fail-closed gate, and a test that keeps a list honest), and in
+several places they got there first. That is a substantive finding about the
+CODEBASE, not a null result: the remaining risk is concentrated where those
+defences are absent, and finding those places is now more about locating GAPS IN
+THE GUARDS than about reading more code.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
