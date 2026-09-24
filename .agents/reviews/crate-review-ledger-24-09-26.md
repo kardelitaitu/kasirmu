@@ -1127,6 +1127,61 @@ removed (`git status` clean).
 
 **Commit:** `ab4a48761` (BRIDGE-14/15, gates).
 
+### Bridge nineteenth pass — 24-09-26 (the empty-subject rule is already the house standard)
+
+The eighteenth pass recommended sweeping the floor rule across the remaining
+derived-set guards. This pass did, and the sweep **disproved the premise**: the
+rule was already institutionalised in this repository, in four places, before I
+started applying it. **No defect found, and no code changed.**
+
+**What the sweep found — all three Tier-0 Python gates already handle an empty
+subject, by two different mechanisms, each reasoned in its own header:**
+
+* **`verify-no-hardcoded-money-format.py`** REFUSES, with the sentence that names
+  the class: *"a gate that walked nothing must not print clean, and this run walked
+  none of the tree it is"* — exit 2, and a test case at `:411` that reddens it.
+* **`verify-bundle-parity.py`** refuses too, via `BlankScanDirs`, and its docstring
+  states the reason in the sharpest form in the repo: *"the verdict cannot tell
+  'the tree is clean' from 'this run looked at nothing' once the list is empty,
+  it only prints a number."* It also records the measured incident (a single space
+  as `--scan-dirs` split to an empty tuple, iteration ran over nothing, and the run
+  printed `scanned 0 file(s) in []` then `0 missing key(s)` and exit 0).
+* **`verify-scoped-reads.py`** carries the same refusal as `NoShellsNamed`.
+* **`verify-architecture-boundaries.py`** deliberately DECLINES a floor, and says
+  why: its fixture tests are *"made of nothing else"*, so a floor *"would fail the
+  fixture runs that are this checker's own tests, which is a different tool's fix
+  and not this one's."* It closes the residual risk a different way — the green
+  line carries the population it examined, so *"0 crates / 0 blockers" and "2
+  crates / 0 blockers now read differently"*, and the header states the caller's
+  action: read the `[population examined: ...]` clause and confirm it names the
+  tree you meant.
+
+**Verified empirically rather than by reading, and this is the part worth
+recording.** All three gates print a real denominator on the green line —
+`39 Rust key(s), 39 frontend key(s), 12 registration key(s) across 43 site(s)`;
+`PASS (1168 production .rs file(s) ...)`; `[population examined: 39 crate(s) in the
+Cargo graph, 577 dependency edge(s), 587 UI file(s), 978 file(s) below the
+application layer]`. So the two shell gates I floored in the eighteenth pass were
+not introducing a novel discipline — they were being brought UP TO a bar the
+Python gates had already set, and several of them exceed it, because a printed
+denominator is strictly more informative than a floor: a floor catches an empty
+subject, a denominator lets a reader catch a WRONG one.
+
+**The honest correction.** I described the floor rule last pass as a finding worth
+propagating repo-wide. It is real for the two shell gates (BRIDGE-14/15 stand —
+they had no floor, no denominator, and false-greened, which I demonstrated). But
+the generalisation was wrong: the rule was not missing, it was already the house
+standard, and where it is absent that absence is reasoned and compensated. The
+useful version of the claim is narrower — **the shell gates lagged the Python
+ones**, which is now fixed.
+
+**Verified:** no source, test or script changed this pass. Both shell gates still
+pass (`verify-scoped-coverage.sh` exit 0; `verify-scoped-authorization.sh
+--strict` exit 0); the three Python gates run clean with their denominators
+printed.
+
+**No commit** beyond this ledger entry.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
