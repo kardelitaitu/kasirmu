@@ -1446,6 +1446,70 @@ affected. `git status` confirms nothing of mine is uncommitted.
 
 **No commit** beyond this ledger entry.
 
+### Core thirty-second pass — 24-09-26 (loyalty and profile read in full: clean)
+
+**No defect.** Two more large unread modules read end to end, applying the sibling
+lens inline rather than as a separate sweep. Both are clean, and each contains a
+worked example of a lesson this audit learned the hard way in another file.
+
+**`db/loyalty.rs` (936).**
+
+* `compute_points` is exact-integer throughout (`i128`, no float), with a proper
+  floor-division normalisation so the half-up rule is uniform for any sign, and
+  `i64::try_from(..).unwrap_or(i64::MAX)` rather than a truncating cast. Its doc
+  records the f64 version it replaced and the concrete mis-rounding it caused.
+* **`redeem_points` is the worked example of the fix I nearly filed as a bug.** It
+  reads the balance OUTSIDE any transaction (`:370`), checks it (`:437`), and only
+  then opens `IMMEDIATE` (`:463`) — which is exactly the TOCTOU shape. But the
+  in-transaction write is a GUARDED CAS (`WHERE id = ?3 AND points >= ?1`, `:498`)
+  with `changed != 1` → rollback and refuse. So the pre-transaction read is a
+  cheap fast-fail for the common case and the CAS is the real guard; two
+  concurrent redemptions cannot both succeed. **The projection update at `:514` is
+  INSIDE that transaction** — the opposite of the reversal path below.
+* `reverse_loyalty_on_refund` takes a bare `&Connection` and documents that callers
+  supply the transaction. I verified BOTH callers do: `refunds.rs:427` and
+  `sync/queue.rs:604`. It caps the reversal cumulatively (`headroom`, clamped
+  `.max(0)`), uses the same i128 half-up, and keys the ledger row on
+  `loyalty-reversal-<refund_id>` so a replay is a constraint-violation no-op.
+
+**`db/profile.rs` (1,018) — the PII surface, and the best-argued file in the
+crate.**
+
+* The cipher state is THREE-valued, not boolean: `Absent` / `Readable` /
+  `Unreadable`, with the comment that *"a read failure is never evidence that a
+  field is empty"* (`:412`). `preserve()` returns the stored bytes only for
+  `Unreadable`, and the doc explains why unreadable and "caller sent nothing" are
+  different facts: only one of them is a decision anyone made.
+* `SensitiveWritePolicy` splits the caller's half of the judgement from the stored
+  bytes' half, and its `keep_pay` doc states both the correct and the incorrect
+  surface for each setting rather than just the field name.
+* The documented race at `:495` fails safe with the reason given: *"the worst case
+  is re-binding a value that was just replaced, never erasing a seal."*
+* `get_user_profile_viewed_by` logs the `staff.identity.read` / `staff.payroll.read`
+  audit rows BEFORE releasing the values, always computes the last-4 mask, and
+  carries `identity_withheld` so a writer can tell "withheld from you" from
+  "not on file" — the distinction that would otherwise force an editor to invent
+  a national id.
+
+**A finding that existed only in my working notes, recorded because it is the
+method working.** My first read of `reverse_loyalty_on_refund` suggested the tier
+recompute subquery (`lifetime_points - ?1`) read the OLD lifetime value. It does
+not: SQLite evaluates every SET right-hand side against the pre-update row, so the
+subquery sees the new value. Checked before claiming, not after.
+
+**And the delegation principle from the last pass, already applied here.**
+`sync/queue.rs:579-591` records that this crate USED TO MIRROR the reversal body
+*"because it was `pub(crate)` to kasirmu-core and therefore unreachable from here;
+that mirror was a second writer of the same effect, free to drift from the
+original"* — and now delegates to the single writer. The same note appears for
+CRM-06 spend reversal at `:614-622`. That is exactly the rule the sibling sweep
+arrived at, already written down in the code by an earlier author.
+
+**Verified:** no code changed, so no suite is affected. `git status` confirms
+nothing of mine is uncommitted.
+
+**No commit** beyond this ledger entry.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
