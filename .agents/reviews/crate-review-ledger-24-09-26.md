@@ -1294,6 +1294,66 @@ failed**. Clippy clean on both files.
 
 **Commit:** `7616a2cf9` (CORE-D).
 
+### Core twenty-ninth pass — 24-09-26 (a stale stock cache on the sync-replay path)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| CORE-E | **HIGH** | `db/products_stock_query.rs:429` — `adjust_stock_in_tx` | **A synced stock adjustment left the read cache serving the pre-adjustment quantity.** `adjust_stock_in_tx` writes the same three rows as its non-tx sibling `adjust_stock_with_reason`, but omitted the cache invalidation the sibling performs. Because `get_stock` serves the cache FIRST and POPULATES it on a miss, a single read before a replayed adjustment was enough to poison the entry — measured: the database held **6** while `get_stock` returned **10**, a phantom 4 units a register would sell against stock that does not exist. |
+
+**Why HIGH, by this ledger own definition (wrong today on a live path).** The
+path is live — `platform/sync/src/queue.rs:135` and `:1127` call
+`adjust_stock_in_tx` on every replayed `stock.movement` and every replayed sale
+line. The consequence is oversell: the register believes it holds stock it has
+already shipped out, and the error persists for the life of the cache entry
+because nothing else invalidates it.
+
+**The cache-populates-on-read detail is what turns an omission into a defect.** A
+missing invalidation on a read-through cache is not merely wasteful: it is
+DESTRUCTIVE, because any ordinary read between the adjustment and the next
+legitimate invalidation installs the correct value — and the adjustment then
+leaves it there, stale. That is stated in the test rather than left implicit.
+
+**Found by the sibling-divergence sweep recommended last pass, and it is the
+second such finding in two rounds.** I enumerated the 22 function pairs in
+`kasirmu-core` (`X` vs `X_for_tenant`, `X_in_tx`, `X_on`, `X_scoped`) and
+compared the `_in_tx` pairs first, because a variant that skips a guard its
+non-tx sibling enforces is the highest-risk shape. `insert_stock_movement` vs
+`_in_tx` turned out to be a harmless byte-identical copy (worth noting as
+duplication, not a defect — the shared `_on` body exists and `_in_tx` does not
+call it). `adjust_stock_in_tx` was the one that had actually dropped a step.
+
+**The lesson this pass adds, and it is the sharpest one in the audit:** the two
+functions differ by TWENTY-THREE LINES of ordinary-looking code at the end, and
+each reads as complete on its own. Reading either in isolation shows nothing —
+the non-tx one looks like it is being careful, the tx one looks like it simply
+has no cache to worry about, because its signature takes a `Transaction` and
+nothing about that signature suggests `self.cache` is still live. **Six of the
+last eight findings have been sibling divergences** (BRIDGE-3/5, BRIDGE-7,
+BRIDGE-9/10, CORE-D, CORE-E), which is now the dominant defect shape in this
+codebase and the one a single-site read can never find.
+
+**Fixed** by mirroring the sibling exactly: `invalidate_inventory` plus
+`publish_inventory_change`, guarded by `if let Some(cache)`. The comment records
+why the invalidation must happen even though the write is inside a caller
+transaction — `get_stock` consults the cache before it reaches the database at
+all, so an entry outliving the transaction is read regardless of what the
+transaction did.
+
+**Pinned** by `sync_replay_adjustment_invalidates_the_cached_quantity`, which
+asserts the database AND the served value, and first asserts that the read path
+cached on miss (the property that makes the defect destructive rather than
+wasteful). **Watched to FAIL** with the invalidation removed (`a replayed
+adjustment must not leave the cache serving the pre-adjustment quantity`) and pass
+with it restored.
+
+**Verified:** `cargo test -p kasirmu-core --lib -- db::products` → **140 passed, 0
+failed**. Clippy clean under `--all-targets --all-features -- -D warnings` — which
+caught two of my own mistakes first (`&sku.to_owned()` where `sku` was already a
+`&str`, and the test calling the deprecated fn without the `#[allow(deprecated)]`
+the sibling tests carry).
+
+**Commit:** `3687afca5` (CORE-E).
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
