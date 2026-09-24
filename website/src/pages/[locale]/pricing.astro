@@ -33,7 +33,10 @@ const offers = pricing.flatMap((tier) => {
   }];
 });
 const downloadHref = getRelativeLocaleUrl(locale, 'download');
-const contactHref = 'mailto:adikaradwiatmaja@gmail.com';
+// Canonical support address — the same one the site-wide ContactPoint in
+// Base.astro declares. It used to be a personal Gmail, which contradicted the
+// Organization block on this very page (SEO audit T8/D3; owner ruling 2026-09-24).
+const contactHref = 'mailto:support@kasir.mu';
 // The island's strings travel with the document, so the browser never loads a
 // locale dictionary (see src/i18n/labels.ts).
 const gridLabels = labelMap(locale, PRICING_LABELS);

@@ -192,21 +192,29 @@ describe('Footer copyright', () => {
     expect(FOOTER_SRC).toContain('aria-label="Discord"');
   });
 
-  it('has X, Instagram, Facebook, and Telegram social links', () => {
-    // General platform web URLs — real profiles not created yet.
-    expect(FOOTER_SRC).toContain('https://x.com');
-    expect(FOOTER_SRC).toContain('aria-label="X (Twitter)"');
-    expect(FOOTER_SRC).toContain('https://www.instagram.com');
-    expect(FOOTER_SRC).toContain('aria-label="Instagram"');
-    expect(FOOTER_SRC).toContain('https://www.facebook.com');
-    expect(FOOTER_SRC).toContain('aria-label="Facebook"');
-    expect(FOOTER_SRC).toContain('https://telegram.org');
-    expect(FOOTER_SRC).toContain('aria-label="Telegram"');
+  it('links no platform homepage — only profiles this project owns', () => {
+    // The X, Instagram, Facebook and Telegram icons were removed on 2026-09-24:
+    // they pointed at the platforms' own homepages, so they were dead ends for
+    // users and the reason Organization.sameAs could name nothing but Discord
+    // (SEO audit T8/D4). This is the rot guard, inverted: it now fails if
+    // someone re-adds a platform rather than if someone removes one. Add a real
+    // profile URL to the footer AND to this list AND to sameAs in one change.
+    for (const homepage of [
+      'https://x.com',
+      'https://www.instagram.com',
+      'https://www.facebook.com',
+      'https://telegram.org',
+    ]) {
+      expect(FOOTER_SRC, `${homepage} is a platform homepage, not a kasir.mu profile`).not.toContain(homepage);
+    }
+    for (const label of ['X (Twitter)', 'Instagram', 'Facebook', 'Telegram']) {
+      expect(FOOTER_SRC, `no icon may claim to be ${label}`).not.toContain(`aria-label="${label}"`);
+    }
   });
 
   it('all social links open safely in a new tab', () => {
     // Every social anchor carries target=_blank + rel=noopener noreferrer.
-    const socials = ['Discord', 'X (Twitter)', 'Instagram', 'Facebook', 'Telegram'];
+    const socials = ['Discord'];
     for (const label of socials) {
       const anchorMatch = FOOTER_SRC.match(
         new RegExp(`href="[^"]*"\\s+target="_blank"\\s+rel="noopener noreferrer"[^>]*aria-label="${label.replace(/[()]/g, '\\$&')}"`),
@@ -217,12 +225,8 @@ describe('Footer copyright', () => {
 
   it('social links use brand-color hover tints', () => {
     // Same effect as Discord: muted gray -> brand color on hover.
-    const tints = [
-      ['Discord', '#5865F2'],
-      ['Instagram', '#E4405F'],
-      ['Facebook', '#1877F2'],
-      ['Telegram', '#229ED9'],
-    ] as const;
+    // Discord is the only profile left; the other four tints went with them.
+    const tints = [['Discord', '#5865F2']] as const;
     for (const [, color] of tints) {
       expect(FOOTER_SRC).toContain(`hover:text-[${color}]`);
     }
