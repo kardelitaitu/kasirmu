@@ -278,6 +278,59 @@ none of mine. Not attributed to this work.
 `auth.rs` half was swept into another agent's `3f8674c96` — confirmed present
 at HEAD by `git show HEAD:crates/kasirmu-bridge/src/auth.rs`).
 
+### Bridge fourth pass — 24-09-26 (credential/trash sweep)
+
+The third pass produced two HIGHs of the same *shape* — a predicate one path
+applies and a sibling forgets — so this pass hunted that shape deliberately
+rather than reading modules end to end. It paid immediately: the very first
+lead (`list_workspace_screens`, flagged while reading `workspaces.rs`) was a
+third instance of it.
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-5 | MEDIUM | `src/workspaces.rs` — `list_workspace_screens` | **The pre-session screen listing verified the ticket's SIGNATURE and nothing else.** Its sibling `list_workspaces`, 50 lines above, resolves the account from the global identity DB and refuses an inactive one; this fn read `store_id` straight off the wire and returned rows. **Probe result:** a validly-signed ticket for a **deactivated** cashier returned **6 screens**, and the same ticket returned **5 screens for `store-b`** — a store the caller had no relationship with. Authored as a test against the live account (`list_workspace_screens_refuses_a_deactivated_account`) and the store (`…_refuses_a_store_outside_the_callers_access`); both were watched to FAIL with the check disabled (showing the exact `Ok([...])` leak) and then pass with it restored. **Fixed:** resolve the real user, require `is_active`, and when the account carries `user_location_access` rows require the named store among them — the same fail-closed rule `verify_instance_access` applies to a session. Severity MEDIUM not HIGH: the payload is the static `workspace_type_screens` layout table (screen keys + sort order), not business data, and the store listing itself was already gated. It is fixed anyway because the pair disagreeing is what lets the stricter one be relaxed later by someone who reads the looser one as precedent. |
+
+**Sweeps run, and what they CLEARED — the negative results are the point of
+this pass.**
+
+* **Credential mint/refresh/verify, both shells.** `refresh_picker_ticket`,
+  `sign_`/`verify_picker_ticket`, `create_session`, `insert_session`,
+  `session_keepalive`. Both `apps/desktop-tauri` and `apps/mobile-tauri` are
+  **pure shims** onto `kasirmu_bridge::auth::*` — there is no second copy to
+  drift, so BRIDGE-3 and BRIDGE-5 each fix both shells at once. Confirmed by
+  reading the desktop shims (`commands/auth.rs:257,296`) and the mobile
+  delegation (`commands/auth.rs:1082`).
+* **Every PIN-verification site in the workspace** (3, from `verify_pin\(`).
+  `auth.rs:442` (`staff_login`) is guarded by the `!user.is_active` check at
+  `:420`; `:826` (`verify_pin`) resolves the session first; `:1291`
+  (`switch_organization`) resolves the session first AND re-verifies the PIN
+  (full re-auth, no carryover). **No unguarded comparison.**
+* **Every raw `COUNT(*) FROM users`** (9 sites) against the BRIDGE-4 class.
+  All nine filter `is_active = 1`, and the trash REQUIRES deactivation as a
+  precondition (`soft_delete_user` refuses an active row), so a trashed member
+  is excluded by construction — trash-safe, not trash-lucky. `profile.rs:609`
+  is the armed-quota veto and is deliberately the same literal predicate as
+  `count_staff_users`; its own comment records why it must not disagree with
+  the gate that armed it.
+
+**Read:** `workspaces.rs` completed (`list_workspace_screens_scoped`,
+`set_/get_user_workspace_instances_scoped`, `list_all_workspaces_scoped`,
+`list_workspaces_for_store_scoped`, `resolve_boot_store` full). In
+`resolve_boot_store` the device-binding HMAC is verified with
+`Mac::verify_slice` (constant-time — the module records that the previous
+`hex::encode(..) ==` short-circuited and leaked the mismatch position), and
+every failure path falls back to the primary store rather than failing open
+into a caller-named one. No finding there.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features` → **exit 0, no
+failures**. My files are clippy-clean under
+`--all-targets --all-features -- -D warnings`. *Caveat, not mine:* the crate as
+of this moment has a `clippy::collapsible_if` error at `sync.rs:74` from
+another agent's uncommitted in-flight edit (`git status` shows the file dirty;
+the committed version passes).
+
+**Commit:** `a45af101a` (BRIDGE-5, bridge).
+
 
 
 
