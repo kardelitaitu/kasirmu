@@ -703,6 +703,57 @@ warnings`; the crate still carries the unrelated `sync.rs:74`
 
 **Commit:** `0edcda3dc` (BRIDGE-9, bridge).
 
+### Bridge eleventh pass — 24-09-26 (the renew twin)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-10 | MEDIUM | `src/license.rs:335` — `renew_license` | **The renewal lane carried the same non-atomic pair as activation.** `store_subscription` (autocommit) followed by `Settings::set_batch` (its own transaction), under a comment reading "Persist the renewed subscription to both stores". A failure between them left the renewed `tenant_subscription` durable beside the PREVIOUS payload and signature — quota gates reading Pro/Premium while the licence status check reads the old expiry, a state nothing ever reconciles. |
+
+**This pass was a deliberate CLASS HUNT, not a module read**, and that is the
+point of recording it separately. BRIDGE-9 established the shape
+("a store write in autocommit followed by a `Settings::set_batch` that opens
+its own transaction, under a comment claiming they are ordered for
+consistency"). Rather than read the next module end-to-end, I searched the
+crate for that shape. It found exactly one more site.
+
+**The sweep, and why it is worth trusting:** a script walked every production
+file for a `store_subscription(` call followed within 45 lines by
+`Settings::set_batch(`, then checked the intervening lines for a
+`unchecked_transaction`/`let tx`. It reported **one** hit — `license.rs:335` —
+which is exactly the site I had already spotted by reading, and it reported
+**nothing** for the two lanes fixed in the tenth pass, because those now open
+the transaction the scan looks for. A scan that is silent on the fixed cases
+and loud on the unfixed one is calibrated, not merely quiet.
+
+**Proven the same way.** The new test drops the `settings` table between the
+two writes; **emulating the old autocommit shape fails it with `left: Premium,
+right: Free`**, and the joined transaction passes. Same `LICENSE_*` constants
+substituted for the raw literals as in the tenth pass.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- license::` →
+**24 passed, 0 failed** (both atomicity tests green). `cargo check -p
+kasirmu-bridge --all-features` clean. My files are clippy-clean under
+`--all-targets --all-features -- -D warnings`.
+
+**Commit:** `b348f84f4` (BRIDGE-10, bridge).
+
+#### Where the audit stands
+
+Ten defects found and fixed across the bridge and core, four of them HIGH:
+BRIDGE-1 (discarded import write errors), BRIDGE-2 (discarded fingerprint
+persist), BRIDGE-3 (deactivated account minting a picker ticket), BRIDGE-4
+(trashed member pinning a role), BRIDGE-5 (ungated pre-session screen listing),
+BRIDGE-6 (non-constant-time HMAC compare), BRIDGE-7 (12 ungated hardware
+commands — recorded, now enforced by a gate, gating itself left as a product
+ruling), BRIDGE-8 (discount-percent truncation moving money), BRIDGE-9
+(non-atomic activation), BRIDGE-10 (non-atomic renewal).
+
+Two of those classes are now closed by construction rather than by fixes:
+**authorization** (the H-1b gate fails pre-push on a `_scoped` fn that
+authenticates without authorizing) and **the class-hunt method itself**, which
+has now paid three times (BRIDGE-5, BRIDGE-7, BRIDGE-10) and is the
+recommendation for the next pass.
+
 
 
 
