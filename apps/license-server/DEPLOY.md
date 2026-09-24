@@ -1,6 +1,6 @@
 <!-- Audit stamp: 2026-09-09 · DSH · status: ACCURATE AFTER REPAIR (2 findings, 1 gate added) · Section 7 opens by claiming this section documents every variable in full, and on 09-09-26 that was false: five names the binary reads appeared in no document anywhere in the repo (LOGIN_LOCKOUT_MIN_GAP, LOGIN_LOCKOUT_MAX_COOLDOWN, LOGIN_LOCKOUT_DISABLED, OZ_ADMIN_EMAIL, OZ_ENTERPRISE_MRR_USD). Three are the login lockout, so the only control that slows credential stuffing had no operator-facing description at all; the fourth names a tenant the code deliberately refuses to let be renamed or deleted. Added section 7.7 with defaults, citing source lines. · TWO CODE FINDINGS RECORDED, NOT PATCHED: LOGIN_LOCKOUT_DISABLED is production-reachable and its off state is invisible in both logs and /api/health; OZ_ENTERPRISE_MRR_USD parses a USD price into a float64, against the AGENTS.md money rule. · NEW GATE .agents/skills/docs-auditor/scripts/check-env-docs.py: 27 names scanned, 0 undocumented, 9 self-test cases over synthetic strings only. · Two claims I nearly made and were wrong: four variables looked absent from the code because I scanned only apps/license-server while apps/unified/healthcheck.sh reads them; and OZ_SMTP_STARTTLS / OZ_SMTP_IMPLICIT_TLS appear once in this file precisely to tell the operator NOT to set them, so their absence from the code is the point. This skill own check-dead-refs.py is what caught me publishing a re-derive command for a script that did not exist yet. · SUPERSEDED, kept verbatim (rev 2026-07-22, re-audited 2026-08-31): 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · scripts/generate-license-keys.{ps1,sh} verified; Dockerfile uses golang:1.25-alpine -> alpine:3.22 (was 3.20, bumped for Trivy EOL); health.go (GET /api/health, returns status: ok) + healthcheck.go present; pb_schema.json present; go.mod is go 1.25.0; all build/deploy/env-var claims match the Go code · RE-AUDITED 2026-08-31 by docs-auditor: go.mod still 1.25.0, /api/health present, oz-license.key.pub committed; env-var section confirmed current (Midtrans/ADR #39, PADDLE_PRICE_TIERS six sandbox prices catalogued 08-31); corrected the body's alpine 3.20 -> 3.22 -->
 
-# OZ-POS License Server — Northflank Deployment Guide
+# kasir.mu License Server — Northflank Deployment Guide
 
 > **ADR:** [`docs/decisions/2026-07-10-license-server.md`](../../docs/decisions/2026-07-10-license-server.md)
 > **Repository:** `apps/license-server/`
@@ -806,7 +806,7 @@ curl -X POST https://app.sandbox.midtrans.com/snap/v1/transactions \
   -u "SB-Mid-server-…:" \
   -d '{
     "transaction_details": {"order_id": "OZ-PLUS-1755486000-1a2b3c", "gross_amount": "500000"},
-    "item_details": [{"id": "plus-year", "price": "500000", "quantity": 1, "name": "OZ-POS PLUS (year)"}],
+    "item_details": [{"id": "plus-year", "price": "500000", "quantity": 1, "name": "kasir.mu PLUS (year)"}],
     "customer_details": {"email": "buyer@test.com"},
     "custom_field1": "plus",
     "custom_field2": "buyer@test.com",

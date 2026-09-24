@@ -1125,7 +1125,7 @@ an envelope shape, not a conversion any of the four surfaces above performs.
   is pinned as a *known hazard*, not as a contract, by the `known_hazard_*` tests in
   `platform/core/src/settings/tests.rs`; turning it into an error is that crate's
   own recorded next step and a runbook cannot shortcut it.
-- **Do not aim `oz credential-deltas purge` at the settings table.** That lane
+- **Do not aim `kasir credential-deltas purge` at the settings table.** That lane
   walks the `setting_updated` delta ledger and its delete path belongs there; the
   live settings row is untouched by it on purpose, which is the property that makes
   the purge safe to run at all.

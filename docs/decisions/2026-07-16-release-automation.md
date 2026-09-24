@@ -35,7 +35,7 @@ This is error-prone, non-reproducible, and blocks the in-app updater (ADR #13) f
 |-----------|-----------|
 | Tauri updater plugin configured | `apps/desktop-client/tauri.conf.json:60` |
 | Ed25519 public key committed | `oz-pos-updater.key.pub` |
-| `latest.json` endpoint | `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` |
+| `latest.json` endpoint | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | NSIS + WiX bundle targets | `tauri.conf.json` `bundle.targets = "all"` |
 | Code signing config | `tauri.conf.json` `windows.signCommand` using `signtool.exe` |
 | Settings About page updater UI | Implemented in ADR #13 |
@@ -127,7 +127,7 @@ Steps:
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-signature>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.1.0/kasir.mu_0.1.0_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.1.0/kasir.mu_0.1.0_x64-setup.exe"
     }
   }
 }

@@ -486,7 +486,7 @@ All 6 restructuring phases have been completed.
 - [x] Split `en-US.ftl` into 12 per-domain Fluent files
 
 ### Phase 5 — Tablet Client ✅
-- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (dir renamed from `tablet-client/` in 2026-09; the `oz-pos-tablet` package-name rename belongs to the rebrand campaign's T3-2)
+- [x] Create `apps/mobile-tauri/` — Tauri v2 mobile target (dir renamed from `tablet-client/` in 2026-09; the package was renamed `kasirmu-tablet` in the rebrand campaign's T3-2 (done))
 - [x] Move `src-tauri/` → the desktop shell dir (named "desktop-client" at the time of the move; renamed to desktop-tauri/ in 2026-09)
 - [x] Build touch-optimized shell (bottom nav, larger hit targets)
 - [x] Create `platform/startup/` — shared module registration + event wiring

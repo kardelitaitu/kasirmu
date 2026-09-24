@@ -45,7 +45,7 @@ The project already has significant updater scaffolding in place:
 | `updater:default` permission | ✅ Granted | `apps/desktop-client/capabilities/default.json` |
 | `UpdateBanner` component | ✅ Exists | `ui/src/components/UpdateBanner.tsx` |
 | Fluent strings (banner) | ✅ Present | `ui/src/locales/shared.ftl` lines 85-91 |
-| GitHub Release endpoint | ⚡ Referenced | `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` |
+| GitHub Release endpoint | ⚡ Referenced | `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` |
 | Settings About page updater UI | ❌ Missing | `ui/src/features/settings/SettingsPage.tsx` |
 | GitHub Actions release workflow | ❌ Missing | `.github/workflows/` is empty |
 | `latest.json` manifest generation | ❌ Missing | No release script |
@@ -139,7 +139,7 @@ After the build artifacts are attached to the release, a job (or step) generates
   "platforms": {
     "windows-x86_64": {
       "signature": "<base64-ed25519-sig-of-the-installer>",
-      "url": "https://github.com/kardelitaitu/oz-pos/releases/download/v0.0.9/kasir.mu_0.0.9_x64-setup.exe"
+      "url": "https://github.com/kardelitaitu/kasirmu/releases/download/v0.0.9/kasir.mu_0.0.9_x64-setup.exe"
     }
   }
 }
@@ -147,7 +147,7 @@ After the build artifacts are attached to the release, a job (or step) generates
 
 The **signature** is generated using the private key (`oz-pos-updater.key`) with a tool like `tauri updater sign` or a Node.js script using `@tauri-apps/plugin-updater` helpers. The private key must be stored as a **GitHub Actions secret** (`UPDATER_PRIVATE_KEY`).
 
-The `latest.json` is uploaded as a release asset so the endpoint `https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json` resolves automatically.
+The `latest.json` is uploaded as a release asset so the endpoint `https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json` resolves automatically.
 
 #### Workflow Trigger
 - `on: push: tags: ['v*']` — pushing a `v0.0.10` tag triggers a full build and release
@@ -157,7 +157,7 @@ The `latest.json` is uploaded as a release asset so the endpoint `https://github
 The updater endpoint configured in `tauri.conf.json`:
 
 ```
-https://github.com/kardelitaitu/oz-pos/releases/latest/download/latest.json
+https://github.com/kardelitaitu/kasirmu/releases/latest/download/latest.json
 ```
 
 GitHub's `/releases/latest/download/` redirects to the **latest release's** asset named `latest.json`. This means:

@@ -65,7 +65,7 @@ the reasoning is in the accessor's own doc comment (`raw.rs:60-66`).
 `:85`, `:103`). The delegation was MISSING for a whole wave: `172f7fe3c` re-exported the types and told
 every lane to go through `oz_core` without delegating the methods, and `platform/sync` has no
 `platform-core` edge — which is why two lanes had to gate on `admits()` behind one named boundary
-instead (`queue.rs:54`, `crates/oz-cli/src/commands/ozpkg.rs:52`). Landed in `a0b8af03d`.
+instead (`queue.rs:54`, `crates/kasirmu-cli/src/commands/ozpkg.rs:52`). Landed in `a0b8af03d`.
 
 **There is no read-only accessor, so the read-only question uses the predicate.** `settings_change_of`
 (`queue.rs:747-759`) must ask whether a key was applied without writing anything, so it gates on
@@ -87,7 +87,7 @@ global one.
 
 - A package exported by an OLDER build may legitimately contain a key the new import refuses, so restoring
   an old file now skips those rows with a warning: `local_api.enabled`, `local_api.port`,
-  `local_api.store_id`, `lan_server.bind` (`crates/oz-cli/src/commands/ozpkg_tests.rs:46-51`).
+  `local_api.store_id`, `lan_server.bind` (`crates/kasirmu-cli/src/commands/ozpkg_tests.rs:46-51`).
 
 - No ordinary setting is caught: `store.name`, `currency.default`, `receipt.footer`,
   `brand.primary_colour`, `ui.locale` and `tax.rounding_mode` are asserted to still travel and still
@@ -98,10 +98,10 @@ global one.
 
 ## What this does not do
 
-- **It does not make a backup safe.** `oz backup` / `oz restore` (`crates/oz-cli/src/commands/backup.rs`)
+- **It does not make a backup safe.** `kasir backup` / `kasir restore` (`crates/kasirmu-cli/src/commands/backup.rs`)
   and the bridge `create_backup` (`crates/oz-bridge/src/data.rs:302`) copy the WHOLE SQLite file with no
   policy at all, so a `.db` still carries `machine_id` and every credential — by design, documented in
-  `crates/oz-cli/README.md`. Filtering the package lane does not narrow that door.
+  `crates/kasirmu-cli/README.md`. Filtering the package lane does not narrow that door.
 
 - **It does not fix confidentiality of anything at rest.** Encryption binds to the typed setter
   (`platform/core/src/settings/typed.rs:339`), never to list membership. **It does not authenticate a

@@ -300,7 +300,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Linux: `.deb` + `.AppImage` packages
 - [x] macOS: `.dmg` package
 - [x] `ops/packaging/README.md` — packaging overview and build guide
-- [x] `ops/packaging/linux/oz-pos.desktop` — freedesktop entry
+- [x] `ops/packaging/linux/kasir.mu.desktop` — freedesktop entry
 - [x] `ops/packaging/linux/deb/postinst` — Debian post-install script
 - [x] `ops/packaging/linux/deb/prerm` — Debian pre-removal script
 
