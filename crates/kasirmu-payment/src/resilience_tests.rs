@@ -235,7 +235,9 @@ async fn circuit_breaker_trips_and_fails_fast() {
         max_retries: 1,
         initial_backoff_ms: 1,
         max_backoff_ms: 2,
-        failure_threshold: 2, // 2 failed operations trip the breaker
+        // Two failed OPERATIONS trip the breaker. With §2 in force each keyless
+        // operation is one call, so this is also a call count of two.
+        failure_threshold: 2,
         cooldown_duration: Duration::from_millis(50),
     };
 
@@ -247,13 +249,24 @@ async fn circuit_breaker_trips_and_fails_fast() {
         idempotency_key: None,
     };
 
-    // Op 1: 1 try + 1 retry = 2 calls to flaky -> fails operation -> failure count = 1
+    // Op 1: ONE call, because §2 makes a keyless money-mover single-shot — the
+    // `max_retries: 1` above is deliberately unreachable on this request. That
+    // retry/attempt distinction used to be invisible here (the comments claimed
+    // "1 try + 1 retry = 2 calls"), which is worth pinning rather than describing:
+    // a test whose comments disagree with its arithmetic is the same defect the
+    // design doc names at `:177`, a green test that does not test what it says.
     let _ = resilient.authorize(&req).await;
+    assert_eq!(
+        flaky.calls(),
+        1,
+        "a keyless charge is forwarded once even with retries configured"
+    );
     assert_eq!(resilient.breaker().state().await, CircuitState::Closed);
 
-    // Op 2: 1 try + 1 retry = 2 calls to flaky -> fails operation -> failure count = 2 >= threshold -> trips Open
+    // Op 2: one more call -> failure count 2 >= threshold -> trips Open.
     let _ = resilient.authorize(&req).await;
     assert_eq!(resilient.breaker().state().await, CircuitState::Open);
+    assert_eq!(flaky.calls(), 2, "one call per operation, two operations");
 
     let calls_before_open = flaky.calls();
 
