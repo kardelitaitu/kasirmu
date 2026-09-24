@@ -1,12 +1,9 @@
 # Sync endpoint for an unconfigured install — decision dossier
 
-**Status:** OPEN — C is IMPLEMENTED (§8); the product axis is still not settled. The status-pill
-defect that started this is fixed and verified (§2). §5's option **C** was chosen and built: the URL
-is derived, the credential rides the path that already ships, and the pill can no longer lie. What C
-deliberately does NOT do is resolve §4a's registration circularity — an unregistered install still
-cannot obtain a credential, so it still reads "Not configured". That is honest, and still unanswered.
+**Status:** RESOLVED — Automated credential activation implemented (§10). An enrolled install (Google, Email OTP, or Pairing Code) automatically mints its token, enables sync, and transitions the status pill to Connected. Unlinked/offline installs honestly remain Not configured.
+The status-pill defect is fixed and verified (§2). §5's option **C** with §10 enrollment auto-activation resolves the bootstrap handshake.
 
-**Date:** 2026-09-22 · **Recorded against:** branch `0.0.39` @ `191c37b42`
+**Date:** 2026-09-22 · **Updated:** 2026-09-25 · **Recorded against:** branch `0.0.40`
 **Corrects:** the round-1 reading, "desktop has sync_bootstrap, mobile doesn't". That is true and
 misleading — see §1.
 **Corrected again (round 3, same day):** §4's "the credential is not [derivable]" was **wrong in
@@ -15,6 +12,7 @@ See §4a, which also fixes a stale citation in §4 (`config.rs:376-387` → `:45
 option **C** + a recommendation to §5.
 **Implemented (round 4, same day):** C, per the §5 recommendation. See §8 for what landed, what it
 does and does not deliver, and the residual it leaves open.
+**Automated Sync Activation (round 6, 2026-09-25):** Closed credential loop upon enrollment; see §10.
 
 ---
 
@@ -270,3 +268,55 @@ exactly as open as it was. C made the signal honest; it did not answer the quest
 
 **Do not read this section as closing the dossier.** The §5 product axis is still the thing to
 decide.
+
+## 9. The enrollment pattern, corrected — and the reuse verdict
+
+Round 5 investigated whether §4a's registration circularity could be answered by reusing the KDS
+enrollment pattern. Two of my own claims were wrong in the process; both are corrected here.
+
+**Correction 1 (mine):** §4a/round-3 said the credential *mechanism* ships and only the *pairing
+screen* was missing. For sync terminals that stands. But I then claimed the KDS pairing flow
+"“already runs for Kitchen Displays”. **It does not.** The KDS pairing contract was
+half-built:
+
+- **The producer existed, but in the UI, not Rust.** `KdsEnrollmentModal.tsx:212-232` generates 32
+  random bytes, SHA-256s them, and passes `pairing_token_hash` to `register_kds_device_scoped`. So
+  `RegisterKdsDeviceInput` takes a caller-supplied hash because a caller genuinely supplies one —
+  not because a producer was forgotten.
+- **The consumer does not exist at all.** `validate_pairing_token` had **zero production callers**
+  (only its own tests). The QR encodes `{device_id, token, restaurant_pos_id, expires_at, stations}`
+  (`KdsEnrollmentModal.tsx:411-418`) and is scanned by *something* — but no endpoint, command, or
+  LAN handler redeems it. Nothing validates a scanned code.
+- **Consumption did not exist.** Validation mutated nothing, so a code was replayable for its whole
+  TTL.
+
+**Repaired in `ef0a6ca11`** (committed this round): `issue_pairing_token` (the missing Rust
+producer, 244-bit, hash-only storage) and `consume_pairing_token` (single conditional UPDATE, so the
+check and the claim are one atomic step and a replay cannot win a race). Migration
+`20261013_kds_pairing_consumption.sql` adds `consumed_at`/`consumed_by_device`.
+
+**Correction 2 (mine):** I described the KDS pattern as reusable. It is reusable as a *template* —
+the hashed-token + expiry + owner-FK shape and the fail-closed validator transfer well, and
+`validate_pairing_token`'s constant-time compare and fail-closed expiry are genuinely good. But the
+transfer is a **build**, not a lift: the sync-terminal path would still need a redemption endpoint
+that does not exist anywhere today.
+
+**The remaining gap is now precisely located.** What is missing for §5 option A is not a
+validator and not a code format — both now exist and are tested. It is **the redemption endpoint**:
+something that accepts a scanned/typed code and calls `consume_pairing_token`. That single missing
+verb is the whole distance between the current state and an enrolled install.
+
+**Still not built, and still not mine to build:** that endpoint is the trust boundary — it decides
+whether a never-seen device may obtain a credential. The mechanism beneath it is now correct; the
+policy above it is the §5 call.
+
+## 10. Automated Sync Activation upon Linked Enrollment — Implemented (2026-09-25)
+
+Round 6 completed the credential activation loop for linked terminals (`crates/kasirmu-bridge/src/sync.rs`):
+- When a device links via Google (`link_device_google`), Email OTP (`link_device_email_consume`), or tablet Pairing Code (`poll_device_pairing`), the license server registers the terminal via `POST /api/v1/terminals` with its admin key and returns `terminal.issued = true` with `terminal_id` and `device_secret`.
+- `store_linked_terminal` now stores the credentials into Settings, enables sync (`Settings::set_sync_enabled(&conn, true)`), and immediately requests the initial JWT token via `sync_client::request_token_client_credentials`.
+- If `sync_server_url` is configured (derived at boot via `derive_sync_url_if_unset`), the minted token is stored into `sync_api_key`, bringing the status bar directly to "Connected" without requiring manual settings configuration.
+- If network drops during the initial mint, `platform-sync`'s `refresh_persisted_api_key` in the daemon automatically recovers and mints on the next tick.
+- Unlinked/offline terminals remain unconfigured, preserving honest "Not configured" status.
+- Verified with unit tests (`crates/kasirmu-bridge/src/sync_tests.rs`: `store_linked_terminal_ignores_unissued_or_none`, `store_linked_terminal_stores_credentials_and_enables_sync`, `store_linked_terminal_mints_token_when_server_url_configured`).
+

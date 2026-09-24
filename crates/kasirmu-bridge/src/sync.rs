@@ -56,9 +56,29 @@ pub async fn store_linked_terminal(
             "the link reply claimed a credential without one".to_string(),
         ));
     };
-    let conn = ctx.lock_global().await;
-    Settings::set_sync_terminal_id(&conn, terminal_id)?;
-    Settings::set_sync_terminal_secret(&conn, device_secret)?;
+    let server_url = {
+        let conn = ctx.lock_global().await;
+        Settings::set_sync_terminal_id(&conn, terminal_id)?;
+        Settings::set_sync_terminal_secret(&conn, device_secret)?;
+        Settings::set_sync_enabled(&conn, true)?;
+        Settings::get_sync_server_url(&conn)?.unwrap_or_default()
+    };
+
+    if !server_url.is_empty() {
+        let token_resp = sync_client::request_token_client_credentials(
+            &server_url,
+            terminal_id,
+            device_secret,
+        )
+        .await;
+        if token_resp.ok && token_resp.token.is_some() {
+            if let Some(ref token_str) = token_resp.token {
+                let conn = ctx.lock_global().await;
+                Settings::set_sync_api_key(&conn, token_str)?;
+            }
+        }
+    }
+
     Ok(true)
 }
 
