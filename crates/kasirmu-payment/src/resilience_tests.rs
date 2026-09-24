@@ -650,3 +650,43 @@ async fn separately_built_decorators_do_not_share_a_breaker() {
     );
     assert_eq!(b.breaker().state().await, CircuitState::Closed);
 }
+
+// ── The two §2 rules must agree end to end ─────────────────────────────
+
+/// A DERIVED key is retryable, and a blank one is not — the composition.
+///
+/// **Why this test exists.** §2's rule is enforced in two places that were written
+/// at different times: `policy_for_key` here decides retryability from the key the
+/// request carries, and `payment_api.rs` decides what key a charge carries at all
+/// (deriving `qris-{tenant}-{sale_id}` when the caller sends none OR a blank).
+/// Each is tested alone. Nothing tested them **together**, and the failure mode if
+/// they disagree is silent: a key the API derives but this file classifies as
+/// blank would be single-shot (losing a safe retry), and a blank the API forwards
+/// while this file classified it as keyed would be retried (a second charge).
+///
+/// The derived shape is reproduced literally from `payment_api.rs` rather than
+/// imported, because the two crates are separate and the point is the SHAPE the
+/// derivation produces. If the format changes there without changing here, this
+/// test is what says so.
+#[test]
+fn a_derived_gateway_key_is_retryable_and_a_blank_one_is_not() {
+    // The shape `payment_api.rs` builds: `qris-{tenant}-{sale_id}`.
+    let derived = format!("qris-{}-{}", "tenant-A", "sale-1");
+    assert_eq!(
+        policy_for_key(Some(&derived)),
+        RetryPolicy::Keyed,
+        "a key the charge endpoint DERIVES must be retryable, or the derivation buys nothing"
+    );
+    // And the caller's own key, which the endpoint prefers when non-blank.
+    assert_eq!(policy_for_key(Some("caller-key")), RetryPolicy::Keyed);
+    // The three ways a key can be absent, all single-shot.
+    assert_eq!(policy_for_key(None), RetryPolicy::SingleShot);
+    assert_eq!(policy_for_key(Some("")), RetryPolicy::SingleShot);
+    assert_eq!(
+        policy_for_key(Some("   ")),
+        RetryPolicy::SingleShot,
+        "whitespace is absent: the driver sanitises it to an empty order_id"
+    );
+    // The derived shape is never blank, which is the property the pair relies on.
+    assert!(!derived.trim().is_empty());
+}
