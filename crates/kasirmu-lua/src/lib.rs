@@ -17,7 +17,8 @@ next: none — crate stable | perf: N/A
 //! Every script executes in a restricted environment:
 //!
 //! - **Removed globals**: `io`, `loadfile`, `dofile`, `require`,
-//!   `package`, `debug`, `rawget`, `rawset`
+//!   `package`, `debug`, `rawget`, `rawset`, `coroutine` (removed because
+//!   hooks are per-thread and a coroutine would escape the instruction limit)
 //! - **Restricted globals**: `os` — `date`, `time`, and `clock` are available
 //!   (read-only); `os.execute`, `os.remove`, `os.rename`, `os.exit` are nil
 //! - **Allowed**: safe `math`, `string`, `table`, `pairs`, `ipairs`,
@@ -99,12 +100,16 @@ pub struct LuaRuntime {
     lua: mlua::Lua,
 }
 
-// SAFETY: `LuaRuntime` is used behind a `Mutex` in application state,
-// guaranteeing that only one thread accesses it at a time.
-#[allow(unsafe_code)]
-unsafe impl Send for LuaRuntime {}
-#[allow(unsafe_code)]
-unsafe impl Sync for LuaRuntime {}
+// LUA-A/LUA-B: this type deliberately implements NEITHER `Send` nor `Sync`
+// by hand. `mlua::Lua` is `Send` (the `send` feature) but is NOT `Sync`,
+// because Lua state must not be entered concurrently; the crate used to
+// `unsafe impl Sync` here on the strength of a comment claiming "used behind a
+// Mutex" — which nothing enforced. `LuaRuntime` is `pub` with a `pub fn new()`,
+// so the impl made `Arc<LuaRuntime>` `Send + Sync` and any holder could reach
+// the `&self` API from many threads with no lock at all (reproduced:
+// STATUS_ACCESS_VIOLATION). Neither impl is needed: every real holder is a
+// `tokio::sync::Mutex`, which is `Sync` for a `Send` `T`, and `PluginManager`
+// (which owns the runtime) needs only `Send`, which `mlua` supplies.
 
 impl Default for LuaRuntime {
     fn default() -> Self {
@@ -143,6 +148,16 @@ impl LuaRuntime {
                 "collectgarbage",
                 "module",
                 "load",
+                // LUA-C: Lua hooks are per-thread state, so `coroutine.wrap` runs
+                // its body on a NEW Lua thread that the instruction-limit hook
+                // below never observes — a coroutine could loop past
+                // INSTRUCTION_LIMIT indefinitely (reproduced: 200 000 iterations
+                // completed while the identical main-thread loop aborted at 100K).
+                // No script or plugin in this repository uses coroutines, so
+                // removing the global closes the bypass without taking anything
+                // away. The 10 MiB memory cap still applies to coroutines; this
+                // restores the CPU bound the doc already promises.
+                "coroutine",
             ];
             for name in remove {
                 globals
