@@ -20,11 +20,11 @@ Untuk mendirikan badan hukum yang kuat tanpa membuang uang belasan juta rupiah u
                                │
                                ▼ (Setelah 2 Tahun: Omzet Rutin, Ratusan Merchant, Arus Kas Tebal)
 
-[TAHAP 2: TAHUN 2 (MASA DEPAN) — INBRENG ASET SOFTWARE RP2–3 MILIAR]
- ├── Nilai Inbreng: Rp2.000.000.000,- s.d. Rp3.000.000.000,- (Total Modal: Rp2,05 M – Rp3,05 M)
+[TAHAP 2: TAHUN 2 (MASA DEPAN) — INBRENG ASET SOFTWARE RP3–4 MILIAR]
+ ├── Nilai Inbreng: Rp3.000.000.000,- s.d. Rp4.000.000.000,- (Total Modal: Rp3,05 M – Rp4,05 M)
  ├── Skala Usaha: Naik kelas menjadi Usaha Kecil (Kriteria PP 7/2021: Modal > Rp1 M s.d. Rp5 M)
  ├── Status Hukum: TETAP PT PERORANGAN (Karena plafon maksimal PT Perorangan adalah Rp5 Miliar!)
- ├── Metode Valuasi: Income Approach / DCF (Berdasarkan omzet langganan SaaS & jumlah merchant)
+ ├── Metode Valuasi: Income Approach / DCF (Berdasarkan omzet langganan SaaS & jumlah merchant) + Software Valuation
  ├── Pembiayaan KJPP: Dibayar resmi dari kas operasional PT (Beban usaha perseroan)
  └── HASIL: Valuasi software melesat, neraca PT sangat kuat di mata bank/investor, diakui DJP.
 ```
@@ -32,8 +32,8 @@ Untuk mendirikan badan hukum yang kuat tanpa membuang uang belasan juta rupiah u
 ### Mengapa Skema Ini yang Terbaik?
 1. **Tidak Membuang Uang Belasan Juta di Awal**: Biaya penilai publik (KJPP) sebesar Rp10–20 juta tidak perlu dikeluarkan saat belum ada pendapatan. Uang tunai disimpan untuk operasional dan akuisisi merchant.
 2. **Kecepatan Peluncuran Produk**: PT bisa beroperasi komersial minggu ini juga tanpa harus menunggu 2–3 minggu proses appraisal repo Git.
-3. **Valuasi Melesat 10× Lipat di Tahun ke-2**: Menilai software yang sudah memiliki ratusan merchant berbayar (*Monthly Recurring Revenue*) menghasilkan angka valuasi **Rp2–3 Miliar** yang sah dan defensif menggunakan *Income Approach*, dibanding hanya menilai baris kode di Git.
-4. **Tetap PT Perorangan**: Berdasarkan PP No. 8/2021, plafon modal PT Perorangan adalah **Rp5.000.000.000,- (Lima Miliar Rupiah)**. Dengan total modal Rp2–3 Miliar, perseroan tetap sah 100% sebagai PT Perorangan tanpa kewajiban menambah pemegang saham baru.
+3. **Valuasi Melesat 10× Lipat di Tahun ke-2**: Menilai software yang sudah memiliki ratusan merchant berbayar (*Monthly Recurring Revenue*) menghasilkan angka valuasi **Rp3–4 Miliar** yang sah dan defensif menggunakan *Income Approach*, dibanding hanya menilai baris kode di Git.
+4. **Tetap PT Perorangan**: Berdasarkan PP No. 8/2021, plafon modal PT Perorangan adalah **Rp5.000.000.000,- (Lima Miliar Rupiah)**. Dengan total modal Rp3–4 Miliar, perseroan tetap sah 100% sebagai PT Perorangan tanpa kewajiban menambah pemegang saham baru.
 
 ---
 
@@ -121,19 +121,19 @@ Ketika kasir.mu sudah berjalan 2 tahun, memiliki ratusan merchant berbayar, dan 
 
 1. **Penugasan KJPP Berizin Penilaian Bisnis**:
    * Direksi PT menunjuk KJPP resmi berizin Kemenkeu untuk melakukan penilaian aset software.
-   * Karena produk sudah membuktikan traksi pasar, KJPP menggunakan metode **Income Approach (Discounted Cash Flow / Relief from Royalty)** berdasarkan data historis kas masuk dan retensi merchant.
-   * Nilai wajar software terjustifikasi secara objektif di angka **Rp2.000.000.000,- s.d. Rp3.000.000.000,-**.
+   * Karena produk sudah membuktikan traksi pasar nyata, KJPP menggunakan metode **Income Approach (Discounted Cash Flow / Relief from Royalty)** berdasarkan kombinasi metrik merchant aktif, stabilitas *Monthly Recurring Revenue (MRR)*, dan valuasi arsitektur perangkat lunak *proprietary* kasir.mu.
+   * Nilai wajar software terjustifikasi secara objektif di angka **Rp3.000.000.000,- s.d. Rp4.000.000.000,-**.
    * Biaya jasa appraisal KJPP dibayarkan langsung dari rekening giro PT dan dibukukan resmi sebagai beban operasional PT.
 2. **Pendaftaran Peningkatan Modal di AHU Online**:
    * Login ke `https://ptp.ahu.go.id`.
    * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
-   * Pilih menu **Perubahan Modal Disetor** ➔ Masukkan penambahan modal inbreng sebesar angka laporan KJPP (misal: Rp2.500.000.000,-).
+   * Pilih menu **Perubahan Modal Disetor** ➔ Masukkan penambahan modal inbreng sebesar angka laporan KJPP (misal: Rp3.500.000.000,-).
    * Sistem AHU menerbitkan **Sertifikat Pernyataan Perubahan Perseroan Perorangan**.
 3. **Konfirmasi Legalitas & Batas Plafon PT Perorangan**:
-   * Total modal perseroan menjadi Rp2.550.000.000,-.
+   * Total modal perseroan menjadi Rp3.050.000.000,- s.d. Rp4.050.000.000,-.
    * Berdasarkan PP No. 7/2021, skala usaha perseroan naik kelas dari *Usaha Mikro* menjadi **Usaha Kecil** (Kategori modal > Rp1 Miliar s.d. Rp5 Miliar).
    * **Bentuk badan hukum TETAP PT PERORANGAN** dengan pemegang saham tunggal, karena batas maksimal PT Perorangan di UU Cipta Kerja adalah Rp5 Miliar.
 4. **Kepastian Pajak & Akuntansi**:
    * **Bukan Objek Pajak**: Sesuai **Pasal 4 ayat (3) huruf c UU PPh**, penyetoran inbreng software sebagai pengganti penyertaan modal saham perseroan bukan objek PPh bagi PT.
    * **Pajak Operasional**: Di tahun ke-2, perseroan masih menikmati tarif PPh Final 0.5% (PP 55/2022).
-   * **Pencatatan Neraca**: Debit Aset Tak Berwujud (Software Kasirmu) Rp2,5 Miliar, Kredit Tambahan Modal Disetor Rp2,5 Miliar. Neraca perseroan menjadi sangat kuat untuk fasilitas pembiayaan bank dan valuasi ekuitas.
+   * **Pencatatan Neraca**: Debit Aset Tak Berwujud (Software Kasirmu) Rp3,5 Miliar, Kredit Tambahan Modal Disetor Rp3,5 Miliar. Neraca perseroan menjadi sangat kuat untuk fasilitas pembiayaan bank dan valuasi ekuitas.

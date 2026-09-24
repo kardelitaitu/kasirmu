@@ -141,22 +141,22 @@ Tujuan: Memastikan operasional perseroan berjalan bersih dan mempertahankan stat
 
 ---
 
-## Fase 8 — Inbreng Menyusul di Tahun ke-2: Peningkatan Modal Software (Rp2–3 Miliar)
+## Fase 8 — Inbreng Menyusul di Tahun ke-2: Peningkatan Modal Software (Rp3–4 Miliar)
 
-Tujuan: Mengonversi lisensi software menjadi modal inbreng resmi senilai **Rp2.000.000.000,- s.d. Rp3.000.000.000,-** setelah perseroan membuktikan traksi pasar komersial stabil, menaikkan kelas perseroan ke **Usaha Kecil** dan tetap sah berstatus **PT Perorangan**.
+Tujuan: Mengonversi lisensi software menjadi modal inbreng resmi senilai **Rp3.000.000.000,- s.d. Rp4.000.000.000,-** setelah perseroan membuktikan traksi pasar komersial stabil, menaikkan kelas perseroan ke **Usaha Kecil** dan tetap sah berstatus **PT Perorangan**.
 
-- [ ] **Persiapan Valuasi Berbasis Traksi Pasar (Income Approach)**:
-  - [ ] Dokumentasikan metrik bisnis 24 bulan: Jumlah merchant aktif, *Monthly Recurring Revenue* (MRR), retensi pelanggan, dan proyeksi arus kas.
+- [ ] **Persiapan Valuasi Berbasis Traksi Pasar (Income Approach + Software Valuation)**:
+  - [ ] Dokumentasikan metrik bisnis 24 bulan: Jumlah merchant aktif, stabilitas *Monthly Recurring Revenue* (MRR), retensi pelanggan, dan valuasi arsitektur software *proprietary* kasir.mu.
   - [ ] Tunjuk Kantor Jasa Penilai Publik (KJPP) berizin Penilaian Bisnis dari Kemenkeu.
   - [ ] Bayar fee jasa KJPP menggunakan kas operasional PT (dibukukan sebagai beban usaha PT yang sah).
-  - [ ] Dapatkan Buku Laporan Penilaian Resmi berstempel basah KJPP yang menetapkan nilai wajar software di kisaran Rp2–3 Miliar.
+  - [ ] Dapatkan Buku Laporan Penilaian Resmi berstempel basah KJPP yang menetapkan nilai wajar software di kisaran Rp3–4 Miliar.
 - [ ] **Pendaftaran Peningkatan Modal di AHU Kemenkumham (Voucher Rp50.000)**:
   - [ ] Buat Keputusan Pemegang Saham Tunggal tentang Penyetoran Modal Non-Tunai dan Peningkatan Modal Disetor.
   - [ ] Beli voucher PNBP *Pernyataan Perubahan Perseroan Perorangan* (Rp50.000,-) di `ptp.ahu.go.id`.
-  - [ ] Input penambahan modal inbreng software sesuai angka laporan KJPP (misal: Rp2.500.000.000,-).
+  - [ ] Input penambahan modal inbreng software sesuai angka laporan KJPP (misal: Rp3.500.000.000,-).
   - [ ] Unduh Sertifikat Pernyataan Perubahan Perseroan Perorangan resmi Kemenkumham.
 - [ ] **Sinkronisasi Pasca-Perubahan Modal**:
   - [ ] Lakukan sinkronisasi data modal baru pada portal OSS-RBA (skala usaha otomatis naik dari Usaha Mikro menjadi Usaha Kecil).
-  - [ ] Konfirmasi keabsahan: Bentuk badan hukum **tetap PT Perorangan** karena total modal (Rp2,55 Miliar) masih di bawah batas maksimal Rp5 Miliar sesuai PP 8/2021.
+  - [ ] Konfirmasi keabsahan: Bentuk badan hukum **tetap PT Perorangan** karena total modal (Rp3,05–4,05 Miliar) masih di bawah batas maksimal Rp5 Miliar sesuai PP 8/2021.
   - [ ] Perbarui data modal perseroan di bank tempat rekening giro berada.
-  - [ ] Catat di neraca PT: Debit Aset Tak Berwujud (Software) Rp2,5 Miliar, Kredit Tambahan Modal Disetor Rp2,5 Miliar (bebas pajak pengalihan modal sesuai Pasal 4 ayat 3 huruf c UU PPh).
+  - [ ] Catat di neraca PT: Debit Aset Tak Berwujud (Software) Rp3,5 Miliar, Kredit Tambahan Modal Disetor Rp3,5 Miliar (bebas pajak pengalihan modal sesuai Pasal 4 ayat 3 huruf c UU PPh).

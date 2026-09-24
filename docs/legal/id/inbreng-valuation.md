@@ -25,22 +25,22 @@ Ketika diteliti secara hukum dan bisnis, melakukan inbreng langsung saat ini men
 Solusi terbaik yang digunakan startup teknologi terkemuka adalah **memisahkan antara waktu pendirian PT dengan waktu pelaksanaan inbreng**.
 
 ```
-HARI INI (FASE PELUNCURAN)                       MASA DEPAN (FASE SCALE-UP)
-┌──────────────────────────────────────┐          ┌──────────────────────────────────────┐
-│  PT Berdiri: Modal Tunai Rp50 Juta   │          │  Peningkatan Modal Inbreng di AHU    │
-│  Hak Cipta: Milik Pribadi Founder    │          │  Nilai: Rp2 Miliar s.d. Rp5 Miliar   │
-│  Hubungan: Lisensi Eksklusif         │ ───────> │  Metode: Income Approach (Dari MRR)  │
-│  Biaya KJPP: Rp0,- (Hemat Maksimal!) │          │  Biaya KJPP: Dibayar Kas PT          │
-│  Status Pajak: PPh Final 0.5% Aman   │          │  Kekuatan: Mutlak Diakui Pasar & DJP │
-└──────────────────────────────────────┘          └──────────────────────────────────────┘
+HARI INI (FASE PELUNCURAN)                       MASA DEPAN (FASE SCALE-UP: TAHUN KE-2)
+┌──────────────────────────────────────┐          ┌──────────────────────────────────────────────┐
+│  PT Berdiri: Modal Tunai Rp50 Juta   │          │  Peningkatan Modal Inbreng di AHU            │
+│  Hak Cipta: Milik Pribadi Founder    │          │  Nilai: Rp3 Miliar s.d. Rp4 Miliar           │
+│  Hubungan: Lisensi Eksklusif         │ ───────> │  Metode: Income Approach (MRR + Valuasi SW)  │
+│  Biaya KJPP: Rp0,- (Hemat Maksimal!) │          │  Biaya KJPP: Dibayar Kas PT                  │
+│  Status Pajak: PPh Final 0.5% Aman   │          │  Kekuatan: Mutlak Diakui Pasar & DJP         │
+└──────────────────────────────────────┘          └──────────────────────────────────────────────┘
 ```
 
 ### Mengapa Inbreng Menyusul Jauh Lebih Unggul?
 
 | Dimensi Evaluasi | Inbreng Hari Ini (Baru Ada Kode Git) | Inbreng Menyusul (Sudah Ada Merchant & Omzet) |
 |---|---|---|
-| **Metode Penilaian KJPP** | *Cost Approach* (Menghitung jam kerja & baris kode). | **Income Approach / DCF** (Menghitung arus kas & MRR nyata). |
-| **Plafon Valuasi yang Diakui** | Terbatas di kisaran **Rp500–700 Juta**. | Melesat ke kisaran **Rp2 Miliar s.d. Rp5 Miliar+**. |
+| **Metode Penilaian KJPP** | *Cost Approach* (Menghitung jam kerja & baris kode). | **Income Approach / DCF** (MRR + Valuasi Software Proprietary). |
+| **Plafon Valuasi yang Diakui** | Terbatas di kisaran **Rp500–700 Juta**. | Melesat ke kisaran **Rp3 Miliar s.d. Rp4 Miliar**. |
 | **Sumber Biaya Appraisal** | Keluar dari **kantong pribadi founder** (Rp10–20jt). | Dibayar resmi dari **kas operasional PT** (beban perseroan). |
 | **Dampak ke Jadwal Rilis** | Tertunda 2–3 minggu menunggu laporan KJPP. | **Rilis instan hari ini**, PT langsung jalan. |
 | **Perlindungan Aset** | Software langsung jadi milik PT (rentan disita jika rugi). | Software aman di tangan pribadi selama masa inkubasi. |
@@ -51,20 +51,20 @@ HARI INI (FASE PELUNCURAN)                       MASA DEPAN (FASE SCALE-UP)
 
 Di bawah payung hukum Indonesia (UU No. 40/2007 Pasal 41–43 jo. PP No. 8/2021 tentang PT Perorangan), penambahan modal disetor melalui inbreng di kemudian hari diatur sebagai berikut:
 
-### 3.1 Prosedur Eksekusi di AHU Kemenkumham (Target Tahun ke-2: Rp2–3 Miliar)
-1. **Target Valuasi Realistis**:
-   Setelah kasir.mu beroperasi 24 bulan dan membuktikan omzet bulanan berulang (*MRR*), KJPP akan menilai software pada rentang **Rp2.000.000.000,- s.d. Rp3.000.000.000,-**.
+### 3.1 Prosedur Eksekusi di AHU Kemenkumham (Target Tahun ke-2: Rp3–4 Miliar)
+1. **Target Valuasi Realistis (Income Approach + Software Asset Valuation)**:
+   Setelah kasir.mu beroperasi 24 bulan dan membuktikan metrik operasional nyata (basis ratusan merchant aktif, retensi langganan, dan *Monthly Recurring Revenue / MRR* yang stabil) yang dikombinasikan dengan penilaian keandalan arsitektur perangkat lunak *proprietary* (Rust Core Engine, Tauri Desktop, SQLite offline-first, PostgreSQL cloud sync), KJPP akan menilai software pada rentang target realistis **Rp3.000.000.000,- s.d. Rp4.000.000.000,- (Tiga hingga Empat Miliar Rupiah)** menggunakan metode *Income Approach (Discounted Cash Flow / Relief from Royalty)*.
 2. **Kesesuaian dengan Kriteria PT Perorangan**:
-   Total modal perseroan menjadi Rp2,05 M s.d. Rp3,05 Miliar. Berdasarkan PP No. 7/2021, skala usaha perseroan resmi naik kelas dari *Usaha Mikro* menjadi **Usaha Kecil** (modal > Rp1 Miliar s.d. Rp5 Miliar). **PT TETAP SAH BERSTATUS PT PERORANGAN** dengan 1 orang pemegang saham tunggal karena batas atas modal PT Perorangan adalah Rp5 Miliar.
+   Dengan penambahan modal inbreng ini, total modal perseroan menjadi **Rp3,05 Miliar s.d. Rp4,05 Miliar**. Berdasarkan PP No. 7/2021, skala usaha perseroan resmi naik kelas dari *Usaha Mikro* menjadi **Usaha Kecil** (kategori modal > Rp1 Miliar s.d. Rp5 Miliar). **PT TETAP SAH 100% BERSTATUS PT PERORANGAN** dengan 1 orang pemegang saham tunggal dan tanpa kewajiban mengubah badan usaha atau menambah pemegang saham baru, karena batas atas modal PT Perorangan adalah Rp5 Miliar.
 3. **Keputusan Pemegang Saham Tunggal**:
    Founder membuat Keputusan Pemegang Saham Tunggal tentang Penyetoran Modal Non-Tunai dan Peningkatan Modal Disetor Perseroan.
 4. **Pendaftaran Perubahan di AHU Online**:
    * Akses `https://ptp.ahu.go.id`.
    * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
-   * Masukkan nilai penambahan modal disetor non-tunai sesuai nilai laporan KJPP (misal: Rp2.500.000.000,-).
+   * Masukkan nilai penambahan modal disetor non-tunai sesuai nilai laporan KJPP (misal: Rp3.500.000.000,-).
    * Sertifikat Pernyataan Perubahan terbit otomatis.
 5. **Bebas Pajak Pengalihan Modal**:
-   Sesuai ketentuan **Pasal 4 ayat (3) huruf c UU PPh**, harta yang diterima oleh badan sebagai pengganti modal disetor bukan merupakan objek Pajak Penghasilan bagi perseroan. PT tidak dikenai pajak tambahan atas masuknya aset software Rp2–3 Miliar tersebut.
+   Sesuai ketentuan **Pasal 4 ayat (3) huruf c UU PPh**, harta yang diterima oleh badan sebagai pengganti modal disetor bukan merupakan objek Pajak Penghasilan bagi perseroan. PT tidak dikenai pajak tambahan atas masuknya aset software Rp3–4 Miliar tersebut.
 
 ### 3.2 Jembatan Hukum Selama Masa Tunggu
 Selama periode sebelum inbreng menyusul dieksekusi:
