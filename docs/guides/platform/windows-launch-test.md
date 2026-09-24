@@ -3,7 +3,7 @@
 
 > **Status:** Implemented (2026-07-20)
 > **Target audience:** QA / developers testing on Windows 10/11
-> **Related:** [Release Checklist](../../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json)
+> **Related:** [Release Checklist](../../releases/checklist.md) · [Build Script](https://github.com/kardelitaitu/kasirmu/blob/main/scripts/build-exe-release.ps1) · [Tauri Config](https://github.com/kardelitaitu/kasirmu/blob/main/apps/desktop-tauri/tauri.conf.json)
 
 This guide covers building the kasir.mu desktop client on Windows and
 running the core POS flow end-to-end on a physical Windows machine.
@@ -432,9 +432,9 @@ Notes:
 
 ## Related
 
-- [Build Script](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/build-exe-release.ps1) — Automated Windows build
+- [Build Script](https://github.com/kardelitaitu/kasirmu/blob/main/scripts/build-exe-release.ps1) — Automated Windows build
 - [Release Checklist](../../releases/checklist.md) — Pre-release verification
-- [Tauri Config](https://github.com/kardelitaitu/oz-pos/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
+- [Tauri Config](https://github.com/kardelitaitu/kasirmu/blob/main/apps/desktop-tauri/tauri.conf.json) — Window size, CSP, bundle settings
 - [VPS Migration Guide](../../operations/vps-migration.md) — Cloud server deployment
 - [Docker Deployment Guide](../../operations/docker-deployment.md) — Full stack deployment
 - [Runbook](../../operations/runbook.md) — Incident response procedures

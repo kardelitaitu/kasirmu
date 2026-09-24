@@ -11,7 +11,7 @@
     Local app data (databases, settings) is preserved unless -Purge is given.
 
 .EXAMPLE
-    irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/uninstall.ps1 | iex
+    irm https://github.com/kardelitaitu/kasirmu/releases/latest/download/uninstall.ps1 | iex
 .EXAMPLE
     ./uninstall.ps1
 .EXAMPLE

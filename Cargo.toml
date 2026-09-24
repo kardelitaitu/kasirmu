@@ -41,7 +41,7 @@ license = "SEE LICENSE IN LICENSE"
 license-file = "LICENSE"
 publish = false
 authors = ["kasir.mu contributors"]
-repository = "https://github.com/kardelitaitu/oz-pos"  # TODO: update after repo rename
+repository = "https://github.com/kardelitaitu/kasirmu"
 readme = "README.md"
 
 [workspace.dependencies]

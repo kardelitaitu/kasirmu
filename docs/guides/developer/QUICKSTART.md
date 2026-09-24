@@ -51,8 +51,8 @@ own `.DESCRIPTION` header still lists six and omits idempotency):
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/kardelitaitu/oz-pos.git
-cd oz-pos
+git clone https://github.com/kardelitaitu/kasirmu.git
+cd kasirmu
 
 # 2. Build the Rust workspace
 cargo build --workspace

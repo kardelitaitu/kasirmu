@@ -1,5 +1,5 @@
-<!-- TODO: update badge URLs after repo rename — rebrand Tier 3 item T3-7 (kardelitaitu/oz-pos → kasirmu/kasir.mu). The URLs below still resolve today; the GitHub repo move has NOT happened, so do not pre-empt it. -->
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml)
+<!-- Rebrand Tier 3 item T3-7: the repository was renamed to kardelitaitu/kasirmu and the badge, clone and release URLs below were updated with it. -->
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/kasirmu?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/kasirmu?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/kasirmu/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/kasirmu/actions/workflows/dev-ci.yml)
 
 
 # kasir.mu
@@ -188,9 +188,8 @@ kasir.mu/
 ## Quick Start
 
 ```bash
-# TODO: update URLs after repo rename — rebrand T3-7
-git clone https://github.com/kardelitaitu/oz-pos.git
-cd oz-pos  # TODO: will be "kasir.mu" after repo rename (T3-7)
+git clone https://github.com/kardelitaitu/kasirmu.git
+cd kasirmu
 cargo build --workspace
 cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script-approvals
 cd apps/desktop-tauri && cargo tauri dev

@@ -29,7 +29,7 @@ WebView2 runtime, which ships with Windows 10 and 11.
 
 Download it from the [download page](../../download/) — no account is required.
 The installers themselves are published on
-[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
+[GitHub Releases](https://github.com/kardelitaitu/kasirmu/releases).
 
 **Windows** — run `kasir.mu_<version>_x64-setup.exe` (or the `.msi`) and follow
 the prompts. It installs for your user account and adds a kasir.mu entry to

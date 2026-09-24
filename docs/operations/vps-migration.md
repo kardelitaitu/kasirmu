@@ -738,7 +738,7 @@ migration window:
 
 ```bash
 # On the new VPS — build and start with a temporary port
-cd oz-pos
+cd kasirmu
 docker build -f ops/docker/Dockerfile.server -t oz-pos-cloud:latest .
 docker run -d --name oz-cloud-test -p 3099:3099 oz-pos-cloud:latest
 sleep 5
