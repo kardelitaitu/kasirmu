@@ -357,7 +357,7 @@ Key files with functional (not just prose) brand references:
 
 **Zero user-visible effect. Do not mix into this rebrand diff.**
 
-The work is specified in full in [`todo-rebrand-2.md`](./todo-rebrand-2.md) (phases T3-1…T3-7). That
+The work is specified in full in [`done-todo-rebrand-2.md`](./done-todo-rebrand-2.md) (phases T3-1…T3-7). That
 file is authoritative; this section previously carried a **second copy** of the list, and the two had
 already drifted:
 

@@ -52,12 +52,16 @@ ROOT_FILE_ALLOWLIST = frozenset({
     ".tarpaulin.toml", ".env.example",
     # Human entry points.
     "README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md",
-    # Owner working files (P5 withdrawal) + the agent-harness contract.
-    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "todo-rebrand-2.md",
+    "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "done-todo-rebrand-2.md",
+    "done-todo-tablet-device-verify.md", "done-todo-tablet-dialog-content-uri.md",
+    "done-todo-project-folder-restructure.md",
     "todo-open-debt-program.md", "todo-review-type.md",
-    "todo-owner-rulings.md",
-    "todo-project-folder-restructure.md",
+    "todo-owner-rulings.md", "todo-sync-endpoint-derivation.md",
     "todo-logo-mark-optical-centring.md",
+    "manager-codebase-review-checklist.md",
+    "manager-codebase-review-decisions.md",
+    "manager-codebase-review.md",
+    "README-2.md",
     # Measured exception (§5): not a duplicate of scripts/stats.json —
     # scripts/stats.ps1 and scripts/check.ps1 read this name.
     "stats.json",

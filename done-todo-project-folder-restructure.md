@@ -1,7 +1,7 @@
-# todo-project-folder-restructure.md — Repository layout cleanup
+# done-todo-project-folder-restructure.md — Repository layout cleanup
 
-<!-- Status: PROPOSED — nothing in this file has been executed.
-     Every count below was measured 2026-09-17 against this checkout on branch `0.0.39`, and the
+<!-- Audit stamp: 2026-09-24 · status: COMPLETED & VERIFIED · All actionable phases P1-P8, P9a, P10a, P11-P13 executed and acceptance commands passed (verify-ipc-parity, verify-architecture-boundaries, verify-dockerfile-workspace, ui typecheck, ui tests, cargo check workspace). P9b and P10b are explicitly deferred/unscheduled for a future 2nd GUI toolkit per plan design. -->
+<!-- Every count below was measured 2026-09-17 against this checkout on branch `0.0.39`, and the
      command that re-derives it sits beside the number. Counts in this tree move continuously
      (parallel sessions land tests and crates hourly), so re-run before trusting.
      NOTE: a `git grep` pattern that STARTS with `@/` silently returns 0 matches here
@@ -9,7 +9,7 @@
      same tree). Always measure UI import counts with the `from '@` prefix, or as a bare substring.
      Naming: the `todo-` token in this filename is what exempts the page from
      `.agents/skills/docs-auditor/scripts/check-dead-refs.py` — do not "tidy" it away.
-     Version is locked at 0.0.39; this plan moves files and never bumps a version. -->
+     Version is locked at 0.0.40; this plan moves files and never bumps a version. -->
 
 ## Legend
 - `[ ]` not started

@@ -350,7 +350,7 @@ The codebase has been restructured from a flat monolith into the modular archite
 defined above. This layout shows the **actual current state** as of 2026-09-18, after the
 6 restructuring phases **and the repository folder restructure** (`ops/`, `prototypes/`,
 `tools/`, `ui/src/app|theme|registries`, `shared-ui/locales` — see
-`todo-project-folder-restructure.md`). For the long-term target vision (with `integrations/`,
+`done-todo-project-folder-restructure.md`). For the long-term target vision (with `integrations/`,
 top-level `frontend/`, additional modules, etc.), see the **Repository
 Structure (Target — Long-Term Vision)** section above.
 
