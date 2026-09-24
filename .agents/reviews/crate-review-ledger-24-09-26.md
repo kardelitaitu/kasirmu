@@ -648,6 +648,61 @@ passed, 0 failed**. Clippy clean on both files under
 
 **Commit:** `be8d3d8d0` (BRIDGE-8, bridge).
 
+### Bridge tenth pass — 24-09-26 (activation was not atomic)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-9 | MEDIUM | `src/license.rs:161` — `activate_license` | **The two writes that activate a licence were not one transaction, so a mid-way failure left the NEW tier persisted beside the OLD payload.** `store_subscription` (the `tenant_subscription` row every tier gate and `get_subscription_capabilities` read) runs its INSERT in AUTOCOMMIT; `Settings::set_batch` (the signed payload, signature, api_key) opens its OWN transaction. A failure in the second left the first durable — a Pro quota row beside the Free payload. |
+
+**Why this is a defect and not a cosmetic ordering nit: the code already
+CLAIMED the property it did not have.** The block comment reads *"This write
+comes BEFORE Settings::set_batch so a partial failure doesn't leave the system
+in an inconsistent state where Settings reflect the new tier but
+tenant_subscription still has the old Free tier."* Ordering alone cannot
+deliver that when the two writers use different transactions — it can only
+decide WHICH half is stranded, not whether one is. The comment wrote a cheque
+the code did not cash, which is worse than no comment: a reader checking the
+invariant against the prose would have concluded it held.
+
+**Proven, not reasoned.** A regression test forces the settings write to fail
+(dropping the `settings` table) after the subscription write has already run,
+then asserts the tier is still Free. **Emulating the old autocommit shape makes
+it FAIL with `left: Pro, right: Free`** — the new tier survived a failed
+activation, exactly the state the comment claimed was prevented. Restoring the
+joined transaction makes it pass.
+
+**Fixed** by opening one `unchecked_transaction()` and routing BOTH writers
+through it, plus `tx.commit()` at the end. `store_subscription` already took a
+`&Connection`, and a `&Transaction` derefs to one, so the core signature needed
+no change — the fix is entirely at the call site. The hardcoded `"license.*"`
+string literals were also replaced with the existing `platform_core::settings::
+keys::LICENSE_*` constants, which is how every other lane in this crate names
+them (the literals were the only place they appeared unqualified).
+
+**Honest scope note:** the failure needs the second write to fail, which in
+practice means disk-full, a locked/corrupt DB, or a process kill between the
+two statements. So this is MEDIUM, not HIGH — wrong but requiring a fault to
+reach, not wrong on an ordinary path. It is still worth fixing because
+activation is the ONE moment the quota facts change, and the stranded state is
+self-consistent enough to persist for the life of the install.
+
+**Read this pass:** `activate_license`, `sealed_api_key`, `stored_credentials`,
+`get_machine_id`, and the licence-key plumbing in `crates/kasirmu-core/src/
+license_verification.rs` and `platform/core/src/settings/{keys,raw}.rs` to
+establish that `set_batch` really does open its own transaction (it does —
+`raw.rs:137`) and that the `LICENSE_*` constants match the literals used here.
+`sealed_api_key` is careful: it treats an undecryptable value as legacy
+plaintext rather than erroring, with the reason recorded, because activation
+must still work on a database written by a pre-encryption build.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- license::` →
+**23 passed, 0 failed**. `cargo check -p kasirmu-bridge --all-features` clean.
+My two files are clippy-clean under `--all-targets --all-features -- -D
+warnings`; the crate still carries the unrelated `sync.rs:74`
+`clippy::collapsible_if` committed by another agent in `5cbcb436d`.
+
+**Commit:** `0edcda3dc` (BRIDGE-9, bridge).
+
 
 
 
