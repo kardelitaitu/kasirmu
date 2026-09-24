@@ -260,6 +260,10 @@ def main():
         ("verify-pg-schema-drift", [py, "scripts/generate-pg-migration.py", "--check"]),
         ("verify-no-raw-params", [bash, "scripts/verify-no-raw-params.sh"]),
         ("verify-scoped-coverage (H-1)", [bash, "scripts/verify-scoped-coverage.sh"]),
+        (
+            "verify-scoped-authorization (H-1b)",
+            [bash, "scripts/verify-scoped-authorization.sh", "--strict"],
+        ),
     ]
 
     for label, cmd in static_gates:

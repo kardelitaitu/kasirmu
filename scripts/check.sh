@@ -64,6 +64,12 @@ step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bas
 # ── H-1/H-2: every registered command has a _scoped variant or allowlist entry ──
 step "scoped coverage (H-1)" "bash scripts/verify-scoped-coverage.sh" bash scripts/verify-scoped-coverage.sh
 
+# ── H-1b: a _scoped variant must actually AUTHORIZE, not merely exist ────
+# The check above stops at "a twin exists"; this one opens the twin. A _scoped
+# fn reaching the store or HAL must call a permission helper, be named in a
+# reasoned list, or carry an `// ungated-ok:` marker in its body.
+step "scoped authorization (H-1b)" "bash scripts/verify-scoped-authorization.sh --strict" bash scripts/verify-scoped-authorization.sh --strict
+
 # ── IPC registration parity (F-008/F-050) ────────────────────────────────
 # Fails when the UI invokes a command string absent from a shell's
 # generate_handler![] unless allowlisted; stale allowlist entries fail

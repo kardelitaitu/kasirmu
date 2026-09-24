@@ -141,6 +141,14 @@
       "runners": { "check.sh": ["scoped coverage (H-1)"] }
     },
     {
+      "id": "scoped-authorization",
+      "label": "Scoped authorization (H-1b)",
+      "status": "required",
+      "_note": "Added 2026-09-25 with the crate-audit round that found four authorization defects (BRIDGE-3, BRIDGE-5, BRIDGE-7 among them). verify-scoped-coverage.sh checks that a command HAS a _scoped twin and stops there: the moment a twin exists the command is 'covered' and the twin's BODY is never opened. So a _scoped fn that resolves a session and then reads or writes with no authorization at all passed that gate -- which is exactly how those defects survived. This gate checks the property: a _scoped fn reaching the store or the HAL must call a permission helper, be named in a reasoned list, or carry an `// ungated-ok:` marker in its body. Measured at introduction: 348 _scoped fns scanned, 0 unreasoned. The 35 explained entries split into deliberate shell asymmetry (promotions reads), documented module policy (tables, offline, scale, workspaces-picker), device-per-install values (license, health), and one KNOWN OPEN GAP deliberately NOT laundered as safe: the 9 hardware device commands (BRIDGE-7), where device access is currently open to any authenticated operator. Gating those is a product ruling, not a repair, so they carry a marker that says so. Runs in dev-ci.yml#static-gates, pre-push Tier 0 and scripts/check.sh.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "runners": { "check.sh": ["scoped authorization (H-1b)"] }
+    },
+    {
       "id": "ipc-parity",
       "label": "IPC parity",
       "status": "required",
