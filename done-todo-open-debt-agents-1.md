@@ -168,7 +168,7 @@ closes for NOT WORK rows.
 
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
-| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. Still open: the gate-ORDER half, ratcheted at 69 bodies. Gate-ORDER half **EXECUTED for `customers`** — see below. |
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **50 of 69 bodies EXECUTED 2026-09-25**, ratchet lowered 69 → 19: the 50 that gate via `require_permission_for_session` were split into `resolve_session` → gate → `resolve_store` across 12 files. The remaining 19 gate through a `user_id`-taking helper (9) or a domain wrapper (10), so reordering them changes what the helper authorises against — the next sweep, not a park. Gate-ORDER **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
@@ -267,6 +267,44 @@ lives only in the global db — the rule `ctx.rs:429-435` documents), so it deni
 different reasons. The assertion now requires the message to name the scope, which is what
 `kasirmu-core/src/db/staff.rs:322` emits only on the scope-aware path. Mutation-tested:
 restoring the unscoped gate fails with `got "user not found"`, and reverting makes it pass.
+
+**R10's gate-ORDER half: 50 of 69 bodies executed, and the ratchet did its job.** The
+population was MEASURED rather than taken from the note, and it split by gate shape:
+**50 bodies gate via `require_permission_for_session`**, 9 via a caller-supplied-`user_id`
+helper, and 10 via a domain wrapper. The 50 share one exact textual form —
+`let (session, conn_arc) = state.resolve_scope(&session_token)?;` immediately followed by
+the gate — and they share it for a structural reason worth naming: **`resolve_scope` IS
+`resolve_session` + `open_store`** (`apps/mobile-tauri/src/state.rs:290-300`), so the
+gate-first order cannot be expressed without splitting the call. The fix is therefore
+mechanical and uniform: `resolve_session` → GATE → `resolve_store`. All 50 were converted
+across 12 files, and none needed a bespoke edit — which is the evidence that the shape was
+as uniform as the census claimed.
+
+**The floor moving 69 → 19 is the ratchet working, not a formality.** Running the suite
+before touching the constant produced exactly the failure the test was written to produce:
+*"the open-before-gate sweep found 19 bodies, below the pinned floor of 69. A sweep that
+finds fewer has stopped matching, not had its subject repaired: if you FIXED bodies, lower
+the floor in the same commit."* That two-sided bound is why the drop could not be banked
+silently, and the per-file census it printed is what confirmed the 19 were the expected
+ones (`tax` 7, `history` 5, `categories` 3, `products` 3, `inventory_counts` 1).
+
+**The order guard is a new test, and the existing permission tests could not see the
+change.** `scoped_promotion_writes_deny_a_session_without_promotions_grants` passes with the
+gate before *or* after `resolve_scope`, because both orders reach `PermissionDenied` when
+the store opens normally. Order is only observable when the store **cannot** open, so
+`scoped_promotion_write_gates_before_it_opens_the_store` puts a FILE where the store
+manager expects its directory and asserts an unauthorised caller is still refused for the
+authorisation reason. Mutation-tested: restoring `resolve_scope` fails it with
+`got Err(Internal("opening store db: … Cannot create a file …"))` — which is the leak
+R10 describes, reproduced exactly (an authorisation failure surfacing as an infrastructure
+error, after filesystem work). The test also carries a control asserting the store really is
+unopenable, so it cannot pass because the fixture silently succeeded.
+
+**The remaining 19 are a different job, and the reason is not size.** They gate through a
+helper that takes a `user_id` or a domain-specific wrapper, so reordering them means
+changing *what the helper authorises against* — a behaviour question per site, not a
+mechanical move. Folding them into the same sweep would have hidden that behind a uniform
+diff.
 
 ---
 
