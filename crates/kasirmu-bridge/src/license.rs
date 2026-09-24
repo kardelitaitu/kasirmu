@@ -513,7 +513,16 @@ pub async fn check_license_status(
             Some(fp) if !fp.is_empty() => Some(fp),
             _ => {
                 let fp = generate_hardware_fingerprint();
-                let _ = Settings::set(&conn, keys::HARDWARE_FINGERPRINT, &fp);
+                // BRIDGE-2: propagate the write. This used to be
+                // `let _ = Settings::set(...)`, discarding the error while still
+                // returning the freshly generated value. When
+                // `get_system_uuid` fails the generator falls back to a
+                // per-PROCESS random UUID (FALLBACK_MACHINE_ID is a OnceLock), so
+                // a failed persist means every launch derives a DIFFERENT
+                // fingerprint — and the license server's one-trial-per-device
+                // lock keys on this value. `get_hardware_fingerprint` above
+                // already persists with `?`; this path now matches it.
+                Settings::set(&conn, keys::HARDWARE_FINGERPRINT, &fp)?;
                 Some(fp)
             }
         };

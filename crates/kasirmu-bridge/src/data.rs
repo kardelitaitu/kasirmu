@@ -781,15 +781,15 @@ pub async fn import_data(
                 )
                 .is_ok();
             if !exists {
-                let _ = tx.execute(
+                tx.execute(
                     "INSERT INTO categories (id, name, colour, icon) VALUES (?1, ?2, ?3, ?4)",
                     rusqlite::params![cat.id, cat.name, colour, ""],
-                );
+                )?;
             } else {
-                let _ = tx.execute(
+                tx.execute(
                     "UPDATE categories SET name = ?1, colour = ?2, icon = '' WHERE id = ?3",
                     rusqlite::params![cat.name, colour, cat.id],
-                );
+                )?;
             }
             categories_imported += 1;
         }
@@ -835,16 +835,16 @@ pub async fn import_data(
                 let email_str = cust.email.map(|e| e.to_string());
                 let phone_str = cust.phone.map(|p| p.to_string());
                 if exists {
-                    let _ = tx.execute(
+                    tx.execute(
                         "UPDATE customers SET name = ?1, email = ?2, phone = ?3, notes = ?4, updated_at = ?5 WHERE id = ?6",
                         rusqlite::params![cust.name, email_str, phone_str, cust.notes, now, cust.id],
-                    );
+                    )?;
                 } else {
-                    let _ = tx.execute(
+                    tx.execute(
                         "INSERT INTO customers (id, name, email, phone, notes, loyalty_points, total_spent_minor, currency, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                         rusqlite::params![cust.id, cust.name, email_str, phone_str, cust.notes, 0i64, 0i64, "USD", now, now],
-                    );
+                    )?;
                 }
                 customers_imported += 1;
             }
@@ -864,17 +864,17 @@ pub async fn import_data(
                     )
                     .is_ok();
                 if exists {
-                    let _ = tx.execute(
+                    tx.execute(
                         "UPDATE users SET username = ?1, display_name = ?2, role_id = ?3, is_active = ?4, updated_at = ?5 WHERE id = ?6",
                         rusqlite::params![user.username, user.display_name, user.role_id, user.is_active, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), user.id],
-                    );
+                    )?;
                 } else {
                     // Users from export have no PIN hash; mark as inactive so they must be re-invited
-                    let _ = tx.execute(
+                    tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
                         rusqlite::params![user.id, user.username, "", user.display_name, user.role_id, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)],
-                    );
+                    )?;
                 }
                 users_imported += 1;
             }

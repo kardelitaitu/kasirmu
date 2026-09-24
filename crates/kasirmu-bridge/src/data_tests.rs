@@ -568,6 +568,34 @@ fn catalog_count(conn: &rusqlite::Connection) -> i64 {
         .unwrap()
 }
 
+/// The import counters must not claim rows the database refused.
+///
+/// Every per-row write in `import_data` used to be `let _ = tx.execute(...)`
+/// for categories, customers and users — the error was discarded and the
+/// counter still incremented, so the result reported records that were never
+/// written. The products arm already propagated with `?`; this pins the other
+/// three so the asymmetry cannot come back.
+///
+/// The check is a SOURCE pin rather than a behavioural one because forcing a
+/// mid-batch write failure needs a constraint the schema does not expose
+/// without dropping a table, and the defect is exactly the discarded result.
+#[test]
+fn import_data_propagates_every_row_write() {
+    let src = include_str!("data.rs");
+    let mut offenders: Vec<(usize, String)> = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        let t = line.trim();
+        if t.starts_with("let _ = tx.execute(") {
+            offenders.push((i + 1, t.to_string()));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a discarded tx.execute() in import_data reports rows the database \
+         refused as imported; propagate with '?' instead: {offenders:?}"
+    );
+}
+
 #[test]
 fn import_gate_counts_only_unseen_skus() {
     // Batch arithmetic: existing-SKU rows are updates/merges, not new
