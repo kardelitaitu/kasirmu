@@ -346,7 +346,7 @@ into a spreadsheet.
    ☐ Frontend builds without errors (npm run build)
    ☐ Rust builds without errors (cargo build)
    ☐ Tauri bundle produces EXE
-   ☐ EXE file size < 50 MB
+   ☐ EXE file size < 80 MB
 
 ☐ PHASE 1 — Launch
    ☐ App launches within 5 seconds

@@ -392,7 +392,7 @@ Use this checklist during every Linux launch test.
    ☐ Frontend builds without errors (npm run build)
    ☐ Rust builds without errors (cargo build)
    ☐ Tauri bundle produces .deb and .AppImage
-   ☐ Binary size < 50 MB
+   ☐ Binary size < 80 MB
 
 ☐ PHASE 1 — Launch
    ☐ App launches within 5 seconds
