@@ -463,6 +463,63 @@ error, because the UI renders gates open on error). Money in `tax.rs` is
 fifth pass (`terminals::` + `workspaces::` 50 passed; the KDS failures are
 still a concurrent agent's uncommitted migration skew).
 
+### Bridge seventh pass — 24-09-26 (closing the gate blind spot)
+
+The sixth pass ended with a concrete claim: `verify-scoped-coverage.sh` cannot
+see the defect class that produced BRIDGE-3 and BRIDGE-5, because it decides a
+command is covered the moment a `_scoped` twin EXISTS and never opens the
+twin. This pass acted on the recommendation and built the missing half.
+
+**New: `scripts/verify-scoped-authorization.sh`.** A `_scoped` fn that reaches
+the store or the HAL must EITHER call a permission helper, OR be named in a
+reasoned `SELF_SCOPED` list, OR carry a `// ungated-ok: <reason>` marker. Two
+modes: **report (default)**, which lists offenders and always exits 0, and
+**`--strict`**, which exits 1 when an ungated fn has no stated reason.
+
+Report is the default ON PURPOSE. A new hard failure on a shared branch stops
+every concurrent agent until it is satisfied, so `--strict` is wired into
+pre-push only once the backlog reaches zero. **The checker is committed but NOT
+yet enforcing** — a deliberate half-step, recorded so it does not read as an
+oversight.
+
+**What it found: 348 `_scoped` fns scanned, 31 resolve the store and never
+authorize.** They cluster by module — `hardware.rs` (8), `offline.rs` (5),
+`tables.rs` (3), `promotions.rs` (3), `sync.rs` (3), `workspaces.rs` (3,
+`list_workspace_screens_scoped` among them), `scale.rs` (2), plus singles in
+`features.rs`, `pos.rs`, `settings.rs`, `shifts.rs`. That list is the artifact:
+it turns an invisible policy into a checkable one, and it independently
+re-derived the BRIDGE-7 hardware finding from source rather than from reading.
+
+**Calibrated against false positives, which is what makes the number usable.**
+The detector flags ZERO of the functions verified gated by hand: all 8 `tax.rs`
+scoped commands and `open_cash_drawer_scoped`, the single gated hardware fn. It
+also rediscovered the exact hardware set enumerated manually in the sixth pass,
+from a completely different direction — two independent methods agreeing.
+
+**Two detector bugs found and fixed while building it — recorded because the
+first version produced a plausible WRONG answer, which is the failure mode a
+checker must not have.**
+
+1. A `_scoped` signature line ALSO matches the generic "a top-level fn starts
+   here" pattern, so the first version closed every fn against an EMPTY body.
+   The `_scoped` test now runs first and consumes the line.
+2. The counters live inside awk, so the shell saw only unbound variables
+   (`scanned: unbound variable`). The summary and exit code now come from awk,
+   and bash reads its status.
+
+**Read this pass:** `tables.rs` and `scale.rs` in full, to test the detector
+against real ungated code rather than trusting it. Both ARE genuinely ungated —
+`tables.rs` says so in its own header ("the ungated reads (no session gate by
+design)") — corroborating that the 31 are mostly a deliberate historical policy
+rather than 31 independent mistakes. The checker exists so that policy is stated
+per function instead of inferred from silence.
+
+**Verified:** `bash scripts/verify-scoped-authorization.sh` → exit 0 (report);
+`--strict` → exit 1 (31 offenders), as designed. `verify-scoped-coverage.sh`
+still PASSES, so the existing gate is unaffected.
+
+**Commit:** `2b97e2722` (script).
+
 
 
 
