@@ -1354,6 +1354,54 @@ the sibling tests carry).
 
 **Commit:** `3687afca5` (CORE-E).
 
+### Core thirtieth pass — 24-09-26 (a sale enqueued under a hardcoded tenant)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| CORE-F | MEDIUM | `platform/startup/src/event_handlers.rs:87` — `SaleSyncEnqueuer` | **A completed sale was enqueued under a hardcoded `"default"` tenant while the event carried its real `store_id`.** The `offline_queue` is read PER TENANT, so a multi-store sale settled through this lane is filed where its own store daemon never looks and is never pushed. `SaleCompleted.store_id` is `Option<String>` and available at the call site; the helper used pins the literal and throws it away. |
+
+**The repo already knew, in three separate places, which is what makes this a
+live miss rather than an unknown.** `offline.rs:305-310` documents the defect by
+name (*"a real pre-existing bug, found here and NOT fixed here because its callers
+are outside this change"*), `offline.rs:347` repeats it, and
+`offline_tests.rs:1186` pins the correct shape for the in-transaction lane with the
+warning that the hardcoded helper *"would reintroduce the multi-store bug this one
+avoids"*. OFF-09 added `enqueue_offline_scoped` — the combined tenant+priority
+entry point — precisely so the command boundary could preserve multi-store
+isolation. This call site was simply never migrated to it.
+
+**Why nothing caught it: every fixture in the file set `store_id: None`.** I
+grepped all twelve `SaleCompleted` constructions in `event_handlers_tests.rs` and
+each one passes `None`, so the tenant assertion could not have existed. That is the
+second time this audit has found a defect preserved by a uniformly unrepresentative
+fixture (the first was the `products_stock_query_tests.rs` cache probe).
+
+**Severity MEDIUM, not HIGH, on an honest reading.** The lane is reachable and
+subscribed (`startup/src/lib.rs:127`), but the handler documents itself as
+*"lane one — the legacy `complete_sale` command"*, and the two wired settlement
+doors write their outbox row in-transaction with the correct tenant and short-
+circuit here via the outbox probe. So the exposure is the legacy command path,
+which loses sync for a multi-store sale rather than corrupting data. Still a real
+defect on a live path, now fixed rather than documented a fourth time.
+
+**Fixed** by taking the tenant from the event with a `"default"` fallback. The
+fallback keeps single-store installs byte-identical — an absent `store_id` was the
+old unconditional behaviour — so only the multi-store case changes.
+
+**Pinned by the two tests the fixtures never had** —
+`sync_enqueuer_files_the_row_under_the_sale_store_not_a_hardcoded_default` and
+`…_falls_back_to_default_without_a_store`. The first was **watched to FAIL** with
+the tenant restored to the literal (`the sale store, not the enqueue helper
+hardcoded default`) and pass with the fix.
+
+**Verified:** `cargo test -p platform-startup` → **82 passed, 0 failed**.
+`cargo check -p platform-startup` clean. Clippy clean on both files. Note: the first
+build attempt failed inside `kasirmu-hal` on another agent untracked
+`edc/loopback.rs`; retried once their work settled and it compiled with no change
+on my side.
+
+**Commit:** `07f9e9515` (CORE-F).
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
