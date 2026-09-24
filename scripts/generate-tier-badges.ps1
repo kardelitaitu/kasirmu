@@ -1,9 +1,20 @@
-# scripts/generate-tier-badges.ps1 - Subscription tier badge generator.
+# scripts/generate-tier-badges.ps1 - Tier badge and brand logo rasteriser.
 #
 # Usage:
 #   powershell -File scripts\generate-tier-badges.ps1                 # SVG + PNG @1x/2x/3x
 #   powershell -File scripts\generate-tier-badges.ps1 -Scales 1,2,3,4
 #   powershell -File scripts\generate-tier-badges.ps1 -SvgOnly
+#   powershell -File scripts\generate-tier-badges.ps1 -BadgesOnly      # skip the logo PNGs
+#
+# TWO asset families, because they share one rasteriser and one geometry table:
+#
+#   TIER BADGES  generated artwork. The palette and geometry below produce the
+#                SVG, then the PNG is rasterised from it.
+#   BRAND LOGOS  existing artwork. The SVGs already live in
+#                assets/branding/<brand>/vector/, hand-authored by the designer
+#                and copied by scripts/sync-branding.ps1. This script only
+#                RASTERISES them, so a checkout without ImageMagick still has
+#                the vectors. Never edit a logo PNG: regenerate it.
 #
 # The five subscription tiers are defined by TIER_LEVEL in
 # ui/src/utils/tierLevel.ts and do NOT vary per tenant, so this lives outside
@@ -27,6 +38,9 @@ param(
     # Taking a string and splitting it makes the documented CLI work.
     [string]$Scales = "1,2,3",
     [switch]$SvgOnly,
+    # Skips the brand-logo rasterisation. The logos are already-authored vectors,
+    # so a badges-only run is the common case when iterating on tier palettes.
+    [switch]$BadgesOnly,
     [string]$FontFile = "",
     [int]$Weight = 700
 )
@@ -59,11 +73,11 @@ $BaselineK   = 0.36                           # optical baseline offset as a fra
 # 4.5:1: the logo blue #147EFB itself only reaches 3.88:1 with white, so the
 # fill keeps the logo hue and saturation and drops lightness to 48.1%.
 $Tiers = @(
-    @{ Key = "free";       Label = "FREE";       Fill = "#64748B"; Ink = "#FFFFFF"; Border = "" }
-    @{ Key = "plus";       Label = "PLUS";       Fill = "#8655F6"; Ink = "#FFFFFF"; Border = "" }
-    @{ Key = "pro";        Label = "PRO";        Fill = "#0471F1"; Ink = "#FFFFFF"; Border = "" }
-    @{ Key = "premium";    Label = "PREMIUM";    Fill = "#F5C518"; Ink = "#3F2D00"; Border = "" }
-    @{ Key = "enterprise"; Label = "ENTERPRISE"; Fill = "#12141A"; Ink = "#F1F5F9"; Border = "" }
+    @{ Key = "free";       Label = "FREE";       Fill = "#64748B"; Ink = "#FFFFFF" }
+    @{ Key = "plus";       Label = "PLUS";       Fill = "#8655F6"; Ink = "#FFFFFF" }
+    @{ Key = "pro";        Label = "PRO";        Fill = "#0471F1"; Ink = "#FFFFFF" }
+    @{ Key = "premium";    Label = "PREMIUM";    Fill = "#F5C518"; Ink = "#3F2D00" }
+    @{ Key = "enterprise"; Label = "ENTERPRISE"; Fill = "#12141A"; Ink = "#F1F5F9" }
 )
 
 # -- Normalise -Scales --------------------------------------------------------
@@ -244,6 +258,72 @@ foreach ($tier in $Tiers) {
         if ($LASTEXITCODE -ne 0) { $failures += "PNG export failed for $key @$($scale)x" }
     }
     Write-Host "         PNG @$($ScaleList -join 'x, ')x" -ForegroundColor DarkGray
+}
+
+# -- Brand logos (rasterise existing vectors) ---------------------------------
+# These SVGs are NOT generated here. They are designer exports under
+# assets/branding/<brand>/vector/, and scripts/sync-branding.ps1 copies them to
+# ui/public/branding/ for the web. This section only turns them into PNGs, which
+# nothing else in the repo does: before it, a logo PNG had to be produced by hand
+# from the vector, so it could silently disagree with it.
+#
+# `Aspect` is the source viewBox ratio, kept so the emitted PNGs are an exact
+# integer multiple of the 1x size per scale (the same guarantee the tier badges
+# carry). `Bg` is the flatten colour: the mark and lockup arrive as TRANSPARENT
+# artwork, and a transparent PNG of a dark wordmark is invisible on a dark page,
+# so the light/dark pairs are flattened onto the surface they are meant for.
+# logo-monochrome stays on a transparent ground on purpose — it is a one-ink
+# asset for thermal/e-paper output, where the printer supplies the paper.
+$LogoDir = "assets/branding/default/vector"
+$Logos = @(
+    @{ Key = "logo-icon";            Src = "logo-mark.svg";                     Base = 512; Bg = '' }
+    @{ Key = "logo-icon-mono";       Src = "logo-mark-monochrome.svg";          Base = 512; Bg = '' }
+    @{ Key = "logo-icon-text";       Src = "logo-full.svg";                     Base = 1024; Bg = '#FFFFFF' }
+    @{ Key = "logo-icon-text-dark";  Src = "logo-full-dark.svg";                Base = 1024; Bg = '#12141A' }
+    @{ Key = "logo-icon-text-mono";  Src = "logo-monochrome.svg";               Base = 1024; Bg = '' }
+)
+
+if ($BadgesOnly) {
+    Write-Host ""
+    Write-Host "-- Brand logos skipped (-BadgesOnly) --" -ForegroundColor DarkGray
+} elseif (-not $Script:MagickPath) {
+    Write-Host ""
+    Write-Host "-- Brand logos -- SKIPPED: ImageMagick not found --" -ForegroundColor Yellow
+} else {
+    Write-Host ""
+    Write-Host "-- Brand logos --" -ForegroundColor White
+    $logoPngDir = Join-Path $OutDir "logo"
+    New-Item -ItemType Directory -Force -Path $logoPngDir | Out-Null
+
+    foreach ($logo in $Logos) {
+        $srcPath = Join-Path $LogoDir $logo.Src
+        if (-not (Test-Path $srcPath)) {
+            # A missing SOURCE is a real gap, not something to paper over: the
+            # logo-icon-mono entry depends on a file that did not exist until it
+            # was derived from logo-mark.svg, and silently skipping a missing
+            # variant is how a half-complete logo set ships.
+            $failures += "logo source not found: $srcPath"
+            Write-Host "  [MISS] $($logo.Key) - no source at $srcPath" -ForegroundColor Red
+            continue
+        }
+
+        foreach ($scale in $ScaleList) {
+            $px = $logo.Base * $scale
+            $pngPath = Join-Path $logoPngDir "$($logo.Key)@$($scale)x.png"
+            # -density renders the vector at the target resolution; see the note on
+            # the tier-badge export above for why resizing after load is wrong.
+            $density = 72 * $scale
+            # -background <colour> -flatten bakes the artwork onto its surface when
+            # Bg is set, and the empty string keeps the alpha channel otherwise.
+            if ($logo.Bg) {
+                & $Script:MagickPath -background $logo.Bg -density $density "$srcPath" -resize "$($px)x" -flatten -depth 8 -strip $pngPath
+            } else {
+                & $Script:MagickPath -background none -density $density "$srcPath" -resize "$($px)x" -depth 8 -strip $pngPath
+            }
+            if ($LASTEXITCODE -ne 0) { $failures += "Logo export failed for $($logo.Key) @$($scale)x" }
+        }
+        Write-Host "  [PNG]  $($logo.Key)  base $($logo.Base)px  @$($ScaleList -join 'x, ')x" -ForegroundColor Green
+    }
 }
 
 # -- Manifest -----------------------------------------------------------------

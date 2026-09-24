@@ -28,6 +28,11 @@ const PNG_DIR = path.resolve(process.cwd(), '../assets/tier-badges/png');
 /** Distinct-colour count, read from the PNG's own IHDR/IDAT-derived histogram.
  *  Parsed here rather than shelling out to ImageMagick: this test must not depend
  *  on a tool the CI image may not carry. */
+/** The PNG IHDR colour type (2 = RGB, 3 = palette, 4 = grey+alpha, 6 = RGBA). */
+function pngColourType(file: string): number {
+  return fs.readFileSync(file).readUInt8(25);
+}
+
 function uniqueColours(file: string): number {
   const buf = fs.readFileSync(file);
   // Full decode is out of scope; inflate the IDAT and count distinct RGBA tuples
@@ -53,18 +58,21 @@ function uniqueColours(file: string): number {
     }
     pos += 12 + len;
   }
-  const channels = colourType === 6 ? 4 : colourType === 2 ? 3 : 0;
+  // Colour types: 0 grey, 2 RGB, 3 palette, 4 grey+alpha, 6 RGBA.
+  // 0/4 are legitimate here — the MONOCHROME logos are single-ink artwork, and
+  // ImageMagick emits them as grey+alpha (4). Rejecting those would fail on a
+  // supported output.
+  const channels = colourType === 6 ? 4 : colourType === 2 ? 3 : colourType === 4 ? 2 : colourType === 0 ? 1 : 0;
   // THROW rather than return a sentinel. A palette-mode PNG (colour type 3) is
   // exactly what the buggy exporter produced for @1x, and returning 0 for it
   // made the ratio Infinity — the test failed, but by accident and with a
   // message about ratios instead of about the real problem. Refusing to score
-  // an image this helper cannot read is the honest answer; the generator is
-  // pinned to RGBA (ImageMagick emits colour type 6 with -depth 8 here), so a
-  // palette PNG means the export path changed and a human must look.
+  // an image this helper cannot read is the honest answer: a palette PNG means
+  // the export path changed and a human must look.
   if (channels === 0) {
     throw new Error(
-      `${path.basename(file)} is PNG colour type ${colourType}, not truecolour — ` +
-        'this helper cannot score it, and the exporter is expected to emit RGBA',
+      `${path.basename(file)} is PNG colour type ${colourType} (palette) — ` +
+        'this helper cannot score it, and the exporter is not expected to emit it',
     );
   }
   const raw = zlib.inflateSync(Buffer.concat(idat));
@@ -100,9 +108,17 @@ function uniqueColours(file: string): number {
       line[i] = v & 0xff;
     }
     for (let x = 0; x < stride; x += channels) {
-      const rgb = `${line[x] ?? 0},${line[x + 1] ?? 0},${line[x + 2] ?? 0},${
-        channels === 4 ? (line[x + 3] ?? 0) : 255
-      }`;
+      // Normalise every colour type to one RGBA tuple so the counts are
+      // comparable across RGB, RGBA, grey and grey+alpha exports.
+      const r = line[x] ?? 0;
+      const rgb =
+        channels === 1
+          ? `${r},${r},${r},255`
+          : channels === 2
+            ? `${r},${r},${r},${line[x + 1] ?? 0}`
+            : `${r},${line[x + 1] ?? 0},${line[x + 2] ?? 0},${
+                channels === 4 ? (line[x + 3] ?? 0) : 255
+              }`;
       seen.add(rgb);
     }
     line.copy(prev);
@@ -110,40 +126,81 @@ function uniqueColours(file: string): number {
   return seen.size;
 }
 
+const LOGO_DIR = path.resolve(process.cwd(), '../assets/tier-badges/logo');
+
+/**
+ * The brand-logo PNGs share the tier badges' rasteriser, so they carry the same
+ * upscaling risk and are guarded the same way. They differ in one respect: the
+ * logo sources are TRANSPARENT vectors, so a correct export has an alpha channel
+ * and a colour count dominated by edge blends rather than by a flat fill.
+ */
+const LOGOS = [
+  'logo-icon',
+  'logo-icon-mono',
+  'logo-icon-text',
+  'logo-icon-text-dark',
+  'logo-icon-text-mono',
+] as const;
+
+const logosAvailable = LOGOS.every((k) =>
+  fs.existsSync(path.join(LOGO_DIR, `${k}@1x.png`)),
+);
+
+describe.skipIf(!logosAvailable)('brand logo PNG exports', () => {
+  it.each(LOGOS)('%s @3x is an exact 3x of its @1x', (key) => {
+    const read = (suffix: string) => {
+      const buf = fs.readFileSync(path.join(LOGO_DIR, `${key}${suffix}.png`));
+      return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+    };
+    const base = read('@1x');
+    const three = read('@3x');
+    // The vector is scaled by width, so the height carries a rounding remainder
+    // of up to 1px per scale step. Allow exactly that, not more.
+    expect(Math.abs(three.w - base.w * 3), `${key} width`).toBeLessThanOrEqual(1);
+    expect(Math.abs(three.h - base.h * 3), `${key} height`).toBeLessThanOrEqual(1);
+  });
+
+  it.each(LOGOS)('%s 1x is antialiased, not a flat default-density render', (key) => {
+    const colours = uniqueColours(path.join(LOGO_DIR, `${key}@1x.png`));
+    // Measured floor for these transparent vector exports; an under-antialiased
+    // default-density render scores far lower, the same failure the tier-badge
+    // 1x check catches.
+    expect(colours, `${key} 1x has only ${colours} colours`).toBeGreaterThan(24);
+  });
+});
+
 const TIERS = ['free', 'plus', 'pro', 'premium', 'enterprise'] as const;
 const available = TIERS.every((t) => fs.existsSync(path.join(PNG_DIR, `tier-${t}@1x.png`)))
   && fs.existsSync(path.join(PNG_DIR, 'tier-pro@3x.png'));
 
 describe.skipIf(!available)('tier badge PNG exports are rendered per scale', () => {
-  it.each(TIERS)('%s renders each scale independently (colour ramp stays flat)', (tier) => {
-    // MEASURED, then chosen. The two exporters differ in how the colour count
-    // grows from 1x to 3x, because each rasterises at a different density:
+  it.each(TIERS)('%s @1x is encoded truecolour, not palette', (tier) => {
+    // THE ROOT SIGNAL, and the only one that proved reliable. When the exporter
+    // resizes AFTER loading, the SVG is rasterised at its intrinsic size and
+    // enlarged, and ImageMagick encodes that flat result as a PALETTE png —
+    // colour type 3 — because it has few enough distinct colours to index. A
+    // correct density render is truecolour, type 6.
     //
-    //   upscaling (the bug)  3x/1x = 3.69 .. 6.43   (1x is under-antialiased,
-    //                                               so enlarging it invents
-    //                                               many new blended colours)
-    //   density render (fix) 3x/1x = 1.76 .. 2.09   (all three scales are
-    //                                               antialiased properly, so
-    //                                               the ramp is gentle)
+    // MEASURED across all five tiers: buggy @1x = type 3, correct @1x = type 6.
+    // Categorical, so no threshold to tune and no false-negative margin.
     //
-    // 2.5 sits in the gap with ~20% margin on each side. A one-sided
-    // 'is 3x richer than 1x?' check does NOT work: the buggy export passes it
-    // (621 colours against 371), which is how the first version of this test
-    // let the bug through.
-    const oneX = uniqueColours(path.join(PNG_DIR, `tier-${tier}@1x.png`));
-    const threeX = uniqueColours(path.join(PNG_DIR, `tier-${tier}@3x.png`));
-    const ratio = threeX / oneX;
+    // Why not a colour-count test: I tried two and both were unsound. 'Is 3x
+    // richer than 1x?' passes the bug (621 vs 371). 'Is the 3x/1x ratio under
+    // 2.5?' also passes when ONLY @3x is stale, because the 3x/2x ramps of the
+    // two exporters are indistinguishable (corrupt 1.18-1.41, correct 1.31-1.41).
+    // Colour count alone cannot separate them; the encoding can.
+    const type = pngColourType(path.join(PNG_DIR, `tier-${tier}@1x.png`));
     expect(
-      ratio,
-      `${tier}: 3x/1x colour ratio ${ratio.toFixed(2)} (1x=${oneX}, 3x=${threeX}) — ` +
-        'above 2.5 means the 3x was upscaled from a low-density 1x render',
-    ).toBeLessThan(2.5);
+      type,
+      `${tier}@1x is PNG colour type ${type} (3 = palette) — the SVG was ` +
+        'rasterised flat and enlarged rather than rendered at density',
+    ).toBe(6);
   });
 
-  it.each(TIERS)('%s 1x is antialiased, not a flat default-density render', (tier) => {
-    // The buggy 1x comes out with 98..203 distinct colours because ImageMagick
-    // rasterised it flat; a real render of these outlines gives 340..627. 300
-    // separates the two populations with margin on both sides.
+  it.each(TIERS)('%s @1x is antialiased, not a flat default-density render', (tier) => {
+    // An independent floor, kept because it catches a flat render that ever
+    // happens to encode as truecolour. A real render of these outlines gives
+    // 340..627 distinct colours; the flat one gives 131 or fewer.
     const oneX = uniqueColours(path.join(PNG_DIR, `tier-${tier}@1x.png`));
     expect(oneX, `${tier} 1x has only ${oneX} colours — looks unantialiased`).toBeGreaterThan(300);
   });
