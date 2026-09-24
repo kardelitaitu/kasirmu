@@ -75,7 +75,7 @@ get_active_shift_scoped"
 # and its body, then classifies each. Keeping it in awk (rather than a bash
 # loop over extracted records) avoids a second level of quoting, which is where
 # a checker like this usually breaks.
-awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" '
+awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" -v SRC="$SRC" '
   BEGIN { n = split(LISTED, tmp, "\n"); for (i = 1; i <= n; i++) listed[tmp[i]] = 1 }
 
   # A new top-level fn closes the previous one. The `_scoped` test comes FIRST:
@@ -113,7 +113,20 @@ awk -v PERM="$PERM" -v STORE="$STORE" -v LISTED="$SELF_SCOPED" '
   # this process, so bash would see only an unset variable.
   END {
     if (fn != "") { classify() }
-    printf "\nscanned: %d   explained: %d   UNREASONED: %d\n\n", scanned, explained, unreasoned
+    printf "\nscanned: %d   explained: %d   UNREASONED: %d\n", scanned, explained, unreasoned
+
+    # A FLOOR, for the reason the sibling `verify-scoped-coverage.sh` now
+    # carries one: "every _scoped fn is accounted for" and "the scan found no
+    # _scoped fns" both print a clean summary and exit 0, because the loop
+    # never runs and `unreasoned` stays 0. The subject is a `find` over
+    # $SRC, so a moved directory empties it silently. Measured 2026-09-25:
+    # 348 scanned, so 150 is a floor a real regression trips long before zero.
+    if (scanned < 150) {
+      printf "FAIL: scanned only %d _scoped fn(s) in %s - the scan is reading\n", scanned, SRC
+      printf "nothing, so this gate would pass vacuously (expected >= 150; measured 348 on 2026-09-25)\n\n"
+      exit 2
+    }
+    printf "\n"
     exit (unreasoned > 0 ? 1 : 0)
   }
 ' $(find "$SRC" -name "*.rs" ! -name "*_tests.rs")

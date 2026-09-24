@@ -165,7 +165,25 @@ scoped_funcs=$(grep -roh "pub async fn [a-z_]*_scoped" apps/desktop-tauri/src/co
 # Get all registered unscoped commands (not _scoped themselves)
 registered_unscoped=$(grep -oE 'commands::[a-z_]+::[a-z_]+,' apps/desktop-tauri/src/lib.rs | sed 's/,$//' | grep -v '_scoped$' | sort -u)
 
+# A FLOOR, without which this gate cannot tell "every command is covered" from
+# "the derivation found no commands at all". Both print PASS. The second is not
+# hypothetical: the subject comes from grepping lib.rs for `commands::a::b,`, so
+# a rename, a move to a registration macro, or a change of quoting empties it —
+# and an empty subject makes the loop below run zero times, leaving $violations
+# at 0. `set -e` does not save it: the derivation ends in `grep -v`, which exits
+# 0 on empty input, so nothing aborts. Measured 2026-09-25: the derivation
+# currently yields 101 commands, so 50 is a floor that a real regression trips
+# long before it can silently reach zero.
+registered_count=$(printf "%s\n" "$registered_unscoped" | grep -c . || true)
+if [ "$registered_count" -lt 50 ]; then
+    echo -e "${RED}FAIL: derived only $registered_count registered command(s) from \
+desktop-tauri/src/lib.rs - the derivation is broken, so this gate would pass by \
+checking nothing (expected >= 50; measured 101 on 2026-09-25)${NC}"
+    exit 1
+fi
+
 echo "=== Scoped Coverage Check ==="
+echo "  (derived $registered_count registered unscoped command(s))"
 echo ""
 
 while IFS= read -r cmd; do
