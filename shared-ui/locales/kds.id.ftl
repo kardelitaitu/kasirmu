@@ -156,17 +156,12 @@ kds-enrollment-stations-placeholder = Ketik nama stasiun dan tekan Enter
 kds-enrollment-stations-aria = Tambahkan penugasan stasiun
 kds-enrollment-stations-hint = Masukkan ID stasiun topologi yang harus ditampilkan perangkat ini. Kosongkan untuk mode broadcast (semua pesanan).
 kds-enrollment-station-remove-aria = Hapus stasiun { $station }
-kds-enrollment-generating = Membuat token pendaftaran…
+kds-enrollment-generating = Mendaftarkan perangkat…
 kds-enrollment-success = Perangkat berhasil didaftarkan!
-kds-enrollment-expiry-note = Token pendaftaran kedaluwarsa dalam 5 menit. Pindai kode QR dengan perangkat KDS untuk menyelesaikan pengaturan.
 kds-enrollment-cancel = Batal
 kds-enrollment-create-btn = Buat Perangkat
 kds-enrollment-done = Selesai
 kds-enrollment-error = Gagal mendaftarkan perangkat
-kds-enrollment-scan-instruction = Pindai kode QR ini dengan perangkat KDS untuk menyelesaikan pemasangan.
-kds-enrollment-qr-aria = Kode QR untuk mendaftarkan { $name }
-kds-enrollment-countdown = Token kedaluwarsa dalam { $seconds }d
-kds-enrollment-expired = Token telah kedaluwarsa — tutup dan daftar ulang untuk membuat yang baru
 
 # ── KDS Device Status ──
 kds-device-status-connected = Terhubung

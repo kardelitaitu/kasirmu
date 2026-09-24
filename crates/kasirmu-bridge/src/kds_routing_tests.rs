@@ -184,8 +184,6 @@ fn seed_split_candidate_ticket(app: &TestBridge) -> String {
                 name: name.into(),
                 restaurant_pos_id: "terminal-1".into(),
                 station_ids: vec![station.into()],
-                pairing_token_hash: format!("h-{name}"),
-                pairing_expires_at: "2099-01-01".into(),
             })
             .unwrap();
         }

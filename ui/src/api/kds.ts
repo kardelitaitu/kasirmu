@@ -185,8 +185,6 @@ export interface RegisterKdsDeviceInput {
   name: string;
   restaurant_pos_id: string;
   station_ids: string[];
-  pairing_token_hash: string;
-  pairing_expires_at: string;
 }
 
 /** Register a new KDS device (scoped — ADR #7). */

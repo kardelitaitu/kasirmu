@@ -192,6 +192,11 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
         "20260831_loyalty_multiplier_fixedpoint.sql",
         "20260906_rename_store_to_location.sql",
         "20260913_memo_locations.sql",
+        // DB-03 one-shot: SQLite has no `DROP COLUMN IF EXISTS`, so re-applying
+        // this against a schema where the columns are already gone fails with
+        // "no such column". Forward-only by construction; a drifted database
+        // needs the backup-plus-repair procedure, not a re-apply.
+        "20261014_kds_drop_pairing_tokens.sql",
     ];
 
     // Built once: every iteration must compare the same bytes against the
@@ -363,6 +368,10 @@ fn every_migration_re_applies_against_the_final_schema() {
         "20260906_rename_store_to_location.sql",
         "20260911_memo_fk_restrict.sql",
         "20260913_memo_locations.sql",
+        // Same DB-03 reason as the list above: a column drop cannot be
+        // re-applied once the column is gone, and SQLite offers no
+        // `IF EXISTS` form to make it idempotent.
+        "20261014_kds_drop_pairing_tokens.sql",
     ];
 
     let mut not_reappliable: Vec<String> = Vec::new();

@@ -215,8 +215,8 @@ pub struct UpdateKdsOrderItemsInput {
 
 /// A registered KDS display device bound to one Restaurant POS.
 ///
-/// Each device is enrolled via QR-code pairing and tracked through
-/// the `kds_devices` table. The `station_ids` field determines which
+/// Registered by the POS that owns it and tracked through the
+/// `kds_devices` table. The `station_ids` field determines which
 /// topology stations this device is responsible for — an empty vec
 /// means the device receives all orders (broadcast mode).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,10 +284,6 @@ pub struct RegisterKdsDeviceInput {
     pub restaurant_pos_id: String,
     /// Topology station IDs this device is responsible for.
     pub station_ids: Vec<String>,
-    /// SHA-256 hash of the enrollment token.
-    pub pairing_token_hash: String,
-    /// ISO-8601 expiry timestamp for the enrollment token.
-    pub pairing_expires_at: String,
 }
 
 /// Resolve which KDS devices should receive an order based on its line items.

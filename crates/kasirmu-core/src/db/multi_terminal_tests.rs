@@ -642,8 +642,6 @@ fn integration_kds_routing_from_multiple_terminals() {
         name: "Kitchen Display".into(),
         restaurant_pos_id: "resto-pos".into(),
         station_ids: vec![],
-        pairing_token_hash: "hash-1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
     };
     s.register_kds_device(kds_input).unwrap();
 
@@ -842,8 +840,6 @@ fn e2e_three_terminal_restaurant() {
         name: "Kitchen Display".into(),
         restaurant_pos_id: "pos-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "hash-kds".into(),
-        pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
     };
     s.register_kds_device(kds_input).unwrap();
 

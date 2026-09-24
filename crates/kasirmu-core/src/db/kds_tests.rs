@@ -1839,8 +1839,6 @@ fn register_kds_device_and_retrieve() {
         name: "Expo Screen".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["station-grill".into(), "station-bar".into()],
-        pairing_token_hash: "hash-abc".into(),
-        pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
     };
     let device = s.register_kds_device(input).unwrap();
     assert!(!device.id.is_empty());
@@ -1873,24 +1871,18 @@ fn list_kds_devices_for_restaurant() {
         name: "Screen A".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
     s.register_kds_device(RegisterKdsDeviceInput {
         name: "Screen B".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
     s.register_kds_device(RegisterKdsDeviceInput {
         name: "Other Screen".into(),
         restaurant_pos_id: "resto-2".into(),
         station_ids: vec![],
-        pairing_token_hash: "h3".into(),
-        pairing_expires_at: "2099-01-01".into(),
     })
     .unwrap();
 
@@ -1909,8 +1901,6 @@ fn update_kds_device_status_connected() {
             name: "Test".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
 
@@ -1948,8 +1938,6 @@ fn deactivate_kds_device() {
             name: "Test".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
 
@@ -2105,8 +2093,6 @@ fn register_device_rejects_duplicate_name() {
         name: "Expo Screen".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "hash1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
     s.register_kds_device(input.clone()).unwrap();
 
@@ -2125,8 +2111,6 @@ fn register_device_allows_same_name_different_restaurant() {
         name: "Expo Screen".into(),
         restaurant_pos_id: resto_id.into(),
         station_ids: vec![],
-        pairing_token_hash: "hash".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
 
     s.register_kds_device(make("resto-1")).unwrap();
@@ -2149,8 +2133,6 @@ fn get_devices_filtered_by_restaurant_pos() {
         name: name.into(),
         restaurant_pos_id: resto_id.into(),
         station_ids: vec![],
-        pairing_token_hash: "hash".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     };
 
     s.register_kds_device(make("KDS-1", "resto-1")).unwrap();
@@ -2176,8 +2158,6 @@ fn update_status_connected_to_disconnected() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
     assert_eq!(
@@ -2214,8 +2194,6 @@ fn deactivate_device_no_longer_listed_as_active() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
     assert!(device.is_active);
@@ -2387,84 +2365,6 @@ fn cleanup_old_kds_orders_preserves_pending_orders() {
     assert_eq!(remaining.len(), 2);
 }
 
-// ── Pairing Token Validation ──────────────────────────────────
-
-#[test]
-fn validate_pairing_token_accepts_valid_hash() {
-    let conn = fresh();
-    let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
-
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "correct-hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
-        })
-        .unwrap();
-
-    let result = s
-        .validate_pairing_token("correct-hash", &device.id)
-        .unwrap();
-    assert!(result);
-}
-
-#[test]
-fn validate_pairing_token_rejects_wrong_hash() {
-    let conn = fresh();
-    let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
-
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "correct-hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
-        })
-        .unwrap();
-
-    let err = s
-        .validate_pairing_token("wrong-hash", &device.id)
-        .unwrap_err();
-    assert!(matches!(err, crate::CoreError::Validation { field, .. } if field == "token_hash"));
-}
-
-#[test]
-fn validate_pairing_token_rejects_expired() {
-    let conn = fresh();
-    let s = store(&conn);
-    seed_terminal(&conn, "resto-1", "Restaurant POS", "pc-1");
-
-    let device = s
-        .register_kds_device(crate::kds::RegisterKdsDeviceInput {
-            name: "Test KDS".into(),
-            restaurant_pos_id: "resto-1".into(),
-            station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2020-01-01T00:00:00Z".into(), // already expired
-        })
-        .unwrap();
-
-    let err = s.validate_pairing_token("hash", &device.id).unwrap_err();
-    assert!(
-        matches!(err, crate::CoreError::Validation { field, .. } if field == "pairing_expires_at")
-    );
-}
-
-#[test]
-fn validate_pairing_token_returns_false_for_missing_device() {
-    let conn = fresh();
-    let s = store(&conn);
-
-    let result = s
-        .validate_pairing_token("hash", "nonexistent-device")
-        .unwrap();
-    assert!(!result);
-}
 
 // ── Zone-based routing with real product data ─────────────────
 
@@ -2563,16 +2463,12 @@ fn zone_based_routing_with_product_lookup() {
         name: "Grill Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["grill".into()],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Bar Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["bar".into()],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
 
@@ -2678,24 +2574,18 @@ fn zone_based_routing_only_matches_relevant_devices() {
         name: "Grill".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["grill".into()],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Bar".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec!["bar".into()],
-        pairing_token_hash: "h2".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
     s.register_kds_device(crate::kds::RegisterKdsDeviceInput {
         name: "Broadcast".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![], // broadcast mode
-        pairing_token_hash: "h3".into(),
-        pairing_expires_at: "2099-01-01T00:00:00Z".into(),
     })
     .unwrap();
 
@@ -2758,8 +2648,6 @@ fn mark_stale_devices_transitions_connected_to_stale() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2795,8 +2683,6 @@ fn mark_stale_devices_skips_already_disconnected() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2816,8 +2702,6 @@ fn deactivate_stale_devices_removes_long_offline_devices() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2845,8 +2729,6 @@ fn deactivate_stale_devices_skips_recently_stale() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         })
         .unwrap();
 
@@ -2891,24 +2773,14 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
     )
     .unwrap();
 
-    // 2. Generate a pairing token and hash it (simulating QR generation).
-    let token = "abcdef1234567890abcdef1234567890";
-    let token_hash = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(token.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
-    let expires_at = "2099-01-01T00:00:00Z";
-
-    // 3. Register the KDS device with the hashed token.
+    // 2. Register the KDS device. (There is no pairing token to mint: the POS
+    // registers the screen, and nothing ever verified a token — see
+    // 20261014_kds_drop_pairing_tokens.sql.)
     let device = s
         .register_kds_device(crate::kds::RegisterKdsDeviceInput {
             name: "Grill Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["grill".into()],
-            pairing_token_hash: token_hash.clone(),
-            pairing_expires_at: expires_at.into(),
         })
         .unwrap();
     assert!(device.is_active);
@@ -2917,15 +2789,7 @@ fn e2e_enrollment_flow_register_validate_route_ack() {
         crate::kds::KdsConnectionStatus::Disconnected
     );
 
-    // 4. Validate the pairing token — should succeed.
-    let valid = s.validate_pairing_token(&token_hash, &device.id).unwrap();
-    assert!(valid, "pairing token should be valid");
-
-    // 5. Validate with wrong hash — should fail.
-    let wrong = s.validate_pairing_token("wrong_hash", &device.id);
-    assert!(wrong.is_err(), "wrong hash should fail");
-
-    // 6. Simulate device connecting (update status to connected).
+    // 3. Simulate device connecting (update status to connected).
     s.update_kds_device_status(&device.id, crate::kds::KdsConnectionStatus::Connected)
         .unwrap();
     let fetched = s.get_kds_device(&device.id).unwrap().unwrap();

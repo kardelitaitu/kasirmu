@@ -422,6 +422,11 @@ pub const ALL: &[Migration] = &[
         id: "20261013_kds_pairing_consumption.sql",
         sql: include_str!("../migrations/20261013_kds_pairing_consumption.sql"),
     },
+    // ...and then removed entirely: nothing verified them. See the migration.
+    Migration {
+        id: "20261014_kds_drop_pairing_tokens.sql",
+        sql: include_str!("../migrations/20261014_kds_drop_pairing_tokens.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

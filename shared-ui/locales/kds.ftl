@@ -166,17 +166,12 @@ kds-enrollment-stations-placeholder = Type station name and press Enter
 kds-enrollment-stations-aria = Add station assignment
 kds-enrollment-stations-hint = Enter topology station IDs this device should display. Leave empty for broadcast mode (all orders).
 kds-enrollment-station-remove-aria = Remove station { $station }
-kds-enrollment-generating = Generating enrollment token…
+kds-enrollment-generating = Registering device…
 kds-enrollment-success = Device registered successfully!
-kds-enrollment-expiry-note = The enrollment token expires in 5 minutes. Scan the QR code with the KDS device to complete setup.
 kds-enrollment-cancel = Cancel
 kds-enrollment-create-btn = Create Device
 kds-enrollment-done = Done
 kds-enrollment-error = Failed to register device
-kds-enrollment-scan-instruction = Scan this QR code with the KDS device to complete pairing.
-kds-enrollment-qr-aria = QR code for enrolling { $name }
-kds-enrollment-countdown = Token expires in { $seconds }s
-kds-enrollment-expired = Token has expired — close and re-enroll to generate a new one
 
 # ── KDS Device Status ──
 kds-device-status-connected = Connected

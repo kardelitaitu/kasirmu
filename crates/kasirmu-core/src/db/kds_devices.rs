@@ -1,30 +1,26 @@
-//! KDS device management - registration, pairing, and status.
+//! KDS device management - registration and status.
 //!
-//! Key functions: register_kds_device (hashes pairing tokens),
-//! validate_pairing_token, get_kds_device,
+//! Key functions: register_kds_device, get_kds_device,
 //! list_kds_devices_for_restaurant, update_kds_device_status,
 //! deactivate_kds_device, plus the KdsDeviceRow query_map row type
 //! and its mappers.
 //!
-//! Invariants: pairing tokens are stored hashed (never plaintext);
-//! deactivation is soft (is_active flag) and logged.
+//! Invariants: a device is registered by the POS that owns it (no
+//! self-service enrollment); deactivation is soft (is_active flag) and
+//! logged.
+//!
+//! **Why there is no pairing token here.** This table used to carry
+//! `pairing_token_hash`/`pairing_expires_at` (and briefly a consumption pair)
+//! for a QR flow in which a KDS screen scanned a code and redeemed it for a
+//! credential. That flow was superseded: the POS registers the device, and
+//! `station_ids` selects which topology stations it displays. Nothing ever
+//! redeemed the token, so the UI displayed a secret that no code verified.
+//! Removed in `20261014_kds_drop_pairing_tokens.sql`; do not reintroduce a
+//! credential here without a consumer that actually checks it.
 
 use crate::db::Store;
 use crate::error::CoreError;
 use rusqlite::params;
-use sha2::{Digest, Sha256};
-
-/// SHA-256 hex digest of a pairing token.
-///
-/// Digests are what the database stores and compares; the plaintext is never
-/// persisted. Mirrors `kasirmu_api::routes::terminals::hash_secret` — the sync
-/// terminal path uses the same "hash it, show it once" contract, so an
-/// operator debugging either flow reads one rule, not two.
-pub fn hash_pairing_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
-}
 
 // ── KDS Device Management ───────────────────────────────────────
 
@@ -61,15 +57,13 @@ impl Store<'_> {
             .map_err(|e| CoreError::Internal(format!("serialize station_ids: {e}")))?;
 
         self.conn.execute(
-            "INSERT INTO kds_devices (id, name, restaurant_pos_id, station_ids, pairing_token_hash, pairing_expires_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+            "INSERT INTO kds_devices (id, name, restaurant_pos_id, station_ids, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
             params![
                 id,
                 input.name,
                 input.restaurant_pos_id,
                 station_ids_json,
-                input.pairing_token_hash,
-                input.pairing_expires_at,
                 now,
             ],
         )?;
@@ -87,188 +81,7 @@ impl Store<'_> {
         })
     }
 
-    /// Issue a fresh pairing token for a device, returning the plaintext once.
-    ///
-    /// This is the producer the enrollment flow was missing: the schema and
-    /// `validate_pairing_token` both assumed a token existed, but nothing
-    /// generated one — `RegisterKdsDeviceInput` took a `pairing_token_hash`
-    /// from the caller, so the plaintext had to come from somewhere outside
-    /// this crate. Now it comes from here.
-    ///
-    /// The plaintext is returned to the caller (to render as a QR/code) and
-    /// **only its SHA-256 hash is stored** — the same "shown once" contract
-    /// the sync-terminal device secret uses. Entropy follows
-    /// `desktop_link::generate_pkce`: two UUIDv4s as hex, 244 bits from the
-    /// CSPRNG the crate already trusts.
-    ///
-    /// `ttl` bounds how long the code can be redeemed. Consumption (below)
-    /// bounds how many times — neither alone is sufficient.
-    pub fn issue_pairing_token(
-        &self,
-        device_id: &str,
-        ttl: chrono::Duration,
-    ) -> Result<String, CoreError> {
-        let token = format!(
-            "{}{}",
-            uuid::Uuid::new_v4().simple(),
-            uuid::Uuid::new_v4().simple()
-        );
-        let expires_at = (chrono::Utc::now() + ttl)
-            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        let updated = self.conn.execute(
-            "UPDATE kds_devices
-                SET pairing_token_hash = ?1,
-                    pairing_expires_at = ?2,
-                    consumed_at = NULL,
-                    consumed_by_device = NULL,
-                    updated_at = ?3
-              WHERE id = ?4",
-            params![hash_pairing_token(&token), expires_at, expires_at, device_id],
-        )?;
-        if updated == 0 {
-            return Err(CoreError::Validation {
-                field: "device_id",
-                message: format!("no KDS device with id '{device_id}'"),
-            });
-        }
-        Ok(token)
-    }
-
-    /// Redeem a pairing token exactly once.
-    ///
-    /// This is the consumption half `validate_pairing_token` never had: it
-    /// answered "does this code match and is it fresh" but mutated nothing, so
-    /// a valid code stayed replayable for its whole TTL. Anyone who observed
-    /// the QR could enroll repeatedly, and a leaked code still worked minutes
-    /// after the operator stopped looking at it.
-    ///
-    /// The consume is a **single conditional UPDATE**, not a read-then-write:
-    /// `WHERE consumed_at IS NULL` makes the check and the claim one atomic
-    /// step, so two concurrent redemptions cannot both observe an unconsumed
-    /// row and both succeed. Rows-affected is the verdict — the same
-    /// compare-and-swap shape the offline queue uses, and the reason this is
-    /// safe without an explicit transaction spanning the validation.
-    ///
-    /// Order matters: the token is validated (hash + expiry) *before* the
-    /// claim, so a wrong code never consumes a good one. A replayed code hits
-    /// the `IS NULL` guard and is refused as already-consumed.
-    ///
-    /// **On testing this.** No test races two redemptions, and that is
-    /// deliberate rather than an omission: both shells hand out a single
-    /// connection behind one mutex (`apps/mobile-tauri/src/state.rs:22-25` —
-    /// "a single-connection placeholder"), so two callers serialize *before*
-    /// reaching SQLite. A threaded test would therefore be measuring the mutex
-    /// and would pass even if this WHERE clause were removed — a test that
-    /// cannot fail proves nothing about the guard it claims to cover.
-    ///
-    /// That changes the day connection pooling lands (the same doc comment
-    /// names `r2d2_sqlite`/`deadpool-sqlite` as the intended switch). With
-    /// real concurrent writers this CAS stops being belt-and-braces and
-    /// becomes the only thing preventing a double redemption, and a race test
-    /// becomes both meaningful and necessary. Add it with the pool, not before.
-    pub fn consume_pairing_token(
-        &self,
-        token: &str,
-        device_id: &str,
-    ) -> Result<(), CoreError> {
-        if !self.validate_pairing_token(&hash_pairing_token(token), device_id)? {
-            return Err(CoreError::Validation {
-                field: "device_id",
-                message: format!("no KDS device with id '{device_id}'"),
-            });
-        }
-
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let claimed = self.conn.execute(
-            "UPDATE kds_devices
-                SET consumed_at = ?1, consumed_by_device = ?2, updated_at = ?1
-              WHERE id = ?3 AND consumed_at IS NULL",
-            params![now, device_id, device_id],
-        )?;
-        if claimed == 0 {
-            // Either a replay, or another caller won the race between this
-            // call's validation and its claim. Both are the same answer to
-            // the caller: this code is spent.
-            return Err(CoreError::Validation {
-                field: "pairing_token",
-                message: "pairing token has already been redeemed".into(),
-            });
-        }
-        Ok(())
-    }
-
-    /// Validate a pairing token against a device's stored hash and expiry.
-    ///
-    /// Returns `Ok(true)` if the token hash matches AND the token has not
-    /// expired. Returns `Ok(false)` if the device is not found.
-    /// Returns `Err` for expired tokens or hash mismatches.
-    pub fn validate_pairing_token(
-        &self,
-        token_hash: &str,
-        device_id: &str,
-    ) -> Result<bool, CoreError> {
-        // Query the pairing fields directly (not exposed on domain struct).
-        let result: Result<(String, String), _> = self.conn.query_row(
-            "SELECT pairing_token_hash, pairing_expires_at FROM kds_devices WHERE id = ?1",
-            params![device_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        );
-
-        let (stored_hash, expires_at) = match result {
-            Ok(pair) => pair,
-            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(false),
-            Err(e) => return Err(e.into()),
-        };
-
-        // Check hash match (F9: constant-time — the byte-wise XOR fold
-        // removes the timing oracle on a hash-prefix match; both values are
-        // hex digests, so length is compared first and the fold's outcome
-        // is all that varies).
-        let hash_matches = stored_hash.len() == token_hash.len()
-            && stored_hash
-                .bytes()
-                .zip(token_hash.bytes())
-                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-                == 0;
-        if !hash_matches {
-            return Err(CoreError::Validation {
-                field: "token_hash",
-                message: "pairing token hash mismatch".into(),
-            });
-        }
-
-        // Check expiry (F9: fail CLOSED on unparseable values). The stored
-        // value is RFC 3339; a bare `YYYY-MM-DD` (legacy/fixture shape) is
-        // tolerated as UTC midnight so expiry is still enforced on it.
-        // Previously ANY unparseable timestamp silently skipped the check,
-        // letting a corrupt or tampered expiry bypass pairing validation.
-        let expires: Option<chrono::DateTime<chrono::FixedOffset>> =
-            match chrono::DateTime::parse_from_rfc3339(&expires_at) {
-                Ok(dt) => Some(dt),
-                Err(_) => chrono::NaiveDate::parse_from_str(&expires_at, "%Y-%m-%d")
-                    .ok()
-                    .and_then(|d| d.and_hms_opt(0, 0, 0))
-                    .map(|dt| dt.and_utc().fixed_offset()),
-            };
-        match expires {
-            Some(expires) if chrono::Utc::now() > expires => {
-                return Err(CoreError::Validation {
-                    field: "pairing_expires_at",
-                    message: "pairing token has expired".into(),
-                });
-            }
-            Some(_) => {}
-            None => {
-                return Err(CoreError::Validation {
-                    field: "pairing_expires_at",
-                    message: format!("malformed pairing_expires_at: {expires_at}"),
-                });
-            }
-        }
-
-        Ok(true)
-    }
 
     /// Retrieve a KDS device by ID.
     pub fn get_kds_device(&self, id: &str) -> Result<Option<KdsDevice>, CoreError> {

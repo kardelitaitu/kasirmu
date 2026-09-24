@@ -486,8 +486,6 @@ async fn register_kds_device_scoped_rejects_invalid_token() {
             name: "Test KDS".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hash-test".into(),
-            pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
         },
     )
     .await;
@@ -519,8 +517,6 @@ async fn register_and_list_kds_devices_scoped() {
             name: "Kitchen Screen".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["grill".into(), "bar".into()],
-            pairing_token_hash: "hash-test".into(),
-            pairing_expires_at: "2099-01-01T00:00:00.000Z".into(),
         },
     )
     .await;
@@ -589,8 +585,6 @@ async fn integration_enrollment_full_lifecycle() {
             name: "Grill Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["grill".into(), "fryer".into()],
-            pairing_token_hash: "hash-grill".into(),
-            pairing_expires_at: "2099-01-01T00:00:00Z".into(),
         },
     )
     .await
@@ -743,8 +737,6 @@ async fn integration_broadcast_device_receives_all_orders() {
             name: "Expo Screen".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![], // broadcast
-            pairing_token_hash: "h-expo".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -815,8 +807,6 @@ async fn integration_inactive_device_excluded_from_routing() {
             name: "Old Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h-old".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -884,8 +874,6 @@ async fn integration_duplicate_device_name_rejected() {
         name: "Grill Display".into(),
         restaurant_pos_id: "resto-1".into(),
         station_ids: vec![],
-        pairing_token_hash: "h1".into(),
-        pairing_expires_at: "2099-01-01".into(),
     };
 
     // First registration succeeds.
@@ -925,8 +913,6 @@ async fn integration_concurrent_ack_only_first_wins() {
             name: "Device A".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "ha".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -939,8 +925,6 @@ async fn integration_concurrent_ack_only_first_wins() {
             name: "Device B".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hb".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -1013,8 +997,6 @@ async fn integration_health_monitoring_cycle() {
             name: "Good Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hg".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -1027,8 +1009,6 @@ async fn integration_health_monitoring_cycle() {
             name: "Stale Display".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "hs".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -1138,8 +1118,6 @@ async fn integration_device_isolation_between_restaurants() {
             name: "Display A".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "ha".into(),
-            pairing_expires_at: "2099-01-01".into(),
         },
     )
     .await
@@ -1156,8 +1134,6 @@ async fn integration_device_isolation_between_restaurants() {
                 name: "Display B".into(),
                 restaurant_pos_id: "resto-2".into(),
                 station_ids: vec![],
-                pairing_token_hash: "hb".into(),
-                pairing_expires_at: "2099-01-01".into(),
             })
             .expect("register device B should succeed");
     }
@@ -1523,16 +1499,12 @@ async fn routing_station_claim_sends_each_line_to_its_zone_device() {
             name: "Grill".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["grill".into()],
-            pairing_token_hash: "h1".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
         s.register_kds_device(RegisterKdsDeviceInput {
             name: "Fry".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["fry".into()],
-            pairing_token_hash: "h2".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
     }
@@ -1572,8 +1544,6 @@ async fn routing_catch_all_when_no_device_claims_a_station() {
             name: "Fry".into(),
             restaurant_pos_id: "resto-1".into(),
             station_ids: vec!["fry".into()],
-            pairing_token_hash: "h2".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
     }
@@ -1604,8 +1574,6 @@ async fn routing_restaurant_pos_session_falls_back_to_terminal_id() {
             name: "Expo".into(),
             restaurant_pos_id: "terminal-1".into(),
             station_ids: vec![],
-            pairing_token_hash: "h3".into(),
-            pairing_expires_at: "2099-01-01".into(),
         })
         .unwrap();
     }

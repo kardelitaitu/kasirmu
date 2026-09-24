@@ -1039,15 +1039,11 @@ BEGIN
             ('kds_devices', 'name', 'TEXT', NULL::text, true),
             ('kds_devices', 'restaurant_pos_id', 'TEXT', NULL::text, true),
             ('kds_devices', 'station_ids', 'TEXT', '''[]''', true),
-            ('kds_devices', 'pairing_token_hash', 'TEXT', NULL::text, true),
-            ('kds_devices', 'pairing_expires_at', 'TEXT', NULL::text, true),
             ('kds_devices', 'is_active', 'BIGINT', '1', true),
             ('kds_devices', 'last_seen_at', 'TEXT', NULL::text, false),
             ('kds_devices', 'connection_status', 'TEXT', '''disconnected''', true),
             ('kds_devices', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('kds_devices', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('kds_devices', 'consumed_at', 'TEXT', NULL::text, false),
-            ('kds_devices', 'consumed_by_device', 'TEXT', NULL::text, false),
             ('memo_recipients', 'id', 'TEXT', NULL::text, true),
             ('memo_recipients', 'memo_id', 'TEXT', NULL::text, true),
             ('memo_recipients', 'terminal_id', 'TEXT', NULL::text, true),
@@ -2646,14 +2642,12 @@ CREATE TABLE IF NOT EXISTS kds_devices (
     name                TEXT NOT NULL,             -- "Kitchen Display A"
     restaurant_pos_id   TEXT NOT NULL,             -- FK to the owning Restaurant POS terminal
     station_ids         TEXT NOT NULL DEFAULT '[]', -- JSON array of topology station IDs
-    pairing_token_hash  TEXT NOT NULL,             -- SHA-256 of the QR enrollment token
-    pairing_expires_at  TEXT NOT NULL,             -- ISO-8601 expiry timestamp
     is_active           BIGINT NOT NULL DEFAULT 1,
     last_seen_at        TEXT,                      -- nullable; NULL when never connected
     connection_status   TEXT NOT NULL DEFAULT 'disconnected'
                         CHECK (connection_status IN ('connected', 'disconnected', 'stale')),
     created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), consumed_at TEXT, consumed_by_device TEXT,
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
 );
 
