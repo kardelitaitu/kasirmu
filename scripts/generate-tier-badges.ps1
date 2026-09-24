@@ -54,7 +54,7 @@ $BaselineK   = 0.36                           # optical baseline offset as a fra
 # 4.5:1: the logo blue #147EFB itself only reaches 3.88:1 with white, so the
 # fill keeps the logo hue and saturation and drops lightness to 48.1%.
 $Tiers = @(
-    @{ Key = "free";       Label = "FREE";       Fill = "#FFFFFF"; Ink = "#64748B"; Border = "#C7CDD6" }
+    @{ Key = "free";       Label = "FREE";       Fill = "#64748B"; Ink = "#FFFFFF"; Border = "" }
     @{ Key = "plus";       Label = "PLUS";       Fill = "#8655F6"; Ink = "#FFFFFF"; Border = "" }
     @{ Key = "pro";        Label = "PRO";        Fill = "#0471F1"; Ink = "#FFFFFF"; Border = "" }
     @{ Key = "premium";    Label = "PREMIUM";    Fill = "#F5C518"; Ink = "#3F2D00"; Border = "" }
@@ -152,17 +152,14 @@ function New-TierBadgeSvg {
     # optical centre; the glyph outlines are positioned from this origin.
     $x = ($width - $Advance) / 2
 
-    $strokeAttr = ''
-    if ($Tier.Border) {
-        # `free` is white on a white surface, so it needs a hairline to exist
-        # at all. Stroke is inset by half its width so it stays inside the box.
-        $strokeAttr = " stroke='$($Tier.Border)' stroke-width='1'"
-    }
-
+    # No border anywhere: a solid fill defines its own edge. `free` used to carry
+    # a hairline purely because a WHITE pill is invisible on a white surface;
+    # now that it is a grey fill no row needs one, so the mechanism is gone
+    # rather than left as a per-tier flag with no user.
     $svg = @"
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $width $Height" width="$width" height="$Height" role="img" aria-labelledby="tier-badge-title">
   <title id="tier-badge-title">$($Tier.Label) tier badge</title>
-  <rect x="0" y="0" width="$width" height="$Height" rx="$Radius" fill="$($Tier.Fill)"$strokeAttr/>
+  <rect x="0" y="0" width="$width" height="$Height" rx="$Radius" fill="$($Tier.Fill)"/>
   <g transform="translate($x,$baseline)"><path d="$PathData" fill="$($Tier.Ink)"/></g>
 </svg>
 "@
@@ -208,7 +205,6 @@ foreach ($tier in $Tiers) {
         height   = $Height
         fill     = $tier.Fill
         ink      = $tier.Ink
-        border   = $tier.Border
         contrast = [Math]::Round($contrast, 2)
     }
 
