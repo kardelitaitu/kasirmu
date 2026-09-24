@@ -17,6 +17,7 @@ import {
   LATENCY_WARN_MAX_MS,
   fromWireHealth,
   isSyncUnconfigured,
+  isSyncUnauthorized,
   toneForBinaryHealth,
   toneForHealth,
   type WireHealth,
@@ -93,6 +94,47 @@ describe('isSyncUnconfigured', () => {
 
   it('never fires on a successful probe', () => {
     expect(isSyncUnconfigured('No server URL configured', true)).toBe(false);
+  });
+});
+
+describe('isSyncUnauthorized', () => {
+  it('fires only on the verdict the server itself gave', () => {
+    expect(isSyncUnauthorized('rejected')).toBe(true);
+  });
+
+  it('does not treat a check that never ran as a rejection', () => {
+    // `unknown` is a transport failure or a shell that predates the field;
+    // `unauthenticated` is no stored key at all. Neither is a refusal, and
+    // reporting either as one would be the mirror of the false green.
+    expect(isSyncUnauthorized('unknown')).toBe(false);
+    expect(isSyncUnauthorized('unauthenticated')).toBe(false);
+  });
+
+  it('never fires on an accepted credential', () => {
+    expect(isSyncUnauthorized('authorized')).toBe(false);
+  });
+
+  it('treats an absent field as not-checked, never as success', () => {
+    // An older desktop shell omits `auth` entirely. Reading that as
+    // "authorized" would report a credential check nobody ran.
+    expect(isSyncUnauthorized(undefined)).toBe(false);
+  });
+
+  it('paints the rejected verdict bad, unlike the unconfigured one', () => {
+    // One step apart in the operator's model — "set this up" vs "refused" —
+    // so the tones must differ or the misdiagnosis returns in a new shape.
+    expect(toneForHealth('unauthorized', null)).toBe('bad');
+    expect(toneForHealth('unauthorized', null)).toBe(
+      toneForHealth('disconnected', null),
+    );
+    expect(toneForHealth('unauthorized', null)).not.toBe(
+      toneForHealth('unconfigured', null),
+    );
+  });
+
+  it('never renders a rejected credential good, in either map', () => {
+    expect(toneForHealth('unauthorized', 5)).not.toBe('good');
+    expect(toneForBinaryHealth('unauthorized')).not.toBe('good');
   });
 });
 

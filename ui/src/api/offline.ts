@@ -1,6 +1,7 @@
 // ── Offline Queue & Cloud Sync ────────────────────────────────────
 
 import { loggedInvoke } from '@/utils/logged-invoke';
+import type { SyncWireAuth } from '@/hooks/connectionHealth';
 
 // ── Offline Queue ────────────────────────────────────────────────
 
@@ -267,11 +268,20 @@ export const getSyncPlanScoped = (sessionToken: string): Promise<SyncPlanResult>
 
 // ── Connection Test ──────────────────────────────────────────────
 
-/** Result of pinging the cloud server's health endpoint. */
+/**
+ * Result of pinging the cloud server's health endpoint.
+ *
+ * `auth` is the credential verdict the shell adds on top of reachability,
+ * and it is optional on purpose: `/health` is PUBLIC, so `ok` alone means
+ * only "a socket answered" and cannot say whether sync will actually run. A
+ * shell that predates the field omits it entirely, and the hook treats that
+ * as "not checked" rather than as success.
+ */
 export interface PingResult {
   ok: boolean;
   status: string;
   latencyMs: number | null;
+  auth?: SyncWireAuth;
 }
 
 /** Test connectivity to the configured cloud server (H-6: URL always resolved from saved settings). */

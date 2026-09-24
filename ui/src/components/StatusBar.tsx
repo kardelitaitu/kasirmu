@@ -171,6 +171,13 @@ export default function StatusBar({ bare = false }: { bare?: boolean }) {
     if (s.state === 'unconfigured') {
       return requiredLocalized(l10n, 'statusbar-sync-unconfigured-msg', { name });
     }
+    // A refused credential is NOT offline and NOT unconfigured: the device is
+    // set up and the server answered, but it rejected the stored credential,
+    // so pushes fail while the socket is fine. Saying "Offline" would send the
+    // operator to look at the network for what is a re-linking problem.
+    if (s.state === 'unauthorized') {
+      return requiredLocalized(l10n, 'statusbar-sync-unauthorized-msg', { name });
+    }
     if (s.state === 'disconnected') {
       return requiredLocalized(l10n, 'statusbar-offline-msg', { name });
     }

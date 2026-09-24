@@ -36,7 +36,8 @@ export type ConnectionHealth =
   | 'connected'
   | 'degraded'
   | 'disconnected'
-  | 'unconfigured';
+  | 'unconfigured'
+  | 'unauthorized';
 
 /** Visual tone for an indicator dot. */
 export type StatusTone = 'good' | 'warn' | 'bad' | 'checking';
@@ -70,6 +71,13 @@ export function toneForHealth(state: ConnectionHealth, latencyMs: number | null)
       // same answer `degraded` gets above, and for the same reason: draw the
       // operator's eye without telling them to stop trading.
       return 'warn';
+    case 'unauthorized':
+      // `bad`, unlike `unconfigured` above. Here the device IS set up — a
+      // server URL and a credential are both stored — and the server has
+      // actively refused the credential. That is a real fault with a real fix
+      // (re-link this terminal), not an absence of configuration, so it earns
+      // the same red as `disconnected` while saying something different.
+      return 'bad';
     case 'disconnected':
       return 'bad';
     case 'connected':
@@ -100,6 +108,10 @@ export function toneForBinaryHealth(state: ConnectionHealth): StatusTone {
       // failing one. This arm is what a payment pill would use the day it
       // stops folding "no gateway configured" into `disconnected`.
       return 'warn';
+    case 'unauthorized':
+      // Same reasoning as `toneForHealth`: a refused credential is a failing
+      // service, not an unconfigured one.
+      return 'bad';
     case 'disconnected':
       return 'bad';
   }
@@ -133,6 +145,35 @@ export const SYNC_NOT_CONFIGURED_STATUS = 'No server URL configured';
  */
 export function isSyncUnconfigured(status: string, ok: boolean): boolean {
   return !ok && status === SYNC_NOT_CONFIGURED_STATUS;
+}
+
+/**
+ * The credential verdict a sync probe returns alongside reachability.
+ *
+ * Mirrors `kasirmu_core::sync_auth::SyncAuthHealth` (camelCase on the wire).
+ * `undefined` means the probe made no credential check — either no key is
+ * stored, or the shell predates this field — and must NOT be read as
+ * success: an older desktop build simply cannot answer this question, and
+ * inventing "authorized" for it would report a check nobody ran.
+ */
+export type SyncWireAuth = 'unauthenticated' | 'authorized' | 'rejected' | 'unknown';
+
+/**
+ * True when a probe answer says "a credential is stored and the server
+ * refused it".
+ *
+ * This is the state that must never render green. `/health` is public, so a
+ * successful reachability ping against a rejected credential is exactly the
+ * false green this separates out: the socket answered, so the old code drew
+ * "Connected", while every actual push 401'd.
+ *
+ * Deliberately keyed on `rejected` alone. `unknown` means the check could not
+ * be completed (transport failure, feature compiled out) and `unauthenticated`
+ * means there was nothing to check — neither is a refusal, and reporting
+ * either as one would be the same lie in the other direction.
+ */
+export function isSyncUnauthorized(auth: SyncWireAuth | undefined): boolean {
+  return auth === 'rejected';
 }
 
 /**

@@ -466,18 +466,22 @@ pub async fn get_sync_plan_scoped(
 pub async fn test_sync_connection(
     ctx: &BridgeCtx<'_>,
 ) -> Result<sync_client::PingResult, BridgeError> {
-    let (saved, allow_local_fallback) = {
+    let (saved, api_key, allow_local_fallback) = {
         let db = ctx.lock_global().await;
         let saved = Settings::get_sync_server_url(&db)?;
+        // Read alongside the URL so the credential verdict can be reported in
+        // the same answer: `/health` is public, so reachability alone would
+        // draw a green pill over a refused credential.
+        let api_key = Settings::get_sync_api_key(&db)?;
         let allow_local_fallback = saved
             .as_deref()
             .map(|value| value.trim().is_empty())
             .unwrap_or(true);
-        (saved, allow_local_fallback)
+        (saved, api_key, allow_local_fallback)
     }; // db lock dropped here
     let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         // No URL to probe, so no credential check was made: `auth: None` is the
         // documented value for a reachability-only answer (`PingResult::auth`).
         None => Ok(sync_client::PingResult {
@@ -498,7 +502,7 @@ pub async fn test_sync_connection_scoped(
     let session = ctx.resolve_session(session_token)?;
     ctx.require_session_permission(&session, permissions::SYNC_MANAGE)
         .await?;
-    let (saved, allow_local_fallback) = {
+    let (saved, api_key, allow_local_fallback) = {
         let conn = ctx
             .db_manager
             .open_store(&session.store_id)
@@ -507,15 +511,18 @@ pub async fn test_sync_connection_scoped(
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
         let saved = Settings::get_sync_server_url(&db)?;
+        // See `test_sync_connection`: the credential verdict rides the same
+        // probe so a refused key cannot render green.
+        let api_key = Settings::get_sync_api_key(&db)?;
         let allow_local_fallback = saved
             .as_deref()
             .map(|value| value.trim().is_empty())
             .unwrap_or(true);
-        (saved, allow_local_fallback)
+        (saved, api_key, allow_local_fallback)
     }; // conn + db dropped here
     let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         // No URL to probe, so no credential check was made: `auth: None` is the
         // documented value for a reachability-only answer (`PingResult::auth`).
         None => Ok(sync_client::PingResult {

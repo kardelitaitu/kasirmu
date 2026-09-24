@@ -109,19 +109,25 @@ pub async fn test_sync_connection(
     url: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<sync_client::PingResult, AppError> {
-    let resolved = match url.filter(|u| !u.is_empty()) {
-        Some(u) => Some(u),
+    let (resolved, api_key) = match url.filter(|u| !u.is_empty()) {
+        // An explicit front-end URL is a reachability test of a candidate,
+        // not a report on this device's stored credential — so it carries no
+        // key and no credential verdict.
+        Some(u) => (Some(u), None),
         None => {
             let db = state.db.lock().await;
-            Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
+            let u = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
+            let k = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
+            (u, k)
         }
     };
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }
@@ -378,8 +384,10 @@ pub async fn test_sync_connection_scoped(
 ) -> Result<sync_client::PingResult, AppError> {
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let resolved = match url.filter(|u| !u.is_empty()) {
-        Some(u) => Some(u),
+    let (resolved, api_key) = match url.filter(|u| !u.is_empty()) {
+        // See `test_sync_connection`: an explicit candidate URL carries no
+        // credential verdict.
+        Some(u) => (Some(u), None),
         None => {
             let conn_arc = state
                 .db_manager
@@ -389,15 +397,18 @@ pub async fn test_sync_connection_scoped(
                 .lock()
                 .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
             let db = &*db_guard;
-            Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty())
+            let u = Settings::get_sync_server_url(&db)?.filter(|s| !s.is_empty());
+            let k = Settings::get_sync_api_key(&db)?.filter(|k| !k.is_empty());
+            (u, k)
         }
     };
     match resolved {
-        Some(u) => Ok(sync_client::ping_server(&u).await),
+        Some(u) => Ok(sync_client::probe_sync_connection(&u, api_key.as_deref()).await),
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }

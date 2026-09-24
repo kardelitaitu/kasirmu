@@ -982,3 +982,93 @@ fn both_push_entry_points_share_the_disabled_decision() {
         "the disabled stub must never construct a fake Accepted outcome"
     );
 }
+
+// ── Derived sync URL (ADR #55: auth and sync are one origin) ─────────
+
+#[test]
+fn derive_requires_an_unset_url() {
+    // The same invariant `should_auto_provision` encodes for the debug path:
+    // an operator's value always wins, and "unconfigured" includes a blank
+    // row, not just a missing one.
+    assert!(should_derive_sync_url(None));
+    assert!(should_derive_sync_url(Some("")));
+    assert!(should_derive_sync_url(Some("   ")));
+    assert!(!should_derive_sync_url(Some("https://license.kasir.mu")));
+    assert!(!should_derive_sync_url(Some("http://localhost:3099")));
+}
+
+#[test]
+fn derive_writes_the_origin_when_nothing_is_configured() {
+    let store = setup();
+    let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
+    assert!(wrote, "a fresh install has no URL, so the origin must be stored");
+    assert_eq!(
+        Settings::get_sync_server_url(store.conn()).unwrap().as_deref(),
+        Some("https://license.kasir.mu")
+    );
+}
+
+#[test]
+fn derive_leaves_an_operator_url_untouched() {
+    let store = setup();
+    Settings::set_sync_server_url(store.conn(), "https://shop.example.test").unwrap();
+
+    let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
+    assert!(!wrote, "a configured URL must never be overwritten");
+    assert_eq!(
+        Settings::get_sync_server_url(store.conn()).unwrap().as_deref(),
+        Some("https://shop.example.test"),
+        "the operator's value must survive derivation"
+    );
+}
+
+#[test]
+fn derive_is_idempotent() {
+    let store = setup();
+    assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
+    assert!(
+        !derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap(),
+        "a second call with the URL already stored must write nothing"
+    );
+}
+
+#[test]
+fn derive_refuses_an_empty_origin() {
+    // An empty origin is unconfigured, not a value to store — writing it
+    // would leave a blank URL that looks configured to a later reader.
+    let store = setup();
+    assert!(!derive_sync_url_if_unset(store.conn(), "").unwrap());
+    assert!(!derive_sync_url_if_unset(store.conn(), "   ").unwrap());
+    assert_eq!(Settings::get_sync_server_url(store.conn()).unwrap(), None);
+}
+
+#[test]
+fn derived_url_alone_does_not_start_sync() {
+    // The §4 trap, pinned as a test. Storing the URL must leave sync
+    // disabled, because the status probe asks a PUBLIC endpoint: an install
+    // with a URL and no working credential would draw a green pill while
+    // every push 401'd. Derivation is safe only while it starts nothing.
+    let store = setup();
+    assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
+
+    assert!(
+        !Settings::is_sync_enabled(store.conn()).unwrap(),
+        "derivation must not enable sync"
+    );
+    assert!(
+        SyncConfig::from_settings(&store).unwrap().is_none(),
+        "sync must still refuse to start: enabled is false even though a URL exists"
+    );
+}
+
+#[test]
+fn probe_auth_reports_unauthenticated_without_a_key() {
+    // No stored credential means there is nothing to refuse, so the verdict
+    // must be Unauthenticated and never Rejected — reporting a refusal that
+    // never happened is the false-green lie in the other direction.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let health = rt.block_on(probe_sync_auth("https://license.kasir.mu", None));
+    assert_eq!(health, SyncAuthHealth::Unauthenticated);
+    let health = rt.block_on(probe_sync_auth("https://license.kasir.mu", Some("")));
+    assert_eq!(health, SyncAuthHealth::Unauthenticated);
+}

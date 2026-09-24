@@ -205,6 +205,16 @@ pub struct PingResult {
     pub status: String,
     /// Round-trip latency in milliseconds, if the ping succeeded.
     pub latency_ms: Option<u64>,
+    /// Whether the stored credential was accepted, when one was checked.
+    ///
+    /// `ok` alone answers "did something reply?" — `/health` is public, so
+    /// a green `ok` says nothing about whether sync can actually run. This
+    /// carries the credential's own verdict alongside it, so a renderer can
+    /// tell "connected and authorised" from "connected but every push will
+    /// 401". `None` means no credential check was made (a probe with no
+    /// stored key, or a reachability-only caller).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<SyncAuthHealth>,
 }
 
 /// Format an ISO-8601 expiry timestamp as a human-readable relative duration.

@@ -298,6 +298,9 @@ pub fn run() {
             // Fire-and-forget on purpose: boot is never blocked on a probe, and an
             // unreachable MAIN degrades to the canonical default exactly as it does
             // today until the cascade resolves to the fallback.
+            // Captured by the attestation coroutine below; cloned here because
+            // `app` is still borrowed by later closures in this block.
+            let derive_db = app.state::<AppState>().db.clone();
             platform_startup::spawn_once("server origin attestation", async move {
                 let nonce = kasirmu_core::attestation::generate_nonce();
                 match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
@@ -309,6 +312,24 @@ pub fn run() {
                     None => tracing::warn!(
                         "no server origin could be attested; staying on the compiled default"
                     ),
+                }
+                // ── Point sync at the origin we just resolved ─────────
+                // Auth and sync are one host (ADR #55), so the sync URL is a
+                // fact this device already holds. This is NOT the debug-only
+                // `sync auto-provision` above: that one writes a loopback URL
+                // and a token, and is gated off in release. This writes the
+                // real attested origin and nothing else — no credential, and
+                // deliberately not `enabled`, because the status probe asks a
+                // public endpoint and enabling sync without a working
+                // credential would draw a green pill over failing pushes.
+                // `derive_sync_url_if_unset` leaves an operator's URL alone.
+                let conn = derive_db.lock().await;
+                let origin = kasirmu_core::attestation::resolved_origin().url;
+                if let Err(e) = kasirmu_core::derive_sync_url_if_unset(&conn, &origin) {
+                    tracing::warn!(
+                        error = %e,
+                        "could not derive the sync server URL from the attested origin;                          sync settings left untouched"
+                    );
                 }
             });
             // ── Background sync daemon ────────────────────────────────

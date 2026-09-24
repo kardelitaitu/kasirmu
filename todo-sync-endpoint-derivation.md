@@ -1,12 +1,20 @@
 # Sync endpoint for an unconfigured install — decision dossier
 
-**Status:** OPEN — one engineering leg is settled, one product axis is not. The status-pill defect
-that started this is fixed and verified (§2). Nothing in §5 was implemented, on purpose: the
-choice is yours, and §4 shows that the obvious half-fix makes the visible signal *less* truthful.
+**Status:** OPEN — C is IMPLEMENTED (§8); the product axis is still not settled. The status-pill
+defect that started this is fixed and verified (§2). §5's option **C** was chosen and built: the URL
+is derived, the credential rides the path that already ships, and the pill can no longer lie. What C
+deliberately does NOT do is resolve §4a's registration circularity — an unregistered install still
+cannot obtain a credential, so it still reads "Not configured". That is honest, and still unanswered.
 
 **Date:** 2026-09-22 · **Recorded against:** branch `0.0.39` @ `191c37b42`
 **Corrects:** the round-1 reading, "desktop has sync_bootstrap, mobile doesn't". That is true and
 misleading — see §1.
+**Corrected again (round 3, same day):** §4's "the credential is not [derivable]" was **wrong in
+scope** — the admin-key mint is gated, but the client-credentials mint is not and already runs.
+See §4a, which also fixes a stale citation in §4 (`config.rs:376-387` → `:452`) and adds
+option **C** + a recommendation to §5.
+**Implemented (round 4, same day):** C, per the §5 recommendation. See §8 for what landed, what it
+does and does not deliver, and the residual it leaves open.
 
 ---
 
@@ -76,10 +84,13 @@ Two things derivation does not supply:
 
 1. `enabled = true` — trivial (`from_settings` gates on it).
 2. **The credential, which is the real gate.** `POST /api/v1/tokens` mints the sync JWT, and in
-   production it is admin-key gated: `apps/cloud-server/src/config.rs:376-387` refuses to boot
+   production it is admin-key gated: `apps/cloud-server/src/config.rs:452` refuses to boot
    without `OZ_ADMIN_KEY` (*"no open token mint"*), documented at `main.rs:18`. The client does not
    hold that key and must not. The only other mint path is terminal client credentials from pairing
-   (`crates/kasirmu-core/src/sync_auth.rs:162-174`; ADR #50 P3).
+   (`crates/kasirmu-core/src/sync_auth.rs:245-322` — `request_token_client_credentials`; the
+   server branch is `crates/kasirmu-api/src/routes/tokens.rs:205-269`, which `return`s *before* the
+   admin gate at `:272`; ADR #50 P3). **§4a shows this path is live and self-serving, which
+   inverts the paragraph below.**
 
 **And the trap:** the status pill probes an *unauthenticated* endpoint — `ping_server` GETs
 `{url}/health` (`sync_auth.rs:479-482`), which answers 200 regardless of credentials. Derive the
@@ -87,8 +98,51 @@ URL, enable sync, and the pill turns **green** while every push 401s. That trade
 "Not configured" for a false green "Connected" — a worse lie than the one §2 just fixed, and it
 would have hidden this very investigation.
 
-**Conclusion: the URL is derivable; the credential is not. Derivation ships only together with a
-credential path, or not at all.**
+**Conclusion (§4 as first written): the URL is derivable; the credential is not. Derivation ships
+only together with a credential path, or not at all.** §4a narrows this: the credential path
+already exists and already runs. What is missing is its *entry point*.
+
+## 4a. Correction: the credential path is NOT missing — its entry point is
+
+Verified 2026-09-22 by direct read, not inference. The claim above ("the credential is not
+[derivable]") is true only of the **admin-key** mint. A second mint path exists, is live in
+production, and self-persists the credential:
+
+- **The mint bypasses the admin gate by construction.** `routes/tokens.rs:205-269` handles the
+  client-credentials branch and `return`s a token at `:244` — *before* the P2 admin gate at
+  `:272`. So `mint_token` (`sync_auth.rs:342-347`) preferring client credentials over the admin
+  key is not a convenience ordering; it is the only path a device without the operator key can use.
+- **A live consumer already does the whole dance.** `crates/kasirmu-bridge/src/memo.rs:509-548`:
+  registers the terminal (`register_terminal`), mints via
+  `request_token_client_credentials`, and persists `sync_terminal_id` + `sync_terminal_secret`
+  — and persists them **only once a token actually minted** (`:540-547`), so a half-pair never
+  looks good on the next run. It then reuses the stored pair (`:482-489`) and re-pairs when the
+  terminal row id changes.
+- **The client_id is the device's own terminal row id** (`memo.rs:498-501`), not a server-issued
+  enrollment code. The minted claim and the local identity agree by construction.
+
+**So the correction to §4 is this: the device can obtain, and keep, a sync credential without the
+operator key.** The dossier's sentence "the only other mint path is … pairing, which still has no
+UI" read the absence of a *pairing screen* as the absence of a *credential mechanism*. They are
+different things. The mechanism is shipped; the screen is not.
+
+### The residual gate — and it is the real open question
+
+`register_terminal` **is** admin-key gated (`routes/terminals.rs:105` via
+`admin_key_authorised`, `routes/tokens.rs:101-134` — dev-open only when the server has no key
+configured). So the live path self-serves a credential only for a terminal that *already has a
+registration row*. A cold, never-registered install still cannot obtain one, because registration is
+the gated step, not the mint.
+
+That is a **bootstrap circularity structurally identical to the URL's**, and it is what §5 should
+have been asking:
+
+> what authorizes a never-before-seen terminal to register itself?
+
+Note the meta-point: the live path is *already* a working answer to "must a terminal be linked?" —
+it links on first memo ack, informally, with no UI. The product question is therefore not "should we
+build linking" but "**do we bless the informal self-linking that already ships, or gate it behind a
+deliberate enrollment step?**"
 
 ## 5. The split — engineering call vs. your call
 
@@ -107,22 +161,46 @@ ADR #56 already frames this and declines it by omission, which is why it is your
 - §2.5 designs device-code pairing for the tablet (code + QR, phone completes Google, tablet polls)
   and is explicitly **unimplemented** — *"§2.5 pairing, which still has no UI"*.
 
-The two coherent answers:
+**§4a moves the axis.** The question is not "must a terminal be linked?" — `memo.rs` already
+links it, informally, with no UI and no operator key. The question is whether a deliberate enrollment
+step should *replace* or *bless* that informal path.
+
+The three coherent answers:
 
 | | Choice | Consequence |
 |---|---|---|
-| **A** | Sync belongs to a **linked** install. The provisioning transaction (ADR #56 §2.2, reached from the §2.3 flow) obtains the credential and writes sync in the same transaction. | An unlinked install honestly shows "Not configured" forever. Derivation is real but only fires on the linking path. The pairing UI is the work. |
-| **B** | Sync stays **operator-configured**, as today. | The pill fix (§2) is the whole fix: the app now says "Not configured" instead of inventing an outage. Refuse derivation; document the manual path. |
+| **A** | Sync belongs to a **deliberately enrolled** install. Provisioning (ADR #56 §2.2, from the §2.3 flow) obtains the credential and writes it in the same transaction. | An unenrolled install honestly shows "Not configured" forever. Requires solving §4a's registration circularity — the enrollment code, i.e. the §2.5 work. |
+| **B** | Sync stays **operator-configured**, as today. | The pill fix (§2) is the whole fix. Refuse derivation; document the manual path. Leaves the product question unanswered, not answered. |
+| **C** | **Derive the URL; let the credential arrive through the path that already ships** (`memo.rs`), and gate the green pill on an *authenticated* probe so it cannot lie. | No operator types a derivable URL. No new trust model. The informal self-linking becomes the sanctioned answer by being made visible and truthful. |
 
 Under A, the change is bounded: extend the provisioning transaction to write
-`server_url = resolved_origin()` + `enabled`, and the credential from the pairing response,
-reusing the `persist_provisioned_sync` shape. Under B, this dossier is the closing record.
+`server_url = resolved_origin()` + `enabled`, and the credential from the enrollment response,
+reusing the `persist_provisioned_sync` shape (`sync_bootstrap.rs:86-97`, and
+`should_auto_provision` `:63-79` already encodes "only when unset"). Under B, this dossier is the
+closing record. Under C, the two changes are the URL write above plus the authenticated probe.
+
+**Recommendation (§5, adopted and implemented — see §8): C, and only after the probe.** Reasoning: B answers nothing;
+A's cost was mislocated — it is a trust-model change (§4a's registration circularity), not a UI
+task, and the credential plumbing it would rebuild already exists. C takes the real win (no operator
+typing a derivable URL) without the false green, and the authenticated probe is a prerequisite for
+*every* version of A anyway. C is strictly less work than A and strictly more honest than B.
+
+**The one decision C does not make for you, and the one I would not make unilaterally:** the pill
+becomes honest, but the registration circularity remains. Whether an unregistered terminal may
+self-register — i.e. whether terminal registration should stay admin-key gated — is a
+trust-boundary call (`routes/terminals.rs:105`), not a UI detail. C is correct under either answer;
+it simply declines to widen that boundary silently.
 
 ## 6. What I deliberately did not do
 
-I did not implement derivation. It is the product axis above, and shipping it alone would have
-produced §4's false green — a defect worse than the one I was asked to fix. The honest interim
-state is the one now in the tree: an unconfigured install says so.
+I did not implement derivation in rounds 1–3. In round 1 it was the product axis above, and
+shipping it alone would have produced §4's false green — a defect worse than the one I was asked to
+fix. In round 3 I verified the dossier rather than extending it, which changed one of its conclusions
+(§4a) and moved the axis of another (§5). Changing a live credential or registration path is
+exactly the kind of edit that should follow a decision, not precede it.
+
+**Round 4 implemented C (§8) — and still did NOT widen the registration gate.** That boundary is
+unchanged and remains the open item.
 
 ## 7. Uncertainty (stated, not hidden)
 
@@ -132,3 +210,63 @@ state is the one now in the tree: an unconfigured install says so.
 - The pairing leg was not exercised; ADR #56 §2.5 records it as having no UI.
 - §4's unauthenticated-health claim is read from `ping_server` and the Caddyfile route, not from a
   live probe of production.
+- §4a is read from the handler control flow (`tokens.rs:205-269` returning before `:272`) and the
+  `memo.rs` consumer. It was **not** exercised end-to-end against a running gated server. The
+  reading is unambiguous — an early `return` cannot reach a later gate — but a live
+  client-credentials mint against a production-mode server with `OZ_ADMIN_KEY` set was not run.
+- §4a's claim that the live path is reachable *in production* depends on a terminal already holding
+  a registration row. Whether deployed tablets actually have one at first run was not checked
+  against a device or a live database.
+
+## 8. What landed (round 4) — option C, implemented
+
+Two changes, both verified by their own tests. Neither touches the registration gate (§4a).
+
+**1. The sync URL is derived from the origin the device already resolved.**
+`derive_sync_url_if_unset` (`crates/kasirmu-core/src/sync_auth.rs`) writes
+`resolved_origin()` when — and only when — no URL is configured, reusing the invariant
+`should_auto_provision` already encoded for the debug path. It runs in both shells' boot, *after* the
+ADR #55 attestation cascade, so it stores the attested winner (`main` or `fallback`) rather than the
+compiled default: `apps/mobile-tauri/src/lib.rs`, `apps/desktop-tauri/src/lib.rs`.
+
+**The §4 trap is closed in code, not by intention.** Derivation writes the URL and deliberately does
+**not** set `enabled`, and does not touch credentials. The pill therefore keeps reading "Not
+configured" after the write, because `SyncConfig::from_settings` still returns `None`. This is
+pinned by `derived_url_alone_does_not_start_sync`, which asserts exactly that.
+
+**2. The probe now asks an authenticated question, so the pill cannot lie.**
+`/health` is public, so reachability alone was never evidence that sync works. `probe_sync_auth`
+reuses the existing `fetch_tenant_plan` call against `GET /api/v1/tenants/me/plan` — already
+authenticated, already in the `terminal` read preset (`read_tiers.rs:131-136`), read-only — so a
+success proves the token is accepted *and* carries the scope a terminal was minted with. No new
+endpoint, no new HTTP client.
+
+- `SyncAuthHealth` is `Unauthenticated` | `Authorized` | `Rejected` | `Unknown`, carried on
+  `PingResult.auth`. `Unknown` exists so a transport failure or a compiled-out feature is never
+  reported as a refusal.
+- `probe_sync_connection` composes reachability + credential in one place, so desktop and tablet
+  cannot drift into different answers.
+- UI: `unauthorized` joined the shared union (`connectionHealth.ts`) and is checked **before**
+  `ok === true` in `useSyncConnection` — that ordering is the fix. Tone is `bad` (not the
+  `unconfigured` amber): the device *is* set up and the server actively said no, which is a fault with
+  a fix, not an absence.
+- `PingResult.auth` is optional on the wire, so a shell that predates it reads as "not checked"
+  rather than as success.
+
+**Verification (all run, all green).** `cargo check` on core/bridge/mobile/app; 3313 core tests +
+desktop tests; `cargo clippy -D warnings` clean on the three touched crates; UI typecheck, lint,
+bundle parity (0 missing keys across 4923 en / 4999 id); 83 UI tests. Six Rust tests and eight UI
+tests were added, including the trap test above and one asserting an absent `auth` field is never
+read as success.
+
+### What C does NOT deliver — the residual, stated plainly
+
+**An unregistered install still cannot obtain a credential.** `register_terminal` is admin-key
+gated (`routes/terminals.rs:105`), and the live `memo.rs` path only self-serves a terminal that
+*already has a registration row*. So after this round a cold install derives a URL, still cannot
+link, and honestly reads "Not configured". The pill is now truthful about that state instead of
+inventing an outage — but the underlying product question (§4a's registration circularity) is
+exactly as open as it was. C made the signal honest; it did not answer the question.
+
+**Do not read this section as closing the dossier.** The §5 product axis is still the thing to
+decide.

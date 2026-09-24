@@ -335,6 +335,11 @@ settings-sync-not-configured = Sinkronisasi belum dikonfigurasi. Masukkan URL se
 # Pil sinkronisasi di bilah status: perangkat belum punya URL server sama
 # sekali — celah konfigurasi, bukan gangguan jaringan. Sengaja bukan "Luring".
 statusbar-sync-unconfigured-msg = { $name } · Belum dikonfigurasi
+# Pil sinkronisasi di bilah status: URL dan kredensial SUDAH tersimpan, tetapi
+# server menolak kredensial itu. Sengaja berbeda dari kedua tetangganya —
+# bukan "Belum dikonfigurasi" (konfigurasinya ada) dan bukan "Luring" (server
+# menjawab). Perbaikannya dengan menautkan ulang terminal, bukan jaringan.
+statusbar-sync-unauthorized-msg = { $name } · Kredensial ditolak
 settings-sync-status-idle = Siap
 settings-sync-status-ok = Terhubung
 settings-sync-pending-count = { $count } tertunda

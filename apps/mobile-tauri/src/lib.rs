@@ -170,6 +170,9 @@ pub fn run() {
         // Fire-and-forget on purpose: boot is never blocked on a probe, and an
         // unreachable MAIN degrades to the canonical default exactly as it does
         // today until the cascade resolves to the fallback.
+        // Captured by the attestation coroutine below; cloned here because
+        // `app_handle` is still used by later closures in this block.
+        let derive_app_handle = app_handle.clone();
         platform_startup::spawn_once("server origin attestation", async move {
             let nonce = kasirmu_core::attestation::generate_nonce();
             match kasirmu_core::attestation::resolve_attested_origin(&nonce).await {
@@ -181,6 +184,29 @@ pub fn run() {
                 None => tracing::warn!(
                     "no server origin could be attested; staying on the compiled default"
                 ),
+            }
+            // ── Point sync at the origin we just resolved ─────────────
+            // Auth and sync are one host (ADR #55), so the sync URL is a fact
+            // this device already holds — asking an operator to retype it is
+            // asking for a value we resolved ourselves.
+            //
+            // Runs AFTER the cascade so it stores the attested winner rather
+            // than the compiled default, and writes only when nothing is
+            // configured: an explicit operator URL always wins. It does NOT
+            // enable sync and does NOT mint a credential, so sync still will
+            // not start — the pill keeps saying "Not configured" until a
+            // credential arrives. Enabling it here would draw a green dot over
+            // 401s, because the status probe asks a public endpoint.
+            {
+                let state = derive_app_handle.state::<AppState>();
+                let conn = state.db.lock().await;
+                let origin = kasirmu_core::attestation::resolved_origin().url;
+                if let Err(e) = kasirmu_core::derive_sync_url_if_unset(&conn, &origin) {
+                    tracing::warn!(
+                        error = %e,
+                        "could not derive the sync server URL from the attested origin;                          sync settings left untouched"
+                    );
+                }
             }
         });
                     platform_startup::spawn_once("hardware bootstrap", async move {

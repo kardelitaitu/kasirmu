@@ -345,6 +345,11 @@ settings-sync-not-configured = Sync is not configured. Enter a server URL and en
 # Status-bar sync pill: the device has NO server URL at all — a configuration
 # gap, not an outage. Deliberately not "Offline" (statusbar-offline-msg).
 statusbar-sync-unconfigured-msg = { $name } · Not configured
+# Status-bar sync pill: URL and credential ARE stored, but the server refused
+# the credential. Distinct from both neighbours on purpose — not "Not
+# configured" (there IS a configuration) and not "Offline" (the server
+# answered). The fix is re-linking the terminal, not the network.
+statusbar-sync-unauthorized-msg = { $name } · Credential rejected
 settings-sync-status-idle = Ready
 settings-sync-status-ok = Connected
 settings-sync-pending-count = { $count } pending
