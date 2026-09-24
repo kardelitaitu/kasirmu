@@ -168,10 +168,10 @@ closes for NOT WORK rows.
 
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
-| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half open: tablet still calls the non-scope-aware `require_customer_permission` at 6 sites, and the bridge's `settings.rs` setters still call the unscoped `require_permission_for_user` at 8 (R10 named 4; it has grown). Gate-ORDER half **EXECUTED for `customers`** — see below. |
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. Still open: the bridge's `settings.rs` setters call the unscoped `require_permission_for_user` at 8 sites, and the gate-ORDER half is ratcheted at 69 bodies. Gate-ORDER half **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
-| **R18** | Split this file by phase | **NO** | Still one 780-line file. Blocked on the NOT WORK boxes, now dispositioned above. |
+| **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
 | **R3** | Default-role seeding in `complete_setup` | **NO** | Divergence stands; the tablet file carries an unresolved-tension comment rather than a fix. |
 
 **What R10's gate-order half covered when it was executed — and how much is left.**
@@ -204,6 +204,34 @@ at the call site (`3f8674c96`).
 and executing one still requires reading the code it lands on. Two of the five above
 moved under re-measurement — R10's population is 69 bodies where its text named 6, and
 R11's literal reading contradicts a pinned policy. Neither is visible from the ruling.
+
+**The R10 gate-KIND half is now EXECUTED, and it was smaller than its own census said.**
+The table above carried it as "the tablet still calls the non-scope-aware
+`require_customer_permission` at 6 sites", reading the six commands as six divergences.
+Measured at this tip, that was wrong in the same way R10's gate-ORDER text was wrong in
+the other direction: **five of those six call sites are not divergences at all**, because
+their bridge twins gate with the *same* non-scope-aware helper.
+`crates/kasirmu-bridge/src/customers.rs` gates scope-aware in exactly **one** place —
+`get_scoped` at `:430` — while `list_scoped` (`:400`) and the four mutations
+(`:461`, `:491`, `:519`, `:548`, `:582`) call `require_customer_permission`,
+the identical shape to the shell's. So the honest size of R10's gate-KIND half is
+**1 door**, and R10's own shape 1 (`done-todo-owner-rulings.md:258`) named exactly that
+one. Executed by **delegating** `get_customer_scoped` to `kasirmu_bridge::customers::get_scoped`
+rather than by re-implementing the scope-aware gate shell-side: the two shells now agree by
+construction, which is what ADR #49 §4 actually protects, and the body shrank. A scoped
+member whose session is out of scope is denied fail-closed on the tablet exactly as on the
+desktop.
+
+**The guard is a new test, because the existing one could not see the change.**
+`get_customer_scoped_denies_user_without_view_permission` was already green before this
+work and stays green after it — both gate forms produce `PermissionDenied` for a role that
+lacks the permission, so that test cannot distinguish the delegation from the body it
+replaced, and a revert would leave it passing. `get_customer_scoped_denies_view_holder_out_of_scope`
+is the test with teeth: the caller holds `customers:view` outright and is denied only
+because their scoped assignment covers a different branch. **Mutation-tested rather than
+assumed** — restoring the non-scope-aware gate at `customers.rs:430` makes it fail with
+`got Ok(None)`, i.e. the customer was returned to an out-of-scope caller, and reverting the
+mutation makes it pass. The other test passes in both states, which is the point.
 
 ---
 
