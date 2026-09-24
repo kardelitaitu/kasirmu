@@ -708,3 +708,189 @@
 .copyButton:hover {
   background: var(--color-bg-hover);
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ORIENTATION: LANDSCAPE ADAPTIVE LAYOUT
+   Applied when width > height (tablet rotated sideways).
+   Strategy:
+     • Welcome   → 2-column split (brand left 42 %, actions right 58 %)
+     • Setup Hub → 2-column split (hero card left, auth list right)
+     • Auth Modals → compact single column, max-width capped,
+                     QR scanner shrunk to fit in one viewport
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (orientation: landscape) {
+  /* ── Shared shell ─────────────────────────────────────────────── */
+
+  .root {
+    /* In landscape dvh is short; allow content to scroll normally */
+    min-height: 100dvh;
+    overflow-y: auto;
+  }
+
+  .viewportCanvas {
+    max-width: 64rem;
+    min-height: 100dvh;
+    padding-block: var(--space-4);
+  }
+
+  /* ── 1. WELCOME SCREEN — side-by-side ─────────────────────────── */
+
+  .welcomeRoot {
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: flex-start;
+    min-height: calc(100dvh - var(--space-8));
+    gap: var(--space-6);
+    text-align: left;
+  }
+
+  .welcomeBrandSection {
+    flex: 0 0 42%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: 0;
+    margin: 0;
+    border-right: 1px solid var(--color-border);
+    padding-right: var(--space-6);
+  }
+
+  .welcomeLogo {
+    width: min(30vw, 14rem);
+    max-height: 6rem;
+  }
+
+  .welcomeActionsSection {
+    flex: 1 1 auto;
+    justify-content: center;
+    align-items: stretch;
+    max-width: none;
+    margin-bottom: 0;
+    padding-block: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .welcomeBlurb {
+    text-align: left;
+    margin-inline: 0;
+  }
+
+  /* ── 2. SETUP HUB — side-by-side ─────────────────────────────── */
+
+  .hubContainer {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--space-5);
+  }
+
+  .heroCard {
+    flex: 0 0 44%;
+    align-self: flex-start;
+    position: sticky;
+    top: var(--space-4);
+  }
+
+  .hubSectionPrompt {
+    display: none; /* hidden in landscape — saves vertical space */
+  }
+
+  .authOptionsList {
+    flex: 1 1 auto;
+  }
+
+  /* ── 3. AUTH MODALS (Google / Email / QR) — compact card ─────── */
+
+  .authModalCard {
+    max-width: 36rem;
+    padding: var(--space-6);
+    gap: var(--space-4);
+  }
+
+  .scannerReticleBox {
+    max-width: 18rem;
+  }
+
+  .qrScannerSection {
+    gap: var(--space-3);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ORIENTATION: LANDSCAPE — ULTRA COMPACT  (height ≤ 480 px)
+   Covers phones in landscape and small tablets.
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .root {
+    padding-inline: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  .viewportCanvas {
+    padding-block: var(--space-2);
+  }
+
+  /* Welcome */
+  .welcomeRoot {
+    gap: var(--space-3);
+  }
+
+  .welcomeLogo {
+    width: min(22vw, 8rem);
+    max-height: 4rem;
+  }
+
+  .welcomeBrandSection {
+    padding-right: var(--space-4);
+  }
+
+  .welcomeActionsSection {
+    gap: var(--space-2);
+    padding-block: var(--space-2);
+  }
+
+  .primaryCtaBtn {
+    height: 2.75rem;
+    font-size: var(--text-sm);
+  }
+
+  .secondaryCtaBtn {
+    height: 2.5rem;
+    font-size: var(--text-sm);
+  }
+
+  .welcomeBlurb {
+    font-size: var(--text-xs);
+    margin-bottom: var(--space-2);
+  }
+
+  /* Hub */
+  .heroCard {
+    padding: var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .heroTitle {
+    font-size: 1.15rem;
+  }
+
+  .authCard {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  /* Auth modals */
+  .authModalCard {
+    padding: var(--space-4);
+    gap: var(--space-3);
+  }
+
+  .topNav {
+    margin-bottom: var(--space-2);
+  }
+
+  /* QR */
+  .scannerReticleBox {
+    max-width: 13rem;
+  }
+}
