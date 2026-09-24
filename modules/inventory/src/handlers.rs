@@ -129,9 +129,24 @@ impl InventoryStockHandler {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;
 
+        // Every row must decode. `ings.flatten()` used to drop row-level
+        // `FromSql` errors on the floor, and the consequence was silent stock
+        // drift on BOTH sides: an empty list makes the code below take the
+        // simple-product arm, so the COMPOSITE item is deducted and its
+        // INGREDIENTS are never touched — the opposite of what the recipe
+        // says. Measured before the fix: a `CAKE` sale with a recipe row whose
+        // `quantity_required` could not decode left the ingredient at full
+        // stock and decremented the finished good (cake 5 -> 3, flour 50 -> 50).
+        //
+        // A row that cannot be read is an infrastructure fact, not evidence
+        // that the product has no recipe, so it is refused rather than treated
+        // as an absent BOM. Failing here rolls the whole sale deduction back
+        // (the handler holds one transaction and `handle` propagates), which is
+        // the safe direction: a sale that does not settle can be retried, stock
+        // that silently drifted cannot be noticed.
         let mut ingredients = Vec::new();
-        for i in ings.flatten() {
-            ingredients.push(i);
+        for i in ings {
+            ingredients.push(i?);
         }
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -250,6 +265,66 @@ mod tests {
         .unwrap();
     }
 
+    /// A recipe row that cannot decode must refuse the sale, not silently
+    /// turn the product into a simple one.
+    ///
+    /// The old `ings.flatten()` dropped row-level `FromSql` errors, so an
+    /// unreadable BOM row produced an EMPTY ingredient list — and the empty
+    /// list is the code path for "this product has no recipe". The composite
+    /// item was then deducted while its ingredients stayed at full stock.
+    #[test]
+    fn an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_deducting() {
+        let db = fresh_db();
+        {
+            let conn = db.lock().unwrap();
+            seed_product(&conn);
+            // A composite product plus one recipe row whose quantity_required
+            // cannot decode as i64 — the row-level FromSql error.
+            conn.execute_batch(
+                "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+                 VALUES ('p2', 'CAKE', 'Cake', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+                 INSERT INTO inventory (product_id, qty, updated_at) VALUES ('p2', 5, '2025-01-01T00:00:00.000Z');
+                 INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
+                 VALUES ('p3', 'FLOUR', 'Flour', 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
+                 INSERT INTO inventory (product_id, qty, updated_at) VALUES ('p3', 50, '2025-01-01T00:00:00.000Z');
+                 INSERT INTO product_recipes (id, parent_product_id, ingredient_product_id, quantity_required)
+                 VALUES ('r1', 'p2', 'p3', 'not-a-number');"
+            )
+            .unwrap();
+        }
+        let handler = InventoryStockHandler::new(db.clone());
+        let event = SaleCompleted {
+            sale_id: "sale-probe".into(),
+            store_id: None,
+            line_items: vec![kasirmu_core::events::SaleCompletedLine {
+                sku: "CAKE".into(),
+                qty: 2,
+                unit_price_minor: 1000,
+                tax_minor: 0,
+                tax_rate_id: None,
+            }],
+            total_minor: 2000,
+            currency: "USD".into(),
+            customer_id: None,
+        };
+        // The sale must be REFUSED, not settled against a mis-read recipe.
+        let r = handler.handle(&event);
+        assert!(
+            r.is_err(),
+            "an undecodable recipe row must refuse the deduction, not fall through to the simple-product arm"
+        );
+
+        // And the transaction rolled back, so neither side moved.
+        let conn = db.lock().unwrap();
+        let cake: i64 = conn
+            .query_row("SELECT qty FROM inventory WHERE product_id = 'p2'", [], |x| x.get(0))
+            .unwrap();
+        let flour: i64 = conn
+            .query_row("SELECT qty FROM inventory WHERE product_id = 'p3'", [], |x| x.get(0))
+            .unwrap();
+        assert_eq!(cake, 5, "the composite product must not be deducted");
+        assert_eq!(flour, 50, "the ingredient must not be touched either");
+    }
     #[test]
     fn handler_decrements_stock() {
         let db = fresh_db();
