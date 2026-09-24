@@ -1510,6 +1510,54 @@ nothing of mine is uncommitted.
 
 **No commit** beyond this ledger entry.
 
+### Modules thirty-third pass — 24-09-26 (a swallowed recipe read mis-deducts stock)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| MOD-A | MEDIUM | `modules/inventory/src/handlers.rs:133` — `handle_line` | **A recipe row that failed to decode was silently dropped, and the resulting EMPTY ingredient list is the code path for "this product has no recipe".** So an unreadable BOM row made the handler deduct the COMPOSITE item and never touch its INGREDIENTS — the exact inverse of what the recipe says. Measured before the fix: a `CAKE` sale with a recipe row whose `quantity_required` could not decode returned `Ok(())`, left the ingredient at full stock, and decremented the finished good (`cake 5 -> 3`, `flour 50 -> 50`). |
+
+**The code was `for i in ings.flatten()`.** `ings` is a `rusqlite` row iterator,
+so `flatten()` discards row-level `FromSql` errors — the statement-level
+`prepare`/`query_map` errors DO propagate via `?`, which is what makes the
+omission easy to miss when reading. A sweep of `modules/` and `crates/
+kasirmu-core/src` found this as the ONLY `.flatten()` over a row iterator; every
+other hit is `Option::flatten` on a single value.
+
+**Already recorded by the crate own audit stamp as an unfixed INFO**, which is
+worth noting: the stamp reads *"a recipe-table read error would yield an empty
+ingredient list and deduct the composite product instead of ingredients
+(infrastructure-failure only...)"* with `next: tighten stock_summary error
+surfacing`. So the defect was known and never actioned. This pass closes it.
+
+**Severity MEDIUM on an honest reachability reading.** Both `product_recipes`
+columns are `NOT NULL` with a `CHECK (quantity_required > 0)`, so reaching a
+decode error needs a corrupt or hand-edited database — hence not HIGH. But the
+consequence is silent stock drift on BOTH sides with no signal anywhere, and
+the handler held a transaction it could have rolled back the whole time.
+
+**Fixed** by iterating the rows and propagating with `?`, so an unreadable BOM
+refuses the deduction instead of being mistaken for an absent one. The choice of
+REFUSAL over "skip the line, keep the sale" is the safe direction and is stated
+in the comment: a sale that does not settle can be retried, stock that silently
+drifted cannot be noticed. The handler holds one transaction and `handle`
+propagates, so the refusal rolls the entire deduction back.
+
+**Pinned** by `an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_
+deducting`, which asserts the refusal AND that neither side moved (cake stays 5,
+flour stays 50). **Watched to FAIL** with `flatten()` restored and pass with the
+fix.
+
+**Verified:** `cargo test -p modules-inventory` → **85 passed, 0 failed** across
+all targets. Clippy clean under `--all-targets --all-features -- -D warnings`.
+
+**A note on the audit scope.** `modules/*` had no coverage in this audit before
+now; `modules/inventory` was the largest unaudited surface at 1,607 lines. This
+is the first finding from that half of the workspace, and the sibling lens was
+what led to it — the *handler* arm and the *recipe* arm are two paths to the same
+deduction, and the defect is that one of them could be reached by accident.
+
+**Commit:** `0ae9a43bb` (MOD-A).
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
