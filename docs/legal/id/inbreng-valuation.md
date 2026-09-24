@@ -51,16 +51,20 @@ HARI INI (FASE PELUNCURAN)                       MASA DEPAN (FASE SCALE-UP)
 
 Di bawah payung hukum Indonesia (UU No. 40/2007 Pasal 41–43 jo. PP No. 8/2021 tentang PT Perorangan), penambahan modal disetor melalui inbreng di kemudian hari diatur sebagai berikut:
 
-### 3.1 Prosedur Eksekusi di AHU Kemenkumham
-1. **Keputusan Pemegang Saham Tunggal**:
+### 3.1 Prosedur Eksekusi di AHU Kemenkumham (Target Tahun ke-2: Rp2–3 Miliar)
+1. **Target Valuasi Realistis**:
+   Setelah kasir.mu beroperasi 24 bulan dan membuktikan omzet bulanan berulang (*MRR*), KJPP akan menilai software pada rentang **Rp2.000.000.000,- s.d. Rp3.000.000.000,-**.
+2. **Kesesuaian dengan Kriteria PT Perorangan**:
+   Total modal perseroan menjadi Rp2,05 M s.d. Rp3,05 Miliar. Berdasarkan PP No. 7/2021, skala usaha perseroan resmi naik kelas dari *Usaha Mikro* menjadi **Usaha Kecil** (modal > Rp1 Miliar s.d. Rp5 Miliar). **PT TETAP SAH BERSTATUS PT PERORANGAN** dengan 1 orang pemegang saham tunggal karena batas atas modal PT Perorangan adalah Rp5 Miliar.
+3. **Keputusan Pemegang Saham Tunggal**:
    Founder membuat Keputusan Pemegang Saham Tunggal tentang Penyetoran Modal Non-Tunai dan Peningkatan Modal Disetor Perseroan.
-2. **Laporan Valuasi KJPP**:
-   KJPP menerbitkan Laporan Penilaian Resmi berbasis *Discounted Cash Flow (DCF)* atau *Relief from Royalty Method* berdasarkan data historis traksi merchant kasir.mu.
-3. **Pendaftaran Perubahan di AHU Online**:
+4. **Pendaftaran Perubahan di AHU Online**:
    * Akses `https://ptp.ahu.go.id`.
    * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
-   * Masukkan nilai penambahan modal disetor non-tunai sesuai nilai laporan KJPP.
+   * Masukkan nilai penambahan modal disetor non-tunai sesuai nilai laporan KJPP (misal: Rp2.500.000.000,-).
    * Sertifikat Pernyataan Perubahan terbit otomatis.
+5. **Bebas Pajak Pengalihan Modal**:
+   Sesuai ketentuan **Pasal 4 ayat (3) huruf c UU PPh**, harta yang diterima oleh badan sebagai pengganti modal disetor bukan merupakan objek Pajak Penghasilan bagi perseroan. PT tidak dikenai pajak tambahan atas masuknya aset software Rp2–3 Miliar tersebut.
 
 ### 3.2 Jembatan Hukum Selama Masa Tunggu
 Selama periode sebelum inbreng menyusul dieksekusi:

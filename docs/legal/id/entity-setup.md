@@ -10,27 +10,30 @@
 Untuk mendirikan badan hukum yang kuat tanpa membuang uang belasan juta rupiah untuk jasa penilai publik di awal, kasir.mu menerapkan **Strategi Permodalan 2 Tahap**:
 
 ```
-[TAHAP 1: SEKARANG — PENDIRIAN AWAL BERSIH]
+[TAHAP 1: TAHUN 0 (SEKARANG) — PENDIRIAN AWAL BERSIH]
  ├── Modal Disetor: Rp50.000.000,- Tunai (100% Saham Pendiri Tunggal)
- ├── Status Usaha: Usaha Mikro (Kriteria Modal ≤ Rp1 Miliar)
+ ├── Skala Usaha: Usaha Mikro (Kriteria PP 7/2021: Modal ≤ Rp1 Miliar)
  ├── Hak Cipta Software: Terdaftar atas nama Pribadi Founder (e-HakCipta Rp200.000)
  ├── Hubungan Software: Perjanjian Lisensi Eksklusif (Founder -> PT)
  └── HASIL: PT langsung sah 100%, NIB terbit, rekening giro buka, ZERO biaya KJPP.
 
                                │
-                               ▼ (Setelah 1–2 Tahun: Omzet Rutin / Ada Investor)
+                               ▼ (Setelah 2 Tahun: Omzet Rutin, Ratusan Merchant, Arus Kas Tebal)
 
-[TAHAP 2: MASA DEPAN — INBRENG MENYUSUL (SUBSEQUENT INBRENG)]
- ├── Status: Peningkatan Modal Disetor via "Pernyataan Perubahan di AHU" (Voucher Rp50.000)
+[TAHAP 2: TAHUN 2 (MASA DEPAN) — INBRENG ASET SOFTWARE RP2–3 MILIAR]
+ ├── Nilai Inbreng: Rp2.000.000.000,- s.d. Rp3.000.000.000,- (Total Modal: Rp2,05 M – Rp3,05 M)
+ ├── Skala Usaha: Naik kelas menjadi Usaha Kecil (Kriteria PP 7/2021: Modal > Rp1 M s.d. Rp5 M)
+ ├── Status Hukum: TETAP PT PERORANGAN (Karena plafon maksimal PT Perorangan adalah Rp5 Miliar!)
  ├── Metode Valuasi: Income Approach / DCF (Berdasarkan omzet langganan SaaS & jumlah merchant)
- ├── Pembiayaan KJPP: Dibayar resmi dari kas operasional PT (Bukan uang pribadi founder)
- └── HASIL: Valuasi software melesat ke angka Miliaran Rupiah secara sah & diakui DJP.
+ ├── Pembiayaan KJPP: Dibayar resmi dari kas operasional PT (Beban usaha perseroan)
+ └── HASIL: Valuasi software melesat, neraca PT sangat kuat di mata bank/investor, diakui DJP.
 ```
 
 ### Mengapa Skema Ini yang Terbaik?
-1. **Tidak Membuang Uang Belasan Juta di Awal**: Biaya penilai publik (KJPP) sebesar Rp10–20 juta tidak perlu dikeluarkan saat belum ada pendapatan. Uang disimpan untuk operasional dan akuisisi merchant.
+1. **Tidak Membuang Uang Belasan Juta di Awal**: Biaya penilai publik (KJPP) sebesar Rp10–20 juta tidak perlu dikeluarkan saat belum ada pendapatan. Uang tunai disimpan untuk operasional dan akuisisi merchant.
 2. **Kecepatan Peluncuran Produk**: PT bisa beroperasi komersial minggu ini juga tanpa harus menunggu 2–3 minggu proses appraisal repo Git.
-3. **Valuasi Jauh Lebih Tinggi di Masa Depan**: Menilai software yang sudah memiliki ratusan merchant berbayar (*Monthly Recurring Revenue*) menghasilkan angka valuasi yang jauh lebih tinggi dan defensif dibanding hanya menilai baris kode di Git.
+3. **Valuasi Melesat 10× Lipat di Tahun ke-2**: Menilai software yang sudah memiliki ratusan merchant berbayar (*Monthly Recurring Revenue*) menghasilkan angka valuasi **Rp2–3 Miliar** yang sah dan defensif menggunakan *Income Approach*, dibanding hanya menilai baris kode di Git.
+4. **Tetap PT Perorangan**: Berdasarkan PP No. 8/2021, plafon modal PT Perorangan adalah **Rp5.000.000.000,- (Lima Miliar Rupiah)**. Dengan total modal Rp2–3 Miliar, perseroan tetap sah 100% sebagai PT Perorangan tanpa kewajiban menambah pemegang saham baru.
 
 ---
 
@@ -112,21 +115,25 @@ Setelah rekening giro atas nama PT aktif:
 
 ---
 
-## 5. Prosedur Inbreng Menyusul di Masa Depan (Tahap 2)
+## 5. Prosedur Inbreng Menyusul di Tahun ke-2 (Tahap 2)
 
-Ketika kasir.mu sudah berjalan 1–2 tahun, memiliki omzet stabil, atau bersiap menerima suntikan dana investor:
+Ketika kasir.mu sudah berjalan 2 tahun, memiliki ratusan merchant berbayar, dan omzet langganan stabil:
 
-1. **Penugasan KJPP**:
-   * Direksi PT menunjuk KJPP resmi berizin Penilaian Bisnis dari Kemenkeu.
-   * Biaya jasa appraisal dibayarkan langsung dari rekening giro PT dan dibukukan sebagai beban operasional PT.
-   * KJPP menerbitkan Laporan Penilaian Resmi berbasis *Income Approach / Relief from Royalty* (misal menilai software sebesar Rp3 Miliar).
-2. **Pengajuan Perubahan di AHU Online**:
+1. **Penugasan KJPP Berizin Penilaian Bisnis**:
+   * Direksi PT menunjuk KJPP resmi berizin Kemenkeu untuk melakukan penilaian aset software.
+   * Karena produk sudah membuktikan traksi pasar, KJPP menggunakan metode **Income Approach (Discounted Cash Flow / Relief from Royalty)** berdasarkan data historis kas masuk dan retensi merchant.
+   * Nilai wajar software terjustifikasi secara objektif di angka **Rp2.000.000.000,- s.d. Rp3.000.000.000,-**.
+   * Biaya jasa appraisal KJPP dibayarkan langsung dari rekening giro PT dan dibukukan resmi sebagai beban operasional PT.
+2. **Pendaftaran Peningkatan Modal di AHU Online**:
    * Login ke `https://ptp.ahu.go.id`.
    * Beli voucher PNBP: *Pernyataan Perubahan Perseroan Perorangan* (**Rp50.000,-**).
-   * Pilih menu **Perubahan Modal Disetor** ➔ Masukkan penambahan modal inbreng sebesar angka laporan KJPP.
+   * Pilih menu **Perubahan Modal Disetor** ➔ Masukkan penambahan modal inbreng sebesar angka laporan KJPP (misal: Rp2.500.000.000,-).
    * Sistem AHU menerbitkan **Sertifikat Pernyataan Perubahan Perseroan Perorangan**.
-3. **Sinkronisasi OSS & Perbankan**:
-   * Buka OSS, lakukan sinkronisasi data modal usaha terbaru.
-   * Serahkan salinan sertifikat perubahan ke bank tempat rekening giro berada.
-4. **Pencatatan Akuntansi**:
-   * Di neraca PT dibukukan: Debit Aset Tak Berwujud (Software) Rp3 Miliar, Kredit Tambahan Modal Disetor Rp3 Miliar.
+3. **Konfirmasi Legalitas & Batas Plafon PT Perorangan**:
+   * Total modal perseroan menjadi Rp2.550.000.000,-.
+   * Berdasarkan PP No. 7/2021, skala usaha perseroan naik kelas dari *Usaha Mikro* menjadi **Usaha Kecil** (Kategori modal > Rp1 Miliar s.d. Rp5 Miliar).
+   * **Bentuk badan hukum TETAP PT PERORANGAN** dengan pemegang saham tunggal, karena batas maksimal PT Perorangan di UU Cipta Kerja adalah Rp5 Miliar.
+4. **Kepastian Pajak & Akuntansi**:
+   * **Bukan Objek Pajak**: Sesuai **Pasal 4 ayat (3) huruf c UU PPh**, penyetoran inbreng software sebagai pengganti penyertaan modal saham perseroan bukan objek PPh bagi PT.
+   * **Pajak Operasional**: Di tahun ke-2, perseroan masih menikmati tarif PPh Final 0.5% (PP 55/2022).
+   * **Pencatatan Neraca**: Debit Aset Tak Berwujud (Software Kasirmu) Rp2,5 Miliar, Kredit Tambahan Modal Disetor Rp2,5 Miliar. Neraca perseroan menjadi sangat kuat untuk fasilitas pembiayaan bank dan valuasi ekuitas.
