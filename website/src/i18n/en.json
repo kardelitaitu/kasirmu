@@ -510,6 +510,34 @@
   "about": {
     "title": "Why we built kasir.mu",
     "subtitle": "Most point-of-sale software treats a working internet connection as a given. We built kasir.mu the other way round: the sale happens on the register, the cloud is the backup, and the hardware you already own is fast enough.",
+    "factsTitle": "At a glance",
+    "facts": [
+      {
+        "label": "Founded",
+        "value": "2025"
+      },
+      {
+        "label": "Built for",
+        "value": "Indonesian retail and hospitality — warung, cafes, restaurants, minimarkets, and warehouses"
+      },
+      {
+        "label": "Runs on",
+        "value": "Windows, Linux, macOS, and Android"
+      },
+      {
+        "label": "Pricing",
+        "value": "A free plan that stays free, and paid plans with no per-feature fees"
+      },
+      {
+        "label": "Community",
+        "value": "Discord"
+      }
+    ],
+    "storyTitle": "How we got here",
+    "story": [
+      "kasir.mu started in 2025 with a single requirement: a sale has to be finished before the network is involved — written down, printed, and counted on the machine in front of the cashier, not queued for a server that may not answer.",
+      "Everything else follows from that. The sync engine exists so registers and branches agree afterwards. The hardware layer exists so the printer and the scanner answer immediately. The price exists because software that needs less infrastructure costs less to run. We are not trying to win a feature-list comparison — we are trying to make the register the most reliable thing in the shop."
+    ],
     "problemTitle": "The problem with cloud-first POS",
     "problemIntro": "Cloud-first registers look identical on a product page. The differences show up in the middle of a lunch rush, on a shop floor with one weak router, in the hardware budget, and in what the monthly bill actually pays for.",
     "problems": [
@@ -574,19 +602,31 @@
         "value": "Stable multi-branch stock accuracy at a price that stays low."
       }
     ],
-    "principlesTitle": "What we hold to",
-    "principles": [
+    "goalTitle": "Our goal",
+    "goalStatement": "Every merchant in Indonesia should be able to run a register they can trust on the hardware they already own — with no monthly bill deciding how much of the product they are allowed to use.",
+    "goalBody": "We measure that three ways: a sale never fails because of the network, the stock numbers agree across every register and every branch, and the software stays affordable enough that a warung and a ten-branch chain can both run it.",
+    "promisesTitle": "Our promises",
+    "promisesIntro": "Concrete commitments, each one something you can check on your own machine.",
+    "promises": [
       {
-        "title": "Offline is the default",
-        "body": "A feature that cannot work without a connection is a feature a merchant cannot rely on during service."
+        "title": "Selling never waits for the internet",
+        "body": "Sales, receipts, shifts, stock, and reports all work without a connection. Cloud sync is an addition, never a prerequisite."
       },
       {
-        "title": "You own your data",
-        "body": "The store's records live on the store's own machine first. The cloud is a sync peer and a backup, not a gatekeeper."
+        "title": "Your data stays yours",
+        "body": "Records live on your own machine first, and you can export or back them up whenever you want. No feature is held hostage to keep you from leaving."
       },
       {
-        "title": "Cheap hardware is enough",
-        "body": "Software should never be the reason a working register gets thrown away."
+        "title": "You keep your hardware",
+        "body": "A low-spec PC, a tablet you already own, or a fanless mini PC is enough. A working register will never be made obsolete by us."
+      },
+      {
+        "title": "No hidden per-feature fees",
+        "body": "The free plan is a product of its own, not a trial, and the paid plans do not meter individual features."
+      },
+      {
+        "title": "A person answers you",
+        "body": "Support in Indonesian and English, usually within one business day, from the people who build the software."
       }
     ],
     "closingTitle": "Try it on your own hardware",

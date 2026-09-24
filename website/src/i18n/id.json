@@ -514,6 +514,34 @@
   "about": {
     "title": "Kenapa kami membangun kasir.mu",
     "subtitle": "Sebagian besar aplikasi kasir menganggap koneksi internet selalu tersedia. Kami membangun kasir.mu dengan asumsi sebaliknya: transaksi terjadi di mesin kasir, cloud hanya cadangan, dan perangkat yang sudah Anda miliki cukup cepat.",
+    "factsTitle": "Sekilas",
+    "facts": [
+      {
+        "label": "Berdiri",
+        "value": "2025"
+      },
+      {
+        "label": "Dibuat untuk",
+        "value": "Ritel dan kuliner Indonesia — warung, kafe, restoran, minimarket, dan gudang"
+      },
+      {
+        "label": "Berjalan di",
+        "value": "Windows, Linux, macOS, dan Android"
+      },
+      {
+        "label": "Harga",
+        "value": "Paket gratis yang tetap gratis, dan paket berbayar tanpa biaya per fitur"
+      },
+      {
+        "label": "Komunitas",
+        "value": "Discord"
+      }
+    ],
+    "storyTitle": "Awal mula kami",
+    "story": [
+      "kasir.mu dimulai pada 2025 dengan satu syarat: transaksi harus selesai sebelum jaringan dilibatkan — tercatat, tercetak, dan terhitung di mesin yang ada di depan kasir, bukan menunggu antrean ke server yang belum tentu menjawab.",
+      "Semua hal lain mengikuti dari situ. Mesin sinkronisasi ada agar register dan cabang tetap cocok setelahnya. Lapisan perangkat ada agar printer dan scanner menjawab seketika. Harganya seperti itu karena perangkat lunak yang membutuhkan lebih sedikit infrastruktur lebih murah dijalankan. Kami tidak berusaha menang di daftar fitur — kami berusaha membuat mesin kasir jadi hal yang paling bisa diandalkan di toko."
+    ],
     "problemTitle": "Masalah aplikasi kasir berbasis cloud",
     "problemIntro": "Di halaman produk, semua aplikasi kasir terlihat sama. Bedanya baru terasa saat jam sibuk, di toko dengan satu router lemah, pada anggaran perangkat, dan pada apa yang sebenarnya Anda bayar setiap bulan.",
     "problems": [
@@ -578,19 +606,31 @@
         "value": "Akurasi stok multi-cabang yang stabil dengan harga yang tetap murah."
       }
     ],
-    "principlesTitle": "Prinsip kami",
-    "principles": [
+    "goalTitle": "Tujuan kami",
+    "goalStatement": "Setiap pemilik usaha di Indonesia bisa menjalankan kasir yang bisa dipercaya di perangkat yang sudah dimilikinya — tanpa tagihan bulanan yang menentukan seberapa banyak produk ini boleh dipakai.",
+    "goalBody": "Kami mengukurnya dari tiga hal: transaksi tidak pernah gagal karena jaringan, angka stok cocok di setiap register dan setiap cabang, dan harganya tetap terjangkau untuk warung maupun jaringan sepuluh cabang.",
+    "promisesTitle": "Janji kami",
+    "promisesIntro": "Komitmen yang konkret — masing-masing bisa Anda periksa sendiri di perangkat Anda.",
+    "promises": [
       {
-        "title": "Offline adalah bawaan",
-        "body": "Fitur yang tidak bisa jalan tanpa koneksi adalah fitur yang tidak bisa diandalkan saat toko sedang melayani."
+        "title": "Berjualan tidak menunggu internet",
+        "body": "Penjualan, struk, shift, stok, dan laporan semuanya berjalan tanpa koneksi. Sinkronisasi cloud hanya tambahan, bukan syarat."
       },
       {
-        "title": "Data Anda milik Anda",
-        "body": "Catatan toko tersimpan lebih dulu di mesin toko. Cloud adalah rekan sinkronisasi dan cadangan, bukan penjaga pintu."
+        "title": "Data Anda tetap milik Anda",
+        "body": "Catatan tersimpan lebih dulu di mesin Anda sendiri, dan bisa diekspor atau dicadangkan kapan saja. Tidak ada fitur yang disandera supaya Anda tetap bertahan."
       },
       {
-        "title": "Perangkat murah sudah cukup",
-        "body": "Perangkat lunak tidak boleh jadi alasan mesin kasir yang masih bekerja dibuang."
+        "title": "Perangkat Anda tetap terpakai",
+        "body": "PC spesifikasi rendah, tablet yang sudah Anda miliki, atau mini PC tanpa kipas sudah cukup. Kami tidak akan membuat mesin kasir yang masih bekerja jadi usang."
+      },
+      {
+        "title": "Tanpa biaya tersembunyi per fitur",
+        "body": "Paket gratis kami adalah produk tersendiri, bukan uji coba, dan paket berbayar tidak menghitung fitur satu per satu."
+      },
+      {
+        "title": "Dijawab oleh manusia",
+        "body": "Dukungan dalam bahasa Indonesia dan Inggris, biasanya dalam satu hari kerja, dari orang yang membangun perangkat lunaknya."
       }
     ],
     "closingTitle": "Coba di perangkat Anda sendiri",

@@ -3,25 +3,28 @@ export function getStaticPaths() {
   return [{ params: { locale: 'en' } }, { params: { locale: 'id' } }];
 }
 /**
- * About — the problem kasir.mu exists to solve.
+ * About — who kasir.mu is, what it exists to fix, and what it commits to.
  *
- * This page is the one place on the site that argues from the ENGINEERING
- * rather than from a feature list: every other page sells a capability ("works
- * offline", "prints receipts"), and this page explains why those capabilities
- * hold up where a cloud-first client's offline mode does not. The argument runs
- * from how the product is actually built — a native client with an embedded
- * database, deterministic sync, direct hardware access, a light footprint, and
- * a server with no runtime pauses — and each item is paired with what it means
- * on the shop floor, because a merchant buys the second half.
+ * The page is laid out as a company page rather than a feature page, in the
+ * order a reader evaluates one: the FACTS first (what this is, when it started,
+ * what it runs on — `about.facts`), the story behind it, the PROBLEM in the
+ * market, what we built instead, the GOAL we are steering by, and the PROMISES
+ * a merchant can hold us to. Every promise is worded so it can be checked on
+ * the reader's own machine — that is what separates a promise from a slogan.
  *
- * The comparisons are of APPROACHES, never of named competitors: the
- * competitor-by-competitor page is /perbandingan, so this page cannot drift
- * into claims about how a specific product is implemented.
+ * The founding year in `about.facts` is the owner's own statement (2025), and
+ * it is the only fact on the page that does not come from the product itself.
+ * Everything else is verifiable from the site: the platforms are the ones
+ * `Base.astro` already advertises, the pricing line restates the free plan
+ * without inventing a number that would rot at the next price change, and the
+ * support line matches /contact. Deliberately absent: team names, headcount,
+ * funding, and customer counts — a page that claims none of them cannot be
+ * caught having invented one.
  *
  * Copy lives in the dictionaries (`about.*`) in both locales. Scalars resolve
- * through `t(locale, …)` inline, exactly as the other pages read theirs; the
- * four structured blocks are read with `dict()` and named back through `t()` in
- * a `data-i18n-key` attribute, which is what keeps them visible to
+ * through `t(locale, …)` inline, as the other pages read theirs; the structured
+ * blocks are read with `dict()` and named back through `t()` in a
+ * `data-i18n-key` attribute, which is what keeps them visible to
  * `scripts/audit-i18n.mjs` (it collects literals inside `t(…)`, and a key read
  * only through `dict()` is invisible to it).
  */
@@ -42,17 +45,19 @@ interface Differentiator {
 }
 
 interface AboutCopy {
+  facts: { label: string; value: string }[];
+  story: string[];
   problems: string[];
   items: Differentiator[];
   table: { feature: string; value: string }[];
-  principles: { title: string; body: string }[];
+  promises: { title: string; body: string }[];
 }
 
 const about = dict(locale).about as AboutCopy;
 // Array order is the argument's order — storage → sync → hardware → footprint →
 // server, each building on the previous. It is authoring order in the
 // dictionary, so both locales render the same sequence.
-const { problems, items, table, principles } = about;
+const { facts, story, problems, items, table, promises } = about;
 
 const downloadHref = getRelativeLocaleUrl(locale, 'download');
 const pricingHref = getRelativeLocaleUrl(locale, 'pricing');
@@ -64,6 +69,34 @@ const contactHref = getRelativeLocaleUrl(locale, 'contact');
     <div data-reveal class="text-center">
       <h1 class="text-4xl font-bold sm:text-5xl">{pageTitle}</h1>
       <p class="mx-auto mt-6 max-w-2xl text-lg text-muted">{t(locale, 'about.subtitle')}</p>
+    </div>
+
+    <!-- The facts a reader checks before reading anything else. A description
+         list, so each label is announced with its own value rather than as a
+         row of loose text. -->
+    <div
+      data-reveal
+      class="mt-12 rounded-2xl border border-ink/10 bg-surface/40 p-6 sm:p-8"
+      data-i18n-key={t(locale, 'about.facts')}
+    >
+      <h2 class="text-xl font-bold">{t(locale, 'about.factsTitle')}</h2>
+      <dl class="mt-5 grid gap-4 sm:grid-cols-2">
+        {
+          facts.map((fact) => (
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-wider text-muted">{fact.label}</dt>
+              <dd class="mt-1 text-sm text-ink">{fact.value}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.story')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.storyTitle')}</h2>
+      <div class="mt-3 space-y-4 leading-relaxed text-muted">
+        {story.map((paragraph) => <p>{paragraph}</p>)}
+      </div>
     </div>
 
     <!-- The problem, named before the product is mentioned. Each item is a
@@ -144,14 +177,30 @@ const contactHref = getRelativeLocaleUrl(locale, 'contact');
       </div>
     </div>
 
-    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.principles')}>
-      <h2 class="text-2xl font-bold">{t(locale, 'about.principlesTitle')}</h2>
-      <div class="mt-6 grid gap-4 sm:grid-cols-3">
+    <!-- The goal, set apart from the surrounding cards: it is the one paragraph
+         on the page that is about intent rather than mechanism. -->
+    <div data-reveal class="mt-16 rounded-2xl border border-primary/30 bg-primary/[0.04] p-8 sm:p-10">
+      <h2 class="text-2xl font-bold">{t(locale, 'about.goalTitle')}</h2>
+      <p class="mt-4 text-lg font-medium leading-relaxed text-ink">
+        {t(locale, 'about.goalStatement')}
+      </p>
+      <p class="mt-3 text-sm leading-relaxed text-muted">{t(locale, 'about.goalBody')}</p>
+    </div>
+
+    <div data-reveal class="mt-16" data-i18n-key={t(locale, 'about.promises')}>
+      <h2 class="text-2xl font-bold">{t(locale, 'about.promisesTitle')}</h2>
+      <p class="mt-3 text-muted">{t(locale, 'about.promisesIntro')}</p>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
         {
-          principles.map((principle) => (
+          promises.map((promise) => (
             <article class="rounded-xl border border-ink/10 bg-surface/40 p-6">
-              <h3 class="font-semibold">{principle.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-muted">{principle.body}</p>
+              <h3 class="flex gap-2 text-base font-semibold text-ink">
+                <span aria-hidden="true" class="text-success">
+                  ✓
+                </span>
+                <span>{promise.title}</span>
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">{promise.body}</p>
             </article>
           ))
         }
