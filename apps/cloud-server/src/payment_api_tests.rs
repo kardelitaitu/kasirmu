@@ -510,3 +510,76 @@ async fn charge_derives_a_stable_gateway_key_when_the_caller_sends_none() {
          Got {first:?}"
     );
 }
+
+/// A BLANK `idempotency_key` still dedupes: the retry reuses one gateway key.
+///
+/// **This is the design doc's §8 row 4** (`payment-resilience-design.md:220`), and
+/// the doc calls it *"**yes** — this is the production hole"*.
+///
+/// **The hole was narrower than a missing derivation and wider than it looked.**
+/// R9(a) derived the gateway key from `sale_id` when the caller sent none, and the
+/// test next door covers `None`. But a client that posts
+/// `"idempotency_key": ""` sends `Some("")`, which is not `None` — so the
+/// derivation was skipped, the driver sanitised the blank to an empty `order_id`
+/// and minted a FRESH key per attempt (`drivers/qris.rs:347-351`). A form field
+/// left empty serialises to a blank string rather than an absent key, so this was
+/// reachable without any client bug at all.
+///
+/// Asserted on the wire `order_id` across two identical requests, because that is
+/// what the gateway actually dedupes on: a test that stopped at the handler's
+/// local variable would pass while the value reaching Midtrans still differed.
+#[tokio::test]
+async fn blank_idempotency_key_still_dedupes_to_one_gateway_key() {
+    let mock = midtrans_mock().await;
+    let api_base = format!("{}/v2", mock.uri());
+    let processor = build_qris_processor("sk-test", true, None, Some(&api_base));
+    let state = PaymentState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        rate_limiter: RateLimiterState::new(),
+        processor: Some(processor),
+    };
+    let app = payment_router(state);
+
+    // The empty string, not an absent field: `Option<String>` sees `Some("")`.
+    let send = || {
+        authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-blank","amount_minor":15000,"idempotency_key":""}"#,
+            Some("tenant-A"),
+        )
+    };
+    for _ in 0..2 {
+        let resp = app.clone().oneshot(send()).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    let received = mock.received_requests().await.unwrap();
+    assert_eq!(received.len(), 2, "one charge body per request");
+    let order_ids: Vec<String> = received
+        .iter()
+        .map(|r| {
+            let body: serde_json::Value =
+                serde_json::from_slice(&r.body).expect("charge body is JSON");
+            body["transaction_details"]["order_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+
+    assert!(
+        !order_ids[0].is_empty(),
+        "the charge must carry an order_id"
+    );
+    assert_eq!(
+        order_ids[0], order_ids[1],
+        "a blank idempotency_key must be treated as ABSENT, not as a supplied key: \
+         with a fresh key per attempt the gateway mints a second live QR for one sale"
+    );
+    assert!(
+        order_ids[0].contains("sale-blank"),
+        "the derived key must be traceable to the sale, got {:?}",
+        order_ids[0]
+    );
+}

@@ -259,10 +259,22 @@ async fn qris_charge_handler(
     // 44 chars), so a colon or a space would be DELETED rather than preserved —
     // collapsing `tenant-A/sale-1` and `tenant-AB/sale1` onto one key. Tenant is
     // prefixed because `sale_id` is device-generated and only unique per tenant.
-    let gateway_idempotency_key = body
+    // **Blank counts as ABSENT, and this is load-bearing** (design doc §8 row 4,
+    // `payment-resilience-design.md:220`). `Some("")` is `Some`, so a plain
+    // `unwrap_or_else` on the `Option` would let a blank body field through — and
+    // the driver then sanitises it to an empty `order_id` and mints a FRESH one
+    // (`drivers/qris.rs:347-351`), restoring exactly the double-charge hole this
+    // derivation exists to close. A client that posts `"idempotency_key": ""` is
+    // common enough (a form field left empty serialises to a blank string, not to
+    // an absent key) that treating it as a supplied key would be a silent hole.
+    let supplied_key = body
         .idempotency_key
-        .clone()
-        .unwrap_or_else(|| format!("qris-{}-{}", tenant_id, body.sale_id));
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty())
+        .map(str::to_owned);
+    let gateway_idempotency_key =
+        supplied_key.unwrap_or_else(|| format!("qris-{}-{}", tenant_id, body.sale_id));
 
     let request = PaymentRequest {
         amount: Money {
