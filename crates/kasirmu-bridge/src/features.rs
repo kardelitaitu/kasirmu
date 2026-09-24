@@ -626,6 +626,7 @@ pub async fn list_all_features_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<ListAllFeaturesResult, BridgeError> {
+    // ungated-ok: enumerates the compiled feature registry; discloses no tenant data
     let (_session, conn) = ctx.resolve_scope(session_token)?;
     let db = conn
         .lock()

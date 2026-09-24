@@ -258,6 +258,8 @@ pub async fn print_sales_receipt_scoped(
     session_token: &str,
     args: PrintSalesReceiptArgs,
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     let (config, store_info) = {
         let conn = ctx.resolve_store(session_token)?;
         let db = conn
@@ -446,6 +448,8 @@ pub async fn print_receipt_scoped(
     args: PrintReceiptArgs,
     session_token: &str,
 ) -> Result<PrintReceiptResult, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let printer = ctx
         .registry
@@ -577,6 +581,8 @@ pub async fn list_scanners_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<ScannerInfo>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let ids = ctx.registry.scanner_ids_ranked().await;
     let (preferred, mode) = saved_scanner_prefs(ctx).await;
@@ -614,6 +620,8 @@ pub async fn start_scanner_scoped(
     scanner_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     {
         let mut cancel = ctx.scanner_cancel.lock().await;
@@ -721,6 +729,8 @@ pub async fn stop_scanner_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let mut cancel = ctx.scanner_cancel.lock().await;
     if let Some(sender) = cancel.take() {
@@ -738,6 +748,8 @@ pub async fn list_displays_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<String>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     Ok(ctx.registry.display_ids().await)
 }
@@ -754,6 +766,8 @@ pub async fn display_show_scoped(
     args: DisplayShowArgs,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let display = ctx
         .registry
@@ -781,6 +795,8 @@ pub async fn discover_hardware_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<UsbDeviceInfo>, BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     match probe_all() {
         Ok(devices) => Ok(devices),
@@ -802,6 +818,8 @@ pub async fn display_clear_scoped(
     display_id: &str,
     session_token: &str,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
+    // authenticated operator. Gating it is a product ruling, not a repair.
     ctx.resolve_scope(session_token)?;
     let display =
         ctx.registry.display(display_id).await.ok_or_else(|| {

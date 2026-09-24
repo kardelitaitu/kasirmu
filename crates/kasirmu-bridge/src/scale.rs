@@ -34,6 +34,7 @@ pub async fn read_scale_weight_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Option<WeightReading>, BridgeError> {
+    // ungated-ok: per-REGISTER hardware read, not store data
     ctx.resolve_scope(session_token)?;
     let scale = ctx.registry.scale("default").await;
     match scale {
@@ -54,6 +55,7 @@ pub async fn list_scale_devices_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<ScaleDeviceInfo>, BridgeError> {
+    // ungated-ok: per-REGISTER hardware read, not store data
     ctx.resolve_scope(session_token)?;
     let ids = ctx.registry.scale_ids().await;
     let mut devices = Vec::with_capacity(ids.len());

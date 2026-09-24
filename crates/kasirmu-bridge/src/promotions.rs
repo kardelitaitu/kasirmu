@@ -68,6 +68,7 @@ pub async fn list_promotions_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<Promotion>, BridgeError> {
+    // ungated-ok: deliberate shell asymmetry (module header) - the read half is ungated
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -90,6 +91,7 @@ pub async fn get_promotion_scoped(
     session_token: &str,
     id: &str,
 ) -> Result<Option<Promotion>, BridgeError> {
+    // ungated-ok: deliberate shell asymmetry (module header) - the read half is ungated
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -276,6 +278,7 @@ pub async fn get_sale_promotions_scoped(
     session_token: &str,
     sale_id: &str,
 ) -> Result<Vec<PromotionApplication>, BridgeError> {
+    // ungated-ok: deliberate shell asymmetry (module header) - the read half is ungated
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()

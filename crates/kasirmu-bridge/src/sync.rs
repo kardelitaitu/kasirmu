@@ -300,6 +300,7 @@ pub async fn get_sync_settings_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<SyncSettingsDto, BridgeError> {
+    // ungated-ok: read-only, and the api key is reduced to a presence bool below
     let session = ctx.resolve_session(session_token)?;
     let conn = ctx
         .db_manager
@@ -360,6 +361,7 @@ pub async fn get_pg_sync_settings_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<PgSyncSettingsDto, BridgeError> {
+    // ungated-ok: read-only pg connection settings; the password is not in the DTO
     let session = ctx.resolve_session(session_token)?;
     let conn = ctx
         .db_manager
@@ -1071,6 +1073,7 @@ pub async fn settings_changed_sink_scoped(
     _key: &str,
     _value: Option<String>,
 ) -> Result<(), BridgeError> {
+    // ungated-ok: deliberate no-op - authenticates, then takes no action
     ctx.resolve_scope(session_token)?;
     Ok(())
 }

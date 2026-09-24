@@ -966,6 +966,7 @@ pub async fn get_cart_deduction_location_scoped(
     cart_id: CartId,
     session_token: &str,
 ) -> Result<Option<DeductionLocationInfo>, BridgeError> {
+    // ungated-ok: a read of the caller's own active cart's deduction location
     let (_session, _conn) = ctx.resolve_scope(session_token)?;
     let db = _conn
         .lock()

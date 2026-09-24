@@ -19,6 +19,7 @@ pub async fn list_tables_scoped(
     session_token: &str,
     section: Option<String>,
 ) -> Result<Vec<Table>, BridgeError> {
+    // ungated-ok: read by design (module header) - floor-plan data, not tenant secrets
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -35,6 +36,7 @@ pub async fn get_table_scoped(
     session_token: &str,
     id: &str,
 ) -> Result<Option<Table>, BridgeError> {
+    // ungated-ok: read by design (module header)
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -50,6 +52,7 @@ pub async fn list_sections_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<String>, BridgeError> {
+    // ungated-ok: read by design (module header) - section names only
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()

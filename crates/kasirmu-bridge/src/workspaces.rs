@@ -276,6 +276,8 @@ pub async fn list_workspaces_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<WorkspaceDto>, BridgeError> {
+    // ungated-ok: the picker itself - every authenticated role must reach it; scoped by
+    // assignment and filtered by tier entitlement below.
     let session = ctx.resolve_session(session_token)?; // ADR #5: Load subscription from global DB for entitlement filtering.
     // Also validates the system clock has not been rolled back. The user's
     // assignment (ADR #35 D5 / spec 0048) rides the same global-DB lock so
@@ -334,6 +336,8 @@ pub async fn get_workspace_instance_scoped(
     session_token: &str,
     instance_id: String,
 ) -> Result<WorkspaceDto, BridgeError> {
+    // ungated-ok: the picker itself - every authenticated role must reach it; the store
+    // comes from the SESSION, never the wire.
     let session = ctx.resolve_session(session_token)?;
     let conn = ctx
         .db_manager
@@ -622,6 +626,7 @@ pub async fn list_workspace_screens_scoped(
     session_token: &str,
     type_key: String,
 ) -> Result<Vec<WorkspaceScreenDto>, BridgeError> {
+    // ungated-ok: the picker's screen list - static layout metadata for the session store
     let conn = ctx.resolve_store(session_token)?;
     let db = conn
         .lock()
@@ -700,6 +705,8 @@ pub async fn list_workspaces_for_store_scoped(
     session_token: &str,
     store_id: String,
 ) -> Result<Vec<WorkspaceDto>, BridgeError> {
+    // ungated-ok: picker read; the named store is scope-filtered through the user's
+    // assignment before any row is returned.
     let session = ctx.resolve_session(session_token)?;
     // The user's assignment lives in the GLOBAL identity DB (ADR #35 D5 / spec
     // 0048) — load it before opening the requested store so the listing can be
