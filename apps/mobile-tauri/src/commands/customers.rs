@@ -5,29 +5,41 @@
 //! # ADR #49 status — 1 of 7 doors extracted, 6 refused
 //!
 //! Only [`list_customers_scoped`] delegates to `kasirmu-bridge`. The other six are
-//! **refused** under ADR #49 §4 — not merely unported — and each carries a
-//! note saying which parity rule it breaks:
+//! **refused** under ADR #49 §4 — not merely unported. Two distinct reasons, and the
+//! second one is now half-repaired:
 //!
 //! * `get_customer_scoped` — the bridge twin gates with the scope-aware
 //!   `require_session_permission`; this shell gates with the non-scope-aware
 //!   `require_customer_permission`. §4: *"Gates that are not scope-aware stay
-//!   not scope-aware; an extraction is not the place to widen a gate."*
+//!   not scope-aware; an extraction is not the place to widen a gate."* Still open:
+//!   this is the gate-KIND half, and R10 (owner, 2026-09-20) rules the scope-aware
+//!   form authoritative, so it is a funded change rather than a parked fork.
 //! * `create_customer_scoped`, `update_customer_scoped`,
 //!   `delete_customer_scoped`, `search_customers_scoped`,
-//!   `get_customer_history_scoped` — these open the store database **before**
-//!   the gate; the bridge twins gate first and open afterwards. `open_store`
-//!   is not free (`platform/core/src/database/manager.rs:73-103`: on a cache
-//!   miss it creates the directory, creates the database file and runs
-//!   migrations), so the two orderings differ observably, and against an
-//!   unopenable store they return different errors — `Internal` here,
-//!   `PermissionDenied` there.
+//!   `get_customer_history_scoped` — the gate-ORDER half, **FIXED 2026-09-24 under
+//!   R10's explicit folding-in of BR-X4.** Each now runs session -> gate -> store,
+//!   matching its bridge twin. The order mattered because `open_store` is not free
+//!   (`platform/core/src/database/manager.rs:73-103`: on a cache miss it creates the
+//!   directory, creates the database file and runs migrations), so opening first let
+//!   an UNAUTHORIZED caller do filesystem work and read `Internal("opening store
+//!   db")` where the bridge answers `PermissionDenied` — an authorisation failure
+//!   surfacing as an infrastructure error. That leak is what closed it.
+//!
+//! The remaining difference is gate KIND only, and R10 settles it: the scope-aware
+//! gate is authoritative wherever the two shells disagree. Delegating is still
+//! gated on that change landing on both shells at once, per ADR #49 §4's ban on an
+//! extraction widening or narrowing a gate.
 //!
 //! The bridge's ordering came from the **desktop** shell, which disagreed with
 //! this one long before the campaign started; the bridge is not at fault and
 //! is not internally consistent about it either — `gift_cards`, `loyalty` and
-//! `purchasing` all use the open-before-gate order this shell uses. This is a
-//! two-shell fork for an owner to rule on. Filed in
-//! `docs/records/audit-open-findings.md`.
+//! `purchasing` all use the open-before-gate order this shell used. The ruling that
+//! settled it is R10 in `done-todo-owner-rulings.md:272`, and it chose the
+//! **scope-aware, gate-first** form as authoritative — so the bridge's ordering was
+//! the design and this shell's was the divergence, which is why the five commands
+//! above were corrected rather than the bridge. Those three bridge siblings are
+//! now the remaining instance of the same shape under R10's sweep, not a
+//! counter-example to it. Filed in `docs/records/audit-open-findings.md`.
 
 use tauri::{State, command};
 
@@ -103,8 +115,8 @@ pub async fn get_customer_scoped(
 
 /// Create a customer in the store resolved from a session token. ADR #7.
 ///
-/// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `kasirmu_bridge::customers::create_scoped` gates first.
+/// ADR #49 §4: **not delegated.** Gate order fixed under R10 (BR-X4):
+/// session -> gate -> store, matching `kasirmu_bridge::customers::create_scoped`, which gates first.
 #[command]
 pub async fn create_customer_scoped(
     session_token: String,
@@ -112,8 +124,16 @@ pub async fn create_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
     validate_customer_fields(&args.name, args.email.as_deref(), args.phone.as_deref())?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    // Gate BEFORE opening the store (BR-X4 / R10): `resolve_scope` calls
+    // `open_store`, which on a cache miss creates the data directory and the db
+    // file and runs migrations. Doing that first lets an UNAUTHORIZED caller both
+    // trigger filesystem work and see `Internal("opening store db")` where the
+    // bridge answers `PermissionDenied` — an authz failure leaking as an
+    // infrastructure error. The bridge's `create_scoped` resolves the session,
+    // gates, and only then opens the store; this now matches it.
+    let session = state.resolve_session(&session_token)?;
     require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_CREATE).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -129,8 +149,8 @@ pub async fn create_customer_scoped(
 
 /// Update a customer in the store resolved from a session token. ADR #7.
 ///
-/// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `kasirmu_bridge::customers::update_scoped` gates first.
+/// ADR #49 §4: **not delegated.** Gate order fixed under R10 (BR-X4):
+/// session -> gate -> store, matching `kasirmu_bridge::customers::update_scoped`, which gates first.
 #[command]
 pub async fn update_customer_scoped(
     session_token: String,
@@ -138,8 +158,14 @@ pub async fn update_customer_scoped(
     state: State<'_, AppState>,
 ) -> Result<CustomerDto, AppError> {
     validate_customer_fields(&args.name, args.email.as_deref(), args.phone.as_deref())?;
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    // Gate BEFORE opening the store (BR-X4 / R10). `resolve_scope` calls
+    // `open_store`, which on a cache miss creates the data dir and db file and
+    // runs migrations; doing that first lets an unauthorized caller trigger
+    // filesystem work and see an `Internal` db error where the bridge answers
+    // `PermissionDenied`. Matches `kasirmu_bridge::customers::*` gate-first order.
+    let session = state.resolve_session(&session_token)?;
     require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_EDIT).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -156,16 +182,22 @@ pub async fn update_customer_scoped(
 
 /// Delete a customer from the store resolved from a session token. ADR #7.
 ///
-/// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `kasirmu_bridge::customers::delete_scoped` gates first.
+/// ADR #49 §4: **not delegated.** Gate order fixed under R10 (BR-X4):
+/// session -> gate -> store, matching `kasirmu_bridge::customers::delete_scoped`, which gates first.
 #[command]
 pub async fn delete_customer_scoped(
     session_token: String,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    // Gate BEFORE opening the store (BR-X4 / R10). `resolve_scope` calls
+    // `open_store`, which on a cache miss creates the data dir and db file and
+    // runs migrations; doing that first lets an unauthorized caller trigger
+    // filesystem work and see an `Internal` db error where the bridge answers
+    // `PermissionDenied`. Matches `kasirmu_bridge::customers::*` gate-first order.
+    let session = state.resolve_session(&session_token)?;
     require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_DELETE).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -181,8 +213,8 @@ pub async fn delete_customer_scoped(
 /// CUST-06: the query runs server-side (LIKE over name/email/phone) with a
 /// bounded page size so the renderer never holds the full customer list.
 ///
-/// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `kasirmu_bridge::customers::search_scoped` gates first.
+/// ADR #49 §4: **not delegated.** Gate order fixed under R10 (BR-X4):
+/// session -> gate -> store, matching `kasirmu_bridge::customers::search_scoped`, which gates first.
 #[command]
 pub async fn search_customers_scoped(
     session_token: String,
@@ -191,8 +223,14 @@ pub async fn search_customers_scoped(
     offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<CustomerSearchPage, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    // Gate BEFORE opening the store (BR-X4 / R10). `resolve_scope` calls
+    // `open_store`, which on a cache miss creates the data dir and db file and
+    // runs migrations; doing that first lets an unauthorized caller trigger
+    // filesystem work and see an `Internal` db error where the bridge answers
+    // `PermissionDenied`. Matches `kasirmu_bridge::customers::*` gate-first order.
+    let session = state.resolve_session(&session_token)?;
     require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -213,8 +251,8 @@ pub async fn search_customers_scoped(
 /// bounded (max 100/page) so a heavy-spending customer cannot bloat the
 /// renderer.
 ///
-/// ADR #49 §4: **not delegated.** This body opens the store database before
-/// the gate; `kasirmu_bridge::customers::history_scoped` gates first.
+/// ADR #49 §4: **not delegated.** Gate order fixed under R10 (BR-X4):
+/// session -> gate -> store, matching `kasirmu_bridge::customers::history_scoped`, which gates first.
 #[command]
 pub async fn get_customer_history_scoped(
     session_token: String,
@@ -223,8 +261,14 @@ pub async fn get_customer_history_scoped(
     offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<CustomerHistoryDto, AppError> {
-    let (session, conn) = state.resolve_scope(&session_token)?;
+    // Gate BEFORE opening the store (BR-X4 / R10). `resolve_scope` calls
+    // `open_store`, which on a cache miss creates the data dir and db file and
+    // runs migrations; doing that first lets an unauthorized caller trigger
+    // filesystem work and see an `Internal` db error where the bridge answers
+    // `PermissionDenied`. Matches `kasirmu_bridge::customers::*` gate-first order.
+    let session = state.resolve_session(&session_token)?;
     require_customer_permission(&state, &session.user_id, permissions::CUSTOMERS_VIEW).await?;
+    let conn = state.resolve_store(&session_token)?;
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
