@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 74 40" width="74" height="40" role="img" aria-labelledby="tier-badge-title">
+  <title id="tier-badge-title">FREE tier badge (light)</title>
+  <rect x="0.75" y="0.75" width="72.5" height="38.5" rx="19.25" fill="#f0f1f3" stroke="#b9c0cb" stroke-width="1.5"/>
+  <text x="37.45" y="25.4" fill="#5e6e82" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" font-size="15" font-weight="600" letter-spacing="0.9" text-anchor="middle">FREE</text>
+</svg>
