@@ -86,6 +86,55 @@ grep -cE '^[[:space:]]*- \[ \]' <file>  # any depth, including nested boxes
 
 This file uses the **any-depth** form and says so where it quotes a number.
 
+### A census is not a work count — read this before quoting either
+
+**Measured 2026-09-24 at HEAD `e4476d9f4`, both forms agreeing: 16 open / 25 ticked.**
+
+```bash
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[ \]' todo-open-debt-program.md   # 16
+grep -cE '^[[:space:]]*[-*][[:space:]]+\[[xX]\]' todo-open-debt-program.md  # 25
+```
+
+**The open figure is not the backlog, and treating it as one is what has kept this file
+un-renamable.** Six of the sixteen open boxes are **NOT WORK** — rows that restate a rule
+already binding every worker, which can be neither done nor undone. The file's own
+precedent at `:454` is explicit that they stay un-ticked with their reason: a tick was
+once landed on one and reverted, because *"a tick claims completed work and this clause
+claims none."* So they are permanent `[ ]` rows by design, and any phase carrying one
+reports an open box it can never close.
+
+| Disposition | Count | What it means for a phase's acceptance |
+|---|---|---|
+| **WORK** | **5** | A real, dispatchable task. Only these can close a phase. |
+| **NOT WORK** | **6** | A restated rule. Permanent `[ ]`; must be excluded from the work count. |
+| **SUPERSEDED** | **3** | Killed by a ruling. Stays `[ ]` per `:285`; not work. |
+| **NEEDS A RULING** | **5** | Owner decision, not a lane's task. |
+| **OUTSTANDING** | **1** | One named CI edit, deferred by owner. |
+| **CONDITIONAL** | **1** | R15: waits on funding, which no pass can satisfy. |
+
+**Per phase, work-open vs total-open** — the column that decides `done-`:
+
+| Phase | Open | Of which NOT WORK / SUPERSEDED | **Work open** |
+|---|---|---|---|
+| 1 | 1 | 1 NOT WORK (`:139`) | **0** |
+| 2 | 2 | 1 NOT WORK (`:210`), 1 INVARIANT (`:209`) | **0** |
+| 3 | 3 | 1 NOT WORK (`:270`), 2 SUPERSEDED (`:267`, `:268`) | **0** |
+| 4 | 1 | 1 NOT WORK (`:355`) | **0** |
+| 5 | 4 | 1 NOT WORK (`:574`), 1 SUPERSEDED (`:573`) | **2** (`:562`, `:566`) |
+| dead-class section | 5 | 5 NEEDS A RULING | **0** (owner's) |
+
+**The consequence, stated plainly, because it inverts how this file has been read:**
+Phases 1, 2, 3 and 4 have **zero open work**. Their remaining boxes are rules and
+rulings, not tasks. What keeps them on `todo-` is a counting convention that cannot
+distinguish the two — not unfinished work. Phase 5 is the only phase with real open
+tasks, and Phase 1's acceptance has already been run and passed (`:625`).
+
+**So `done-` is earnable on the acceptance rule as written, and has been blocked by
+representation rather than by work.** Anyone re-deriving this must classify each open
+box, not merely count it: the counts above are a reading of the dispositions recorded at
+each box, and a box that gains or loses one changes the phase's work column while leaving
+its open column untouched — which is exactly why the two columns are printed side by side.
+
 ---
 
 ## Phase 1 — The release profile is red and no gate can see it
@@ -618,7 +667,7 @@ cargo test -p oz-bridge --release    # 1315 passed; 1 failed   (195.65s)
 - **The sanity check holds: debug total − release total = 1** (1317 − 1316), which is the single `#[cfg(debug_assertions)]` test at `crates/oz-bridge/src/sync_tests.rs:35-37`. The anchor was re-verified live this pass and is still `#[cfg(debug_assertions)]` + `#[test]`, so the gap is fully explained and is not a miscount.
 - **The survivor is deliberately red, and the code says so.** `staff::security_events_tests::a_rejected_create_records_no_security_event` panics at `crates/oz-bridge/src/staff_security_events_tests.rs:209` with `InvalidSubscriptionSignature … Invalid symbol 95, offset 9` — symbol 95 is `_`, the underscore in `BOOTSTRAP_FREE`, i.e. exactly the release/base64 mechanism `:98` describes. Its own comment reads: *"DELIBERATELY LEFT RED in the release profile … Forking here would turn the test green while its subject — the recorder staying silent on a rejected mutation — stops being exercised … A green that asserts nothing is worse than a red with a reason; the honest fix is a verifying seeded row, which is an owner decision and not a fixture edit."* **That pattern occurs exactly once in the tree** (`grep -rc "DELIBERATELY LEFT RED" crates/ --include=*.rs | grep -v ":0"` → 1 file, 1 occurrence), so it is a decision, not a class.
 - **The dispatch consequence is the useful part: Phase 1's remaining work is one owner ruling, not 76 fixture fixes.** `:110` (fix the profile-dishonest fixtures) and `:106` (classify each of the 76) have almost nothing left to bite on — the fixtures were fixed elsewhere, and the one survivor refuses a fixture edit on principle. What remains is the *verifying seeded row* its comment names: the same shape as the parked arm at `:113`, and like it, blocked on the owner rather than on code. **Until that ruling lands, `--release` cannot reach 0 failed, so Phase 1's acceptance stays unmet and a `--release` gate (`:112`) would land red** — which is the house rule's reason for ordering cleanup before enforcement.
-- **Nothing here was fixed by this pass.** No source file was touched; the two commands above are the whole of the work, and the census is unchanged at **29 open / 11 ticked** (any-depth, per `:53`).
+- **Nothing here was fixed by this pass.** No source file was touched; the two commands above are the whole of the work, and the census is unchanged at **29 open / 11 ticked** (any-depth, per `:53`). <!-- CENSUS ROT, corrected forward 2026-09-24 at HEAD `e4476d9f4`: re-derived with this file's own canonical pair, the live figure is **16 open / 25 ticked**. The figure above is a dated record and is left verbatim; it drifted because boxes were ticked by other lanes after it was written. See the disposition split at `:89`. -->
 
 ---
 
@@ -683,7 +732,7 @@ cargo test -p oz-bridge --release    # 1317 passed; 0 failed   (187.73s)
 - **The actual fix moves the claim upstream of the subscription read.** `create_staff_scoped` gates `staff:create` at `staff.rs:1073` and only reaches `sub.verify_signature()` at `:1080` — so a *permission* refusal is live in both profiles while a *duplicate-username* one is not. `a_rejected_create_records_no_security_event` (`2dc500382`) now refuses at the permission gate, which is upstream of `:1080`, and additionally pins that no user row was written so the refusal cannot pass as a passport stamp. Its subject — a refused create writes no audit row — is therefore genuinely exercised in release instead of going green on `0 == 0`.
 - **The duplicate half survives as its own test**, `a_duplicate_username_create_records_no_security_event`, forked on `seeded_row_loads()`: debug asserts it against a **non-zero** baseline (`before == 1`, so it is never `0 == 0`), release asserts the seeded-row refusal with row existence pinned and stops. Coverage was not traded away to get the green.
 - **3a.2's default is ruled FAIL CLOSED (owner 2026-09-16).** An unknown role floor on an admin-tool gate must deny. `roleAtLeast` (`ui/src/utils/role.ts:72`) demands `Number.MAX_SAFE_INTEGER` for an unrecognised floor; the inline `?? 0` in `WorkspaceHome.canAccessTool` demanded **0**, so every role cleared it — a latent fail-open on an admin surface. The gate now routes through `roleAtLeast` (`a8c1fb4c5`), collapsing two consumers of one table onto one default. Type-blocked today (`ToolRole` is `owner|admin|manager`, all in the table), so it is behaviour-neutral now and removes the latent case. Pinned by two new tests in `role.test.ts`: an unknown floor denies every role, and a **custom role clears no preset floor** — the second is the property the doctrine exists to protect, and it is what 3a.2's remaining work (replacing rank comparisons with permission checks) must be measured against. `role.test.ts` 27 → **29**; the Tools parity surface re-measured at **39/39** across `WorkspaceHomeTools.test.tsx` (9) + `WorkspaceHomeTools.navParity.test.tsx` (2) + `pageRegistry.test.ts` (28) — that figure was recorded as *run* at `:217` with an explicit "re-run before relying on it", and it is now actually re-run.
-- Census unchanged at **29 open / 11 ticked**; no box was ticked by this pass, so the counters are preserved rather than massaged.
+- Census unchanged at **29 open / 11 ticked**; no box was ticked by this pass, so the counters are preserved rather than massaged. <!-- CENSUS ROT, corrected forward 2026-09-24 at HEAD `e4476d9f4`: re-derived with this file's own canonical pair, the live figure is **16 open / 25 ticked**. The figure above is a dated record and is left verbatim; it drifted because boxes were ticked by other lanes after it was written. See the disposition split at `:89`. -->
 
 **Method note for whoever takes the next release-profile fixture.** The transferable move is *read the command body for a gate before the subscription read*. `2dc500382` did not make the signature verify; it changed what the test refuses at, so the claim landed on a gate both profiles can reach. Check that before concluding a case is parked, and before forking anything on `seeded_row_loads()` — a fork is the right answer only when no upstream gate exists.
 
@@ -693,7 +742,7 @@ cargo test -p oz-bridge --release    # 1317 passed; 0 failed   (187.73s)
 
 Asked: review the implementation and rename with a `done-` prefix if it is really done. **It is not, so the file keeps its `todo-` token.** The rule being applied is this file's own `:8` plus `AGENTS.md` §4 (*"`done-todo-*` is earned ONLY when that file's own acceptance command was RUN and PASSED"*), and the file states at `:19` that there is no program-level command — the acceptance is per phase. Four of the five phases therefore have to close before one filename can claim the set, and they have not.
 
-**Census re-derived this pass, both counting forms agreeing per `:53`: 29 open / 12 ticked.** Per phase:
+**Census re-derived this pass, both counting forms agreeing per `:53`: 29 open / 12 ticked.** <!-- CENSUS ROT, corrected forward 2026-09-24 at HEAD `e4476d9f4`: re-derived with this file's own canonical pair, the live figure is **16 open / 25 ticked**. The figure above is a dated record and is left verbatim; it drifted because boxes were ticked by other lanes after it was written. See the disposition split at `:89`. --> Per phase:
 
 | Phase | Its acceptance, re-read this pass | Verdict |
 |---|---|---|
@@ -726,4 +775,4 @@ Follow-up to the audit above, and the thing that makes its per-phase verdicts re
 - **What deliberately did not change:** every dated record, every `[carried]` measurement, every ticked box, and the audit stamp at `:3`. This file's own rule is that a dated record is corrected forward, never back — and rewriting the paths *inside* a measurement taken at HEAD `257ff6122` would destroy the record it is. Those lines still say `oz-bridge`, and the header map is how a reader gets from there to here.
 - **Verification, so this is a claim with a command rather than a claim with a tone.** Every `-p <name>` in the live acceptance lines was resolved against the workspace: `cargo metadata --no-deps` lists **39** packages and **all six** names — `kasirmu-bridge`, `kasirmu-core`, `kasirmu-payment`, `kasirmu-hal`, `kasirmu-cloud`, `kasirmu-mobile` — resolve, with **0 unresolved**. Every path named in a live fence or a renamed task box was tested for existence: **28 of 28 `ok`, 0 `MISS`** (crates, apps, the five `ui/` paths, `crates/kasirmu-api/Cargo.toml`, and the seven `scripts/` runners).
 - **`kasirmu-cloud`, not `kasirmu-cloud-server`** — the cloud crate's package name is `kasirmu-cloud` while its directory stays `apps/cloud-server`, which is exactly the dir-vs-package split the header map exists to record.
-- **The census is untouched at 29 open / 12 ticked**, re-derived after the pass, and the live scaffolding now carries **0** stale `oz-` names. The verdict above does not move: renaming the commands makes the phases *testable*, which is not the same as *passed*.
+- **The census is untouched at 29 open / 12 ticked**, re-derived after the pass, and the live scaffolding now carries **0** stale `oz-` names. <!-- CENSUS ROT, corrected forward 2026-09-24 at HEAD `e4476d9f4`: re-derived with this file's own canonical pair, the live figure is **16 open / 25 ticked**. The figure above is a dated record and is left verbatim; it drifted because boxes were ticked by other lanes after it was written. See the disposition split at `:89`. --> The verdict above does not move: renaming the commands makes the phases *testable*, which is not the same as *passed*.
