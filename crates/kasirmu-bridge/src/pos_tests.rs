@@ -64,18 +64,45 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // restoring the raw cast and watching this file still pass without the
     // scan below. Every narrowing of `discount_percent` to the `u8` the
     // Percentage takes must therefore route through the one helper.
+    // WHITESPACE-NORMALISED, and that is the whole difficulty. The first version
+    // of this scan tested one LINE at a time, and a line-based scan can be
+    // evaded by FORMATTING ALONE: with the cast written as
+    //
+    //     foundation::Percentage::new(
+    //         (args.discount_percent) as u8,
+    //     )
+    //
+    // no single line contains both `Percentage::new(` and `discount_percent as
+    // u8`, so every predicate missed and the test passed with the truncating
+    // cast restored - verified by doing exactly that and watching it go green.
+    // Collapsing all whitespace first makes the scan independent of how rustfmt
+    // chooses to wrap the expression.
     let src = include_str!("pos.rs");
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim();
-        let narrows = (t.contains("Percentage::new(") && t.contains("discount_percent"))
-            || t.contains("discount_percent as u8");
-        if narrows && !t.contains("checkout_discount_percent") {
-            panic!(
-                "pos.rs:{} narrows discount_percent without the shared clamp, so an \
-                 over-100 value truncates instead of clamping: {t}",
-                i + 1
-            );
-        }
+    let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // A FLOOR, so this cannot pass by finding nothing. A source scan whose
+    // subject disappears reads exactly like a clean sweep; that is the failure
+    // mode `license_writer_literals_are_swept_from_license_rs_not_from_a_transcription`
+    // guards against with its own `>= 5` assertion, and the same discipline is
+    // owed here. The shared clamp is defined once and called at two doors, so
+    // three occurrences is the floor a healthy tree must show.
+    let call_sites = flat.matches("checkout_discount_percent").count();
+    assert!(
+        call_sites >= 3,
+        "expected the shared clamp to appear at least 3 times (definition + two doors) in pos.rs, found {call_sites} - the scan is reading a file that no longer spells it, so this test would pass vacuously"
+    );
+
+    // Every narrowing of the i64 wire field, in any formatting.
+    for (needle, what) in [
+        ("Percentage::new(discount_percent as u8)", "preview door"),
+        ("Percentage::new(args.discount_percent as u8)", "shortfall checkout door"),
+        ("Percentage::new((args.discount_percent) as u8)", "shortfall checkout door"),
+        ("Percentage::new((discount_percent) as u8)", "preview door"),
+    ] {
+        assert!(
+            !flat.contains(needle),
+            "{what} narrows discount_percent without the shared clamp, so an over-100 value truncates instead of clamping: {needle}"
+        );
     }
 
     // And the truncation trap itself, stated so a future edit cannot
