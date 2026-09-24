@@ -310,6 +310,30 @@ verb is the whole distance between the current state and an enrolled install.
 whether a never-seen device may obtain a credential. The mechanism beneath it is now correct; the
 policy above it is the §5 call.
 
+**§9's locating of the gap was wrong, and §10 corrects it.** The redemption endpoint I called
+missing is the Go licence server's `/api/v1/pairing/*` flow (`apps/license-server/pairing.go`,
+registered at `main.go:402-404`), which already has every property §4a asked for: a 10-minute TTL
+(`:34`), single-use consumption (`:160-162`), rate limiting (`:69-70`, enforced `:189`/`:246`), a
+bounded session store (`:35`, `:217`), and — the part that closes the loop — `terminalPayloadForLink`,
+which registers the sync terminal and returns its `deviceSecret` (`sync_terminals.go:105-118`).
+The client half exists too: `PAIRING_START_PATH`/`PAIRING_POLL_PATH` (`desktop_link.rs:30-32`) with
+both Tauri commands registered in both shells.
+
+So the missing piece was never a trust boundary. It was **the last mile: writing the paired
+credential into sync settings**, which §10 records as done (`store_linked_terminal`).
+
+**Two notes for whoever reads this next.**
+
+1. `manager-codebase-review.md:415` still records these pairing routes as falling through to a
+   plain axum 404. That is stale — they are registered and covered by
+   `apps/license-server/pairing_test.go` (including a re-claim-rejected case at `:115`). Do not
+   trust that file's route census without re-deriving it.
+2. KDS pairing was a **separate, genuinely broken** mechanism and is unrelated to the above.
+   Repaired in `ef0a6ca11`: it had a UI-side producer (`KdsEnrollmentModal.tsx:212-232`) but **no
+   production consumer at all**, and its validator mutated nothing, so a code was replayable for
+   its whole TTL. `issue_pairing_token` and `consume_pairing_token` close both halves. The scanned
+   QR is still not redeemed by anything — that remains open, and is a KDS concern, not a sync one.
+
 ## 10. Automated Sync Activation upon Linked Enrollment — Implemented (2026-09-25)
 
 Round 6 completed the credential activation loop for linked terminals (`crates/kasirmu-bridge/src/sync.rs`):
