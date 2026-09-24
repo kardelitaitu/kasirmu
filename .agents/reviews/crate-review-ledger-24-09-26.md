@@ -1558,6 +1558,62 @@ deduction, and the defect is that one of them could be reached by accident.
 
 **Commit:** `0ae9a43bb` (MOD-A).
 
+### Modules thirty-fourth pass — 24-09-26 (tax and sales modules: clean, and a lead disproved)
+
+**No defect, no code changed.** `modules/tax` (608 lines) and the `modules/sales`
+model layer read in full, with the tax math verified against a known case.
+
+**`modules/tax` — the rounding primitive and the live tax path both correct.**
+
+* `RoundingMode::divide` is integer-only, and its `HalfUp` arm has the two
+  subtleties right: it short-circuits an EXACT division (because the
+  `checked_add(divisor/2)` idiom shifts exact negative results), and it uses
+  `checked_add` so an overflow returns `None` rather than wrapping. A
+  fifteen-case test suite covers the negatives and the overflow.
+* `compute_line_tax` (`db/sales_tax.rs:586`) applies it with `checked_mul` on
+  the numerator AND `checked_add` on the inclusive divisor, so both overflow
+  directions are typed errors. I verified the inclusive formula itself
+  (`base * bps / (10000 + bps)`) against a known case — 11100 gross at 11% gives
+  tax 1100 / net 10000, and re-deriving the tax from the net returns 1100. The
+  formula is the correct one, not the naive inverse.
+
+**`modules/sales` — `transition_to` is a closed state machine and `from_cart`
+propagates every fallible total.** `from_cart_with_user` builds lines with
+`.collect::<Option<Vec<_>>>()?`, so a single overflowing line total aborts the
+whole construction rather than persisting a truncated sale.
+
+**The lead I disproved, recorded because it took real work to close.** I found
+that `Sale::from_cart` leaves `subtotal = 0` and `tax_total = 0` (probe output:
+`subtotal=0 tax_total=0 total=2000`), that every test fixture sets those fields
+BY HAND (`payment_failure_integration.rs:71-72` constructs them explicitly), and
+that `base_bridge/src/pos.rs` contains ZERO references to either field. Three
+independent signals all pointed at "every POS sale persists a zero subtotal and
+zero tax header while its lines carry the tax". That would have been a HIGH
+reporting defect.
+
+**It is wrong, and the fourth check is what settled it.** `pos.rs:2222` calls
+`compute_sale_tax_for_location(&mut sale, ..)` — a MUTATING function I had not
+read — which at `sales_tax.rs:301-302` assigns both fields and at `:310-318`
+adds the exclusive tax into `sale.total` (TAX-06). The gap between `from_cart`
+and persistence is real but FILLED, and the code names it: *"Sale::from_cart sets
+total from the cart total (post-discount, pre-tax); the customer pays the
+discounted subtotal PLUS the exclusive tax on top. Adding it here makes
+sales.total_minor the true collectible amount."*
+
+**The method note worth keeping.** My grep for assignments to `sale.subtotal` /
+`sale.tax_total` returned nothing because the assignment happens through a
+`&mut sale` PARAMETER inside another function — a shape a field-name grep cannot
+see. The second signal (fixtures setting the fields by hand) was genuinely
+misleading: fixtures construct a `Sale` struct literally, so they MUST name every
+field, and that says nothing about what production does. **A fixture naming a
+field is not evidence that production never sets it.** Three signals agreeing was
+still not enough; the mutating call site was.
+
+**Verified:** no code changed, so no suite is affected. The probe used to measure
+`from_cart` was removed and `git status` on the file is clean.
+
+**No commit** beyond this ledger entry.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
