@@ -1238,6 +1238,61 @@ instances.
 failed**. No code changed.
 
 **No commit** beyond this ledger entry.
+### Core twenty-eighth pass — 24-09-26 (a dropped guard in the tenant-scoped sync mark)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| CORE-D | MEDIUM | `db/offline.rs:680` — `mark_offline_synced_for_tenant` | **The tenant-scoped mark dropped the terminal-state guard its unscoped sibling documents as necessary.** The unscoped `mark_offline_synced` is a guarded compare-and-set — `WHERE id = ?1 AND status = pending` — and its doc states why: a stale or double caller must not overwrite a dead-lettered (`failed`) row terminal state with `synced`. The tenant-scoped variant guarded only on `tenant_id`, so it DID resurrect a failed row. |
+
+**Proven by probe, both directions.** A `failed` row with `retry_count = 3` and
+`last_error = server error`:
+
+* `mark_offline_synced_for_tenant` → `status = synced`, an invented `synced_at`
+  (`2026-09-24T21:11:37.754Z`), while `retry_count` and `last_error` stayed behind
+  — an internally contradictory row.
+* `mark_offline_synced` on the same shape → `status = failed`, unchanged.
+
+**Blast radius established rather than assumed, which is what fixes the severity.**
+Nothing else reads `status = failed`: the dead-letter quarantine lives in
+`sync_remote_failures.dead_lettered`, a DIFFERENT table, and retries are driven
+from there. The one reader of the queue failed status is the observability
+summary — `SUM(retry_count) WHERE status = failed` — which silently stops
+counting the row. So this is a lost-SIGNAL defect, not a lost-money one: MEDIUM,
+and the same hidden-failure class COR-20 forbids elsewhere in this very module.
+
+**The finding only exists because the two variants were compared.** Reading either
+alone shows nothing wrong: the unscoped one looks like ordinary defensiveness,
+the tenant-scoped one like a simple tenant filter. The defect is the DIFFERENCE —
+a guard one carries and its sibling does not — the same shape as BRIDGE-3/5
+(credential paths), BRIDGE-7 (hardware HAL) and BRIDGE-9/10 (activation vs
+renewal). **Sibling divergence is now the single most productive lens in this
+audit: six findings, every one invisible to a single-site read.**
+
+**Fixed** by adding `AND status = pending` and, because that makes `affected = 0`
+ambiguous, by adopting the sibling probe-instead-of-guessing handling: a
+tenant-scoped `COUNT(*)` distinguishes absent (still `NotFound`) from
+present-but-not-pending (the idempotent no-op the CAS exists to produce). Without
+that second half the fix would have turned a legitimate repeat call into a
+spurious `NotFound` — verified, since the first attempt failed at exactly that
+point before the probe was added.
+
+**Pinned** by `tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row`,
+mirroring the existing unscoped test. **Watched to FAIL** with the guard removed
+(`a terminal failure must stay terminal`) and pass with it restored. The
+pre-existing `tenant_scoped_mark_synced_refuses_cross_tenant` still passes, so the
+tenant boundary is unchanged.
+
+**Also verified clean here:** the COR-20 degradation policy is exactly right —
+`log_degraded` makes every benign default visible, `query_or_none` separates
+`QueryReturnedNoRows` from a real DB error `.ok()` had conflated, and
+`enqueue_origin` deliberately PROPAGATES rather than degrading, because a NULL
+after a failed lookup is indistinguishable from a genuine unpaired and would
+silently reopen the double deduction that stamp exists to close.
+
+**Verified:** `cargo test -p kasirmu-core --lib -- db::offline` → **70 passed, 0
+failed**. Clippy clean on both files.
+
+**Commit:** `7616a2cf9` (CORE-D).
 
 #### Where the audit stands
 
