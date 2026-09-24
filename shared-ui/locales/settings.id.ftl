@@ -1058,3 +1058,47 @@ settings-fiscalnum-overview-col-prefix = Awalan
 settings-fiscalnum-overview-col-current = Nomor terakhir
 settings-fiscalnum-overview-col-updated = Diperbarui
 
+# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
+setup-mobile-welcome-cta = Setup Wizard →
+setup-mobile-welcome-guide = Panduan 2 menit konfigurasi perangkat
+setup-mobile-welcome-signup = Sign up
+setup-mobile-welcome-signup-hint = Belum punya lisensi? Buat akun dulu
+setup-mobile-welcome-blurb = Solusi kasir modern serba bisa untuk mencatat penjualan, kelola stok barang, cetak struk thermal, dan pantau omset toko secara otomatis.
+
+setup-mobile-hub-title = Setup Device Baru
+setup-mobile-hub-subtitle = Sistem kasir & Inventory modern, cepat & offline-first untuk toko retail, cafe & restoran.
+setup-mobile-feature-offline = Bekerja 100% Offline Tanpa Koneksi Internet
+setup-mobile-feature-printer = Cetak Struk Thermal Bluetooth
+setup-mobile-feature-multidevice = Multi-Device & Sinkronisasi Lokal via WiFi / LAN
+setup-mobile-feature-reports = Laporan Stok, Kas & Omset Otomatis Real-time
+setup-mobile-hub-connect-hint = Hubungkan toko untuk sinkronisasi katalog, staf & laporan transaksi
+setup-mobile-auth-google-title = Masuk dengan Akun Google
+setup-mobile-auth-google-desc = Aman, cepat, dan otomatis backup cloud ke Google Drive
+setup-mobile-auth-email-title = Masuk dengan Email & Password
+setup-mobile-auth-email-desc = Gunakan akun Owner, Store Manager, atau Kasir yang terdaftar
+setup-mobile-auth-qr-title = Hubungkan via QR Code / Login Code
+setup-mobile-auth-qr-desc = Scan QR dengan akun owner/admin
+setup-mobile-hub-footer = Belum punya akun Kasirmu? Hubungi sales@kasirmu.com atau daftar di kasirmu.id
+
+setup-mobile-back = Kembali
+setup-mobile-google-title = Pilih akun untuk melanjutkan
+setup-mobile-google-subtitle = ke aplikasi Kasir.mu Sync & Cloud Backup
+setup-mobile-google-privacy = Kasir.mu hanya meminta izin sinkronisasi profil Google. Data penjualan dan transaksi Anda tetap tersimpan privat di perangkat lokal.
+
+setup-mobile-email-intro = Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
+setup-mobile-email-forgot = Lupa kata sandi?
+setup-mobile-email-submit = Masuk →
+setup-mobile-email-security = 🔒 Koneksi terenkripsi end-to-end SSL 256-bit & tersimpan lokal di perangkat
+
+setup-mobile-qr-reticle-hint = Pastikan QR code berada di dalam bingkai
+setup-mobile-qr-guide-title = Petunjuk Penggunaan QR code
+setup-mobile-qr-step1 = 1. Buka website dashboard.kasir.mu
+setup-mobile-qr-step2 = 2. Masuk dengan akun owner
+setup-mobile-qr-step3 = 3. Klik tombol 'Pasangkan Device Baru' untuk menampilkan QR code pairing
+setup-mobile-code-guide-title = Petunjuk Penggunaan login code
+setup-mobile-code-step1 = 1. Buka website kasir.mu
+setup-mobile-code-step2 = 2. Masuk dengan akun owner
+setup-mobile-code-step3 = Klik link ini :
+setup-mobile-code-copy = Copy
+setup-mobile-code-copied = Tersalin!
+

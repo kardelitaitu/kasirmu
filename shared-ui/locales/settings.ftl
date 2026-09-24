@@ -1076,3 +1076,47 @@ settings-fiscalnum-overview-col-prefix = Prefix
 settings-fiscalnum-overview-col-current = Last number
 settings-fiscalnum-overview-col-updated = Updated
 
+# ── Mobile Setup Wizard & Welcome Flow (Figma spec 720x1280) ──
+setup-mobile-welcome-cta = Setup Wizard →
+setup-mobile-welcome-guide = 2-minute device configuration guide
+setup-mobile-welcome-signup = Sign up
+setup-mobile-welcome-signup-hint = Don't have a license? Create an account first
+setup-mobile-welcome-blurb = Modern, all-in-one POS solution for sales, inventory management, thermal printing, and automatic real-time revenue tracking.
+
+setup-mobile-hub-title = Setup New Device
+setup-mobile-hub-subtitle = Modern, fast & offline-first POS and inventory system for retail stores, cafes & restaurants.
+setup-mobile-feature-offline = Works 100% Offline Without Internet Connection
+setup-mobile-feature-printer = Bluetooth Thermal Receipt Printing
+setup-mobile-feature-multidevice = Multi-Device & Local Sync via WiFi / LAN
+setup-mobile-feature-reports = Automatic Real-time Stock, Cash & Revenue Reports
+setup-mobile-hub-connect-hint = Connect store to sync catalog, staff & transaction reports
+setup-mobile-auth-google-title = Sign in with Google Account
+setup-mobile-auth-google-desc = Safe, fast, and automated cloud backup to Google Drive
+setup-mobile-auth-email-title = Sign in with Email & Password
+setup-mobile-auth-email-desc = Use registered Owner, Store Manager, or Cashier account
+setup-mobile-auth-qr-title = Connect via QR Code / Login Code
+setup-mobile-auth-qr-desc = Scan QR with owner/admin account
+setup-mobile-hub-footer = Don't have a Kasirmu account? Contact sales@kasirmu.com or register at kasirmu.id
+
+setup-mobile-back = Back
+setup-mobile-google-title = Choose an account to continue
+setup-mobile-google-subtitle = to Kasir.mu Sync & Cloud Backup
+setup-mobile-google-privacy = Kasir.mu only requests permission to sync your Google profile. Your sales and transaction data remain stored privately on the local device.
+
+setup-mobile-email-intro = Enter account credentials to connect store catalog & stock data:
+setup-mobile-email-forgot = Forgot password?
+setup-mobile-email-submit = Sign In →
+setup-mobile-email-security = 🔒 End-to-end 256-bit SSL encrypted connection & stored locally on device
+
+setup-mobile-qr-reticle-hint = Ensure QR code is inside the frame
+setup-mobile-qr-guide-title = QR Code Instructions
+setup-mobile-qr-step1 = 1. Open dashboard.kasir.mu in your browser
+setup-mobile-qr-step2 = 2. Sign in with owner account
+setup-mobile-qr-step3 = 3. Click 'Pair New Device' button to display QR code pairing
+setup-mobile-code-guide-title = Login Code Instructions
+setup-mobile-code-step1 = 1. Open kasir.mu in your browser
+setup-mobile-code-step2 = 2. Sign in with owner account
+setup-mobile-code-step3 = Click this link:
+setup-mobile-code-copy = Copy
+setup-mobile-code-copied = Copied!
+

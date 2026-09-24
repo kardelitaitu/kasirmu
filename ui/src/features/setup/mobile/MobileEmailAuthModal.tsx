@@ -1,0 +1,130 @@
+import { useState, useCallback } from 'react';
+import { Localized } from '@fluent/react';
+import styles from './MobileWelcomeFlow.module.css';
+
+export interface MobileEmailAuthModalProps {
+  onBack: () => void;
+  onSubmit: (credentials: { email: string; password?: string | undefined }) => void;
+  onForgotPassword?: (() => void) | undefined;
+}
+
+export function MobileEmailAuthModal({
+  onBack,
+  onSubmit,
+  onForgotPassword,
+}: MobileEmailAuthModalProps) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!email.trim()) return;
+      onSubmit({ email: email.trim(), password });
+    },
+    [email, password, onSubmit],
+  );
+
+  return (
+    <div className={styles['hubContainer']} data-testid="mobile-email-auth-view">
+      <nav className={styles['topNav']}>
+        <button
+          type="button"
+          className={styles['backButton']}
+          onClick={onBack}
+          data-testid="mobile-email-back-btn"
+        >
+          <span aria-hidden="true">←</span>
+          <Localized id="setup-mobile-back">
+            <span>Kembali</span>
+          </Localized>
+        </button>
+      </nav>
+
+      <section className={styles['authModalCard']} aria-labelledby="email-auth-heading">
+        <p id="email-auth-heading" className={styles['hubSectionPrompt']} style={{ padding: 0 }}>
+          <Localized id="setup-mobile-email-intro">
+            <span>
+              Masukkan kredensial akun untuk menghubungkan data katalog & stok toko:
+            </span>
+          </Localized>
+        </p>
+
+        <form className={styles['emailForm']} onSubmit={handleSubmit}>
+          {/* Email input */}
+          <div className={styles['formField']}>
+            <label htmlFor="mobile-auth-email" className={styles['formLabel']}>
+              Email
+            </label>
+            <input
+              id="mobile-auth-email"
+              type="email"
+              className={styles['textInput']}
+              placeholder="nama@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+              data-testid="mobile-email-input"
+            />
+          </div>
+
+          {/* Password input */}
+          <div className={styles['formField']}>
+            <div className={styles['formLabelRow']}>
+              <label htmlFor="mobile-auth-password" className={styles['formLabel']}>
+                Password
+              </label>
+              {onForgotPassword && (
+                <button
+                  type="button"
+                  className={styles['forgotPasswordLink']}
+                  onClick={onForgotPassword}
+                  data-testid="mobile-forgot-password-link"
+                >
+                  <Localized id="setup-mobile-email-forgot">
+                    <span>Lupa kata sandi?</span>
+                  </Localized>
+                </button>
+              )}
+            </div>
+            <input
+              id="mobile-auth-password"
+              type="password"
+              className={styles['textInput']}
+              placeholder="••••••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              data-testid="mobile-password-input"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className={styles['primaryCtaBtn']}
+            style={{ marginTop: 'var(--space-2)' }}
+            disabled={!email.trim()}
+            data-testid="mobile-email-submit-btn"
+          >
+            <Localized id="setup-mobile-email-submit">
+              <span>Masuk →</span>
+            </Localized>
+          </button>
+        </form>
+
+        <div className={styles['trustSeal']}>
+          <Localized id="setup-mobile-email-security">
+            <span>
+              🔒 Koneksi terenkripsi end-to-end SSL 256-bit & tersimpan lokal di perangkat
+            </span>
+          </Localized>
+        </div>
+      </section>
+
+      <div className={styles['telemetryFooter']}>
+        v0.0.40 • kasir.mu © 2026 All rights reserved.
+      </div>
+    </div>
+  );
+}
