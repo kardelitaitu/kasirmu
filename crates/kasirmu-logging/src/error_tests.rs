@@ -1,16 +1,16 @@
 use super::*;
 
 #[test]
-fn open_file_display() {
+fn log_dir_unusable_display() {
     let io = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
-    let err = LoggingError::OpenFile(io);
-    assert!(err.to_string().contains("could not open log file:"));
+    let err = LoggingError::LogDirUnusable(io);
+    assert!(err.to_string().contains("could not prepare log directory:"));
 }
 
 #[test]
-fn open_file_source() {
+fn log_dir_unusable_source() {
     let io = std::io::Error::new(std::io::ErrorKind::NotFound, "missing");
-    let err = LoggingError::OpenFile(io);
+    let err = LoggingError::LogDirUnusable(io);
     assert!(std::error::Error::source(&err).is_some());
 }
 
@@ -48,6 +48,6 @@ fn is_send_sync() {
 #[test]
 fn variants_are_distinct() {
     let a = format!("{:?}", LoggingError::InvalidLevel("x".into()));
-    let b = format!("{:?}", LoggingError::OpenFile(std::io::Error::other("x")));
+    let b = format!("{:?}", LoggingError::LogDirUnusable(std::io::Error::other("x")));
     assert_ne!(a, b);
 }

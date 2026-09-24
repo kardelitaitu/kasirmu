@@ -180,9 +180,9 @@ pub fn open_api_store_connection(
 /// A validation failure is deliberately NOT an error here. The router's own
 /// auth middleware owns the 401 taxonomy (`missing_token` / `invalid_token` /
 /// `token_expired`) and must keep owning it; this helper exists only so the
-/// guard below can ask what claims a token the REAL auth would accept carries
-/// - it never turns a rejection into a different rejection, only adds one of
-/// its own.
+/// guard below can ask what claims a token the REAL auth would accept carries.
+/// It never turns a rejection into a different rejection, only adds one of its
+/// own.
 async fn bearer_claims(
     headers: &axum::http::HeaderMap,
     secret: &str,

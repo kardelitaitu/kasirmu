@@ -42,8 +42,12 @@ use crate::visitor::MessageVisitor;
 ///
 /// # Errors
 ///
-/// Returns `LoggingError::InvalidLevel` if the Event Log source
-/// cannot be registered.
+/// LOG-3: always returns `Ok`. The doc previously claimed it returns
+/// `LoggingError::InvalidLevel` "if the Event Log source cannot be
+/// registered", but it never registers a source — `write_debug_string` writes
+/// to the Win32 debug channel via `OutputDebugStringW`, which has no
+/// registration step and no failure to report. The `Result` is kept for
+/// signature symmetry with the syslog initialiser, which DOES validate.
 ///
 /// # Panics
 ///

@@ -169,6 +169,24 @@ pub fn init_json() {
     try_init_json().expect("logging init_json failed");
 }
 
+/// Prepare `dir` for the rolling file writer, failing loudly if it cannot be
+/// used (LOG-2).
+///
+/// Creates the directory when missing (matching what
+/// `tracing_appender::rolling` would do) and then opens and removes a probe
+/// file, so a directory that exists but is not writable — a read-only mount,
+/// a permissions mistake — is reported to the caller instead of being
+/// discovered as silently missing log lines.
+fn ensure_log_dir_writable(dir: &str) -> Result<(), LoggingError> {
+    std::fs::create_dir_all(dir)?;
+    let probe = std::path::Path::new(dir).join(".kasirmu-logging-write-probe");
+    std::fs::write(&probe, b"")?;
+    // Best-effort removal; a failure here does not mean the directory is
+    // unusable, only that we left a zero-byte probe behind.
+    let _ = std::fs::remove_file(&probe);
+    Ok(())
+}
+
 /// Remove log files in `dir` that start with `file_prefix` and whose
 /// modification time is older than `retention_days`.
 fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
@@ -231,6 +249,15 @@ pub fn try_init_with_file(
     if let Some(warning) = filter_warning {
         eprintln!("{warning}");
     }
+
+    // LOG-2: prove the directory is writable BEFORE the subscriber is set.
+    // `try_init` below returns Err only when the global subscriber was already
+    // set, so an unwritable path used to yield a non-blocking writer whose
+    // writes are silently dropped and an `Ok(())` to the caller — the process
+    // believed file logging was on. This pre-flight is the only place the
+    // failure is observable, so it is also the only thing that constructs
+    // `LoggingError::LogDirUnusable`.
+    ensure_log_dir_writable(log_dir)?;
 
     let file_appender = tracing_appender::rolling::hourly(log_dir, file_prefix);
     // L-1 fix: the guard is retained process-wide (see FILE_LOG_GUARDS);
