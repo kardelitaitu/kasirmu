@@ -383,25 +383,45 @@ fn seed_owner_user(conn: &rusqlite::Connection) {
     .unwrap();
 }
 
+/// The tax door's gate is the SHARED scope-aware session gate, and it still resolves
+/// against the GLOBAL identity db.
+///
+/// **R10 gate-KIND + gate-ORDER, 2026-09-25.** These two tests used to call the
+/// module-local `require_tax_permission(&state, user_id, permission)`, which was
+/// deleted when the seven tax bodies moved to `require_permission_for_session`. The
+/// subject of the tests was never the private wrapper — it was "does a tax door find
+/// the user's role in the GLOBAL db" — so they now drive the shared helper the
+/// commands actually call, and the subject is preserved rather than the spelling.
 #[tokio::test]
-async fn require_tax_permission_uses_global_identity_db() {
+async fn tax_gate_uses_global_identity_db() {
+    use kasirmu_core::session::SessionContext;
     let conn = kasirmu_core::migrations::fresh_db();
     seed_owner_user(&conn);
     let state = AppState::for_test_with_conn(conn);
+    let session = SessionContext::new(
+        "user-owner".into(),
+        "role-owner".into(),
+        "terminal-1".into(),
+        "store-tax".into(),
+        "instance-1".into(),
+        "pos".into(),
+        None,
+        0,
+    );
 
     assert!(
-        require_tax_permission(
+        crate::commands::authz::require_permission_for_session(
             &state,
-            "user-owner",
+            &session,
             kasirmu_core::permissions::SETTINGS_READ
         )
         .await
         .is_ok()
     );
     assert!(
-        require_tax_permission(
+        crate::commands::authz::require_permission_for_session(
             &state,
-            "user-owner",
+            &session,
             kasirmu_core::permissions::SETTINGS_EDIT
         )
         .await
@@ -410,14 +430,25 @@ async fn require_tax_permission_uses_global_identity_db() {
 }
 
 #[tokio::test]
-async fn require_tax_permission_rejects_missing_user() {
+async fn tax_gate_rejects_missing_user() {
+    use kasirmu_core::session::SessionContext;
     let conn = kasirmu_core::migrations::fresh_db();
     let state = AppState::for_test_with_conn(conn);
+    let session = SessionContext::new(
+        "missing-user".into(),
+        "role-owner".into(),
+        "terminal-1".into(),
+        "store-tax".into(),
+        "instance-1".into(),
+        "pos".into(),
+        None,
+        0,
+    );
 
     assert!(matches!(
-        require_tax_permission(
+        crate::commands::authz::require_permission_for_session(
             &state,
-            "missing-user",
+            &session,
             kasirmu_core::permissions::SETTINGS_READ
         )
         .await,

@@ -1651,17 +1651,26 @@ fn drift_pin_guard_marker_vocabulary_is_closed() {
 /// `resolve_store`. All 50 were converted, in 12 files, with no body needing a
 /// bespoke edit.
 ///
-/// The remaining 19 are NOT the same shape and are left deliberately: they gate
-/// through a helper that takes a `user_id` (9) or a domain-specific wrapper (10), so
-/// reordering them means changing what the helper authorises against, not merely
-/// where the call sits. They are the next sweep, not a park.
+/// **SECOND SWEEP, 19 → 7 on 2026-09-25.** Of the 19, twelve were two whole
+/// families and are now done: `tax`'s seven doors and `history`'s five. Both
+/// were a KIND fix as well as an ORDER fix, and `history` is the sharper case —
+/// its five gate with `require_permission_for_user` over the STORE db, which
+/// carries no `users` rows at all, so the check could only ever deny; the bridge
+/// twin (`crates/kasirmu-bridge/src/history.rs:68`, `:169`, `:227`, `:248`,
+/// `:306`) uses the scope-aware `require_session_permission` for all five. They
+/// now do too, via the shell's `require_permission_for_session`.
+///
+/// The last 7 are NOT the same shape and are left deliberately: `categories` (3)
+/// and `products` (3) gate through a domain wrapper, and `inventory_counts` (1)
+/// gated with a `user_id` the session already carries. Reordering those means
+/// changing what the helper authorises against, not merely where the call sits.
 ///
 /// This is a RATCHET, not a fix: it pins the population so a new open-before-gate
 /// body cannot be added silently, and it fails when the count DROPS too, forcing the
 /// floor down in the same commit that fixes a body. That second leg is the one that
 /// matters — a floor that only checks an upper bound lets the sweep rot to zero and
 /// still pass, which is the failure mode this file's own header describes.
-const OPEN_BEFORE_GATE_FLOOR: usize = 19;
+const OPEN_BEFORE_GATE_FLOOR: usize = 7;
 
 /// Does this body call the combined session+store resolver before it names a
 /// permission?
