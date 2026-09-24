@@ -212,16 +212,22 @@ The rule this encodes: **a knob that changes how long a customer waits is code; 
 
 The three existing tests cover the sequential happy paths. What is missing is everything above, and each is a **red-first** test — written to fail against the current code, then made to pass.
 
-| Test | Pins | Fails today? |
+| Test | Pins | Status, measured 2026-09-25 |
 |---|---|---|
-| a keyless money-moving call is **not** retried | §2 | **yes** — retry is unconditional |
-| a keyed `refund` **is** retried, and the driver sees **one** key | §2 | no — passes already |
-| `capture`/`void` are single-shot | §2 | **yes** |
-| a charge with a blank `body.idempotency_key` still dedupes on retry | §2.1 | **yes** — this is the production hole |
-| two decorators over one gateway share one breaker | §3 | **yes** — `with_config` builds its own |
-| a healthy second processor is tried while the first is `Open` | §3 | **yes** — not wired at all |
-| concurrent callers during `HalfOpen`: exactly one probe | §5 | **yes** |
-| a tenant-A outage does not open tenant-B's breaker | §4 | **yes** — no keying exists |
+| a keyless money-moving call is **not** retried | §2 | **DONE.** `keyless_money_moving_call_is_not_retried` — was 4 driver calls, now 1. |
+| a keyed `refund` **is** retried, and the driver sees **one** key | §2 | **DONE.** `keyed_call_is_retried_and_the_driver_sees_one_key` asserts the key the DRIVER received, per the convention below. |
+| `capture`/`void` are single-shot | §2 | **DONE.** `capture_is_single_shot_even_on_a_transient_failure`, `void_is_single_shot_even_on_a_transient_failure`; mutation-tested by routing `capture` back to `Keyed`, which gives 4 calls. |
+| a charge with a blank `body.idempotency_key` still dedupes on retry | §2.1 | **DONE — and this hole was still open.** `e9c849f39`. `Some("")` is not `None`, so the derivation was skipped and the driver minted a fresh key; the mutation produced two different `order_id`s for one sale. |
+| two decorators over one gateway share one breaker | §3 | **DONE.** `with_shared_breaker` (`828d9e9f4`), with the isolation counter-evidence pinned beside it. |
+| a healthy second processor is tried while the first is `Open` | §3 | **DONE.** `5f221e003`. **It already worked** — an open breaker returns `Transient`, so the chain escalates. The "not wired at all" note above describes the REGISTRY, which is a different mechanism from this coupling. |
+| concurrent callers during `HalfOpen`: exactly one probe | §5 | **DONE.** `b333f3fe0` — was 19 of 19 admitted, now 0. |
+| a tenant-A outage does not open tenant-B's breaker | §4 | **OPEN — depends on the §4 keying decision.** |
+
+**Closing note, 2026-09-25.** Seven of the eight rows are implemented and guarded; only the
+last depends on §4. Two rows were previously recorded here (and by this lane) as blocked on
+that decision and were not: row 6 is about the chain's escalation rather than the registry,
+and row 4 is about a blank STRING reaching a derivation that tested for `None`. Both were
+found by reading each row's subject instead of triaging it by topic.
 
 **The pinning convention worth carrying over from R20.** Phase 3a.2's box asks for a test that pins *"a custom role holding the gate permission passing the same way a preset would"* — a test of the **invariant**, not of the shipped preset. The analogue here is to pin the **key**, not the outcome: the retry test must assert that the driver **received the same key twice**, not merely that the call eventually succeeded. A test that only checks the outcome passes on a double charge that happens to return `Ok`.
 
