@@ -105,15 +105,25 @@ impl<S: MediaStorage> MediaPipeline<S> {
     /// Returns the processed variants (original + one per preset). The
     /// caller decides where to store the bytes.
     ///
+    /// `crop_target` is the aspect-ratio box `CropMode::CenterCrop` and
+    /// `CropMode::Smart` crop to. It is required for those modes and ignored by
+    /// `CropMode::TrimBorders`. MED-A: this parameter used to be hard-coded
+    /// `None` internally, so the two target-based modes always returned
+    /// `InvalidDimensions` through the pipeline — only `TrimBorders` could ever
+    /// run.
+    ///
     /// # Errors
     ///
     /// [`MediaError::InvalidDimensions`] if the input exceeds the ingest
-    /// guardrails, or any stage error ([`MediaError::InvalidImage`]).
+    /// guardrails, if a target-based `crop_mode` is used without a
+    /// `crop_target`, or any stage error ([`MediaError::InvalidImage`]).
+    #[allow(clippy::too_many_arguments)]
     pub fn transform(
         &self,
         file_name: &str,
         input_bytes: &[u8],
         crop_mode: CropMode,
+        crop_target: Option<ImageDimensions>,
         target_format: ImageFormat,
         quality: Quality,
         presets: &[ThumbnailPreset],
@@ -164,7 +174,9 @@ impl<S: MediaStorage> MediaPipeline<S> {
             .map_err(|e| MediaError::InvalidImage(format!("decode: {e}")))?;
 
         // 1. Crop (normalise the frame first — cheap when no crop needed).
-        let cropped = crate::crop::auto_crop_img(img, crop_mode, None)?;
+        // MED-A: thread the caller's crop target through instead of hard-coding
+        // `None`, which made CenterCrop and Smart unreachable via the pipeline.
+        let cropped = crate::crop::auto_crop_img(img, crop_mode, crop_target)?;
         let dims = ImageDimensions::new(cropped.width(), cropped.height());
 
         // 2. Original variant at the target format/quality.
@@ -214,6 +226,7 @@ impl<S: MediaStorage> MediaPipeline<S> {
         file_name: &str,
         input_bytes: &[u8],
         crop_mode: CropMode,
+        crop_target: Option<ImageDimensions>,
         target_format: ImageFormat,
         quality: Quality,
         presets: &[ThumbnailPreset],
@@ -224,6 +237,7 @@ impl<S: MediaStorage> MediaPipeline<S> {
             file_name,
             input_bytes,
             crop_mode,
+            crop_target,
             target_format,
             quality,
             presets,

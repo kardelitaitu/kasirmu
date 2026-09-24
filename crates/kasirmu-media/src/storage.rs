@@ -50,8 +50,11 @@ pub trait MediaStorage: Send + Sync {
 
 /// Filesystem-backed storage under a root directory.
 ///
-/// **STUB:** construction validates the root path is non-empty, but all
-/// I/O methods return [`MediaError::NotImplemented`] until implemented.
+/// **STUB:** construction records the root as given and performs NO
+/// validation (MED-D: the doc previously claimed a non-empty check that does
+/// not exist). All I/O methods return [`MediaError::NotImplemented`] until
+/// implemented — and when they are, the key must be sanitised (no path
+/// separators, no `..`) before it is joined to the root.
 pub struct LocalStorage {
     /// Root directory for all media files.
     #[allow(dead_code)]

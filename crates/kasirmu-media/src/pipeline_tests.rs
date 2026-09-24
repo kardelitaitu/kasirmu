@@ -29,11 +29,7 @@ fn transform_produces_original_plus_thumbnails() {
     let src = source_image();
 
     let variants = pipeline
-        .transform(
-            "photo.png",
-            &src,
-            CropMode::TrimBorders,
-            ImageFormat::Jpeg,
+        .transform("photo.png", &src, CropMode::TrimBorders, None, ImageFormat::Jpeg,
             Quality::Medium,
             &[ThumbnailPreset::Small, ThumbnailPreset::Large],
         )
@@ -65,6 +61,7 @@ fn process_applies_transforms_without_persisting() {
             "photo.png",
             &src,
             CropMode::TrimBorders,
+            None,
             ImageFormat::Jpeg,
             Quality::Low,
             &[ThumbnailPreset::Icon],
@@ -80,11 +77,7 @@ fn transform_rejects_oversized_input() {
     let storage = LocalStorage::new("/tmp/media");
     let pipeline = MediaPipeline::new(storage);
     let big = vec![0u8; 21 * 1024 * 1024]; // > 20 MiB default limit.
-    let result = pipeline.transform(
-        "big.bin",
-        &big,
-        CropMode::TrimBorders,
-        ImageFormat::Jpeg,
+    let result = pipeline.transform("big.bin", &big, CropMode::TrimBorders, None, ImageFormat::Jpeg,
         Quality::Low,
         &[],
     );
@@ -108,6 +101,77 @@ fn content_hash_differs_for_diff_inputs() {
     assert_ne!(content_hash(b"a"), content_hash(b"b"));
 }
 
+// ── MED-A/MED-B: crop modes reachable, degenerate target refused ────
+
+/// MED-A: CenterCrop and Smart must work through the pipeline.
+///
+/// `transform` hard-coded `None` as the crop target, so both target-based
+/// modes returned InvalidDimensions and only TrimBorders could ever run.
+#[test]
+fn transform_supports_target_based_crop_modes() {
+    let pipeline = MediaPipeline::new(LocalStorage::new("/tmp/media"));
+    let src = source_image();
+    let target = ImageDimensions::new(100, 100);
+
+    for mode in [CropMode::CenterCrop, CropMode::Smart] {
+        let variants = pipeline
+            .transform(
+                "photo.png",
+                &src,
+                mode,
+                Some(target),
+                ImageFormat::Jpeg,
+                Quality::Medium,
+                &[],
+            )
+            .unwrap_or_else(|e| panic!("{mode:?} must work through the pipeline: {e}"));
+        assert_eq!(variants.len(), 1);
+    }
+}
+
+/// A target-based mode without a target is still a clean error.
+#[test]
+fn transform_requires_a_target_for_target_based_modes() {
+    let pipeline = MediaPipeline::new(LocalStorage::new("/tmp/media"));
+    let err = pipeline
+        .transform(
+            "photo.png",
+            &source_image(),
+            CropMode::CenterCrop,
+            None,
+            ImageFormat::Jpeg,
+            Quality::Medium,
+            &[],
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("require a target"),
+        "unexpected error: {err}"
+    );
+}
+
+/// MED-B: a degenerate target must be refused, not produce a 0xN image.
+///
+/// The doc promised InvalidDimensions for a degenerate target but only the
+/// source was checked, so `Some(ImageDimensions::new(0, 100))` returned Ok
+/// with a zero-width frame.
+#[test]
+fn degenerate_crop_target_is_refused() {
+    let src = source_image();
+    let img = image::load_from_memory(&src).unwrap();
+    for target in [
+        ImageDimensions::new(0, 100),
+        ImageDimensions::new(100, 0),
+        ImageDimensions::new(0, 0),
+    ] {
+        let result = crate::crop::auto_crop_img(img.clone(), CropMode::CenterCrop, Some(target));
+        assert!(
+            result.is_err(),
+            "a degenerate target must be refused: {target:?}"
+        );
+    }
+}
+
 // ── M-1: decompression-bomb dimension guards ──────────────────────
 
 #[test]
@@ -121,11 +185,7 @@ fn transform_rejects_dimensions_over_max_side() {
     };
     let pipeline = MediaPipeline::with_limits(storage, limits);
     let err = pipeline
-        .transform(
-            "bomb.png",
-            &source_image(),
-            CropMode::TrimBorders,
-            ImageFormat::Jpeg,
+        .transform("bomb.png", &source_image(), CropMode::TrimBorders, None, ImageFormat::Jpeg,
             Quality::Medium,
             &[],
         )
@@ -147,11 +207,7 @@ fn transform_rejects_pixel_count_over_max_pixels() {
     };
     let pipeline = MediaPipeline::with_limits(storage, limits);
     let err = pipeline
-        .transform(
-            "bomb.png",
-            &source_image(),
-            CropMode::TrimBorders,
-            ImageFormat::Jpeg,
+        .transform("bomb.png", &source_image(), CropMode::TrimBorders, None, ImageFormat::Jpeg,
             Quality::Medium,
             &[],
         )

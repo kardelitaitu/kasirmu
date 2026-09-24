@@ -6,10 +6,17 @@ next: none | perf: M-2 support 25-07-26 — added the DynamicImage-taking varian
 */
 //! Thumbnail generation.
 //!
-//! Decodes an image with the `image` crate, downscales it with a
-//! high-quality filter while preserving aspect ratio, and re-encodes it.
-//! The output is always an RGB(A) image, so a paletted/CMYK source is
-//! normalised to a web-safe encoding.
+//! Decodes an image with the `image` crate, scales it with a high-quality
+//! filter while preserving aspect ratio, and re-encodes it. The output is
+//! always an RGB(A) image, so a paletted/CMYK source is normalised to a
+//! web-safe encoding.
+//!
+//! MED-C: this is a fit-to-box, not a pure downscale — a source SMALLER than
+//! the requested box is scaled UP to the box (a 10x10 source with a 512 box
+//! yields 512x512). That is deliberate (callers get the dimensions they asked
+//! for) but the module doc used to say "downscales", which is wrong for that
+//! case and matters when a tiny logo is stored at many times its original
+//! size.
 
 use std::io::Cursor;
 
