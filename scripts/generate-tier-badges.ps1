@@ -40,7 +40,12 @@ Set-Location ..
 # so the shape never reads as a capsule.
 $Height      = 40
 $Radius      = 8
-$FontSize    = 15
+# MEASURED, not chosen by eye. Inter Bold at this size gives a 14px cap height,
+# 35% of the badge. The size shipped before was 15px, whose 11px caps are 28% —
+# visibly undersized in the tall box, which is what prompted the change. Badge
+# typography generally sits in the 35-42% band, so treat 19 as the FLOOR; do not
+# reduce it back toward 15 without re-measuring against this ratio.
+$FontSize    = 19
 $LetterSpace = 0.9
 $PadX        = 18                             # horizontal padding either side of the ink
 $BaselineK   = 0.36                           # optical baseline offset as a fraction of font-size
