@@ -192,7 +192,6 @@ pos-open-bill-saving = Menyimpan…
 pos-open-bill-save = Simpan Tagihan Terbuka
 pos-open-bills-title = Tagihan Terbuka
 pos-open-bills-close-aria = Tutup daftar tagihan terbuka
-pos-open-bills-empty = Tidak ada tagihan terbuka.
 pos-open-bills-resume = Lanjutkan
 
 # Appearance Preview (White-label)

@@ -691,7 +691,6 @@ pos-open-bill-saving = Saving…
 pos-open-bill-save = Save Open Bill
 pos-open-bills-title = Open Bills
 pos-open-bills-close-aria = Close open bills list
-pos-open-bills-empty = No open bills.
 pos-open-bills-resume = Resume
 
 # ── Retail POS load error / retry ──
