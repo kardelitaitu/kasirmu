@@ -194,8 +194,19 @@ async fn throwaway_test_pool(
     // Admin connection is raw (no schema): it only creates/drops the
     // throwaway database, so it must not re-apply PG_INIT to the shared
     // base DB (concurrent catalog DDL across parallel test binaries).
+    // R17(i) (owner, 2026-09-20): every stage below that can return `None` now
+    // NAMES ITSELF. The signature still means only "no throwaway database", but a
+    // caller can no longer be sent to the container and the firewall by a `None`
+    // that actually came from, say, a stale-database DROP. `raw_pool` already
+    // prints its own reason at `:153`; these did not.
     let admin_pool = raw_pool(url).await?;
-    let admin = admin_pool.get().await.ok()?;
+    let admin = match admin_pool.get().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("PG integration skipped: admin connection from the pool failed: {e}");
+            return None;
+        }
+    };
 
     // ── Cluster DDL window ─────────────────────────────────────────────
     // The stale sweep and CREATE DATABASE below touch the SHARED cluster
@@ -208,21 +219,31 @@ async fn throwaway_test_pool(
     // Sweep throwaway databases a crashed run left behind (only tests
     // with this prefix create them), so stale DBs cannot accumulate or
     // collide with a fresh run after an OS PID is reused.
-    let stale: Vec<String> = admin
+    let stale_rows = match admin
         .query(
             "SELECT datname FROM pg_database WHERE datname LIKE $1",
             &[&format!("{prefix}_%")],
         )
         .await
-        .ok()?
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            eprintln!("PG integration skipped: stale-database sweep query failed: {e}");
+            return None;
+        }
+    };
+    let stale: Vec<String> = stale_rows
         .iter()
         .map(|r| r.get::<_, String>(0))
         .collect();
     for d in &stale {
-        admin
+        if let Err(e) = admin
             .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
             .await
-            .ok()?;
+        {
+            eprintln!("PG integration skipped: dropping stale database {d} failed: {e}");
+            return None;
+        }
     }
     // PID + random suffix: unique even if the OS reuses a PID while a
     // stale DB from a crashed run is still present. `.simple()` (hex only)
@@ -257,8 +278,14 @@ async fn throwaway_test_pool(
         Some(q) => format!("{head}/{db_name}?{q}"),
         None => format!("{head}/{db_name}"),
     };
-    // `test_pool` applies PG_INIT (full schema) to the throwaway DB.
-    let pool = test_pool(&db_url).await?;
+    // `test_pool` applies PG_INIT (full schema) to the throwaway DB. It prints
+    // its own reason on a schema-apply failure (`:124`) but not on a connect
+    // failure, so the reason is named here as well rather than left to the
+    // caller to guess.
+    let Some(pool) = test_pool(&db_url).await else {
+        eprintln!("PG integration skipped: throwaway database {db_name} could not be opened");
+        return None;
+    };
     Some((pool, db_name, admin_pool))
 }
 
@@ -2064,5 +2091,61 @@ fn pg_placeholders_number_from_their_start_index() {
     assert_eq!(pg_placeholders(2, 0), "", "an empty chunk binds nothing");
     for len in [1usize, 2, 9, 10, 11, 99, 100, PG_IN_CHUNK] {
         assert_eq!(pg_placeholders(2, len).split(", ").count(), len);
+    }
+}
+
+// ── R17(i): a silent skip is a wrong diagnosis ─────────────────────────
+
+/// Every early return from `throwaway_test_pool` names the stage that failed.
+///
+/// **This is the guard for R17(i)** (owner, 2026-09-20;
+/// `done-todo-owner-rulings.md:346`), which was deliberately kept open *"when
+/// the race is settled"* and is now executable because the funded A/B settled it —
+/// the race was REVEALED by the fix, not moved (`todo-open-debt-agents-5.md:104`).
+///
+/// R17(ii) removed the false `(Postgres unreachable at {url})` parenthetical. That
+/// fixed the *wrong* message; this fixes the *absent* one. The helper returned
+/// `None` from four stages and only two of them printed anything, so a run that
+/// skipped because a stale-database DROP had failed looked identical to one where
+/// Postgres was not running — and sent the reader to the container, the port and
+/// the firewall. The comment on the helper says as much; a comment cannot stop the
+/// next stage from being added silently, which is what this test is for.
+///
+/// Read as source rather than exercised, because the stages cannot be reached
+/// without a live Postgres and a deliberately broken one: a runtime test would
+/// need to fail a `DROP DATABASE` on purpose. The property is structural — *no
+/// `None` leaves this function unannounced* — so it is asserted structurally.
+#[test]
+fn throwaway_test_pool_never_returns_none_silently() {
+    let src = include_str!("pg_tests.rs");
+    let start = src
+        .find("async fn throwaway_test_pool(")
+        .expect("the helper moved; this guard now grades nothing");
+    // The body ends at the next top-level item.
+    let rest = &src[start..];
+    let end = rest[1..]
+        .find("\nasync fn ")
+        .map(|i| i + 1)
+        .unwrap_or(rest.len());
+    let body = &rest[..end];
+
+    // A bare `.ok()?` is the silent shape R17 names.
+    assert!(
+        !body.contains(".ok()?"),
+        "a `.ok()?` in throwaway_test_pool returns None with no message, which is the R17 defect: name the stage instead"
+    );
+
+    // Every `return None;` must sit within a few lines of an `eprintln!`.
+    let body_lines: Vec<&str> = body.lines().collect();
+    for (i, line) in body_lines.iter().enumerate() {
+        if !line.trim().starts_with("return None;") {
+            continue;
+        }
+        let lo = i.saturating_sub(6);
+        let window = &body_lines[lo..i];
+        assert!(
+            window.iter().any(|l| l.contains("eprintln!")),
+            "the `return None;` at body line {i} has no nearby `eprintln!`, so a caller cannot tell this stage from an unreachable server. Nearby: {window:?}"
+        );
     }
 }
