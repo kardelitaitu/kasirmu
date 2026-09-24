@@ -452,6 +452,15 @@ impl PaymentProcessor for StripePaymentProcessor {
         // a retried refund dedups instead of double-refunding. Absent keys
         // keep the legacy behavior (no key), which Stripe treats as distinct
         // operations — callers that care must supply one.
+        //
+        // PAY-A: a BLANK key is treated as absent, exactly as
+        // `idempotency_key_for` does on the charge path. Passing `Some("")`
+        // through would put every caller who leaves the field empty into ONE
+        // shared key, and Stripe would reject each refund after the first as a
+        // conflict — the same hazard the charge path's guard documents at
+        // length. The blank check is inlined here rather than reusing that
+        // helper because the helper takes a `PaymentRequest`, not a bare key.
+        let idempotency_key = idempotency_key.filter(|k| !k.trim().is_empty());
         let form_refs: Vec<(&str, &str)> = form.iter().map(|(k, v)| (*k, v.as_str())).collect();
         let (status, body) = self.post("/refunds", form_refs, idempotency_key).await?;
         if !(200..300).contains(&status) {

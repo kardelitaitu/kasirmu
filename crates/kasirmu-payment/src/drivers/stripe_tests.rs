@@ -9,6 +9,62 @@ fn currency_code(c: &Currency) -> &str {
     str::from_utf8(&c.0).unwrap_or("???")
 }
 
+// ── PAY-A: a blank idempotency key is not sent ──────────────────────
+
+/// A blank refund key must not become an `Idempotency-Key: ""` header.
+///
+/// The charge path has always guarded this (see `idempotency_key_for`): a
+/// shared empty key makes Stripe reject every request after the first as a
+/// conflict. The refund path passed the caller's key straight through, so
+/// `Some("   ")` sent an empty header. This pins the refund half.
+#[tokio::test]
+async fn stripe_refund_omits_a_blank_idempotency_key() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/refunds"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"id":"re_1","amount":1000,"currency":"usd","status":"succeeded"}"#,
+        ))
+        .mount(&server)
+        .await;
+
+    let proc = StripePaymentProcessor::new_with_endpoint(&test_key(), &server.uri(), false);
+    let usd: Currency = "USD".parse().unwrap();
+    let amount = Money::from_major(10, usd).unwrap();
+
+    // Blank key: must be treated as absent.
+    let _ = proc.refund("pi_1", Some(amount), Some("   ")).await;
+    let reqs = server.received_requests().await.unwrap();
+    assert!(
+        reqs[0].headers.get("idempotency-key").is_none(),
+        "a blank key must not be sent as an Idempotency-Key header"
+    );
+
+    // A real key is still forwarded verbatim.
+    let server2 = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/refunds"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"{"id":"re_2","amount":1000,"currency":"usd","status":"succeeded"}"#,
+        ))
+        .mount(&server2)
+        .await;
+    let proc2 = StripePaymentProcessor::new_with_endpoint(&test_key(), &server2.uri(), false);
+    let _ = proc2.refund("pi_1", Some(amount), Some("refund-key-1")).await;
+    let reqs2 = server2.received_requests().await.unwrap();
+    assert_eq!(
+        reqs2[0]
+            .headers
+            .get("idempotency-key")
+            .map(|v| v.to_str().unwrap()),
+        Some("refund-key-1"),
+        "a real key must be forwarded verbatim"
+    );
+}
+
 #[test]
 fn stripe_constructs() {
     let proc = StripePaymentProcessor::new(&test_key(), false);
