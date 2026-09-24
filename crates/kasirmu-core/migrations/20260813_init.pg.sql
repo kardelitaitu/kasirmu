@@ -1046,6 +1046,8 @@ BEGIN
             ('kds_devices', 'connection_status', 'TEXT', '''disconnected''', true),
             ('kds_devices', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('kds_devices', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('kds_devices', 'consumed_at', 'TEXT', NULL::text, false),
+            ('kds_devices', 'consumed_by_device', 'TEXT', NULL::text, false),
             ('memo_recipients', 'id', 'TEXT', NULL::text, true),
             ('memo_recipients', 'memo_id', 'TEXT', NULL::text, true),
             ('memo_recipients', 'terminal_id', 'TEXT', NULL::text, true),
@@ -2651,7 +2653,7 @@ CREATE TABLE IF NOT EXISTS kds_devices (
     connection_status   TEXT NOT NULL DEFAULT 'disconnected'
                         CHECK (connection_status IN ('connected', 'disconnected', 'stale')),
     created_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at          TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), consumed_at TEXT, consumed_by_device TEXT,
     FOREIGN KEY (restaurant_pos_id) REFERENCES terminals(id) ON DELETE CASCADE
 );
 

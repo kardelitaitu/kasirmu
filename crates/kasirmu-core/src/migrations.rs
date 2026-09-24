@@ -416,6 +416,12 @@ pub const ALL: &[Migration] = &[
         id: "20261012_stock_summary_qty_nonnegative.sql",
         sql: include_str!("../migrations/20261012_stock_summary_qty_nonnegative.sql"),
     },
+    // KDS pairing tokens become single-use. Appended at the registry tail so
+    // no earlier migration reorders.
+    Migration {
+        id: "20261013_kds_pairing_consumption.sql",
+        sql: include_str!("../migrations/20261013_kds_pairing_consumption.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.

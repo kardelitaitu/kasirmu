@@ -106,3 +106,168 @@ fn validate_pairing_token_accepts_rfc3339_future_expiry() {
     seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
     assert!(s.validate_pairing_token(TOKEN_HASH, "dev-1").unwrap());
 }
+
+// ── Issuing and consuming (the missing halves) ─────────────────────
+
+/// The producer stores only the hash. A leaked database row must not reveal
+/// a usable code, and the plaintext must not be recoverable from the row.
+#[test]
+fn issue_pairing_token_stores_hash_not_plaintext() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+
+    let token = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+    assert!(!token.is_empty());
+
+    let stored: String = conn
+        .query_row(
+            "SELECT pairing_token_hash FROM kds_devices WHERE id = 'dev-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(stored, hash_pairing_token(&token));
+    assert_ne!(stored, token, "the plaintext must never be stored");
+}
+
+/// The issued token verifies against the validator — i.e. producer and
+/// validator agree on the hash format. Without this, a generator that hashed
+/// differently would pass its own test and fail every real pairing.
+#[test]
+fn issued_token_validates() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+    let token = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+
+    assert!(s.validate_pairing_token(&hash_pairing_token(&token), "dev-1").unwrap());
+}
+
+/// Issuing to an unknown device is refused rather than silently no-op'ing —
+/// an UPDATE that matched nothing must not look like success.
+#[test]
+fn issue_pairing_token_refuses_unknown_device() {
+    let conn = fresh();
+    let s = store(&conn);
+    let err = s
+        .issue_pairing_token("nobody", chrono::Duration::minutes(10))
+        .unwrap_err();
+    assert!(matches!(err, CoreError::Validation { .. }), "got: {err:?}");
+}
+
+/// The whole point of the repair: a code is redeemable exactly once.
+#[test]
+fn consume_pairing_token_is_single_use() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+    let token = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+
+    s.consume_pairing_token(&token, "dev-1")
+        .expect("the first redemption must succeed");
+
+    // The replay. This is the defect: before consumption existed, the second
+    // call answered Ok(()) for the whole TTL because nothing was mutated.
+    let err = s
+        .consume_pairing_token(&token, "dev-1")
+        .expect_err("a redeemed code must never be redeemable again");
+    assert!(
+        matches!(err, CoreError::Validation { ref message, .. } if message.contains("already been redeemed")),
+        "replay must be refused as consumed, got: {err:?}"
+    );
+}
+
+/// Consumption is recorded, so an operator can tell a spent code from one
+/// that was never issued instead of seeing both as a mismatch.
+#[test]
+fn consume_pairing_token_records_the_redemption() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+    let token = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+    s.consume_pairing_token(&token, "dev-1").unwrap();
+
+    let (consumed_at, consumed_by): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT consumed_at, consumed_by_device FROM kds_devices WHERE id = 'dev-1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(consumed_at.is_some(), "consumption must be timestamped");
+    assert_eq!(consumed_by.as_deref(), Some("dev-1"));
+}
+
+/// Re-issuing clears the consumption, so a device that lost its code can be
+/// paired again. Without this the first redemption would brick the device.
+#[test]
+fn reissue_makes_the_device_pairable_again() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+    let first = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+    s.consume_pairing_token(&first, "dev-1").unwrap();
+
+    let second = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+    assert_ne!(first, second, "re-issuing must mint a fresh token");
+    s.consume_pairing_token(&second, "dev-1")
+        .expect("a freshly issued code must be redeemable");
+}
+
+/// A wrong token must not consume a good one — validation precedes the claim.
+#[test]
+fn a_wrong_token_does_not_consume_the_real_one() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2099-01-01T00:00:00.000Z");
+    let token = s
+        .issue_pairing_token("dev-1", chrono::Duration::minutes(10))
+        .unwrap();
+
+    assert!(s.consume_pairing_token("wrong-token", "dev-1").is_err());
+
+    s.consume_pairing_token(&token, "dev-1")
+        .expect("the real code must still be redeemable after a wrong attempt");
+}
+
+/// An expired code is refused, and refused *before* being consumed — so the
+/// expiry check cannot be bypassed by ordering.
+#[test]
+fn consume_refuses_an_expired_token() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_device(&conn, "dev-1", "2020-01-01T00:00:00.000Z");
+
+    // `consume_pairing_token` takes the PLAINTEXT and hashes it, so seeding a
+    // token whose hash matches TOKEN_HASH requires the preimage. Seeding a new
+    // device with the token's own hash is what makes the expiry the first
+    // check to fail rather than the hash — otherwise the mismatch fires first
+    // and this test would pass for the wrong reason.
+    let token = "expired-plaintext-token";
+    conn.execute(
+        "UPDATE kds_devices SET pairing_token_hash = ?1 WHERE id = 'dev-1'",
+        rusqlite::params![hash_pairing_token(token)],
+    )
+    .unwrap();
+
+    let err = s
+        .consume_pairing_token(token, "dev-1")
+        .expect_err("an expired code must not be redeemable");
+    assert!(
+        matches!(err, CoreError::Validation { field, .. } if field == "pairing_expires_at"),
+        "expiry must be the refusal, got: {err:?}"
+    );
+}
