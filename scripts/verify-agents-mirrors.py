@@ -2532,13 +2532,29 @@ def _self_test_cases() -> int:
         # sentence, so replacing it tests the rule; pointing at line 9 instead would test
         # the negation skip, which is a different rule and reads as a MISSED case.
         live_target = "`dev-ci.yml#website`"
-        cases17 = [
-            ("correct total passes",
-             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total} jobs",
-             False, None),
-            ("wrong total fails",
-             f"{wf_name}'s eleven jobs", f"{wf_name}'s {wf_total + 1} jobs",
-             True, "claims"),
+        # The total-claim needle is DERIVED from the file, never hardcoded. It read
+        # "eleven jobs" until 2026-09-24, when the split took the count to fourteen:
+        # the hardcoded needle then matched nothing and BOTH total cases reported
+        # "anchored on nothing" -- a fixture that had silently stopped exercising
+        # rule (7) while still printing a verdict. Deriving the needle means the next
+        # count change cannot rot it the same way.
+        total_m = re.search(rf"{re.escape(wf_name)}'s\s+[A-Za-z0-9]+\s+jobs", base17)
+        if total_m:
+            total_needle = total_m.group(0)
+            total_cases17 = [
+                ("correct total passes",
+                 total_needle, f"{wf_name}'s {wf_total} jobs",
+                 False, None),
+                ("wrong total fails",
+                 total_needle, f"{wf_name}'s {wf_total + 1} jobs",
+                 True, "claims"),
+            ]
+        else:
+            print(f"  WRONG {prose_rel}: case (17) cannot anchor a total claim -- no "
+                  f"\"{wf_name}'s <n> jobs\" in the file, so rule (7) is untested")
+            bad += 1
+            total_cases17 = []
+        cases17 = total_cases17 + [
             # A PASS case still has to change bytes, or the vacuous-mutation guard
             # reports it WRONG -- and rightly: a mutation that replaces a needle with
             # itself proves nothing about the rule. This one retargets the claim at

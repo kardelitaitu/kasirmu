@@ -18,7 +18,7 @@
 //
 // Environment:
 //   UPDATER_PRIVATE_KEY — Ed25519 private key seed (64 hex chars or base64 of 32 bytes)
-//   REPO               — GitHub repo for deterministic release URLs (default kardelitaitu/oz-pos)
+//   REPO               — GitHub repo for deterministic release URLs (default kardelitaitu/kasirmu)
 //
 // Output:
 //   A valid latest.json platform manifest (single platform, or merged when --merge is used).
@@ -214,7 +214,7 @@ const filename = installerPath.split("/").pop().split("\\").pop();
 const signature = buildMinisignSignature(seed, installerBytes, filename, keyid);
 
 // The release URL is deterministic based on the tag name.
-const repo = process.env.REPO || "kardelitaitu/oz-pos";
+const repo = process.env.REPO || "kardelitaitu/kasirmu";
 const url = `https://github.com/${repo}/releases/download/v${version}/${filename}`;
 
 const fragment = buildFragment({ version, notes, platform, signature, url, minVersion });

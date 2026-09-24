@@ -2,7 +2,7 @@
 
 <!-- dead-ref-prefix-ok: install/uninstall · this is the English phrase "One-line install/uninstall", not a path; `install/` is a top-level prefix so the checker extracts it. Suppressed at the page head, where check-dead-refs.py reads the opt-out (first 40 lines). Every other reference on this page is still checked. -->
 
-<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 referenced scripts exist (win/install.ps1, win/uninstall.ps1, install.sh, uninstall.sh); repo URL kardelitaitu/oz-pos matches git remote and install.ps1's default $Repo -->
+<!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 referenced scripts exist (win/install.ps1, win/uninstall.ps1, install.sh, uninstall.sh); repo URL kardelitaitu/kasirmu matches git remote and install.ps1's default $Repo -->
 
 One-line install/uninstall for all three desktop platforms, backed by the
 project's release pipeline. Every script is attached to each GitHub Release
@@ -19,12 +19,12 @@ from disk, and the installer it downloads is verified the same way.
 
 ```powershell
 # Windows (PowerShell)
-irm https://github.com/kardelitaitu/oz-pos/releases/latest/download/install.ps1 | iex
+irm https://github.com/kardelitaitu/kasirmu/releases/latest/download/install.ps1 | iex
 ```
 
 ```bash
 # Linux / macOS
-curl -fsSL https://github.com/kardelitaitu/oz-pos/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/kardelitaitu/kasirmu/releases/latest/download/install.sh | bash
 ```
 
 Both installers default to a **per-user, no-elevation** install:

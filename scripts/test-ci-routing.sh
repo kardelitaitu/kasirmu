@@ -19,7 +19,7 @@
 set -uo pipefail
 
 WF=".github/workflows/dev-ci.yml"
-KEYS="rust ui i18n website docs release"
+KEYS="rust ui i18n website docs release go"
 
 [ -f "$WF" ] || { echo "FATAL: $WF not found (run from repo root)"; exit 1; }
 
@@ -114,6 +114,13 @@ check "website only"        "rust=false ui=false i18n=false website=true docs=fa
 # reaches the build and check:seo's heading rule. Pinned because before this
 # rule the path matched NO bucket and a prototypes-only PR ran no job at all.
 check "prototype html"      "rust=false ui=false i18n=false website=true docs=false release=false" "prototypes/kds-prototype.html"
+# Go is its own bucket because apps/license-server is a SEPARATE Go module, not a
+# cargo workspace member -- the `rust` rule deliberately does not match it. Before
+# this rule existed the path matched NO bucket at all and was covered only because
+# the Go steps sat in the ungated static-gates job; once they moved to `go-gate`
+# (2026-09-24) a license-server-only PR would have run no Go check whatsoever.
+check "license-server go"   "rust=false ui=false i18n=false website=false docs=false release=false go=true" "apps/license-server/main.go"
+check "license-server mod"  "rust=false ui=false i18n=false website=false docs=false release=false go=true" "apps/license-server/go.sum"
 check "i18n script"         "rust=false ui=false i18n=true website=false docs=false release=false" "scripts/verify-bundle-parity.py"
 # Docs must route to the drift checker: a docs-only PR is precisely the change
 # that can make CI docs lie, and before this output existed it ran nothing.
@@ -135,11 +142,14 @@ check "manifest generator"  "rust=false ui=false i18n=false website=false docs=f
 check "tauri updater pubkey" "rust=true ui=false i18n=false website=false docs=false release=true" "apps/desktop-tauri/tauri.conf.json"
 check "release workflow"    "rust=false ui=false i18n=false website=false docs=true release=true"  ".github/workflows/release.yml"
 # The workflow gating everything must never be able to route itself away.
-check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true"     ".github/workflows/dev-ci.yml"
-check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
-check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false" "README.md"
-# Non-PR events must always run the full matrix.
-check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true"     "README.md" "workflow_dispatch"
+check "this workflow"       "rust=true ui=true i18n=true website=true docs=true release=true go=true"     ".github/workflows/dev-ci.yml"
+check "mixed rust+website"  "rust=true ui=false i18n=false website=true docs=false release=false go=false"  "$(printf 'crates/kasirmu-api/src/lib.rs\nwebsite/src/site.css')"
+check "unrelated file"      "rust=false ui=false i18n=false website=false docs=false release=false go=false" "README.md"
+# Non-PR events must always run the full matrix. `go` is asserted here rather
+# than left to default, because `go-gate` is path-gated AND sits in
+# northflank-deploy's `needs`: if `all()` stopped setting `go`, every deploy
+# that does not touch Go would be skipped silently rather than failing loudly.
+check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true go=true"     "README.md" "workflow_dispatch"
 
 echo
 echo "$pass/$((pass+fail)) routing cases correct"

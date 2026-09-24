@@ -40,9 +40,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Ensure we are in workspace root
-Set-Location (Split-Path -Parent $PSCommandPath)
-Set-Location ..
+# Ensure we are in workspace root.
+# Set-Location moves PowerShell's *location* only -- it does NOT move the .NET process cwd
+# that [System.IO.File]::ReadAllText/WriteAllText, and every child process (cargo, npm,
+# node), resolve relative paths against. Measured on this machine: after Set-Location the
+# location names the new directory while [Environment]::CurrentDirectory still names the
+# LAUNCH directory, so the relative reads below throw and the relative writes land in the
+# caller's tree. Unsynced that is a split brain -- the writes go to wherever the script was
+# launched from, while Test-Path/Resolve-Path inspect the repo root, so the stale sweep
+# grades the tree nobody wrote to. That is not theoretical: a bump run from any directory
+# other than the repo root bumps the WRONG checkout and then reports its own files clean.
+# The docstring used to paper over this by telling the caller to run it from the root.
+$repoRoot = (Resolve-Path (Join-Path (Split-Path -Parent $PSCommandPath) '..')).Path
+Set-Location $repoRoot
+[Environment]::CurrentDirectory = $repoRoot
 
 # 1. Read current version from Cargo.toml
 $cargoTomlPath = "Cargo.toml"
@@ -131,9 +142,12 @@ Write-Host "`nUpdating version strings..." -ForegroundColor Cyan
 # to be a bullet). The audit stamp at the top of the file also carries the locked version.
 Update-File "AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
 Update-File "AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
-# .agents/AGENTS.md mirrors the table-row format and audit stamp of the root AGENTS.md.
-Update-File ".agents/AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
-Update-File ".agents/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
+# The second mirror is .agents/management/AGENTS.md -- the path scripts/verify-agents-mirrors.py
+# names in MIRRORS. It moved there from .agents/AGENTS.md in edd97e5c0 (the .agents/ reorg) and this
+# script kept writing the dead path, so the mirror's lock line was left at the old version while the
+# script reported MISSING FILE. Keep this path equal to the verifier's MIRRORS list.
+Update-File ".agents/management/AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
+Update-File ".agents/management/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
 Update-File "Cargo.toml" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "ops/docker/Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "apps/desktop-tauri/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","
@@ -156,7 +170,9 @@ Update-File "apps/license-server/admin_dashboard.go" "const adminDashboardVersio
 Update-File "ui/src/features/auth/LicenseActivationScreen.tsx" ("useState<string>('{0}')" -f $currentVersion) ("useState<string>('{0}')" -f $TargetVersion)
 Update-File "ui/src/features/auth/StaffLoginScreen.tsx" "v$currentVersion" "v$TargetVersion"
 Update-File "ui/src/features/auth/__tests__/LicenseActivationScreen.test.tsx" "Version $currentVersion" "Version $TargetVersion"
-Update-File "ui/src/features/design/TooltipPreview.tsx" "OZ-POS v$currentVersion" "OZ-POS v$TargetVersion"
+# The dev-preview tooltip prints the brand mark + version as one literal. The brand was renamed
+# OZ-POS -> kasir.mu (2d34f2674), which left this pattern matching nothing; follow the current mark.
+Update-File "ui/src/features/design/TooltipPreview.tsx" "kasir.mu v$currentVersion" "kasir.mu v$TargetVersion"
 
 # The status-bar version label lives in Fluent, not TSX (StatusBar.tsx renders the
 # `statusbar-version` key), so the FTL files are the real bump targets.
@@ -287,7 +303,13 @@ if (-not $DryRun) {
             # notes and changelog references (e.g. "missing until 0.0.36", "added in 0.0.36")
             # are legitimate prose. Only check that the version lock or release claim
             # does not contain the stale version.
-            if ($stripped -match "(?m)^\s*\|\s*\*\*Version Lock\*\*\s*\|\s*\*\*Version is locked at `$?$currentVersion`?\.|\bLatest release:\s*\*\*v$currentVersion\*\*|- \*\*Version is locked at the current release \(`?$currentVersion`?\)") {
+            # SINGLE-quoted format string on purpose: in a double-quoted one every backtick
+            # is consumed as a PowerShell escape, so the backticks the lock line actually
+            # contains were dropped from the regex and this branch matched nothing at all --
+            # a mirror left at the old version never failed the bump. Single quotes keep the
+            # backticks literal and -f keeps the version a single insertion point.
+            $staleLockRe = '(?m)^\s*\|\s*\*\*Version Lock\*\*\s*\|\s*\*\*Version is locked at `?{0}`?\.|\bLatest release:\s*\*\*v{0}\*\*|- \*\*Version is locked at the current release \(`?{0}`?\)' -f [regex]::Escape($currentVersion)
+            if ($stripped -match $staleLockRe) {
                 Write-Host "STALE: $target still contains $currentVersion lock" -ForegroundColor Red
                 $stale++
             }

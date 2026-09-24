@@ -1140,16 +1140,23 @@ an envelope shape, not a conversion any of the four surfaces above performs.
 ## 9. Website Deploy Token (Cloudflare) — lifecycle & rotation
 
 The marketing site (Astro, `website/`) deploys to Cloudflare Workers static assets
-(`oz-pos` worker → `https://ozpos.my.id`) via **`npm run deploy` from `website/`,
-run by hand** — `website/package.json:17` shells out to `scripts/wrangler-deploy.sh`.
+(`oz-pos` worker → `https://kasir.mu`) via **`.github/workflows/website.yml`
+("Website Deploy")**, which runs on a push to main touching `website/**`,
+`prototypes/**` or `scripts/wrangler-deploy.sh` (and on manual dispatch): it
+gates the build, then calls `scripts/wrangler-deploy.sh`. **A manual deploy
+still works** — `npm run deploy` from `website/` (`website/package.json:17`)
+shells out to the same script.
 
-> ⚠️ **No workflow deploys the website.** This section named
-> `.github/workflows/website.yml` until 08-09-26; that file is retired
-> (`website.yml.bak`), and `grep -rn wrangler .github/workflows/*.yml` returns
-> **zero** hits across the live workflows. The live `dev-ci.yml#website` job does
-> asset hygiene, install, typecheck, lint, unit tests and **build** — it stops short
-> of deploying. Everything below about the token still holds; what changed is that
-> the token is consumed by a person, not a pipeline.
+> ✅ **A workflow deploys the website again — since 2026-09-24.** This section
+> said the opposite from 08-09-26 (when `.github/workflows/website.yml` was
+> retired to `attic/website.yml.bak`) until 2026-09-24, when that workflow was
+> restored: it builds, runs `check:links` + `check:seo`, then calls
+> `scripts/wrangler-deploy.sh`, so `grep -rn wrangler .github/workflows/*.yml`
+> is no longer empty. The `dev-ci.yml#website` job is unchanged — PRs only
+> check and build; only `website.yml` deploys, and only on push to main.
+> Everything below about the token holds for both paths; what differs is *who*
+> supplies the secret — the pipeline reads the GitHub secrets of the same name,
+> the manual path reads `.env` / `KASIRMU_CLOUDFLARE_*`.
 >
 > ⚠️ **On Windows the documented command can hang.** `scripts/wrangler-deploy.sh` is
 > invoked as `bash ../scripts/wrangler-deploy.sh` — the only npm script in the repo
@@ -1175,9 +1182,11 @@ dashboard and simply names which account the token acts on.
   the environment, not GitHub: `scripts/wrangler-deploy.sh:42` fails when
   `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` are unset, and AGENTS.md feeds those
   from `.env` / the `KASIRMU_CLOUDFLARE_*` user variables. A GitHub Actions secret of the
-  same name is harmless to keep (it is what the retired website pipeline expected) but
-  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` matches only `website.yml.bak`
-  and `scripts/wrangler-deploy.sh`, so no live workflow reads it.
+  same name is exactly what the restored pipeline reads:
+  `git grep -l CLOUDFLARE_API_TOKEN -- .github/workflows` now matches the LIVE
+  `.github/workflows/website.yml` (its fail-fast verify step and its deploy step)
+  as well as the historical `attic/website.yml.bak`. A secret that rots therefore
+  fails the next website deploy in ~1s rather than waiting for a person to try.
 - Optional hardening: restrict to the single account; skip Client IP filtering unless
   you accept the tradeoff — GitHub-hosted runner egress IPs change, so IP filters are
   a frequent false-failure source.
@@ -1238,9 +1247,10 @@ curl -sf -o /dev/null -w '%{http_code}\n' \
 GitHub's secret store exposes no expiry/rotation metadata, so rely on these three
 probes (fold probe #3 into the §5 poller or an uptime monitor). The fail-fast step
 this section used to describe — "Validate Cloudflare deploy credentials
-(fail-fast)", `website.yml.bak:155` — died with the retired workflow. Nothing
-validates the token before a deploy any more: probe #2 is now a step YOU run by
-hand, and probe #3 is the only ground truth for what actually shipped.
+(fail-fast)" — was restored with the workflow on 2026-09-24 as the first step of
+`.github/workflows/website.yml`, so probe #2 now runs automatically before every
+deploy (manual deploys still validate nothing up front). Probe #3 remains the
+ground truth for what actually shipped.
 
 ### 9.4 Rotation (zero-downtime, ~5 min)
 
@@ -1266,13 +1276,14 @@ hand, and probe #3 is the only ground truth for what actually shipped.
 
 - **TTL policy from §9.2:** every token gets a TTL ≤ 1 year + a calendar entry. A token
   with no TTL is a standing silent-rot risk — treat it as an incident to fix.
-- **Automated token-verify smoke — still not built, and now the only would-be
-  detector is gone.** This bullet used to say the deploy job runs probe #2 pre-build
-  (see §9.3); that step retired with `website.yml` on 2026-09-02, so nothing checks
-  the token at deploy time or any other time. The recommendation stands unchanged:
-  wire probe #2 into a scheduled workflow (or the §5 poller) so an invalid token
-  alerts *before* someone tries to deploy. Note that neither live workflow declares
-  a schedule trigger today, so this means writing one, not editing an existing run.
+- **Automated token-verify smoke — BUILT 2026-09-24 for the deploy path; the
+  scheduled half is still missing.** `.github/workflows/website.yml` runs probe #2
+  as its fail-fast first step, so every website deploy validates the token against
+  Cloudflare before the build and an invalid one fails in ~1s. What is still
+  absent is a `schedule` trigger: a token that rots on a day with no deploy to
+  `website/**` is caught by nothing until someone deploys. The recommendation is
+  unchanged — wire probe #2 into a scheduled workflow (or the §5 poller); no live
+  workflow declares a schedule today, so that means writing one.
   The token is a repo secret; the verify endpoint needs no other permission.
 - **Live-portal poller:** probe #3 is the ground truth for "did the deploy actually
   land" — a 404 on `/docs-portal/intro.html` means stale assets regardless of what CI

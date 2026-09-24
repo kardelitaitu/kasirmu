@@ -7,8 +7,8 @@ working tree on 2026-09-23. Peer sessions were active during the run — see
 **Status: repaired the same session.** Every P0 and P1 finding below was fixed in this
 pass except the dead refs inside one file fenced off for a concurrent editor (7 at the
 close of the session, up from 2 mid-session as the peer kept writing — see *Deliberately
-not touched*), plus four open items that are separate work (listed at the bottom — items 1–3
-have since been closed in follow-up passes, so one remains).
+not touched*), plus four open items that are separate work (listed at the bottom — all four
+have since been closed in follow-up passes).
 
 ## Scope and method
 
@@ -166,7 +166,8 @@ removing it is a different decision than a typo repair, and it is right.
   paths their plans will create, and `website/src/content/docs/` links are site routes
   resolved by the Astro build (`../../login/`, `/en/docs/…`), not filesystem paths.
   A file-based scanner flags ~90 of them; they are not broken. The website deserves a
-  site-aware link checker — recorded as open item (4).
+  site-aware link checker — recorded as open item (4), closed 24-09-26 by
+  `check-site-links.py`, which resolves links against the route table instead.
 
 ## Deliberately not touched
 
@@ -239,7 +240,8 @@ removing it is a different decision than a typo repair, and it is right.
    targets are anchored there — no repo-root retry, no basename fallback — so a stale
    reorg link can no longer pass on the strength of a same-named survivor elsewhere
    (the ~25 hidden breaks this audit repointed by hand). `website/` stays exempt from
-   link extraction: its `../../login/` forms are Astro routes until open item 4 lands.
+   link extraction: its `../../login/` forms are Astro routes, resolved site-aware by
+   `check-site-links.py` (open item 4, resolved 24-09-26).
    The HTML-comment half was **withdrawn on evidence**: a probe line carrying a dead
    path inside an HTML comment was flagged on the first try, and this audit's own
    house-checker count included two audit-stamp path claims — only a scanner that reads
@@ -252,8 +254,110 @@ removing it is a different decision than a typo repair, and it is right.
    at root AGENTS — repointed, plus the three llms.txt `url`-target shape-quotes this
    document already knew about, pragma'd at their source. The live baseline held at
    7 refs in the fenced checklist.
-4. **A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
-   told apart by a file scanner.
+4. ~~**A site-aware link checker for `website/`** — routes vs filesystem paths cannot be
+   told apart by a file scanner.~~ **Resolved 24-09-26 — `check-site-links.py` built,
+   wired, green.** The route table is what `astro build` would serve: `i18n.locales`
+   parsed from `astro.config.mjs` (unparseable = fatal, never a guess) × every
+   `src/pages/` file with `[locale]` expanded and Astro's default directory-format URLs ×
+   content routes enumerated exactly as `[...slug].astro` emits them — so a link to a
+   ghost slug is red *even though the catch-all pattern file exists*, the inverse of the
+   file lens's failure — × `public/` files/directories and `public/_redirects` sources (a
+   redirected URL resolves at deploy time). Per-collection bases: `docs` →
+   `/{loc}/docs/{slug}/`, `legal` → its consuming `legal/{name}.astro` (no consuming
+   page = finding). Extraction is fence- and backtick-aware, so the authoring guide's
+   *example* of a link is not a claim; fragments/queries are stripped
+   (`../activation/#heading` checks the page, not the heading — dead-refs'
+   anchors-unchecked stance, stated in the docstring); an empty `]()` is a finding.
+   Fail-loud contract: missing website/config/content, a renamed docs catch-all, or any
+   dynamic segment other than `[locale]` exit 1 instead of reading green. **The live tree
+   passed clean on the first run — 38 content docs, 0 findings**: the ~90 file-lens false
+   positives were exactly these route links, now validated against routes, and nothing
+   else was broken, so no tracked doc needed repointing. Twenty `--self-test` cases pin
+   it (red: ghost sibling, absolute ghost, over-escape above the locale root, empty
+   target, legal ghost, unmapped collection, out-of-config locale; green: the route
+   forms, external/mailto/fragment skips, fence and backtick examples, `_redirects`
+   source, public assets, plus `run()`'s exit codes on red and green trees and a fatal
+   on a missing website/). Wired house-style: `check.sh` step `site links` + gates.json
+   `site-links` (local-only like `adr-status`, no workflow) + the
+   `check-auditor-selftests.sh` roster (sixth checker) + ci-pipeline Pre-Merge row and
+   local-steps item 26 + the SKILL behavior bullet; dead-refs' docstring and code comment
+   now name the successor instead of the open item. Known limits stated in the
+   docstring: heading fragments, `.astro` component hrefs, reference-style links and
+   external fetches are out of scope; `website/*.md` outside `src/content/` stays in
+   dead-refs' path-literal domain.
+
+## Addendum (24-09-26): fragments are checked now
+
+Written after the four items above closed — a dated correction, not a reopened item.
+The audit's own item 4 recorded the last stated blind spot: both link checkers
+STRIPPED `#fragments`, so `[x](./other.md#no-such-heading)` passed while the anchor <!-- dead-ref: ok -->
+was dead (the "anchors-unchecked stance" both docstrings carried). Closed the way the
+other items were: probe first, then build.
+
+**What changed.** `check-dead-refs.py` and `check-site-links.py` now grade every
+`#fragment` whose target is a tracked markdown page against that page's real ids:
+heading slugs from a port of **github-slugger 2.0.0** — the library GitHub and Astro
+both generate heading ids from — verified equal on **all 9,003 headings in this repo,
+0 mismatches** (the first attempt showed 44 emoji divergences, which is how the
+`U+FE00–FE0F` variation-selector keep-range was learned); duplicate headings suffixed
+`-1/-2` exactly as the original's occurrence loop does (so a heading literally named
+`foo-1` collides correctly); explicit HTML `id=`/`name=` attributes; frontmatter and
+fenced code never yield ids; fragments percent-decoded before matching; a same-page
+`[x](#frag)` graded against the file being scanned; a dead fragment reported with its <!-- dead-ref: ok -->
+full `path#frag` token. Skipped deliberately, documented in both docstrings: external
+URLs; targets that resolve only through dead-refs' basename/brace fallback, name a
+non-markdown file, or cannot be read (cannot verify WHICH file's headings); empty
+`#`; setext (`text` + `===`/`---`) headings — zero are linked in this corpus, and
+reading `paragraph + ---` as a heading would invent ids the author never intended
+(it is ambiguous with a horizontal rule). The docstring's §-limitation paragraph
+stays as measured — it is about PROSE `§4.2` tokens, never about link fragments —
+its opening sentence now says so.
+
+**Probe.** 52 fragment-bearing markdown links across tracked `.md` files: 47 resolve,
+2 were dead, 2 were website links the probe resolved filesystem-style (site routes
+resolve through the route table; all three site fragment links grade green against
+their real headings). The two dead ones repaired in place, line counts unchanged:
+`docs/archived/design-exceptions.md` linked `#adjustable-candidates` where the heading
+is `## Adjustable Candidates (~23 violations)` → `#adjustable-candidates-23-violations`;
+`docs/operations/docker-deployment.md` linked `…msys_no_pathconv1` where `## Git Bash
+on Windows: Path Mangling (MSYS_NO_PATHCONV)` slugs without the trailing `1` — that
+one sits in a LIVE doc, so repointing it is what keeps dead-refs at its fenced 7-ref
+baseline instead of an eighth.
+
+**The new rules found their own test bug.** The first same-page red fixture used
+`#missing-here`; the line was skipped as prose *about* a missing thing (one of the
+checker's own NEGATIVE_MARKERS), making the case vacuous. Renamed `#ghost-heading` —
+the case caught it, which is what a self-test exists for. The first LIVE run then
+flagged *this addendum's own two illustrative examples* (the `./other.md` path form,
+line 293; the same-page `#frag` form, line 306) — pragma'd inline with this audit's
+own vocabulary, which is precisely the case shape-quotes exist for. That run also
+surfaced a batch-poisoning bug in the checker itself: a same-page candidate `#x`
+splits to an EMPTY path string, and one empty pathspec makes `git check-ignore` fail
+its whole batch ("results may be incomplete") while the ignore-filter silently stops
+working for everything else. Fixed both ways — same-page rows are never probed (their
+source file was already gitignore-filtered as a scan target) and `git_ignored`
+refuses empty pathspecs outright.
+
+**The baseline moved under this addendum mid-pass, and the numbers are recorded
+honestly.** Measured before the peer's commits landed: live **7 refs / 1 doc** (the
+fenced checklist). While this pass ran the peer committed that checklist (`b5685f528`)
+an incident record whose `.agents/salvage/` paths are absent from the tree
+(`incident-object-loss.md`, 3 refs), and began a CI refactor (dirty `dev-ci.yml`
++268 lines, `test-ci-routing.sh`, `ci-pipeline.md`, `releases/checklist.md` — which
+is also why mirrors and ci-drift flapped red between suite runs before returning to
+their own baselines). At commit time dead-refs reports **10 refs in 2 docs, both
+peer's** — proven this change's net contribution is zero by stashing the new checker:
+HEAD's own version reports the same 10, minus the two addendum examples now pragma'd.
+
+**Superseded by this addendum:** the "anchors-unchecked" claims in both checkers'
+docstrings, item 4's "heading fragments … out of scope" limitation, and the SKILL
+behavior bullets — all rewritten. Case counts: dead-refs `--self-test` 10 → 18
+(valid/dead anchor, duplicate `-1` slug, explicit HTML id, external URL untouched,
+same-page valid/dead, pragma suppression), site-links 20 → 27 (the five owner-named
+forms plus same-page and route-mapped variants); gates.json `site-links` note updated
+to match. State after the change: dead-refs 18/18 self-test, site-links 27/27 and live
+green (38 content docs), both repointed files line-count-identical to HEAD, live
+dead-refs at 10 refs / 2 docs — both peer's, as accounted above.
 
 ## Re-verification (all run in this session, all green unless noted)
 

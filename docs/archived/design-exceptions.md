@@ -11,7 +11,7 @@
 > **Compliance baseline:** 83 violations remain (see `themeTokenCompliance.test.ts`).
 > Of those, **~60 are permanent** (catalogued below). The remaining ~23 are
 > adjustable candidates that could be eliminated by minor CSS changes — see
-> [Adjustable Candidates](#adjustable-candidates) at the bottom.
+> [Adjustable Candidates](#adjustable-candidates-23-violations) at the bottom.
 
 ---
 

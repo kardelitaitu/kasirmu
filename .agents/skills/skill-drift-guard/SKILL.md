@@ -381,7 +381,7 @@ Open a `fix(docs): sync skills with code drift report <DD-MM-YY>` PR for everyth
 
 ## CI integration
 
-The repo has **three active workflows** (re-counted 22-09-26; this said "two" until `android.yml` was restored): `.github/workflows/dev-ci.yml` (the one drift detection belongs in), `.github/workflows/release.yml` (`v*` tags only), and `.github/workflows/android.yml` (restored 2026-09-22 from the attic copy; `v*` tags and `workflow_dispatch`, one job `android-build`, no PR trigger). The retired references are dormant one level down, under `.github/workflows/attic/`. To enforce drift detection in CI, add a job to `dev-ci.yml` that runs the mechanical checks on changes to `.agents/skills/**`:
+The repo has **four active workflows** (re-counted 24-09-26; this said "three" until `website.yml` was restored, and "two" before that until `android.yml` was): `.github/workflows/dev-ci.yml` (the one drift detection belongs in), `.github/workflows/release.yml` (`v*` tags only), `.github/workflows/android.yml` (restored 2026-09-22 from the attic copy; `v*` tags and `workflow_dispatch`, one job `android-build`, no PR trigger), and `.github/workflows/website.yml` (restored 2026-09-24 from `attic/website.yml.bak`; push to `main` path-filtered to `website/**` and `prototypes/**` plus `workflow_dispatch`, one job `deploy`, no PR trigger). The retired references are dormant one level down, under `.github/workflows/attic/`. To enforce drift detection in CI, add a job to `dev-ci.yml` that runs the mechanical checks on changes to `.agents/skills/**`:
 
 ```yaml
 skill-drift:

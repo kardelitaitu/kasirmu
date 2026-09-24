@@ -16,7 +16,7 @@
 #        macOS  (always)              DMG -> /Applications
 #
 # Usage:
-#   curl -fsSL https://github.com/kardelitaitu/oz-pos/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/kardelitaitu/kasirmu/releases/latest/download/install.sh | bash
 #   ./install.sh
 #   ./install.sh --channel beta
 #   ./install.sh --version 0.0.28
@@ -43,7 +43,7 @@ VERSION=""
 SYSTEM=0
 DRY_RUN=0
 NO_LAUNCH=0
-REPO="kardelitaitu/oz-pos"
+REPO="kardelitaitu/kasirmu"
 
 die() { echo "ERROR: $1" >&2; exit "${2:-1}"; }
 

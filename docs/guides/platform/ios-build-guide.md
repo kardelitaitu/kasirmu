@@ -17,7 +17,7 @@
 > **Purpose:** Build, sign, and distribute kasir.mu tablet client for iOS/iPad.
 >
 > **Related:** [iOS Install Test](./ios-install-test.md) · [Android Keystore Guide](./android-keystore-guide.md)
-> · [Mobile Release Checklist](https://github.com/kardelitaitu/oz-pos/blob/main/docs/releases/mobile-checklist.md)
+> · [Mobile Release Checklist](https://github.com/kardelitaitu/kasirmu/blob/main/docs/releases/mobile-checklist.md)
 
 ## Prerequisites
 

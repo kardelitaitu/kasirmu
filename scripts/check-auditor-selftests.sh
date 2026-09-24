@@ -7,10 +7,14 @@
 # cannot run looks exactly like a checker that found nothing, which is the failure this step
 # exists to catch. check-env-docs, check-ci-claims and check-nav-paths shipped first;
 # check-dead-refs joined on 2026-09-24 with its source-relative resolution cases (the
-# 2026-09-23 documentation audit, open item 3), and check-adr-status the same day for
-# open item 2 (status-word comparator; two of its cases are deliberately red).
+# 2026-09-23 documentation audit, open item 3; +8 fragment cases the same day, 18
+# total), check-adr-status the same day for open item 2 (status-word comparator; two
+# of its cases are deliberately red), and check-site-links for open item 4
+# (route-vs-filesystem resolution; its red cases are ghost routes, over-escaping above
+# the locale root, empty targets, unmapped collections, out-of-config locales, and --
+# since the fragment pass -- dead heading anchors, 27 cases).
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status; do
+for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links; do
   python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
 done

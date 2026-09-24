@@ -1,6 +1,6 @@
 # Agents Configuration & Rules
 
-<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE · version lock: 0.0.39 -->
+<!-- Audit stamp: 2026-09-08 · DSH · status: ACCURATE · version lock: 0.0.40 -->
 
 ## 🚨 Critical Agent Directives (MUST FOLLOW)
 
@@ -10,7 +10,7 @@
 | **Commits** | **ALWAYS commit with format `<type>(<area>): <description>`.** | Must follow conventional commits. Make local commits after each logical task — the permitted *form* of the commit is the **Commit Writing** row below. |
 | **Commit Writing** | **NEVER `git add` — with the sole exception of the §3 one-line new-file chain —, NEVER `git stage`, NEVER `git commit -a`, NEVER `git commit --amend`, NEVER `git stash`. The only permitted commit form is ONE line with an explicit pathspec: `git commit -m "<type>(<area>): <subject>" -- path/one path/two`.** | A pathspec commit takes those files from the working tree and, for already-tracked paths, needs no prior `add` — a *new* file cannot enter a commit in that form, and the §3 new-file chain is the only sanctioned exception. Nor can a pathspec commit collect anything another session staged. In a checkout where several agents commit concurrently the index is a single shared object, so anything left staged is a hazard for someone else even when it is harmless for you. Git & Commit Policy §3 carries the detail. |
 | **Pushing** | **NEVER run `git push` without an explicit direct order.** | Even after completing all checks, wait for the user to explicitly say "push". |
-| **Version Lock** | **Version is locked at `0.0.39`. NEVER modify version numbers.** | Do not bump version in `Cargo.toml`, `package.json`, `tauri.conf.json`, etc. |
+| **Version Lock** | **Version is locked at `0.0.40`. NEVER modify version numbers.** | Do not bump version in `Cargo.toml`, `package.json`, `tauri.conf.json`, etc. |
 | **File Paths** | **ALWAYS use forward slashes (`/`) in path arguments on Windows.** | Avoid path escaping bugs. **Never anchor to a hardcoded checkout** — resolve the repo root with `git rev-parse --show-toplevel`, or script-relative with `$PSScriptRoot`/`__file__`/`import.meta.url`, so tools work in any worktree of the multi-root layout. |
 | **File Reading** | **ALWAYS read files in small chunks (≤ 500 lines).** | Preserves context window and prevents output truncation. |
 | **Discovery** | **ALWAYS use `codebase-memory-mcp` first for code exploration.** | Graph discovery saves context tokens and surfaces call chains faster. |

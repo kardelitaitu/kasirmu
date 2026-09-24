@@ -231,7 +231,7 @@ services:
 ### 2. Start Caddy
 
 Copy and edit the example config in
-[`ops/gateway/Caddyfile.example`](https://github.com/kardelitaitu/oz-pos/blob/main/ops/gateway/Caddyfile.example) — replace
+[`ops/gateway/Caddyfile.example`](https://github.com/kardelitaitu/kasirmu/blob/main/ops/gateway/Caddyfile.example) — replace
 `example.com` with your real domains:
 
 ```bash
@@ -505,7 +505,7 @@ docker compose --project-directory . -f ops/docker/docker-compose.yml exec pos-c
 | Can't access PocketBase admin UI | No superuser created | Run the `superuser upsert` command |
 | Slow product lookups | Redis cache cold | Wait for cache to warm up (first requests are slower) |
 | `docker compose --project-directory . -f ops/docker/docker-compose.yml -f ops/docker/docker-compose.pg.yml up` fails | `PG_PASSWORD` not set or `pos-cloud-db` unavailable | Export `PG_PASSWORD` (required) and ensure `redis` is healthy |
-| `docker run -e OZ_DB_PATH=/tmp/...` fails inside the container with `unable to open database file: C:/Users/...` | Git Bash rewrote the POSIX path into a Windows path before Docker saw it | Prefix the command with `MSYS_NO_PATHCONV=1` (see [Git Bash on Windows](#git-bash-on-windows-path-mangling-msys_no_pathconv1)) |
+| `docker run -e OZ_DB_PATH=/tmp/...` fails inside the container with `unable to open database file: C:/Users/...` | Git Bash rewrote the POSIX path into a Windows path before Docker saw it | Prefix the command with `MSYS_NO_PATHCONV=1` (see [Git Bash on Windows](#git-bash-on-windows-path-mangling-msys_no_pathconv)) |
 
 ---
 
@@ -587,8 +587,8 @@ path-looking argument.
 - [VPS Migration Guide](./vps-migration.md) — Zero-downtime server migration
 - [ADR #11: VPS Migration Strategy](../decisions/2026-07-13-zero-downtime-vps-migration.md)
 - [ADR #10: Sync Performance Strategy](../decisions/2026-07-13-sync-performance-compression-batching.md)
-- [`ops/docker/Dockerfile.server`](https://github.com/kardelitaitu/oz-pos/blob/main/ops/docker/Dockerfile.server) — Cloud server Docker build
-- [`apps/license-server/Dockerfile`](https://github.com/kardelitaitu/oz-pos/blob/main/apps/license-server/Dockerfile) — License server Docker build
-- [`scripts/generate-license-keys.sh`](https://github.com/kardelitaitu/oz-pos/blob/main/scripts/generate-license-keys.sh) — License key generation
+- [`ops/docker/Dockerfile.server`](https://github.com/kardelitaitu/kasirmu/blob/main/ops/docker/Dockerfile.server) — Cloud server Docker build
+- [`apps/license-server/Dockerfile`](https://github.com/kardelitaitu/kasirmu/blob/main/apps/license-server/Dockerfile) — License server Docker build
+- [`scripts/generate-license-keys.sh`](https://github.com/kardelitaitu/kasirmu/blob/main/scripts/generate-license-keys.sh) — License key generation
 
 > last audited 31-08-26 by docs-auditor

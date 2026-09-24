@@ -305,9 +305,9 @@
   },
   "download": {
     "title": "Unduh kasir.mu",
-    "subtitle": "Versi 0.0.39 — gratis selamanya, tanpa pendaftaran.",
+    "subtitle": "Versi 0.0.40 — gratis selamanya, tanpa pendaftaran.",
     "version": "Versi saat ini",
-    "versionValue": "0.0.39",
+    "versionValue": "0.0.40",
     "platformsTitle": "Pilih platform Anda",
     "requirementsTitle": "Persyaratan sistem",
     "requirements": [

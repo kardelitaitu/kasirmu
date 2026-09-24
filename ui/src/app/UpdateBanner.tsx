@@ -183,7 +183,7 @@ async function persistUpdaterSetting(key: string, value: string): Promise<void> 
     // so the old `win.focus()` dance has nothing left to do.
     if (previousVersion) {
       void openExternalUrl(
-        `https://github.com/kardelitaitu/oz-pos/releases/tag/v${previousVersion}`,
+        `https://github.com/kardelitaitu/kasirmu/releases/tag/v${previousVersion}`,
       );
     }
   }, [previousVersion]);

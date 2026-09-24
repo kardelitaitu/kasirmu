@@ -58,15 +58,15 @@
       "label": "Rust fmt",
       "status": "required",
       "runners": { "check.sh": ["cargo fmt"] },
-      "ci": { "workflow": "dev-ci.yml", "job": "cargo-check" }
+      "ci": { "workflow": "dev-ci.yml", "job": "rust-fmt" }
     },
     {
       "id": "go",
       "label": "Go (license-server)",
       "status": "required",
       "runners": { "check.sh": ["go fmt", "go vet", "go test (short)"] },
-      "_note": "Was ci.yml#go. gofmt/go vet/go test -short now run in dev-ci.yml#static-gates, verified green locally first. The pre-commit Go gate remains the only place Go is enforced on a commit.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+      "_note": "Was ci.yml#go. gofmt/go vet/go test -short ran in dev-ci.yml#static-gates from 0.0.37 until 2026-09-24, when they moved to dev-ci.yml#go-gate -- the job was split because `go test -short` measured 325s on two separate runs and was 51% of a job that also gated ~25 cheap Python/shell checks. Path-gated on the new `go` route output (`^apps/license-server/`), which did not exist before: `apps/license-server/**` matched no router bucket, and the Go steps were covered only because they sat in the ungated static-gates job. The pre-commit Go gate remains the only place Go is enforced on a commit.",
+      "ci": { "workflow": "dev-ci.yml", "job": "go-gate" }
     },
     {
       "id": "website-tests",
@@ -144,8 +144,8 @@
       "id": "ipc-parity",
       "label": "IPC parity",
       "status": "required",
-      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#static-gates and in check.sh; the note claiming it local-only was itself stale and was corrected here.",
-      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "_note": "Added 0.0.37. scripts/verify-ipc-parity.py enforces three directions. Forward: the UI invokes a command string absent from a shell's generate_handler![]. Reverse (backlog item 46): a shell registers a *_scoped command that no client invokes, so its permission check guards nothing -- the mirror of the gap the item-46 sweep kept finding, and the reason three SECURITY_MANAGE / SETTINGS_EDIT gates were mistaken for live security posture for several rounds. Both directions use dated allowlist sections (desktop/tablet, plus scoped_orphans for the reverse) and both self-clean, so neither list can accrete. Third direction, added 2026-09-18: an entry no direction reproduces -- production UI code names it nowhere and the shell does not register it -- now FAILS the run instead of being printed as info[<shell>-unreachable] while the run returned 0. It was the last population this file accepted and graded nothing about, and the three entries it found were deleted in the same change (desktop list_categories, list_products; tablet list_products -- the tablet's unscoped products command still exists in products.rs and stays an F-006 deletion candidate), so a shell section now carries measured gaps only and the entry counts went 11 -> 9 and 139 -> 138. Measured 2026-09-18: 441 UI command strings; desktop 455 registered / 9 unregistered UI names / 3 unregistered fns; tablet 320 registered / 138 unregistered UI names / 3 unregistered fns. The 25 allowlisted scoped orphans are a WORK QUEUE, not a clean bill -- most look like dead surface for F-006 to remove. --write-allowlist preserves sections it does not own. Runs in CI at dev-ci.yml#ipc-parity and in check.sh; the note claiming it local-only was itself stale and was corrected here. MOVED 2026-09-24: this gate and its --self-test left dev-ci.yml#static-gates for a job of their own, because the self-test measured 209s and 216s on two runs -- 33% of a job that also gated ~25 cheap checks. The real gate runs first in the new job so an actual parity violation still reports in ~30s; the self-test, which answers a rarer question, takes the slower slot. Path-gated on rust OR ui, since a parity break can only come from crates/, apps/*/src or ui/.",
+      "ci": { "workflow": "dev-ci.yml", "job": "ipc-parity" },
       "runners": { "check.sh": ["ipc parity"] }
     },
     {
@@ -617,7 +617,7 @@
       "label": "Docs-auditor checkers still run",
       "status": "required",
       "runners": { "check.sh": ["auditor self-tests"] },
-      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships -- the roster is the script's own for-line, five as of 2026-09-24 (check-dead-refs joined with the source-relative link rules, check-adr-status with the status-word comparator), not a count maintained here. Runner: sh scripts/check-auditor-selftests.sh."
+      "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships -- the roster is the script's own for-line, six as of 2026-09-24 (check-dead-refs joined with the source-relative link rules, check-adr-status with the status-word comparator, check-site-links with the route-vs-filesystem cases), not a count maintained here. Runner: sh scripts/check-auditor-selftests.sh."
     },
     {
       "id": "records-index",
@@ -633,6 +633,13 @@
       "status": "required",
       "runners": { "check.sh": ["adr status drift"] },
       "_note": "Added 2026-09-24 closing open item 2 of the 2026-09-23 documentation audit. The hand table in docs/decisions/README.md reconciled its status column against ADR frontmatter by hand three times (2026-08-09: 26 cells empty while every file stated a status; 2026-09-23: #55/#56/#58 trailing their re-audits), and that file's Conventions order the re-derivation with a script, never by hand. This is the script: the status WORD per the Conventions contract, frontmatter over header line, rows resolved by file path so the documented duplicate #43 checks each file against its own row, cross-reference table excluded (prose cells, not status words). Runner: python .agents/skills/docs-auditor/scripts/check-adr-status.py. NO ci block BY DESIGN, local-only like auditor-selftests. Green from day one (54 of 54 rows); its --self-test carries deliberately red synthetic drift and cannot-verify cases and runs in scripts/check-auditor-selftests.sh."
+    },
+    {
+      "id": "site-links",
+      "label": "Website route links",
+      "status": "required",
+      "runners": { "check.sh": ["site links"] },
+      "_note": "Added 2026-09-24 closing open item 4 of the 2026-09-23 documentation audit. website/src/content docs link each other with Astro routes (../cloud-sync/, ../../pricing/, /en/docs/...) -- a filesystem scanner flagged ~90 of them as dead while every one resolved, and could not see a ghost slug either way. This is the site-aware checker: route table from astro.config i18n locales x src/pages ([locale] expanded, directory-format URLs) x content routes enumerated the way [...slug].astro emits them (a ghost slug is red even though the catch-all pattern exists) x public/ files and public/_redirects sources; per-collection base URLs (docs -> /{loc}/docs/{slug}/, legal -> its consuming page); fence/backtick-aware extraction so authoring-guide examples are not claims; #fragments graded against the target page's real heading ids since 2026-09-24 (github-slugger 2.0.0 port, verified on all 9,003 repo headings: duplicate-heading -1/-2 suffixes, explicit HTML ids; component-route fragments skipped as documented). Fail-loud contract: unparseable locales, a renamed docs catch-all, missing content, or an unenumerable dynamic segment exit 1 rather than reading green. Runner: python .agents/skills/docs-auditor/scripts/check-site-links.py. NO ci block BY DESIGN, local-only like adr-status. Green from day one (38 content docs, 0 findings); --self-test carries 27 red/green cases and runs in scripts/check-auditor-selftests.sh."
     },
     {
       "id": "dead-refs",

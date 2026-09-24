@@ -76,9 +76,9 @@
 //      so anyone who followed the install steps went looking for a file that is
 //      never published under that name. Source-level tests cannot see it either:
 //      the string was correct prose in a markdown file. Checked against the
-//      rendered body of every page that owes a head, with the GitHub repository
-//      path excepted — the repo kept its name, so `kardelitaitu/oz-pos` is not a
-//      finding whether it appears as an href or as visible text.
+//      rendered body of every page that owes a head. No repository-path
+//      exception remains: the repository was renamed to kardelitaitu/kasirmu on
+//      2026-09-24, so the old-slug allowlist matched nothing and was deleted.
 //  11. content depth — the five industry landings and four keyword landings
 //      carry the words a first-time visitor needs. Measured before this check
 //      existed (2026-09-23): 147–271 words of body copy against 526 on the home
@@ -821,14 +821,13 @@ for (const page of pages.filter((p) => p.rec?.kind === 'docs article')) {
 
 // 10. Retired brand: no page may name the product by a name it no longer has.
 //     Scanned on `body` — the script-stripped, tag-stripped text — so an href to
-//     the repository (which still contains `oz-pos`) is not a finding, and only
-//     words the visitor actually reads are judged.
+//     the repository is not a finding, and only words the visitor actually reads
+//     are judged. The repository was renamed to kardelitaitu/kasirmu on
+//     2026-09-24, so the former old-slug allowlist matched nothing and was deleted.
 const RETIRED_BRAND = /\bOZ[-_ ]?POS/i;
-// The GitHub repository kept its name through the rebrand; naming it is correct.
-const KEPT_REPOSITORY = /kardelitaitu\/oz-pos/g;
 
 for (const page of pages.filter((p) => p.rec && hasHead(p.rec))) {
-  const visible = page.body.replace(KEPT_REPOSITORY, ' ');
+  const visible = page.body;
   const match = visible.match(RETIRED_BRAND);
   if (!match) continue;
   const from = Math.max(0, (match.index ?? 0) - 45);

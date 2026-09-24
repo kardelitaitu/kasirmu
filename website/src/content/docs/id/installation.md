@@ -29,7 +29,7 @@ WebView2 yang sudah tersedia di Windows 10 dan 11.
 
 Unduh dari [halaman unduh](../../download/) — tidak diperlukan akun.
 Penginstalnya sendiri dipublikasikan di
-[GitHub Releases](https://github.com/kardelitaitu/oz-pos/releases).
+[GitHub Releases](https://github.com/kardelitaitu/kasirmu/releases).
 
 **Windows** — jalankan `kasir.mu_<versi>_x64-setup.exe` (atau `.msi`) dan ikuti
 petunjuknya. Terpasang ke akun pengguna Anda dan menambahkan entri kasir.mu ke

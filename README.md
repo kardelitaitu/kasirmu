@@ -1,5 +1,5 @@
-<!-- TODO: update badge URLs after repo rename — rebrand Tier 3 item T3-7 (kardelitaitu/oz-pos → kasirmu/kasir.mu). The URLs below still resolve today; the GitHub repo move has NOT happened, so do not pre-empt it. -->
-![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/oz-pos?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/oz-pos?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/oz-pos/actions/workflows/dev-ci.yml)
+<!-- Rebrand Tier 3 item T3-7: the repository was renamed to kardelitaitu/kasirmu and the badge, clone and release URLs below were updated with it. -->
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/kardelitaitu/kasirmu?style=flat-square) ![GitHub repo size](https://img.shields.io/github/repo-size/kardelitaitu/kasirmu?style=flat-square) [![Dev CI](https://github.com/kardelitaitu/kasirmu/actions/workflows/dev-ci.yml/badge.svg)](https://github.com/kardelitaitu/kasirmu/actions/workflows/dev-ci.yml)
 
 
 # kasir.mu
@@ -188,9 +188,8 @@ kasir.mu/
 ## Quick Start
 
 ```bash
-# TODO: update URLs after repo rename — rebrand T3-7
-git clone https://github.com/kardelitaitu/oz-pos.git
-cd oz-pos  # TODO: will be "kasir.mu" after repo rename (T3-7)
+git clone https://github.com/kardelitaitu/kasirmu.git
+cd kasirmu
 cargo build --workspace
 cd ui && npm ci --no-audit --no-fund && cd ..  # see ui/README.md#install-script-approvals
 cd apps/desktop-tauri && cargo tauri dev
@@ -261,7 +260,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 Module-level truth (`modules/`): 10 active (`inventory`, `crm`, `tax`, `settings`, `staff`, `terminal`, `currency`, `sales`, `reporting`, `loyalty`), 4 still stubs with no domain logic (`purchasing`, `promotions`, `giftcards`, `kitchen` — the KDS UI in `ui/src/features/kds/` is frontend-only; the PROMO-3 engine lives in `kasirmu-core`, not `modules/promotions`; gift-card types still sit in `modules/loyalty`). There is **no accounting module** — no chart of accounts, journal, or expense tracking exists anywhere in `modules/`, migrations, or UI. What the platform does have is sales accounting's raw material: revenue/COGS/gross-profit reporting (`crates/kasirmu-core/src/db/reports/revenue.rs`), shift cash reconciliation, and purchase-order history.
 
-Latest release: **v0.0.39** (on branch `0.0.39`).
+Latest release: **v0.0.40** (on branch `0.0.40`).
 
 See [ROADMAP.md](./docs/guides/product/ROADMAP.md) for the full phased delivery plan, and [MODULAR_APP_PLAN.md](./docs/architecture/MODULAR_APP_PLAN.md) for detailed granular checklists covering feature presets, restaurant workflows, LAN KDS discovery, and Docker cloud server containerization (`apps/cloud-server`).
 

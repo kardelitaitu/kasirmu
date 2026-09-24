@@ -3,7 +3,7 @@ name: pr-create-pull-request
 description: Systematic workflow for creating comprehensive, high-quality pull requests in kasir.mu using GitHub CLI (gh). Covers inspecting git history (last 50-100 commits), branch-prefixed naming conventions, generating structured PR descriptions, and safe push authorization.
 ---
 
-<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. The version-lock drift the 18-09-26 audit found is confirmed repaired: golden rule 6 at `:31` reads "Version is locked at `0.0.39`", and the title examples at `:26`, `:99-101` all carry the `0.0.39` branch prefix — which matches `Cargo.toml:37` (`version = "0.0.39"`). An agent opening a PR from this skill now gets the right branch prefix. The `oz-*` crate phrase is gone. · Verified this pass by measurement, not by reading the previous stamp. · NOT re-measured: the commit-count and description conventions, which are policy rather than code claims. -->
+<!-- Audit stamp: 2026-09-22 · Budak-Korporat · status: ACCURATE — 0 findings · Audited against branch `0.0.39` at `e56bf8307`, working tree clean. The version-lock drift the 18-09-26 audit found is confirmed repaired: golden rule 6 at `:31` reads "Version is locked at `0.0.39`", and the title examples at `:26`, `:99-101` all carry the `0.0.39` branch prefix — which matched the `Cargo.toml:37` lock of that day, then reading `0.0.39`. An agent opening a PR from this skill now gets the right branch prefix. The `oz-*` crate phrase is gone. · Verified this pass by measurement, not by reading the previous stamp. · NOT re-measured: the commit-count and description conventions, which are policy rather than code claims. -->
 
 <!-- Superseded audit stamp: 2026-09-03 · DSH · status: ACCURATE at audit time (0 findings on 22-09-26) (rev 3 — version lock corrected 0.0.31 → 0.0.35; poll-pr-checks.ps1 corrected to the real scripts/poll-pr-checks.sh; title examples moved to the current release branch; the feat/ branch example removed per the never-create-branches repo policy; the crates/oz-* glob prose reworded — rev 3 only respells that phrase so the skill-drift scanner's crate-name grep no longer reads it as a missing crate) · verified this pass: scripts/poll-pr-checks.sh, scripts/lint-i18n.sh, scripts/verify-bundle-parity.py exist; gh pr create/edit/checks workflow unchanged -->
 
@@ -25,12 +25,12 @@ This skill defines the standardized workflow for opening new pull requests again
 
 | # | Rule | Why |
 |---|------|-----|
-| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.39 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
+| 1 | **Title format: `<branch_name> <summarized title>`.** | Must always prefix with the current branch name (e.g. `0.0.40 fix(ci): repair Trivy SARIF upload, KDS E2E tests...`). |
 | 2 | **Comprehensive descriptions from commit history.** | Always inspect the last 50 to 100 commits (`git log -n 100 --oneline` or `git log origin/main..HEAD --oneline`) and summarize key changes grouped by domain. |
 | 3 | **Base branch is always `main`.** | All PRs in kasir.mu target `main` unless the user explicitly specifies another target. PRs are opened **from the current active branch only** — the repo policy forbids creating or switching branches. |
 | 4 | **Never `git push` without explicit user permission.** | Before pushing local commits or branch to remote, you MUST present the plan to the user and obtain explicit push authorization. |
 | 5 | **Local verification first.** | Ensure relevant tests (`cargo test`, `npm run typecheck`, `scripts/lint-i18n.sh`) and pre-commit gates pass before creating the PR. |
-| 6 | **Version is locked at `0.0.39`.** | Never bump or change version numbers in manifest files. |
+| 6 | **Version is locked at `0.0.40`.** | Never bump or change version numbers in manifest files. |
 
 ---
 
@@ -98,9 +98,9 @@ Categorize the findings into the following domains:
 Format: `<branch_name> <type>(<scope>): <summary>`
 
 Examples:
-- `0.0.39 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
-- `0.0.39 feat(payment): add QRIS payment processor and terminal fallback`
-- `0.0.39 docs(agents): revise ui-components skill with design-language reference`
+- `0.0.40 fix(ci): repair Trivy SARIF upload, KDS E2E tests, tablet touch targets, and CI docs drift`
+- `0.0.40 feat(payment): add QRIS payment processor and terminal fallback`
+- `0.0.40 docs(agents): revise ui-components skill with design-language reference`
 
 #### 2. Body Structure (`pr_body.md`)
 Create a markdown file (e.g. `pr_body.md` at repo root) containing structured sections:
