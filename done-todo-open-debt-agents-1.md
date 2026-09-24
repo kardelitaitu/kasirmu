@@ -168,7 +168,7 @@ closes for NOT WORK rows.
 
 | Ruling | Decides | Executed? | Evidence measured this pass |
 |---|---|---|---|
-| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. Still open: the bridge's `settings.rs` setters call the unscoped `require_permission_for_user` at 8 sites, and the gate-ORDER half is ratcheted at 69 bodies. Gate-ORDER half **EXECUTED for `customers`** — see below. |
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half for `customers` **EXECUTED 2026-09-25** — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. Still open: the gate-ORDER half, ratcheted at 69 bodies. Gate-ORDER half **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
@@ -232,6 +232,41 @@ because their scoped assignment covers a different branch. **Mutation-tested rat
 assumed** — restoring the non-scope-aware gate at `customers.rs:430` makes it fail with
 `got Ok(None)`, i.e. the customer was returned to an out-of-scope caller, and reverting the
 mutation makes it pass. The other test passes in both states, which is the point.
+
+**The `settings.rs` half of gate-KIND, executed the same day, and its census was wrong in a
+third way.** The table carried it as "the bridge's `settings.rs` setters still call the
+unscoped `require_permission_for_user` at 8". Re-read, the 8 are three different things:
+
+* **7 are genuine gate-KIND divergences** and are now migrated:
+  `set_receipt_settings_scoped`, `set_store_settings_scoped`, `set_credit_settings_scoped`,
+  `settle_credit_scoped`, `set_hardware_settings_scoped`, `set_setting_scoped`,
+  `set_settings_scoped`. Each gated `settings:edit` with the non-scope-aware helper over a
+  store `Store` it could only obtain **after** `open_store`, while this module's own readers
+  ran `require_session_permission`. So the same two lines carried both halves of R10 at
+  once: the wrong KIND *and* the wrong ORDER. Because the scope-aware gate authorizes against
+  the GLOBAL identity db, the temporary store-open that existed only to supply a `Store` for
+  the check is gone from all seven — the gate now runs before anything touches the
+  filesystem.
+* **1 is the DEPRECATED `set_setting`**, deliberately left. It takes a caller-supplied
+  `user_id`, gates a GLOBAL-db `Store`, and has no session to scope against; migrating it
+  would be inventing a session, not adopting a gate. Retiring the door is a separate
+  decision.
+* **1 was counted as a setter at all by mistake.** `set_user_preferences_scoped` has **no
+  gate** — it resolves the session and writes `session.user_id`'s own preferences. That is
+  a *missing* gate, the same open question as the ungated readers above it, and R10 is about
+  the FORM of gates that exist. It is not folded in, and the module header now says so
+  rather than leaving it to be inferred.
+
+**The settings guard needed a sharper assertion than the customers one, and finding that out
+is the point.** `scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope` was first
+written to `matches!` the `PermissionDenied` variant — and it passed **under the mutation**,
+i.e. with no teeth. The reason is worth recording: the unscoped gate runs
+`require_permission` against the STORE db, and store dbs carry no `users` rows (identity
+lives only in the global db — the rule `ctx.rs:429-435` documents), so it denies with
+`"user not found"` and the variant matches anyway. Both forms return the same variant for
+different reasons. The assertion now requires the message to name the scope, which is what
+`kasirmu-core/src/db/staff.rs:322` emits only on the scope-aware path. Mutation-tested:
+restoring the unscoped gate fails with `got "user not found"`, and reverting makes it pass.
 
 ---
 
