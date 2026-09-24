@@ -4,7 +4,7 @@ crate: foundation | status: SAFE | lint: CLEAN
 findings: clean — Email/Phone validated newtypes (serde transparent), DTO conventions documented (Create and Update DTOs with Option PATCH semantics); dto unwraps are test-only (verified by line-range check)
 next: none | perf: N/A
 */
-//! Shared Data Transfer Objects for OZ-POS.
+//! Shared Data Transfer Objects for kasir.mu.
 //!
 //! These DTOs provide a stable, versioned API surface for create/update
 //! operations across all Tauri commands and REST endpoints. They live in

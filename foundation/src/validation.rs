@@ -1,4 +1,4 @@
-//! Shared validation utilities for OZ-POS.
+//! Shared validation utilities for kasir.mu.
 /*
 last audited 25-07-26 by RSA-Agent (foundation slice C: validation deep read)
 crate: foundation | status: SAFE | lint: CLEAN

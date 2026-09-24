@@ -5,7 +5,7 @@
 //! `platform_core::settings::keys` applies to this lane too: credential keys
 //! and device-bound identities never travel in a portable export or restore
 //! package, in EITHER direction. The desktop bridge and the tablet shell have
-//! asserted that for a while; `oz export-kasirpkg` / `oz import-kasirpkg` filtered
+//! asserted that for a while; `kasir export` / `kasir import` filtered
 //! nothing, which is the hole these tests pin shut.
 //!
 //! Keys are named by the same constants the shared deny list is built from,
@@ -141,7 +141,7 @@ fn legacy_package(rows: &[(&str, &str)]) -> std::path::PathBuf {
     path
 }
 
-// ── egress: `oz export-kasirpkg` ─────────────────────────────────────────
+// ── egress: `kasir export` ─────────────────────────────────────────
 
 #[test]
 fn kasirpkg_export_withholds_secret_and_device_bound_settings() {
@@ -186,7 +186,7 @@ fn kasirpkg_export_still_carries_ordinary_settings() {
     let _ = std::fs::remove_file(&path);
 }
 
-// ── ingress: `oz import-kasirpkg` ────────────────────────────────────────
+// ── ingress: `kasir import` ────────────────────────────────────────
 
 #[test]
 fn kasirpkg_import_leaves_install_secrets_byte_identical() {

@@ -4,7 +4,7 @@ crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: clean — parameterized queries, integer minor units, sibling tests per convention
 next: none | perf: N/A
 */
-//! Prometheus metrics registry for OZ-POS.
+//! Prometheus metrics registry for kasir.mu.
 //!
 //! Gauge, counter and histogram helpers over one global registry, plus
 //! [`gather_metrics`] to render that registry as Prometheus text.

@@ -1,5 +1,5 @@
 -- ====================================================================
--- OZ-POS Database Schema — Postgres port of the fully-migrated SQLite
+-- kasir.mu Database Schema — Postgres port of the fully-migrated SQLite
 -- schema (20260813_init.sql + every incremental migration in the
 -- crates/kasirmu-core/src/migrations.rs registry, applied and dumped at
 -- final state).

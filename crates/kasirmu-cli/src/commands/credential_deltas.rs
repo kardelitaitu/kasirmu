@@ -113,7 +113,7 @@ pub(crate) const HELP_BYTES_NOT_CONTENT: &str = concat!(
     "report. A clean close checkpoints the sidecars away, so their absence afterwards is NOT\n",
     "evidence the file was untouched. And --db defaults to ./kasir.db in the CURRENT DIRECTORY,\n",
     "where opening a MISSING path creates one. Take a copy first and run the census on the copy:\n",
-    "oz backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Do not do this to a\n",
+    "kasir backup --output <copy.db>, then oz credential-deltas --db <copy.db>. Do not do this to a\n",
     "live store."
 );
 
@@ -794,7 +794,7 @@ pub(crate) fn require_store_database(conn: &Connection) -> Result<()> {
             .with_context(|| format!("looking for the {table} table"))?;
         if present == 0 {
             anyhow::bail!(
-                "the database at {path} has no {table} table, so it is not a migrated kasir.mu store and every count below would read zero. Note that --db defaults to ./kasir.db in the CURRENT directory and opening a MISSING path CREATES one, so this file may have been made by the very command meant to inspect it. Point --db at a real store, or take a copy first with oz backup --output <copy.db> and run this against the copy."
+                "the database at {path} has no {table} table, so it is not a migrated kasir.mu store and every count below would read zero. Note that --db defaults to ./kasir.db in the CURRENT directory and opening a MISSING path CREATES one, so this file may have been made by the very command meant to inspect it. Point --db at a real store, or take a copy first with kasir backup --output <copy.db> and run this against the copy."
             );
         }
     }

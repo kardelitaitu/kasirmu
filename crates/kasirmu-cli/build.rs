@@ -1,6 +1,6 @@
-//! OZ-POS CLI build script — embeds the Windows application manifest.
+//! kasir.mu CLI build script — embeds the Windows application manifest.
 
-// ── OZ-POS CLI — Windows application manifest (build script) ───────
+// ── kasir.mu CLI — Windows application manifest (build script) ───────
 //
 // Embeds `app.manifest` (a `<requestedExecutionLevel level="asInvoker"/>`
 // assembly manifest) into the Windows `oz.exe`. Without an embedded

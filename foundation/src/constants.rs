@@ -1,4 +1,4 @@
-//! Shared constants for OZ-POS.
+//! Shared constants for kasir.mu.
 //!
 //! Centralises magic numbers and string literals that appear across
 //! multiple crates — currency defaults, discount bounds, tax basis

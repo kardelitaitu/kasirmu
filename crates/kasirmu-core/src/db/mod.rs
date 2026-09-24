@@ -190,7 +190,7 @@ pub use shifts::{ShiftPaymentBreakdown, ShiftReport, ShiftSalesByHour};
 
 // ── Store ────────────────────────────────────────────────────────────
 
-/// Typed CRUD facade for the OZ-POS database.
+/// Typed CRUD facade for the kasir.mu database.
 ///
 /// > **ADR #30 Modularization Note**: New code should prefer invoking dedicated
 /// > domain repositories (e.g. `SalesRepository`, `InventoryRepository`, `CrmRepository`,

@@ -19,7 +19,7 @@ next: none | perf: N/A — best-effort debug logging
 //! `OutputDebugString`.
 //!
 //! ```no_run
-//! kasirmu_logging::eventlog::init_eventlog("OZ-POS").ok();
+//! kasirmu_logging::eventlog::init_eventlog("kasir.mu").ok();
 //! ```
 
 use tracing_subscriber::EnvFilter;

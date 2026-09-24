@@ -4,7 +4,7 @@ crate: kasirmu-mobile | status: SAFE | lint: CLEAN
 findings: clean — matches desktop-tauri guarded patterns. Coverage note: verified under the risk-ranked sampling protocol (global sweep clean), not line-by-line deep read
 next: none | perf: N/A
 */
-//! OZ-POS tablet shell (Tauri v2 mobile).
+//! kasir.mu tablet shell (Tauri v2 mobile).
 //!
 //! Registers the same business modules as the desktop client but
 //! with a mobile-optimised Tauri configuration (no window, touch
@@ -950,7 +950,7 @@ pub fn run() {
         // Kernel shutdown happens in AppState::drop() — see state.rs.
 
         if let Err(e) = result {
-            tracing::error!(error = %e, "OZ-POS tablet exited with error");
+            tracing::error!(error = %e, "kasir.mu tablet exited with error");
             std::process::exit(1);
         }
     }

@@ -1,4 +1,4 @@
-//! OZ-POS Cloud Sync Server — headless binary (no Tauri, no WebView).
+//! kasir.mu Cloud Sync Server — headless binary (no Tauri, no WebView).
 //!
 //! Serves both the REST API (`kasirmu-api` routes) and sync-push/pull endpoints
 //! on the same HTTP port. Run in production behind a reverse proxy.
@@ -466,7 +466,7 @@ async fn serve(
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .map_err(|e| format!("failed to bind port {port}: {e}"))?;
-    info!(port, "OZ-POS cloud server listening");
+    info!(port, "kasir.mu cloud server listening");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown::shutdown_signal())

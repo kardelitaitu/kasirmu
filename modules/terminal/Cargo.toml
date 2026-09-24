@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Terminal Module: registered POS device management, heartbeat tracking."
+description = "kasir.mu Terminal Module: registered POS device management, heartbeat tracking."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

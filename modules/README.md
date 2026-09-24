@@ -1,4 +1,4 @@
-# OZ-POS Modules
+# kasir.mu Modules
 
 <!-- Audit stamp: 2026-08-31 · docs-auditor · status: ACCURATE (0 findings) · verified against HEAD: all 4 stubs (purchasing/promotions/giftcards/kitchen) confirmed lifecycle-only (the PROMO-3 engine lives in kasirmu-core, not modules/promotions); loyalty Active (models/repository/service); dependency table matches manifest.json (sales->inventory, reporting->inventory+sales, loyalty->crm, kitchen->sales+terminal); referenced files exist (scripts/new-module.{ps1,sh}, docs/specs/module-manifest.schema.json, platform/startup/src/startup_tests.rs) -->
 

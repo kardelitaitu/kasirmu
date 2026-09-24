@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Sales Module: POS pipeline, cart management, sales history, refunds."
+description = "kasir.mu Sales Module: POS pipeline, cart management, sales history, refunds."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

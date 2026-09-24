@@ -140,7 +140,7 @@ async fn server_serves_health_protected_routes_and_stops() {
         "local docs route must sit inside the security-headers layer"
     );
     let spec: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(spec["info"]["title"], "OZ-POS Local Terminal API");
+    assert_eq!(spec["info"]["title"], "kasir.mu Local Terminal API");
     assert_eq!(
         spec["servers"][0]["url"].as_str(),
         Some(format!("http://127.0.0.1:{}", handle.port).as_str())

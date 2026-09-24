@@ -1,6 +1,6 @@
 //! LAN discovery via mDNS/DNS-SD.
 //!
-//! [`LanDiscoverer`] advertises an OZ-POS terminal on the local network
+//! [`LanDiscoverer`] advertises a kasir.mu terminal on the local network
 //! using mDNS so that other terminals (e.g. a KDS tablet) can find it
 //! without manual IP configuration.
 //!
@@ -26,10 +26,10 @@
 
 use mdns_sd::{ServiceDaemon, ServiceInfo};
 
-/// The mDNS service type advertised by all OZ-POS terminals.
+/// The mDNS service type advertised by all kasir.mu terminals.
 const SERVICE_TYPE: &str = "_oz-pos._tcp.local.";
 
-/// Advertises an OZ-POS terminal on the LAN via mDNS/DNS-SD.
+/// Advertises a kasir.mu terminal on the LAN via mDNS/DNS-SD.
 ///
 /// Create one per application lifetime, call [`start()`](Self::start) to
 /// begin advertising, and [`stop()`](Self::stop) on shutdown.

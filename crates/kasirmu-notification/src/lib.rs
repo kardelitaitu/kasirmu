@@ -4,7 +4,7 @@ crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: 0 production unsafe blocks — the only unsafe is test-only std::env::set_var/remove_var in whatsapp_tests.rs (serial_test-gated, SAFETY documented). Production lock().unwrap() confined to mock.rs (documented test-double pattern). Verified webhook HMAC verification (whatsapp.rs:328) and mock driver. No defects found.
 next: none | perf: N/A
 */
-//! WhatsApp Cloud API notification client for OZ-POS.
+//! WhatsApp Cloud API notification client for kasir.mu.
 //!
 //! Provides a notification abstraction with a mock driver for testing
 //! and a real WhatsApp Cloud API client for production use.

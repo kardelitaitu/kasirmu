@@ -18,7 +18,7 @@ next: none | perf: N/A
 //! to stdout (human-readable) and to syslog.
 //!
 //! ```no_run
-//! kasirmu_logging::syslog::init_syslog("oz-pos", "local0").ok();
+//! kasirmu_logging::syslog::init_syslog("kasirmu", "local0").ok();
 //! ```
 
 use tracing_subscriber::EnvFilter;

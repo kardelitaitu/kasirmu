@@ -35,14 +35,14 @@ pub fn base_spec() -> Value {
     let mut spec = json!({
         "openapi": "3.1.0",
         "info": {
-            "title": "OZ-POS API",
+            "title": "kasir.mu API",
             "version": env!("CARGO_PKG_VERSION"),
-            "description": "REST API for the OZ-POS point-of-sale system.\n\n## Authentication\nMost endpoints require a JWT bearer token from `POST /api/v1/tokens`. Pass it as `Authorization: Bearer <token>`.\n\n## Endpoint scope\nEvery operation carries `x-oz-scope`: `both` means the endpoint is served by the cloud server AND the desktop app's loopback local API (Settings → Local API); `cloud` means cloud-server-only (sync, webhooks, docs UI). This document describes the `both` surface; the cloud server serves the merged superset at its own `/api/openapi.json`.\n\n## Versioning\nThe API is versioned by URL path prefix (`/api/v1/`). Breaking changes will ship under a new version prefix (`/api/v2/`) — the old version remains available for at least 6 months after the new one lands.\n\n## Pagination\nList endpoints accept `?limit` (default 50, max 200) and `?offset` (default 0) query parameters and return a `PaginatedResponse` envelope with `data`, `total`, `limit`, and `offset` fields.\n\n## Errors\nAll error responses share a common envelope: `{ \"error\": { \"code\": \"MACHINE_READABLE\", \"message\": \"Human description\", \"details\": [...] } }`. The `code` field is stable across versions — use it for programmatic error handling, not the message string.\n\n## Changelog\n- **Read tiers (0.0.34, spec 0047):** terminal client-credential tokens now bind the `terminal` preset — reads are gated by `permissions` claim keys (403 `insufficient_scope` when missing). Legacy tokens without the claim keep full read. The `OZ_TERMINAL_READ_TIER=full` escape hatch restores legacy terminal reads and is **deprecated** (removal after one release cycle).",
-            "contact": { "name": "OZ-POS" }
+            "description": "REST API for the kasir.mu point-of-sale system.\n\n## Authentication\nMost endpoints require a JWT bearer token from `POST /api/v1/tokens`. Pass it as `Authorization: Bearer <token>`.\n\n## Endpoint scope\nEvery operation carries `x-oz-scope`: `both` means the endpoint is served by the cloud server AND the desktop app's loopback local API (Settings → Local API); `cloud` means cloud-server-only (sync, webhooks, docs UI). This document describes the `both` surface; the cloud server serves the merged superset at its own `/api/openapi.json`.\n\n## Versioning\nThe API is versioned by URL path prefix (`/api/v1/`). Breaking changes will ship under a new version prefix (`/api/v2/`) — the old version remains available for at least 6 months after the new one lands.\n\n## Pagination\nList endpoints accept `?limit` (default 50, max 200) and `?offset` (default 0) query parameters and return a `PaginatedResponse` envelope with `data`, `total`, `limit`, and `offset` fields.\n\n## Errors\nAll error responses share a common envelope: `{ \"error\": { \"code\": \"MACHINE_READABLE\", \"message\": \"Human description\", \"details\": [...] } }`. The `code` field is stable across versions — use it for programmatic error handling, not the message string.\n\n## Changelog\n- **Read tiers (0.0.34, spec 0047):** terminal client-credential tokens now bind the `terminal` preset — reads are gated by `permissions` claim keys (403 `insufficient_scope` when missing). Legacy tokens without the claim keep full read. The `OZ_TERMINAL_READ_TIER=full` escape hatch restores legacy terminal reads and is **deprecated** (removal after one release cycle).",
+            "contact": { "name": "kasir.mu" }
         },
         "externalDocs": {
-            "description": "OZ-POS documentation",
-            "url": "https://github.com/oz-pos/oz-pos"
+            "description": "kasir.mu documentation",
+            "url": "https://github.com/kardelitaitu/kasirmu"
         },
         "tags": [
             { "name": "Health", "description": "Server health and monitoring endpoints" },
@@ -88,9 +88,9 @@ pub fn base_spec() -> Value {
 /// loopback server info and local-facing wording injected.
 pub fn local_spec(port: u16) -> Value {
     let mut spec = base_spec();
-    spec["info"]["title"] = json!("OZ-POS Local Terminal API");
+    spec["info"]["title"] = json!("kasir.mu Local Terminal API");
     spec["info"]["description"] = json!(
-        "REST API served by the OZ-POS desktop app on this machine only \
+        "REST API served by the kasir.mu desktop app on this machine only \
          (127.0.0.1). Enable it in Settings → Local API. Tokens are minted \
          in that panel; every operation here is `x-oz-scope: \"both\"` — \
          cloud-only endpoints (sync, webhooks, docs UI) are absent. This \

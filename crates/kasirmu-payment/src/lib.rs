@@ -6,7 +6,7 @@ next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe dec
 */
 #![deny(unsafe_code)]
 
-//! Payment processor abstraction for OZ-POS.
+//! Payment processor abstraction for kasir.mu.
 //!
 //! `kasirmu-payment` provides a single trait, [`PaymentProcessor`], with
 //! vendor-specific implementations for Stripe, Square, Paddle and QRIS.

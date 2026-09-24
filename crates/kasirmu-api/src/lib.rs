@@ -5,7 +5,7 @@ findings: 0 unsafe blocks. 2 production panic-on-invariant calls in tokens.rs â€
 next: none | perf: N/A
 */
 
-//! OZ-POS OpenAPI REST server.
+//! kasir.mu OpenAPI REST server.
 //!
 //! Starts an axum HTTP server on `OZ_API_PORT` (default 3099) with JWT
 //! authentication on protected routes. The server runs alongside the
@@ -492,7 +492,7 @@ pub async fn serve() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .map_err(|e| format!("failed to bind API port {port}: {e}"))?;
-    info!(port, "OZ-POS API server listening");
+    info!(port, "kasir.mu API server listening");
     axum::serve(listener, router(state))
         .await
         .map_err(|e| format!("API server exited with error: {e}"))?;

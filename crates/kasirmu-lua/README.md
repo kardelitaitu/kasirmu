@@ -2,7 +2,7 @@
 
 <!-- Audit stamp: 2026-07-24 · Antigravity · status: ACCURATE · Migrated to mlua 0.9 (Lua 5.4 vendored). Memory limit (10 MiB) natively enforced via set_memory_limit. -->
 
-Embedded Lua scripting runtime for OZ-POS — lets merchants customize business
+Embedded Lua scripting runtime for kasir.mu — lets merchants customize business
 rules, promotions, and order validation at runtime without recompiling the core.
 
 ## Status

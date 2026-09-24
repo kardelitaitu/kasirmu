@@ -74,7 +74,7 @@ async fn try_send_scheduled(
         let name = kasirmu_core::Settings::get(store.conn, "store.name")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "OZ-POS Store".to_string());
+            .unwrap_or_else(|| "kasir.mu Store".to_string());
         let report = email_sender::generate_filtered_report_email(&store, &schedule, &name)
             .map_err(|e| format!("Report gen: {e}"))?;
         (report, schedule.recipients.clone())

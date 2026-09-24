@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Staff Module: user management, role management, authentication, and session handling."
+description = "kasir.mu Staff Module: user management, role management, authentication, and session handling."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

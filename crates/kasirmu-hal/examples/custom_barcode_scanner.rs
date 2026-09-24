@@ -1,7 +1,7 @@
 //! Example: Custom Barcode Scanner Driver
 //!
 //! This is a minimal, complete example of implementing a custom HAL driver
-//! for OZ-POS. It shows how to:
+//! for kasir.mu. It shows how to:
 //!
 //! 1. Implement the `BarcodeScanner` trait from `kasirmu-hal`
 //! 2. Use `DeviceInfo` for driver identity
@@ -11,7 +11,7 @@
 //! ## How to use this example
 //!
 //! 1. Copy this file into your own crate
-//! 2. Add `kasirmu-hal` as a dependency: `kasirmu-hal = { path = "../oz-pos/crates/kasirmu-hal" }`
+//! 2. Add `kasirmu-hal` as a dependency: `kasirmu-hal = { path = "../kasirmu/crates/kasirmu-hal" }`
 //! 3. Implement your actual hardware communication (USB, serial, etc.)
 //! 4. Register your driver via `DriverRegistry`
 //!
@@ -117,7 +117,7 @@ impl BarcodeScanner for CustomBarcodeScanner {
 // ── Main (example binary entry point) ─────────────────────────────
 
 fn main() {
-    println!("Custom Barcode Scanner — example HAL driver for OZ-POS");
+    println!("Custom Barcode Scanner — example HAL driver for kasir.mu");
     println!("This example demonstrates the BarcodeScanner trait pattern.");
     println!("Run `cargo test -p kasirmu-hal --example custom_barcode_scanner` to run the tests.");
 }

@@ -272,7 +272,7 @@ pub async fn print_sales_receipt_scoped(
 fn read_receipt_config(
     conn: &rusqlite::Connection,
 ) -> Result<(receipt::ReceiptConfig, receipt::StoreInfo), BridgeError> {
-    let store_name = Settings::get_store_name(conn)?.unwrap_or_else(|| "OZ-POS Store".into());
+    let store_name = Settings::get_store_name(conn)?.unwrap_or_else(|| "kasir.mu Store".into());
     let store_address = Settings::get_store_address(conn)?.unwrap_or_default();
     let store_tax_id = Settings::get_store_tax_id(conn)?;
     let decimals = Settings::get_receipt_decimal_separator(conn)?;

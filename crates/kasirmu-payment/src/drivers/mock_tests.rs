@@ -89,7 +89,7 @@ async fn mock_receipt() {
 async fn mock_device_info() {
     let p = MockPaymentProcessor::new();
     let info = p.device_info();
-    assert_eq!(info.vendor, "OZ-POS");
+    assert_eq!(info.vendor, "kasir.mu");
 }
 
 #[tokio::test]

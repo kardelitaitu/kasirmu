@@ -51,7 +51,7 @@ pub enum BarcodeSymbology {
 /// Static device identity, used in logs and the setup wizard.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DeviceInfo {
-    /// Vendor / brand (e.g., `"Honeywell"`, `"OZ-POS"` for mocks).
+    /// Vendor / brand (e.g., `"Honeywell"`, `"kasir.mu"` for mocks).
     pub vendor: String,
     /// Model name (e.g., `"Voyager 1450g"`).
     pub model: String,

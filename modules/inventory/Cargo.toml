@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Inventory Module: product catalog, stock management, variants, categories."
+description = "kasir.mu Inventory Module: product catalog, stock management, variants, categories."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

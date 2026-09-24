@@ -18,7 +18,7 @@ findings: clean shared startup — module set pinned by parity test against the 
 next: none | perf: N/A
 */
 
-//! Shared application startup for OZ-POS desktop and tablet clients.
+//! Shared application startup for kasir.mu desktop and tablet clients.
 //!
 //! Both `apps/desktop-tauri` and `apps/mobile-tauri` call this crate
 //! to avoid duplicating module registration and event handler wiring.

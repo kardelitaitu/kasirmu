@@ -5,7 +5,7 @@ findings: zero unsafe, no FFI/IO, minimal deps, missing_docs enforced. Money aud
 next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
 */
 
-//! Foundation crate for OZ-POS.
+//! Foundation crate for kasir.mu.
 //!
 //! Contains the value objects, contracts, enums, and error types that
 //! are shared across all other crates. This crate has minimal

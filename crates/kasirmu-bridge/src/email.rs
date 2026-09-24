@@ -61,7 +61,7 @@ pub async fn send_test_report(
         let store_name = kasirmu_core::Settings::get(store.conn, "store.name")
             .ok()
             .flatten()
-            .unwrap_or_else(|| "OZ-POS Store".to_string());
+            .unwrap_or_else(|| "kasir.mu Store".to_string());
 
         // Generate filtered report email (respects report_types checkboxes)
         let report_email = kasirmu_core::export::email_sender::generate_filtered_report_email(

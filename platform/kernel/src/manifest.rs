@@ -17,7 +17,7 @@ use crate::error::KernelError;
 
 /// Module manifest metadata.
 ///
-/// Every module in OZ-POS must have a `manifest.json` at its root.
+/// Every module in kasir.mu must have a `manifest.json` at its root.
 /// This struct mirrors the formal JSON Schema at
 /// `docs/specs/module-manifest.schema.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,7 +203,7 @@ mod tests {
             "id": "sales",
             "name": "Sales",
             "version": "1.0.0",
-            "author": "OZ-POS Team",
+            "author": "kasir.mu Team",
             "dependencies": ["inventory"],
             "permissions": ["sales:void"],
             "description": "Core sales module"
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(manifest.id, "sales");
         assert_eq!(manifest.name, "Sales");
         assert_eq!(manifest.version, "1.0.0");
-        assert_eq!(manifest.author, "OZ-POS Team");
+        assert_eq!(manifest.author, "kasir.mu Team");
         assert_eq!(manifest.dependencies, vec!["inventory"]);
         assert_eq!(manifest.permissions, vec!["sales:void"]);
         assert_eq!(manifest.description, "Core sales module");

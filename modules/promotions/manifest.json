@@ -3,7 +3,7 @@
   "name": "Promotions",
   "version": "0.1.0",
   "description": "Promotion and discount rules: buy-X-get-Y, percentage off, fixed amount off, and time-limited campaigns. Stub: lifecycle only, domain logic not yet migrated.",
-  "author": "OZ-POS contributors",
+  "author": "kasir.mu contributors",
   "dependencies": ["sales"],
   "permissions": [
     "promotions:view",

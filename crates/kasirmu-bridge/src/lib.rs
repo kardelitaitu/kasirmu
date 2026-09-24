@@ -1,4 +1,4 @@
-//! `kasirmu-bridge` — headless command middleware for the OZ-POS desktop and
+//! `kasirmu-bridge` — headless command middleware for the kasir.mu desktop and
 //! tablet IPC shells (refactor campaign Phase 2).
 //!
 //! Command bodies move here so they can be compiled, tested and reused

@@ -5,22 +5,22 @@ findings: clean — clap definitions / error taxonomy / deny(unsafe_code) crate 
 next: none | perf: N/A
 */
 #![allow(missing_docs)]
-//! `oz` — OZ-POS command-line tool.
+//! `kasir` — kasir.mu command-line tool.
 //!
 //! Subcommands:
-//! - `oz migrate` — apply pending SQL migrations
-//! - `oz init-db` — seed the database with default settings + feature preset
-//! - `oz product list` — list all products
-//! - `oz product get <sku>` — show a product by SKU
-//! - `oz product create <sku> <name> <price>` — create a new product
-//! - `oz product update <sku> <name> <price>` — update an existing product
-//! - `oz product delete <sku>` — delete a product
-//! - `oz backup` — snapshot the local SQLite store (scaffold)
-//! - `oz export` — write a CSV report (scaffold)
+//! - `kasir migrate` — apply pending SQL migrations
+//! - `kasir init-db` — seed the database with default settings + feature preset
+//! - `kasir product list` — list all products
+//! - `kasir product get <sku>` — show a product by SKU
+//! - `kasir product create <sku> <name> <price>` — create a new product
+//! - `kasir product update <sku> <name> <price>` — update an existing product
+//! - `kasir product delete <sku>` — delete a product
+//! - `kasir backup` — snapshot the local SQLite store (scaffold)
+//! - `kasir export` — write a CSV report (scaffold)
 
 use clap::{Args, Parser, Subcommand};
 
-/// OZ-POS command-line tool.
+/// kasir.mu command-line tool.
 #[derive(Debug, Parser)]
 #[command(
     name = "kasir",

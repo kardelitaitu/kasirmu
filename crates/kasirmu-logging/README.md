@@ -17,7 +17,7 @@ All four read `RUST_LOG` (default `info`). File appender rotates hourly; files o
 
 ```rust
 kasirmu_logging::init();                                      // dev
-kasirmu_logging::init_json_with_file("logs", "oz-pos", 30);   // production
+kasirmu_logging::init_json_with_file("logs", "kasirmu", 30);   // production
 ```
 
 ### Platform modules

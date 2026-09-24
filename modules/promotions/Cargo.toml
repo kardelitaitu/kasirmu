@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Promotions Module (stub): buy-X-get-Y, percentage and fixed discounts, time-limited campaigns."
+description = "kasir.mu Promotions Module (stub): buy-X-get-Y, percentage and fixed discounts, time-limited campaigns."
 
 [lints]
 workspace = true

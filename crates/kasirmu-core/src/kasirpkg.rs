@@ -1,4 +1,4 @@
-//! Encrypted OZ-POS data export/import format (`.kasirpkg`).
+//! Encrypted kasir.mu data export/import format (`.kasirpkg`).
 //!
 //! # Format
 //!
@@ -81,7 +81,7 @@ pub struct KasirpkgHeader {
     pub version: u32,
     /// Store name (from settings).
     pub store_name: String,
-    /// OZ-POS version that created this export.
+    /// kasir.mu version that created this export.
     pub app_version: String,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
@@ -97,7 +97,7 @@ pub struct KasirpkgHeader {
 
 // ── Payload types ─────────────────────────────────────────────────────
 
-/// All data that can be exported from an OZ-POS store.
+/// All data that can be exported from a kasir.mu store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KasirpkgPayload {
     /// Product records.

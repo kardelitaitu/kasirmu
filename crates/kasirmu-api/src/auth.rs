@@ -1,4 +1,4 @@
-//! JSON Web Token generation and validation for the OZ-POS OpenAPI.
+//! JSON Web Token generation and validation for the kasir.mu OpenAPI.
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-api slice A: auth deep read; API-1 FIXED 25-07-26)
 crate: kasirmu-api | status: SAFE | lint: CLEAN

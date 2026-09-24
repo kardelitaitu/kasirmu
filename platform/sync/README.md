@@ -2,7 +2,7 @@
 
 # platform-sync
 
-Offline-first sync engine for OZ-POS. Provides an offline queue, HTTP transport, push/pull replication, and last-write-wins conflict resolution.
+Offline-first sync engine for kasir.mu. Provides an offline queue, HTTP transport, push/pull replication, and last-write-wins conflict resolution.
 
 When a retained pull anchor expires, both `SyncEngine` and the SQLite-backed
 `SyncDaemon` fetch the authoritative snapshot, import it transactionally, and
@@ -24,7 +24,7 @@ snapshot contracts. They use a disposable database and do not run as part of
 the normal unit-test suite:
 
 ```text
-docker run --name oz-pos-pg-sync-tdd --rm -d \
+docker run --name kasirmu-pg-sync-tdd --rm -d \
   -e POSTGRES_USER=ozsync -e POSTGRES_PASSWORD=ozsync \
   -e POSTGRES_DB=ozsync -p 127.0.0.1:15432:5432 postgres:16-alpine
 
@@ -35,7 +35,7 @@ PG_SYNC_TEST_URL=postgresql://ozsync:ozsync@127.0.0.1:15432/ozsync \
 The harness verifies real PostgreSQL `MIN(created_at)` anchor expiry,
 boolean/timestamp decoding in snapshots, and that credential verifier
 material is absent from the typed snapshot. The disposable container must be
-removed by the caller after the run (`docker stop oz-pos-pg-sync-tdd`).
+removed by the caller after the run (`docker stop kasirmu-pg-sync-tdd`).
 
 ## Architecture
 

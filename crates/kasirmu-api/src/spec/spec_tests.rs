@@ -99,7 +99,7 @@ fn every_base_ref_resolves() {
 #[test]
 fn local_spec_injects_loopback_server_and_title() {
     let spec = local_spec(3099);
-    assert_eq!(spec["info"]["title"], "OZ-POS Local Terminal API");
+    assert_eq!(spec["info"]["title"], "kasir.mu Local Terminal API");
     assert_eq!(spec["servers"][0]["url"], "http://127.0.0.1:3099");
     // Same shared path set as the base document.
     let base = base_spec();

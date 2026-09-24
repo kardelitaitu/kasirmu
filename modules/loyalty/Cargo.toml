@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Loyalty Module: customer loyalty program, tier-based earning multipliers, point redemption."
+description = "kasir.mu Loyalty Module: customer loyalty program, tier-based earning multipliers, point redemption."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

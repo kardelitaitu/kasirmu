@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS Tax Module: tax rate management, product/category tax assignments."
+description = "kasir.mu Tax Module: tax rate management, product/category tax assignments."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

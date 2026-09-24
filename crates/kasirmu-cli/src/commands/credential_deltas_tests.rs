@@ -533,7 +533,7 @@ fn a_database_with_no_settings_table_is_refused_naming_the_path() {
         "the refusal must name the path and the missing table, got: {msg}"
     );
     assert!(
-        msg.contains("oz backup"),
+        msg.contains("kasir backup"),
         "the refusal must name the way to take a copy, got: {msg}"
     );
 
@@ -577,7 +577,7 @@ fn the_report_keeps_ledger_and_settings_totals_apart_and_says_why() {
     }
     assert!(
         HELP_BYTES_NOT_CONTENT.contains("journal_mode=WAL")
-            && HELP_BYTES_NOT_CONTENT.contains("oz backup"),
+            && HELP_BYTES_NOT_CONTENT.contains("kasir backup"),
         "the byte-level caveat must name the pragma and the copy command"
     );
     assert!(
@@ -624,7 +624,7 @@ fn a_missing_db_path_is_refused_and_not_created() {
         "the refusal must say the create is the reason: {msg}"
     );
     assert!(
-        msg.contains("oz backup"),
+        msg.contains("kasir backup"),
         "the refusal must name the way to inspect a live store safely: {msg}"
     );
     assert!(

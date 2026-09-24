@@ -23,7 +23,7 @@ pub enum LogFormat {
     Json,
 }
 
-/// Centralised configuration for the OZ-POS cloud sync server.
+/// Centralised configuration for the kasir.mu cloud sync server.
 ///
 /// Construct with [`CloudServerConfig::from_env`]; pass by reference to
 /// every module that needs environment-derived settings.

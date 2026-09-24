@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "OZ-POS CRM Module: customer management, loyalty tracking, purchase history."
+description = "kasir.mu CRM Module: customer management, loyalty tracking, purchase history."
 
 # Inherits [workspace.lints] from the root Cargo.toml (missing_docs = warn).
 [lints]

@@ -2,7 +2,7 @@
 
 # kasirmu-payment
 
-Payment processor abstraction for OZ-POS.
+Payment processor abstraction for kasir.mu.
 
 ## Status
 

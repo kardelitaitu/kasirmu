@@ -1,6 +1,6 @@
 //! Well-known settings keys.
 
-/// Store display name. Default: `"OZ-POS Store"`.
+/// Store display name. Default: `"kasir.mu Store"`.
 pub const STORE_NAME: &str = "store.name";
 /// Store street address (printed on receipts).
 pub const STORE_ADDRESS: &str = "store.address";

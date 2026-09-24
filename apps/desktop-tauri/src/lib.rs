@@ -1437,7 +1437,7 @@ pub fn run() {
     // Kernel shutdown happens in AppState::drop() — see state.rs.
 
     if let Err(e) = result {
-        tracing::error!(error = %e, "OZ-POS exited with error");
+        tracing::error!(error = %e, "kasir.mu exited with error");
         std::process::exit(1);
     }
 }

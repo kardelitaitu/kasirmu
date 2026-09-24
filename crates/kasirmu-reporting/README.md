@@ -2,7 +2,7 @@
 
 # kasirmu-reporting
 
-Analytics and CSV export engine for OZ-POS.
+Analytics and CSV export engine for kasir.mu.
 
 ## Status
 

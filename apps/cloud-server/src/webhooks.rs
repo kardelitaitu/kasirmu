@@ -189,7 +189,7 @@ fn plan_for_subscription_status(status: Option<&str>) -> Option<kasirmu_core::Te
     }
 }
 
-/// Resolve the OZ-POS tenant for a subscription event.
+/// Resolve the kasir.mu tenant for a subscription event.
 ///
 /// Prefers the `tenant_id` metadata set on the Checkout Session / subscription
 /// (Stripe forwards object metadata onto the subscription). Falls back to the

@@ -8,7 +8,7 @@ next: WeightScale discovery path still open; otherwise stable | perf: N/A
 // unsafe addition requires an explicit, narrowly-scoped reviewable allow.
 #![deny(unsafe_code)]
 
-//! Hardware Abstraction Layer for OZ-POS.
+//! Hardware Abstraction Layer for kasir.mu.
 //!
 //! `kasirmu-hal` is the seam between business logic and physical devices.
 //! Business code only ever sees the trait (`BarcodeScanner`,

@@ -5,10 +5,10 @@ findings: 0 unsafe blocks. Security surfaces verified: auth.rs Argon2id with per
 next: none — files carry current stamps from 25-07-26 / 31-08-26 audits | perf: N/A
 */
 
-//! Platform Core — shared infrastructure for OZ-POS.
+//! Platform Core — shared infrastructure for kasir.mu.
 //!
 //! This crate provides reusable infrastructure services that are
-//! consumed by all other crates and modules in the OZ-POS workspace:
+//! consumed by all other crates and modules in the kasir.mu workspace:
 //!
 //! - [`database`] — migration runner and connection pool
 //! - [`auth`] — PIN hashing, verification, and login session types

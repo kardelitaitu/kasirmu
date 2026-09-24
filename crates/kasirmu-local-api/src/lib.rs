@@ -1,4 +1,4 @@
-//! Headless loopback REST API for OZ-POS, extracted from
+//! Headless loopback REST API for kasir.mu, extracted from
 //! `apps/desktop-tauri/src/local_api.rs` (Agent 1, Phase 1.2).
 //!
 //! Owns the settings-driven enable/port/secret resolution, the dedicated

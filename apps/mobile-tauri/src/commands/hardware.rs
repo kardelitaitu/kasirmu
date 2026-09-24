@@ -244,7 +244,8 @@ pub async fn print_sales_receipt_scoped(
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
         let conn = &*db_guard;
-        let store_name = Settings::get_store_name(&conn)?.unwrap_or_else(|| "OZ-POS Store".into());
+        let store_name =
+            Settings::get_store_name(&conn)?.unwrap_or_else(|| "kasir.mu Store".into());
         let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
         let store_tax_id = Settings::get_store_tax_id(&conn)?;
         let decimals = Settings::get_receipt_decimal_separator(&conn)?;

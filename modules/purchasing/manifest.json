@@ -3,7 +3,7 @@
   "name": "Purchasing",
   "version": "0.1.0",
   "description": "Supplier records, purchase orders, goods receipt, and landed-cost updates. Stub: lifecycle only, domain logic not yet migrated.",
-  "author": "OZ-POS contributors",
+  "author": "kasir.mu contributors",
   "dependencies": ["inventory"],
   "permissions": [
     "purchasing:view",

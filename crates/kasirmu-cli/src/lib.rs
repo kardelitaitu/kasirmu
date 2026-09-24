@@ -6,10 +6,10 @@ next: None | perf: CLI runs are ephemeral; no long-lived allocations.
 */
 #![deny(unsafe_code)]
 
-//! Command-line tools for OZ-POS — migrations, backup, export, smoke tests.
+//! Command-line tools for kasir.mu — migrations, backup, export, smoke tests.
 //!
 //! `kasirmu-cli` exposes the maintenance operations a merchant or operator runs
-//! from a terminal: `oz migrate`, `oz backup`, `oz export`, `oz smoke`.
+//! from a terminal: `kasir migrate`, `kasir backup`, `kasir export`, `kasir smoke`.
 //!
 //! The library target holds all business logic so `cargo-llvm-cov` can
 //! attribute coverage to the crate.

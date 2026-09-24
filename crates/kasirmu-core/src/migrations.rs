@@ -4,7 +4,7 @@ crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: forward-only contract documented; registry<->filesystem parity test pins completeness; test fresh_db snapshots via backup API with justified unwraps (test-harness scope); note: "// SAFETY:" comments here annotate safe code — recurring mislabel pattern (COR-6, with PAY-10)
 next: reword COR-6 comments | perf: N/A
 */
-//! Migration definitions for OZ-POS.
+//! Migration definitions for kasir.mu.
 //!
 //! Migrations are `.sql` files under `crates/kasirmu-core/migrations/`. They are
 //! embedded at compile time via [`include_str!`] and run in the

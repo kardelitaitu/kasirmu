@@ -88,7 +88,7 @@ pub fn run_seed_demo(conn: &Connection, args: &SeedDemoArgs) -> Result<()> {
     }
     if !args.all && !args.retail && !args.restaurant {
         eprintln!("No slice selected. Use --retail, --restaurant, or --all.");
-        eprintln!("Example: oz seed-demo --all --days 90");
+        eprintln!("Example: kasir seed-demo --all --days 90");
     }
 
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
@@ -158,7 +158,7 @@ fn seed_store_databases(
 
     if !found {
         eprintln!(
-            "\nNote: no store-*.sqlite files found in {} — per-store databases will be\ncreated lazily when the app runs. Run `oz seed-demo --all --days 90` again after\nopening a workspace in the app to populate newly-created store databases.",
+            "\nNote: no store-*.sqlite files found in {} — per-store databases will be\ncreated lazily when the app runs. Run `kasir seed-demo --all --days 90` again after\nopening a workspace in the app to populate newly-created store databases.",
             db_dir.display()
         );
     }

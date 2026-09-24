@@ -7,7 +7,7 @@ next: move inline tests to features_tests.rs (COR-33); propagate guard query err
 */
 //!
 //! The [`Feature`] enum defines all 32 toggleable features in the
-//! OZ-POS framework. A [`FeatureRegistry`] holds the currently-active
+//! kasir.mu framework. A [`FeatureRegistry`] holds the currently-active
 //! set and provides helpers for enabling/disabling flags with automatic
 //! dependency resolution.
 //!
@@ -21,7 +21,7 @@ use std::collections::HashSet;
 
 use rusqlite::Connection;
 
-/// Every toggleable feature in the OZ-POS framework.
+/// Every toggleable feature in the kasir.mu framework.
 ///
 /// Variants are in logical groups: core, payments, products, staff,
 /// hardware, business rules, scaling, and advanced. The order is stable;

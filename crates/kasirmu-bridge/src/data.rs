@@ -633,7 +633,7 @@ async fn export_data_direct(
 
     let store_name = store
         .get_store_name()?
-        .unwrap_or_else(|| "OZ-POS Store".into());
+        .unwrap_or_else(|| "kasir.mu Store".into());
 
     let features: HashMap<String, String> = store
         .load_features()

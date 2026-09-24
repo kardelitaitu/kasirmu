@@ -5,7 +5,7 @@ findings: 2 actual unsafe blocks verified — both `unsafe impl Send/Sync for Lu
 next: none — crate stable | perf: N/A
 */
 
-//! Embedded Lua scripting runtime for OZ-POS.
+//! Embedded Lua scripting runtime for kasir.mu.
 //!
 //! `kasirmu-lua` lets merchants customize business rules, promotions, and
 //! order validation at runtime without recompiling the Rust core.

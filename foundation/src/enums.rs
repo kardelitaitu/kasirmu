@@ -1,4 +1,4 @@
-//! Shared enums for the OZ-POS domain model.
+//! Shared enums for the kasir.mu domain model.
 /*
 last audited 25-07-26 by RSA-Agent (foundation slice E: enums deep read)
 crate: foundation | status: SAFE | lint: CLEAN

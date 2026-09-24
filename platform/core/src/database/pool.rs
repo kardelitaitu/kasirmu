@@ -6,7 +6,7 @@ findings: clean single-connection Mutex pool with WAL/FK pragmas, poison-safe lo
 next: none | perf: correct for SQLite write serialization
 */
 //!
-//! OZ-POS uses SQLite, which does not benefit from a multi-connection
+//! kasir.mu uses SQLite, which does not benefit from a multi-connection
 //! pool (write concurrency is serialised at the file level). This pool
 //! wraps a single [`rusqlite::Connection`] behind a [`Mutex`] so that
 //! multiple threads can safely access the database.

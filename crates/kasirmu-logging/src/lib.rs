@@ -4,7 +4,7 @@ crate: kasirmu-logging | status: SAFE | lint: CLEAN
 findings: 3 actual unsafe blocks verified (syslog: openlog + syslog; eventlog: OutputDebugStringW) — all with SAFETY comments and valid CString/wide-string guards. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
 next: none | perf: N/A
 */
-//! Structured logging facade for OZ-POS.
+//! Structured logging facade for kasir.mu.
 //!
 //! `kasirmu-logging` wraps the `tracing` ecosystem with context-tagged
 //! record format, file + stdout writers, log rotation, and platform-
@@ -207,7 +207,7 @@ fn cleanup_old_log_files(dir: &str, file_prefix: &str, retention_days: u32) {
 /// # Example
 ///
 /// ```no_run
-/// kasirmu_logging::init_with_file("logs", "oz-pos", 30);
+/// kasirmu_logging::init_with_file("logs", "kasirmu", 30);
 /// ```
 pub fn init_with_file(log_dir: &str, file_prefix: &str, retention_days: u32) {
     try_init_with_file(log_dir, file_prefix, retention_days)

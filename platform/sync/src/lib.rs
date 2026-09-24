@@ -1,4 +1,4 @@
-//! OZ-POS Sync Engine
+//! kasir.mu Sync Engine
 /*
 last audited DD-MM-YY by DSH-Agent (re-review)
 crate: platform-sync | status: SAFE | lint: CLEAN

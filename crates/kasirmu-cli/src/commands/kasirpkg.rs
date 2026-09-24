@@ -229,7 +229,7 @@ pub(crate) fn run_export_kasirpkg(
 
     let store_name = store
         .get_store_name()?
-        .unwrap_or_else(|| "OZ-POS Store".into());
+        .unwrap_or_else(|| "kasir.mu Store".into());
 
     eprintln!("  encrypting with Argon2id + AES-256-GCM...");
     let kasirpkg_bytes = export_kasirpkg(

@@ -1,4 +1,4 @@
-//! Shared traits for the OZ-POS module system.
+//! Shared traits for the kasir.mu module system.
 /*
 last audited 25-07-26 by RSA-Agent (foundation slice E: contracts deep read)
 crate: foundation | status: SAFE | lint: CLEAN
@@ -22,7 +22,7 @@ pub type ModuleResult<T = ()> = Result<T, anyhow::Error>;
 
 /// A deployable feature module.
 ///
-/// Each module in OZ-POS implements this trait to participate in the
+/// Each module in kasir.mu implements this trait to participate in the
 /// module lifecycle managed by the Kernel (see `platform/kernel`).
 pub trait Module: Debug + Send + Sync {
     /// Stable identifier for this module (e.g. `"sales"`, `"inventory"`).

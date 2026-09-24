@@ -6,7 +6,7 @@ next: none | perf: N/A
 */
 //! Domain error type for `kasirmu-core`.
 //!
-//! Library crates in OZ-POS use `thiserror` to define a typed error enum
+//! Library crates in kasir.mu use `thiserror` to define a typed error enum
 //! so consumers can match on variants. The enum is `#[non_exhaustive]`
 //! so we can add variants without breaking semver.
 

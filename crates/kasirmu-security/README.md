@@ -3,7 +3,7 @@
 
 # kasirmu-security
 
-TLS configuration, PAN masking, and OS credential-store helpers for OZ-POS.
+TLS configuration, PAN masking, and OS credential-store helpers for kasir.mu.
 
 > This headline, and the two paragraphs below, are mirrored from the crate module
 > doc in `src/lib.rs` rather than written fresh, so the README and the doc cannot

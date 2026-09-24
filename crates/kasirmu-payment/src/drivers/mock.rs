@@ -226,7 +226,7 @@ impl PaymentProcessor for MockPaymentProcessor {
     }
 
     fn device_info(&self) -> DeviceInfo {
-        DeviceInfo::new("OZ-POS", "Mock Payment Processor", "0000-0000")
+        DeviceInfo::new("kasir.mu", "Mock Payment Processor", "0000-0000")
     }
 }
 

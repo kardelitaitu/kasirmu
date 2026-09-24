@@ -1,4 +1,4 @@
-//! Shared error types used across the OZ-POS framework.
+//! Shared error types used across the kasir.mu framework.
 
 use thiserror::Error;
 

@@ -9,12 +9,12 @@ fn write_debug_string_empty_message() {
 
 #[test]
 fn write_debug_string_ascii_message() {
-    write_debug_string("[INF] OZ-POS: test message");
+    write_debug_string("[INF] kasir.mu: test message");
 }
 
 #[test]
 fn write_debug_string_unicode_message() {
-    write_debug_string("[INF] OZ-POS: café €10 — símbolos");
+    write_debug_string("[INF] kasir.mu: café €10 — símbolos");
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn eventlog_layer_formats_info_event() {
 #[test]
 fn eventlog_layer_formats_all_levels() {
     let layer = EventLogLayer {
-        source: "OZ-POS".into(),
+        source: "kasir.mu".into(),
     };
     let subscriber = registry().with(layer);
     tracing::subscriber::with_default(subscriber, || {

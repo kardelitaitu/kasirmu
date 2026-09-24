@@ -155,7 +155,7 @@ pub mod builtin_roles {
 
 /// Well-known seed user ids.
 pub mod seed_users {
-    /// Default admin user created by `oz init-db`.
+    /// Default admin user created by `kasir init-db`.
     pub const ADMIN: &str = "user-admin";
 }
 

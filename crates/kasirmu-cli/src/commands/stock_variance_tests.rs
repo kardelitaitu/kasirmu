@@ -1,4 +1,4 @@
-//! Tests for `oz stock-variance`.
+//! Tests for `kasir stock-variance`.
 //!
 //! The report itself is already verified in core (`stock_variance_tests.rs`), so
 //! these tests are about the SURFACE, not about re-deriving the query: that it
@@ -245,7 +245,7 @@ fn a_missing_db_path_is_refused_and_not_created() {
         "must say the create is the reason: {msg}"
     );
     assert!(
-        msg.contains("oz backup"),
+        msg.contains("kasir backup"),
         "must name the safe way to inspect a live store: {msg}"
     );
 

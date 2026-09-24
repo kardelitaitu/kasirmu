@@ -5,7 +5,7 @@ findings: zero unsafe verified (#![deny(unsafe_code)] holds); baseline claims re
 next: none — all open COR findings from the closed campaign resolved | perf: N/A
 */
 
-//! Domain types for OZ-POS.
+//! Domain types for kasir.mu.
 //!
 //! `kasirmu-core` is the foundation crate of the framework. It contains the
 //! types every other crate builds on: [`Money`] and [`Currency`] for
@@ -72,7 +72,7 @@ pub mod gift_card;
 pub mod inventory;
 /// Inventory audit transactions (ADR-18 §9a + §9b; ADR-19 §3.2).
 pub mod inventory_transaction;
-/// OZ-POS package metadata reader (`.kasirpkg` bundles).
+/// kasir.mu package metadata reader (`.kasirpkg` bundles).
 pub mod kasirpkg;
 /// Kitchen Display System order pipeline.
 pub mod kds;

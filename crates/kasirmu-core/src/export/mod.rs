@@ -91,7 +91,7 @@ pub struct ExportMetadata {
     pub tenant_id: String,
     /// Store profile name.
     pub store_name: String,
-    /// Version of OZ-POS that generated this export.
+    /// Version of kasir.mu that generated this export.
     pub version: String,
 }
 

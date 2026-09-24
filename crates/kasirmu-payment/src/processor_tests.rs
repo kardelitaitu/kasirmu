@@ -90,6 +90,6 @@ async fn receipt_returns_data() {
 async fn device_info_returns_mock_identity() {
     let proc = MockPaymentProcessor::new();
     let info = proc.device_info();
-    assert_eq!(info.vendor, "OZ-POS");
+    assert_eq!(info.vendor, "kasir.mu");
     assert_eq!(info.model, "Mock Payment Processor");
 }

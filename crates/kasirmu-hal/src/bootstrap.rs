@@ -7,7 +7,7 @@ next: implement HID POS reads in drivers/scale.rs, then add vid/pid to TerminalP
 //! Registry bootstrap — turning saved hardware configuration into drivers.
 //!
 //! [`HardwareConfig`] is the HAL's own description of what an operator
-//! configured. An app reads its persistence layer (for OZ-POS that is
+//! configured. An app reads its persistence layer (for kasir.mu that is
 //! `platform_core::terminal_profile::TerminalProfile`) and maps it here;
 //! the HAL never reaches into a settings table.
 //!
