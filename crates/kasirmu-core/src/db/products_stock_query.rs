@@ -438,6 +438,27 @@ impl Store<'_> {
             new_qty,
             &now,
         )?;
+
+        // Invalidate the read cache, exactly as the non-tx sibling
+        // `adjust_stock_with_reason` does. Without this the sync-replay path
+        // left a STALE cached quantity: `get_stock` serves the cache first and
+        // POPULATES it on miss, so one read before a replayed adjustment was
+        // enough to poison it — measured 10 served against a database of 6, a
+        // phantom 4 units a register would sell against stock it does not have.
+        // The invalidation has to happen even though the write is inside the
+        // caller transaction: `get_stock` consults the cache before it ever
+        // reaches the database, so a cache entry outliving the transaction is
+        // read regardless of what the transaction did.
+        if let Some(cache) = &self.cache {
+            cache.invalidate_inventory(&product_id);
+            cache.publish_inventory_change(
+                &product_id,
+                sku,
+                new_qty,
+                self.terminal_id.as_deref(),
+            );
+        }
+
         Ok(new_qty)
     }
 
