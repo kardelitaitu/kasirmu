@@ -478,10 +478,13 @@ pub async fn test_sync_connection(
     let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
     match resolved {
         Some(u) => Ok(sync_client::ping_server(&u).await),
+        // No URL to probe, so no credential check was made: `auth: None` is the
+        // documented value for a reachability-only answer (`PingResult::auth`).
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }
@@ -513,10 +516,13 @@ pub async fn test_sync_connection_scoped(
     let resolved = resolve_sync_probe_url(None, saved, allow_local_fallback);
     match resolved {
         Some(u) => Ok(sync_client::ping_server(&u).await),
+        // No URL to probe, so no credential check was made: `auth: None` is the
+        // documented value for a reachability-only answer (`PingResult::auth`).
         None => Ok(sync_client::PingResult {
             ok: false,
             status: "No server URL configured".into(),
             latency_ms: None,
+            auth: None,
         }),
     }
 }
