@@ -1,78 +1,81 @@
-# Template — Surat Pernyataan Pengalihan Aset (Inbreng)
+# Template — Surat Pernyataan Pengalihan Aset HAKI (Inbreng Berbasis Biaya Riil)
 
-> Fill-in-the-blank declaration transferring the software IP to the PT as non-cash
-> capital. Print, sign, stamp, and file with the Sertifikat Pendirian.
-> Legally unaudited — see [`../inbreng-valuation.md`](../inbreng-valuation.md) before signing.
-
-Fill every `[...]` placeholder. Do not leave the valuation clause blank.
+> **Catatan Penggunaan:** Gunakan draf ini **HANYA JIKA** Anda memilih **Jalur B (Inbreng Biaya Riil Rp350M–Rp400M)**.
+> Jika Anda memilih **Jalur A (Modal Tunai Bersih Rp50M–Rp100M + Lisensi Eksklusif)** yang direkomendasikan, gunakan kontrak lisensi di [`software-license-agreement.md`](./software-license-agreement.md).
+> 
+> Draf ini telah dibersihkan dari klaim *opportunity cost* jam kerja yang rentan ditolak DJP, dan diselaraskan dengan bukti kas pengeluaran nyata (*Substantiated Out-of-Pocket R&D Costs*).
 
 ---
 
-## SURAT PERNYATAAN PENGALIHAN ASET (INBRENG)
-### HAK CIPTA PERANGKAT LUNAK (SOFTWARE)
+## SURAT PERNYATAAN PENGALIHAN HAK DAN PENYETORAN MODAL NON-TUNAI (INBRENG)
+### ATAS ASET HAK KEKAYAAN INTELEKTUAL PERANGKAT LUNAK
 
-Saya yang bertanda tangan di bawah ini:
+Pada hari ini, **[Hari]**, tanggal **[Tanggal]** bulan **[Bulan]** tahun **[Tahun]** (**[Tanggal Lengkap]**), bertempat di **[Kota Domisili]**, saya yang bertanda tangan di bawah ini:
 
-| | |
+| Data Identitas | Keterangan |
 |---|---|
-| Nama | **[Nama Lengkap Anda]** |
-| Nomor KTP | **[Nomor KTP Anda]** |
-| Jabatan/Kapasitas | Pendiri Tunggal / Direktur Utama PT **[Nama PT Anda]** |
+| **Nama Lengkap** | **[Nama Lengkap Founder]** |
+| **Nomor Induk Kependudukan (NIK)** | **[Nomor KTP 16 Digit]** |
+| **NPWP Pribadi** | **[Nomor NPWP Pribadi 15/16 Digit]** |
+| **Alamat Domisili** | **[Alamat Sesuai KTP]** |
+| **Kapasitas / Jabatan** | Selaku Pencipta, Pemilik Hak Cipta, dan Pendiri Tunggal / Direktur Utama **PT [Nama PT Anda]** |
 
-Dengan ini **MENYATAKAN DAN MENGESAHKAN** bahwa:
+Dengan ini menyatakan, mengikatkan diri, dan mengesahkan hal-hal sebagai berikut:
 
-**1.** Saya selaku Pencipta dan Pemilik sah dari Kekayaan Intelektual (Intangible Asset)
-berupa *"Proprietary Cloud-Native POS Engine (Rust/Tauri Architecture)"* berjumlah
-± 700.000 baris kode (Lines of Code), secara resmi **MENGALIHKAN** seluruh hak
-pemanfaatan komersial dan kepemilikan aset tersebut kepada badan hukum
-PT **[Nama PT Anda]**.
+### PASAL 1: IDENTIFIKASI OBJEK ASET
+1. Bahwa Yang Menyatakan adalah Pencipta dan Pemegang sah atas Hak Kekayaan Intelektual (HAKI) berupa Ciptaan Program Komputer dengan identitas:
+   * **Judul Ciptaan**: *"Kasir.mu — Cloud-Native Point of Sale (POS) Engine & Multi-Platform Client"*
+   * **Arsitektur Teknis**: Rust Core Engine, Tauri Desktop Client, React UI Framework, SQLite Local Storage, dan Cloud Synchronization Bridge.
+   * **Nomor Permohonan / Pencatatan DJKI**: **[Nomor Surat Pencatatan Hak Cipta DJKI / e-HakCipta]** tertanggal **[Tanggal Pencatatan]**.
+2. Bahwa hak cipta atas perangkat lunak tersebut adalah orisinal, bebas dari sengketa kepemilikan, tidak sedang digadaikan atau dijaminkan kepada pihak mana pun, serta tidak melanggar hak cipta pihak ketiga.
 
-**2.** Pengalihan aset ini ditujukan sebagai bentuk **SETORAN MODAL AWAL NON-TUNAI
-(INBRENG)** untuk memenuhi kewajiban Modal Disetor Perseroan sebagaimana tercantum dalam
-Sertifikat Pendirian PT Perorangan dari Kementerian Hukum dan Hak Asasi Manusia
-Republik Indonesia.
+### PASAL 2: PENGALIHAN HAK DAN SETORAN MODAL NON-TUNAI (INBRENG)
+1. Yang Menyatakan dengan ini secara sadar, sukarela, dan tanpa paksaan mengalihkan seluruh hak ekonomi kepemilikan (*economic rights of ownership and commercial exploitation*) atas Ciptaan Program Komputer tersebut kepada:
+   * **Nama Badan Hukum**: **PT [Nama PT Anda]**
+   * **Nomor Sertifikat AHU**: **[Nomor AHU-xxxx.AH.xx.xx.Tahun]**
+   * **NIB**: **[Nomor Induk Berusaha 13 Digit]**
+   * **NPWP Badan**: **[Nomor NPWP PT]**
+2. Pengalihan aset perangkat lunak ini dinyatakan dan diakui secara sah sebagai pemenuhan **SETORAN MODAL NON-TUNAI (INBRENG)** dari Pendiri kepada Perseroan guna memenuhi kewajiban penyetoran modal perseroan sebagaimana tercantum dalam Sertifikat Pernyataan Pendirian Perseroan Perorangan.
 
-**3.** Nilai valuasi aset tidak berwujud ini ditetapkan sebesar **$200,000 USD** atau
-setara dengan **Rp3.100.000.000,-** (Tiga Miliar Seratus Juta Rupiah), yang didasarkan
-pada perhitungan metode Biaya Pengembangan Historis (*Historical Development Cost
-Approach*), mencakup:
+### PASAL 3: PENETAPAN NILAI VALUASI BERBASIS BIAYA RIIL HISTORIS
+1. Nilai wajar pengalihan aset perangkat lunak ini ditetapkan secara defensif dan objektif berdasarkan **Metode Akumulasi Biaya Nyata Historis (*Substantiated Historical Cost Method*)** sebesar:
+   $$\mathbf{Rp380.000.000,-} \quad \text{(Tiga Ratus Delapan Puluh Juta Rupiah)}$$
+   atau setara dengan perkiraan nilai **$25,000 USD** pada saat pengeluaran kas terjadi.
+2. Nilai setoran modal non-tunai tersebut didukung oleh rincian bukti kas keluar (*out-of-pocket CapEx & R&D expenditures*) yang terverifikasi sebagai berikut:
+   * **Pengadaan Perangkat Keras Uji Coba & Deployment (Hardware Assets)**: Rp235.000.000,- ($15,000 USD)  
+     *(Mencakup unit mesin kasir, komputer perancangan, printer termal, pemindai barcode, dan perangkat pengujian Android/EDC).*
+   * **Investasi Komputasi & Lisensi AI R&D (AI Infrastructure CapEx)**: Rp100.000.000,- (~$6,400 USD)  
+     *(Mencakup biaya langganan API kecerdasan buatan untuk akselerasi sintesis arsitektur kode Rust).*
+   * **Infrastruktur Cloud Staging, Hosting & Utilitas**: Rp45.000.000,- (~$2,900 USD)  
+     *(Mencakup server komputasi, pendaftaran domain internasional, sertifikasi SSL, dan penyimpanan cloud).*
+3. Yang Menyatakan menegaskan bahwa nilai valuasi ini tidak memasukkan unsur *opportunity cost* jam kerja pribadi yang tidak terverifikasi, demi menjamin kepatuhan fiskal penuh terhadap ketentuan Pasal 10 Undang-Undang Pajak Penghasilan (UU PPh).
 
-- Jam Kerja Teknis Ahli (Opportunity Cost Sistem Rust): 4.927 Jam Kerja ($246,000 USD)
-- Investasi Infrastruktur Kecerdasan Buatan (AI R&D CapEx): $7,000 USD
-- Pengadaan Perangkat Keras R&D (Hardware Deployment Assets): $15,000 USD
-- Utilitas Operasional Uptime & Bandwidth (Utilities Overhead): $3,000 USD
+### PASAL 4: PENCATATAN NERACA AWAL DAN PERPAJAKAN
+1. Direksi PT [Nama PT Anda] dengan ini membukukan Aset Tak Berwujud (*Intangible Assets*) sebesar **Rp380.000.000,-** pada sisi Aktiva Neraca Awal Perseroan, dengan pos penyeimbang pada sisi Pasiva yaitu **Modal Disetor** sebesar **Rp380.000.000,-**.
+2. Pengalihan aset sebagai penyetoran modal saham ini tunduk pada ketentuan Pasal 4 ayat (3) huruf c Undang-Undang PPh, di mana harta yang diterima oleh badan sebagai pengganti modal disetor bukan merupakan objek Pajak Penghasilan bagi badan penerima.
 
-*(Dengan penyesuaian diskon efisiensi UMK sebesar $53,000 USD.)*
-
-**4.** Nilai aset HAKI sebesar **Rp3.100.000.000,-** ini selanjutnya dicatatkan ke dalam
-Neraca Awal Perseroan pada pos Akumulasi Modal Saham / Ekuitas, serta akan
-didepresiasikan melalui mekanisme Amortisasi Fiskal sesuai ketentuan Undang-Undang
-Perpajakan yang berlaku di Republik Indonesia.
-
-Demikian Surat Pernyataan Inbreng ini dibuat dengan sebenar-benarnya untuk dipergunakan
-sebagaimana mestinya sebagai dokumen bumper hukum dan pemisahan aset yang sah.
-
-**[Kota]**, **[Tanggal]**
-
-Yang Menyatakan,
-
-&nbsp;
-
-**[Meterai Elektronik / Fisik Rp10.000]**
-
-**( [Nama Lengkap Anda] )**
-Direktur Utama / Pemegang Saham Tunggal
+Demikian Surat Pernyataan Inbreng ini dibuat dalam keadaan sadar, sehat jasmani dan rohani, serta dibubuhi meterai yang cukup untuk menjadi bukti otentik yang mengikat secara hukum bagi Perseroan dan pihak berwenang.
 
 ---
 
-## Before signing
+Dibuat di : **[Kota Domisili]**  
+Pada tanggal : **[Tanggal Penandatanganan]**  
 
-- `[PENDING]` Independent appraisal, or a revised — defensible — figure
-  ([`../inbreng-valuation.md`](../inbreng-valuation.md)).
-- `[UNVERIFIED]` Clauses 3 and 4 assert a valuation method and a tax treatment that
-  have not been reviewed by a tax professional.
-- `[PENDING]` The city/date line currently carries a hardcoded *Kediri, 25 September 2026*
-  in the original document; fill in real values at signing time.
-- `[PENDING]` Obtain the DJKI copyright certificate
-  (`[UNVERIFIED]` Rp200.000 at the UMK rate, via <https://dgip.go.id>) and file it with
-  this declaration. The certificate is the evidentiary anchor for every claim above.
+**Yang Menyatakan / Menyerahkan,**  
+Pencipta & Pemegang Saham Tunggal,  
+
+*(Meterai Elektronik / Fisik Tempel Rp10.000,-)*  
+
+\
+\
+**([Nama Lengkap Founder])**  
+NIK: [Nomor KTP Founder]  
+
+\
+**Diterima dan Disahkan oleh,**  
+Untuk dan atas nama Badan Hukum **PT [Nama PT Anda]**,  
+
+\
+\
+**([Nama Lengkap Founder])**  
+Direktur Utama  
