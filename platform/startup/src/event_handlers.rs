@@ -83,15 +83,32 @@ impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
 
         // P-2: Sale completions are Critical priority — they must
         // propagate before inventory or settings changes.
+        //
+        // TENANT comes from the EVENT, never a hardcoded "default".
+        // `enqueue_offline_priority` pins `"default"`, and the `SaleCompleted`
+        // event has always carried `store_id` — so a multi-store sale settled
+        // through this lane was filed under `"default"` and the queue, which is
+        // read per tenant, would never push it. `enqueue_offline_scoped` is the
+        // combined tenant+priority entry point that exists for exactly this
+        // (`offline.rs` OFF-09); the in-transaction lane already uses the same
+        // shape, and `enqueue_offline_in_tx_commits_with_its_transaction_and_
+        // keeps_the_tenant` pins it with the comment that the hardcoded helper
+        // "would reintroduce the multi-store bug this one avoids".
+        //
+        // An absent `store_id` falls back to "default", which is the same
+        // behaviour this call had unconditionally — so a single-store install is
+        // unchanged, and only the multi-store case is repaired.
+        let tenant_id = event.store_id.as_deref().unwrap_or("default");
         store
-            .enqueue_offline_priority("complete_sale", &payload, SyncPriority::Critical)
+            .enqueue_offline_scoped("complete_sale", &payload, tenant_id, SyncPriority::Critical)
             .map_err(|e| {
                 error!(
                     sale_id = %event.sale_id,
+                    tenant_id = %tenant_id,
                     error = %e,
                     "sync enqueuer: failed to enqueue completed sale"
                 );
-                anyhow::anyhow!("sync enqueuer: enqueue_offline_priority failed: {e}")
+                anyhow::anyhow!("sync enqueuer: enqueue_offline_scoped failed: {e}")
             })?;
 
         info!(
