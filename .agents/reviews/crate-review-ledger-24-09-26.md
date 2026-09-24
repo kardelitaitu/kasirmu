@@ -401,6 +401,68 @@ The already-committed `sync.rs:74` `clippy::collapsible_if` (from
 
 **Commit:** `cac8658c8` (BRIDGE-6, bridge).
 
+### Bridge sixth pass — 24-09-26 (authorization coverage)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-7 | MEDIUM | `src/hardware.rs` | **12 of the module's 13 `_scoped` commands authenticate but never authorize.** Every one calls `ctx.resolve_scope(session_token)?` (so the token must be valid and the account live) and then goes straight to the HAL registry or the store DB. Only `open_cash_drawer_scoped` (`:417`) carries a permission check (`PAYMENTS_CASH`). The ungated set includes the ones that matter: `print_receipt_scoped` (`:444`), `print_sales_receipt_scoped` (`:256`), `list_scanners_scoped` (`:576`), `start_scanner_scoped` (`:612`), `stop_scanner_scoped` (`:720`), `list_displays_scoped`, `display_show_scoped`, `display_clear_scoped`, `discover_hardware_scoped`. |
+
+**Why I am recording this as a coverage gap and NOT fixing it this round.**
+The module is internally CONSISTENT in the opposite direction from a bug: 12
+commands agree with each other, and the single gated one is the outlier. That
+is the signature of a deliberate historical policy (hardware access = any
+authenticated operator at a terminal), not of a forgotten line — and the
+doc comments on each ungated fn list only `InvalidSession` under `# Errors`,
+never `PermissionDenied`, i.e. the absence is documented rather than
+accidental. Changing 12 signatures-worth of behaviour is a product decision
+about who may open a till's drawer, print a receipt, or read a customer
+display — not a defect repair. The right first step is the one below, which
+turns the decision into a visible, checkable list.
+
+What IS unambiguously worth fixing is how the gap stayed invisible, and that
+is the second half of this finding:
+
+**The scoped-coverage gate cannot see this class of defect at all.**
+`scripts/verify-scoped-coverage.sh:175-177` decides a command is covered the
+moment a twin exists:
+
+```sh
+if echo "$scoped_funcs" | grep -q "^${fn_name}_scoped$"; then
+    continue
+fi
+```
+
+It never opens the twin. So the two HIGH/MEDIUM authorization holes this audit
+found by reading — BRIDGE-3 (a deactivated account minting a picker ticket)
+and BRIDGE-5 (an ungated pre-session screen listing) — are BOTH invisible to
+it, and so is every command in the table above. The gate enforces the naming
+convention, not the property the convention exists for. Its own header states
+the property correctly ("it authenticates a `session_token`, AND it resolves
+the *session's store*" and, in its example, "session + REPORTS_VIEW"); the
+implementation checks only the first half.
+
+**Recommended next action (not taken here — it is a gate change with its own
+blast radius):** teach the gate to assert that every `*_scoped` fn whose body
+touches the store or the HAL either calls a permission helper or appears in an
+explicit, reasoned allowlist of the shape the file already uses. Hardware's 12
+become one line of documented policy, and BRIDGE-3/BRIDGE-5 become
+unrepresentable. Flagged for a ruling rather than done unilaterally, because a
+new failing gate on a shared branch stops every other agent until it is
+satisfied.
+
+**Read this pass:** `subscription.rs` (758, full) and `tax.rs` (742, full) —
+both clean, and both are the positive control for the pattern: `tax.rs` routes
+all 8 scoped commands through one `require_tax_permission` helper with
+`SETTINGS_READ` on reads and `SETTINGS_EDIT` on writes, and `subscription.rs`
+fails closed on every axis (`build_entitlements` verifies the signature and
+returns `Entitlements::fail_closed` on a missing/tampered row rather than an
+error, because the UI renders gates open on error). Money in `tax.rs` is
+`rate_bps: i64` with zero float arithmetic.
+
+**Verified:** no code change this pass, so the suite state is unchanged from the
+fifth pass (`terminals::` + `workspaces::` 50 passed; the KDS failures are
+still a concurrent agent's uncommitted migration skew).
+
 
 
 
