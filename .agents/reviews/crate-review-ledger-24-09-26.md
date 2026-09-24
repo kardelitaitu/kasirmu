@@ -973,6 +973,55 @@ floor so it cannot pass by finding nothing. That is a substantive answer to the
 question the last pass raised, and it is the fourth round running whose conclusion
 is that the codebase's guard layer is already ahead of the audit.
 
+### Bridge sixteenth pass — 24-09-26 (I hardened my own guard, and it was evadable)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-11 | LOW | `src/pos_tests.rs:67` — the BRIDGE-8 source pin | **The guard I added in the sixth pass could be defeated by FORMATTING ALONE, so the discount-percent defect it pins was still reintroducible with the suite green.** It tested one LINE at a time; written as a multi-line call, no single line contains both `Percentage::new(` and `discount_percent as u8`, every predicate missed, and the test passed with the truncating cast restored. **Proven by doing exactly that** and watching it pass. |
+
+**How it was found.** The last pass's lesson was that this codebase's guards are
+ahead of the audit, so this pass inverted the question: instead of hunting
+defects, hunt guards that can pass by FINDING NOTHING. The named failure mode was
+already in the ledger — `license_writer_literals_...` calls its own predecessor
+"a decoration wearing a drift pin's name" — so the search was for a
+source-derived scan with no floor assertion. `pos_tests.rs` was one, and it was
+mine.
+
+**The evasive shape is ordinary rustfmt output, not a contrived attack:**
+
+```rust
+foundation::Percentage::new(
+    (args.discount_percent) as u8,
+)
+```
+
+**Fixed two ways, each proven load-bearing by disabling it:**
+
+1. **Whitespace-normalised.** The whole file is collapsed to one space-separated
+   string before matching, so the scan is independent of how rustfmt wraps the
+   expression. Verified: the evasive shape now FAILS the test (`pos.rs:90`).
+2. **A vacuity floor.** `assert!(call_sites >= 3)` — the clamp is defined once and
+   called at two doors. Verified: renaming the needle makes it FAIL with *"found 0
+   - the scan is reading a file that no longer spells it, so this test would pass
+   vacuously"*. Same discipline as `license_writer_literals_...`'s `>= 5`.
+
+**A hedge worth stating.** The scan is still a source PATTERN, so an unusual
+spelling could evade it — e.g. a cast through a local binding
+(`let d = args.discount_percent as u8;`). The floor does not catch that, because
+the helper still appears three times. It is a meaningful hardening, not a proof,
+and that limit belongs next to it rather than in a claim that the class is closed.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- pos::` → **59
+passed, 0 failed**, both new assertions green, both watched red when disabled.
+Clippy clean on the file.
+
+**Commit:** `14d1b444a` (BRIDGE-11, bridge).
+
+**Note on the tally.** Counted as a finding even though it is my own guard rather
+than shipped product code, because the CONSEQUENCE is live: an evadable pin leaves
+BRIDGE-8 (a money defect) reintroducible. A guard that cannot fail is worse than
+no guard, since it reads as coverage.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
