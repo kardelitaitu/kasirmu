@@ -4,6 +4,7 @@
 //! `build_from_config` is a stub.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::PaymentProcessorRegistry;
 use crate::drivers::mock::MockPaymentProcessor;
@@ -203,5 +204,82 @@ async fn fallback_chain_does_not_reach_the_second_processor_after_a_decline() {
         second_mock.authorize_calls(),
         0,
         "a declined card must NOT be re-presented to the next gateway"
+    );
+}
+
+// ── §8 row 6: the chain escalates past a breaker that is OPEN ──────────
+
+/// A processor whose breaker is `Open` fails fast, and the chain moves on.
+///
+/// **This is the design doc's §8 row 6** (`payment-resilience-design.md:222`),
+/// marked *"**yes** — not wired at all"*. The wiring itself is §4's decision, but
+/// the row's *claim* is testable without it: a decorated member of a chain must
+/// not stop the chain when its breaker is open, or one unhealthy gateway takes the
+/// whole method down and the second processor — the reason the chain exists — is
+/// never reached.
+///
+/// **Why it works, and why that is worth pinning rather than assuming.** §1.2(a) of
+/// the doc names the mechanism: the chain *"escalates to the next processor unless
+/// the class is `Terminal`"*, and an open breaker returns `PaymentError::Network`
+/// (`resilience.rs`), which classifies `Transient` (`error.rs:71`). So the two
+/// mechanisms compose correctly — but only by virtue of a classification that
+/// neither file states as a contract with the other. A future edit reclassifying
+/// the fail-fast error as `Terminal` would make every open breaker fatal to its
+/// whole chain, and nothing would say so.
+///
+/// This is the guard for that coupling.
+#[tokio::test]
+async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
+    let reg = PaymentProcessorRegistry::new();
+
+    let inner: Arc<dyn crate::PaymentProcessor> = Arc::new(
+        MockPaymentProcessor::builder().simulate_timeout(true).build(),
+    );
+    let config = crate::resilience::ResilientProcessorConfig {
+        max_retries: 0,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 2,
+        failure_threshold: 1,
+        cooldown_duration: Duration::from_secs(60),
+    };
+    let decorated: Arc<dyn crate::PaymentProcessor> = Arc::new(
+        crate::resilience::ResilientProcessor::with_config(inner.clone(), config),
+    );
+    let healthy: Arc<dyn crate::PaymentProcessor> = Arc::new(MockPaymentProcessor::new());
+
+    reg.register_method_fallback("qris", vec![decorated.clone(), healthy.clone()])
+        .await;
+
+    let currency = "USD".parse().unwrap();
+    let req = crate::PaymentRequest {
+        amount: foundation::Money::from_major(50, currency).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("chain-key".into()),
+    };
+
+    // First call: the decorator's inner times out, its breaker trips at threshold 1.
+    let first = reg
+        .execute_with_fallback("qris", |proc| {
+            let req_clone = req.clone();
+            async move { proc.authorize(&req_clone).await }
+        })
+        .await;
+    assert!(
+        first.is_ok(),
+        "the healthy second processor must be reached on the first call: {first:?}"
+    );
+
+    // The breaker is now OPEN, so the decorator fails fast WITHOUT calling its
+    // inner. The chain must still escalate — this is the row's actual subject.
+    let second = reg
+        .execute_with_fallback("qris", |proc| {
+            let req_clone = req.clone();
+            async move { proc.authorize(&req_clone).await }
+        })
+        .await;
+    assert!(
+        second.is_ok(),
+        "an OPEN breaker must not take the whole chain down: {second:?}"
     );
 }
