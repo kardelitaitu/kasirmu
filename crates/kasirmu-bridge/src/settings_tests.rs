@@ -2118,8 +2118,20 @@ async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
     )
     .await;
 
-    assert!(
-        matches!(result, Err(BridgeError::PermissionDenied(_))),
-        "a settings:edit holder scoped to store-a must be denied for store-b, got {result:?}"
-    );
+    // The DENIAL MESSAGE is the discriminator, and it is not decoration. Both gate
+    // forms answer `PermissionDenied` here, so a bare variant match cannot tell the
+    // scope-aware gate from the unscoped one: the unscoped form runs
+    // `require_permission` against the STORE db, and store dbs carry no `users` rows
+    // (identity lives only in the global db), so it denies for the wrong reason and a
+    // matches!() on the variant passes either way — proved by mutating this setter
+    // back to the unscoped form, which left a variant-only assertion GREEN. The
+    // scope-aware path is the one that names the scope:
+    // `crates/kasirmu-core/src/db/staff.rs:322`.
+    match result {
+        Err(BridgeError::PermissionDenied(message)) => assert!(
+            message.contains("out of scope"),
+            "the refusal must name the SCOPE (not a missing user row), got {message:?}"
+        ),
+        other => panic!("expected a scope denial, got {other:?}"),
+    }
 }
