@@ -1402,6 +1402,50 @@ on my side.
 
 **Commit:** `07f9e9515` (CORE-F).
 
+### Core thirty-first pass — 24-09-26 (the sibling sweep completed: 13 pairs, no defect)
+
+**No defect found, no code changed.** This pass finished the sweep the last three
+passes were working through: all 22 sibling pairs in `kasirmu-core` have now been
+compared. The remaining 13 are clean.
+
+| Pair | Verdict |
+|---|---|
+| `finalize_sale` / `_in_tx` | Identical logic; both apply customer stats under the same `changed == 1` guard |
+| `create_sale` / `_in_tx` | Both share `insert_sale_with_lines` and both run `validate_sale_money` |
+| `update_user` / `_in_tx` | The non-tx one DELEGATES to `_in_tx` — no second copy to drift |
+| `log_audit` / `_in_tx` | Both delegate to `insert_audit`; AUD-06 redaction holds for both |
+| `insert_stock_movement` / `_in_tx` | Byte-identical SQL (duplication, not a defect: the shared `_on` body exists and `_in_tx` does not call it) |
+| `require_permission` / `_scoped` | Both delegate to `authorize_with`; the scoped one adds the scope predicate |
+| `create_tax_rate` / `_scoped` | Both complete; TAX-02 (one transaction for clear-default + insert) holds in both |
+| `update_tax_rate` / `_scoped` | Both complete; TAX-03 (archived rows immutable) holds in both |
+| `pending_offline_count` / `_for_tenant` | Match |
+| `list_pending_offline` / `_for_tenant` | Match |
+| `mark_offline_failed` / `_for_tenant` | Match; both lenient no-op on a cross-tenant id, which the doc states |
+| `delete_offline_item` / `_for_tenant` | Match |
+| `enforce_pos_writable` / `_for_tenant` | Correct delegation; the no-row case is fail-open by design |
+
+**The sweep verdict, stated plainly.** Across 22 pairs it produced THREE findings —
+CORE-D (a dropped `status = pending` CAS guard on the tenant-scoped sync mark),
+CORE-E (a missing cache invalidation on the synced stock adjustment, HIGH) and
+CORE-F (a hardcoded tenant on the sale enqueue lane). The other 19 are correct,
+and 6 of them prevent divergence STRUCTURALLY rather than by care: the non-tx
+wrapper simply delegates to its `_in_tx` body (`update_user`), or both call one
+shared helper (`create_sale`, `log_audit`, `insert_stock_movement`,
+`require_permission`). **That delegation pattern is the durable fix** — it is what
+makes the three findings impossible rather than merely fixed, and it is the
+recommendation for any future pair.
+
+**A note on where the three findings clustered.** All three were in the pair sets
+that do NOT delegate (`adjust_stock*`, `mark_offline_*`, and the enqueue helpers
+in different crates). Three for three is a small sample, but the mechanism is not
+subtle: a pair that shares a body cannot diverge, and a pair that copies one can.
+That is worth stating as a rule for this repo rather than a coincidence.
+
+**Verified:** no source, test or script changed this pass, so no suite is
+affected. `git status` confirms nothing of mine is uncommitted.
+
+**No commit** beyond this ledger entry.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
