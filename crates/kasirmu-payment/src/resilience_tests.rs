@@ -199,3 +199,98 @@ async fn circuit_breaker_trips_and_fails_fast() {
     tokio::time::sleep(Duration::from_millis(60)).await;
     assert_eq!(resilient.breaker().state().await, CircuitState::HalfOpen);
 }
+
+// ── §5: half-open must admit exactly ONE probe ────────────────────────
+
+/// During `HalfOpen`, exactly one caller is admitted; the rest fail fast.
+///
+/// **Red-first, per the design doc's §8 row *"concurrent callers during
+/// `HalfOpen`: exactly one probe"*** (`docs/plans/_active/payment-resilience-design.md:223`),
+/// which the doc marks as **failing today**.
+///
+/// **The defect this pins.** `CircuitBreaker::allow_request` returns `Ok(())` for
+/// BOTH `Closed` and `HalfOpen`, and the `Open` -> `HalfOpen` transition happens
+/// inside `state()` on a time check. So the moment `cooldown_duration` elapses,
+/// EVERY concurrent caller is admitted as a trial. On a POS during a lunch rush
+/// that is a thundering herd against a gateway that has just come back — the
+/// classic way a half-open breaker turns one outage into two.
+///
+/// **Why the existing test cannot see it.** `circuit_breaker_trips_and_fails_fast`
+/// drives the breaker strictly sequentially, and a sequential driver cannot
+/// observe a concurrency defect. It is green today and would stay green with the
+/// fix reverted — the same green-but-blind shape R20 found in the Tools parity
+/// test, which the design doc calls out at `:177`.
+///
+/// Asserted on `allow_request` rather than through a processor, because the probe
+/// RULE lives in the breaker: routing this through a decorator would also need a
+/// gate to hold the probe open, and a test that fails for a helper's reason is
+/// not a test of the rule.
+#[tokio::test]
+async fn half_open_admits_exactly_one_probe() {
+    let breaker = CircuitBreaker::new(1, Duration::from_millis(20));
+
+    // Trip it: one transient failure at threshold 1 opens the breaker.
+    breaker.record_failure(true).await;
+    assert_eq!(breaker.state().await, CircuitState::Open);
+    assert!(
+        breaker.allow_request().await.is_err(),
+        "an OPEN breaker must fail fast"
+    );
+
+    // Cooldown elapses -> HalfOpen.
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert_eq!(breaker.state().await, CircuitState::HalfOpen);
+
+    // The first caller takes the probe.
+    assert!(
+        breaker.allow_request().await.is_ok(),
+        "the probe caller must be admitted"
+    );
+
+    // Every subsequent caller, while that probe is unresolved, must fail fast.
+    let mut admitted = 0;
+    for _ in 0..19 {
+        if breaker.allow_request().await.is_ok() {
+            admitted += 1;
+        }
+    }
+    assert_eq!(
+        admitted, 0,
+        "{admitted} extra callers were admitted during HalfOpen: a half-open breaker that admits every concurrent caller is the thundering herd §5 exists to prevent"
+    );
+}
+
+/// The probe's OUTCOME settles the breaker, and it settles it once.
+///
+/// Companion to the test above: admitting exactly one probe is only half the rule.
+/// A success must close the breaker (traffic resumes) and a failure must re-open it
+/// (traffic keeps failing fast), and after either the next cooldown admits a fresh
+/// probe. Without this, a fix could satisfy "one probe" by never letting traffic
+/// through again — which is an outage that reports itself as protection.
+#[tokio::test]
+async fn probe_success_closes_and_probe_failure_reopens() {
+    // Success path.
+    let success = CircuitBreaker::new(1, Duration::from_millis(20));
+    success.record_failure(true).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(success.allow_request().await.is_ok(), "the probe is admitted");
+    success.record_success().await;
+    assert_eq!(success.state().await, CircuitState::Closed);
+    assert!(
+        success.allow_request().await.is_ok(),
+        "a closed breaker admits traffic normally"
+    );
+
+    // Failure path: the probe fails, so the breaker re-opens and does NOT
+    // immediately hand out another probe.
+    let failed = CircuitBreaker::new(1, Duration::from_millis(20));
+    failed.record_failure(true).await;
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    assert!(failed.allow_request().await.is_ok(), "the probe is admitted");
+    failed.record_failure(true).await;
+    assert_eq!(failed.state().await, CircuitState::Open);
+    assert!(
+        failed.allow_request().await.is_err(),
+        "a failed probe must re-open the breaker rather than admit more callers"
+    );
+}
