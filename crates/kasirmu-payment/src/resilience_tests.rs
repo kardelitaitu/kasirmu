@@ -16,6 +16,12 @@ struct FlakyMockProcessor {
     call_count: AtomicU32,
     fail_until_attempt: u32,
     fail_with: PaymentError,
+    /// The gateway key each `authorize` call was handed, in order.
+    ///
+    /// Recorded because §2's rule is about what the DRIVER receives, not about
+    /// the decorator's eventual return: two attempts carrying different keys are
+    /// two charges that happen to be reported as one operation.
+    keys_seen: std::sync::Mutex<Vec<Option<String>>>,
 }
 
 impl FlakyMockProcessor {
@@ -24,11 +30,17 @@ impl FlakyMockProcessor {
             call_count: AtomicU32::new(0),
             fail_until_attempt,
             fail_with,
+            keys_seen: std::sync::Mutex::new(Vec::new()),
         }
     }
 
     fn calls(&self) -> u32 {
         self.call_count.load(Ordering::SeqCst)
+    }
+
+    /// The gateway key of every `authorize` attempt, in call order.
+    fn keys_seen(&self) -> Vec<Option<String>> {
+        self.keys_seen.lock().expect("mock poisoned").clone()
     }
     fn usd() -> foundation::Currency {
         "USD".parse().unwrap()
@@ -37,7 +49,11 @@ impl FlakyMockProcessor {
 
 #[async_trait]
 impl PaymentProcessor for FlakyMockProcessor {
-    async fn authorize(&self, _request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
+    async fn authorize(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
+        self.keys_seen
+            .lock()
+            .expect("mock poisoned")
+            .push(request.idempotency_key.clone());
         let count = self.call_count.fetch_add(1, Ordering::SeqCst) + 1;
         if count <= self.fail_until_attempt {
             match &self.fail_with {
@@ -101,6 +117,15 @@ impl PaymentProcessor for FlakyMockProcessor {
     }
 }
 
+/// **Amended 2026-09-25 under §2** (`payment-resilience-design.md:99`): this test
+/// used `idempotency_key: None` and asserted that a transient failure was retried
+/// until it succeeded. Under §2 that is not a retry but a **second charge** — the
+/// driver mints a fresh gateway key per attempt — so the case it described is now
+/// covered by `keyless_money_moving_call_is_not_retried`, which asserts the
+/// OPPOSITE outcome. This test keeps its subject (the retry-with-backoff
+/// mechanism) by supplying the key that makes a retry legitimate; the keyless half
+/// lives in the pair below rather than being deleted, because both halves are the
+/// rule.
 #[tokio::test]
 async fn resilient_processor_retries_transient_error_and_succeeds() {
     let flaky = Arc::new(FlakyMockProcessor::new(
@@ -121,7 +146,10 @@ async fn resilient_processor_retries_transient_error_and_succeeds() {
         amount: Money::from_major(10, FlakyMockProcessor::usd()).unwrap(),
         reference: None,
         description: None,
-        idempotency_key: None,
+        // §2: a key is what MAKES the retry below legitimate. Without it this
+        // same call is single-shot, which `keyless_money_moving_call_is_not_retried`
+        // asserts.
+        idempotency_key: Some("retry-test-key".into()),
     };
 
     let res = resilient
@@ -292,5 +320,98 @@ async fn probe_success_closes_and_probe_failure_reopens() {
     assert!(
         failed.allow_request().await.is_err(),
         "a failed probe must re-open the breaker rather than admit more callers"
+    );
+}
+// ── §2: retry is only safe behind a gateway key ────────────────────────
+
+/// A KEYLESS money-moving call is forwarded ONCE and the error surfaced.
+///
+/// **Red-first, per the design doc's §8 row **"a keyless money-moving call is
+/// not retried"** (`docs/plans/_active/payment-resilience-design.md:217`), which
+/// the doc marks **failing today**. The rule the doc states at `:99`:
+///
+/// > `ResilientProcessor` may retry a money-moving operation **only when that
+/// > operation carries a caller-supplied gateway key**. With no key it forwards
+/// > the call **once** and surfaces the error unchanged.
+///
+/// **Why the current behaviour is not a retry.** A `Transient` error is by
+/// definition the class where the request *may have reached the gateway* — a
+/// timeout, a dropped connection, a 502 after the gateway committed. With no key
+/// the driver mints a fresh one per call (`drivers/qris.rs:338-352`,
+/// `drivers/square.rs:341`), so the second attempt is a **second charge**, not a
+/// repeat of the first. `processor.rs:78-80` names this in its own words.
+///
+/// The count is the assertion, not just the failure: a test that only checked the
+/// eventual `Err` would pass on a decorator that charged twice and then reported
+/// the second failure.
+#[tokio::test]
+async fn keyless_money_moving_call_is_not_retried() {
+    let flaky = Arc::new(FlakyMockProcessor::new(
+        5,
+        PaymentError::Network("connection dropped mid-charge".into()),
+    ));
+    let config = ResilientProcessorConfig {
+        max_retries: 3,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 5,
+        failure_threshold: 5,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let resilient = ResilientProcessor::with_config(flaky.clone(), config);
+    let req = PaymentRequest {
+        amount: Money::from_major(10, FlakyMockProcessor::usd()).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: None,
+    };
+
+    let res = resilient.authorize(&req).await;
+    assert!(matches!(res, Err(PaymentError::Network(_))));
+    assert_eq!(
+        flaky.calls(),
+        1,
+        "a keyless charge must be forwarded exactly once: retrying it mints a second gateway key and therefore a second charge"
+    );
+}
+
+/// The SAME call WITH a key IS retried, and the driver sees one key both times.
+///
+/// The pair to the test above: the rule is conditional, not "never retry". Pinned
+/// on the KEY the driver received rather than on the outcome, which is the
+/// convention the doc asks for at `:226` — *"the retry test must assert that the
+/// driver received the same key twice, not merely that the call eventually
+/// succeeded. A test that only checks the outcome passes on a double charge that
+/// happens to return `Ok`."*
+#[tokio::test]
+async fn keyed_call_is_retried_and_the_driver_sees_one_key() {
+    let flaky = Arc::new(FlakyMockProcessor::new(
+        1,
+        PaymentError::Network("transient".into()),
+    ));
+    let config = ResilientProcessorConfig {
+        max_retries: 3,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 5,
+        failure_threshold: 5,
+        cooldown_duration: Duration::from_secs(10),
+    };
+    let resilient = ResilientProcessor::with_config(flaky.clone(), config);
+    let req = PaymentRequest {
+        amount: Money::from_major(10, FlakyMockProcessor::usd()).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("charge-key-1".into()),
+    };
+
+    let res = resilient
+        .authorize(&req)
+        .await
+        .expect("a keyed transient failure is safe to retry");
+    assert!(res.success);
+    assert_eq!(flaky.calls(), 2, "one failure, one successful retry");
+    assert_eq!(
+        flaky.keys_seen(),
+        vec![Some("charge-key-1".to_string()); 2],
+        "both attempts must carry the SAME gateway key, or the retry is a second charge"
     );
 }

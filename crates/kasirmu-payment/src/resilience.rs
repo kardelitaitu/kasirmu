@@ -196,6 +196,21 @@ impl CircuitBreaker {
     }
 }
 
+/// Whether a money-moving operation may be retried when it fails transiently.
+///
+/// See `ResilientProcessor::execute_with_resilience` for the rule this encodes.
+/// The variants are deliberately not `Default`-able: a call site must say which
+/// it is, because the wrong default here is a silent double charge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryPolicy {
+    /// The operation carries a caller-supplied gateway key, so the gateway can
+    /// dedupe a repeat. Safe to retry within the configured budget.
+    Keyed,
+    /// The operation carries no key, or has no key parameter at all. Forwarded
+    /// exactly once; the error is surfaced unchanged.
+    SingleShot,
+}
+
 /// Decorator wrapping an inner [`PaymentProcessor`] to provide retries on
 /// transient errors and circuit-breaker isolation.
 pub struct ResilientProcessor {
@@ -234,12 +249,46 @@ impl ResilientProcessor {
         &self.inner
     }
 
-    async fn execute_with_resilience<T, F, Fut>(&self, operation: F) -> Result<T, PaymentError>
+    /// Run `operation` under the breaker, retrying **only when it is safe to**.
+    ///
+    /// **§2's rule** (`docs/plans/_active/payment-resilience-design.md:99`):
+    ///
+    /// > `ResilientProcessor` may retry a money-moving operation **only when that
+    /// > operation carries a caller-supplied gateway key**. With no key it forwards
+    /// > the call **once** and surfaces the error unchanged.
+    ///
+    /// The reason is that a `Transient` error is precisely the class where the
+    /// request *may have reached the gateway* — a timeout, a dropped connection, a
+    /// 502 after the gateway committed. Without a key the driver mints a fresh one
+    /// per call (`drivers/qris.rs:338-352`, `drivers/square.rs:341`), so the second
+    /// attempt is a SECOND CHARGE rather than a repeat of the first. Retrying it is
+    /// not resilience; it is double-billing with a retry's reputation.
+    ///
+    /// Measured before this guard: a keyless `authorize` against a transient failure
+    /// reached the driver **4 times**.
+    ///
+    /// # The reduction, named rather than discovered later
+    ///
+    /// `capture` and `void` take a bare `transaction_id` and carry no key parameter,
+    /// so under this rule they are always single-shot. That **reduces** the
+    /// shipped behaviour — the doc calls it out at `:117` — and it is the honest
+    /// reading: a capture retried without a key can double-capture.
+    async fn execute_with_resilience<T, F, Fut>(
+        &self,
+        policy: RetryPolicy,
+        operation: F,
+    ) -> Result<T, PaymentError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<T, PaymentError>>,
     {
         self.breaker.allow_request().await?;
+        // A single-shot operation gets exactly one attempt: no retry budget is
+        // consulted, so the error the driver returned is the error the caller sees.
+        let max_retries = match policy {
+            RetryPolicy::Keyed => self.config.max_retries,
+            RetryPolicy::SingleShot => 0,
+        };
 
         let mut attempt = 0;
         loop {
@@ -252,7 +301,7 @@ impl ResilientProcessor {
                     let class = err.classify();
                     let is_transient = class == ErrorClass::Transient;
 
-                    if is_transient && attempt < self.config.max_retries {
+                    if is_transient && attempt < max_retries {
                         attempt += 1;
                         let backoff_ms = (self.config.initial_backoff_ms * (1 << (attempt - 1)))
                             .min(self.config.max_backoff_ms);
@@ -268,21 +317,45 @@ impl ResilientProcessor {
     }
 }
 
+/// The retry policy for a key-carrying request: retry only when the caller
+/// supplied a gateway key.
+fn policy_for_key(key: Option<&str>) -> RetryPolicy {
+    match key {
+        Some(k) if !k.trim().is_empty() => RetryPolicy::Keyed,
+        // Blank is treated as absent: `Some("")` reaches the driver, which
+        // sanitises to an empty `order_id` and mints a fresh one — the same
+        // keyless hazard as `None`, so it must not be retried either.
+        _ => RetryPolicy::SingleShot,
+    }
+}
+
 #[async_trait]
 impl PaymentProcessor for ResilientProcessor {
     async fn authorize(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(|| self.inner.authorize(request))
-            .await
+        self.execute_with_resilience(
+            policy_for_key(request.idempotency_key.as_deref()),
+            || self.inner.authorize(request),
+        )
+        .await
     }
 
     async fn capture(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(|| self.inner.capture(transaction_id))
-            .await
+        // Single-shot: `capture` takes a bare `transaction_id` and has no key
+        // parameter, so a retry after a timeout could capture twice. This REDUCES
+        // the shipped behaviour and the reduction is intentional (§2.2's
+        // consequence, `payment-resilience-design.md:117`).
+        self.execute_with_resilience(RetryPolicy::SingleShot, || {
+            self.inner.capture(transaction_id)
+        })
+        .await
     }
 
     async fn sale(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(|| self.inner.sale(request))
-            .await
+        self.execute_with_resilience(
+            policy_for_key(request.idempotency_key.as_deref()),
+            || self.inner.sale(request),
+        )
+        .await
     }
 
     async fn refund(
@@ -291,18 +364,27 @@ impl PaymentProcessor for ResilientProcessor {
         amount: Option<Money>,
         idempotency_key: Option<&str>,
     ) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(|| self.inner.refund(transaction_id, amount, idempotency_key))
-            .await
+        self.execute_with_resilience(policy_for_key(idempotency_key), || {
+            self.inner.refund(transaction_id, amount, idempotency_key)
+        })
+        .await
     }
 
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(|| self.inner.void(transaction_id))
-            .await
+        // Single-shot for the same reason as `capture`: no key parameter exists.
+        self.execute_with_resilience(RetryPolicy::SingleShot, || {
+            self.inner.void(transaction_id)
+        })
+        .await
     }
 
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
-        self.execute_with_resilience(|| self.inner.receipt(transaction_id))
-            .await
+        // A receipt is a read. Retrying it cannot move money, so the policy is
+        // Keyed rather than SingleShot purely to keep the retry budget available.
+        self.execute_with_resilience(RetryPolicy::Keyed, || {
+            self.inner.receipt(transaction_id)
+        })
+        .await
     }
 
     fn device_info(&self) -> DeviceInfo {
