@@ -135,6 +135,54 @@ box, not merely count it: the counts above are a reading of the dispositions rec
 each box, and a box that gains or loses one changes the phase's work column while leaving
 its open column untouched — which is exactly why the two columns are printed side by side.
 
+### Ruling execution is a second axis, and the box census cannot see it
+
+**Measured 2026-09-24 at HEAD `3f8674c96`.** The owner ruled all 21 decisions on
+2026-09-20 (`done-todo-owner-rulings.md`). A ruling is not a ticked box: several are
+made and **unexecuted**, and nothing above reports that, because the census counts what
+this file wrote rather than what a ruling authorised. Found by reading the tree against
+each ruling, not by counting boxes — the same representation gap the disposition table
+closes for NOT WORK rows.
+
+| Ruling | Decides | Executed? | Evidence measured this pass |
+|---|---|---|---|
+| **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **PARTIAL** | Gate-KIND half open: tablet still calls the non-scope-aware `require_customer_permission` at 6 sites, and the bridge's `settings.rs` setters still call the unscoped `require_permission_for_user` at 8 (R10 named 4; it has grown). Gate-ORDER half **EXECUTED for `customers`** — see below. |
+| **R11** | An audit record must not depend on the build profile | **SATISFIED IN SCOPE, NOT IN APPLICATION** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
+| **R14** | Wire the nextest JUnit receipt into CI | **NO** | Deferred by owner direction; `.github/workflows/dev-ci.yml` has no `verify-pg-tests-ran` invocation (`grep -c` → 0). |
+| **R18** | Split this file by phase | **NO** | Still one 780-line file. Blocked on the NOT WORK boxes, now dispositioned above. |
+| **R3** | Default-role seeding in `complete_setup` | **NO** | Divergence stands; the tablet file carries an unresolved-tension comment rather than a fix. |
+
+**What R10's gate-order half covered when it was executed — and how much is left.**
+Fixed 2026-09-24 in `43c0154be`: the five `customers` commands now run
+session → gate → store instead of opening the store first. That mattered because
+`open_store` is not free — on a cache miss it creates the data directory, creates the
+database file and runs migrations (`platform/core/src/database/manager.rs:73-103`) — so an
+**unauthorized** caller triggered filesystem work and read `Internal("opening store db")`
+where the bridge answers `PermissionDenied`. **The population is far larger than the six
+commands R10's text named: a ratchet in `apps/mobile-tauri/src/commands/registration_gate_tests.rs`
+(`drift_pin_open_before_gate_population_matches_its_floor`) pins the remaining **69 bodies**
+across 18 files, with `settings.rs` alone holding 13.** That number is the honest size of
+R10's gate-order half, measured rather than quoted, and the ratchet fails on any addition.
+
+**The R11 correction is the more useful finding, because it is a ruling that must NOT be
+executed as written.** Read on its face — *"an audit record must not depend on the build
+profile, so the recorder stops depending on a debug-only tier promotion and the bridge
+changes"* — it says to flip `crates/kasirmu-bridge/src/auth.rs`'s `debug_upgrade: true` to
+`false`. That change was made and **two tests failed**, both asserting the divergence on
+purpose: `staff_login_on_free_records_only_because_a_debug_build_promotes_it` and
+`the_debug_upgrade_policy_is_per_client_by_design`. The second is explicit — it pins the
+asymmetry as text on all three legs and states that *"flipping one call site is not a
+decision about the other"*. So R11's actual requirement (the tablet must not mirror the
+desktop divergence) was **already satisfied**; what the ruling's wording invites is a
+different decision — merging a two-shell policy — which needs its own ruling and its own
+edit to the store's per-client paragraph. The change was reverted and the reason recorded
+at the call site (`3f8674c96`).
+
+**The general lesson, worth carrying past this file:** a ruling is a claim about intent,
+and executing one still requires reading the code it lands on. Two of the five above
+moved under re-measurement — R10's population is 69 bodies where its text named 6, and
+R11's literal reading contradicts a pinned policy. Neither is visible from the ruling.
+
 ---
 
 ## Phase 1 — The release profile is red and no gate can see it
