@@ -170,6 +170,8 @@ closes for NOT WORK rows.
 |---|---|---|---|
 | **R10** | Scope-aware, gate-first gate is authoritative wherever the two shells disagree | **YES** | **ALL FOUR SHAPES EXECUTED 2026-09-25.** Shape 1 (customers gate-KIND) — and it turned out to be **1 door, not 6**: only `get_customer_scoped` diverged, and it now delegates to the scope-aware `kasirmu_bridge::customers::get_scoped`. Measured at this tip, the bridge's `customers.rs` gates scope-aware in one place only (`get_scoped` at `:430`); `list_scoped` (`:400`) and the four mutations call the SAME non-scope-aware `require_customer_permission` the shell does, so the other five were never divergences. The `settings.rs` half of gate-KIND is **also EXECUTED 2026-09-25**: the 7 scoped setters that gated a store DB with the unscoped `require_permission_for_user` now call `require_session_permission` on `settings:edit`, and because that gate authorizes against the GLOBAL identity db they no longer need `open_store` first — so KIND and ORDER were fixed together. Measured rather than quoted: of the 8 `require_permission_for_user` sites the earlier note carried, one is the DEPRECATED `set_setting` (caller-supplied `user_id`, global-db `Store`, no session to scope against) and is deliberately left; another (`set_user_preferences_scoped`) had **no gate at all**, which is a missing-gate question and not R10's. The gate-ORDER half is **CLOSED 2026-09-25 — 69 of 69 bodies**, ratchet lowered 69 → 19 → 7 → **0** in three sweeps: 50 bodies via `require_permission_for_session` (12 files), then `tax`'s 7 and `history`'s 5 (KIND fixes too), then the last 7 (`categories` 3, `products` 3, `inventory_counts` 1). Four module-local gate wrappers were deleted as they became dead. The floor is now 0 and is a **permanent pin**: any body that opens the store before gating fails the run. Gate-ORDER **EXECUTED for `customers`** — see below. |
 | **R11** | An audit record must not depend on the build profile | **SATISFIED — and the literal fix is DECLINED, deliberately** | The tablet already passes `false` (`apps/mobile-tauri/src/commands/auth.rs`); the bridge passes `true`, and that is a *documented per-client policy*, not drift — `kasirmu-core/src/db/audit_security.rs:379-383` declares it and `apps/mobile-tauri/src/commands/auth_tests.rs:1324` pins all three legs. Merging the two is a NEW ruling, not R11's execution. See the correction below. |
+| **R9(a)** | QRIS gateway idempotency key | **YES** | Executed 2026-09-25 in `387ea9f56`: the gateway key is derived from the already-required `sale_id` (`qris-{tenant}-{sale_id}`) when the caller omits one, so a timeout+retry re-uses the same QR instead of minting a second. **This exposed a latent defect and required fixing it:** the ledger's bare `INSERT` answered `UNIQUE constraint failed` on the now-repeating `order_id`, so an already-issued charge returned `500 charge issued but not journaled` — telling the caller to reconcile a row that was already correct. `record_issue` is now idempotent on a REPLAY (identical tenant/sale/amount/currency → `Ok`) and still refuses a COLLISION (any difference → `Err`), so the original "must not silently re-point the ledger" invariant is preserved rather than relaxed, and the pre-existing collision test still passes. |
+| **R9(b)** | Wire `ResilientProcessor` at the construction site | **NO** | Not executed: still 0 references from `registry.rs` or `payment_api.rs`. R9 ruled (b) separately from (a), and (b) changes payment routing rather than key derivation. |
 | **R21** | Can the open-bills list be opened when no bill is held? | **YES** | Executed 2026-09-25 in `b5ed4c2b2`: the unreachable empty state is deleted — the string `pos-open-bills-empty`, both locale rows (`sales.ftl:694`, `sales.id.ftl:195`) and the now-dead `.pos-held-list-empty` rule (`PosScreen.css:398`), plus the ternary arm in `OpenBillModals.tsx`. R21 named the string and the two rows; the CSS rule is the same dead-UIT class and went with them. Premise re-verified rather than taken: `setShowOpenBills(true)` has exactly one call site (`CartPanel.tsx:689`) and it is behind a non-empty guard, so the `=== 0` branch was unreachable. Guards: `npm run typecheck` clean, `lint` 0 errors, `10457` UI tests pass, `lint-i18n.sh` "no issues detected", and the pre-commit FTL gate reports 0 missing keys / orphans OK. |
 | **R14** | Wire the nextest JUnit receipt into CI | **YES** | Landed 2026-09-25 by `15192c315`: `.github/workflows/dev-ci.yml:328` runs `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`. Ticked by that lane, not this one. |
 | **R18** | Split this file by phase | **YES** | Executed 2026-09-25 in `757aae99f` + `314173266`: the five phase sections moved to `done-todo-open-debt-agents-1.md` and `todo-open-debt-agents-2.md` .. `-5.md`, with the program-level record staying in `todo-open-debt-program.md`. Coverage proved line-for-line against the pre-split original (0 unassigned lines) and the census conserved exactly (15 open / 26 ticked before and after). |
@@ -200,6 +202,48 @@ desktop divergence) was **already satisfied**; what the ruling's wording invites
 different decision — merging a two-shell policy — which needs its own ruling and its own
 edit to the store's per-client paragraph. The change was reverted and the reason recorded
 at the call site (`3f8674c96`).
+
+**R9 split cleanly into (a) executed and (b) still open, and (a) turned out to be hiding a
+second defect.** R9 ruled two halves and said the first "proceeds independently": **(a)**
+derive the *gateway* idempotency key from the already-required `sale_id` at
+`apps/cloud-server/src/payment_api.rs`, and **(b)** wire `ResilientProcessor` at the single
+construction site rather than the registry.
+
+**(a) is done (`387ea9f56`), and it is a real double-charge fix rather than a tidy-up.** The
+key was copied straight off the request body, so a caller that omitted it gave `None` — and
+`drivers/qris.rs:347-351` mints a FRESH `order_id` for a `None` key. A timeout followed by a
+retry of the same sale therefore produced **two live QRs against one sale**, with no client bug
+required. The key is now `qris-{tenant_id}-{sale_id}`. Two details cost real measurement:
+the separator is `-` and not `:` because the driver **sanitises** the key
+(`drivers/qris.rs:338-346` keeps only `[A-Za-z0-9_-]` and truncates to 44), so a colon would
+be *deleted* and collapse `tenant-A/sale-1` onto `tenant-AB/sale1`; and the tenant is
+prefixed because `sale_id` is device-generated and unique only within a tenant.
+
+**Executing (a) surfaced a latent defect that had to be fixed for the fix to be safe.** With the
+key now stable, the retry arrives with the **same** `order_id` — and the ledger's bare
+`INSERT` answered `UNIQUE constraint failed: midtrans_transactions.order_id`, so the endpoint
+returned `500 charge issued but not journaled (reconcile order …)` for a charge that was live
+*and correctly journaled*. The caller was being told to reconcile manually a row that was already
+right. My first test run caught this exactly: `call 1 answered 500 … UNIQUE constraint failed`.
+`record_issue` is now idempotent on a **replay** (identical tenant/sale/amount/currency →
+`Ok(())`) while still refusing a **collision** (any difference → `Err`), so the invariant its
+own doc states — *"a retry that must not silently re-point the ledger"* — is preserved, not
+relaxed. The pre-existing `duplicate_order_id_is_rejected_not_merged` still passes untouched,
+and a new `identical_retry_is_absorbed_as_a_replay` covers the other half; the pair is the rule,
+and the doc now says so, because "idempotent" silently becoming "overwrite" is the failure a
+future edit would introduce.
+
+**The guard asserts the WIRE body, not the derived string.** `sent_charge_body`-style
+inspection of `transaction_details.order_id` across two identical requests: same key, contains
+the sale id, contains the tenant. Asserting the `format!` alone would pass while the value
+reaching Midtrans differed, because the driver sanitises and truncates after the handler runs.
+
+**(b) is NOT executed, and the reason is that it is a different kind of change.** Verified at
+this tip: `registry.rs` and `payment_api.rs` still contain **0** references to `resilience` or
+`Resilient`, so the breaker still sits beside the dispatch path. R9(b) alters payment *routing*
+— which processor handles which method, and with what fallback chain — rather than the key a
+single charge carries. (a) was safe to land alone because it fixes retries that are unsafe
+today; (b) decides new behaviour on the money path and needs its own pass with its own tests.
 
 **R11 is CLOSED as `SATISFIED — enforcement declined, deliberately`, and the pins it leaves
 behind are the deliverable.** Re-read at this tip, all four legs of
