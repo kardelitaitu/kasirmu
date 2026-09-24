@@ -60,6 +60,13 @@ impl Store<'_> {
     /// If an override for the same terminal_id + feature already exists,
     /// its `enabled` and `updated_at` are updated. Otherwise a new row
     /// is inserted.
+    ///
+    /// CORE-A: this is ONE atomic statement, not an UPDATE-then-INSERT pair.
+    /// The previous two-statement form read `affected == 0` and only then
+    /// inserted, so two concurrent callers could both see zero and both insert,
+    /// the second failing with a UNIQUE violation on the
+    /// `(terminal_id, feature)` primary key. `ON CONFLICT ... DO UPDATE` is
+    /// the same shape `set_terminal_profile` already uses.
     pub fn set_terminal_override(
         &self,
         terminal_id: &str,
@@ -67,19 +74,15 @@ impl Store<'_> {
         enabled: bool,
     ) -> Result<(), CoreError> {
         let now = format_now();
-        let affected = self.conn.execute(
-            "UPDATE terminal_feature_overrides
-             SET enabled = ?3, updated_at = ?4
-             WHERE terminal_id = ?1 AND feature = ?2",
+        self.conn.execute(
+            "INSERT INTO terminal_feature_overrides
+                 (terminal_id, feature, enabled, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)
+             ON CONFLICT(terminal_id, feature) DO UPDATE SET
+                 enabled = excluded.enabled,
+                 updated_at = excluded.updated_at",
             params![terminal_id, feature, enabled as i64, now],
         )?;
-        if affected == 0 {
-            self.conn.execute(
-                "INSERT INTO terminal_feature_overrides (terminal_id, feature, enabled, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?4)",
-                params![terminal_id, feature, enabled as i64, now],
-            )?;
-        }
         Ok(())
     }
 

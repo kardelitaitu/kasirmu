@@ -45,7 +45,7 @@ fn log_degraded(operation: &str, err: &rusqlite::Error) {
 /// and it would silently reopen the double deduction this stamp exists to
 /// close — the failure must be visible, not benign.
 fn enqueue_origin(conn: &rusqlite::Connection) -> Result<Option<String>, CoreError> {
-    Ok(crate::settings::Settings::get_sync_terminal_id(conn)?)
+    crate::settings::Settings::get_sync_terminal_id(conn)
 }
 
 /// Decode a currency's raw bytes for a sync payload.

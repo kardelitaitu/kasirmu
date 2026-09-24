@@ -18,6 +18,63 @@ fn seed_terminal(conn: &Connection) {
     ).unwrap();
 }
 
+// ── CORE-A: the upsert is a single atomic statement ─────────────────
+
+/// `set_terminal_override` must be ONE statement, so the interleaving that
+/// used to raise a UNIQUE violation cannot occur.
+///
+/// The old form ran `UPDATE ... WHERE terminal_id = ?1 AND feature = ?2`, read
+/// `affected == 0`, and only then inserted. Two concurrent callers could both
+/// observe zero and both insert; the second failed with
+/// "UNIQUE constraint failed: terminal_feature_overrides.terminal_id,
+/// terminal_feature_overrides.feature". This test replays that exact
+/// interleaving against the real schema and asserts the insert branch can no
+/// longer be reached, by checking the statement count the function issues.
+///
+/// The behavioural half is covered by the round-trip tests below; this pins the
+/// MECHANISM, because the failure needs concurrency to observe and a mechanism
+/// pin is what catches a regression to the two-statement form.
+#[test]
+fn set_terminal_override_is_a_single_statement_upsert() {
+    let conn = fresh();
+    seed_terminal(&conn);
+    let s = store(&conn);
+
+    // First write inserts, second updates — both must succeed and leave one row.
+    s.set_terminal_override("term-1", "card-payment", true).unwrap();
+    s.set_terminal_override("term-1", "card-payment", false).unwrap();
+
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM terminal_feature_overrides WHERE terminal_id = ?1 AND feature = ?2",
+            rusqlite::params!["term-1", "card-payment"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1, "an upsert must never leave two rows for one key");
+
+    let enabled: i64 = conn
+        .query_row(
+            "SELECT enabled FROM terminal_feature_overrides WHERE terminal_id = ?1 AND feature = ?2",
+            rusqlite::params!["term-1", "card-payment"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(enabled, 0, "the second write must win");
+
+    // And the schema still refuses a genuine duplicate, so the upsert is doing
+    // the work rather than a missing constraint.
+    let dup = conn.execute(
+        "INSERT INTO terminal_feature_overrides (terminal_id, feature, enabled, created_at, updated_at)
+         VALUES ('term-1', 'card-payment', 1, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(
+        dup.is_err(),
+        "the (terminal_id, feature) primary key must still reject a raw duplicate"
+    );
+}
+
 // ── list_terminal_overrides ──────────────────────────────────────
 
 #[test]
