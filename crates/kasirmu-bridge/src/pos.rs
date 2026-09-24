@@ -1629,6 +1629,25 @@ pub struct PreviewPromotedTotalFromLinesArgs {
     pub promotion_ids: Vec<String>,
 }
 
+/// Narrow a wire `discount_percent` (`i64`) to the `Percentage` the cart takes.
+///
+/// The ONE place this narrowing happens, because the two doors that need it
+/// disagreed and the disagreement moved money. `as u8` TRUNCATES rather than
+/// clamps — 300 becomes 44, 256 becomes 0 — and `Percentage::new` then accepts
+/// the truncated value, so an out-of-range request became a valid-but-wrong
+/// discount instead of a refusal. The preview door had always clamped with
+/// `.min(100)`; the shortfall checkout door had not, so a cart previewed at
+/// 100% was charged at 44%.
+///
+/// Clamping is the right resolution of the two candidate behaviours: the
+/// preview door's `.min(100)` is the one already shipped and already tested,
+/// and `Percentage`'s own ceiling is 100, so "everything above the maximum
+/// means the maximum" is the reading the type already commits to.
+#[must_use]
+pub fn checkout_discount_percent(discount_percent: i64) -> i64 {
+    discount_percent.clamp(0, 100)
+}
+
 /// Build an in-memory cart mirroring the client's displayed cart for the
 /// lines-based promotion preview (no persistence, no cart id needed).
 fn build_preview_cart(
@@ -1655,7 +1674,8 @@ fn build_preview_cart(
         .map_err(|e| BridgeError::Invalid(format!("cart line rejected: {e}")))?;
     }
     if discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(discount_percent.min(100) as u8)
+        && let Some(pct) =
+            foundation::Percentage::new(checkout_discount_percent(discount_percent) as u8)
     {
         cart.set_discount(pct, None);
     }
@@ -1829,7 +1849,7 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
     // Apply discount if configured
     if args.discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(args.discount_percent as u8)
+        && let Some(pct) = foundation::Percentage::new(checkout_discount_percent(args.discount_percent) as u8)
     {
         cart.set_discount(pct, args.discount_label.clone());
     }
