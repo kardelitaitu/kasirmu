@@ -801,6 +801,56 @@ security one), and the tail of `workspaces.rs` (`remediation_target`,
 (`license::` 24 passed; my files clippy-clean). `git status` confirms nothing of
 mine is uncommitted.
 
+### Bridge thirteenth pass — 24-09-26 (stock integrity, and the independent-count rule applied)
+
+**No defect fixed.** Two unread stock-integrity modules read in full and verified
+clean, plus the dead-API thread the twelfth pass left open, closed out.
+
+**Read in full: `inventory_counts.rs` (574) and `stock_transfers.rs` (356).**
+Both are the positive control for the pattern this audit keeps finding:
+
+* Every one of the 11 `inventory_count` commands is `resolve_scope` →
+  `require_inventory_count_permission(ctx, &session.user_id)` → store lock → one
+  `Store` call. Every one of the 10 `stock_transfers` commands is the same shape
+  with `INVENTORY_TRANSFER`. No call site takes the actor from the wire and none
+  skips the gate — the two things that produced BRIDGE-3/5/7.
+* `inventory_counts.rs` checks arithmetic the way money code should:
+  `checked_sub` for the counted-vs-expected difference, with a typed
+  `"counted_qty difference overflow"` refusal rather than a wrapping `-`.
+* State is guarded by predicate helpers (`editable_count`,
+  `editable_or_readable_count`) rather than inline `status ==` tests, so the
+  draft/in-progress/cancelled rule has one definition;
+  `update_stock_count_status` adds an explicit transition table.
+* `create_stock_transfer_scoped` validates BOTH locations and BOTH terminals
+  before the write and takes `&session.user_id` as the creator.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib --
+inventory_counts:: stock_transfers::` → **32 passed, 0 failed**. No float and no
+bare `unwrap`/`expect` in either production file.
+
+**Closed the dead-API thread from the twelfth pass.** `reports.rs` exposes paired
+`X` / `X_scoped` functions per report, and only the `_scoped` variant is
+registered (`apps/desktop-tauri/src/lib.rs:1230` registers
+`get_daily_revenue_scoped`; the unscoped `get_daily_revenue` has no registration
+anywhere). That is the coverage gate's intended outcome rather than rot — the
+unscoped twin is the pre-ADR-#7 door the `_scoped` one replaced — so the pairing
+is not dead code to delete, it is what `verify-scoped-coverage.sh` exists to
+require. Same disposition as `customers::*_global`: unregistered, uncalled,
+deliberately superseded.
+
+**The independent-count rule, applied as promised.** Rather than re-running my own
+broken PowerShell sweep, every dead-code claim this pass was confirmed with the
+`grep` TOOL, which recurses into `src/topology/`, `src/db/` and the nested module
+directories the script missed and which produced the 25-of-30 false positives. It
+cost two greps and removed an entire class of wrong worklist. The rule stands as
+written: **a count a new script produces is a hypothesis until a sample is
+confirmed independently.**
+
+**Running tally:** 10 defects fixed (4 HIGH), 2 classes closed by construction
+(the H-1b authorization gate; the class-hunt method), and 4 leads disproved under
+verification — recorded because a disproved lead costs the same effort to find and
+would have been worse to report as real.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
