@@ -737,6 +737,70 @@ kasirmu-bridge --all-features` clean. My files are clippy-clean under
 
 **Commit:** `b348f84f4` (BRIDGE-10, bridge).
 
+### Bridge twelfth pass — 24-09-26 (two false alarms, and why they were worth chasing)
+
+**No defect fixed this pass.** Both leads died under verification, and the
+negative results are recorded because each one was a *plausible* defect that a
+less careful pass would have reported as real.
+
+**1. `customers.rs` gates on a CALLER-SUPPLIED `user_id` — but only on
+unreachable legacy fns.** `create_global` (`:305`), `update_global` (`:340`) and
+`delete_global` (`:373`) all authorize `require_permission(&args.user_id, ..)`
+rather than the session user, which is the textbook authorization fallacy and
+exactly the shape BRIDGE-3/5 trained me to look for. Verification: the `_scoped`
+twins (`create_scoped` `:454`, `update_scoped` `:484`, `delete_scoped` `:513`) all
+use `session.user_id` correctly, the five `*_global` fns have **zero
+registrations** in either shell (`grep customers::*_global apps/` → 0) and
+**zero callers** anywhere in the bridge, and their own doc comments say
+"Deprecated for multi-store UI paths (ADR #7): `create_scoped` takes the user
+from the session instead of the arguments". So the exposure is nil. Recorded as
+INFO dead API rather than a finding. **The lesson:** "authorizes the wrong
+subject" is only a defect where the function is REACHABLE; reachability is a
+separate check from the shape.
+
+**2. `refresh_license_crl` looked like a revocation mechanism that never runs.**
+It is a complete CRL implementation — fetch, `verify_crl_signature`,
+`apply_crl_to_cache`, and `invalidate_all_sessions` on revocation, i.e. ADR #58
+§2.1/§2.2 — and `grep refresh_license_crl` returns **one** hit: its own
+definition. Zero callers in the bridge, zero in either shell. For a licensing
+audit that reads as "we built the kill switch and never wired it", which would
+have been a serious HIGH.
+
+**It is wrong.** Lines 630-637 show `check_license_status` performing the same
+refresh inline ("Opportunistically refresh CRL on status check (ADR #58
+§2.1/§2.2)"), with the same verify-then-apply order and the same
+session-invalidation on `Ok(true)`. So the LIVE path exists and works;
+`refresh_license_crl` is a dead DUPLICATE of it, not the mechanism itself.
+**The lesson, and it is the sharper one:** "nothing calls this" does not mean
+"this behaviour never happens" — it means the behaviour, if it happens, happens
+somewhere else. A dead-code signal is evidence about a SYMBOL, never about a
+CAPABILITY.
+
+**A tooling error worth recording, because it produced a wrong worklist.** My
+first dead-code sweep (a PowerShell pass over `pub fn` names counting references)
+reported **30** candidates. Spot-checking four with the real `grep` tool showed
+25 were false positives: `get_daily_revenue` has 26 references,
+`update_sync_settings` has 79. The script's `Select-String -Path` globs did not
+recurse into nested module directories (`src/topology/`, `src/db/`), so anything
+referenced only from a subdirectory counted as dead. **That is the same failure
+mode as the seventh pass's awk checker** — a plausible, confidently-formatted
+wrong number — and it was caught the same way: by verifying a sample against a
+second tool before believing the aggregate. Noting it because the ledger now
+records that mistake twice, in two different languages, which suggests the
+guard should be a rule rather than a habit: **any count a new script produces is
+a hypothesis until a sample is confirmed by an independent method.**
+
+**Read this pass:** `customers.rs` (gate helpers + both twin sets), `license.rs`
+CRL half (`check_license_status` revocation ladder, `refresh_license_crl`),
+`sync.rs` `test_sync_connection` (the two `unwrap_or(true)` sites — both benign:
+the predicate is "no server URL configured", a connectivity question, not a
+security one), and the tail of `workspaces.rs` (`remediation_target`,
+`recover_/suspend_surplus_workspace_instances_scoped`).
+
+**Verified:** no code changed, so suite state is unchanged from the eleventh pass
+(`license::` 24 passed; my files clippy-clean). `git status` confirms nothing of
+mine is uncommitted.
+
 #### Where the audit stands
 
 Ten defects found and fixed across the bridge and core, four of them HIGH:
