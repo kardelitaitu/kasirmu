@@ -588,6 +588,66 @@ every module I touched.
 **Commits:** `f40c78a7c` (43 lines of markers across 9 files, comment-only),
 `0c6ff94b2` (gate wiring across 4 files).
 
+### Bridge ninth pass — 24-09-26 (a money defect in `pos.rs`)
+
+| ID | Sev | Location | Finding |
+|---|---|---|---|
+| BRIDGE-8 | **HIGH** | `src/pos.rs:1852` — `complete_sale_with_resolved_shortfalls_scoped` | **The two checkout doors handled an out-of-range `discount_percent` differently, and the difference moved money.** `discount_percent` is an `i64` on the wire while `foundation::Percentage` holds a `u8` capped at 100, so the narrowing needs a decision. The PREVIEW door (`build_preview_cart`) had always clamped with `.min(100)`; the shortfall CHECKOUT door cast raw with `args.discount_percent as u8`, and `as` TRUNCATES. A caller sending **300** had the payable previewed at **100%** and the sale charged at **44%**. **256** is the sharpest case: it truncates to **0**, so the discount was silently DROPPED — no error, no warning, a full-price sale. |
+
+**Why this is HIGH by the ledger's own definition** ("wrong today on a live path"):
+the path is live (`complete_sale_with_resolved_shortfalls_scoped` is the
+shortfall dialog's submit), the wrong value is money on a receipt, and the
+failure is SILENT — the operator confirms the previewed total and the customer
+is charged a different one.
+
+**The asymmetry is what proves it is a defect rather than a policy.** Both doors
+take the same `i64` from the same wire shape and feed the same `Percentage`.
+One clamped; one truncated. `Percentage::new` returns `None` above 100 and its
+`Deserialize` impl REJECTS such a value with a typed error, so the truncating
+cast was the only route in the codebase that could turn an out-of-range input
+into a wrong-but-valid discount instead of a refusal — everything else already
+treats >100 as an error or clamps it.
+
+**Fixed by making the decision once.** A new `checkout_discount_percent(i64) ->
+i64` `clamp(0, 100)` is now the single narrowing, and both doors route through
+it. Clamping (not rejecting) is the correct resolution of the two candidate
+behaviours: the preview door's clamp is the one already shipped and tested, and
+`Percentage`'s own ceiling is 100, so "above the maximum means the maximum" is
+what the type already commits to.
+
+**The pin took three attempts, and the failures are the interesting part.**
+
+1. First I asserted the helper's output directly. **Restoring the raw cast in
+   the checkout door still passed** — the test exercised the helper, not the
+   door. A test that passes against the defect is worse than none, because it
+   reads as coverage.
+2. So I added a SOURCE scan over `pos.rs` rejecting any narrowing of
+   `discount_percent` that does not route through the helper. That scan
+   immediately flagged a SECOND site I had introduced myself (line 1678),
+   which is the strongest evidence it works: it caught the author.
+3. With both sites routed, **restoring the raw cast makes the test FAIL** with
+   `pos.rs:1852 narrows discount_percent without the shared clamp`; restoring
+   the fix makes it pass.
+
+The test keeps both halves: the behavioural assertions document the contract,
+and the source scan is what actually catches a regression, because the defect
+lives at a CALL SITE rather than in the helper.
+
+**Read this pass:** finished `pos.rs` — `complete_sale_with_resolved_shortfalls_scoped`
+(the C2 plugin-tax-override parity with the main door, the COR-7 replay guard
+with its basket-derived re-key, and the `deny_unknown_fields` arg struct), and
+`shortfall_line_unit_price` / `stamp_attempt_split_keys` / `ReplayVerdict`.
+The replay guard on this door is careful: it re-keys on a hash of the request
+CONTENTS because the cart id is a per-submit synthetic `resolved-<timestamp>`,
+with the reasoning recorded — that is the correction to a defect class, not the
+defect.
+
+**Verified:** `cargo test -p kasirmu-bridge --all-features --lib -- pos::` → **59
+passed, 0 failed**. Clippy clean on both files under
+`--all-targets --all-features -- -D warnings`.
+
+**Commit:** `be8d3d8d0` (BRIDGE-8, bridge).
+
 
 
 
