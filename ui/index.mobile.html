@@ -65,8 +65,12 @@
         color: #f0f6ff;
       }
 
-      /* Light theme override (applied via data-theme attribute or OS preference) */
-      html[data-theme="light"] {
+      /* Light theme override (applied via data-theme attribute or OS preference).
+         Must name BODY as well as html — see the longer note in index.html:
+         the dark rule is `html, body`, so a bare `html[data-theme="light"]`
+         repainted only <html> and left <body> dark on a light-themed boot. */
+      html[data-theme="light"],
+      html[data-theme="light"] body {
         background: linear-gradient(160deg, #f1f5f9 0%, #e9eef4 50%, #e2e8f0 100%);
         color: #1e293b;
       }

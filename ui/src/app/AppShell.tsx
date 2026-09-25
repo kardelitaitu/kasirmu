@@ -519,12 +519,13 @@ export default function AppShell() {
 
   const { splashMounted, splashExiting } = useSplashExit(loading);
 
-  if (loading) {
-    // Branded boot splash (stage 2) — visually continues the static
-    // stage-1 splash from index.html while the license + setup IPC
-    // round-trips resolve. Replaces the former bare-text gate.
-    return <AppBootSplash />;
-  }
+  // NOTE: no `if (loading) return <AppBootSplash />` here on purpose.
+  // That early return used to be the only splash site while booting, and the
+  // fragment below the other one. Because the two sit at DIFFERENT positions
+  // in the tree, React unmounted the booting splash and mounted a *second*
+  // one when `loading` flipped — so `useSplashExit` faded out a splash that
+  // had just been created, while the original vanished with no transition at
+  // all. One render site, always mounted, is what makes the crossfade real.
 
   const renderActiveView = () => {
     // P12-4: Session lock screen takes precedence over all other views.
@@ -819,7 +820,11 @@ export default function AppShell() {
   return (
     <>
       {splashMounted && <AppBootSplash exiting={splashExiting} />}
-      {renderActiveView()}
+      {/* While booting, the splash is the ONLY thing on screen. This is not
+          an early return (see the note above it): the shell mounts behind the
+          splash so that when `loading` flips, the splash simply finishes its
+          fade and reveals an already-mounted shell — no remount, no flash. */}
+      {!loading && renderActiveView()}
     </>
   );
 }

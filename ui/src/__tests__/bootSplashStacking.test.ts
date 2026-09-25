@@ -60,3 +60,70 @@ describe.each(HTML_ENTRIES)('%s boot splash', (entry) => {
     expect(splashAt).toBeLessThan(rootAt);
   });
 });
+
+// ── Light-theme first paint ─────────────────────────────────────────
+//
+// The static stage must paint the CORRECT background in light theme. It
+// did not: the dark rule is `html, body`, while the light override named
+// only `html` — and `html[data-theme="light"]` (0,1,1) outranks the
+// dark `html, body` (0,0,1) on <html> alone, so <body> kept the dark
+// gradient. A light-themed install therefore painted a dark first frame
+// and then flipped to the white React splash: the flash this pins shut.
+
+describe.each(HTML_ENTRIES)('%s light-theme first paint', (entry) => {
+  const html = readFileSync(resolve(UI_ROOT, entry), 'utf-8');
+
+  it('paints a light background on BODY, not just on <html>', () => {
+    // The selector list must include a body selector under the light
+    // attribute; `html[data-theme="light"]` alone leaves body dark.
+    expect(html).toMatch(
+      /html\[data-theme="light"\]\s*,\s*html\[data-theme="light"\]\s+body\s*\{/,
+    );
+  });
+
+  it('still declares the dark base for both html and body', () => {
+    // The counterpart: the dark rule is what the light one must out-scope.
+    expect(html).toMatch(/html,\s*body\s*\{/);
+  });
+});
+
+// ── Splash lifetime (the crossfade's precondition) ──────────────────
+//
+// `useSplashExit` fades the splash out over 200ms. That only works if
+// the SAME element stays mounted across the `loading` flip. Both shells
+// used to render the splash from two places — an early `if (loading)
+// return <AppBootSplash />`, and the fragment below — so React unmounted
+// the booting splash and mounted a fresh one, and the fade applied to a
+// splash the user had never seen. These assertions keep one render site.
+
+const SHELLS = [
+  'src/app/AppShell.tsx',
+  'src/app/tablet/TabletAppShell.tsx',
+] as const;
+
+describe.each(SHELLS)('%s splash lifetime', (shell) => {
+  const src = readFileSync(resolve(UI_ROOT, shell), 'utf-8');
+
+  it('has exactly one <AppBootSplash> render site', () => {
+    // Count only real JSX usage: `{` ... `<AppBootSplash`. A prose mention
+    // in a comment (which both shells now carry, explaining this very rule)
+    // must not register as a second mount.
+    const mounts = src.match(/\{\s*splashMounted && <AppBootSplash/g) ?? [];
+    expect(mounts).toHaveLength(1);
+  });
+
+  it('does not render the splash from any other branch', () => {
+    // Anything else that mounts it is a second site, whichever shape it takes.
+    const allSites = (src.match(/<AppBootSplash/g) ?? []).length;
+    const commentMentions = (src.match(/^\s*(\/\/|\*).*<AppBootSplash/gm) ?? []).length;
+    expect(allSites - commentMentions).toBe(1);
+  });
+
+  it('does not early-return the splash (which would remount it)', () => {
+    expect(src).not.toMatch(/if \(loading\)\s*\{[^}]*return <AppBootSplash/);
+  });
+
+  it('gates the shell content on !loading instead, so it mounts behind the splash', () => {
+    expect(src).toContain('{!loading && renderActiveView()}');
+  });
+});

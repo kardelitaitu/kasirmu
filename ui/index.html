@@ -55,8 +55,14 @@
         min-height: 100dvh;
       }
 
-      /* Light theme override (applied via data-theme attribute or OS preference) */
-      html[data-theme="light"] {
+      /* Light theme override (applied via data-theme attribute or OS preference).
+         Must name BODY as well as html. The dark rule above is `html, body`,
+         and a bare `html[data-theme="light"]` outranks it on <html> only
+         (0,1,1 vs 0,0,1) — <body> kept matching the dark gradient, so a
+         light-themed install painted a DARK first frame and then flipped to
+         the white React splash. That flash is the defect this rule repairs. */
+      html[data-theme="light"],
+      html[data-theme="light"] body {
         background: linear-gradient(160deg, #f1f5f9 0%, #e9eef4 50%, #e2e8f0 100%);
         color: #1e293b;
       }

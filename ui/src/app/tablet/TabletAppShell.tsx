@@ -266,11 +266,10 @@ export default function TabletAppShell() {
     );
   }
 
-  if (loading) {
-    // Branded boot splash (stage 2) — mirrors the desktop shell gate
-    // and the static stage-1 splash from index.mobile.html.
-    return <AppBootSplash />;
-  }
+  // NOTE: no `if (loading) return <AppBootSplash />` here — see the identical
+  // note in AppShell.tsx. Two render sites at different tree positions made
+  // React unmount the booting splash and mount a fresh one on the flip, so the
+  // crossfade in `useSplashExit` faded a splash the user had never seen.
 
   const renderActiveView = () => {
     // ADR #58 §2.6: if the subscription is revoked, show the data-export screen
@@ -487,7 +486,9 @@ export default function TabletAppShell() {
   return (
     <>
       {splashMounted && <AppBootSplash exiting={splashExiting} />}
-      {renderActiveView()}
+      {/* Same single-site rule as the desktop shell: the splash is the only
+          thing on screen while booting, and the shell mounts behind it. */}
+      {!loading && renderActiveView()}
     </>
   );
 }
