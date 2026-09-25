@@ -89,6 +89,26 @@ const ROLE_REFERRERS: [(&str, Option<&str>); 4] = [
     ("role_workspaces", None),
 ];
 
+/// The predicate that answers the FOREIGN KEY question rather than the
+/// roster one: does a row exist that would block a `DELETE FROM roles`?
+///
+/// It differs from [`ROLE_REFERRERS`] in exactly one place, and the difference
+/// is load-bearing for the sweep. No production path ever deletes a `users`
+/// row — the staff trash stamps `deleted_at` and the purge ANONYMISES the row
+/// in place (`purge_expired_users` is an `UPDATE`, and it does not clear
+/// `role_id`) — so a member who has ever held a role holds it in the FK view
+/// for the life of the database. The live-only predicate above is right for the
+/// authoring guard (a tombstone nobody can see must not pin a role forever) and
+/// wrong for the sweep, which has to ask whether the DELETE will actually
+/// succeed. Keeping the two censuses separate is what lets each say what it
+/// means: the guard reads [`ROLE_REFERRERS`], the sweep reads this.
+const ROLE_FK_REFERRERS: [&str; 4] = [
+    "users",
+    "assignments",
+    "role_workspace_types",
+    "role_workspaces",
+];
+
 /// The largest holder list [`Store::role_holders`] returns in one call.
 ///
 /// A deliberate cap, not a page size: the question asked of it is "who can
@@ -202,6 +222,25 @@ impl Store<'_> {
     /// would drift from the one that actually decides.
     pub fn role_reference_counts(&self, id: &str) -> Result<Vec<(&'static str, i64)>, CoreError> {
         Self::role_references_on(self.conn, id)
+    }
+
+    /// Whether any row in [`ROLE_FK_REFERRERS`] would block a `DELETE FROM roles`
+    /// for this id — the FK's question, not the roster's.
+    ///
+    /// Table names come from the constant, never from a caller, so the
+    /// interpolation adds no injection surface.
+    fn role_has_any_fk_referrer(conn: &Connection, id: &str) -> Result<bool, CoreError> {
+        for table in ROLE_FK_REFERRERS {
+            let held: bool = conn.query_row(
+                &format!("SELECT EXISTS (SELECT 1 FROM {table} WHERE role_id = ?1)"),
+                params![id],
+                |row| row.get(0),
+            )?;
+            if held {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// The referrer counts on any connection, so a caller already inside a
@@ -650,6 +689,19 @@ impl Store<'_> {
     /// stayed on disk, so the sweep asks the table for the expired set directly.
     /// Fixed-width RFC 3339 millis, so comparing the strings compares the instants —
     /// the clock check in SQL's own vocabulary, and the same boundary the read uses.
+    ///
+    /// THE SECOND CENSUS. `role_references_on` above answers the GUARD question
+    /// ("does anything a person can still name reference this role?") and ignores
+    /// trashed and purged members on purpose. The FK answers a different one ("can
+    /// this row go?"), and a `users` row is never deleted — the purge anonymises it
+    /// in place and leaves `role_id` in it — so the two disagree exactly on a role
+    /// whose only referrer is a member in or past the trash. Deleting on the guard
+    /// answer alone met `SQLITE_CONSTRAINT_FOREIGNKEY`, and because the loop runs in
+    /// ONE transaction that aborted the whole sweep, not just the un-deletable row.
+    /// The sweep therefore consults [`ROLE_FK_REFERRERS`] first and leaves such a row
+    /// trashed rather than pretending it collected it. Reporting it as removed while
+    /// leaving it on disk would be the worse failure: the count is what an operator
+    /// reads to decide the sweep works.
     pub fn purge_expired_roles(&self) -> Result<usize, CoreError> {
         let cutoff = (chrono::Utc::now() - chrono::Duration::days(TRASH_RETENTION_DAYS))
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -664,6 +716,9 @@ impl Store<'_> {
         let mut removed = 0usize;
         for id in expired {
             if !Self::role_references_on(&tx, &id)?.is_empty() {
+                continue;
+            }
+            if Self::role_has_any_fk_referrer(&tx, &id)? {
                 continue;
             }
             removed += tx.execute("DELETE FROM roles WHERE id = ?1", params![id])?;
