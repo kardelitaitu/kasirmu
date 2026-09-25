@@ -3600,4 +3600,136 @@ audit** — it produced MSL-25, 27, 28 and 30, and every one was found by compar
 function rather than by reading either in isolation.
 
 **Tally:** 38 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 56 — the swallow shapes, swept workspace-wide: MSL-30 was not alone
+
+MSL-30 was the third instance of one shape in three passes, so this pass stopped reading files and
+enumerated the shape instead: every production (non-test) occurrence of `unwrap_or(None)`,
+`.ok()`, and `unwrap_or_default()` applied to a `Result`, then judged each by asking *what does a
+failed read look like downstream?* Twelve production `unwrap_or(None)` sites in four files. Three of
+the twelve were live defects; the rest are recorded below as judged-benign so the next pass does not
+re-derive them.
+
+### MSL-31 (MEDIUM, FIXED): the same file, the same probe, the update path
+
+The sweep found `tax_rates.rs:401` — the file from the PREVIOUS pass — carrying the identical
+`.unwrap_or(None)` on the **update** path's tenant-ownership probe. `check_scope_target_sqlite`
+had been fixed on the create path; `update_tax_rate` reads `tenant_id` to prove the row belongs to
+the caller before core's tenant-blind update runs, and swallowed the same way. A failing read
+failed `owner.as_deref() != Some(tenant_id)` and answered
+`NotFound { entity: "tax_rate" }` — "no such rate" while the rate exists and the database is what is
+broken.
+
+Fixed with a `match` rather than `?`, because `update_tax_rate` returns `Response`, not `Result`:
+a DB error now returns `store_error_response(CoreError::Db(e))`. Test
+`a_db_failure_in_the_update_owner_probe_is_not_reported_as_not_found` creates a rate, renames
+`tax_rates` so the probe fails while the row stays present, and asserts the response is not `404`.
+Watched failing with `assertion left != right failed: a DB failure must not be answered as NotFound
+-- the rate exists`, then restored. 335 `kasirmu-api` tests pass; clippy clean. Commit `a9f05200a`.
+
+**The lesson is about the sweep, not the bug.** I had READ this file end-to-end the pass before and
+found only one of the two instances, because I was reading for the *finding* rather than for the
+*shape*. The enumeration found the second one in a file I had just declared clean.
+
+### MSL-32 (MEDIUM-HIGH, FIXED): a failed ledger read answered as the wall clock
+
+`subscription.rs:582-593`, `compute_max_ledger_timestamp`: two `MAX(created_at)` reads, both
+`.unwrap_or(None)`. The `(None, None)` arm below is *defined* as "no ledger data — use
+`Utc::now()`", so **a database that could not answer the query was indistinguishable from an empty
+ledger**, and the function returned the system clock.
+
+Every consumer of that value is a clock-tampering defence, and each one is defeated by handing it the
+wall clock — confirmed by reading all four callers, not assumed:
+
+- `validate_clock_rollback` (`:620`) compares the result against `Utc::now()`. Given the wall clock
+  it compares the clock **against itself** and passes. Its callers are the write gates:
+  `workspaces.rs:291,377,544,596,721`, `products.rs:687`, `terminals.rs:475`,
+  `topology/commands.rs:705`, `auth.rs:631`.
+- `effective_tier_for_connection` (`:944`) is the fail-CLOSED tier resolver — its doc comment says
+  "missing/tampered data degrades to Free" — reached from
+  `db::quota_gate::Store::resolve_tier_fail_closed`. The wall clock is the one input that makes it
+  **over-credit** (a live subscription reads as within grace) instead of degrade.
+- `get_license_status` (`bridge/license.rs:770`) reports the failure as `ClockTampered` and puts the
+  database's error text in the user-facing `message`: a wrong diagnosis, and the same shape as MSL-30/31.
+- `pos_read_only_for_connection` (`:1086`) fails closed to `true` either way, so it is unaffected —
+  worth recording, because it is the one caller the bug does NOT change.
+
+Fixed by propagating both reads (`?`). The function already returned `Result<String, CoreError>`, and
+all four callers already handle `Err`, so nothing else changed.
+
+**Proven by a watched regression — and my first attempt at the falsification was wrong.**
+`a_broken_ledger_read_is_not_reported_as_an_empty_ledger` renames `sales` and `audit_log` away and
+asserts `compute_max_ledger_timestamp` errors. I reverted only the `sales` read and re-ran: the test
+**passed**. The reason is that the `audit_log` read still had `?` and propagated — so the revert was
+incomplete, not the test. A temporary probe confirmed both reads really were failing
+(`PROBE sales err = Err(...no such table: sales)`), after which I reverted **both** reads and the test
+failed exactly as predicted:
+
+```
+a failed ledger read must not be answered as an empty ledger;
+  got Ok("2026-09-25T04:14:01.608096200+00:00")
+```
+
+Fix restored, probe deleted, 3314 `kasirmu-core` lib tests pass, clippy clean. Commit `cf75e96ca`.
+
+**Process correction.** "Watch the test fail" is only meaningful if the revert restores the ENTIRE
+defect. Reverting half of a two-site bug leaves the other site propagating and the test green — a
+false pass that would have gone into the ledger as a verified pin. The probe is what caught it; the
+rule from here is to re-run the probe *or* revert every site the test claims to cover.
+
+### MSL-33 (MEDIUM, FIXED): a settings read failure answered as `false` on the local-API enable flag
+
+`kasirmu-local-api/src/lib.rs:281,289` — `is_enabled` and `resolve_port` both `.unwrap_or(None)` on
+`Settings::get`, which returns `Result<Option<String>, CoreError>`. Both live in a file whose own
+siblings make the opposite choice, and state why: `resolve_store_id` (`:135`) uses `.ok().flatten()`
+and **documents** the degradation ("silently degrades to primary rather than failing the boot
+auto-start"), while `load_or_create_secret` (`:312`) propagates with `.map_err(...)?`.
+
+The two swallow sites are the divergence: no documented rationale, and the failure direction is not
+the safe one. `is_enabled` decides whether an **HTTP surface is exposed**; a failed read answered
+`false` is silent (the merchant ticked the box and the API simply never came up) and is a
+false-negative on a security-relevant surface. `resolve_port` silently substituted `DEFAULT_PORT`.
+
+Fixed by returning `Result` from both, mirroring `load_or_create_secret`:
+`is_enabled(&conn) -> Result<bool, String>`, `resolve_port(&conn) -> Result<u16, String>`, with the
+read propagated via `.map_err(|e| format!("reading {KEY}: {e}"))?`. The two *value* cases are
+unchanged and still pinned by the existing tests — absent / unparseable port falls back to
+`DEFAULT_PORT`, `"0"` reads as disabled — because those are stored values this function is specified
+to reject, not database faults.
+
+Four call sites updated, each in the direction its own signature already wanted:
+`commands/local_api.rs:70` (`prepare`, already `?`-propagating a settings read one line later) and
+`build_status` (`:107`, already `Result<LocalApiStatus, AppError>`) now propagate; the two boot
+auto-start sites in `apps/desktop-tauri/src/lib.rs:887,907` log a warning and fall back to `false`
+rather than aborting the app launch. `cargo check -p kasirmu-app --all-targets` clean.
+
+**Proven by a watched regression.**
+`a_failed_read_of_the_enabled_flag_is_not_answered_false` renames `settings` away and asserts both
+functions error. Watched failing against the reintroduced swallow with exactly the predicted message
+("a failed read must not be answered `false` -- that is indistinguishable from the merchant
+disabling it"), then restored. 19 `kasirmu-local-api` tests pass; clippy clean. Commit `d05f5203e`.
+
+### Judged benign, with the reason (so no later pass re-derives them)
+
+- `kasirmu-core/src/db/mod.rs:622-628` — `row.get(...).unwrap_or(None)` for
+  `brand`, `rack_location`, `notes`, `unit`, `default_supplier_id`, `image_hash`. These are
+  **column** reads, not query reads: the `Result` is `FromSql` conversion for a nullable column, so
+  the `Option` is the column's nullability coming through the generic, and the fallback is exactly
+  the schema's `NULL`. No failed read is being hidden. Genuinely correct.
+- No other production `unwrap_or(None)` sites exist in the workspace (verified by enumeration, not
+  sampling).
+
+### The class, restated
+
+Six instances now: MSL-27 (`.ok()` on a tax probe), MSL-28 (`unwrap_or_default()` on a recipe read),
+MSL-30 (`unwrap_or(None)` on a scope probe), MSL-31 (its sibling in the same file), MSL-32 (a ledger
+read answered as the wall clock), MSL-33 (a settings read answered as `false`). The tell is the same
+every time and it is not the operator — it is the **branch the `None`/default lands in**. A default is
+safe when it means "absent" and dangerous when the code downstream treats it as an *answer*: a
+tenant mismatch, an empty ledger, a disabled flag. Ask what the default lets through, not whether the
+operator is spelled `unwrap_or(None)` or `.ok()`.
+
+**Tally:** 41 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
 
