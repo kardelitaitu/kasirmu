@@ -674,30 +674,46 @@
   --color-pos-on-primary:     #ffffff;
 }
 
-/* ── Smooth theme transitions ──────────────────── */
-/* Perf note (round AI): this rule deliberately animates ONLY paint-cheap
+/* ── Smooth theme transitions ──────────────────── *//* Perf note (round AI): this rule deliberately animates ONLY paint-cheap
    color properties. box-shadow and backdrop-filter were removed — both
    repaint the full element every frame, and on card-heavy screens (KDS
    board) the 200ms crossfade dropped frames behind the theme toggle's
    own click feedback. Shadows and blurs now snap with the new theme. */
-html.is-theme-transitioning *,
-html.is-theme-transitioning *::before,
-html.is-theme-transitioning *::after {
-  transition-property: color, background-color, border-color,
-    text-decoration-color !important;
-  transition-duration: var(--duration-200) !important;
-  transition-timing-function: var(--ease-out) !important;
+/*
+ * Gated to `no-preference`, and the gate matters more than it looks.
+ * Every declaration below is `!important` on `html.is-theme-transitioning *`
+ * = specificity (0,1,1), while the reduced-motion kill in `reset.css` is an
+ * `!important` longhand on `*` = (0,0,0). Two important declarations are
+ * settled by specificity, so the blanket rule LOST and a reduced-motion user
+ * still watched the whole document cross-fade for 200ms after every theme
+ * toggle. Leaving the gate out is what let that happen; under `reduce` these
+ * rules simply do not exist and the theme snaps (docs/records/JOURNAL.md
+ * already logged this as an open quirk). */
+@media (prefers-reduced-motion: no-preference) {
+  html.is-theme-transitioning *,
+  html.is-theme-transitioning *::before,
+  html.is-theme-transitioning *::after {
+    transition-property: color, background-color, border-color,
+      text-decoration-color !important;
+    transition-duration: var(--duration-200) !important;
+    transition-timing-function: var(--ease-out) !important;
+  }
 }
 
 /* The KDS theme toggle's pill must keep its own slide while the rest of
    the document fades: the global rule above replaces the element's
-   transition shorthand mid-flight, cancelling `left` and making the
-   pill teleport on click. Specificity (0,2,1) beats the (0,1,1) rule. */
-html.is-theme-transitioning .kds-theme-indicator {
-  transition:
-    left 280ms cubic-bezier(0.33, 1, 0.68, 1),
-    background-color var(--duration-200) var(--ease-out),
-    border-color var(--duration-200) var(--ease-out) !important;
+   transition shorthand mid-flight, cancelling `left` and making
+   the pill teleport on click. Specificity (0,2,1) beats the (0,1,1) rule.
+   Same `no-preference` gate as the rule it overrides, for the same reason —
+   it is (0,2,1) `!important`, so it outranked the blanket kill too and the
+   pill kept sliding 280ms for reduced-motion users. */
+@media (prefers-reduced-motion: no-preference) {
+  html.is-theme-transitioning .kds-theme-indicator {
+    transition:
+      left 280ms cubic-bezier(0.33, 1, 0.68, 1),
+      background-color var(--duration-200) var(--ease-out),
+      border-color var(--duration-200) var(--ease-out) !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -595,10 +595,21 @@
   border: none;
   background: var(--kds-switch-off);
   cursor: pointer;
-  transition: background 0.25s ease, box-shadow 0.25s ease !important;
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
   outline: none;
+}
+/* The switch's transition is `!important` at specificity (0,1,0), while the
+   blanket reduced-motion kill in reset.css is an `!important` longhand on
+   `*` at (0,0,0). Two important declarations are settled by specificity, so
+   the bare form OUTRANKED the kill: a reduced-motion user still watched the
+   switch fade background and shadow over 250ms. Declaring it under
+   `no-preference` means the rule does not exist at all under `reduce`, which
+   is the only way an `!important` transition can be suppressed from here. */
+@media (prefers-reduced-motion: no-preference) {
+  .kds-switch {
+    transition: background 0.25s ease, box-shadow 0.25s ease !important;
+  }
 }
 .kds-switch:active {
   transform: scale(0.92);
@@ -618,7 +629,14 @@
   border-radius: 50%;
   background: var(--kds-fg-inverse);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.3s cubic-bezier(0.34, 1.35, 0.64, 1), box-shadow 0.2s ease !important;
+}
+/* Same gate as the rule above, and this is the one that carried actual
+   MOTION rather than colour: the knob physically slides 24px on toggle, so
+   (0,2,0) `!important` here outranked the blanket kill hardest of all. */
+@media (prefers-reduced-motion: no-preference) {
+  .kds-switch::after {
+    transition: transform 0.3s cubic-bezier(0.34, 1.35, 0.64, 1), box-shadow 0.2s ease !important;
+  }
 }
 .kds-switch.on::after {
   transform: translateX(24px);
@@ -2396,10 +2414,12 @@ body.no-anim .kds-ticket-urgent-badge::after {
 /* ── Reduced motion: disable decorative modal and overlay animations ──
    Entrance/exit and heavy decorative sweeps are cut; functional feedback
    and core workspace tab navigation remain fluid unless suppressed in-app. */
-/* Global @media (prefers-reduced-motion: reduce) in tokens.css
-   already sets `animation: none; transition: none` on all elements.
-   Only element-specific overrides that go beyond animation/transition
-   belong here. */
+/* Global `reset.css` reduces motion to `animation-duration` /
+   `transition-duration: 0.01ms !important` on `*` — but only for declarations
+   that are NOT themselves `!important` at a higher specificity, which is why
+   the `.kds-switch` transitions above now carry their own
+   `no-preference` gate instead of relying on this. Only element-specific
+   overrides that go beyond animation/transition belong here. */
 @media (prefers-reduced-motion: reduce) {
   .kds-ticket--red::after,
   .kds-ticket--urgent::after,
