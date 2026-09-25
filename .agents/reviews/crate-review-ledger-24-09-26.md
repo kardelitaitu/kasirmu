@@ -4843,4 +4843,64 @@ offending value is visible on the operator's screen, which is what makes the wro
 `workspace_types(key)`) are enumerated but not yet adjudicated; that is the next pass.
 
 **Tally:** 55 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 73 — MSL-49 and MSL-50: the FK census finished
+
+### The two remaining targets, both confirmed
+
+Pass 72 left `currencies(code)` and `workspace_types(key)` named but unadjudicated. This pass measured both,
+and both leaked the same raw failure.
+
+### MSL-49: `currencies(code)` — and a test that could not have caught it
+
+`modules/currency` is the one module the ledger previously deferred ("its own gaps tracked under the
+parallel review's F-findings"), so it had never been read here. It turned out to be unusually disciplined —
+trims, uppercases, validates every field, wraps the write and read-back in one transaction — with about
+twenty tests including whitespace normalisation.
+
+But the FK membership was left to SQLite, and **the test meant to cover it asserts only `is_err()`**:
+
+```rust
+#[test]
+fn create_exchange_rate_rejects_unknown_currency() {
+    // exchange_rates.from_currency/to_currency have FK references to
+    // currencies(code); a code not in the table must be rejected.
+    assert!(result.is_err(), "a rate for an unknown currency must be rejected by the FK");
+}
+```
+
+The comment shows the author knew the FK was the mechanism — and the assertion is exactly why the wrong
+*kind* went unnoticed. Measured, both paths returned
+`Db(SqliteFailure(ConstraintViolation, "FOREIGN KEY constraint failed"))`.
+
+**Fixed** with a `currency_exists` lookup before the write, returning
+`Validation { field: "from_currency" | "to_currency" }` that echoes the rejected code. The API's
+`store_error_response` already maps that to a 400 naming the field, so the fix propagates end to end. The two
+existing tests are now **strengthened to assert the kind** rather than `is_err()`, which is the change that
+makes them able to fail.
+
+**This is the sharpest instance of the class so far**: not an oversight in production code, but a test that
+pinned the mechanism ("rejected by the FK") while being blind to the contract (what the caller sees).
+
+### MSL-50: `workspace_types(key)` — non-empty is not membership
+
+`create_workspace_instance_with_purpose` validated `type_key` for emptiness only, while the column is
+`REFERENCES workspace_types(key)`. A bogus key returned the same raw FK failure. Fixed with one indexed
+lookup, naming `type_key` and echoing the value. Falsified before committing.
+
+### The census, closed
+
+| FK target | protected by | verdict |
+|---|---|---|
+| `products(sku)` ×3 | typed mapping, MSL-48 | fixed |
+| `currencies(code)` | `currency_exists`, MSL-49 | fixed |
+| `workspace_types(key)` | membership lookup, MSL-50 | fixed |
+| `workspaces(key)` | seeded vocabulary, machine-supplied | clean |
+| `roles(id)`, `users(id)`, `locations(id)` | ids from the same store, not operator-typed codes | clean |
+
+**Verified:** 3338 `kasirmu-core` lib tests (was 3337), 88 `modules-currency` (two strengthened), 342
+`kasirmu-api`, clippy clean on both changed crates. Commits `4d67961cd`, `0a33edea6`.
+
+**Tally:** 57 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
