@@ -303,20 +303,31 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # anchor can pass here and fail on a UTC CI runner. Re-runs the analytics
     # anchor test under four zones and requires identical results.
     step "analytics tz invariance" "python3 scripts/check-tz-invariance.py" python3 ../scripts/check-tz-invariance.py
-    # AUDIT-27 CI-06: A11y regression suite (advisory). Never fails the gate —
-    # reports status only, because known product-level a11y bugs are tracked but
-    # not yet fixed and a blocking gate here would be disabled within a day.
-    # This used to say it "mirrors CI's continue-on-error", and the WARN line used
-    # to tell the developer to "see CI". Both were false: `git grep a11y
-    # .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly
-    # that E2E, a11y, security and nightly suites are NOT enforced in CI. So this
-    # run is the only place a11y is ever checked -- a green Dev CI is no evidence it
-    # passed. Recorded in scripts/gates.json -> "a11y-advisory".
-    echo -n "ui a11y (advisory)... "
+    # AUDIT-27 CI-06 / C24: the a11y suite itself is NOT advisory in CI -- it
+    # cannot be, because `ui-test` runs `cd ui && npm test` (dev-ci.yml), which is
+    # plain `vitest run` with `exclude: ['e2e/**', 'node_modules/**']`, so every
+    # file under src/__tests__/a11y/ executes there and any axe violation fails
+    # the job. Verified by injecting an unnamed <button> and watching the suite
+    # exit 1.
+    #
+    # What IS advisory is this *second* run: it exists to give a fast, verbose
+    # local report before the full suite, and it stays non-fatal so a developer
+    # gets the axe detail without losing the rest of the gate. (The earlier text
+    # here claimed a11y was checked nowhere but here, citing that no workflow
+    # contains the string "a11y" -- true, but it was looking for a dedicated job
+    # rather than the suite's actual execution path.)
+    #
+    # The real C24 gap is coverage, not enforcement: each screen's suite asserts
+    # ONE rendered state, so conditional subtrees (e.g. the PIN pad, reached only
+    # after the username step) are never scanned. A mouse-only <tr> survived here
+    # for exactly that reason; its keyboard path is now pinned in
+    # ui/src/__tests__/TransactionLogScreen.test.tsx. Recorded in
+    # scripts/gates.json -> "a11y-advisory".
+    echo -n "ui a11y (advisory local re-run)... "
     if npm run test:a11y >/dev/null 2>&1; then
         echo -e "${GREEN}PASS${NC}"
     else
-        echo -e "${YELLOW}WARN (a11y regressions exist — non-blocking, and NOT checked in CI)${NC}"
+        echo -e "${YELLOW}WARN (a11y regressions — this run is advisory, but ui-test fails CI on the same suite)${NC}"
     fi
     # i18n lint: runs AFTER ui test (which proves vitest works) but
     # BEFORE ui build (which is ~30s). Fail-fast on a ~1s lint check

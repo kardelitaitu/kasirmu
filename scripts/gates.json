@@ -250,7 +250,7 @@
       "label": "A11y regression (advisory)",
       "status": "advisory",
       "runners": { "check.sh": ["a11y"] },
-      "_note": "Local-only AND advisory by design: check.sh:196-200 runs `npm run test:a11y` and prints WARN on regressions without failing, because known product-level a11y bugs are tracked and a blocking gate would be disabled within a day. ⚠ The message at check.sh:200 says 'non-blocking, see CI', which misleads -- `git grep a11y .github/workflows/dev-ci.yml` returns nothing, and AGENTS.md states plainly that 'E2E, a11y, security and nightly suites are NOT enforced in CI'. A green Dev CI run is not evidence a11y was checked."
+      "_note": "C24 correction. The old note said a11y was checked nowhere but locally, on the strength of `git grep a11y .github/workflows/dev-ci.yml` returning nothing. That grep was looking for a dedicated job and missed the real execution path: dev-ci.yml#ui-test (line ~467) runs `cd ui && npm test`, which is bare `vitest run`, and ui/vite.config.ts:129 excludes only ['e2e/**','node_modules/**'] -- so every file under src/__tests__/a11y/ runs in CI and an axe violation fails the job. Verified non-vacuously by injecting an unnamed <button> into a rendered subtree and watching the suite exit 1. This ENTRY is still advisory in the sense that check.sh's separate verbose re-run does not fail the gate; enforcement in CI is real and comes from ui-test, not from here. The genuine C24 gap is coverage: each screen's suite asserts a single rendered state, so conditional subtrees are never scanned (StaffLoginScreen is checked only on the username step, leaving the whole PIN pad unscanned)."
     },
     {
       "id": "feature-registry",
