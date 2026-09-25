@@ -79,6 +79,15 @@
       .app-splash {
         position: fixed;
         inset: 0;
+        /* Same stacking as the React stage: --z-splash is the highest token
+           on the scale (tokens.css), so the splash covers modal/toast/tooltip.
+           The fallback matters because tokens.css has not loaded yet at this
+           stage — without a z-index here the element is `auto`, and `auto`
+           loses to any LATER body sibling that sets one, so a dev overlay or
+           a drag region would paint over the splash while the app is still
+           booting. That is the exact property the "keep values in sync"
+           comment above promises is kept. */
+        z-index: var(--z-splash, 700);
         display: flex;
         flex-direction: column;
         align-items: center;
