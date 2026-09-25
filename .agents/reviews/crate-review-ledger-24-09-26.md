@@ -3502,3 +3502,50 @@ note to a rule I state before every append.
 
 **Tally:** 37 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 54 — `kasirmu-api` routes: the tz-interpolation and idempotency leads, both disproved
+
+A reading round on the API surface, following MSL-29's lens (two places interpreting one value).
+Three leads pursued, three disproved — recorded because a negative result that cost real work is
+worth keeping.
+
+**1. The `tz_modifier` SQL interpolation is genuinely injection-safe.** Twenty-seven call sites
+interpolate the offset into `format!`-built SQL (`format!("DATE(s.created_at, '{tz}')")`, e.g.
+`popularity.rs:246-255`). The safety argument is that `tz_modifier` output is validated by
+`parse_utc_offset`. Verified at the source rather than trusted: `parse_fixed_offset` returns only
+`"+00:00"` (the `UTC` literal arm) or a **6-byte** string whose bytes 1,2,4,5 are ASCII digits and
+whose hour/minute are range-checked; the IANA arm returns `FixedOffset`'s `Display`, which is
+`±HH:MM` by construction. An unresolvable value never reaches the SQL — `tz_modifier` substitutes
+`"+00:00"`. No input can place a quote or a semicolon in that position.
+
+**2. The sales idempotency guard IS fully tested — my first search just missed the file.**
+`routes/sales_tests.rs` has 13 cases and none touch `guard_key`/`guard_key_reject`/`claim_sqlite`, so I
+started writing a test for the unpinned claims. Grepping for the guard's own identifiers then found
+`routes/sales_idempotency_tests.rs`, with dedicated coverage of both load-bearing properties:
+`guard_key_absent_or_blank_is_unguarded` (absent, empty AND whitespace-only are all unguarded) and
+`guard_key_is_taken_verbatim` (no trimming, no case folding). 10 cases, all green. The "never
+normalised" claim is pinned, and a second grep on the FUNCTION NAMES rather than the test-file name is
+what found it.
+
+**3. The settings route's tenant scoping is consistent across both engines.** `scoped_key(base,
+tenant)` is the isolation primitive; `get_setting_scoped_pg` (Postgres) and the `get_scoped` closure
+(SQLite) implement the same resolution order — scoped row first, bare key as fallback — and the doc at
+`settings.rs:153-163` explains why it reads the SCOPED row rather than the bare one
+(`Store::merged_smtp_password_json` is pinned to the bare key, which is the desktop's single-tenant row;
+merging against it "would carry some other tenant's secret into this one"). The F-029 decryption
+failure is fail-closed with a logged error. Both branches agree.
+
+**What this round actually bought.** Two of the three checks confirmed a security argument that existed
+only as a COMMENT (the injection-safety claim and the tenant-scoping rationale), which is the same class
+as MSL-22: a stated guarantee with no mechanical check behind it. I did not add tests for them this
+round, because the properties are structural (a 6-byte range-checked shape; two identical closures)
+rather than behavioural, and a test asserting `parse_fixed_offset`'s output shape would restate its
+implementation. Recording the verification in the ledger is the honest deliverable.
+
+**No findings in this pass**, and that is a statement about what was read: `routes/{sales,settings,
+tokens}.rs` and the idempotency guard are clean. `routes/{images,tax_rates,products,exchange_rates,
+memos,plans}.rs` remain unread.
+
+**Tally:** 37 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
