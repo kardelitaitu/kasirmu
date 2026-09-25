@@ -71,11 +71,15 @@ pub async fn store_linked_terminal(
             device_secret,
         )
         .await;
-        if token_resp.ok && token_resp.token.is_some() {
-            if let Some(ref token_str) = token_resp.token {
-                let conn = ctx.lock_global().await;
-                Settings::set_sync_api_key(&conn, token_str)?;
-            }
+        // Collapsed: `token.is_some()` was checked and then re-proved by the
+        // `if let` immediately inside it, so the outer test could only ever be
+        // true. Clippy's collapsible_if (C25) is right that this was one
+        // condition written twice.
+        if token_resp.ok
+            && let Some(ref token_str) = token_resp.token
+        {
+            let conn = ctx.lock_global().await;
+            Settings::set_sync_api_key(&conn, token_str)?;
         }
     }
 

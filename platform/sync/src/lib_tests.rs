@@ -1794,7 +1794,8 @@ fn apply_push_outcomes_truncated_results_leave_trailing_items_pending() {
     apply_push_outcomes(&queue, &store, &[a.clone(), b.clone()], &results).unwrap();
 
     let all = store.list_all_offline().unwrap();
-    let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status.clone();
+    // OfflineQueueStatus is Copy, so the closure returns it by value.
+    let got = |id: &str| all.iter().find(|i| i.id == id).unwrap().status;
     assert_eq!(
         got(&a.id),
         kasirmu_core::offline::OfflineQueueStatus::Synced

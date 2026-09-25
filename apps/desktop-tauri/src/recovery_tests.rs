@@ -14,11 +14,10 @@ use tempfile::TempDir;
 
 /// A scratch directory removed when the guard drops.
 fn scratch(label: &str) -> TempDir {
-    let dir = tempfile::Builder::new()
+    tempfile::Builder::new()
         .prefix(&format!("kasirmu_restore_{label}_"))
         .tempdir()
-        .expect("create scratch dir");
-    dir
+        .expect("create scratch dir")
 }
 
 /// A migrated, on-disk database carrying `store_name`.

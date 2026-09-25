@@ -539,17 +539,20 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
     );
 }
 
-// ── TDD Bug #1: spawn_blocking panic is not silently swallowed ─
-
-/// Verify that `read_config_and_pending` propagates errors from a
-/// poisoned connection. When the inner `unwrap()` on the mutex lock
-/// panics, the `spawn_blocking` join handle returns an `Err`, and
-/// `run_tick` must surface that in `last_error`.
-///
-/// We test this by creating a valid DB, then extract the config read
-/// through the `read_config_and_pending` helper (which does the same
-/// work the `spawn_blocking` closure does).
 // ── C20: priority ordering on the push path ──────────────────────
+//
+// The F-018 split extracted the read phase into `read_config_and_pending`,
+// which takes a `&Connection` directly. That REMOVED the case the "TDD Bug
+// #1" section used to document — the read no longer runs inside the
+// `spawn_blocking` closure, so it holds no `Mutex` guard and cannot panic on
+// a poisoned lock. The old doc comment was left attached to nothing and the
+// test it described no longer had a subject, which is why clippy reported
+// "empty line after doc comment" (C25).
+//
+// The panic path itself still exists and is still handled: every closure that
+// DOES take the lock joins through `spawn_blocking` and surfaces a
+// `JoinError` (daemon.rs:157, :189, :214; the prune path logs it at :507), so
+// the behaviour is covered where it actually lives. Nothing is owed here.
 
 /// The acceptance case: a LOW-priority item is enqueued FIRST, so the
 /// un-sorted read (`ORDER BY created_at ASC`) puts it at the head of the batch

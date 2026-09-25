@@ -1756,22 +1756,27 @@ fn drift_pin_open_before_gate_population_matches_its_floor() {
         }
     }
 
-    assert!(
-        bodies >= OPEN_BEFORE_GATE_FLOOR,
-        "the open-before-gate sweep found {bodies} bodies, below the pinned floor of \
-         {OPEN_BEFORE_GATE_FLOOR}. A sweep that finds fewer has stopped matching, not \
-         had its subject repaired: if you FIXED bodies, lower the floor in the same \
-         commit and say so here. Per-file census: {by_file:?}",
-    );
-    // NO SLACK, deliberately. An earlier draft allowed +4 and a mutation test caught
-    // it: reintroducing the defect in one command moved the count 75 -> 76, sailed
-    // under the bound, and the ratchet stayed green. Any headroom here is headroom
-    // for exactly the regression this test exists to refuse.
-    assert!(
-        bodies <= OPEN_BEFORE_GATE_FLOOR,
-        "{bodies} bodies open the store before gating, above the pinned floor of \
-         {OPEN_BEFORE_GATE_FLOOR}. A newly added body inherits the defect R10 (BR-X4) \
-         is closing: resolve the session, GATE, then resolve the store. If you FIXED \
-         bodies, lower the floor in the same commit. Per-file census: {by_file:?}",
+    // ONE assertion, because the two bounds this replaces were only ever an
+    // exact-equality test written twice: `>= FLOOR` AND `<= FLOOR`. Splitting
+    // them cost a trivially-true leg whenever the floor sits at 0 (`usize >= 0`
+    // cannot fail), which clippy rejects — correctly, since a bound that cannot
+    // fail is not a ratchet.
+    //
+    // Equality keeps BOTH legs doing real work and keeps both diagnostics: a
+    // count that ROSE is a newly added open-before-gate body (the regression),
+    // and a count that DROPPED means the sweep stopped matching — either way the
+    // floor must move in the same commit, never be loosened to make this pass.
+    //
+    // NO SLACK, deliberately. An earlier draft allowed +4 and a mutation test
+    // caught it: reintroducing the defect in one command moved the count 75 -> 76,
+    // sailed under the bound, and the ratchet stayed green.
+    assert_eq!(
+        bodies, OPEN_BEFORE_GATE_FLOOR,
+        "the open-before-gate sweep found {bodies} bodies, but the pinned floor is \
+         {OPEN_BEFORE_GATE_FLOOR}. MORE means a newly added body inherits the defect \
+         R10 (BR-X4) is closing: resolve the session, GATE, then resolve the store. \
+         FEWER means the sweep stopped matching, not that its subject was repaired. \
+         Fixing bodies means lowering the floor in the same commit. Per-file census: \
+         {by_file:?}",
     );
 }

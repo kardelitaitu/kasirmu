@@ -249,9 +249,6 @@ pub async fn delete_category_scoped(
     Ok(DeleteCategoryResult { affected_products })
 }
 
-/// Verify a category permission against the global identity database.
-///
-
 /// Session-scoped variant of `list_categories`.
 ///
 /// # ADR #49 NOT APPLIED, deliberately — refused twice over
