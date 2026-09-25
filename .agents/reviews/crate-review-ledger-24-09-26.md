@@ -3101,3 +3101,66 @@ tables against the registry so a future typo cannot become an invisible denial.
 **Tally:** 30 findings fixed (8 HIGH), 12 leads disproved. One is a preventive guard rather
 than a repair, counted because it closes a real gap in coverage.
 
+---
+
+## Pass 47 — `read_tiers.rs` presets: three grants that open no route
+
+### MSL-23 (LOW, PINNED): the preset tests asserted the key LISTS, never what the keys reach
+
+Continuing the identifier lens onto the preset tables. `read_tiers_tests` covers the preset
+CONTENTS exhaustively — `resolve_preset_terminal_binds_read_keys` asserts every key and both
+PII exclusions — and `permission_registry_tests` proves every preset key is registered.
+**Neither asks whether a preset key gates anything.**
+
+Cross-checking the three presets against `READ_KEY_MAP` (12 entries over 12 paths) found
+three grants appearing in **no** map entry:
+
+| preset | grant | routed? |
+|---|---|---|
+| `dashboard` | `reports:view` | no |
+| `dashboard` | `analytics:view` | no |
+| `audit` | `audit:view` | no |
+| `audit` | `reports:view` | no (same key) |
+
+So an operator who mints an `audit` token gets one carrying two permissions that open
+**nothing** — the token can read no route at all. I checked both surfaces before concluding:
+neither `kasirmu-api`'s router nor the cloud server exposes a reports/analytics/audit GET;
+those surfaces are produced by the cloud server's EMAIL bundle
+(`apps/cloud-server/src/email_pg/analytics.rs`), not as read-tier endpoints.
+
+**Severity LOW and stated precisely.** This is over-NARROW, never over-broad: a dead grant
+grants nothing, so it is not a security hole. It is also invisible — the preset tests pass,
+the registry tests pass, and the token mints successfully carrying permissions that do
+nothing.
+
+**Pinned, not "fixed", and the distinction matters.** The right shape is not to delete the
+keys (the reports read tier is clearly intended and documented in
+`website/.../api-read-tiers.md`), nor to silently allow them. The new test
+`preset_keys_that_gate_no_route_are_pinned_explicitly` asserts the dead set is EXACTLY
+`{reports:view, analytics:view, audit:view}`, so:
+
+- wiring a `/api/v1/reports*` route and adding map entries makes this test FAIL, telling the
+  author to remove that key from `NOT_YET_ROUTED` — the grant now works and the note is
+  stale;
+- adding any NEW unrouted grant also fails, so a preset cannot quietly accumulate
+  permissions that open nothing.
+
+**Verified the guard has teeth** rather than assuming: adding `"nonexistent:read"` to
+`AUDIT_PRESET` failed the test with
+`left: [analytics:view, audit:view, nonexistent:read, reports:view]`. Reverted, so the commit
+is the test alone (+44), carrying a floor on the preset lengths so a broken walk cannot pass
+vacuously.
+
+### A process correction
+
+This round I twice reported a test as "not collected" when it was: my filter used `--exact`
+with a bare function name, which matches nothing, and a plain filter returning `0 passed` was
+reading the wrong run. The test was collected and passing both times. Last round's lesson was
+"check that a test is COLLECTED"; the refinement is **check with the right invocation, and
+treat `0 passed` as ambiguous between "not collected" and "filter typo" until the run is
+inspected.**
+
+**Verified:** 22 `read_tiers` tests and all 332 `kasirmu-api` tests pass; clippy clean.
+
+**Tally:** 31 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
