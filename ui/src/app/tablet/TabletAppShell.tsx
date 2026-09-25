@@ -136,14 +136,19 @@ export default function TabletAppShell() {
   const prevWorkspaceRef = useRef(activeWorkspace);
   useEffect(() => {
     if (prevWorkspaceRef.current !== undefined && prevWorkspaceRef.current !== activeWorkspace) {
-      const workspaceRoute: Record<string, string> = {
-        'restaurant-pos': 'pos',
-        'store-pos': 'pos',
-        kds: 'kds',
-        warehouse: 'products',
-        admin: 'settings',
-      };
-      setCurrentRoute(workspaceRoute[activeWorkspace ?? ''] ?? 'pos');
+      if (!activeWorkspace) {
+        window.location.hash = '';
+        setCurrentRoute('pos');
+      } else {
+        const workspaceRoute: Record<string, string> = {
+          'restaurant-pos': 'pos',
+          'store-pos': 'pos',
+          kds: 'kds',
+          warehouse: 'products',
+          admin: 'settings',
+        };
+        setCurrentRoute(workspaceRoute[activeWorkspace] ?? 'pos');
+      }
     }
     prevWorkspaceRef.current = activeWorkspace;
   }, [activeWorkspace]);

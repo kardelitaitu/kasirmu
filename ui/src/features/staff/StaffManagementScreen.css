@@ -82,6 +82,39 @@
   min-width: 0;
 }
 
+/* Title group: icon + page title in lead column. */
+.staff-mgmt-header-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.staff-mgmt-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-fg);
+  flex-shrink: 0;
+}
+
+.staff-mgmt-header-icon svg {
+  width: var(--text-lg);
+  height: var(--text-lg);
+  display: block;
+}
+
+.staff-mgmt-header-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg);
+  line-height: var(--leading-condensed);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Tab strip ─────────────────────────────────────────────────────
    The strip itself is the shared segmented control (components/
    SegmentedTabs.css — track, sliding thumb, button box and type). This rule is

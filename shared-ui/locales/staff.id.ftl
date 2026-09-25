@@ -10,6 +10,7 @@ staff-login-lockout = Terkunci. Coba lagi dalam { $seconds }d
 
 # ── Product Bundles ──
 staff-back-aria = Kembali ke ruang kerja
+staff-management-title = Manajemen Staf
 staff-tabs-aria = Staf, peran, dan sampah
 staff-footer-updated = Diperbarui { $time }
 staff-add-button = Tambah Staf

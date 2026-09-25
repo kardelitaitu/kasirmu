@@ -326,24 +326,32 @@ export default function AppShell() {
   const prevWorkspaceRef = useRef(activeWorkspace);
   useEffect(() => {
     if (prevWorkspaceRef.current !== undefined && prevWorkspaceRef.current !== activeWorkspace) {
-      const hashRoute = window.location.hash.replace('#/', '');
-      if (hashRoute && getPage(hashRoute)) {
-        setCurrentRoute(hashRoute);
-        // Clear the hash after consuming it so it does not persist and
-        // override the workspace default on subsequent workspace switches.
-        // (WorkspaceHome's Analytics/Reports shortcuts set the hash before
-        // switching workspaces — this prevents a stale hash from hijacking
-        // the next admin workspace open.)
+      if (!activeWorkspace) {
+        // Returning to workspace picker from an active workspace:
+        // Clear any residual hash route and reset currentRoute to non-fullscreen default
+        // so that WorkspaceHome is rendered.
         window.location.hash = '';
+        setCurrentRoute('products');
       } else {
-        const workspaceRoute: Record<string, string> = {
-          'restaurant-pos': 'sales',
-          'store-pos': 'products',
-          kds: 'kds',
-          warehouse: 'warehouse',
-          admin: 'settings',
-        };
-        setCurrentRoute(workspaceRoute[activeWorkspace ?? ''] ?? 'products');
+        const hashRoute = window.location.hash.replace('#/', '');
+        if (hashRoute && getPage(hashRoute)) {
+          setCurrentRoute(hashRoute);
+          // Clear the hash after consuming it so it does not persist and
+          // override the workspace default on subsequent workspace switches.
+          // (WorkspaceHome's Analytics/Reports shortcuts set the hash before
+          // switching workspaces — this prevents a stale hash from hijacking
+          // the next admin workspace open.)
+          window.location.hash = '';
+        } else {
+          const workspaceRoute: Record<string, string> = {
+            'restaurant-pos': 'sales',
+            'store-pos': 'products',
+            kds: 'kds',
+            warehouse: 'warehouse',
+            admin: 'settings',
+          };
+          setCurrentRoute(workspaceRoute[activeWorkspace] ?? 'products');
+        }
       }
     }
     prevWorkspaceRef.current = activeWorkspace;
@@ -355,8 +363,16 @@ export default function AppShell() {
   // page routes so the AppShell React state stays in sync.
   useEffect(() => {
     const syncFromHash = () => {
-      const raw = window.location.hash.replace('#/', '');
-      if (!raw) return;
+      const raw = window.location.hash.replace(/^#\/?/, '');
+      if (!raw) {
+        // When the hash is cleared and there is no active workspace,
+        // ensure currentRoute is reset away from any fullscreen page
+        // so WorkspaceHome is rendered.
+        if (!activeWorkspace) {
+          setCurrentRoute('products');
+        }
+        return;
+      }
       // Cross-page deep links may carry a sub-section query — the settings
       // hub reads its section out of the same hash
       // (`#/settings/topology?branch=<id>` from the Locations dashboard's
@@ -386,7 +402,7 @@ export default function AppShell() {
     syncFromHash();
     window.addEventListener('hashchange', syncFromHash);
     return () => window.removeEventListener('hashchange', syncFromHash);
-  }, []);
+  }, [activeWorkspace]);
 
   /**
    * Called when the activation flow finishes (license activated + owner

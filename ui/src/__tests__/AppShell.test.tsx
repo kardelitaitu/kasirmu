@@ -62,6 +62,7 @@ vi.mock('@/features/memo/MemoBanner', () => ({
   },
 }));
 
+
 // ── Mock API modules used by AppShell ────────────────────────────
 
 vi.mock('@/api/license', () => ({
@@ -1212,6 +1213,115 @@ describe('AppShell — KDS workspace navigation', () => {
       await waitFor(() => {
         expect(screen.getByTestId('revoked-screen')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('fullscreen exit to workspace picker regression', () => {
+    function setTestSession(roleName: string, permissions: string[]) {
+      mockAuthSession.mockReturnValue({
+        session: {
+          user_id: 'user-1',
+          role_name: roleName,
+          role_id: 'role-1',
+          display_name: 'Test User',
+          permissions,
+        },
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+        clearError: vi.fn(),
+        swapSession: vi.fn(),
+        pickerTicket: null,
+        isManager: roleName === 'manager' || roleName === 'owner',
+        isOwner: roleName === 'owner',
+      });
+    }
+
+    it('exits a fullscreen page to WorkspaceHome when hash is cleared without an active workspace', async () => {
+      setTestSession('owner', ['*']);
+      registerPage({
+        route: 'test-fullscreen-exit',
+        component: () => <div data-testid="test-fullscreen-screen">Fullscreen Content</div>,
+        label: 'Fullscreen Test',
+        fullscreen: true,
+      });
+
+      mockWorkspace.mockReturnValue({
+        activeWorkspace: null,
+        setActiveWorkspace: vi.fn(),
+        availableWorkspaces: [],
+        workspaceScreens: [],
+        loading: false,
+      });
+
+      window.location.hash = '#/test-fullscreen-exit';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('test-fullscreen-screen')).toBeInTheDocument();
+      });
+
+      // Clear the hash (as done when exiting to workspace picker)
+      await act(async () => {
+        window.location.hash = '';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(document.querySelector('.workspace-home-wrapper')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-card-add')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('test-fullscreen-screen')).not.toBeInTheDocument();
+    });
+
+    it('resets route and clears hash when activeWorkspace becomes null from inside a fullscreen page', async () => {
+      setTestSession('owner', ['*']);
+      registerPage({
+        route: 'test-fullscreen-exit-ws',
+        component: () => <div data-testid="test-fullscreen-ws-screen">Fullscreen Content</div>,
+        label: 'Fullscreen Test WS',
+        fullscreen: true,
+      });
+
+      function Harness() {
+        const [ws, setWs] = useState<string | null>('admin');
+        mockWorkspace.mockImplementation(() => ({
+          activeWorkspace: ws,
+          setActiveWorkspace: setWs,
+          availableWorkspaces: [],
+          workspaceScreens: [],
+          loading: false,
+        }));
+        return (
+          <>
+            <button data-testid="exit-ws-btn" onClick={() => setWs(null)}>
+              Exit Workspace
+            </button>
+            <AppShell />
+          </>
+        );
+      }
+
+      window.location.hash = '#/test-fullscreen-exit-ws';
+      await renderWithProviders(<Harness />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('test-fullscreen-ws-screen')).toBeInTheDocument();
+      });
+
+      // Workspace becomes null (e.g. back button sets activeWorkspace = null)
+      fireEvent.click(screen.getByTestId('exit-ws-btn'));
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(document.querySelector('.workspace-home-wrapper')).toBeInTheDocument();
+        expect(screen.getByTestId('workspace-card-add')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('test-fullscreen-ws-screen')).not.toBeInTheDocument();
+      expect(window.location.hash).toBe('');
     });
   });
 });

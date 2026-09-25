@@ -217,10 +217,21 @@ describe('StaffManagementScreen', () => {
   it('renders the Staff and Roles tabs with the add button', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
-    // The tab names the view; there is no page heading to duplicate it.
     expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
+    expect(screen.getByTestId('staff-management-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('staff-management-title')).toHaveTextContent('Staff Management');
+  });
+
+  it('calls goToWorkspacePicker and clears hash when back button is clicked', async () => {
+    window.location.hash = '#/staff';
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    const backBtn = screen.getByTestId('staff-back-btn');
+    fireEvent.click(backBtn);
+    expect(window.location.hash).toBe('');
   });
 
   it('swaps the header action to Add New Role on the Roles tab, and opens it as a popup', async () => {

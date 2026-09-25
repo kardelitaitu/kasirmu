@@ -475,11 +475,28 @@ export default function StaffManagementScreen() {
               <polyline points="12 19 5 12 12 5" />
             </svg>
           </Button>
+
+          <div className="staff-mgmt-header-title-group">
+            <span
+              className="staff-mgmt-header-icon staff-management-icon"
+              data-testid="staff-management-icon"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" width="18" height="18" aria-hidden="true">
+                <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+                <path fillRule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z" />
+                <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />
+              </svg>
+            </span>
+            <Localized id="staff-management-title">
+              <h1 className="staff-mgmt-header-title" data-testid="staff-management-title">
+                Staff Management
+              </h1>
+            </Localized>
+          </div>
         </div>
 
-        {/* Centre column, KDS-header style. No h1: the tab names the view, and
-            a heading repeating the active tab is noise — the panel is
-            announced through aria-labelledby instead. */}
+        {/* Centre column: tab strip for Staff, Roles, and Trash. */}
         <StaffTabs
           activeTab={activeTab}
           onSelectTab={selectTab}
