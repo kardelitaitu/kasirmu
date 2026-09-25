@@ -3833,6 +3833,93 @@ clippy clean. Commit `87b60078f`.
   why the commit shows the narrower form.
 
 **Tally:** 42 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 58 — MSL-35: a terminal token could skip the memo-write admin key
+
+### The finding, from a sibling divergence on a security gate
+
+`routes/memos.rs` (216) was unread. Its write guard `require_tenant_write` is a documented sibling of
+`routes/tokens.rs::require_admin_write`, and the two do not agree:
+
+```rust
+// require_admin_write (tokens.rs:158-175) -- TWO defences:
+if !admin_key_authorised(headers, configured) { return 401; }
+if claims.terminal_id.is_some()               { return 403; }
+
+// require_tenant_write (memos.rs:53) -- documented as mirroring it, but:
+if claims.terminal_id.is_none() && !admin_key_authorised(headers, admin_key) { return 401; }
+```
+
+The memos condition is **inverted**: the admin-key check only runs when the token has NO
+`terminal_id`. So any token carrying a terminal scope skipped the admin key entirely on
+`POST /api/v1/memos/sync` — the tenant-wide memo reconciler (upsert + delete-by-omission).
+
+**The giveaway was the comment, not the code.** The sentence directly above the guard said the
+exemption applied *"only when the deployment chose to allow terminal credentials at all"* — and the
+function never consulted `AppState::allow_terminal_credentials`. Grepping it across the file returns
+**zero** hits. The sibling that MINTS terminal tokens does check it (`tokens.rs:198`), so the two
+disagreed about when a device credential is legal at all.
+
+### Severity, and why I did not call it HIGH
+
+Reachability was measured, not argued. The desktop local API sets
+`allow_terminal_credentials: false` (`kasirmu-local-api/src/lib.rs:434`) and mounts these routes anyway
+— `router_with_openapi` is called with that same state, and `/api/v1/memos/sync` is registered in the
+shared `router()` (`kasirmu-api/src/lib.rs:357-360`). So the route IS mounted on a surface that
+disabled device credentials. What saves it today is the other end: the only production mint of a
+terminal-scoped token is `tokens.rs:236`, gated by the same flag at `:198`, returning 400 before it can
+reach `create_token_full`. **No terminal token can currently exist on that surface**, which makes this a
+latent defence-in-depth divergence rather than a live hole — MEDIUM, with the reachability written down
+so the next reader does not have to re-derive it. It becomes live the moment any of the three conditions
+changes: the flag flips, the mint gate is relaxed, or the check moves behind a different surface.
+
+### Proven, after my first two attempts at the test were WRONG
+
+The fix makes the guard mirror its sibling: a terminal-scoped token is refused outright (403
+`terminal_scope_disabled`) when the embedder disabled device credentials, and the admin key is then
+required of every caller that gets past it. The tenant still comes from the claims, never the body, so
+cross-tenant isolation never depended on either branch.
+
+**The test was wrong twice, and both times the falsification is what caught it.** First draft asserted
+`assert_ne!(resp.status(), OK)`. Disabling the new guard left the test GREEN — a probe showed why: the
+request then fell through to the *other* defence (the admin key) and returned 401, which is still "not
+200". I then restored the exact pre-fix guard and measured: **503** (`pg_unavailable`) — the request had
+walked past the admin-key check entirely and reached the backend branch. So the defect was real and my
+assertion simply could not see it.
+
+Rewritten to name the status (`assert_eq!(403)`), the falsification finally bit:
+
+```
+left: 503
+right: 403
+```
+
+which is the pre-fix behaviour stated exactly. Fix restored: 336 `kasirmu-api` lib tests pass (was 335),
+clippy clean, `bridge` 1400 pass. Commit `bc7389f8c`.
+
+**Process correction (third of its kind, and the sharpest).** `assert_ne!(x, OK)` on an HTTP status is
+not a security assertion — it passes for every unrelated failure the request might hit on its way
+through the layers, including the very layer under test. A test that pins an authorization decision must
+name the status AND the branch that produced it; where several defences sit in a row, only the exact code
+distinguishes "this defence fired" from "a later one did". Both earlier rewrites would have entered the
+ledger as verified pins while being blind to the thing they claimed to pin.
+
+### Also read, no findings
+
+- `desktop_link.rs` (506) — PKCE + device-link client. Disciplined throughout: `.map_err` with context on
+  every call, an empty `authorizeUrl` rejected explicitly, and the verifier-length constraint documented
+  as caught by a test rather than by inspection ("RFC 7636 requires at least 43, so Google rejects the
+  shorter value outright").
+- `service_health.rs` (362) — `aggregate` returns `Unknown` for an empty set, and `severity_rank` ranks
+  `Unknown` BEST, both with the reasoning stated: a rollup should report "the worst thing we actually
+  know", not flicker with polling order. Correct and load-bearing in the right direction.
+- `memos.rs` read path — every deviation is annotated, including why an admin-minted token may query any
+  terminal's memos while a terminal token may not name another.
+- A workspace-wide `find_map` census confirms MSL-34 was the ONLY instance of that shape.
+
+**Tally:** 43 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
 
 
 
