@@ -4968,4 +4968,61 @@ both are falsified.
 and the whole `db::` layer (1970) pass in isolation. Recorded rather than "fixed" — it is not mine to touch.
 
 **Tally:** 58 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 75 — MSL-52: the vocabulary census, finished
+
+### Closing the last unadjudicated check family
+
+Pass 64 adjudicated the vocabulary CHECKs reached by a `status: &str` parameter and left the rest open.
+This pass enumerated the remaining vocabulary columns (`txn_type`, `event_type`, `count_type`,
+`profile_type`, `scope_mode`, `branch_scope`, `workspace_scope`) and traced every writer. **All are now
+closed:**
+
+| column | how it is written | verdict |
+|---|---|---|
+| `profile_type` | caller `&str`, no validation | **MSL-52, fixed** |
+| `txn_type` (gift cards ×3, loyalty ×3) | hardcoded literals in the SQL (`'redeem'`, `'issue'`…) | clean |
+| `event_type` (product_activity ×2) | hardcoded `'search'` / `'edit'` | clean |
+| `count_type` | hardcoded in the INSERT | clean |
+| `scope_mode`, `branch_scope`, `workspace_scope` | hardcoded `'global', 'all', 'all'` | clean |
+
+The pattern in the clean rows is worth naming: they are **literals inside the SQL string**, not parameters.
+A vocabulary written as a literal cannot be wrong at runtime — which is why `txn_type` needed no guard on
+six write sites while `profile_type` needed one on a single site.
+
+### MSL-52: `profile_type`, enforced by the CHECK alone
+
+`terminal_profiles.profile_type` carries
+`CHECK (profile_type IN ('counter_pos', 'kds_kiosk', 'customer_display', 'unrestricted'))`, and nothing
+else validated it: the store binds a raw `&str`, the bridge checks only non-emptiness
+(`terminals.rs:703`), and the UI types it `profileType: string` with no screen constraining it. Measured:
+
+```text
+Db(SqliteFailure(ConstraintViolation, 275,
+   "CHECK constraint failed: profile_type IN ('counter_pos', 'kds_kiosk', ...)"))
+```
+
+The MSL-40/50 shape again, on a column whose whole purpose is selecting which UI a terminal renders.
+
+**Severity: MEDIUM, and latent.** The only UI caller passes a value it chooses, so no user types a bad one
+today. Pinned because the vocabulary is a real contract — the front-end branches on
+`profileType === 'kds_kiosk'` (`useTerminalProfile.ts:79`) — and because both tests together prove the
+guard **matches** the schema rather than narrowing it: one rejects a bad value, the other accepts all four
+the CHECK admits.
+
+Falsified by disabling the guard, which reproduces the exact `CHECK constraint failed` above.
+
+### Two constraint families now closed by census
+
+*UNIQUE string columns* (pass 71) and *FK-referenced codes* (passes 72-73) and *vocabulary CHECKs*
+(passes 64, 75) are each a closed statement rather than a sample. Across all three the recurring question
+is the same one MSL-40 opened with: **which layer owns this rule, and does every path agree?** The
+variants differ only in what enforces the rule — a UNIQUE index, an FK, a CHECK — and in whether the
+resulting failure names a field.
+
+**Verified:** 3292 `kasirmu-core` lib tests with the other lane's in-flight `sync_client` module skipped
+(55 filtered), 18 in `terminal_profiles`, 1404 `kasirmu-bridge`, clippy clean. Commit `323b28455`.
+
+**Tally:** 59 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
