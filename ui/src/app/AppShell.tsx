@@ -650,7 +650,7 @@ export default function AppShell() {
             (mobile-setup, kiosk, …) get the same ws-page-enter animation
             as hardcoded fullscreen workspaces. key= re-triggers on route change,
             except for grouped routes (e.g. staff/roles/trash) which share one screen. */}
-        <div className="workspace-fullscreen" key={pageRegistration.group ?? currentRoute}>
+        <div className="workspace-fullscreen" key={pageRegistration.screenGroup ?? currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
               <FullscreenPageComponent

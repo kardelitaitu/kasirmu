@@ -5,8 +5,8 @@
 // navigation returning to the correct landing route.
 
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import { act } from 'react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, useState } from 'react';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
@@ -1138,22 +1138,33 @@ describe('AppShell — KDS workspace navigation', () => {
       expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
     });
 
-    it('preserves the fullscreen wrapper DOM element when navigating between routes in the same group', async () => {
+    it('preserves the fullscreen wrapper DOM element and component state when navigating between routes in the same screenGroup', async () => {
       sessionFor('owner', []);
-      const SharedScreen = () => <div data-testid="shared-group-screen" />;
+      const SharedScreen = () => {
+        const [counter, setCounter] = useState(10);
+        return (
+          <div data-testid="shared-group-screen">
+            <span data-testid="shared-counter">{counter}</span>
+            <button data-testid="increment-btn" onClick={() => setCounter((c) => c + 1)}>
+              Inc
+            </button>
+          </div>
+        );
+      };
+
       registerPage({
         route: 'test-group-a',
         component: SharedScreen,
         label: 'Group A',
         fullscreen: true,
-        group: 'test-group',
+        screenGroup: 'test-screen-group',
       });
       registerPage({
         route: 'test-group-b',
         component: SharedScreen,
         label: 'Group B',
         fullscreen: true,
-        group: 'test-group',
+        screenGroup: 'test-screen-group',
       });
 
       window.location.hash = '#/test-group-a';
@@ -1164,9 +1175,15 @@ describe('AppShell — KDS workspace navigation', () => {
         expect(screen.getByTestId('shared-group-screen')).toBeInTheDocument();
       });
 
+      // Increment local state from 10 to 11
+      fireEvent.click(screen.getByTestId('increment-btn'));
+      expect(screen.getByTestId('shared-counter').textContent).toBe('11');
+
       const wrapperBefore = document.querySelector('.workspace-fullscreen');
+      const screenBefore = screen.getByTestId('shared-group-screen');
       expect(wrapperBefore).not.toBeNull();
 
+      // Navigate to the other route in the same screenGroup
       await act(async () => {
         window.location.hash = '#/test-group-b';
         window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -1177,7 +1194,14 @@ describe('AppShell — KDS workspace navigation', () => {
       });
 
       const wrapperAfter = document.querySelector('.workspace-fullscreen');
+      const screenAfter = screen.getByTestId('shared-group-screen');
+
+      // Strict reference equality: DOM nodes were NEVER destroyed
       expect(wrapperAfter).toBe(wrapperBefore);
+      expect(screenAfter).toBe(screenBefore);
+
+      // State retention: counter is still 11, proving zero state wipe or unmount
+      expect(screen.getByTestId('shared-counter').textContent).toBe('11');
     });
   });
 
