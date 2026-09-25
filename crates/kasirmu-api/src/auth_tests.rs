@@ -222,3 +222,34 @@ async fn stateful_middleware_uses_state_secret() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
+// ── The dev-fallback warning path (MSL-24) ─────────────────────────────
+//
+// `warn_dev_fallback_once` fires through a `std::sync::Once` and is called from
+// exactly one place: `signing_secret`'s `None` arm. It is the ONLY signal an
+// operator gets that tokens are signed with a hard-coded constant, and nothing
+// tested it -- a refactor dropping the call would leave every test green.
+//
+// The `Once` makes the warning itself unobservable from a test (it may already
+// have fired in another case), so this pins what IS observable and load-bearing:
+// the fallback VALUE and the two conditions around it.
+#[test]
+fn signing_secret_falls_back_only_when_no_secret_is_supplied() {
+    // A supplied secret is used verbatim -- never the fallback.
+    assert_eq!(signing_secret(Some("explicit-secret")), "explicit-secret");
+
+    // A BLANK supplied secret is treated as absent by the `.filter(!is_empty)` arm,
+    // so it must not become the signing key.
+    assert_ne!(signing_secret(Some("")), "");
+
+    // The fallback constant itself, reachable through the documented test seam.
+    assert_eq!(
+        DEV_FALLBACK_SECRET,
+        "oz-pos-dev-secret-change-in-production",
+        "API-1: the fallback constant is named in the warning, so its value is a contract"
+    );
+    let via_seam = signing_secret_for_tests();
+    assert!(
+        via_seam == DEV_FALLBACK_SECRET || std::env::var("OZ_API_SECRET").is_ok(),
+        "with no argument and no env secret, the dev fallback must be used; got {via_seam:?}"
+    );
+}

@@ -102,13 +102,19 @@ pub struct TokenResponse {
 const DEV_FALLBACK_SECRET: &str = "oz-pos-dev-secret-change-in-production";
 
 /// Warn once when the dev fallback secret is in use (API-1).
+///
+/// MSL-24: routed through `tracing` rather than `eprintln!`, for the reason the
+/// sibling warning in `routes/tokens.rs` states — the server's subscriber carries
+/// a syslog layer, and a security warning that only reaches stderr is not in the
+/// log an operator monitors. This one matters most: it says every token is
+/// forgeable by anyone who knows the constant.
 fn warn_dev_fallback_once() {
     static DEV_FALLBACK_WARNED: std::sync::Once = std::sync::Once::new();
     DEV_FALLBACK_WARNED.call_once(|| {
-        eprintln!(
-            "[kasirmu-api] WARNING: OZ_API_SECRET is not set — using the hard-coded \
-             dev signing secret. Tokens are forgeable by anyone who knows the \
-             constant. Set OZ_API_SECRET (required when OZ_PRODUCTION=1)."
+        tracing::warn!(
+            "OZ_API_SECRET is not set — using the hard-coded dev signing secret. \
+             Tokens are forgeable by anyone who knows the constant. Set OZ_API_SECRET \
+             (required when OZ_PRODUCTION=1)."
         );
     });
 }
