@@ -249,3 +249,73 @@ fn a_failed_restore_leaves_the_original_database_and_does_not_lie_about_it() {
     );
 }
 
+// ── C8: the end-to-end acceptance the item names ─────────────────────
+
+/// C8's "done when", as ONE flow: back up a real database through the same
+/// call the app uses, corrupt the live file, restore from the app path, and
+/// prove a known row reads back with the restored database integrity-clean.
+///
+/// WHY THIS EXISTS ALONGSIDE THE CASES ABOVE. Those pin the pieces — a valid
+/// candidate is accepted, a corrupt one is refused, a failed swap leaves the
+/// original byte-identical. None of them backs up first, none corrupts the
+/// LIVE file, and none asserts that BUSINESS DATA survives the round trip
+/// (they use a marker setting). A recovery path is only worth anything if the
+/// merchant's rows come back, so the assertion here is a real product row.
+#[test]
+fn recovery_roundtrip_restores_business_data_from_a_backup_of_the_live_db() {
+    let scratch = Scratch::new("roundtrip");
+    let live = scratch.join("live.db");
+    let backup = scratch.join("live.backup.db");
+
+    // 1. A real database with real business data: a product, not a marker.
+    {
+        let mut conn = Connection::open(&live).unwrap();
+        migrations::run(&mut conn).unwrap();
+        let s = Store::new(&conn);
+        s.create_product(
+            "ROUNDTRIP-SKU",
+            "Survives a restore",
+            crate::Money {
+                minor_units: 1250,
+                currency: "USD".parse().unwrap(),
+            },
+            None,
+            None,
+            7,
+            Some("retail"),
+        )
+        .unwrap();
+        // 2. Back up through the SAME call the app's command uses.
+        s.backup(&backup.to_string_lossy()).unwrap();
+    }
+    assert!(backup.exists(), "the backup must exist before the corruption");
+
+    // 3. Corrupt the LIVE database the way a bad write would: overwrite the
+    //    file with bytes that are not a database.
+    std::fs::write(&live, b"corrupted: not a database").unwrap();
+    assert!(
+        Connection::open(&live)
+            .map(|c| Store::new(&c).check_integrity().is_err())
+            .unwrap_or(true),
+        "the live database must actually be corrupt before we restore"
+    );
+
+    // 4. Restore from the app path.
+    let outcome = restore_from(&backup, &live).expect("the backup must restore");
+    assert!(outcome.verdict.is_restorable());
+
+    // 5. The restored database is integrity-clean AND carries the row.
+    let conn = Connection::open(&live).unwrap();
+    let s = Store::new(&conn);
+    s.check_integrity()
+        .expect("the restored database must pass integrity_check");
+    let product = s
+        .get_product("ROUNDTRIP-SKU")
+        .unwrap()
+        .expect("the product written before the backup must read back after the restore");
+    assert_eq!(
+        product.product.price.minor_units, 1250,
+        "the restored row must carry the values it was written with"
+    );
+}
+
