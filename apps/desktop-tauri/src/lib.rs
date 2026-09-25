@@ -884,7 +884,10 @@ pub fn run() {
                 let enabled_at_boot = {
                     let state = app.state::<AppState>();
                     let db_guard = state.db.blocking_lock();
-                    crate::local_api::is_enabled(&db_guard)
+                    crate::local_api::is_enabled(&db_guard).unwrap_or_else(|e| {
+                        tracing::warn!(error = %e, "local API auto-start: cannot read {}", "local_api.enabled");
+                        false
+                    })
                 };
                 if enabled_at_boot {
                     let app_handle = app.handle().clone();
@@ -901,7 +904,13 @@ pub fn run() {
                         }
                         let still_enabled = {
                             let db = state.db.lock().await;
-                            crate::local_api::is_enabled(&db)
+                            crate::local_api::is_enabled(&db).unwrap_or_else(|e| {
+                                tracing::warn!(
+                                    error = %e,
+                                    "local API auto-start: cannot re-read the enabled flag"
+                                );
+                                false
+                            })
                         };
                         if !still_enabled {
                             return; // disabled while we queued for the lock

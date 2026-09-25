@@ -11,25 +11,54 @@ fn temp_image_dir(tag: &str) -> PathBuf {
 #[test]
 fn resolve_port_defaults_and_validates() {
     let conn = kasirmu_core::migrations::fresh_db();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "8080").unwrap();
-    assert_eq!(resolve_port(&conn), 8080);
+    assert_eq!(resolve_port(&conn).unwrap(), 8080);
     // Below the registered range → default.
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "80").unwrap();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
     // Garbage → default.
     kasirmu_core::Settings::set(&conn, SETTINGS_PORT, "not-a-port").unwrap();
-    assert_eq!(resolve_port(&conn), DEFAULT_PORT);
+    assert_eq!(resolve_port(&conn).unwrap(), DEFAULT_PORT);
 }
 
 #[test]
 fn is_enabled_requires_explicit_one() {
     let conn = kasirmu_core::migrations::fresh_db();
-    assert!(!is_enabled(&conn), "default is off");
+    assert!(!is_enabled(&conn).unwrap(), "default is off");
     kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "1").unwrap();
-    assert!(is_enabled(&conn));
+    assert!(is_enabled(&conn).unwrap());
     kasirmu_core::Settings::set(&conn, SETTINGS_ENABLED, "0").unwrap();
-    assert!(!is_enabled(&conn));
+    assert!(!is_enabled(&conn).unwrap());
+}
+
+// ── MSL-33: a settings READ failure is not a settings VALUE ──
+
+/// `local_api.enabled` decides whether an HTTP surface is exposed at all, so
+/// the two readings of the setting must not be confused:
+///
+/// * `"0"` is a VALUE. The merchant turned it off; the answer is `false`.
+/// * A database that cannot answer the read is a FAULT. Answering `false`
+///   makes it silent -- the box stays ticked, the API never comes up, and
+///   nothing anywhere says why.
+///
+/// `.unwrap_or(None)` collapsed the two. Renaming the table away fails the
+/// read while leaving the connection healthy, so the only variable under test
+/// is the swallow.
+#[test]
+fn a_failed_read_of_the_enabled_flag_is_not_answered_false() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch("ALTER TABLE settings RENAME TO settings_hidden;")
+        .unwrap();
+
+    assert!(
+        is_enabled(&conn).is_err(),
+        "a failed read must not be answered `false` -- that is indistinguishable from the merchant disabling it"
+    );
+    assert!(
+        resolve_port(&conn).is_err(),
+        "a failed read must not silently substitute the default port"
+    );
 }
 
 #[test]

@@ -67,7 +67,7 @@ async fn prepare(
 > {
     let (port, secret, store_id) = {
         let db = state.db.lock().await;
-        let port = local_api::resolve_port(&db);
+        let port = local_api::resolve_port(&db).map_err(AppError::Internal)?;
         let secret = local_api::load_or_create_secret(&db).map_err(AppError::Internal)?;
         let store_id = local_api::resolve_store_id(&db);
         (port, secret, store_id)
@@ -108,8 +108,8 @@ async fn build_status(state: &AppState) -> Result<LocalApiStatus, AppError> {
     let (enabled, port, store_id) = {
         let db = state.db.lock().await;
         (
-            local_api::is_enabled(&db),
-            local_api::resolve_port(&db),
+            local_api::is_enabled(&db).map_err(AppError::Internal)?,
+            local_api::resolve_port(&db).map_err(AppError::Internal)?,
             local_api::resolve_store_id(&db),
         )
     };

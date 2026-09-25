@@ -278,20 +278,41 @@ async fn mark_single_tenant(
 }
 
 /// Read `local_api.enabled` from the settings table.
-pub fn is_enabled(conn: &Connection) -> bool {
-    kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
-        .unwrap_or(None)
-        .as_deref()
-        == Some("1")
+///
+/// MSL-33: a failed READ is propagated, not answered `false`. The two used
+/// to be the same thing because `.unwrap_or(None)` mapped every
+/// `rusqlite::Error` to "no such key" — but this is the flag that decides
+/// whether an HTTP surface is exposed at all, and a wrong `false` is the one
+/// direction that is NOT safe here: it is silent (the merchant ticked the
+/// box and the API simply never came up) and it is the opposite of the
+/// sibling `load_or_create_secret`, which has always propagated the same
+/// read. The `local_api.enabled = "0"` case still answers `false` — that is a
+/// value, not a failure.
+pub fn is_enabled(conn: &Connection) -> Result<bool, String> {
+    let raw = kasirmu_core::Settings::get(conn, SETTINGS_ENABLED)
+        .map_err(|e| format!("reading {SETTINGS_ENABLED}: {e}"))?;
+    Ok(raw.as_deref() == Some("1"))
 }
 
-/// Read and validate `local_api.port`; falls back to [`DEFAULT_PORT`].
-pub fn resolve_port(conn: &Connection) -> u16 {
-    kasirmu_core::Settings::get(conn, SETTINGS_PORT)
-        .unwrap_or(None)
-        .and_then(|s| s.trim().parse::<u16>().ok())
+/// Read and validate `local_api.port`; falls back to [`DEFAULT_PORT`] when
+/// the key is absent or unparseable.
+///
+/// MSL-33: a failed READ propagates (same reasoning as [`is_enabled`]). An
+/// ABSENT or unparseable value still falls back to [`DEFAULT_PORT`] — that is
+/// a stored value this function is specified to reject, not a database fault,
+/// and it is what `resolve_port_defaults_and_validates` pins.
+pub fn resolve_port(conn: &Connection) -> Result<u16, String> {
+    let Some(raw) = kasirmu_core::Settings::get(conn, SETTINGS_PORT)
+        .map_err(|e| format!("reading {SETTINGS_PORT}: {e}"))?
+    else {
+        return Ok(DEFAULT_PORT);
+    };
+    Ok(raw
+        .trim()
+        .parse::<u16>()
+        .ok()
         .filter(|p| (1024..=65535).contains(p))
-        .unwrap_or(DEFAULT_PORT)
+        .unwrap_or(DEFAULT_PORT))
 }
 
 /// Generate a fresh per-install secret value (NOT persisted here).
