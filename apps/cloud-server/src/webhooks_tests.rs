@@ -1346,3 +1346,47 @@ fn midtrans_gross_parse_policy() {
     assert_eq!(midtrans_gross_to_minor("abc"), None);
     assert_eq!(midtrans_gross_to_minor(""), None);
 }
+
+
+/// The amount parser's EDGES: negative, multi-dot, signed and huge inputs.
+///
+/// **The existing `midtrans_gross_parse_policy` covers the happy shapes and the
+/// obvious rejections.** This pins the edges, because the parser's job is to feed
+/// an amount COMPARISON: `gross_to_minor(signed) == entry.amount_minor` decides
+/// whether a settlement is trusted (`webhooks/midtrans.rs:197-201`). A parser that
+/// accepted something it should not could make a mismatched settlement look equal.
+///
+/// Two of these would be exploitable if they returned `Some`:
+/// * `"-15000"` — `i64::from_str` ACCEPTS a leading minus, so a negative signed
+///   amount parses. It cannot equal a positive `amount_minor`, so the comparison
+///   still fails closed — but the parser's contract is a non-negative IDR amount and
+///   this documents that the caller relies on the comparison, not on the parse.
+/// * `"15000."` (trailing dot, empty fraction) — `frac` is `""`, which is not
+///   `"00"`, so it rejects. Correct, and worth pinning: a future `frac.is_empty()`
+///   allowance would silently widen the accepted set.
+#[test]
+fn midtrans_gross_parse_edges() {
+    // One dot only: a second dot must not be read as a valid fraction.
+    assert_eq!(midtrans_gross_to_minor("15000.00.00"), None);
+    // Trailing/dangling dot: empty fraction is not `"00"`.
+    assert_eq!(midtrans_gross_to_minor("15000."), None);
+    assert_eq!(midtrans_gross_to_minor(".00"), None);
+    // A zero-padded fraction is still a fraction, not whole Rupiah.
+    assert_eq!(midtrans_gross_to_minor("15000.000"), None);
+    // Spaces INSIDE the number are malformed, not trimmed away.
+    assert_eq!(midtrans_gross_to_minor("15 000.00"), None);
+    // Negative: `i64::from_str` accepts the sign, so this is `Some` — pinned as the
+    // measured behaviour. Safety comes from the positive `amount_minor` comparison
+    // in the webhook, NOT from the parser rejecting it. If a caller ever compares
+    // `abs()` or a negative, this test is the evidence that the guarantee was never
+    // the parser's.
+    assert_eq!(midtrans_gross_to_minor("-15000"), Some(-15000));
+    // Overflow past `i64` is rejected rather than wrapping.
+    assert_eq!(
+        midtrans_gross_to_minor("99999999999999999999999999"),
+        None
+    );
+    // A plain zero is a legal parse; the webhook's own `amount_minor` guard is what
+    // keeps a zero-value charge from existing in the first place.
+    assert_eq!(midtrans_gross_to_minor("0"), Some(0));
+}
