@@ -4473,4 +4473,60 @@ whole fix is now the parse plus its message.
 `kasirmu-bridge`, clippy clean. Commit `8f9de1af2`.
 
 **Tally:** 50 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 67 — MSL-43: the currency the C6b timezone fix left behind
+
+### The finding
+
+MSL-42 established that `locations.currency` had one validated writer and one raw one. Asking the obvious
+follow-up — *how many writers does this vocabulary have?* — found a third: `provision_device`.
+
+`validate_provision_args` (`db/provisioning.rs:555`) is a thorough pre-write validator, and its own comment
+explains exactly why the timezone is checked there:
+
+> *"A free-text IANA name outside it resolves to UTC through the reporting path's fallback arm
+> (`crate::timezone::offset_for_zone`), which would silently report a Jakarta store in UTC."*
+
+The test beside it is named `an_unsupported_timezone_is_rejected_and_names_the_accepted_values` and calls
+itself *"The defect C6b closes: the write path validated nothing"*. Six bad values are pinned.
+
+**`currency` is written by that same function — into `locations.currency` AND into the store-wide
+`Settings::set_default_currency` (`:675`) — and is checked nowhere**: not in the validator, not in the
+bridge, not in the shell. It is documented as `ISO-4217 currency` on both the core args (`:322`) and the
+wire DTO (`bridge/setup.rs:158`). So this is the C6b fix applied to one field and not to the one beside
+it, in the same function, writing the same row.
+
+**Fix:** the same `Currency` parse MSL-42 applies, so all three writers of this vocabulary now agree.
+Falsified by disabling the check — a blank currency provisions successfully, row and setting and all —
+then restored. 29 `provisioning` tests pass.
+
+### Severity: MEDIUM, and I checked before claiming otherwise
+
+The reachable-caller question decides this, so I traced it rather than reasoning from the field type.
+There is exactly **one** caller, and `ProvisioningFlow.tsx:417` hardcodes `currency: 'IDR'` with no input
+field at all (its timezone is hardcoded `Asia/Jakarta` for the same reason). So no user can send a bad
+value today.
+
+That makes it MEDIUM rather than HIGH: a public `String` documented as ISO-4217, guarded by nothing across
+three layers, where the sibling field was validated for precisely this failure mode. It is latent — live
+the moment anything supplies the field, which the touchscreen-locale work or a second provisioning path
+would do. Calling it HIGH would have been defensible-sounding and wrong, and the difference matters
+because the ledger's HIGH count is supposed to mean "wrong today".
+
+The test asserts the stronger property regardless of current reachability: a refused provision must leave
+**no** store-wide default currency set, which is the consequence that would outlive the bad row.
+
+### The shape, now three findings deep
+
+MSL-40 (the store trusted the schema to validate), MSL-41 (the command layer invented a value nobody sent),
+MSL-42 (one of two writers validated), MSL-43 (the sibling of a fix, in the same function). All four are
+one question asked of a different layer: **which layer owns this rule, and does every path to the column
+agree?** Nothing in the four was found by reading a file top to bottom; each came from tracing one field
+across the boundary.
+
+**Verified:** 3323 `kasirmu-core` lib tests (was 3321 — two new, both proven to fail against the unfixed
+code), 1403 `kasirmu-bridge`, clippy clean. Commit `6fedc69bb`.
+
+**Tally:** 51 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
