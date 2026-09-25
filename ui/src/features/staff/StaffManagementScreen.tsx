@@ -48,6 +48,7 @@ import { requiredLocalized } from '@/components';
 import { l10nErrorMessage } from '@/utils/app-error';
 import { useToast } from '@/components/Toast';
 import { hasGrantedPermission, passesGate } from '@/registries/page-registry';
+import { animDuration } from '@/utils/animation';
 import { EmptyState } from '@/components';
 import { NoStaffIcon } from '@/components/EmptyStateIllustrations';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -85,6 +86,31 @@ export default function StaffManagementScreen() {
   const atProStaffCap = caps?.tier === 'pro' && (caps.staffCount ?? 0) >= 16;
   const { sessionToken } = useWorkspace();
   const { goToWorkspacePicker } = useWorkspaceNav();
+
+  // ── Exit animation orchestration for smooth page transitions ────
+  const [isExiting, setIsExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleBack = useCallback(() => {
+    if (isExiting) return;
+    setIsExiting(true);
+    const delay = animDuration(150);
+    if (delay === 0) {
+      goToWorkspacePicker();
+      return;
+    }
+    exitTimerRef.current = setTimeout(() => {
+      goToWorkspacePicker();
+    }, delay);
+  }, [goToWorkspacePicker, isExiting]);
   const { session } = useAuth();
   const { addToast } = useToast();
   const { start: startImpersonation } = useImpersonation();
@@ -455,7 +481,10 @@ export default function StaffManagementScreen() {
   const panelClass = slideFrom ? `staff-mgmt-tabpanel ${PANEL_SLIDE_CLASS[slideFrom]}` : 'staff-mgmt-tabpanel';
 
   return (
-    <div className="staff-mgmt" onContextMenu={(e) => e.preventDefault()}>
+    <div
+      className={`staff-mgmt${isExiting ? ' staff-mgmt--exiting' : ''}`}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <div className="staff-mgmt-header">
         <div className="staff-mgmt-header-lead">
           {/* This screen is registered `fullscreen`, so AppLayout — and with it
@@ -466,7 +495,7 @@ export default function StaffManagementScreen() {
           <Button
             unstyled
             className="staff-mgmt-back-btn"
-            onClick={goToWorkspacePicker}
+            onClick={handleBack}
             aria-label={l10n.getString('staff-back-aria')}
             data-testid="staff-back-btn"
           >
@@ -478,7 +507,7 @@ export default function StaffManagementScreen() {
 
           <div className="staff-mgmt-header-title-group">
             <span
-              className="staff-mgmt-header-icon staff-management-icon"
+              className="staff-mgmt-header-icon"
               data-testid="staff-management-icon"
               aria-hidden="true"
             >

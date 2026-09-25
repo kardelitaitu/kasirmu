@@ -14,6 +14,7 @@ import { roleAtLeast } from '@/utils/role';
 import { TOOLS, TOOL_GROUP_ORDER, type ToolItem, type ToolGroupId } from './tools';
 import { ToolsCategoryGrid } from './components/ToolsCategoryGrid';
 import type { ToolLockReason } from './components/ToolCard';
+import { animDuration } from '@/utils/animation';
 import './WorkspaceHome.css';
 
 // ── Per-workspace accent color classes ────────────────────────────
@@ -451,13 +452,43 @@ export default function WorkspaceHome() {
   // (The old `visibleTools` flat-memo existed only to guard the inline
   // Tools block; ToolsCategoryGrid null-guards on empty groups itself.)
 
+  // ── Exit animation orchestration for smooth page transitions ────
+  const [isExiting, setIsExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exitTimerRef.current !== null) {
+        clearTimeout(exitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const navigateWithExit = useCallback(
+    (action: () => void) => {
+      if (isExiting) return;
+      setIsExiting(true);
+      const delay = animDuration(150);
+      if (delay === 0) {
+        action();
+        return;
+      }
+      exitTimerRef.current = setTimeout(() => {
+        action();
+      }, delay);
+    },
+    [isExiting],
+  );
+
   // ── Shortcut navigation to tools (switches to admin workspace) ──
   const handleShortcutNav = useCallback(
     (route: string) => {
-      window.location.hash = `#/${route}`;
-      setActiveWorkspace('admin');
+      navigateWithExit(() => {
+        window.location.hash = `#/${route}`;
+        setActiveWorkspace('admin');
+      });
     },
-    [setActiveWorkspace],
+    [setActiveWorkspace, navigateWithExit],
   );
 
   const canAccess = useCallback(
@@ -503,11 +534,13 @@ export default function WorkspaceHome() {
   const activateWorkspace = useCallback(
     (key: string): boolean => {
       if (!canAccess(key)) return false;
-      recordLastUsed(key);
-      setActiveWorkspace(key);
+      navigateWithExit(() => {
+        recordLastUsed(key);
+        setActiveWorkspace(key);
+      });
       return true;
     },
-    [canAccess, recordLastUsed, setActiveWorkspace],
+    [canAccess, recordLastUsed, setActiveWorkspace, navigateWithExit],
   );
 
   const handleCardClick = useCallback(
@@ -666,7 +699,10 @@ export default function WorkspaceHome() {
   // ── Main render ─────────────────────────────────────────────
 
   return (
-    <div className="workspace-home" data-testid="workspace-home">
+    <div
+      className={`workspace-home${isExiting ? ' workspace-home--exiting' : ''}`}
+      data-testid="workspace-home"
+    >
       <LayerBackground />
 
       <div className="ws-layer-content">

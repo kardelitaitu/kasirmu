@@ -48,6 +48,22 @@
   overflow: hidden;
 }
 
+@keyframes ws-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.workspace-home--exiting {
+  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  pointer-events: none;
+}
+
 /* ── SR-only status ───────────────────────────────────────────────── */
 
 .ws-sr-status {

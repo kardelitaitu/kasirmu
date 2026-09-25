@@ -226,12 +226,15 @@ describe('StaffManagementScreen', () => {
 
   it('calls goToWorkspacePicker and clears hash when back button is clicked', async () => {
     window.location.hash = '#/staff';
-    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    const { container } = renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
     const backBtn = screen.getByTestId('staff-back-btn');
     fireEvent.click(backBtn);
-    expect(window.location.hash).toBe('');
+    expect(container.querySelector('.staff-mgmt')).toHaveClass('staff-mgmt--exiting');
+    await waitFor(() => {
+      expect(window.location.hash).toBe('');
+    });
   });
 
   it('swaps the header action to Add New Role on the Roles tab, and opens it as a popup', async () => {
@@ -1017,7 +1020,9 @@ describe('StaffManagementScreen', () => {
     // The back control is the only route off this sidebar-less page, so a tagged
     // element that does not navigate would be worse than no testid at all.
     fireEvent.click(screen.getByTestId('staff-back-btn'));
-    expect(setActiveWorkspaceMock).toHaveBeenCalledWith(null);
+    await waitFor(() => {
+      expect(setActiveWorkspaceMock).toHaveBeenCalledWith(null);
+    });
   });
 
   it('opens and dismisses the drawer through the popup controls it renders', async () => {

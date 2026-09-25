@@ -30,6 +30,22 @@
   background: var(--color-bg);
 }
 
+@keyframes ws-page-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.staff-mgmt--exiting {
+  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  pointer-events: none;
+}
+
 /* C1.1: staff-user quota banner shown inside the add/edit modal when the
    tier's max_staff_users() cap is reached. */
 .staff-mgmt-quota-banner {
