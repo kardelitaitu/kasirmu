@@ -3549,3 +3549,55 @@ memos,plans}.rs` remain unread.
 
 **Tally:** 37 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 55 — `routes/tax_rates.rs`: a DB failure reported as a tenant mismatch
+
+### MSL-30 (MEDIUM, FIXED): `.unwrap_or(None)` on the scope probe, in a crate whose twin propagates
+
+Reading the unread `kasirmu-api` routes, `tax_rates.rs` (413) — the hub's scoped-rate authoring door,
+and the only surface that can write a scoped rate (manager ruling D8).
+
+`check_scope_target_sqlite` (`:178`) refuses a scope target that is not a row of THIS tenant, and its
+guard read was:
+
+```rust
+let owner: Option<String> = db
+    .query_row(&sql, params![target], |row| row.get(0))
+    .unwrap_or(None);          // <- every rusqlite error becomes None
+if owner.as_deref() != Some(tenant_id) { /* "does not reference an existing {table} of this tenant" */ }
+```
+
+`tenant_id` is `TEXT NOT NULL` on both tables, so the `Option` comes from `row.get`'s generic, not from
+nullability — meaning `.unwrap_or(None)` maps **every** `rusqlite::Error` to `None`, which then fails the
+tenant comparison. A broken query is reported as *"legal_entity_id 'le-1' does not reference an existing
+legal_entities of this tenant"*.
+
+**The Postgres twin does it right, one file over.** `pg::scope_target_exists` (`pg.rs:443-447`)
+propagates: `.map_err(|e| PgError::Db(e.to_string()))?`. Same check, same purpose, opposite failure
+policy — and the swallow produces a *wrong diagnosis* that also hides the fault.
+
+**Proven by a watched regression.**
+`a_db_failure_in_the_scope_probe_is_not_reported_as_a_tenant_mismatch` seeds a legal entity that DOES
+belong to the tenant, then renames `legal_entities` so the probe's own read fails, and asserts the
+response does not carry the tenant-mismatch text. Against the unfixed code it fails with exactly the
+predicted body:
+
+```
+400 Bad Request {"error":"legal_entity_id 'le-1' does not reference an existing legal_entities of this tenant"}
+```
+
+With `.optional()?` it passes. The fix was then reverted, the failure re-observed, and the fix restored —
+so the test is known to catch the bug it describes.
+
+**Verified:** 22 `tax_rates` tests and all 334 `kasirmu-api` tests pass; clippy clean.
+
+**Note on the class.** This is the third instance of the same shape in three passes — MSL-27 (`.ok()` on
+a tax probe), MSL-28 (`unwrap_or_default()` on a recipe read), MSL-30 (`unwrap_or(None)` on a scope
+probe). In all three the giveaway was a SIBLING that handles the same read correctly: `optional()?`,
+`?`, `.map_err(Db)?`. **The sibling-divergence lens is now the single most productive method in this
+audit** — it produced MSL-25, 27, 28 and 30, and every one was found by comparing two call sites of one
+function rather than by reading either in isolation.
+
+**Tally:** 38 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
