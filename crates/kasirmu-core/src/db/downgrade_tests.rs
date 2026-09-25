@@ -235,3 +235,71 @@ fn persist_drops_markers_once_counts_fall_within_quota() {
         2
     );
 }
+
+// ── MSL-38: the over-quota markers must use the gate's tier, not the clock's ──
+
+/// MSL-36 moved the creation gates onto the LEDGER tier. `persist_over_quota_markers`
+/// resolves the tier a SECOND time, for itself, from `effective_tier()` — the wall
+/// clock — and it is called from INSIDE those gates (`quota_gate.rs`,
+/// `locations.rs`, `products_crud.rs`, `staff.rs`, `workspaces_lifecycle.rs`).
+///
+/// So a creation can be refused against the ledger tier while the marker
+/// refresh, running two lines later in the same call, records markers computed
+/// against a different tier. Its own doc states the contract it breaks:
+/// "obtained the same way the creation gates get it".
+///
+/// The two clocks must disagree for this to be observable; a unit test cannot
+/// move the OS clock, so it moves the LEDGER forward — the same relative state a
+/// rollback produces.
+#[test]
+fn over_quota_markers_use_the_same_tier_as_the_gate() {
+    let conn = fresh();
+    seed(&conn);
+    let s = store(&conn);
+
+    // Premium, expiring 20 days ago in real time — inside Premium's 30-day
+    // grace, so the aligned-clock answer is Premium and no marker is due.
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = 'premium', status = 'active', expires_at = ?1 WHERE tenant_id = 'default'",
+        rusqlite::params![expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    // Aligned clocks: the gate and the markers both see Premium, so this is
+    // the baseline the fix must preserve — the seeded store is comfortably
+    // inside Premium on every dimension.
+    assert_eq!(s.resolve_tier_fail_closed().unwrap().tier_key(), "premium");
+    let baseline = s.persist_over_quota_markers().unwrap();
+    assert_eq!(baseline.len(), 0, "Premium fits the seeded store comfortably");
+
+    // Roll the ledger 40 days forward while the wall clock stays put: the
+    // grace window has provably lapsed, so the gate now enforces Free.
+    let rolled = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled.to_rfc3339()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        s.resolve_tier_fail_closed().unwrap().tier_key(),
+        "free",
+        "the gate enforces Free once grace has lapsed"
+    );
+
+    // The markers must agree with that gate. The seeded store has 2 terminals,
+    // 2 active warehouses and 2 active staff — all over the Free caps — so a
+    // marker refresh at the GATE's tier cannot come back empty.
+    let markers = s.persist_over_quota_markers().unwrap();
+    assert!(
+        !markers.is_empty(),
+        "the marker refresh must use the gate's tier: Free caps are exceeded by the seeded store, so an empty refresh means the markers were computed against the wall clock's Premium"
+    );
+}

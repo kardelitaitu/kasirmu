@@ -62,8 +62,14 @@ impl Store<'_> {
     /// `get_over_quota_report` read path can attach them to the report in one
     /// round-trip.
     pub fn persist_over_quota_markers(&self) -> Result<Vec<OverQuotaMarker>, CoreError> {
+        // MSL-38: the LEDGER-aware reader, so this agrees with the gates that
+        // call it. It previously used `effective_tier()` (the wall clock) while
+        // the creation gates had moved to ledger time (MSL-36), which let a
+        // refusal and the marker refresh two lines later be computed against
+        // two different tiers. The doc above already promised the contract —
+        // "obtained the same way the creation gates get it" — this makes it true.
         let tier = match TenantSubscription::load(self.conn, TENANT_ID)? {
-            Some(sub) => sub.effective_tier(),
+            Some(sub) => sub.effective_tier_for_connection(self.conn),
             None => SubscriptionTier::Free,
         };
         let report = self.assess_downgrade(&tier)?;
