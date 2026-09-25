@@ -283,36 +283,118 @@ body:has(.memo-stack) .staff-mgmt-main {
 
 /* ── Area 3: status footer (pinned) ──────────────────────────────── */
 
-/* Visual treatment follows the Settings hub's own footer
-   (SettingsPage.css:304) — an elevated strip with a top border — rather
-   than the KDS footer's dimmed overlay: this is a settings page, and its
-   status text is meant to be read, not to recede behind a menu board. */
+/* ── Area 3: status footer (pinned) ──────────────────────────────── */
+
+/* Visual treatment follows the Global-Tier SaaS tripartite layout:
+   Left (health & scope), Center (freshness & refresh trigger), Right (operator & version). */
 .staff-mgmt-footer {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  min-height: 1.5rem;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 1.75rem;
   padding: var(--space-1) var(--space-8);
   background: var(--color-bg-elevated);
   border-top: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-fg-tertiary);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
 }
 
-.staff-mgmt-footer-segment {
-  display: inline-flex;
+.staff-mgmt-footer-left,
+.staff-mgmt-footer-center,
+.staff-mgmt-footer-right {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.staff-mgmt-footer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   white-space: nowrap;
 }
 
+.staff-mgmt-footer-pill--busy {
+  color: var(--color-primary);
+}
+
+.staff-mgmt-footer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.staff-mgmt-footer-dot--connected {
+  background: var(--color-success);
+}
+
+.staff-mgmt-footer-dot--checking {
+  background: var(--color-warning);
+}
+
+.staff-mgmt-footer-dot--disconnected {
+  background: var(--color-danger);
+}
+
+.staff-mgmt-footer-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.staff-mgmt-footer-icon--spin {
+  animation: staff-footer-spin 1s linear infinite;
+}
+
+@keyframes staff-footer-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Placed BETWEEN segments by the footer, never appended to one, so a
-   segment that drops out (no workspace, no snapshot yet) takes its
-   separator with it. */
+   segment that drops out takes its separator with it. */
 .staff-mgmt-footer-sep {
-  opacity: 0.5;
+  opacity: 0.35;
+}
+
+.staff-mgmt-footer-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-150), color var(--duration-150);
+}
+
+.staff-mgmt-footer-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-fg-primary);
+}
+
+.staff-mgmt-footer-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.staff-mgmt-footer-version {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
 }
 
 /* C2.2 Pro→Premium approaching-limit banner (16+ staff). */
@@ -1267,6 +1349,10 @@ body:has(.memo-stack) .staff-mgmt-main {
 
   .staff-mgmt-footer {
     padding: var(--space-1) var(--space-4);
+  }
+
+  .staff-mgmt-footer-right {
+    display: none;
   }
 
   /* The trash row's day count cannot stay a pill at this width. The sentence is

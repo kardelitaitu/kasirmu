@@ -686,7 +686,12 @@ export default function StaffManagementScreen() {
       {/* ── Status footer ───────────────────────────────────────────
           Fullscreen routes lose the app's own StatusBar (AppLayout mounts
           it), so the page carries its own. */}
-      <StaffManagementFooter loadedAt={loadedAt} />
+      <StaffManagementFooter
+        loadedAt={loadedAt}
+        loading={loading}
+        loadError={loadError}
+        onRefresh={refreshLiveLists}
+      />
 
       {/* ── Add/Edit Drawer ─────────────────────────────────────── */}
       <StaffDetailDrawer

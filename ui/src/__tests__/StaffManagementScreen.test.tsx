@@ -1892,5 +1892,20 @@ describe('StaffManagementScreen feedback and route entry', () => {
     expect(nationalId).toBeEnabled();
     expect(within(createDialog).getByLabelText('National ID Type *')).toBeEnabled();
   });
+
+  it('renders the global-tier status footer with health pulse, refresh action, and version', async () => {
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    expect(screen.getByTestId('staff-mgmt-footer')).toBeInTheDocument();
+    expect(screen.getByTestId('staff-footer-sync')).toHaveTextContent('Synced');
+    expect(screen.getByTestId('staff-footer-refresh-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('staff-footer-version')).toHaveTextContent('v0.0.40');
+
+    fireEvent.click(screen.getByTestId('staff-footer-refresh-btn'));
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('list_staff_scoped', expect.anything());
+    });
+  });
 });
 
