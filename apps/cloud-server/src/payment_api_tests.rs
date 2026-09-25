@@ -583,3 +583,61 @@ async fn blank_idempotency_key_still_dedupes_to_one_gateway_key() {
         order_ids[0]
     );
 }
+
+/// A charge with **no** `qr_string` still answers, with `qr_string: null`.
+///
+/// **The optional half of the driver's message contract.** `qris.rs:642-646`
+/// builds `SCAN_QR|<order_id>|<qr>` when Midtrans returns a QR and
+/// `SCAN_QR|<order_id>` when it does not, and the handler extracts the QR with
+/// `message.split('|').nth(2)` (`payment_api.rs:313-317`) — which is `None` for the
+/// two-field form. That `None` path was untested: the only existing charge test
+/// uses a mock that always supplies `qr_string`, so it exercises only the
+/// three-field branch.
+///
+/// Why it is worth a test rather than a reading: if the extraction ever became
+/// `nth(1)` or if the driver dropped the separator, the three-field case would
+/// still pass (the QR string would just be wrong but non-null) while this one
+/// would either panic or answer with the ORDER ID in the QR field — and the UI
+/// renders whatever is in `qr_string` as a scannable code. A wrong-but-present QR
+/// is worse than an absent one.
+#[tokio::test]
+async fn charge_without_a_qr_string_answers_with_a_null_qr() {
+    let mock = MockServer::start().await;
+    // No `qr_string` key at all: Midtrans omits it for some acquirer routes.
+    let body = serde_json::json!({
+        "status_code": "201",
+        "status_message": "QRIS transaction is created",
+        "transaction_id": "txn-no-qr",
+        "order_id": "QRIS-NO-QR",
+        "gross_amount": "15000.00",
+        "currency": "IDR",
+        "payment_type": "qris",
+        "transaction_status": "pending"
+    });
+    Mock::given(method("POST"))
+        .and(path("/v2/charge"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(body))
+        .mount(&mock)
+        .await;
+
+    let resp = payment_router(state_for(&mock.uri()))
+        .oneshot(authed_post(
+            "/api/payment/midtrans/qris",
+            r#"{"sale_id":"sale-no-qr","amount_minor":15000}"#,
+            Some("tenant-A"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "qr_issued");
+    assert_eq!(json["order_id"], "QRIS-NO-QR");
+    // `null`, NOT the order id: a two-field message has no third element, and the
+    // field must be absent rather than aliased to whatever came second.
+    assert!(
+        json["qr_string"].is_null(),
+        "an absent QR must be null, not the order id: got {}",
+        json["qr_string"]
+    );
+}
