@@ -45,8 +45,10 @@
 - [ ] All CI jobs pass — `dev-ci.yml` jobs are `changes` (path router),
       `website`, `rust-fmt` (cargo fmt --check, in a job of its own so a
       formatting nit reports in ~20s), `cargo-check` (runs cargo check with
-      all targets and all features; clippy is local-only and is not a CI step),
-      `cargo-nextest`,
+      all targets and all features), `cargo-clippy` (runs cargo clippy across
+      the workspace with all targets and denies warnings; added 2026-09-25 by
+      C25 — the old text here said clippy was local-only and not a CI step,
+      which stopped being true when the job landed), `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
       `release-bridge-test` (push-only; runs `cargo nextest run -p
       kasirmu-bridge --release`. Since the 19-09-26 ruling the release profile

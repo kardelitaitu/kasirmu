@@ -153,7 +153,7 @@ fi
 
 # ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
 # This comment used to read "mirrors CI `migration` job". There is no such job:
-# dev-ci.yml's fourteen jobs are changes, website, rust-fmt, cargo-check, cargo-nextest, ui-test,
+# dev-ci.yml's fifteen jobs are changes, website, rust-fmt, cargo-check, cargo-clippy, cargo-nextest, ui-test,
 # i18n, ci-docs-drift, static-gates, go-gate, ipc-parity, release-readiness, release-bridge-test (push-only), northflank-deploy. The
 # confusion is understandable because two neighbouring gates DO have CI backing since
 # 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
