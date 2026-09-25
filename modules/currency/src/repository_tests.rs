@@ -680,22 +680,37 @@ fn create_exchange_rate_rejects_unknown_currency() {
     // currencies(code); a code not in the table must be rejected.
     let conn = fresh();
     let repo = CurrencyRepository::new(&conn);
-    let result = repo.create_exchange_rate("XXX", "EUR", 920_000, "manual", "2026-01-01");
-    assert!(
-        result.is_err(),
-        "a rate for an unknown currency must be rejected by the FK"
-    );
+    let err = repo
+        .create_exchange_rate("XXX", "EUR", 920_000, "manual", "2026-01-01")
+        .expect_err("a rate for an unknown currency must be rejected");
+    // MSL-49: the KIND matters, not just that something failed. A bare FK
+    // failure reads as a storage fault; the caller needs the field to fix.
+    match err {
+        CurrencyError::Validation { field, message } => {
+            assert_eq!(field, "from_currency", "the error names the off field");
+            assert!(
+                message.contains("XXX"),
+                "and echoes the rejected code: {message}"
+            );
+        }
+        other => panic!("expected a Validation naming the currency, got {other:?}"),
+    }
 }
 
 #[test]
 fn upsert_exchange_rate_rejects_unknown_currency() {
     let conn = fresh();
     let repo = CurrencyRepository::new(&conn);
-    let result = repo.upsert_exchange_rate("USD", "ZZZ", 920_000, "manual", "2026-01-01");
-    assert!(
-        result.is_err(),
-        "an upsert for an unknown currency must be rejected by the FK"
-    );
+    let err = repo
+        .upsert_exchange_rate("USD", "ZZZ", 920_000, "manual", "2026-01-01")
+        .expect_err("an upsert for an unknown currency must be rejected");
+    match err {
+        CurrencyError::Validation { field, message } => {
+            assert_eq!(field, "to_currency");
+            assert!(message.contains("ZZZ"), "echoes the code: {message}");
+        }
+        other => panic!("expected a Validation naming the currency, got {other:?}"),
+    }
 }
 
 #[test]
