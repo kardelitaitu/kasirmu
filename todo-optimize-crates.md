@@ -1,6 +1,8 @@
 # Optimize our own crates — census (round 1)
 
-**Status:** OPEN — census round complete (§1–§6); scale-review journal appended 2026-09-25 (§7, §8). No code touched, no axis chosen.
+**Status:** OPEN — census round complete (§1–§6); scale-review journal appended 2026-09-25
+(§7, §8, §9); §9 also closes the verification backlog and records the first pass over the test
+mass. No code touched, no axis chosen.
 **Date:** 2026-09-25 · **Branch:** `0.0.40` · **Recorded against:** `c7767e73e` (§8). §1–§7 recorded against HEAD at their own time of measurement.
 
 ---
@@ -518,9 +520,11 @@ fix.
 only.
 
 **O-M20 · kasirmu-bridge — `blocking_lock()` on the async session-resolution path** —
-`crates/kasirmu-bridge/src/ctx.rs:412-413` ◦. Parks a runtime worker for the duration of
-another task's DB work — the exact contention `audit.rs:257-268` documents as an abort risk.
-*Fix:* `lock().await` or move the lookup into the awaited path.
+`crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ **PROMOTED TO O-H26 IN §9 — this is a guaranteed
+panic, not a parked worker.** Recorded here in round 2 as parking a runtime worker; verification
+re-read `audit.rs:257-266` and found the crate documenting the same pattern as a panic on first
+use. See §9 for the corrected entry. *Fix:* `lock().await`, and delete the stale justification
+at `:407-408`.
 
 **O-M21 · kasirmu-bridge — failed store-DB creation silently discarded** —
 `crates/kasirmu-bridge/src/locations.rs:263` ◦. `let _ = ctx.db_manager.create_store_db(…)`;
@@ -577,9 +581,11 @@ interleaves with the sync daemon and every POS command. *Fix:* one guard, no awa
 cycle** — `apps/mobile-tauri/src/image_download.rs:231-236` ◦. 10k images = 10k awaited
 syscalls per cycle. *Fix:* `read_dir` once into a `HashSet` and diff.
 
-**O-M34 · platform/sync — ~3 full JSON serialisations of the backlog per cycle** —
-`platform/sync/src/lib.rs:157-177` ◦. Clone for sort, serialise to measure, clone into batch,
-re-serialise per batch. *Fix:* estimate from `payload.len()`; batch references; reuse bytes.
+**O-M34 · platform/sync — one full JSON serialisation of the backlog per item, plus two copies** —
+`platform/sync/src/lib.rs:157-177` ◦. Corrected in §9: the round-2 wording said "~3 full JSON
+serialisations", which overstates it. What the loop does is clone the backlog for sort (`:157`),
+`serde_json::to_vec(item)` **once** per item to measure size (`:166`), then clone each item into
+its batch (`:175`). *Fix:* estimate from `payload.len()`; batch references; reuse bytes.
 
 **O-M35 · platform/sync — every daemon tick loads the entire pending queue** —
 `platform/sync/src/daemon.rs:140` ◦. Unbounded `list_pending_offline()` per tick. *Fix:*
@@ -663,6 +669,8 @@ the real guard.
 - **Verified-count honesty:** 8 of the 22 High entries (O-H01–O-H08) were re-read line-by-line
   this round; the remaining 14 High entries carry the audit pass's own line references and are
   pending spot-check. Nothing below High has been re-read yet.
+  *(Superseded 2026-09-25 by §9A, which verified all 85 pending entries from §7 and §8: none
+  rotten, 21 corrections, one promotion to O-H26. Read §9A alongside this section.)*
 - **No crate code has been changed.** This section is the journal-first record the pass was
   asked for; fixes are unfunded until entries are picked from it.
 
@@ -856,8 +864,11 @@ the whole history. *Fix:* half-open range predicates plus paging.
 130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
 ```
 
-**O-M55 · kasirmu-reporting — menu engineering sorts the same key four times** —
+**O-M55 · kasirmu-reporting — menu engineering performs five sorts per call** —
 `crates/kasirmu-reporting/src/menu_engineering.rs:127-141`, `:170-171`, `:181-182` ◦ (3C-05).
+Corrected in §9: round 3 said "the same key four times"; the verified count is **five** — three
+sorts on `total_revenue_minor` (SQL `ORDER BY` at `:108`, inside the merge at `:171`, again by the
+caller at `:131`) plus two full median sorts (`median_of` at `:182`, called at `:134` and `:135`).
 *Fix:* keep merge order, drop the caller's re-sort, use `select_nth_unstable` on one buffer.
 
 **O-M56 · kasirmu-media — `trim_borders` does per-pixel bounds-checked `get_pixel` over four
@@ -971,9 +982,12 @@ with an explicit clamp.
 line** — `modules/sales/src/repository.rs:148-151`, `:180-201` ◦ (3D-07). `as_stored_str()`
 returns `&'static str` for free. *Fix:* use it; hoist a `prepare_cached`.
 
-**O-L23 · modules-sales — `as i64` casts on the sale write path** —
-`modules/sales/src/models.rs:173`, `:189` ◦ (3D-08). *Fix:* `i64::try_from` with an explicit
-clamp.
+**O-L23 · modules-sales — `as i64` casts on the sale write path (lossless; a lint item)** —
+`modules/sales/src/models.rs:173`, `:189` ◦ (3D-08). Corrected in §9: round 3 implied a
+truncation hazard. Both casts are **`usize`→`i64`** — `cart.line_count()` returns `usize`
+(`foundation/src/cart.rs:220`) and `i` comes from `.enumerate()` — so no truncation is possible on
+any supported target. *Fix:* `i64::try_from` for clarity, or leave; this is not a correctness
+risk.
 
 ### Cross-cutting reading (round 3)
 
@@ -1006,3 +1020,220 @@ clamp.
   journal. §5's axes and §6's rules still stand unchanged; O-H23/O-H24/O-H25 are candidates for
   funding ahead of any axis work, because they are correctness and availability rather than
   optimization.
+
+---
+
+## 9. Round 4 (2026-09-25) — verification closure, and the first pass over the test mass
+
+**Two jobs, both chosen because they were the largest unclosed gaps rather than the most
+interesting ones.**
+
+1. **Close the verification gap.** §7 admitted that of its 72 entries only O-H01–O-H08 had been
+   re-read, and §8 that 21 of its 42 were pending. That is **85 entries** carrying line
+   references nobody had opened — including 14 ranked High. A journal entry nobody has checked is
+   the one most likely to be funded first and least able to survive it.
+2. **Audit the 52.8%.** §3/F2 measured test files at 240,257 lines across 476 files, and every
+   previous round skipped them by instruction. The largest surface in the repository had never
+   been looked at.
+
+**Method.** Four read-only passes (three verification, one audit). I re-read the lines behind
+every claim in this section myself; where a count is quoted below that I did not measure, it is
+attributed. **No crate code has been changed.**
+
+**Measured this round** (`grep`, branch `0.0.40`, 2026-09-25): **787** `fresh_db()` call sites in
+`*_tests.rs` files, and **66** `migrations::run` / `run(&mut conn)` sites in `*_tests.rs` files.
+
+### 9A. Verification result — 85 entries, none rotten
+
+Every one of the 85 pending entries is **confirmed**: the cited file exists and the cited lines do
+what the entry says. That is the useful negative result — the journal's references hold, so the
+findings can be funded without re-deriving them.
+
+But confirmation is not accuracy. **21 entries carry citation drift, an overstated count, or a
+wording that misleads**, and one is materially *understated*. The register below is the
+authoritative correction list; four of these (O-M20, O-M34, O-M55, O-L23) have also been patched
+into their entries above, because they change what a fixer would do rather than merely where they
+would look.
+
+| id | verdict | correction |
+|---|---|---|
+| O-M08 | confirmed, cite incomplete | the engine is pure (`category_of` is an injected closure, `:47`); the DB lookup is at `crates/kasirmu-core/src/db/promotions.rs:287-292` |
+| O-M12 | confirmed, wording misleads | a 30 s TTL **does** exist (`:52`, `:58-60`) — only eviction is missing. Stale entries are skipped, never removed; the sole removal is the wholesale `cache.clear()` at `:81-85` |
+| O-M13 | confirmed, cite short | the per-location **name** query is at `:524-530`, outside the cited `:509-521`. Cite `:509-530` |
+| O-M14 | confirmed, cite split | linear scans at `:659-668` / `:682-685`; the re-deserialisation is at `:701-713` (`is_revoked_in_cached_crl`), not in the cited range |
+| O-M15 | confirmed, lines drifted | parse sites are `subscription.rs:773-781` and `:791-801`; lowercased comparisons at `:807-810`. The cited `:759` is `signed_payload: String::new()` — not a parse site |
+| O-M17 | confirmed, title loose | it reads category→rate assignments, not "tax settings". Retitle per-category tax-rate read |
+| O-M31 | confirmed, cites off by ±2 | acquisition sites at `auth.rs:635`, `:411`, `:438`, `:468`. "5 and 3 times" softened to four confirmed sites |
+| O-M32 | confirmed, mobile cites 9 late | mobile `sync.rs:579`, `:628`; desktop `:434`, `:482` are correct. Note the fix's model, `image_download.rs:180`, is a *shared* client that **also sets no timeout** |
+| O-M34 | confirmed, count overstated | **patched above.** One `serde_json::to_vec` per item (`:166`) plus two clones (`:157`, `:175`) |
+| O-H09 | confirmed, one word | no explicit `tx.rollback()` — the rollback is implicit on drop |
+| O-H12 | confirmed, cite imprecise | `PRODUCT_SELECT` is a const spanning `pg.rs:1032-1041`; `:1038` is the correlated-subquery line inside it |
+| O-M24 | confirmed, nuance | the body is a `Vec` growing to `PACK_MAX_BYTES` = 2 MB (`images.rs:51`) from a 1 KB reservation (`:412`) — capped, not always 2 MB |
+| O-M30 | confirmed, cite | the clamp is `pos.rs:1646-1647` (fn `checkout_discount_percent` starts at `:1646`) |
+| O-H21 | confirmed, tighten | `zip` truncates to the **shorter** iterator, so a short `results` drops the *tail of `pending`* — those items stay pending and are re-pushed — not arbitrary items. `daemon.rs` contains no `results.len()` / `pending.len()` check |
+| O-H18 | confirmed, one sub-claim unproven | cursor loop and per-page rebuild verified; "no page cap" was **not** exhaustively proven — four `break`s at `:465/:474/:521/:527` were not read in context |
+| O-M52 | confirmed, cite missing | the O(n²) needs the caller: `package.rs:394-412` calls `read_entry` once per entry |
+| O-M55 | confirmed, count wrong | **patched above.** Five sorts, not four |
+| O-M45 | confirmed, arithmetic | `initial_backoff_ms` is `u64` (`:43`); the *multiply* overflows before the shift — roughly attempt 58 at the 100 ms default, not 64 |
+| O-M61 | confirmed, cite add | `RateLimited` is constructed at `whatsapp.rs:270-271` and matched only in `lib_tests.rs:38` |
+| O-L23 | confirmed, severity overstated | **patched above.** Both casts are `usize`→`i64`, lossless |
+| O-M20 | confirmed, **understated** | promoted — see O-H26 |
+
+**Residual, stated rather than hidden:** three quantitative claims were verified structurally but
+not arithmetically — O-H10's "~10 round trips per item", O-M22's "10⁶ comparisons" and O-H18's
+"no page cap". The loops and their nesting are confirmed; the constants are the audit pass's.
+Everything else in §7 and §8 is now re-read.
+
+**O-H26 · kasirmu-bridge — `blocking_lock()` on a tokio mutex: a guaranteed panic, not a parked
+worker** — `crates/kasirmu-bridge/src/ctx.rs:412-413` ✔ · **LIVE** via `ctx.rs:371`
+(`resolve_scope`) and `apps/desktop-tauri/src/state.rs:632`. Promoted from O-M20.
+Round 2 recorded this as parking a runtime worker. It is worse. `resolve_restaurant_pos_store` is
+a **sync `fn`** calling `self.db.blocking_lock()` where `self.db` is `Arc<tokio::sync::Mutex<…>>`
+(`:69`). The crate has already written down what that does, at `audit.rs:257-266` ✔: in tokio
+1.49 `blocking_lock` is `future::block_on(self.lock())`, whose first act is
+`try_enter_blocking_region().expect(…)` — *"There is NO uncontended fast path … So each call site
+was a guaranteed panic on first use."* The code at `ctx.rs:407-408` justifies itself with
+*"safe here because the lock is held for a single indexed SELECT (microseconds)"* — the exact
+reasoning `audit.rs` exists to rebut. Duration of the critical section is irrelevant; the panic
+fires on entry. *Fix:* make it `async` and `lock().await`, as `require_audit_tier` already does
+(`audit.rs:270-271`), and delete the stale justification comment.
+
+```rust
+407      /// Uses `blocking_lock()` on the tokio Mutex — safe here because the lock
+408      /// is held for a single indexed SELECT (microseconds).
+...
+412      fn resolve_restaurant_pos_store(&self, restaurant_pos_id: &str) -> Result<String, BridgeError> {
+413          let db = self.db.blocking_lock();
+```
+
+### 9B. The test-file mass — first pass ever (O-T01 … O-T16)
+
+The prefix `O-T` marks these as test-suite findings, the surface §5's axis B would attack.
+Coverage honesty: the nine largest test files were read in full for setup helpers, sleeps, loops
+and migration calls; the second tier was probed by grep plus reads of each hit. Not all 27,875
+lines were read verbatim.
+
+**High — plausibly costs minutes of suite wall-clock**
+
+**O-T01 · desktop topology tests replay the full migration chain ~45 times per run** —
+`apps/desktop-tauri/src/commands/topology/topology_tests.rs:16-24` ✔ (4A-01)
+`fresh_conn()` does `migrations::run(&mut conn)` — the whole chain, not the cached snapshot — and
+it is the shared helper: 22 `fresh_conn()` calls plus 9 direct `run` sites in
+`topology_command_tests.rs`, 10 in `topology_tests.rs`, 3 in `topology_serde_tests.rs`, 1 in
+`topology_stress_tests.rs`. The crate already ships `migrations::fresh_db()`, and the bridge's own
+topology tests already use it — this is the one file that did not get the memo. *Fix:* one line —
+`fresh_conn()` calls `migrations::fresh_db()`.
+
+```rust
+21      let mut conn = Connection::open_in_memory().unwrap();
+22      migrations::run(&mut conn).unwrap();
+```
+
+**O-T02 · `migrations_tests.rs` replays the chain 32 times to assert one row each** —
+`crates/kasirmu-core/src/migrations_tests.rs:3-12` ✔ (4A-02)
+All 43 tests in the file build an empty in-memory DB and run the full chain, including legs that
+only assert a table exists or an id is non-empty. *Fix:* hoist one `LazyLock` migrated connection
+for read-only schema assertions; keep the real `run` only in the tests whose subject is `run`.
+
+**Medium**
+
+**O-T03 · `queue_tests.rs` permanently leaks 76 in-memory databases** —
+`platform/sync/src/queue_tests.rs:13-16` ✔ (4A-03). `setup_store()` does
+`Box::leak(Box::new(migrations::fresh_db()))` on every one of ~77 tests, to buy a `'static`
+lifetime nothing needs. *Fix:* return a borrowed fixture; drop the leak.
+
+**O-T04 · `fresh_db()` clones under one process-wide mutex, and 787 call sites share it** —
+`crates/kasirmu-core/src/migrations.rs:524-568` ✔ (4A-04). The snapshot is a
+`static SNAPSHOT: LazyLock<Mutex<Connection>>` (`:528`) and the clone takes that lock (`:563`) for
+a full `Backup::run_to_completion` (`:564-567`). With **787** `fresh_db()` call sites in test files
+(measured today), every DB construction in a test binary serialises on one lock — a hard barrier
+under `cargo nextest`'s per-binary threads. *Fix:* a small per-thread snapshot pool.
+
+**O-T05 · `daemon_tests.rs` states ~5.5 s of pure sleep** — `platform/sync/src/daemon_tests.rs:174-181` ✔
+(4A-05). 27 sleeps (500 ms + 200 ms after every `daemon.start()`, three more pairs, 600 ms, 300 +
+100) waiting on a daemon whose tick is 100 ms — a 5× floor. *Fix:* poll `daemon.status()` under a
+1 s `timeout`.
+
+**O-T06 · `rate_limiter_tests.rs` states 4.2 s of sleep** —
+`crates/kasirmu-core/src/rate_limiter_tests.rs:211`, `:223-225`, `:238` ✔ (4A-06). Four sleeps
+(2 s, 600 + 600 ms, 1 s); the file annotates its own jitter at `:241`. *Fix:* inject a clock, or
+back-date `last_refill` as `apps/cloud-server/src/rate_limit_tests.rs:25` already does.
+
+**O-T07 · `kds_tests.rs` pastes the same 24-field `Sale` literal 14 times** —
+`crates/kasirmu-core/src/db/kds_tests.rs:446-470` ✔ (4A-07). ~340 duplicated lines of source and
+compile unit; the file already defines the right helper locally at `:703` (`mk_sale`) and simply
+never hoisted it. *Fix:* module-level `fn test_sale(id)`.
+
+**O-T08 · a 10,000-iteration fixture to assert two counts** —
+`platform/sync/src/pg_daemon_tests.rs:573-589` ✔ (4A-08). `large_batch_enqueue_10k_items` performs
+10,000 `enqueue_offline` calls, each running a subscription load plus an autocommit INSERT, to
+assert a count. *Fix:* a few hundred rows, or one set-based insert.
+
+**O-T09 · stress fixtures build 5,000 nodes + 5,000 wires, then verify with 10,000 `format!`s** —
+`crates/kasirmu-bridge/src/topology/topology_stress_tests.rs:1738-1744` ✔ (4A-09). Two allocations
+and two assertions per iteration to prove a ring. *Fix:* cut to ~500 and assert with `windows(2)`.
+
+**O-T10 · `run_sweep()` reads ~224 source files, six times per run** —
+`apps/desktop-tauri/src/commands/registration_gate_tests.rs:466-481` ✔ (4A-10). Each sweep walks
+82 `.rs` files under `src/commands` plus 142 under `crates/kasirmu-bridge/src` and char-scans every
+function body, recomputing an identical result. *Fix:* memoise in a `LazyLock<Sweep>`.
+
+**Low**
+
+**O-T11 · four rate-limit tests drive ~400 sequential HTTP pushes** —
+`apps/cloud-server/src/sync_api_tests.rs:2246-2255` ✔ (4A-11). *Fix:* keep one 101-request burst
+for the 429 boundary.
+
+**O-T12 · env-var tests take a process-wide lock *and* `#[serial]`, and tolerate 12 s** —
+`apps/cloud-server/src/db_tests.rs:141-151`, `:333-347` ✔ (4A-12). *Fix:* injectable config;
+tighten the bound to the 5 s `wait_timeout` under test.
+
+**O-T13 · a test that asserts nothing** — `platform/sync/src/pg_daemon_tests.rs:543-551` ✔
+(4A-13). `mark_offline_synced_nonexistent_item` computes a result and `let _ = result;`, with a
+comment admitting either outcome is fine — it can only fail on panic, and still pays a snapshot
+clone. *Fix:* assert the contract.
+
+**O-T14 · four Redis legs are `#[ignore]`d from dev CI** —
+`apps/cloud-server/src/redis_backend_tests.rs:96`, `:127`, `:141`, `:61` ✔ (4A-14). TTL/expiry
+behaviour is untested in the default run. *Fix:* a fake backend, or record why dev CI cannot.
+
+**O-T15 · 300 ms sleeps to hold a lock window open** —
+`crates/kasirmu-core/src/db/sales_crud_tests.rs:132-135` ✔ (4A-15), same shape at
+`db/shifts_tests.rs:629`, `db/gift_cards_tests.rs:811`/`:877`. *Fix:* drive the release with a
+channel the blocked caller can reach.
+
+**O-T16 · a 5 ms sleep to separate two timestamps** —
+`crates/kasirmu-core/src/db/kds_tests.rs:1566` ✔ (4A-16). *Fix:* insert explicit distinct
+`received_at` values.
+
+**Clean, and worth saying so:** `db/products_tests.rs` (102 tests) and `db/sales_tests.rs`
+(151 tests) use the snapshot helper and contain **zero sleeps**; `sync_api_tests.rs` simulates
+cache expiry by back-dating `generated_at` rather than waiting out a TTL; `queue_tests.rs` has no
+sleeps or env mutation; `bridge/pos_tests.rs` shares one `TestBridge`. The good pattern already
+exists in the repo — O-T01 and O-T02 are simply the files that did not adopt it.
+
+### Cross-cutting reading (round 4)
+
+- **The reference risk in this journal is now closed, and the result is a negative one.** 85 of 85
+  entries confirmed, none rotten. That is the outcome worth having: §7 and §8 can be funded
+  without re-deriving their line numbers. The cost was 21 corrections, four of them consequential
+  enough to patch in place.
+- **The one entry verification changed qualitatively is O-H26**, and it is the argument for
+  verifying rather than trusting: a "parked worker" entry turned out to be a documented panic on a
+  live path in both shells. It is now the sixth High and, with O-H24, one of two that are
+  correctness rather than scale.
+- **The test mass is where axis B's money is, and it is mostly one defect repeated.** O-T01 and
+  O-T02 are the same mistake at two sizes — `migrations::run` where `migrations::fresh_db()`
+  existed — against a measured 787 `fresh_db()` and 66 `run` call sites. They are also the only
+  two findings here with a one-line fix. Everything else needs either a poll instead of a sleep
+  (O-T05, O-T06, O-T15) or a decision about fixture size (O-T08, O-T09, O-T11).
+- **O-T04 is the structural one.** `fresh_db()` is the *good* design and is still a global mutex,
+  so making the remaining 66 `run` sites use it would concentrate all of them onto one lock. Fix
+  O-T04 before O-T01/O-T02, or the cheap fix makes the parallelism worse.
+- **No timing in this section was measured.** Every duration quoted (5.5 s, 4.2 s, 300 ms, 5 ms)
+  is one the source states. Turning them into wall-clock is `cargo nextest run` with
+  `--report-time`, which is axis B's deciding instrument and has still not been run.
+- **No crate code has been changed.** §5's axes and §6's rules stand unchanged. If a first phase
+  is funded from this journal, the candidates in priority order are: **O-H26** (live panic),
+  **O-H24** (double charge), **O-H23** (UI stall), then **O-T04 → O-T01 → O-T02** for suite
+  wall-clock.
