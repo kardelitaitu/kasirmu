@@ -3052,3 +3052,52 @@ diagnosis that sat in a comment while the code kept the shape.
 
 **Tally:** 29 findings fixed (8 HIGH), 12 leads disproved.
 
+---
+
+## Pass 46 — `read_tiers.rs`: the one table never checked against the permission registry
+
+### MSL-22 (LOW, PREVENTIVE): `READ_KEY_MAP` keys were unvalidated
+
+Following MSL-20/MSL-21's identifier-hygiene lens to permission keys. The sweep found
+`crates/kasirmu-api/src/read_tiers.rs` using bare literals (`"products:read"`,
+`"sales:view"`, …) for the route-to-permission table. In a `const` table that is the
+idiomatic form — a `const` cannot call a function — so the literals themselves are not
+the finding. **The finding is that nothing checked them.**
+
+The gate resolves each key through `permission_registry::is_registered`, which fails
+CLOSED: an unregistered key denies. So a typo in this table is not a crash — it is a route
+that silently 403s for every token, with nothing in the failure naming the cause. Three
+things already validate permission keys, and I checked each:
+
+- `validate_keys` — validates a TOKEN's claims at mint time (`routes/tokens.rs:363`); it
+  never sees this table;
+- `permission_registry_tests` — covers the permission CONSTANTS and the role PRESETS;
+- the drift guards — `read_tiers_tests.rs` (router → map) and `openapi_tests.rs`
+  (spec → map) both check that every route HAS an entry; neither checks that the entry's
+  KEY is real.
+
+So of the three key tables — permission constants, role presets, read-key map — the map was
+the only one never checked against the registry, and it is the one that decides which key
+gates which route.
+
+**A guard, not a fix — and I verified that rather than assuming it.** The new test
+`every_read_key_map_entry_names_a_registered_permission` PASSES against the current tree,
+so all five keys are correct today and no route is mis-gated. To prove the guard has teeth I
+temporarily changed one key to `"products:reed"`; it failed and NAMED the offender:
+
+```
+READ_KEY_MAP gates these routes with a permission the registry does not know, so they
+403 for every token: [("/api/v1/products", "products:reed")]
+```
+
+Reverted, so the commit is the test alone (one file, +33). The case carries a floor
+(`READ_KEY_MAP.len() >= 5`) so a broken walk cannot make it pass vacuously.
+
+**Severity LOW and stated as such:** nothing is wrong today. This closes the third of three
+tables against the registry so a future typo cannot become an invisible denial.
+
+**Verified:** 21 `read_tiers` tests and all 331 `kasirmu-api` tests pass; clippy clean.
+
+**Tally:** 30 findings fixed (8 HIGH), 12 leads disproved. One is a preventive guard rather
+than a repair, counted because it closes a real gap in coverage.
+
