@@ -2767,3 +2767,66 @@ bucketing is uniform across every reader, and `days_ago` fails out-of-range days
 
 **Tally:** 24 findings fixed (7 HIGH), 11 leads disproved.
 
+---
+
+## Pass 41 — `db/audit.rs` (783): the audit trail could be erased through a settings row
+
+### MSL-17 (HIGH, FIXED): every ingest lane could forge the sweep marker
+
+`crates/kasirmu-core/migrations/20260920_audit_retention.sql` replaces the
+unconditional `audit_log_immutable_delete` trigger with a sweep-gated one: it raises
+UNLESS the `settings` row `audit.retention_sweep_active` exists. The design is sound
+as written — the sweep sets and clears the marker inside ONE transaction, so a crash
+rolls it back with the deletes and another connection never sees uncommitted state.
+
+**The hole is the policy on that key, not the trigger.** `IngestPolicy::admits`
+(`platform/core/src/settings/raw.rs:663`) returned `true` for it in **ALL THREE**
+lanes — including the two that carry attacker-authored data. Measured directly:
+
+```
+DBG PortablePackage=true RemoteSync=true TrustedLocal=true
+```
+
+So a `.kasirpkg` import or a remote-sync payload could write the marker on its own
+connection and leave it there. The transaction discipline stops a COINCIDENT write;
+it does not stop a deliberate one. With the marker present the trigger no longer
+fires, and the audit trail — the record the trigger exists to make immutable — is
+deletable.
+
+**Proved end-to-end, in two halves.**
+
+1. `platform-core::settings::raw_tests::the_audit_sweep_marker_is_refused_by_the_untrusted_lanes`
+   asserts both untrusted lanes refuse the key and `TrustedLocal` admits it. Written
+   FIRST and observed to FAIL on the `PortablePackage` assertion.
+2. `kasirmu-core::db::audit::tests::a_forged_sweep_marker_defeats_audit_immutability`
+   proves the consequence against the real trigger: baseline DELETE aborts
+   (`"audit_log entries are immutable"`), then after an ordinary committed
+   `Settings::set` of the marker the same DELETE succeeds (`cleared == 1`) and the row
+   is really gone (`audit_count == 0`). It passes, which is the finding.
+
+**Fix.** The marker joins `is_manager_owned_key`, so both untrusted lanes refuse it
+while `TrustedLocal` keeps admitting it — the sweep writes it locally. Re-measured:
+`PortablePackage=false RemoteSync=false TrustedLocal=true`. The constant now lives once
+in `keys::AUDIT_SWEEP_MARKER_KEY`, and the test asserts it equals the string
+`kasirmu-core` writes (`Store::SWEEP_MARKER_KEY`), because the two crates cannot share
+it — `kasirmu-core` depends on `platform-core`, so the reverse edge would be a cycle.
+That cross-crate duplication is the remaining seam and is now pinned by assertion.
+
+**Why the existing tests missed it.** `audit_retention_trigger_still_blocks_direct_delete`
+asserts a plain DELETE aborts — correct, but it never writes the marker first, so it
+tests the trigger in the one state an attacker is not limited to. The new case adds the
+single missing step.
+
+### A self-inflicted error worth recording
+
+My first attempt to append that test matched an anchor (`let conn = fresh();`) that also
+occurs inside `audit_retention_bad_now_timestamp_fails_closed`, so the edit spliced the
+new test INTO the middle of a live function — the new test then ran zero times (3303
+filtered, 0 executed) instead of failing loudly. The repair restored the interrupted
+function and appended at the true end of file. **A test that silently does not run is
+worse than a failing one**, and the only reason it was noticed is that the run reported
+`0 passed` for a filter that should have matched. Always check that a new test is
+actually COLLECTED, not merely that the suite is green.
+
+**Tally:** 25 findings fixed (8 HIGH), 11 leads disproved.
+
