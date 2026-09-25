@@ -4781,4 +4781,66 @@ different constraint family (FK-referenced codes, or the `WHERE`-clause predicat
 on) rather than a sixth pass over string columns.
 
 **Tally:** 54 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 72 — MSL-48: the FK family, and one finding that turned out to be three
+
+### Taking the recommendation
+
+Pass 71 closed by naming the next constraint family: FK-referenced codes. This pass enumerated the 100
+`REFERENCES` clauses in the base schema, filtered to the **code-shaped** targets (a caller supplies a name,
+not an opaque id), and found `products(sku)` referenced by four tables. Every one of them is reachable from
+a UI the operator types into.
+
+### The finding, measured
+
+The bundle editor's component SKU is a free-text `<input>` (`BundleManagementScreen.tsx:424`), the bridge
+forwards it unvalidated (`bundles.rs:170`), and the store binds it straight into a `REFERENCES products(sku)`
+column. A typo produced:
+
+```text
+PROBE create_bundle with bad sku = Err(Db(SqliteFailure(
+    ConstraintViolation, 787, Some("FOREIGN KEY constraint failed"))))
+```
+
+No field, no SKU, and nothing saying the *product* is what is missing — while the screen's catch
+(`BundleManagementScreen.tsx:177-182`) distinguishes only its client-side `BundleValidationError`, so a DB
+error falls through to the generic `bundles-error-save` toast. **A mistyped SKU reads as "the bundle could
+not be saved" with nothing pointing at the field.**
+
+### It was three instances, not one
+
+The first probe led to the other two by asking the same question of each sibling rather than stopping:
+
+| column | path | defect |
+|---|---|---|
+| `bundle_items.sku` | bundle create + update | raw FK |
+| `product_variants.parent_sku` | variant create | raw FK (free-text parent in the variant editor) |
+| `product_bundles.bundle_sku` | bundle create + **rename** | raw FK; a bundle IS a product |
+
+The third is the one I would have missed by fixing the reported symptom: `bundle_sku` is
+`UNIQUE REFERENCES products(sku)`, so the *row written first* can fail the same way, including on rename.
+
+**Fix:** one helper per table — `insert_bundle_row`, `insert_bundle_item`, and a match in
+`create_product_variant_on` — each mapping `ConstraintViolation` to `NotFound { entity: "product", id: <the SKU> }`.
+The bundle-row helper serves both the FK and its own `UNIQUE`, because either way the SKU is what the caller
+must change.
+
+**Falsified before committing, all four tests.** Disabling each mapping reproduces the exact raw
+`FOREIGN KEY constraint failed`; restored, 24 `product_bundles` and 3337 total `kasirmu-core` tests pass.
+Commits `75630b756` (items) and `4187c72d8` (variants + bundle SKU).
+
+### Why this is the same finding a fourth time
+
+MSL-40 (schema trusting the DB), 41 (command layer inventing a value), 42/43 (one of several writers
+validated), 44/45 (column disagreeing with its own report), 46 (constraint defeated by whitespace), 48
+(constraint reported as a storage fault). Seven findings, one question: **which layer owns this rule, and
+does every path agree?** The FK variant differs only in which constraint complains — and in that the
+offending value is visible on the operator's screen, which is what makes the wrong error message costly.
+
+**Verified:** 3337 `kasirmu-core` lib tests (was 3332 — five new across the two commits), 1404
+`kasirmu-bridge`, clippy clean on the unmodified tree. The remaining FK targets (`currencies(code)`,
+`workspace_types(key)`) are enumerated but not yet adjudicated; that is the next pass.
+
+**Tally:** 55 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
