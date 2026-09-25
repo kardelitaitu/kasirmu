@@ -2610,6 +2610,25 @@ def self_test() -> int:
          merge_section_entries(
              [{"name": "k_scoped", "reason": "r", "owner": "licensing"}], [])
          == [{"name": "k_scoped", "reason": "r", "owner": "licensing"}])
+    # 8b (C56): the zero-line diff above holds only when the section is ALREADY in the
+    # writer's order. The committed dev_mock section was not -- create_backup_to sat last
+    # while the rest were alphabetised -- so a "no-op" reseed relocated it and produced a
+    # 4-line content diff, which is exactly the noise that makes an operator distrust the
+    # flag. The writer's order is canonical because nothing reads entry order (the gate
+    # builds a SET from this section at verify time); the DATA is what has to conform.
+    UNSORTED = [{"name": "zebra_scoped", "reason": "r"}, {"name": "alpha_scoped", "reason": "r"}]
+    case("case 8b an out-of-order section is sorted, not left as found",
+         merge_section_entries(UNSORTED, []) == [UNSORTED[1], UNSORTED[0]])
+    case("case 8b reseeding that same section is then a zero-line diff",
+         merge_section_entries(merge_section_entries(UNSORTED, []), [])
+         == merge_section_entries(UNSORTED, []))
+    # And the property that makes imposing the canonical order SAFE rather than merely
+    # tidy: the gate must not care about entry order. It builds a set from this section
+    # (verify time: mock_allow = {name for name, _ in mock_entries}), so reordering an
+    # allowlist is a bookkeeping change and cannot alter any verdict. Asserted as the
+    # set-equality the gate itself relies on.
+    case("case 8b entry order cannot change the graded set",
+         {e["name"] for e in UNSORTED} == {e["name"] for e in merge_section_entries(UNSORTED, [])})
 
     # 9: a writer has to leave the file as it found it. This one is measured on BYTES, in a
     # temp directory, because the failure it closes is invisible to every assertion above:
