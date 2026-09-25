@@ -160,7 +160,7 @@ pub(super) fn build_base_schemas() -> Value {
             "required": ["label"],
             "properties": {
                 "label": { "type": "string", "description": "Human-readable label for the token", "example": "kitchen-display-1" },
-                "expiry_hours": { "type": "integer", "format": "int64", "description": "Expiry in hours (default: 24)", "example": 24 },
+                "expiry_hours": { "type": "integer", "format": "int64", "description": "Expiry in hours. Default 24, clamped to a maximum of 8760 (365 days) — the server applies the bound, so an over-long request is shortened rather than honoured. Clamping is documented here because a silently-shortened token is otherwise indistinguishable from a bug.", "default": 24, "example": 24 },
                 "tenant_id": { "type": "string", "description": "Optional tenant/store ID for multi-tenant isolation (admin-key path only — the client-credentials path takes the tenant from the terminal's registration, never the body)" },
                 "client_id": { "type": "string", "description": "Registered terminal ID — client-credentials mint path (ADR sync-auth-hardening P3); paired with client_secret, no admin key needed" },
                 "client_secret": { "type": "string", "description": "Device secret from terminal registration (verified against the stored SHA-256 hash)" },

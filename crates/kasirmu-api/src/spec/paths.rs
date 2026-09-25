@@ -25,7 +25,7 @@ pub(super) fn build_base_paths() -> Value {
             "post": {
                 "tags": ["Auth"],
                 "summary": "Create a new API token",
-                "description": "Generates a signed JWT (HS256, default expiry 24 h, no revocation list — keep `expiry_hours` short). Two mint paths: (1) **admin-key path** — requires the `X-Admin-Key` header when the server has an admin key configured (open in dev mode); optionally narrows reads via `read_preset`/`read_permissions`. (2) **terminal client-credentials path** — `client_id` + `client_secret` from a registered terminal (ADR sync-auth-hardening P3); no admin key, tenant taken from the registration, reads bound to the `terminal` preset server-side (spec 0047).",
+                "description": "Generates a signed JWT (HS256, default expiry 24 h, clamped to at most 8760 h, no revocation list — keep `expiry_hours` short; the server enforces the ceiling rather than trusting the caller). Two mint paths: (1) **admin-key path** — requires the `X-Admin-Key` header when the server has an admin key configured (open in dev mode); optionally narrows reads via `read_preset`/`read_permissions`. (2) **terminal client-credentials path** — `client_id` + `client_secret` from a registered terminal (ADR sync-auth-hardening P3); no admin key, tenant taken from the registration, reads bound to the `terminal` preset server-side (spec 0047).",
                 "operationId": "createToken",
                 "requestBody": {
                     "required": true,
