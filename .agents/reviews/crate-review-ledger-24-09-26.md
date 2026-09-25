@@ -3164,3 +3164,56 @@ inspected.**
 
 **Tally:** 31 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 48 — `kasirmu-api`: the two security warnings bypassed the log stream
+
+### MSL-24 (MEDIUM, FIXED): `eprintln!` on the only signal for a privilege-widening config
+
+Chasing the `read_tiers` thread to the middleware, I checked what happens when the read-gate's
+inputs are unusual and found the escape hatches. Then found the real defect: **how they
+announce themselves.**
+
+Two security warnings, both guarded by a `std::sync::Once` so they fire once per process:
+
+- `auth::warn_dev_fallback_once` (`auth.rs:105`) — OZ_API_SECRET unset, so every token is
+  signed with a **hard-coded constant** and is forgeable by anyone who knows it;
+- `routes::tokens::warn_terminal_read_tier_escape_once` (`tokens.rs:382`) —
+  `OZ_TERMINAL_READ_TIER=full`, so terminal tokens get `permissions: None` = legacy **full
+  read** of every mapped route, defeating the terminal preset by design.
+
+Both wrote with `eprintln!`. **The server does not log through stderr.** `apps/cloud-server`
+calls `kasirmu_logging::try_init_json()` / `try_init()`, and that subscriber installs a
+**syslog layer** (`crates/kasirmu-logging/src/syslog.rs:104-108`) alongside the fmt layer. So
+on a syslog deployment the two messages that matter most — "tokens are forgeable" and
+"terminal tokens keep full read" — never reach the log an operator reads. Measured: 2
+production `eprintln!` sites against **50** `tracing::` calls in the same crate, and **zero**
+after the fix.
+
+**They were also completely untested.** `warn_dev_fallback_once` and
+`warn_terminal_read_tier_escape_once` had no test anywhere: dropping either CALL would leave
+every suite green while silently removing an operator's only notice.
+
+**Fix.** Both now `tracing::warn!`, keeping the `Once` (one warning per process is the point;
+`tracing` has no rate limit of its own). Added
+`signing_secret_falls_back_only_when_no_secret_is_supplied`, which pins what IS observable
+given the `Once` — the fallback constant's value, that an explicitly supplied secret wins, and
+that a BLANK secret is treated as absent rather than becoming the signing key.
+
+**What I deliberately did NOT change.** The escape hatches themselves are a documented product
+decision, not a defect: `.env.example:83` labels `OZ_TERMINAL_READ_TIER=full` a *"WIDENING
+ESCAPE HATCH — a privilege increase, not a tuning knob"*, spec 0047 records the window, and
+the website documents it. The defect was the delivery channel, and that is what I fixed.
+
+### Also checked and cleared on the way
+
+The read gate's fail-open arms (`claims.permissions == None` → pass; route not in the map →
+pass) are both documented and deliberate, and the terminal path can only produce `None`
+through the escape hatch above. `path_matches` compares segment-by-segment with `{param}`
+wildcards, so a template cannot accidentally match a longer path.
+
+**Verified:** all 333 `kasirmu-api` tests pass; clippy clean; no production `eprintln!` remains
+in the crate.
+
+**Tally:** 32 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
