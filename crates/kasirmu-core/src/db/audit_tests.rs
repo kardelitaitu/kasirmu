@@ -1337,3 +1337,40 @@ fn log_audit_never_writes_two_rows_for_one_call() {
     s.log_audit(&entry_for("sale-twice")).unwrap();
     assert_eq!(audit_count(&conn), 2);
 }
+/// MSL-17: the immutability carve-out is keyed on a SETTINGS ROW, and every
+/// lane — including the two untrusted ones — may write that row.
+///
+/// `audit_log_immutable_delete` (migration 20260920) raises UNLESS
+/// `settings['audit.retention_sweep_active']` exists. The sweep holds that
+/// marker only inside its own transaction, which stops another connection
+/// seeing it COINCIDENTALLY. It does not stop anyone writing the key on their
+/// own connection and leaving it there — and `IngestPolicy::admits` returns
+/// `true` for this key in ALL THREE lanes, so a `.kasirpkg` import or a
+/// remote-sync payload can forge it.
+#[test]
+fn a_forged_sweep_marker_defeats_audit_immutability() {
+    let conn = fresh();
+    insert_audit_at(&conn, "aud-plain", "2019-01-01T00:00:00.000Z");
+
+    // Baseline: without the marker the trigger holds (the existing pin).
+    let err = conn
+        .execute("DELETE FROM audit_log WHERE id = 'aud-plain'", [])
+        .unwrap_err();
+    assert!(err.to_string().contains("immutable"), "got: {err}");
+
+    // Now write the key the way an untrusted ingest lane would, and LEAVE it
+    // there — the sweep never does that, but nothing stops a package import.
+    crate::settings::Settings::set(&conn, crate::db::Store::SWEEP_MARKER_KEY, "1").unwrap();
+
+    // The trigger no longer fires: the audit trail is deletable by anyone who
+    // can write one settings row.
+    let cleared = conn
+        .execute("DELETE FROM audit_log WHERE id = 'aud-plain'", [])
+        .unwrap();
+    assert_eq!(
+        cleared, 1,
+        "a forged marker must NOT permit deleting the audit trail",
+    );
+    assert_eq!(audit_count(&conn), 0, "the row is really gone");
+}
+

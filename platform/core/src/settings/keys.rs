@@ -22,6 +22,20 @@ pub const SETUP_COMPLETE: &str = "store.setup_complete";
 /// Set to `"false"` when the user completes or skips the wizard.
 pub const SHOW_SETUP_WIZARD: &str = "store.show_setup_wizard";
 
+/// The application-owned marker the audit-retention sweep sets while it deletes
+/// expired rows (MSL-17).
+///
+/// The audit-log immutability trigger (`audit_log_immutable_delete`, migration
+/// 20260920) raises UNLESS this row exists, so it is a SECURITY-relevant key:
+/// whoever can write it can delete the audit trail. It is therefore refused by
+/// both untrusted ingest lanes (`is_manager_owned_key`), while `TrustedLocal`
+/// keeps admitting it because the sweep writes it on the local connection.
+///
+/// `crates/kasirmu-core/src/db/audit.rs` carries the same string as
+/// `Store::SWEEP_MARKER_KEY` and cannot import this constant (that crate depends
+/// on this one, so the reverse edge would be a cycle).
+pub const AUDIT_SWEEP_MARKER_KEY: &str = "audit.retention_sweep_active";
+
 // ── Receipt display settings ───────────────────────────────────
 /// Show currency symbol prefix on amounts. `"1"` or `"0"`. Default `"0"`.
 pub const RECEIPT_SHOW_CURRENCY: &str = "receipt.show_currency";

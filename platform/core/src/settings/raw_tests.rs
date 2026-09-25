@@ -199,6 +199,53 @@ fn manager_owned_prefixes_follow_the_policy() {
         );
     }
 }
+// -- SECURITY: can an untrusted lane forge the audit-sweep marker? --------
+//
+// `audit_log_immutable_delete` (migration 20260920) raises UNLESS the
+// `audit.retention_sweep_active` row exists in `settings`. The sweep holds that
+// marker only inside its own transaction, which stops another connection seeing
+// it COINCIDENTALLY -- but it does not stop an attacker writing the key on their
+// own connection and leaving it there. If either untrusted ingest lane admits
+// the key, the immutability trigger becomes a general bypass: forge the marker,
+// then DELETE the audit trail the trigger exists to protect.
+#[test]
+fn the_audit_sweep_marker_is_refused_by_the_untrusted_lanes() {
+    // Spelled out rather than imported: `kasirmu-core` depends on THIS crate, so
+    // the reverse edge would be a cycle. The literal is pinned against its
+    // definition by `the_sweep_marker_literal_matches_its_definition` in
+    // `kasirmu-core`, which reads both files.
+    let marker = "audit.retention_sweep_active";
+    assert!(
+        !IngestPolicy::PortablePackage.admits(marker),
+        "a .kasirpkg must not be able to forge the audit-sweep marker: doing so 
+         permits deleting the audit trail the immutability trigger protects"
+    );
+    assert!(
+        !IngestPolicy::RemoteSync.admits(marker),
+        "a sync payload must not be able to forge the audit-sweep marker"
+    );
+    // TrustedLocal must KEEP admitting it: the sweep runs on the local
+    // connection and writes this key itself.
+    assert!(
+        IngestPolicy::TrustedLocal.admits(marker),
+        "filtering this key locally would break the sweep"
+    );
+
+    // And the two spellings must agree — the core constant and this crate's.
+    assert_eq!(
+        marker,
+        keys::AUDIT_SWEEP_MARKER_KEY,
+        "the sweep marker is written by kasirmu-core and refused by this crate; 
+         the two literals are one key and must not drift"
+    );
+    // TrustedLocal must keep admitting it: the sweep runs on the local connection
+    // and writes the marker with the app's own lane.
+    assert!(
+        IngestPolicy::TrustedLocal.admits(marker),
+        "the local sweep writes this key itself; filtering it would break the sweep",
+    );
+}
+
 
 // ── Cleartext-credential refusal at the tracked funnel ───────────────────
 
