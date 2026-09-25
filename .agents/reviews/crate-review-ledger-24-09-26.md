@@ -4332,4 +4332,91 @@ type. The enum remains a reasonable follow-up if a third status ever appears —
 clean on both crates. Nothing was committed except this record.
 
 **Tally:** 48 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 65 — out of the crates: MSL-41, and the UI/apps surfaces scoped
+
+### Why this pass left `crates/`
+
+Two consecutive thin passes in `core`/`bridge`/`api` suggested the high-yield veins there were worked, so
+this pass acted on the previous round's recommendation and went where the ledger has **never** looked.
+The ledger's own scope statement is "17/17 crates" and its sweep summary counts only `crates/` — the
+`ui/` TypeScript and the ~30k-line `apps/*-tauri` command layer are referenced in it exclusively as
+*consumers* of Rust behaviour, never as audited surface.
+
+### MSL-41 (HIGH, FIXED): every supplier edit silently re-activated an inactive supplier
+
+Found by tracing one field across the IPC boundary rather than reading a file.
+
+`update_supplier` — both the global and the scoped variant — resolved the status a caller did not send
+with a literal:
+
+```rust
+args.status.as_deref().unwrap_or("active"),
+```
+
+And the Suppliers screen **never sends one.** `SuppliersScreen.tsx` seeds its edit form from the row
+(`:90-101`) but the form carries no status field, the payload it builds at `:125-129` omits `status`,
+and the screen's only other references to the word are a column header (`:268`) and the badge it renders
+(`:282`). The type agrees — `UpdateSupplierArgs.status?: string` in `ui/src/api/purchasing.ts:47`.
+
+So the field is `None` on every save, `unwrap_or("active")` turns it into an explicit `"active"`, and
+the UPDATE writes it. **Correcting a supplier's phone number flipped it from `inactive` back to
+`active`, silently and with nothing in the UI able to express the intent.** The CSS already carries a
+`.suppliers-badge--inactive` class (`:132`), so the screen displays a state it has no way to produce or
+preserve.
+
+This is MSL-40's column again, one layer up: there the store trusted the schema to validate a value, here
+the command layer invented a value nobody asked for. Both are a boundary assuming what the layer behind it
+would do.
+
+**Fix.** `status_for_update(requested, existing)` — an explicit non-blank value wins, anything else
+preserves the row — and both wrappers now read the current row first. Blank counts as absent, matching the
+`blank_to_none` convention the settings and regional layers already use.
+
+**Falsified before committing.** Pointing the helper's fallback back at the `"active"` literal makes the
+test fail with exactly the reported pair:
+
+```
+assertion `left == right` failed: an edit that omits status must preserve the row, not force it active
+  left: "active"
+ right: "inactive"
+```
+
+The test drives the real store: it deactivates a supplier, edits its phone number through the payload
+shape the UI actually builds, and asserts both that the status survives AND that the edit still lands — so
+it cannot pass by turning the update into a no-op.
+
+### Severity: HIGH, and why
+
+The severity legend reserves HIGH for "wrong today on a live path". This is: the register UI is the only
+way to edit a supplier, so *every* edit of a deactivated supplier is wrong, and the write is silent. It
+does not corrupt money or leak data, so it is not the worst kind of HIGH — but "a user-visible state the
+product deliberately models flips back on an unrelated edit" is a live wrong answer, not an inert one.
+
+### Recorded, not actioned
+
+**The UI still cannot set a status.** With the backend preserving it, the remaining gap is a missing
+affordance: the screen shows the badge and styles both states but offers no control to change one. That is
+a product decision about how suppliers are deactivated (and whether it belongs on this screen at all), not
+a defect repair — recorded here so the next pass does not rediscover the CSS class and re-diagnose it.
+
+### Also checked in the new surfaces, no findings
+
+- **`ui/` money handling is genuinely careful.** `parseMinorUnits` (`ui/src/types/domain.ts:199`) and
+  `convertMinorUnits` (`ui/src/api/currency.ts:116`) are BigInt throughout, with explicit half-up-tie rules
+  and documented MONEY-01/MONEY-02 fixes; the float patterns they replaced are described in their own doc
+  comments. This is the same discipline the Rust `Money` type enforces, achieved independently.
+- **The registration-gate ratchet** (`apps/*-tauri/src/commands/registration_gate_tests.rs`, 14 tests pass)
+  is a model of a self-guarding audit: it names what green does NOT mean, keeps a generated debt ledger of
+  every ungated command, and pins a floor against the parsed tree so its own parser cannot silently stop
+  matching. The 455 registered names and their states are already recorded there — re-reporting them would
+  be duplicating a maintained artifact.
+- **Two prior findings verified closed rather than assumed.** LAN-A: `kasirmu-lan` now owns the rule
+  (`bind_addr_is_loopback` at `lib.rs:124`, refusal at `:352`), handles every spelling the finding named
+  including the bare-IPv6 case that caused the bypass, and fails closed on unparseable hosts. CRY-A: the
+  dead machine-bound SMTP pair is now *documented as dead* in the CLI (`credential_deltas.rs:482`, "no
+  caller left in the tree"), which is the right disposition for a public-but-uncalled function.
+
+**Tally:** 49 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
