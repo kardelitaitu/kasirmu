@@ -1122,8 +1122,12 @@ pub async fn create_staff_scoped(
     let sub = TenantSubscription::load(&db, "default")?
         .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?;
     sub.verify_signature()?;
-    store
-        .enforce_staff_quota(&Entitlements::from_subscription(&sub, UsageCounts::default()).tier)?;
+    // MSL-36: ledger-aware (see `Entitlements::from_subscription_for_connection`).
+    // This door grants a capability and nothing on its path validates the clock,
+    // so the wall-clock reader would over-credit a rolled-back install.
+    store.enforce_staff_quota(
+        &Entitlements::from_subscription_for_connection(&sub, &db, UsageCounts::default()).tier,
+    )?;
     let profile = args.profile.clone().into_profile();
     let assignment = args.assignment.as_ref().map(assignment_spec).transpose()?;
     let user = store.create_user_with_profile(

@@ -75,6 +75,38 @@ impl Entitlements {
         }
     }
 
+    /// MSL-36: the ledger-time sibling of [`Self::from_subscription`].
+    ///
+    /// `from_subscription` resolves the tier with `effective_tier()`, which
+    /// compares the paid window against `Utc::now()`. `effective_tier_for_connection`
+    /// instead compares it against the database's monotonic ledger time, which is
+    /// the whole point of that method: a merchant who rolls the OS clock back
+    /// makes the wall clock say the subscription is still inside its grace
+    /// window, and the wall-clock reader therefore grants the PAID tier to a
+    /// lapsed subscription. Use this constructor at any door that grants a
+    /// capability on the strength of the tier.
+    ///
+    /// Doors that already call `TenantSubscription::validate_clock_rollback`
+    /// immediately before loading the row are unaffected either way — the
+    /// rollback is detected and refused before a tier is read. This is for the
+    /// doors that do not, which is why both constructors exist rather than one.
+    #[must_use]
+    pub fn from_subscription_for_connection(
+        sub: &TenantSubscription,
+        conn: &rusqlite::Connection,
+        usage: UsageCounts,
+    ) -> Self {
+        Self {
+            tier: sub.effective_tier_for_connection(conn),
+            state: sub.lifecycle_state(),
+            loaded: true,
+            addons: sub.addons(),
+            is_trial: sub.is_trial(),
+            trial_ends_at: sub.trial_ends_at(),
+            usage,
+        }
+    }
+
     /// The fail-closed shape: Free entitlements on `unavailable`.
     ///
     /// Mirrors `load_capabilities`' contract exactly — the UI's error

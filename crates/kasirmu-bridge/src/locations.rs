@@ -232,7 +232,13 @@ pub async fn create_location_profile_scoped(
     sub.verify_signature()?;
     // Quota tier now flows from the entitlements read model (Phase B one
     // limit table), so the gate and the caps projection share one source.
-    let tier = Entitlements::from_subscription(&sub, UsageCounts::default()).tier;
+    //
+    // MSL-36: the LEDGER-aware constructor. This door grants a capability, and
+    // nothing on its path calls `validate_clock_rollback`, so the wall-clock
+    // reader would hand the paid cap to a subscription whose grace window had
+    // genuinely lapsed when the OS clock was rolled back.
+    let tier =
+        Entitlements::from_subscription_for_connection(&sub, &conn, UsageCounts::default()).tier;
     // Dev shim, and a deliberately PARKED release arm
     // (`todo-open-debt-program.md:109`). Debug upgrades bootstrap-Free to
     // Premium so a fresh install is not dead-ended by a 1-location quota the

@@ -113,7 +113,10 @@ pub async fn create_inventory_location(
         // Source the quota tier from the entitlements read model (Phase B one
         // limit table) so the warehouse gate shares the caps projection's
         // single source instead of a second subscription derivation.
-        Entitlements::from_subscription(&sub, UsageCounts::default()).tier
+        //
+        // MSL-36: ledger-aware, because this door grants a capability and has
+        // no `validate_clock_rollback` on its path.
+        Entitlements::from_subscription_for_connection(&sub, &identity, UsageCounts::default()).tier
     };
 
     let conn = ctx

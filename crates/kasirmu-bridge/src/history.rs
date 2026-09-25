@@ -74,7 +74,10 @@ pub async fn list_sales_scoped(
         let sub = TenantSubscription::load(&db, "default")?
             .ok_or_else(|| BridgeError::Internal("default tenant subscription not found".into()))?;
         sub.verify_signature()?;
-        sub.effective_tier().sales_history_days()
+        // MSL-36: ledger-aware. The history window is a capability, and this
+        // path has no clock-rollback guard — the wall-clock reader would grant
+        // the paid window to a lapsed subscription after a clock rollback.
+        sub.effective_tier_for_connection(&db).sales_history_days()
     };
     let conn = ctx.resolve_store(session_token)?;
     let db = conn

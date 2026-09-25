@@ -383,6 +383,83 @@ fn a_verdict_and_the_caps_payload_are_read_from_one_instance() {
     }
 }
 
+// ── MSL-36: the tier must be read against the ledger, not the wall clock ──
+
+/// A rolled-back OS clock must not re-grant a lapsed subscription.
+///
+/// `from_subscription` resolves the tier with `effective_tier()`, which compares
+/// the paid window against `Utc::now()`. Roll the clock back far enough and a
+/// subscription whose grace window has genuinely lapsed reads as still inside it,
+/// so a tenant that should have downgraded to Free keeps the paid caps. The
+/// database holds the monotonic ledger time that defeats this, and
+/// `effective_tier_for_connection` is the reader that consults it.
+///
+/// The two constructors are the fix: doors that grant a capability ask the
+/// ledger-aware one. This test pins that they disagree on exactly the state a
+/// rollback produces, which is what makes the choice load-bearing rather than
+/// cosmetic.
+#[test]
+fn the_ledger_reader_refuses_a_tier_the_rolled_wall_clock_would_grant() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    // Ledger time = the last recorded sale. The subscription expired 20 days
+    // before it — INSIDE Premium's 30-day grace, so the ledger says "still in
+    // grace, keep Premium".
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "INSERT INTO tenant_subscription (tenant_id, tier_key, status, expires_at, max_locations, max_pos_instances, allowed_types_json, signature, signed_payload, api_key, updated_at) VALUES (?1, ?2, ?3, ?4, 5, 99, '[]', 'BOOTSTRAP_FREE', '{}', '', '')",
+        rusqlite::params!["default", "premium", "active", expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+
+    // With the clocks aligned the two agree, which is why this survived:
+    assert_eq!(
+        sub.effective_tier_for_connection(&conn),
+        sub.effective_tier(),
+        "aligned clocks must agree — otherwise this divergence is a different bug"
+    );
+
+    // Now the ROLLBACK. Rather than mutate the OS clock (impossible in a unit
+    // test), move the LEDGER forward: 40 days on, the grace window is provably
+    // lapsed, and a wall clock 40 days behind is exactly what an attacker
+    // produces. The ledger reader sees the truth; the wall-clock reader cannot.
+    let rolled_ledger = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled_ledger.to_rfc3339()],
+    )
+    .unwrap();
+
+    let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
+    let ledger =
+        Entitlements::from_subscription_for_connection(&sub, &conn, UsageCounts::default());
+
+    assert_eq!(
+        ledger.tier,
+        SubscriptionTier::Free,
+        "past the grace window the ledger reader must downgrade to Free"
+    );
+    assert_eq!(
+        ledger.max_locations(),
+        QuotaDimension::Locations.limit_for(&SubscriptionTier::Free),
+        "and the caps must follow the downgraded tier"
+    );
+    assert_eq!(
+        wall.tier,
+        SubscriptionTier::Premium,
+        "the wall-clock reader still grants Premium — this is the exposure the ledger reader closes"
+    );
+}
+
 // ── Phase C: trial state in the read model ──────────────────────────
 
 /// Helper: a row whose signed payload carries the given trial fields.
