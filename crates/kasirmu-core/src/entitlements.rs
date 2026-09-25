@@ -306,6 +306,18 @@ pub trait SubscriptionLoader {
     /// Load + signature-verify the tenant's subscription row; `None`
     /// for missing/tampered/unreadable (the caller fails closed).
     fn load_verified_subscription(&self) -> Option<TenantSubscription>;
+
+    /// Assemble the read model from a verified row, resolving the tier the way
+    /// this loader's backing store expects.
+    ///
+    /// MSL-37: the default keeps [`Entitlements::from_subscription`] (the wall
+    /// clock), which is right for a loader with no database behind it — the
+    /// unit-test loaders. A loader backed by a real connection overrides this to
+    /// resolve against the LEDGER, so the caps payload and the enforcement gates
+    /// cannot answer with two different tiers after a clock rollback.
+    fn entitlements_for(&self, sub: &TenantSubscription, usage: UsageCounts) -> Entitlements {
+        Entitlements::from_subscription(sub, usage)
+    }
 }
 
 impl SubscriptionLoader for crate::db::Store<'_> {
@@ -330,6 +342,14 @@ impl SubscriptionLoader for crate::db::Store<'_> {
             }
         }
     }
+
+    /// MSL-37: the ledger-aware assembly. This is the override that keeps the
+    /// caps DTO honest — it reads the same monotonic ledger time the creation
+    /// gates read, so a rolled-back OS clock cannot make the UI publish a paid
+    /// tier the gate will refuse.
+    fn entitlements_for(&self, sub: &TenantSubscription, usage: UsageCounts) -> Entitlements {
+        Entitlements::from_subscription_for_connection(sub, self.conn, usage)
+    }
 }
 
 /// Load the row fail-closed and assemble the read model.
@@ -352,7 +372,9 @@ pub fn build_entitlements<S: SubscriptionLoader + ?Sized>(
     let Some(sub) = loader.load_verified_subscription() else {
         return Entitlements::fail_closed(usage);
     };
-    let mut ent = Entitlements::from_subscription(&sub, usage);
+    // MSL-37: through the loader, so a database-backed loader resolves against
+    // the ledger (see `SubscriptionLoader::entitlements_for`).
+    let mut ent = loader.entitlements_for(&sub, usage);
     if debug_upgrade {
         ent.apply_debug_upgrade();
     }

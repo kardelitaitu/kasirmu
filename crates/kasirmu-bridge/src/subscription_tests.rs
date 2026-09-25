@@ -1282,3 +1282,83 @@ fn per_location_rows_emit_nothing_for_an_unlimited_cap() {
     );
     assert!(rows.is_empty(), "an unlimited cap must never produce a row");
 }
+
+// ── MSL-37: the caps payload must agree with the gate it describes ──
+
+/// After MSL-36 the creation gates resolve the tier against the LEDGER, so the
+/// caps DTO — the payload the UI renders every gate from — has to answer with
+/// the same tier. Otherwise a rolled-back clock shows Premium caps while the
+/// gate refuses, which is exactly the "verdict contradicts the gate" drift the
+/// one-read-model work exists to prevent.
+///
+/// The divergence needs the two clocks to disagree; a unit test cannot move the
+/// OS clock, so it moves the LEDGER forward instead — the same relative state a
+/// rollback produces. The row is stamped Premium and expires inside Premium's
+/// grace window relative to real time, so the aligned-clock answer is Premium.
+#[test]
+fn caps_report_the_ledger_tier_the_gate_enforces() {
+    use kasirmu_core::availability::UsageCounts;
+    use kasirmu_core::entitlements::Entitlements;
+
+    let conn = fresh_db();
+    let ledger_now = chrono::Utc::now();
+    let expiry = ledger_now - chrono::Duration::days(20);
+    conn.execute(
+        "UPDATE tenant_subscription SET tier_key = 'premium', status = 'active', expires_at = ?1 WHERE tenant_id = 'default'",
+        rusqlite::params![expiry.to_rfc3339()],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sales (id, status, total_minor, currency, line_count, created_at, updated_at) VALUES ('s1', 'completed', 1000, 'USD', 1, ?1, ?1)",
+        rusqlite::params![ledger_now.to_rfc3339()],
+    )
+    .unwrap();
+
+    // Aligned clocks: both answers are Premium, so this fixture is not
+    // accidentally testing some other difference.
+    assert_eq!(caps(&conn).tier, "premium", "aligned clocks must agree");
+
+    // Roll the world forward 40 days of ledger time while the wall clock stays
+    // put: exactly the state a rolled-back install presents.
+    let rolled = ledger_now + chrono::Duration::days(40);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1, updated_at = ?1 WHERE id = 's1'",
+        rusqlite::params![rolled.to_rfc3339()],
+    )
+    .unwrap();
+
+    let gate_tier = {
+        let store = Store::new(&conn);
+        store.resolve_tier_fail_closed().unwrap()
+    };
+    let dto = caps(&conn);
+
+    assert_eq!(
+        gate_tier.tier_key(),
+        "free",
+        "past grace the enforcement gate downgrades to Free"
+    );
+    assert_eq!(
+        dto.tier,
+        gate_tier.tier_key(),
+        "the caps payload must report the tier the gate enforces, not the wall clock's"
+    );
+
+    // And the limits it publishes must follow that same tier, or the UI
+    // renders a cap the gate will refuse.
+    let free_max = QuotaDimension::Locations.limit_for(&kasirmu_core::SubscriptionTier::Free);
+    assert_eq!(
+        dto.max_locations, free_max,
+        "published caps follow the gate tier"
+    );
+
+    // Sanity: the wall-clock reader really does disagree, so this test would
+    // notice if `caps` were switched back.
+    let sub = TenantSubscription::load(&conn, "default").unwrap().unwrap();
+    let wall = Entitlements::from_subscription(&sub, UsageCounts::default());
+    assert_eq!(
+        wall.tier.tier_key(),
+        "premium",
+        "the wall-clock reader still grants Premium — the divergence this pins"
+    );
+}
