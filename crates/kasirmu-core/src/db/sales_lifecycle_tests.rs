@@ -356,3 +356,100 @@ fn rolled_back_settlement_writes_no_payment_outbox_row() {
     );
     assert_eq!(sale_count(&conn), 0);
 }
+// ── MSL-28: a failed recipe read must not silently skip the deduction ──
+
+/// `complete_sale_with_resolved_shortfalls` read the recipe with
+/// `.unwrap_or_default()`, so a DB failure became "this product has no recipe".
+/// That flips `has_recipe` false, and when the product also does not
+/// `tracks_inventory`, `needs_stock` is false and the line is NOT deducted — a
+/// sale settles with inventory under-reported and no error anywhere.
+///
+/// The CHECKOUT path reads the same function and propagates:
+/// `sales_checkout.rs:259` is `self.get_recipe_ingredients(pid)?`. Two doors,
+/// one read, opposite failure policies.
+#[test]
+fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_stocked_product(&conn, "RECIPE-FAIL-SKU");
+
+    // The swallow only bites for a product whose stock comes SOLELY from its
+    // recipe: `tracks_inventory` is true for retail/restaurant/both and false only
+    // for `service`, so a service product with a recipe is the case where
+    // `has_recipe` is the only thing making `needs_stock` true.
+    let parent: String = conn
+        .query_row(
+            "SELECT id FROM products WHERE sku = 'RECIPE-FAIL-SKU'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "UPDATE products SET product_type = 'service' WHERE id = ?1",
+        rusqlite::params![parent],
+    )
+    .unwrap();
+    // An ingredient that DOES track stock, so the recipe is the only reason to
+    // deduct anything at all.
+    let ing_id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, product_type) \
+         VALUES (?1, 'ING-FAIL-SKU', 'Ingredient', 100, 'USD', 'retail')",
+        rusqlite::params![ing_id],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO stock_summary (item_id, location_id, qty) VALUES (?1, ?2, 10)",
+        rusqlite::params![ing_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO product_recipes (id, parent_product_id, ingredient_product_id, \
+         quantity_required, unit) VALUES (?1, ?2, ?3, 2, 'unit')",
+        rusqlite::params![uuid::Uuid::now_v7().to_string(), parent, ing_id],
+    )
+    .unwrap();
+
+    let sale = single_line_sale("RECIPE-FAIL-SKU", Some("cashier-2"));
+
+    // Force the recipe read to fail for a reason that is NOT "no recipe":
+    // rename the table it selects from.
+    conn.execute_batch("ALTER TABLE product_recipes RENAME TO product_recipes_hidden;")
+        .unwrap();
+
+    let result = s.complete_sale_with_resolved_shortfalls(
+        &sale,
+        None,
+        &tender(1000),
+        "cashier-2",
+        None,
+        &[],
+        &[],
+    );
+
+    // The read failure must PROPAGATE, exactly as the checkout door does: the
+    // operator gets the real cause instead of a settled sale that quietly
+    // skipped its deduction.
+    let err = result.expect_err(
+        "a failed recipe read must fail the settlement, not settle it without deducting",
+    );
+    assert!(
+        err.to_string().contains("product_recipes"),
+        "the propagated error must name the real cause, got: {err}"
+    );
+
+    // And nothing was written: the settlement rolled back with the failure, so the
+    // ingredient still holds its original 10.
+    let ing_qty: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = \
+             (SELECT id FROM products WHERE sku = 'ING-FAIL-SKU') AND location_id = ?1",
+            rusqlite::params![crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        ing_qty, 10,
+        "a failed settlement must not have deducted anything"
+    );
+}

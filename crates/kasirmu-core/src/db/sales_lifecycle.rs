@@ -224,8 +224,20 @@ impl Store<'_> {
                 })
                 .unwrap_or(false);
 
+            // MSL-28: `?`, not `.unwrap_or_default()`. The recipe read decides
+            // whether this line is stock-checked at all (`has_recipe` feeds
+            // `needs_stock` below), so a FAILED read must not be reported as "this
+            // product has no recipe": that quietly flips `needs_stock` false and
+            // the line is never deducted. The product that exposes it is a SERVICE
+            // item whose stock comes solely from its recipe — `tracks_inventory` is
+            // false for `service`, so `has_recipe` is the only thing making the
+            // line deduct at all. The sale then settles with inventory
+            // under-reported and no error anywhere.
+            //
+            // `sales_checkout.rs:259` reads the SAME function and propagates; two
+            // doors, one read, and this was the one that disagreed.
             let recipe = match product_info.as_ref() {
-                Some((pid, _)) => self.get_recipe_ingredients(pid).unwrap_or_default(),
+                Some((pid, _)) => self.get_recipe_ingredients(pid)?,
                 None => vec![],
             };
             let has_recipe = !recipe.is_empty();
