@@ -33,24 +33,46 @@ pub struct MemoSyncRequest {
     pub memos: Vec<MemoSyncRow>,
 }
 
-/// Resolve the caller's tenant, rejecting admin-scope requests without the
-/// admin key (the terminal-credential path must not be able to mint a
-/// tenant-wide write for a tenant it is not registered to — the claims'
-/// tenant is authoritative regardless).
+/// Resolve the caller's tenant for a tenant-wide memo write, enforcing the
+/// two defences `require_admin_write` applies to master-data writes:
+///
+/// 1. **Terminal-scope legality** (MSL-35): a token carrying a `terminal_id`
+///    is refused outright when the embedder has set
+///    `AppState::allow_terminal_credentials` to false. The desktop local API
+///    sets it false (device credentials are a cloud-fleet concept there) and
+///    still mounts this route, so without this check a device credential the
+///    operator never minted could write tenant-wide memo state.
+/// 2. **Admin key** (when configured): 401 `invalid_admin_key` otherwise, the
+///    same second factor as token minting and the other master-data writes.
+///
+/// The tenant itself always comes from the claims, never the body, so neither
+/// defence is load-bearing for cross-tenant isolation — a terminal credential
+/// could only ever write its own registration's tenant.
+///
+/// The body of this function previously inverted the first check
+/// (`terminal_id.is_none() && !admin_key_authorised(..)`), which let any
+/// terminal-scoped token skip the admin key entirely while its own comment
+/// claimed the exemption was conditional on the flag. See MSL-35.
 #[allow(clippy::result_large_err)]
 fn require_tenant_write(
     headers: &HeaderMap,
     claims: &ApiTokenClaims,
     admin_key: Option<&str>,
+    allow_terminal_credentials: bool,
 ) -> Result<String, Response> {
     let tenant_id = claims.tenant_id.clone().unwrap_or_else(|| "default".into());
-    // Defense in depth: a terminal-scoped credential may only ever write its
-    // own registration's tenant, and only when the deployment chose to allow
-    // terminal credentials at all. Admin-minted tokens (no terminal_id) are
-    // the normal desktop path and additionally want the admin key when one
-    // is configured — mirroring `require_admin_write`, but tenant-scoped
-    // instead of global.
-    if claims.terminal_id.is_none() && !admin_key_authorised(headers, admin_key) {
+    // Defence 1: see the doc comment (MSL-35).
+    if claims.terminal_id.is_some() && !allow_terminal_credentials {
+        return Err((
+            axum::http::StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "terminal_scope_disabled",
+                "message": "this deployment does not accept device credentials",
+            })),
+        )
+            .into_response());
+    }
+    if !admin_key_authorised(headers, admin_key) {
         return Err((
             axum::http::StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({"error": "invalid_admin_key"})),
@@ -67,7 +89,12 @@ pub async fn sync_memos_handler(
     Extension(claims): Extension<ApiTokenClaims>,
     Json(body): Json<MemoSyncRequest>,
 ) -> Response {
-    let tenant_id = match require_tenant_write(&headers, &claims, state.admin_key.as_deref()) {
+    let tenant_id = match require_tenant_write(
+        &headers,
+        &claims,
+        state.admin_key.as_deref(),
+        state.allow_terminal_credentials,
+    ) {
         Ok(t) => t,
         Err(resp) => return resp,
     };

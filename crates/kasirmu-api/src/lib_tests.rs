@@ -1003,6 +1003,70 @@ async fn memo_active_read_requires_auth() {
     );
 }
 
+/// MSL-35: the memo sync write is tenant-scoped, and its guard is a
+/// sibling of `require_admin_write` that enforces only HALF of it.
+///
+/// `require_admin_write` (routes/tokens.rs:153) applies two defences: the
+/// admin key (when configured) AND a terminal-scope denial. `require_tenant_write`
+/// (routes/memos.rs:41) is documented as mirroring it "but tenant-scoped instead
+/// of global", yet it checks `terminal_id.is_none() && !admin_key_authorised(...)`
+/// — so a token that carries a `terminal_id` SKIPS the admin-key check entirely.
+///
+/// The guard's own comment claims the exemption applies "only when the
+/// deployment chose to allow terminal credentials at all" — the code never
+/// consults `AppState::allow_terminal_credentials`, which the sibling that MINTS
+/// terminal tokens does check (routes/tokens.rs:198).
+///
+/// On the desktop local API that flag is FALSE (kasirmu-local-api/src/lib.rs:434)
+/// and the memo routes are mounted there anyway (via `router_with_openapi`), so
+/// this pins the rule the surface means to enforce: a terminal-scoped token must
+/// not write tenant-wide memo state on a deployment that disabled device
+/// credentials.
+#[tokio::test]
+async fn memo_sync_refuses_a_terminal_token_when_device_credentials_are_disabled() {
+    let conn = fresh_conn();
+    let state = AppState {
+        db: Arc::new(Mutex::new(conn)),
+        pg: None,
+        // An admin key IS configured, so `require_admin_write` would demand it.
+        admin_key: Some("operator-secret".to_string()),
+        api_secret: String::new(),
+        // The embedder has opted OUT of device credentials.
+        allow_terminal_credentials: false,
+        db_path: ":memory:".into(),
+        port: 3099,
+        cors_origins: DEFAULT_CORS_ORIGINS.iter().map(|s| s.to_string()).collect(),
+        image_dir: std::path::PathBuf::from("./data/images"),
+    };
+    // A token that carries a terminal scope and NO admin key header.
+    let token = auth::create_token_full(
+        "terminal-1",
+        Some(1),
+        Some("tenant-1"),
+        Some("term-1"),
+        None,
+        Some(""),
+    )
+    .unwrap();
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/memos/sync")
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", token.token))
+        .body(Body::from(r#"{"memos":[]}"#))
+        .unwrap();
+    let resp = router(state).oneshot(req).await.unwrap();
+    // 403, not merely "not 200": with the guard absent the request sails past
+    // the admin-key check and lands on the PG-unavailable branch as 503, so an
+    // `assert_ne!(OK)` would pass for the wrong reason. Naming the status is
+    // what makes this test able to fail.
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "a terminal-scoped token must be refused outright on a surface with device credentials disabled"
+    );
+}
+
 #[tokio::test]
 async fn memo_ack_requires_auth() {
     let req = Request::builder()
