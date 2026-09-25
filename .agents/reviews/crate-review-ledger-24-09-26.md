@@ -2953,3 +2953,57 @@ the ordered quantity or DECREASES after inventory was already credited.
 
 **Tally:** 27 findings fixed (8 HIGH), 12 leads disproved.
 
+---
+
+## Pass 44 — `db/workspaces_instances.rs`: three dead arms and a retyped id list
+
+### MSL-20 (LOW, FIXED): the owner-bypass compared against seven hand-typed literals
+
+`list_workspaces_inner`'s step-1 bypass listed SEVEN role-id strings. Three of them —
+`"admin"`, `"manager"`, `"auditor"` — are **not role ids at all**, and I proved it
+rather than inferring it:
+
+- `users.role_id` is `REFERENCES roles(id)` (`20260813_init.sql:29`), so the column can
+  only hold a row that exists in `roles`;
+- every preset id in `platform_core::rbac::ROLE_PRESETS` is `role-`-prefixed —
+  `role-owner`, `role-manager`, `role-staff`, `role-admin`, `role-auditor`, `role-custom`;
+- so `admin` / `manager` / `auditor` can never match. Those three arms were unreachable.
+
+The four arms that WERE real retyped constants that already exist in
+`platform_core::rbac::builtin_roles`. A hand-written list of ids is the "two correct
+copies are still two copies" defect this tree names elsewhere (`topology.rs`), and its
+failure mode is silent: a taxonomy change would not be a compile error here.
+
+**Severity is LOW, and I checked that before acting.** The new test
+`the_workspace_bypass_ids_are_the_canonical_ones` PASSES against the pre-fix code — so no
+live authorisation outcome was wrong; the four real ids behaved correctly and the three
+dead arms matched nothing. This is dead code plus a duplication hazard, not a behaviour
+bug, and it is recorded as such rather than talked up.
+
+**Fix.** `matches!(role_id, builtin_roles::OWNER | ADMIN | MANAGER | AUDITOR)` — the
+taxonomy now owns the set. The test walks all six preset ids and asserts the bypass set is
+exactly `{OWNER, ADMIN, MANAGER, AUDITOR}` (STAFF and CUSTOM deliberately fall through to
+the assignment and role-type arms), plus that the three bare strings are not builtin role
+ids at all.
+
+**Proven behaviour-preserving:** all 74 `db::workspaces` tests pass unchanged, and the
+full `kasirmu-core` suite is green with zero failures.
+
+### A tooling failure worth recording (again)
+
+Two mangled edits in this pass came from the SAME cause, and it is mine, not the
+tooling's: a helper of the form `const A = (s) => Q + s + A` — where `A` is defined in
+terms of itself — injects its own body into every substitution. It corrupted three lines
+of the new test (`"default"` became `"default(s) => Q + s + A`). A second, separate slip
+consumed the previous test's closing brace because my `old_string` started one line too
+late.
+
+Both were caught by the compiler, which is the point of compiling after every edit — but
+the recurrence is the lesson: **when building source text in a program, never name the
+builder after a value it also substitutes.** The earlier `format!` mistakes
+(`assert_eq!` takes its message AS a format string; wrapping it in `format!` is a compile
+error) come from the same family: text generation is where I make mistakes, so it gets the
+same verify-immediately discipline as production code.
+
+**Tally:** 28 findings fixed (8 HIGH), 12 leads disproved.
+
