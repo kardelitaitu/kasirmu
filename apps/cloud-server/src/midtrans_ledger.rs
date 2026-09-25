@@ -293,8 +293,17 @@ impl LedgerDb {
         status: &str,
     ) -> Result<(), String> {
         let now = now_ms();
+        // The terminal set is THREE statuses, not two. `amount_mismatch` is written
+        // by the webhook when a correctly-signed settlement disagrees with the amount
+        // we charged (`webhooks/midtrans.rs:212`), and that same file treats it as
+        // terminal when deciding whether a redelivery is already processed
+        // (`:219-221`). Leaving it out here made the incident record overwritable by
+        // any later notification — Midtrans redelivers as a matter of course, and a
+        // `pending` or `expire` follow-up is ordinary — so the flag that exists to
+        // make a money discrepancy visible could be erased while the discrepancy
+        // itself remained. The two lists are now the same list.
         let sql = "UPDATE midtrans_transactions SET status = $2, updated_at = $3
-             WHERE order_id = $1 AND status NOT IN ('settlement', 'capture')";
+             WHERE order_id = $1 AND status NOT IN ('settlement', 'capture', 'amount_mismatch')";
         if let Some(pool) = &self.pg {
             let mut client = pool
                 .get()
@@ -316,8 +325,9 @@ impl LedgerDb {
             return Ok(());
         }
         let conn = self.db.lock().await;
+        // SQLite arm: same three-status terminal set as the Postgres arm above.
         let sql3 = "UPDATE midtrans_transactions SET status = ?2, updated_at = ?3
-             WHERE order_id = ?1 AND status NOT IN ('settlement', 'capture')";
+             WHERE order_id = ?1 AND status NOT IN ('settlement', 'capture', 'amount_mismatch')";
         conn.execute(sql3, params![order_id, status, now])
             .map_err(|e| format!("ledger mark: {e}"))?;
         Ok(())

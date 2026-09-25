@@ -133,3 +133,47 @@ async fn mark_status_scoped_by_order_id_only() {
         .unwrap();
     assert_eq!(l.lookup("QRIS-y").await.unwrap().unwrap().status, "issued");
 }
+
+/// An `amount_mismatch` row is NOT overwritten by a later notification.
+///
+/// **This pins a discrepancy the code carries and the tests do not cover.**
+/// `webhooks/midtrans.rs:219-221` treats THREE statuses as terminal when deciding
+/// whether a redelivery is "already processed": `settlement`, `capture`, **and**
+/// `amount_mismatch`. But `MarkStatus`'s SQL guard protects only two of them
+/// (`midtrans_ledger.rs:297`, `:320`: `status NOT IN ('settlement', 'capture')`).
+///
+/// **The consequence is money-shaped.** `amount_mismatch` is the flag that says *a
+/// correctly-signed settlement disagreed with what we charged*. A later notification
+/// — Midtrans redelivers, and a `pending` or `expire` follow-up is ordinary —
+/// overwrites the row, and the incident stops being visible to anyone reading the
+/// ledger. The discrepancy does not disappear; only the record of it does.
+///
+/// The test drives the LEDGER directly rather than the webhook, because the guard
+/// is `mark_status`'s: routing through the webhook would also exercise the
+/// already-processed short-circuit, and a test that fails for the wrong reason is
+/// not a test of the guard.
+#[tokio::test]
+async fn amount_mismatch_is_never_overwritten_by_a_later_status() {
+    let l = ledger();
+    l.record_issue("QRIS-mm", "tenant-A", "sale-mm", 15000, "IDR")
+        .await
+        .unwrap();
+    l.mark_status("QRIS-mm", "tenant-A", "amount_mismatch")
+        .await
+        .unwrap();
+    assert_eq!(
+        l.lookup("QRIS-mm").await.unwrap().unwrap().status,
+        "amount_mismatch",
+        "the mismatch must be recorded"
+    );
+
+    // A later, ordinary lifecycle notification. It must NOT erase the incident.
+    l.mark_status("QRIS-mm", "tenant-A", "expire")
+        .await
+        .unwrap();
+    assert_eq!(
+        l.lookup("QRIS-mm").await.unwrap().unwrap().status,
+        "amount_mismatch",
+        "an amount mismatch is terminal: a later notification must not erase the record of a signed-amount discrepancy"
+    );
+}
