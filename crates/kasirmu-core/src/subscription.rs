@@ -580,17 +580,22 @@ impl TenantSubscription {
     /// In multi-store mode (Phase 2), this would iterate all store
     /// databases and return the global maximum.
     pub fn compute_max_ledger_timestamp(conn: &rusqlite::Connection) -> Result<String, CoreError> {
-        // Get the most recent timestamp from sales.
-        let max_sales: Option<String> = conn
-            .query_row("SELECT MAX(created_at) FROM sales", [], |row| row.get(0))
-            .unwrap_or(None);
+        // MSL-32: both reads propagate. `.unwrap_or(None)` mapped every
+        // `rusqlite::Error` to `None`, and `(None, None)` below is defined as
+        // "the ledger is empty" -- so a failure to READ the ledger was
+        // indistinguishable from an empty one and answered with `Utc::now()`.
+        // That is the wall clock: the guard would then compare the OS clock
+        // against itself and pass, and the fail-closed grace/tier callers would
+        // credit the subscription rather than degrade it. A failed read is not
+        // an empty ledger.
+        let max_sales: Option<String> =
+            conn.query_row("SELECT MAX(created_at) FROM sales", [], |row| row.get(0))?;
 
         // Get the most recent timestamp from audit_log.
-        let max_audit: Option<String> = conn
-            .query_row("SELECT MAX(created_at) FROM audit_log", [], |row| {
+        let max_audit: Option<String> =
+            conn.query_row("SELECT MAX(created_at) FROM audit_log", [], |row| {
                 row.get(0)
-            })
-            .unwrap_or(None);
+            })?;
 
         // Pick the maximum of the two ledger timestamps.
         let ledger_max = match (max_sales, max_audit) {

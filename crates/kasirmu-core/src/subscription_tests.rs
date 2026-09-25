@@ -2322,3 +2322,55 @@ fn lifecycle_state_as_str_is_the_wire_form_not_the_status_column_vocabulary() {
     }
     assert_eq!(seen.len(), 7, "every variant must have its own wire form");
 }
+
+// ── MSL-32: a ledger READ failure must not look like an empty ledger ──
+
+/// A database that cannot answer the `MAX(created_at)` queries is not a
+/// database with an empty ledger.
+///
+/// `compute_max_ledger_timestamp` treated both the same: `.unwrap_or(None)`
+/// turned every `rusqlite::Error` into "no rows", and the `(None, None)` arm
+/// is defined as "no ledger data -- use current time", so the function
+/// answered with `Utc::now()`. Every consumer of that answer is a
+/// clock-tampering defence, and each one is defeated by handing it the wall
+/// clock:
+///
+/// * `validate_clock_rollback` compares the result against `Utc::now()`, so
+///   it compares the clock against itself and passes -- the rollback goes
+///   undetected on a broken database.
+/// * `effective_tier_for_connection` is the fail-CLOSED tier resolver
+///   (`db::quota_gate::Store::resolve_tier_fail_closed`); the wall clock is
+///   the one input that makes it over-credit (a live subscription is
+///   "within grace") instead of degrade to `Free`.
+/// * `get_license_status` reports the failure as `ClockTampered` and prints
+///   the database error as the user-facing message: a wrong diagnosis.
+///
+/// Renaming the tables away is the smallest way to make the reads fail while
+/// leaving the connection itself healthy -- so the only thing under test is
+/// the swallow, not a dead connection.
+#[test]
+fn a_broken_ledger_read_is_not_reported_as_an_empty_ledger() {
+    use crate::migrations;
+    let conn = migrations::fresh_db();
+
+    conn.execute_batch(
+        "ALTER TABLE sales RENAME TO sales_hidden;\
+         ALTER TABLE audit_log RENAME TO audit_log_hidden;",
+    )
+    .unwrap();
+
+    // The read failed. Saying "the ledger is empty" here hands the caller
+    // `Utc::now()` -- the wall clock the guard exists to distrust.
+    let ts = TenantSubscription::compute_max_ledger_timestamp(&conn);
+    assert!(
+        ts.is_err(),
+        "a failed ledger read must not be answered as an empty ledger; got {ts:?}"
+    );
+
+    // The live consequence: the rollback guard must fail closed (Err), not
+    // silently pass by comparing the system clock against itself.
+    assert!(
+        TenantSubscription::validate_clock_rollback(&conn).is_err(),
+        "the rollback guard must not pass when the ledger cannot be read"
+    );
+}
