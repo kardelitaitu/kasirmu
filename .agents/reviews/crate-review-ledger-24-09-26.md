@@ -3446,3 +3446,59 @@ cross-crate semantic change can land in a test another lane owns, and the lane n
 
 **Tally:** 36 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 53 — receipts dated in the wrong business day for an IANA-configured store
+
+### MSL-29 (MEDIUM, FIXED): two paths, one stored `timezone`, two different days
+
+Still on the silent-fallback lens, this time on a **fallback that is itself documented**
+elsewhere. `db/reports/datetime.rs` states the contract for `locations.timezone`:
+
+*"`'+HH:MM'` / `'-HH:MM'` / `'UTC'` / **an IANA zone name** — the last resolved through
+`crate::timezone::offset_for_zone`, so reports and the tax path agree on the business day."*
+
+`parse_utc_offset` implements exactly that, and warns when it cannot resolve. But
+`receipt_code.rs::offset_seconds` reimplemented a NARROWER parser — only the numeric forms and
+`UTC`/`Z` — so an IANA name was treated as "a value core cannot interpret" and fell to UTC.
+
+**Measured, not reasoned.** 2026-09-18T23:30:00Z is 2026-09-19 06:30 in Jakarta, so:
+
+```
+resolve_receipt_date(..."Asia/Jakarta") -> left: "260918"  (UTC)
+                                          right: "260919"  (the reports path's day)
+```
+
+The consequence is wider than a misprinted day: that date feeds BOTH the printed `yymmdd` and
+the `fiscal_year` passed to `claim_receipt_sequence` (`receipt_code.rs:336-337`), so the receipt
+can be numbered inside the **wrong fiscal year's** sequence. And `receipt_code.rs` contains
+**zero** `tracing::` calls — no signal at all — while its documented mirror `tz_modifier` warns
+on precisely this fallback ("silently bucketing a day's revenue in the wrong zone is exactly the
+failure this warn exists to surface").
+
+**Fix.** `offset_seconds` now delegates to the same `parse_utc_offset` the reports path uses
+(through its `pub(crate)` re-export), normalising `Z` first since that one spelling lives only in
+the old parser. The two paths can no longer disagree on one stored value, and an unknown name
+still falls back to UTC — `is_known_zone` is what keeps "this store is on UTC" distinguishable
+from "unresolvable", which is the property the shared helper already had.
+
+**The pre-existing test had to change, and that is the finding in miniature.**
+`resolve_receipt_date_honours_the_location_offset` asserted the OLD behaviour —
+`assert_eq!(yymmdd_utc, "260918")` under the comment *"A value core cannot interpret (an IANA
+name) falls back to UTC"*. That assertion WAS the divergence, written down as intent. Updated to
+the resolved day, with the old value quoted in the comment and a pointer to the new case that
+still pins the genuine unknown-name fallback.
+
+**Verified:** 16 `receipt_code` tests and the full `kasirmu-core` suite pass; clippy clean.
+
+### Process note
+
+Two linker failures (`rust-lld.exe`, exit 1) appeared mid-round from concurrent-agent contention
+on `target/`; a wait-and-retry cleared it. Separately, my test insertion again split a
+neighbouring function's header from its body ("cannot test inner items") — the FIFTH occurrence
+of this anchor trap, caught by the compiler each time. The mitigation recorded last round (anchor
+on the file's last lines, or a unique string) was not applied here, so it is now promoted from a
+note to a rule I state before every append.
+
+**Tally:** 37 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
