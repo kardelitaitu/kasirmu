@@ -2102,3 +2102,166 @@ fn debug_redacts_credential_fields_but_keeps_the_row_readable() {
         assert!(out.contains("2026-09-09T00:00:00Z"), "updated_at vanished");
     }
 }
+// -- The two date engines: what they really promise ---------------------
+//
+// `lifecycle_state_at` (subscription.rs:987) and `is_within_grace_period_at`
+// (:682) are PARALLEL implementations over the same fields, and the module
+// doc at :964 claims the second one mirrors the first exactly so the reported
+// state can never disagree with `effective_tier`.
+//
+// **That claim is false.** The two ask different questions and deliberately
+// answer two statuses differently:
+//
+//   - `is_within_grace_period_at` asks: does the paid grant still stand?
+//     `canceled` and `revoked` return false at :694.
+//   - `lifecycle_state_at` asks: what state is this row in? `canceled` and
+//     `paused` are their own states (:1001-1003), because callers must tell a
+//     billing outcome from an abuse verdict (ADR #58 section 2.1).
+//
+// This test pins the honest contract: the grace engine and `effective_tier`
+// agree on every cell, and `lifecycle_state` agrees with them on every status
+// EXCEPT the two documented carve-outs.
+#[test]
+fn lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs() {
+    let now = chrono::Utc::now();
+    let day = chrono::Duration::days(1);
+    let iso = |off: chrono::Duration| {
+        (now + off).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    };
+
+    let statuses = [
+        "active",
+        "canceled",
+        "revoked",
+        "paused",
+        "expired",
+        "grace_period",
+        "something_else",
+    ];
+    let tiers = [
+        SubscriptionTier::Free,
+        SubscriptionTier::OneTime,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+        SubscriptionTier::Premium,
+        SubscriptionTier::Enterprise,
+    ];
+    let expiries: [Option<String>; 6] = [
+        None,
+        Some(iso(day * 30)),
+        Some(iso(day)),
+        Some(iso(-day)),
+        Some(iso(-day * 400)),
+        Some("not-a-date".into()),
+    ];
+
+    let mut checked = 0usize;
+    let mut carve_outs = 0usize;
+    for status in statuses {
+        for tier in &tiers {
+            for expiry in &expiries {
+                let sub = TenantSubscription {
+                    tenant_id: "default".into(),
+                    tier: tier.clone(),
+                    status: status.into(),
+                    expires_at: expiry.clone(),
+                    max_locations: 1,
+                    max_pos_instances: 1,
+                    allowed_types_json: "[]".into(),
+                    signature: String::new(),
+                    signed_payload: String::new(),
+                    api_key: String::new(),
+                    updated_at: String::new(),
+                };
+                let state = sub.lifecycle_state_at(now);
+                let within_grace = sub.is_within_grace_period_at(now);
+                // Compare the DECISION, not the returned tier: on a Free row
+                // `effective_tier_at` answers Free whether or not the grant
+                // stands, so value-equality is trivially true and would assert
+                // nothing. Downgrading to Free is only observable on a PAID
+                // tier, which is the same collapse `effective_tier_at`'s own
+                // log line names.
+                let downgraded = tier != &SubscriptionTier::Free
+                    && sub.effective_tier_at(now) == SubscriptionTier::Free;
+                let ctx = format!(
+                    "status={status} tier={tier:?} expiry={expiry:?} grace={within_grace} state={state:?}"
+                );
+
+                // The grace engine and effective_tier are two readers of ONE
+                // decision and must never disagree — but only on a PAID tier,
+                // where the decision is observable. On a Free row
+                // `effective_tier_at` answers Free regardless, so it is not a
+                // second reader of the grace verdict there at all; asserting on
+                // it would be asserting a tautology that happens to fail for
+                // the canceled case.
+                if tier != &SubscriptionTier::Free {
+                    assert_eq!(!downgraded, within_grace, "effective_tier vs grace: {ctx}");
+                }
+                checked += 1;
+
+                // Everything the lifecycle engine reports must match the grace
+                // verdict, except the two statuses that get their own state on
+                // purpose and are documented as not grace cases.
+                let state_is_usable = matches!(
+                    state,
+                    SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
+                );
+                if state_is_usable != within_grace {
+                    // Two statuses are left where the engines answer
+                    // differently, and both are by design:
+                    //
+                    //   - `grace_period`: the server SAYS the row is in grace.
+                    //     The lifecycle state reports that straight through,
+                    //     while the date arithmetic knows nothing about the
+                    //     status and may answer false once the date lapses.
+                    //   - anything unrecognized: the lifecycle state fails
+                    //     CLOSED to `Unavailable`, while the grace engine is a
+                    //     bool with no failure channel and answers on the date
+                    //     alone. That asymmetry is the point — `Unavailable` is
+                    //     how a caller learns the row did not parse.
+                    assert!(
+                        status == "grace_period" || status == "something_else",
+                        "{ctx}"
+                    );
+                    carve_outs += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 7 * 6 * 6, "the matrix must be walked in full");
+    assert!(carve_outs > 0, "the carve-outs must be exercised");
+}
+
+/// MSL-13: the server's explicit `expired` verdict is ignored by the grace
+/// engine, so an expired tenant keeps its PAID tier wherever `effective_tier`
+/// is the source of truth -- including the central quota gate.
+#[test]
+fn server_expired_status_does_not_keep_the_paid_tier() {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    // A row the SERVER marked expired while the date is still in the future:
+    // a contradictory row, which is exactly what an explicit verdict is for.
+    let sub = TenantSubscription {
+        tenant_id: "default".into(),
+        tier: SubscriptionTier::Enterprise,
+        status: "expired".into(),
+        expires_at: Some((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339()),
+        max_locations: 99,
+        max_pos_instances: 99,
+        allowed_types_json: "[]".into(),
+        signature: String::new(),
+        signed_payload: String::new(),
+        api_key: String::new(),
+        updated_at: now,
+    };
+    assert_eq!(
+        sub.lifecycle_state(),
+        SubscriptionLifecycleState::Expired,
+        "the lifecycle engine honours the server verdict",
+    );
+    assert_eq!(
+        sub.effective_tier(),
+        SubscriptionTier::Free,
+        "an expired row must not keep an Enterprise tier, or the quota gate grants paid limits to a subscription the server has ended",
+    );
+}
+

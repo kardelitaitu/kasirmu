@@ -2546,3 +2546,76 @@ committed warning, untouched).
 
 **Tally:** 21 findings fixed (6 HIGH), 8 leads disproved.
 
+---
+
+## Pass 38 — `subscription.rs` (1,215): the grace engine ignored the server's explicit verdict
+
+### MSL-13 (HIGH, FIXED): `status = 'expired'` kept the PAID tier
+
+`TenantSubscription::is_within_grace_period_at` derived its answer from date
+arithmetic and carved out only `canceled` and `revoked`. Everything else fell
+through to the date test, so a row the **license server had explicitly marked
+`expired`** — with an `expires_at` still in the future — was "within grace".
+
+Because `effective_tier_at` is a second reader of that same decision, the row
+kept its **paid** tier. The consequence is not cosmetic; `effective_tier` is the
+source of truth for:
+
+- `quota_gate::resolve_tier_fail_closed` (:60) — the central quota gate, so an
+  expired Enterprise tenant got 99 locations / 99 POS instances;
+- `crates/kasirmu-api/src/routes/products.rs:280`;
+- `crates/kasirmu-bridge/src/{history,workspaces,topology/commands}.rs`;
+- `entitlements::from_subscription` — which publishes **both**
+  `tier: effective_tier()` and `state: lifecycle_state()` in one struct, so the
+  UI received `tier: Enterprise, state: Expired` side by side.
+
+**How it surfaced.** Not by reading the code — by writing a matrix test that
+asserted the module's OWN documented invariant. `lifecycle_state`'s doc claimed
+the two engines "mirror exactly so the reported state can never disagree with
+`effective_tier`", and no test checked it directly. The matrix walked 7 statuses
+× 6 tiers × 6 expiry shapes (252 cells) and named the first disagreeing cell.
+
+**The statuses, measured before the fix** (grace vs lifecycle):
+
+| status | `is_within_grace_period` | `lifecycle_state` | before MSL-13 |
+|---|---|---|---|
+| `expired` | **true** | `Expired` | paid tier retained — the bug |
+| `paused` | **true** | `Paused` | paid tier retained — the bug |
+| `canceled` | false | `Canceled` | agreed |
+| `revoked` | false | `Revoked` | agreed |
+| `grace_period` | false (once dated) | `Grace` | by design, kept |
+| unknown | true | `Unavailable` | by design, kept |
+
+`expired` and `paused` are now honoured by both engines: an explicit
+server-written verdict beats the date arithmetic, because the date logic DERIVES a
+verdict while these statuses ARE the verdict. `grace_period` is deliberately NOT
+in that set — it is the server saying the row IS in grace.
+
+**Two design decisions checked rather than assumed.** `pos_read_only`'s own doc
+(:1048) says "`Canceled`/`Paused` revert entitlements to Free (Free can still
+sell)", which is why `paused` belongs in the never-within-grace family rather
+than being a trading state. And I did NOT add `lifecycle_state_for_connection`:
+`pos_read_only_for_connection` already supplies the ledger-time path for the
+enforcement decision, so a third ledger variant would be a new public surface
+with no caller.
+
+**Test.** `server_expired_status_does_not_keep_the_paid_tier` asserts an
+Enterprise row with `status = 'expired'` and a future date resolves to Free. It
+was written first and observed to FAIL (`left: Enterprise, right: Free`), then
+pass. `lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs`
+replaces my earlier, WRONG version of the same matrix: that one asserted a
+usable-set equivalence and failed on `paused`/`canceled` — because *I* had assumed
+the two engines agreed on "usable" when the design deliberately has them ask
+different questions. The final test bounds the equivalence to the two remaining
+documented carve-outs and asserts nothing vacuous.
+
+**A false doc claim corrected.** `lifecycle_state`'s paragraph promised an
+equivalence the code never implemented; it now states the real contract and names
+the test that measures it.
+
+**Verified:** 136 `subscription::` tests and the full `kasirmu-core` suite pass
+with zero failures; clippy clean on core (`kasirmu-bridge`'s `sync.rs:74` is
+another agent's committed warning, untouched).
+
+**Tally:** 22 findings fixed (7 HIGH), 8 leads disproved.
+

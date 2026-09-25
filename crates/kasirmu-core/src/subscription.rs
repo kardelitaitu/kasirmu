@@ -691,7 +691,25 @@ impl TenantSubscription {
         //
         // Both were one arm before ADR #58, and neither is a grace case — but
         // they are separate arms because the STATES they feed differ.
-        if self.status == "canceled" || self.status == "revoked" {
+        //
+        // MSL-13 adds `expired` and `paused` to this family. An EXPLICIT
+        // server-written verdict about the grant must beat the date arithmetic:
+        // the engine below derives a verdict from `expires_at`, while these four
+        // statuses ARE the verdict. (`grace_period` is deliberately absent — it
+        // is the server TELLING us the row is in grace, not out of it.)
+        //
+        // Before this arm, a row the server had marked `expired` while its
+        // `expires_at` was still in the future was "within grace", so
+        // `effective_tier` returned the PAID tier — and the quota gate
+        // (`quota_gate::resolve_tier_fail_closed`), `/api/v1` product routes and
+        // every `effective_tier()` reader granted full paid limits to a
+        // subscription the server had already ended. `lifecycle_state` reported
+        // `Expired` for the same row, which is what made the disagreement
+        // visible.
+        if matches!(
+            self.status.as_str(),
+            "canceled" | "revoked" | "expired" | "paused"
+        ) {
             return false;
         }
 
@@ -961,11 +979,20 @@ impl TenantSubscription {
     /// `paused`, `canceled`, `revoked`, `expired`) map first; anything else
     /// is [`SubscriptionLifecycleState::Unavailable`] — unrecognized data
     /// must fail closed, not guess. An `active` row is then refined by
-    /// date, mirroring [`Self::is_within_grace_period`] exactly so the
-    /// reported state can never disagree with `effective_tier`: Free is
-    /// active forever, a missing expiry is a perpetual license, an
-    /// unparseable expiry fails closed as expired, and a paid row past its
-    /// expiry reports `Grace` until the tier's offline grace window ends.
+    /// date with the same arithmetic as [`Self::is_within_grace_period`], so
+    /// the two agree on every row EXCEPT where a status carries its own state.
+    /// This paragraph used to claim the two "can never disagree with
+    /// `effective_tier`"; they did, and
+    /// `lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs`
+    /// measures it. The contract after MSL-13 is: Free is active forever, a
+    /// missing expiry is a perpetual license, an unparseable expiry fails
+    /// closed as expired, and a paid row past its expiry reports `Grace` until
+    /// the tier's offline grace window ends. The one remaining divergence is
+    /// `grace_period` — the server SAYS the row is in grace, which this
+    /// function reports directly, while the date arithmetic in
+    /// [`Self::is_within_grace_period`] knows nothing about that status and may
+    /// answer `false` once the date lapses. Prefer this lifecycle state for
+    /// anything user-facing.
     pub fn lifecycle_state(&self) -> SubscriptionLifecycleState {
         self.lifecycle_state_at(chrono::Utc::now())
     }
