@@ -115,6 +115,11 @@ inv-log-filter-staff = Staff
 inv-log-filter-type = Type
 inv-log-filter-all = All
 inv-log-expand-btn = Details
+# Accessible name for the clickable log ROW itself. The row toggles the detail
+# panel on click, so it is a control and needs a name and a keyboard path
+# (C24). Named per row so a screen reader announces which transaction expands.
+inv-log-row-expand-aria = Expand transaction { $date }
+inv-log-row-collapse-aria = Collapse transaction { $date }
 inv-log-col-barcode = Barcode Scanned
 inv-log-col-datetime = Date / Time
 inv-log-col-type = Type

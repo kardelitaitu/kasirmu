@@ -300,4 +300,64 @@ describe('TransactionLogScreen', () => {
       expect(rows.length).toBe(0);
     });
   });
+
+  // ── Row keyboard reachability (C24) ─────────────────────────────
+  //
+  // The row toggles the detail panel, so a mouse-only onClick left it
+  // unreachable by keyboard: no tab stop, no announced role, no name.
+  // These assertions fail on exactly that shape, which is why they exist
+  // rather than relying on the a11y suite -- that suite mounts this screen
+  // only to count rows and never asserts the row's semantics.
+
+  it('exposes each row as a named, focusable button with its state', async () => {
+    mockDefaultSuccess();
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
+
+    const rows = document.querySelectorAll<HTMLTableRowElement>('.log-row-expandable');
+    expect(rows.length).toBe(2);
+
+    const first = rows[0]!;
+    // Reachable: a keyboard user must be able to land on it.
+    expect(first.tabIndex).toBe(0);
+    // Announced as a control, in its state.
+    expect(first).toHaveAttribute('role', 'button');
+    expect(first).toHaveAttribute('aria-expanded', 'false');
+    // Named: an unlabelled control announces only "button".
+    // (getString is stubbed to return the id.)
+    expect(first.getAttribute('aria-label')).toBe('inv-log-row-expand-aria');
+
+    // And it actually takes focus.
+    first.focus();
+    expect(document.activeElement).toBe(first);
+  });
+
+  it('expands and collapses a row from the keyboard alone', async () => {
+    mockDefaultSuccess();
+    await renderPage();
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+    });
+
+    const first = document.querySelector<HTMLTableRowElement>('.log-row-expandable')!;
+    first.focus();
+
+    // Enter expands -- no mouse involved anywhere in this test.
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(mockGetTransaction).toHaveBeenCalledTimes(1);
+    });
+    expect(document.querySelector('.log-row-expandable')).toHaveAttribute('aria-expanded', 'true');
+
+    // Space collapses it, matching the convention used by the loyalty table.
+    await userEvent.keyboard(' ');
+    await waitFor(() => {
+      expect(document.querySelector('.log-row-expandable')).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
 });
+

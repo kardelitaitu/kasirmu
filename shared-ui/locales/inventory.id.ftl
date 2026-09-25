@@ -129,6 +129,12 @@ inv-log-filter-staff = Staf
 inv-log-filter-type = Tipe
 inv-log-filter-all = Semua
 inv-log-expand-btn = Detail
+# Nama aksesibel untuk BARIS log yang dapat diklik. Baris ini membuka panel
+# detail saat diklik, jadi ia adalah kontrol dan butuh nama serta jalur papan
+# tombol (C24). Disebut per baris agar pembaca layar mengumumkan transaksi mana
+# yang dibuka.
+inv-log-row-expand-aria = Buka transaksi { $date }
+inv-log-row-collapse-aria = Tutup transaksi { $date }
 inv-log-col-barcode = Barcode Dipindai
 inv-log-col-datetime = Tanggal / Waktu
 inv-log-col-type = Tipe
