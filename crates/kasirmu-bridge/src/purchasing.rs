@@ -283,6 +283,28 @@ pub struct ReceivePoLineDto {
     pub damaged_qty: i64,
 }
 
+/// Resolve the status an update should write when the caller may have omitted
+/// it (MSL-41).
+///
+/// An absent `status` means "leave it as it is", NOT "set active". The two
+/// callers used to pass a literal `"active"`, and the Suppliers screen never
+/// sends the field at all — its edit payload omits it — so every supplier edit
+/// silently re-activated an inactive supplier. The row the user had open said
+/// `inactive`; saving a corrected phone number flipped it back.
+///
+/// A caller that cannot supply the existing value (the unscoped variant reads
+/// it from the same row it is about to update) still ends up preserving it,
+/// because the store reads the current row for its own default when the
+/// argument is empty — this helper makes that intent explicit at the boundary
+/// rather than relying on the store to notice.
+fn status_for_update(requested: Option<&str>, existing: &str) -> String {
+    match requested.map(str::trim) {
+        // An explicit value wins; blank is the same as absent.
+        Some(s) if !s.is_empty() => s.to_owned(),
+        _ => existing.to_owned(),
+    }
+}
+
 // ── Supplier commands (global database) ─────────────────────────────
 
 /// List suppliers from the global database.
@@ -352,7 +374,14 @@ pub async fn update_supplier(
     validate_not_empty("code", &args.code).map_err(|e| BridgeError::Invalid(e.to_string()))?;
 
     let db = ctx.lock_global().await;
-    let supplier = Store::new(&db).update_supplier(
+    let store = Store::new(&db);
+    // MSL-41: an omitted status PRESERVES the row (see `status_for_update`).
+    let existing = store.get_supplier(&args.id)?;
+    let status = status_for_update(
+        args.status.as_deref(),
+        existing.as_ref().map_or("active", |s| s.status.as_str()),
+    );
+    let supplier = store.update_supplier(
         &args.id,
         args.code.trim(),
         args.name.trim(),
@@ -363,7 +392,7 @@ pub async fn update_supplier(
         args.tax_id.as_deref().unwrap_or_default(),
         args.payment_terms.as_deref().unwrap_or_default(),
         args.notes.as_deref().unwrap_or_default(),
-        args.status.as_deref().unwrap_or("active"),
+        &status,
     )?;
     Ok(SupplierDto::from(supplier))
 }
@@ -595,7 +624,14 @@ pub async fn update_supplier_scoped(
     let db = conn
         .lock()
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let supplier = Store::new(&db).update_supplier(
+    let store = Store::new(&db);
+    // MSL-41: an omitted status PRESERVES the row (see `status_for_update`).
+    let existing = store.get_supplier(&args.id)?;
+    let status = status_for_update(
+        args.status.as_deref(),
+        existing.as_ref().map_or("active", |s| s.status.as_str()),
+    );
+    let supplier = store.update_supplier(
         &args.id,
         args.code.trim(),
         args.name.trim(),
@@ -606,7 +642,7 @@ pub async fn update_supplier_scoped(
         args.tax_id.as_deref().unwrap_or_default(),
         args.payment_terms.as_deref().unwrap_or_default(),
         args.notes.as_deref().unwrap_or_default(),
-        args.status.as_deref().unwrap_or("active"),
+        &status,
     )?;
     Ok(SupplierDto::from(supplier))
 }
