@@ -316,9 +316,9 @@
     {
       "id": "data-testid-compliance",
       "label": "Data-testid compliance",
-      "status": "required",
+      "status": "advisory",
       "runners": { "check:all": ["testid"] },
-      "_note": "Ratchet on data-testid literals across ui/src: R1 kebab-case, R2 no full literal produced by two files. Its ONLY runner is check:all (scripts/check-ui.mjs leg 0); no workflow runs it yet, so a violation is invisible to CI today and only `cd ui && npm run check:all` catches it. Frozen spec: docs/plans/todo-testid-checker-spec.md."
+      "_note": "Ratchet on data-testid literals across ui/src: R1 kebab-case, R2 no full literal produced by two files. Its ONLY runner is check:all (scripts/check-ui.mjs leg 0); no workflow runs it yet, so a violation is invisible to CI today and only `cd ui && npm run check:all` catches it. Frozen spec: docs/plans/todo-testid-checker-spec.md. RELABELLED required -> advisory 2026-09-25 (C25) for the same reason as perf-smoke: declared required while no workflow could fail on it. C25 also forbids relabelling clippy or e2e this way - those two have real local runners and belong in CI, not in the advisory column."
     },
     {
       "id": "e2e",
@@ -330,9 +330,9 @@
     {
       "id": "perf-smoke",
       "label": "Perf smoke",
-      "status": "required",
+      "status": "advisory",
       "runners": { "check:all": ["perf smoke"] },
-      "_note": "Local-only, and conditional even there: check-ui.mjs:157 runs `npm run test:e2e:perf` (Playwright desktop + tablet budgets, PERF-10) but records status 'skip' when Playwright browsers are not installed, so on a fresh clone it silently does nothing. No CI job runs it. Two layers of opt-out on a gate marked required."
+      "_note": "Local-only, and conditional even there: check-ui.mjs:157 runs `npm run test:e2e:perf` (Playwright desktop + tablet budgets, PERF-10) but records status 'skip' when Playwright browsers are not installed, so on a fresh clone it silently does nothing. No CI job runs it. Two layers of opt-out on a gate marked required. RELABELLED required -> advisory 2026-09-25 (C25): the row's own text described a gate that cannot fail a build, so advisory is the honest status rather than a demotion. Enforcement is unchanged - nothing ran it before and nothing runs it now; only the claim moved."
     },
     {
       "id": "rust-test-apps",
