@@ -5026,3 +5026,64 @@ resulting failure names a field.
 
 **Tally:** 59 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
+## Pass 76 — MSL-53: the guard and the FK answer different questions
+
+Started on the partial-index predicates and found that family disciplined (each migration states its
+invariant, its predicate rationale, and its writer census; the writer censuses still match). So I followed
+the *one* lead that family pointed at instead: **a guard that counts referrers and a FOREIGN KEY that
+enforces them can disagree, and only the FK gets the last word.**
+
+`roles.rs` states the disagreement itself, and then reasons past it. `ROLE_REFERRERS` filters
+`users` to `deleted_at IS NULL`, and the doc says why in as many words:
+
+> The `Option<&str>` half exists because the FOREIGN KEY and the LIVE row are not the same set, and
+> `users` is the one table where they differ.
+
+That is correct for the **authoring guard** — a tombstone nobody can name, reassign, or wait out must not
+pin a role in the trash forever, and counting raw rows was a real bug the module records having fixed.
+It is wrong for the **sweep**, which does not ask "can a person still name this role?" but "will
+`DELETE FROM roles` succeed?". `purge_expired_roles` asked the first question and ran the second
+statement.
+
+**Why the sets differ, permanently.** No production path ever deletes a `users` row. The staff trash
+stamps `deleted_at` (`staff.rs:744`), and `purge_expired_users` **anonymises in place** — an
+`UPDATE` (`staff.rs:855`) that does not clear `role_id`. So a member who has ever held a role holds
+it in the FK's eyes for the life of the database, whether they are live, trashed, or purged. Only tests
+delete from `users`.
+
+**Measured, on the module's own fixtures:**
+
+```text
+Db(SqliteFailure(Error { code: ConstraintViolation, extended_code: 787 },
+   Some("FOREIGN KEY constraint failed")))
+```
+
+Sequence: a user holds a role → the user is trashed → `soft_delete_role` sees zero *live* referrers and
+trashes the role (correctly) → the window closes → the sweep's `DELETE` meets the FK. And because the
+loop runs inside **one transaction**, the failure aborted the **entire sweep**, not just the un-collectable
+row: every other expired role in that pass stayed on disk, and the error the operator saw was a raw
+`SqliteFailure` naming no table.
+
+**Severity: HIGH.** The migration that introduced the feature (`20261010_role_trash.sql:11-12`) rests on
+the claim that "the delete guard has already proved nothing references it, so the 90-day sweep can remove
+the row outright". The probe shows that premise is unsound, so the sweep has never actually been able to
+collect such a role — it has thrown instead, and taken the pass with it.
+
+**The fix keeps both censuses, because both are right about their own question.** `ROLE_FK_REFERRERS`
+is the FK's census, `ROLE_REFERRERS` stays the roster's, and `role_has_any_fk_referrer` is consulted by
+the sweep only. Choosing between them was never the point: the row is genuinely pinned, so the sweep
+leaves it trashed and reports **0** rather than lying about having collected it. Reverting the guard to
+raw rows was rejected as the fix — it recreates the undeletable-role bug the doc block exists to record.
+
+Falsified by deleting the two new lines: the new test fails with the exact `extended_code: 787` above and
+passes with them. Two tests, one per direction — the sweep *leaves* a role a trashed member still holds,
+and the sweep *still collects* one no row references, so the guard is provably a `continue` and not an
+early return.
+
+**Verified:** 44 in `db::roles::tests` (up from 40), 1974 in the `db::` layer (0 failed), `clippy -D
+warnings` clean, both files `rustfmt`-clean apart from one 105-character line that predates the change
+and is left untouched. Commit `5aeb1b289`.
+
+**Tally:** 60 findings fixed (10 HIGH), 15 leads disproved. Two are preventive pins.
+
+
