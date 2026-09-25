@@ -43,6 +43,141 @@ fn get_returns_seeded_primary() {
     assert_eq!(profile.name, "Main Store");
 }
 
+// ── MSL-42: the location update must validate the currency like its sibling ──
+
+/// Two store methods write `locations.currency`, and only one validated it.
+///
+/// `update_regional_config_for_location` routes the value through
+/// `regional::validate_regional_axis_value("currency", ..)`, which parses it as a
+/// `Currency` and canonicalises it. `update_location_profile` wrote the same
+/// column raw — no check here, and none at the bridge either, whose
+/// `update_location_profile_scoped` validates the TIMEZONE beside it but not the
+/// currency. The column is `TEXT NOT NULL DEFAULT 'USD'` with no CHECK.
+///
+/// **What the contract actually is, measured rather than assumed:** `Currency`'s
+/// `FromStr` (`foundation/src/money.rs:119`) checks SHAPE — exactly three ASCII
+/// alphabetic bytes, uppercased — and has no ISO-4217 membership table. So
+/// `"XYZ"` is a legal value by design and `"US"`, `"USDD"` and `""` are not.
+/// The doc comment on `validate_regional_axis_value` saying "ISO-4217 alpha-3"
+/// describes that shape, not a registry lookup.
+///
+/// The UI makes the difference reachable: the inspector renders timezone as a
+/// three-option preset `<select>` with a client-side guard, and currency as a
+/// free-text `<input>` whose only constraint is `maxLength={3}` — so `""` is an
+/// ordinary keystroke (clear the field and blur), not a hand-crafted payload.
+#[test]
+fn update_location_profile_rejects_a_malformed_currency() {
+    let (store, id) = setup();
+
+    let before = store.get_location_profile(&id).unwrap().unwrap();
+    assert_eq!(before.currency, "USD");
+
+    // An empty field is the reachable bad case: the input has no required rule.
+    let err = store
+        .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "", "UTC")
+        .expect_err("a blank currency must be refused, not persisted");
+    assert!(
+        matches!(
+            err,
+            CoreError::Validation {
+                field: "currency",
+                ..
+            }
+        ),
+        "a malformed currency is a VALIDATION error; got {err:?}"
+    );
+
+    // A wrong-length code too.
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "US", "UTC")
+            .is_err(),
+        "a two-letter code is malformed"
+    );
+
+    // The row must be untouched: a refused update changes nothing.
+    let after = store.get_location_profile(&id).unwrap().unwrap();
+    assert_eq!(
+        after.currency, before.currency,
+        "the refused value must not land"
+    );
+}
+
+/// Both write paths must agree on the shape rule and the canonical form. This is
+/// the property the fix establishes, stated independently of any one bad value.
+#[test]
+fn both_currency_write_paths_agree_on_what_is_legal() {
+    let (store, id) = setup();
+
+    // Lowercase is accepted by the regional path and canonicalised upward.
+    store
+        .update_regional_config_for_location(&id, "", "UTC", "idr", "")
+        .unwrap();
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "IDR",
+        "the regional path canonicalises to uppercase"
+    );
+
+    // The plain update path must end at the same place for the same input.
+    store
+        .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "usd", "UTC")
+        .unwrap();
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "USD",
+        "and so must the plain update path — same rule, same canonical form"
+    );
+
+    // They agree on the SHAPE rule: a non-blank malformed code fails on both.
+    assert!(
+        store
+            .update_regional_config_for_location(&id, "", "UTC", "US", "")
+            .is_err(),
+        "the regional path rejects a malformed currency"
+    );
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "US", "UTC")
+            .is_err(),
+        "and so must the plain update path"
+    );
+
+    // They deliberately DIFFER on blank, and that difference is the point.
+    //
+    // `update_regional_config_for_location` writes the OVERRIDE layer: blank is
+    // the "inherit from the entity/organization layer" sentinel, and
+    // `write_blank_clears_each_axis_to_inherit` pins that clearing each axis
+    // really does fall through. `update_location_profile` writes the flat profile
+    // the inspector edits, where a blank currency is simply an empty field the
+    // user left behind — there is no lower layer for it to inherit from, and the
+    // read side (`regional_config_for_location`) takes the Location layer's value
+    // as-is before `RegionalLayer::blank` maps blank to "not set here".
+    //
+    // So the two writers have DIFFERENT blank semantics on purpose, and pinning
+    // both directions stops a later refactor from "unifying" them into whichever
+    // one it happens to read first. (I got this wrong on the first attempt and
+    // wrote a fix that made blank preserve on the regional path too; the existing
+    // test caught it, which is the system working.)
+    assert!(
+        store
+            .update_regional_config_for_location(&id, "", "UTC", "", "")
+            .is_ok(),
+        "the regional override path treats blank as the inherit sentinel"
+    );
+    assert_eq!(
+        store.get_location_profile(&id).unwrap().unwrap().currency,
+        "",
+        "and cloning that contract onto the profile path would erase the setting"
+    );
+    assert!(
+        store
+            .update_location_profile(&id, "Main Store", "123 Main St", "TAX-001", "", "UTC")
+            .is_err(),
+        "the profile path has no inherit layer, so blank is a validation error"
+    );
+}
+
 #[test]
 fn get_returns_none_for_missing() {
     let (store, _) = setup();

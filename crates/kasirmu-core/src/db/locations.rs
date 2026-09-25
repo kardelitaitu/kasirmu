@@ -230,6 +230,38 @@ impl Store<'_> {
         currency: &str,
         timezone: &str,
     ) -> Result<LocationProfile, CoreError> {
+        // MSL-42: validate + canonicalise the currency at the core boundary, via
+        // `Currency`'s own parser — the same rule `update_regional_config_for_location`
+        // reaches through `validate_regional_axis_value("currency", ..)`.
+        //
+        // This path wrote the column raw: no check here, and none at the bridge
+        // either, whose `update_location_profile_scoped` validates the TIMEZONE
+        // beside it but not the currency. The column is
+        // `TEXT NOT NULL DEFAULT 'USD'` with no CHECK, and the UI offers a
+        // free-text 3-char input (`maxLength={3}`) next to a preset-locked
+        // timezone select — so "US" and "" are ordinary keystrokes, not crafted
+        // calls. `regional_config_for_location` reads this column straight into
+        // the Location layer, so a malformed code becomes a malformed money
+        // context for the POS.
+        //
+        // Deliberately the PARSER rather than `validate_regional_axis_value`:
+        // that helper returns `Ok("")` for blank, the "inherit at this scope"
+        // sentinel — correct for the regional OVERRIDE columns
+        // (`write_blank_clears_each_axis_to_inherit` pins that) and wrong for
+        // this flat profile field, which has no lower layer to inherit from.
+        // `Currency::from_str` already rejects a blank or wrong-length value
+        // with the typed error below, so no separate blank check is needed.
+        let currency = currency
+            .trim()
+            .parse::<crate::Currency>()
+            .map_err(|_| CoreError::Validation {
+                field: "currency",
+                message: format!(
+                    "currency must be a 3-letter ISO-4217 code, got {:?}",
+                    currency.trim()
+                ),
+            })?
+            .to_string();
         let affected = self.conn.execute(
             "UPDATE locations SET name = ?1, address = ?2, tax_id = ?3,
              currency = ?4, timezone = ?5, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
