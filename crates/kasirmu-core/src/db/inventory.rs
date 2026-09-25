@@ -72,8 +72,13 @@ impl Store<'_> {
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
-        // Validate name is not empty
-        if name.trim().is_empty() {
+        // MSL-46: trim before the check AND the bind. The column carries
+        // `idx_inventory_locations_name_unique … WHERE is_active = 1`, so storing
+        // an untrimmed name let "Back Room", "Back Room " and "  Back Room" be
+        // three active rows — the duplicate the index exists to prevent, and the
+        // three render identically in the cashier's LocationPicker and ShiftBar.
+        let name = name.trim();
+        if name.is_empty() {
             return Err(CoreError::Validation {
                 field: "name",
                 message: "location name must not be empty".into(),
@@ -92,11 +97,25 @@ impl Store<'_> {
         }
 
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(
+        // MSL-46: a duplicate name is a VALIDATION outcome, not a storage fault —
+        // the same mapping `create_product` applies to its own UNIQUE columns
+        // (`products_crud.rs:366-374`). `idx_inventory_locations_name_unique`
+        // raises `ConstraintViolation`, which would otherwise reach the caller as
+        // an opaque `Db(SqliteFailure(…))` that names no field.
+        let inserted = tx.execute(
             "INSERT INTO inventory_locations (id, name, type, description, is_active, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
             params![id, name, location_type, description, now],
-        )?;
+        );
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &inserted
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Conflict {
+                entity: "inventory_location",
+                field: "name",
+            });
+        }
+        inserted?;
         // W7-B: mirror of the locations/products/staff veto (9264b8f67) —
         // post-insert, in-tx, on the same predicate the gate that armed it uses
         // (type = warehouse AND is_active = 1). Only a warehouse row may consume
@@ -167,8 +186,10 @@ impl Store<'_> {
         location_type: &str,
         description: &str,
     ) -> Result<(), CoreError> {
-        // Validate name is not empty
-        if name.trim().is_empty() {
+        // MSL-46: trim here too, so an update cannot install the padded name the
+        // create path now refuses (same UNIQUE index, same rendering problem).
+        let name = name.trim();
+        if name.is_empty() {
             return Err(CoreError::Validation {
                 field: "name",
                 message: "location name must not be empty".into(),
@@ -188,11 +209,21 @@ impl Store<'_> {
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let tx = self.conn.unchecked_transaction()?;
+        // MSL-46: same Conflict mapping as the create path above.
         let updated = tx.execute(
             "UPDATE inventory_locations SET name = ?1, type = ?2, description = ?3, updated_at = ?4 \
              WHERE id = ?5",
             params![name, location_type, description, now, id],
-        )?;
+        );
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &updated
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Conflict {
+                entity: "inventory_location",
+                field: "name",
+            });
+        }
+        let updated = updated?;
         if updated == 0 {
             return Err(CoreError::NotFound {
                 entity: "inventory_location",

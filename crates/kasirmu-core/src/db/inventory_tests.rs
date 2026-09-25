@@ -18,6 +18,92 @@ fn store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
 }
 
+// ── MSL-46: a UNIQUE name index that whitespace defeats ─────────
+
+/// `name` is stored untrimmed, so the UNIQUE index on it treats values that
+/// render identically as distinct rows.
+///
+/// The column carries `idx_inventory_locations_name_unique ON
+/// inventory_locations(name) WHERE is_active = 1`, which exists to stop two
+/// active locations sharing a name. But both writers bind the caller's raw
+/// string, so `"Back Room"`, `"Back Room "` and `"  Back Room"` are three rows
+/// — measured, all three create successfully.
+///
+/// The impact is that the duplicate the index exists to prevent is still
+/// reachable, and it renders invisibly: `listInventoryLocations` feeds the
+/// cashier-facing `LocationPicker` and `ShiftBar`, where two entries display
+/// as the same name and the operator has no way to tell which one they chose.
+/// The same class as MSL-45, one table over — the constraint is defeated not
+/// by a bad value but by an unstripped one.
+#[test]
+fn a_location_name_is_stored_trimmed_so_the_unique_index_holds() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    s.create_inventory_location("Back Room", "store", "")
+        .unwrap();
+
+    // The same display name with padding must be refused, not stored as a
+    // second row the picker renders identically.
+    for padded in ["Back Room ", "  Back Room", "\tBack Room"] {
+        let err = s
+            .create_inventory_location(padded, "store", "")
+            .expect_err("a padded duplicate must not slip past the unique index");
+        // The conflict must name the field, not surface as an opaque DB error.
+        assert!(
+            matches!(err, CoreError::Conflict { .. }),
+            "expected a Conflict for {padded:?}, got {err:?}"
+        );
+    }
+
+    // Count the NAME under test, not the table: the base migration seeds two
+    // system locations ('Default Inventory', 'In Transit', 20260813_init.sql
+    // :1525/:1531), so a bare COUNT would measure the seed.
+    let named: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM inventory_locations WHERE name LIKE 'Back Room%'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        named, 1,
+        "exactly the one location the operator named — no padded siblings"
+    );
+}
+
+/// A padded name is still a legal name once trimmed, and the update path agrees
+/// with the create path.
+#[test]
+fn a_padded_name_is_trimmed_and_stored() {
+    let conn = fresh();
+    let s = store(&conn);
+    let id = s
+        .create_inventory_location("  Front Room  ", "store", "")
+        .unwrap();
+
+    let name: String = conn
+        .query_row(
+            "SELECT name FROM inventory_locations WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(name, "Front Room", "stored trimmed");
+
+    // And the update path is held to the same rule.
+    s.update_inventory_location(&id, "  Front Room  ", "store", "")
+        .unwrap();
+    let after: String = conn
+        .query_row(
+            "SELECT name FROM inventory_locations WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(after, "Front Room", "an update must trim too");
+}
+
 #[test]
 fn test_locations_crud() {
     let conn = fresh();
