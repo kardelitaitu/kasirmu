@@ -37,6 +37,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { prefersReducedMotion } from '@/utils/animation';
 
 export interface UseKdsTabIndicatorOptions {
   /** Which tab is active — the value only; the state itself stays in the screen. */
@@ -77,13 +78,26 @@ export function useKdsTabIndicator({
       width: tab.offsetWidth,
     });
     if (isTabMountedRef.current && tabIndicatorRef.current && typeof tabIndicatorRef.current.animate === 'function') {
-      /* 2-axis motion: squeeze (narrow+short) mid-flight → overshoot on landing → settle */
-      tabIndicatorRef.current.animate([
-        { transform: 'scale(1, 1)' },
-        { transform: 'scale(0.82, 0.85)', offset: 0.45 },
-        { transform: 'scale(1.08, 1.18)', offset: 0.85 },
-        { transform: 'scale(1, 1)' },
-      ], { duration: 340, easing: 'ease-in-out' });
+      /* 2-axis motion: squeeze (narrow+short) mid-flight → overshoot on landing → settle
+       *
+       * Gated on `prefersReducedMotion()`. This is a Web Animations API call,
+       * not a CSS animation, so NEITHER reduced-motion guard in the stylesheets
+       * reaches it: `reset.css`'s blanket `animation-duration: 0.01ms
+       * !important` and `tokens.css`'s `animation: none` both address CSS
+       * animations only, while `Element.animate()` runs at whatever duration it
+       * is handed. Ungated, a reduced-motion user got a full-speed 340ms
+       * squeeze-and-overshoot on every tab change — WCAG 2.1 §2.3.3. Same
+       * defect class as the topology simulation pulse (JOURNAL 2026-08-12).
+       * The pill still MOVES, because its position is state-driven; only this
+       * decorative flourish is suppressed. */
+      if (!prefersReducedMotion()) {
+        tabIndicatorRef.current.animate([
+          { transform: 'scale(1, 1)' },
+          { transform: 'scale(0.82, 0.85)', offset: 0.45 },
+          { transform: 'scale(1.08, 1.18)', offset: 0.85 },
+          { transform: 'scale(1, 1)' },
+        ], { duration: 340, easing: 'ease-in-out' });
+      }
     }
     isTabMountedRef.current = true;
   }, [activeTab]);
