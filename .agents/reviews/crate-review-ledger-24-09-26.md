@@ -3338,3 +3338,60 @@ or on a string unique to the target, and re-read the region after inserting.**
 
 **Tally:** 34 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 51 — the tax-rate probes: a DB failure reported as "no such rate"
+
+### MSL-27 (MEDIUM, FIXED): `.ok()` collapsed every DB error into the absence case
+
+Extending the dropped-error lens from `let _ =` (MSL-26) to `.ok()`, which discards an error
+just as completely. Judged each candidate rather than sweeping:
+
+- `customers.rs` (10 uses) — all on VALIDATORS (`Email::new`, `Phone::new`), where an invalid
+  stored value legitimately becomes `None`. Correct, left alone.
+- `profile.rs:368` — a decryption collapse that is documented, and whose write path re-derives
+  the three states through `StoredCipher` so an unreadable ciphertext is never nulled out.
+  **Exemplary**, and the direct opposite of this finding.
+- `profile.rs:542` — a read accessor behind `SensitiveWritePolicy`. Correct, left alone.
+- `tax/scopes.rs` (10) — the outlier: TEN `.ok()` and ZERO `.optional()` or explicit
+  `QueryReturnedNoRows`, in a crate that uses `.optional()` 38 times and the explicit match
+  19 times.
+
+**The defect.** `rusqlite::query_row(...).ok()` maps EVERY error to `None`, not just
+`QueryReturnedNoRows`. Two sites then turned that `None` into a POSITIVE CLAIM:
+
+- `update_tax_rate_scoped` — a DB failure became `NotFound { entity: "tax_rate" }`, i.e.
+  *"this tax rate does not exist"* while the row was present and the database was failing;
+- `validate_scope_target` — a DB failure became `Validation { "no {table} {id:?}" }`, *"your
+  scope target does not exist"* for a target that did exist.
+
+Both are wrong diagnoses **on the money path**, and both hide the real fault: an operator
+acting on either message goes looking for a data problem that is not there.
+
+**Fix.** `.optional()?`, the crate's standard idiom — it maps ONLY `QueryReturnedNoRows` to
+`None` and propagates anything else. Added the `OptionalExtension` import. Behaviour is
+identical on every non-error path.
+
+**Proven by regression, not asserted.**
+`a_db_failure_in_the_rate_probe_is_not_reported_as_not_found` forces a REAL DB error by
+renaming `tax_rates` mid-test, then asserts the failure is not `NotFound`. It PASSES with the
+fix and, with the fix reverted, FAILS with exactly the predicted diagnosis:
+
+```
+a DB failure must not be reported as NotFound ... got
+NotFound { entity: "tax_rate", id: "01a0d687-..." }
+```
+
+The fix was then restored. That is the strongest evidence available here — the test was
+watched catching the bug it describes.
+
+**The other `.ok()` sites in the file were left alone**, deliberately: `tax_rate_window`,
+`tax_rate_scope`, `location_legal_entity`, the scope-claim probe and the erase probe all
+return `Ok(None)` / `Ok(false)`, where collapsing an error to the absence answer is the
+documented read semantic rather than a wrong diagnosis. Only the two that make a CLAIM were
+changed.
+
+**Verified:** 135 `db::tax` tests and the full `kasirmu-core` suite pass; clippy clean.
+
+**Tally:** 35 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
