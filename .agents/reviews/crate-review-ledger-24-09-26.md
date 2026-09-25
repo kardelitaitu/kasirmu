@@ -3984,6 +3984,96 @@ any other caller. A terminal-scope denial would have nothing to read.
 unmodified tree; nothing was committed. The `bridge` suite re-ran green at 1400 for the third time.
 
 **Tally:** 43 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 60 — MSL-36: the quota tier was resolved against the wall clock, not the ledger
+
+### What led there, and why the first three probes proved nothing
+
+`entitlements.rs` (307) was unread. Its `from_subscription` resolves the tier with
+`sub.effective_tier()` — the WALL-CLOCK reader — while `subscription.rs` has a ledger-time sibling
+(`effective_tier_for_connection`) whose whole documented purpose is to resist a local clock rollback.
+The census showed the split was lopsided: the wall-clock reader at ~10 sites including the shared read
+model, the ledger reader at exactly one (`db/quota_gate.rs::resolve_tier_fail_closed`).
+
+**Three probes failed to demonstrate any divergence before the fourth worked, and each failure was
+informative rather than wasted.**
+
+1. Expiry 400 days past, ledger future-dated: both readers said Free. Too far — no grace window involved.
+2. Expiry 40 days past with the ledger at real time: both said Free. The two windows coincide whenever
+   the clocks agree, which is precisely why the bug cannot be seen by reading either one.
+3. Expiry 20 days past (inside Premium's 30-day grace) against real time: both said Premium. Correct,
+   and it establishes the baseline the fix must preserve.
+
+The fourth probe is the one that generalises: **the divergence is unreachable while wall time and ledger
+time agree, so a unit test cannot produce it by adjusting dates alone** — it has to move one clock
+relative to the other. Since the OS clock cannot be changed in a test, the equivalent construction is to
+move the LEDGER forward, which is the same relative state a rollback produces.
+
+### The exposure, measured
+
+With the ledger 40 days ahead of a lapsed grace window the two readers disagree exactly as predicted:
+
+```
+ledger reader -> Free       (correct: the grace window genuinely lapsed)
+wall reader   -> Premium    (grants the paid caps the tenant no longer paid for)
+```
+
+Reachability was then checked rather than assumed. `validate_clock_rollback` is the guard that catches a
+rolled clock, and it is called at 9 bridge write sites. The five `from_subscription` sites that gate a
+capability were each tested for it:
+
+| door | what it grants | rollback guard on path |
+|---|---|---|
+| `products.rs:702` | product cap | yes |
+| `terminals.rs:499` | register cap | yes |
+| `locations.rs:235` | location cap | **no** |
+| `inventory.rs:116` | warehouse cap | **no** |
+| `staff.rs:1126` | staff cap | **no** |
+| `history.rs:77` | sales-history window | **no** |
+
+`staff.rs:1122-1126` is the clearest: it loads the subscription, verifies the signature, then enforces
+the staff cap from the wall-clock tier — and `ctx.resolve_session` (called earlier at `:1101`)
+revalidates the *account*, not the clock. Nothing on that path consults the ledger.
+
+### The fix, and the one site deliberately left alone
+
+`Entitlements::from_subscription_for_connection(sub, conn, usage)` is the ledger-time sibling, added
+beside the original rather than replacing it, because the two doors that DO guard the clock are
+unaffected and the read-model constructor is cheaper. The four unguarded capability doors now call it.
+
+**`subscription.rs:378` was checked and deliberately NOT changed.** Its `from_subscription` feeds
+`load_feature_verdict`, which `subscription.rs:241` documents as "Phase 3 **observability**" and `:457`
+as "a diagnostics read". Its only production caller is the explain path (`:478`); enforcement runs
+through the scoped `require_permission` gates. A wrong verdict there misreports why a feature is
+unavailable — a real but different, lower-severity defect, and changing it would put a ledger query on a
+diagnostic read for no enforcement benefit. Recorded so the next pass does not re-derive it.
+
+**A schema risk I checked before committing.** `from_subscription_for_connection` reads the ledger from
+the connection it is handed, and the four doors pass different databases (`locations.rs` the store DB,
+`inventory.rs` the identity DB, `staff.rs`/`history.rs` the global DB). Had `sales`/`audit_log` been
+absent from the identity DB, MSL-32's error propagation would have turned my own fix into a
+paying-tenant downgrade. Verified two ways: a probe confirmed both tables in a freshly-migrated DB, and
+the project already calls `validate_clock_rollback(&global_db)` at 8 sites — so the global DB is
+established as ledger-bearing. Safe, but it was not safe to assume.
+
+**Proven by a watched regression.**
+`the_ledger_reader_refuses_a_tier_the_rolled_wall_clock_would_grant` asserts the two readers AGREE with
+aligned clocks (guarding against this being a different bug), then moves the ledger and asserts the
+divergence. Falsified by making the new constructor delegate to `effective_tier`: it fails with
+`left: Premium, right: Free` — the wall-clock answer on the ledger-time path. Restored: 18 `entitlements`
+tests and 3316 `kasirmu-core` lib tests pass. Commit `b63f4b382`.
+
+### Process correction: `cargo fmt` wrote to other agents' files
+
+`cargo fmt -p kasirmu-core -p kasirmu-bridge` reformatted **26 files I had not touched** — other
+sessions' uncommitted work in `license_tests.rs`, `pos.rs`, `sync.rs`, `kds_devices.rs`, `db/roles.rs`
+and more. I reverted all of them and confirmed my six stayed formatted (`--check` re-run, filtering to my
+paths). In a shared checkout `cargo fmt` on a crate is a whole-tree write, not a scoped one — the
+formatting equivalent of a bare `git commit`. Never run it on a crate here; format the files named in the
+diff, or accept `--check` as the gate and leave it to the hook.
+
+**Tally:** 44 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
 
 
