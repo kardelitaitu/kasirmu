@@ -3217,3 +3217,68 @@ in the crate.
 
 **Tally:** 32 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 49 — `db/recovery.rs`: the restore rollback message could lie
+
+### MSL-25 (MEDIUM, FIXED): a discarded rollback Result emitted "left intact" unconditionally
+
+Chasing the MSL-24 class ("a signal that does not reach its audience") onto discarded
+`Result`s. The `Err` arm of `restore_from`'s swap did:
+
+```rust
+if had_live {
+    let _ = std::fs::copy(&snapshot, db_path);   // <- Result DISCARDED
+}
+Err(CoreError::Internal(format!(
+    "restore rolled back, '{}' left intact: {e}",
+)))
+```
+
+The message was built **unconditionally**. If the rollback copy failed, the operator was told
+their database was *intact* at the exact moment it was destroyed — the worst available untruth
+during a restore, because it stops them reaching for the pre-restore snapshot they would need
+to recover by hand. The function's own doc over-promised the same thing ("Any failure from
+step 4 on restores the live path from the snapshot"), so code and doc agreed on a guarantee
+only the happy path met.
+
+**Fix.** The rollback's outcome now decides the message:
+
+- rollback succeeded, there was a live DB → `"restore rolled back, '{}' left intact"`;
+- rollback succeeded, there was none → `"...removed as it was before"` (the old wording said
+  "left intact" for a database that never existed);
+- rollback FAILED → `"restore FAILED and the automatic rollback ALSO failed; '{}' is NOT
+  intact. <why>. The original content is in the pre-restore snapshot."` — loud, and it names
+  the file the operator must restore by hand.
+
+The no-live-database arm now also treats `NotFound` from the removal as SUCCESS (the goal was
+"not there") and reports any other removal error rather than swallowing it.
+
+**The doc was corrected too**, from "restores" to "ATTEMPTS to restore", with the reason
+recorded.
+
+**Reachability is stated honestly rather than implied.** The swap-failure arm is not portably
+forcible from a test (it needs a rename or re-verify failure that cannot be induced without
+platform-specific tricks), so the new test pins the invariant that holds for EVERY failure —
+`a_failed_restore_leaves_the_original_database_and_does_not_lie_about_it` drives a refused
+candidate and asserts the live file is still there, byte-identical, and that the message does
+not claim "left intact" while the file is gone. The swap-arm fix itself is justified by
+reading the code, and the ledger says so rather than pretending the test exercises it.
+
+### A self-inflicted error, third occurrence — and it is now the point
+
+The test text was first emitted corrupted: every `"literal"` became
+`"literal(s        ) => Q + s + A`. Cause: I wrote a helper named `A` that referenced itself
+(`const A = (s) => Q + s + A`), so it injected its own body at every call site. This is the
+THIRD round with the same family of mistake (after `format!` inside `assert_eq!`, and `A` used
+as both builder and substitution), and it is always in TEST-AUTHORING text generation, never in
+production code I hand-write.
+
+Rule now applied without exception: **build Rust source for edits from a plain array of lines
+or a backtick template with no self-referential helpers, and compile immediately.** Every
+occurrence was caught by `cargo check` within one step, and none reached a commit.
+
+**Verified:** 10 `db::recovery` tests and the full `kasirmu-core` suite pass; clippy clean.
+
+**Tally:** 33 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
