@@ -3282,3 +3282,59 @@ occurrence was caught by `cargo check` within one step, and none reached a commi
 
 **Tally:** 33 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 50 — the discarded-`Result` sweep: a lost low-stock alert with no trace
+
+### MSL-26 (LOW, FIXED): the threshold check's failure was dropped, not just non-fatal
+
+Continuing MSL-25's lens onto the remaining `let _ =` sites in the db layer. Most were
+justified and are recorded as such:
+
+- `downgrade.rs:126-131` — rollback inside an error path that returns the PRIMARY error;
+- `products_images.rs:212`, `refunds.rs:932` — explicit "intentionally unused" bindings;
+- `kds_lines.rs:404` / `kds_ops.rs:135` — `let _ = owned;` dropping a guard to control a
+  lock's lifetime;
+- `mod.rs`, `recovery.rs` temp-file removals — best-effort cleanup of a file nobody reads;
+- `stock_counts.rs:166,173` — `ROLLBACK` in a `catch_unwind`-shaped path.
+
+The outlier is `products_stock_adjust/adjust.rs:339`:
+
+```rust
+// 4. Synchronous threshold check (ADR-18 §9e-ii).
+// Errors are silent — threshold alerts are advisory ...
+let _ = self.check_stock_threshold_and_alert_in_tx(tx, ...);
+```
+
+Non-fatal is right — an advisory alert must not roll back the caller's stock movement.
+**Silent is not.** The function INSERTs/UPDATEs `stock_alert_events`, and
+`db/reports/product_sales.rs::active_stock_alerts` reads that table to render the low-stock
+list. So a failed check means the operator loses a warning AND gets no log line saying why.
+The same function, ten lines above, already `tracing::warn!`s a comparable advisory case
+(negative qty not written to the legacy aggregate), so the omission was an inconsistency
+rather than a policy.
+
+**Fix.** The error is logged with the product, location and cause, and the comment now says
+*non-fatal, not silent* with the reason. Behaviour is unchanged: the adjustment still commits.
+
+**Test, and the premise error I caught in it.**
+`a_failing_threshold_check_does_not_block_the_stock_adjustment` blocks every insert into
+`stock_alert_events` with a test-only `RAISE(ABORT)` trigger, then asserts the adjustment
+still lands. My FIRST version read the quantity with `get_stock` and failed
+(`left: 0, right: -3`) — because `get_stock` reads the legacy cross-location `inventory`
+aggregate, which is 0 until the first aggregate write, while `seed_everything` populates
+`stock_summary`. The premise about the starting quantity was mine, not the code's. Fixed by
+reading the canonical per-location surface directly, and the case now proves what it claims:
+zero alert rows written, and the deduction applied anyway.
+
+**A splice error, fourth occurrence — all in test authoring.** Inserting the test consumed the
+`#[test]` attribute of the following function (`threshold_no_alert_when_above_threshold`),
+which clippy caught as an unused function, plus a duplicated attribute on mine. Repaired, and
+that test is live again. The recurring shape: my `old_string` anchors land on text that also
+occurs inside a neighbouring item. **Mitigation now: anchor on the LAST few lines of the file,
+or on a string unique to the target, and re-read the region after inserting.**
+
+**Verified:** 159 `db::products` tests and the full `kasirmu-core` suite pass; clippy clean.
+
+**Tally:** 34 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
