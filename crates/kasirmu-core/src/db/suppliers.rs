@@ -203,6 +203,23 @@ impl Store<'_> {
                 ),
             });
         }
+        // MSL-40: the schema constrains this column
+        // (`CHECK(status IN ('active','inactive'))`), and until this check the
+        // constraint was the ONLY thing enforcing it — so a client-supplied
+        // `status` outside the vocabulary surfaced as a raw
+        // `SqliteFailure(ConstraintViolation)`: a storage fault reported for a
+        // validation mistake, with no field name for the UI to act on. `name`
+        // and `code` above are validated here for the same reason; this is the
+        // one updatable field that was not. The vocabulary is the contract on
+        // both sides (the bridge passes a free `Option<String>` and the
+        // Suppliers screen renders the value into a CSS class), which is why it
+        // belongs at this boundary rather than in the schema alone.
+        if !matches!(status, "active" | "inactive") {
+            return Err(CoreError::Validation {
+                field: "status",
+                message: format!("supplier status must be 'active' or 'inactive', got {status:?}"),
+            });
+        }
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
