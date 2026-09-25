@@ -5086,4 +5086,62 @@ and is left untouched. Commit `5aeb1b289`.
 
 **Tally:** 60 findings fixed (10 HIGH), 15 leads disproved. Two are preventive pins.
 
+## Pass 77 — MSL-54: the trigger census (and MSL-17 confirmed live)
+
+Generalised MSL-53 into a census rather than another column sweep: **every place a hand-written guard
+precedes a constraint SQLite enforces anyway, where the guard is weaker than the arbiter.** The schema
+carries exactly eight distinct triggers, and they are the constraints no Rust guard can model.
+
+| Trigger family | Arbiter | Rust guard | Verdict |
+|---|---|---|---|
+| `stock_summary_qty_nonnegative_{insert,update}` | `qty >= 0` **conditionally** | pre-check + `ConstraintViolation` catch | **sound, and deliberately weaker** |
+| `trg_assignments_scope_id_pair{,_update}` | `scope_id IS NULL` iff `organization` | `AssignmentSpec::validate_resource_pair` | **sound, guard is stricter** |
+| `audit_log_immutable_delete` | marker row absent | `IngestPolicy` + `run_set_setting` | **sound — MSL-17, already fixed** |
+| `audit_log_immutable_update` | always aborts | none | **sound — no path exists to guard** |
+| `loyalty_tiers_validate_{insert,update}` | multiplier fixed-point | typed at the model | **sound** |
+
+**`stock_summary` is the inverse of MSL-53, and it is the best-reasoned constraint in the tree.** There is
+deliberately **no** `CHECK (qty >= 0)`: an unconditional one would refuse the negative the opt-in
+`allow_negative_stock` path writes, silently re-enabling the very Rust guard that flag exists to opt out of
+(owner decision D11). The Rust side therefore matches on the **primary** code 19 rather than 787, which is
+correct precisely because the arbiter is a trigger (1811) and not a CHECK — the doc says so and it is
+true. Nothing to change; recorded because a future reader adding a CHECK would defeat D11.
+
+**The assignment pair is the MSL-53 lens applied and passing.** The trigger is a biconditional
+(`(scope_type = 'organization') != (scope_id IS NULL)` → ABORT). The Rust guard at
+`assignments.rs:100` is **stricter**, refusing `Some("")` where the trigger admits it — correct direction,
+since an empty id is a real "narrow to nothing". And the guard is genuinely reached:
+`validate_resource_pair` has exactly one production caller (`assignments.rs:458`, the sole write path),
+with the trigger as documented backstop. `scope_type` is a Rust enum besides, so the column's CHECK is
+unreachable from Rust.
+
+**The audit carve-out is MSL-17, verified live rather than trusted.** The trigger keys on a `settings`
+row's mere existence, and `Store::set_setting` takes an arbitrary key — so I re-ran the question this
+campaign answered earlier: *can any door other than the sweep write it?* `is_manager_owned_key`
+(`raw.rs:781-800`) names the marker explicitly, so **PortablePackage and RemoteSync both refuse it**;
+`TrustedLocal` admits it by design, but the desktop funnel refuses manager-owned keys before the write
+(`run_set_setting`), so the local IPC cannot set it either. The only writer is the sweep, and the sweep
+holds it inside one transaction with a fast path that never opens one. This is an independent
+confirmation that the MSL-17 fix holds, not a second finding.
+
+**MSL-54 (LOW, fixed): a duplicated assertion implying coverage that does not exist.**
+`raw_tests.rs` asserted `IngestPolicy::TrustedLocal.admits(marker)` **twice** — `:227-232` and
+`:241-246` — under two different messages and two near-identical comments, with the core-key equality
+check wedged between them. The second copy cannot fail where the first passes, so it pinned nothing; what
+it did do is make the test read as if it guarded two invariants. Removed the copy (7 lines), keeping the
+one assertion and its comment. Verified: the test still passes, 168 in `settings::`, clippy clean,
+rustfmt clean (including the stray blank line the deletion exposed).
+
+**This closes four constraint families by census**: UNIQUE string columns (71), FK-referenced codes
+(72-73), vocabulary CHECKs (64, 75), and now **triggers** (77). The recurring question is unchanged, and
+MSL-53 and MSL-54 are its two failure directions — a guard **weaker** than its arbiter (the FK outvotes
+it, and the sweep aborts) and a guard **duplicated** against itself (nothing is enforced twice, but the
+test claims otherwise).
+
+**Verified:** 168 `platform-core settings::`, 44 `db::roles::tests`, 1974 `db::` layer, clippy clean on
+both crates touched. Commits `afe1291c5` (MSL-54).
+
+**Tally:** 61 findings fixed (10 HIGH), 15 leads disproved. Two are preventive pins.
+
+
 
