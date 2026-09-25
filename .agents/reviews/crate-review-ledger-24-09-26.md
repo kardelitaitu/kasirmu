@@ -4660,4 +4660,64 @@ UNIQUE or FK-constrained column is written from an unvalidated string" — the c
 invisible value into a blocked operator.
 
 **Tally:** 53 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 70 — MSL-46: the same class again, where the constraint was unenforceable
+
+### The recommendation executed
+
+Pass 69 closed with a concrete next question: *which UNIQUE or FK-constrained column is written from an
+unvalidated string?* — on the reasoning that the constraint is what turns an invisible value into a blocked
+operator. This pass enumerated the 70 `CREATE UNIQUE INDEX` statements and traced the string-written ones.
+
+### The finding
+
+`inventory_locations.name` carries `idx_inventory_locations_name_unique … WHERE is_active = 1`, whose whole
+purpose is to stop two active locations sharing a name. Both writers bound the caller's **untrimmed**
+string, so the index was defeated by padding rather than by a bad value. Measured:
+
+```text
+PROBE first  ("Back Room")        = Ok
+PROBE second ("Back Room ")       = Ok
+PROBE third  ("  Back Room")      = Ok
+PROBE active rows = 5             (2 seeded + 3 mine)
+```
+
+Three active rows the picker renders identically — **the duplicate the index exists to prevent, still
+reachable**. `listInventoryLocations` feeds the cashier-facing `LocationPicker` and `ShiftBar`, so the
+impact is a cashier choosing between two entries that look the same with no way to tell them apart.
+
+### Two fixes, because there were two defects
+
+1. **Trim before the check AND the bind**, on both writers. Wired into create and update so neither can
+   install what the other refuses.
+2. **Map the UNIQUE violation to `Conflict`**, following the house pattern at six other sites
+   (`products_crud.rs:366-374`, `staff.rs:550`, `roles.rs:234`, `profile.rs:834`, `loyalty.rs` ×3). The
+   trim alone turned an opaque `Db(SqliteFailure(UNIQUE constraint failed))` into the duplicate being
+   *refused*, but still with a storage error naming no field — MSL-40's shape. A duplicate location name
+   is now a typed `Conflict { entity: "inventory_location", field: "name" }`, matching how a duplicate SKU
+   reports.
+
+**Falsified before committing.** Reverting the trim reproduces both defects exactly —
+`left: "  Front Room  ", right: "Front Room"` for the storage, and a padded duplicate *succeeding* with a
+returned id. Restored; two tests pass.
+
+### Two of my own errors, caught by measuring instead of asserting
+
+1. **I asserted the create path was the only writer.** It was not — `update_inventory_location` binds the
+   same column the same way, and it is the path that can *rename* an existing row into a collision, which
+   the create-path-only fix would have left open.
+2. **My row-count assertion was wrong, not the code.** `assert_eq!(active, 1)` failed with `left: 3`; the
+   base migration seeds two system locations (`Default Inventory`, `In Transit` at `20260813_init.sql:1525`
+   and `:1531`), which I had not read. The test now counts the NAME under test rather than the table — a
+   bare `COUNT(*)` was measuring the seed.
+
+The second is the same lesson as passes 66 and 68, from the other direction: there, an existing test caught
+me overriding a contract; here, reading the fixture settled a count I had assumed. Both are cheaper than a
+wrong fix.
+
+**Verified:** 3332 `kasirmu-core` lib tests (was 3330 — two new), 1403 `kasirmu-bridge`, clippy clean.
+Commit `a28b42a49`.
+
+**Tally:** 54 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
