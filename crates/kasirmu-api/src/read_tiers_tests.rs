@@ -476,3 +476,47 @@ fn every_read_key_map_entry_names_a_registered_permission() {
         READ_KEY_MAP.len()
     );
 }
+
+/// Every key a preset grants must gate at least one route in [`READ_KEY_MAP`].
+///
+/// A preset key with no map entry is a DEAD GRANT: the token is minted carrying a
+/// permission that opens nothing, so an operator who mints an `audit` token gets
+/// one that can read no route at all. It is not a security hole — over-narrow,
+/// never over-broad — but it is a contract the presets' own tests never checked,
+/// because they assert the key LISTS and not what the keys reach.
+///
+/// The three keys this currently excludes are pinned explicitly below rather than
+/// silently allowed, so that WIRING a reports route is a deliberate edit here:
+/// when `/api/v1/reports*` lands and gains map entries, this list must shrink, and
+/// the assertion makes that visible instead of letting a real grant stay unusable.
+#[test]
+fn preset_keys_that_gate_no_route_are_pinned_explicitly() {
+    // Grants that reach no route YET. Every one is a read key for a surface the
+    // API does not serve (reports, analytics and the audit trail are produced by
+    // the cloud server's email bundle, not exposed as read-tier GETs).
+    const NOT_YET_ROUTED: &[&str] = &["reports:view", "analytics:view", "audit:view"];
+
+    let mut dead: Vec<&str> = Vec::new();
+    for preset in [TERMINAL_PRESET, DASHBOARD_PRESET, AUDIT_PRESET] {
+        for key in preset {
+            if READ_KEY_MAP.iter().any(|e| e.key == *key) {
+                continue;
+            }
+            if !dead.contains(key) {
+                dead.push(key);
+            }
+        }
+    }
+    dead.sort_unstable();
+    let mut expected = NOT_YET_ROUTED.to_vec();
+    expected.sort_unstable();
+    assert_eq!(
+        dead, expected,
+        "the set of preset grants that open no route changed: a key here that is now \
+         routed should be removed from NOT_YET_ROUTED (it works!), and a NEW key here \
+         means a preset grants something unusable"
+    );
+
+    // Floor: the presets must actually have been walked.
+    assert!(TERMINAL_PRESET.len() >= 4 && DASHBOARD_PRESET.len() >= 3);
+}
