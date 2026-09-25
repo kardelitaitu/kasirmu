@@ -4931,3 +4931,51 @@ fn compute_tax_lua_override_zero_bps_is_accepted_as_a_zero_rated_line() {
     let breakdown: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
     assert_eq!(breakdown[0]["rate_bps"], 0);
 }
+/// MSL-18: the module's stated invariant is "voids write audit entries" — and
+/// `void_pending_sale` writes none.
+///
+/// Its sibling `void_sale` records `sale.void` with the reason, the user and the
+/// total. `void_pending_sale` reverses every stock deduction the sale made and
+/// flips the row to `voided`, and it is reachable from the register UI
+/// (`ui/src/api/sales.ts:395`, behind `SALES_PROCESS`). Nothing about the
+/// difference in difficulty justifies the difference in traceability: an operator
+/// asking who voided this sale gets an answer for a completed sale and silence
+/// for a pending one.
+#[test]
+fn void_pending_sale_writes_an_audit_entry() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute(
+        "INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) VALUES ('prod-aud', 'AUD-1', 'Audited', 5000, 'IDR', 'retail')",
+        [],
+    )
+    .unwrap();
+    let default_loc = crate::location_resolver::get_default_location_id();
+    conn.execute(
+        "INSERT OR IGNORE INTO stock_summary (item_id, location_id, qty) VALUES ('prod-aud', ?1, 10)",
+        rusqlite::params![default_loc.as_str()],
+    )
+    .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("AUD-1"), 3, price(5000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction(&sale, None, &tender(15000), "staff-1", None)
+        .unwrap();
+
+    s.void_pending_sale(&sale.id).unwrap();
+
+    let logged: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM audit_log WHERE action = 'sale.void' AND target_id = ?1",
+            rusqlite::params![&sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        logged, 1,
+        "voiding a pending sale reverses stock and flips the row; it must leave a trace, exactly as void_sale does",
+    );
+}

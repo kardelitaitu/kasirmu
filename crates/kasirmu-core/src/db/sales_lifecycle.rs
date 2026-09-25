@@ -710,6 +710,41 @@ impl Store<'_> {
         // voided sale never leaves a ghost ticket on the kitchen board.
         self.cancel_kds_orders_for_sale_in_tx(&tx, sale_id)?;
 
+        // MSL-18: this reversal used to write NO audit row, which contradicted
+        // the module invariant one line above it ("voids write audit entries")
+        // and its own sibling `void_sale`, which records `sale.void` with the
+        // reason, user and total. A pending void reverses every stock deduction
+        // the sale made and flips the row to `voided`, and it is reachable from
+        // the register UI, so an operator asking who voided a sale got an answer
+        // for a completed one and silence for a pending one.
+        //
+        // Written through `log_audit`, which JOINS this transaction rather than
+        // opening its own, so the row commits or dies with the void. The reason
+        // is recorded as a marker rather than a field: `void_pending_sale`'s
+        // callers (the UI's failure path and the stale-pending reaper) pass no
+        // user-supplied reason, and the reaper is not a user at all.
+        let total_minor: Option<i64> = tx
+            .query_row(
+                "SELECT total_minor FROM sales WHERE id = ?1",
+                rusqlite::params![sale_id],
+                |row| row.get(0),
+            )
+            .ok();
+        let details = serde_json::json!({
+            "total_minor": total_minor,
+            "reversal": "pending_sale_void",
+        })
+        .to_string();
+        let audit = AuditEntry::new(
+            "system",
+            "sale.void",
+            Some("sale"),
+            Some(sale_id),
+            Some(details),
+            "success",
+        );
+        self.log_audit(&audit)?;
+
         tx.commit()?;
         Ok(())
     }
