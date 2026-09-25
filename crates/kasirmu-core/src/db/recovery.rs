@@ -270,9 +270,16 @@ fn sidecar_path(db_path: &Path, extension: &str) -> PathBuf {
 /// 5. that temporary file is renamed over the live path — same-filesystem and
 ///    atomic — and the result is re-verified.
 ///
-/// Any failure from step 4 on restores the live path from the snapshot (or
-/// removes it, when there was no live database to begin with) and returns the
-/// error.
+/// Any failure from step 4 on ATTEMPTS to restore the live path from the
+/// snapshot (or removes it, when there was no live database to begin with) and
+/// returns the error.
+///
+/// MSL-25: the rollback is an attempt, and the returned message says which
+/// outcome it had. It previously discarded the copy's `Result` and always
+/// claimed "left intact", so an operator whose rollback failed was told their
+/// data was safe while it was not. The failure message now names the
+/// pre-restore snapshot, because restoring it by hand is the caller's next
+/// step.
 ///
 /// # Errors
 ///
@@ -362,15 +369,60 @@ pub fn restore_from(candidate: &Path, db_path: &Path) -> Result<CandidateReport,
         Ok(()) => Ok(report),
         Err(e) => {
             let _ = std::fs::remove_file(&temporary);
-            if had_live {
-                let _ = std::fs::copy(&snapshot, db_path);
+
+            // MSL-25: the rollback's OUTCOME decides the MESSAGE, not just the
+            // state. This used to discard the copy's Result and always report
+            // "restore rolled back, ... left intact", so a failed rollback told
+            // the operator their data was safe at the exact moment it was not --
+            // the worst untruth available during a restore, because it stops them
+            // reaching for the snapshot they would need.
+            let rollback: Result<(), String> = if had_live {
+                std::fs::copy(&snapshot, db_path)
+                    .map(|_| ())
+                    .map_err(|copy_err| {
+                        format!(
+                            "the pre-restore snapshot '{}' could NOT be put back ({copy_err})",
+                            snapshot.display()
+                        )
+                    })
             } else {
-                let _ = std::fs::remove_file(db_path);
-            }
-            Err(CoreError::Internal(format!(
-                "restore rolled back, '{}' left intact: {e}",
-                db_path.display()
-            )))
+                // No live database existed, so removing the half-swapped file
+                // restores the absent state. `NotFound` IS success here: the goal
+                // was "not there".
+                std::fs::remove_file(db_path)
+                    .or_else(|remove_err| {
+                        if remove_err.kind() == std::io::ErrorKind::NotFound {
+                            Ok(())
+                        } else {
+                            Err(remove_err)
+                        }
+                    })
+                    .map_err(|remove_err| {
+                        format!(
+                            "the partially-written database at '{}' could NOT be removed ({remove_err})",
+                            db_path.display()
+                        )
+                    })
+            };
+
+            Err(CoreError::Internal(match rollback {
+                Ok(()) if had_live => format!(
+                    "restore rolled back, '{}' left intact: {e}",
+                    db_path.display()
+                ),
+                Ok(()) => format!(
+                    "restore rolled back, '{}' removed as it was before: {e}",
+                    db_path.display()
+                ),
+                // Fail LOUDLY and name the snapshot: the operator's next step is
+                // to restore it by hand, so the message must say so.
+                Err(rollback_err) => format!(
+                    "restore FAILED and the automatic rollback ALSO failed; '{}' is NOT \
+                     intact. {rollback_err}. The original content is in the pre-restore \
+                     snapshot. Original error: {e}",
+                    db_path.display()
+                ),
+            }))
         }
     }
 }

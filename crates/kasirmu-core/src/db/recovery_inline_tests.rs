@@ -207,3 +207,45 @@ fn recovery_older_candidate_is_acceptable() {
         report.reason
     );
 }
+/// MSL-25: a failed restore must leave the ORIGINAL database in place, and must
+/// not claim it did when it did not.
+///
+/// `restore_from`'s doc promises that any failure from step 4 on "restores the
+/// live path from the snapshot ... and returns the error", and the `Err` arm
+/// builds "restore rolled back, '{}' left intact". But the rollback copy is
+/// `let _ = std::fs::copy(&snapshot, db_path)` -- its Result is DISCARDED, so
+/// the message is emitted whether or not the copy worked. During a restore that
+/// is the worst possible untruth: it tells the operator their data is safe at
+/// the moment they most need to reach for the snapshot.
+#[test]
+fn a_failed_restore_leaves_the_original_database_and_does_not_lie_about_it() {
+    let scratch = Scratch::new("rollback");
+    let live = scratch.join("live.db");
+    let candidate = scratch.join("candidate.db");
+    live_db(&live, "original");
+    live_db(&candidate, "candidate");
+    let before = sha256(&live);
+
+    // Overwrite the candidate with a non-database so validation refuses it.
+    // The SWAP-failure path is not portably forcible, so this pins the
+    // invariant that must hold for EVERY failure: the original is still there,
+    // byte for byte, and the message does not claim otherwise.
+    std::fs::write(&candidate, b"not a database").unwrap();
+    let err = restore_from(&candidate, &live).unwrap_err();
+    let msg = err.to_string();
+
+    assert!(
+        live.exists(),
+        "a failed restore must not remove the live database: {msg}"
+    );
+    assert_eq!(
+        sha256(&live),
+        before,
+        "a failed restore must leave the ORIGINAL live database byte-identical; got: {msg}"
+    );
+    assert!(
+        !msg.contains("left intact") || live.exists(),
+        "the message claims the database is intact while it is gone: {msg}"
+    );
+}
+
