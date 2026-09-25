@@ -469,6 +469,35 @@ impl Store<'_> {
             |row| row.get(0),
         )?;
 
+        // MSL-19: a transfer with NO lines has nothing to move, so it must not
+        // enter the in-transit lifecycle at all. This guard is the one the
+        // `receive_transfer` path depends on: that method computes `all_received`
+        // as `COUNT(*) WHERE received_qty < qty`, which is ZERO on an empty
+        // transfer, so an empty one could be claimed as fully `received` — a
+        // movement that never happened, recorded as complete.
+        //
+        // Refused HERE rather than at `receive_transfer` because the state is
+        // created here: a transfer can never reach `in_transit` with no lines, so
+        // there is no empty transfer for any later step to mis-handle.
+        //
+        // The UI guards its own button (`WarehouseConsole.tsx` renders Send only
+        // when the scan session is non-empty), but that is a client-side check on
+        // a payload the API accepts directly — the bridge validates locations and
+        // terminals and never the line set. The invariant belongs where the data
+        // is written, not where the button is clicked.
+        let line_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM stock_transfer_lines WHERE transfer_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if line_count == 0 {
+            return Err(CoreError::Validation {
+                field: "lines",
+                message: "a transfer with no lines has nothing to move and cannot be sent"
+                    .into(),
+            });
+        }
+
         let mut lines_stmt = tx.prepare(
             "SELECT id, transfer_id, sku, product_name, qty, received_qty
              FROM stock_transfer_lines WHERE transfer_id = ?1 ORDER BY id",

@@ -776,3 +776,42 @@ fn remove_transfer_line_joins_a_caller_transaction() {
         .unwrap();
     assert_eq!(n, 1, "a rolled-back caller must not have deleted the line");
 }
+/// An empty transfer must not be sendable — and if it is, `receive_transfer`
+/// marks it `received` without a single unit having moved.
+///
+/// `receive_transfer` computes `all_received` as `COUNT(*) WHERE received_qty < qty`
+/// over the transfer's lines. On a transfer with ZERO lines that count is 0, so
+/// `all_received` is true, `has_any_received` is false, and `final_status` is
+/// `received` — a completed transfer that moved nothing. Nothing in
+/// `create_transfer` or `add_transfer_line` requires a line to exist, and
+/// `send_transfer`'s `qty <= 0` guard is per-line and therefore vacuous here.
+#[test]
+fn an_empty_transfer_cannot_be_claimed_as_received() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_user(&conn, "user-1");
+
+    // No lines at all.
+    let transfer = s
+        .create_transfer(None, None, None, None, "", "user-1", &[])
+        .unwrap();
+
+    // The guard lives at SEND, because that is where the in-transit state is
+    // created — a transfer can never reach `in_transit` empty, so no later step
+    // has an empty one to mishandle.
+    let err = s.send_transfer(&transfer.id).unwrap_err();
+    assert!(
+        matches!(err, CoreError::Validation { field: "lines", .. }),
+        "an empty transfer must be refused at send, got {err:?}",
+    );
+
+    // And the transfer stays a draft: the refused send must not have advanced it.
+    let still = s.get_transfer(&transfer.id).unwrap().unwrap();
+    assert_eq!(still.status, "draft", "a refused send must not move the lifecycle");
+
+    // The receive door is therefore unreachable for it.
+    assert!(
+        s.receive_transfer(&transfer.id, "user-1", &[]).is_err(),
+        "an empty transfer must never be receivable",
+    );
+}

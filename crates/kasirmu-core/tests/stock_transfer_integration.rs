@@ -461,7 +461,12 @@ fn add_line_to_non_draft_transfer_fails() {
     seed_product(&conn, "SKU-H", "Product H");
     seed_inventory(&conn, "SKU-H", 100, "Warehouse A");
 
-    let t = create_draft(&conn, "staff-1", &[]);
+    // MSL-19: this fixture used to send an EMPTY draft, which the core now
+    // refuses (`send_transfer`: a transfer with no lines has nothing to move).
+    // The subject of this case is the add-line guard on a NON-draft transfer, so
+    // it needs a transfer that legitimately reached in-transit — which means a
+    // real line.
+    let t = create_draft(&conn, "staff-1", &[make_line("SKU-H", "Product H", 5)]);
     store(&conn).send_transfer(&t.id).unwrap();
 
     let err = store(&conn)
