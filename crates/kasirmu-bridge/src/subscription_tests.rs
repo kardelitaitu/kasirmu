@@ -406,9 +406,26 @@ fn capabilities_report_paused_state() {
     let dto = caps(&conn);
     if seeded_row_reaches_a_paid_tier() {
         assert_eq!(dto.state, "paused");
+        // AMENDED 2026-09-25 for MSL-13 (2c34d8b47, same day).
+        //
+        // This asserted tier == "plus" with the reason "pause flags the state;
+        // entitlements unchanged here". That was the behaviour before MSL-13 added
+        // `paused` to the explicit-verdict family, and it is now WRONG. The rule it
+        // replaced is stated at subscription.rs:695-699: an EXPLICIT server-written
+        // verdict about the grant must beat the date arithmetic, because `paused`
+        // (like `canceled`, `revoked`, `expired`) IS the verdict. Before it, a row
+        // the server had ended while `expires_at` was still in the future counted as
+        // "within grace" and `effective_tier` returned the PAID tier, granting full
+        // paid limits to a subscription the server had already stopped.
+        //
+        // So paused reverts entitlements to Free, exactly as `canceled` does one test
+        // above and `expired` does in the sibling — this test was the only one of the
+        // three still asserting the pre-MSL-13 behaviour. The STATE assertion above is
+        // unchanged and still passes: the lifecycle machine names `paused`, and only
+        // the entitlement half moved.
         assert_eq!(
-            dto.tier, "plus",
-            "pause flags the state; entitlements unchanged here"
+            dto.tier, "free",
+            "paused is an explicit verdict: it reverts entitlements to Free, as canceled and expired do"
         );
     } else {
         // Release: PAUSED is on the row and PLUS is the stamped tier; the
