@@ -485,7 +485,7 @@ export default function StaffManagementScreen() {
       className={`staff-mgmt${isExiting ? ' staff-mgmt--exiting' : ''}`}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="staff-mgmt-header">
+      <div className="staff-mgmt-header" data-testid="staff-mgmt-header">
         <div className="staff-mgmt-header-lead">
           {/* This screen is registered `fullscreen`, so AppLayout — and with it
               the sidebar and topbar — never renders around it. The back

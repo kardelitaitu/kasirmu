@@ -220,6 +220,7 @@ describe('StaffManagementScreen', () => {
     expect(screen.getByRole('tab', { name: 'Staff' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Roles' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByRole('button', { name: /add staff/i })).toBeInTheDocument();
+    expect(screen.getByTestId('staff-mgmt-header')).toBeInTheDocument();
     expect(screen.getByTestId('staff-management-icon')).toBeInTheDocument();
     expect(screen.getByTestId('staff-management-title')).toHaveTextContent('Staff Management');
   });
