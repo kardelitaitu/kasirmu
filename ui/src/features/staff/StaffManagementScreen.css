@@ -110,6 +110,7 @@
   font-weight: var(--font-weight-semibold);
   color: var(--color-fg);
   line-height: var(--leading-condensed);
+  transform: translateY(1px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
