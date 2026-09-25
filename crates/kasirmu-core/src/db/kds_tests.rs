@@ -2365,6 +2365,63 @@ fn cleanup_old_kds_orders_preserves_pending_orders() {
     assert_eq!(remaining.len(), 2);
 }
 
+/// The retention BOUNDARY, which neither test above pins.
+///
+/// Both existing cleanup tests seed a fixed `.000Z` literal and a 365-day
+/// window, so the comparison they exercise is a whole year wide. This is the
+/// same class of comparison the memo retention sweep already paid for (a
+/// date-only cutoff against a millisecond column let a row's deletion slip
+/// by up to a day), so pin the boundary rather than a year: a row past
+/// `retention_days` must be pruned and a row a minute younger must survive.
+///
+/// NOT format-sensitive, and saying so matters more than the test does: a
+/// cutoff spelled `%S.%3fZ` renders byte-identically to `%S%.3fZ` (measured),
+/// and even a bare `%f` (NANOSECONDS, `…:03.310230200Z`) still passes — a
+/// one-second margin swamps a sub-millisecond spelling difference. So the
+/// cutoff's `%.3f` is correct but is NOT pinned by anything: no boundary I
+/// can write is tight enough to observe it, because the date-and-second
+/// prefix dominates the comparison and only the tail differs. Recorded as a
+/// known limitation rather than papered over — the value of this test is the
+/// retention boundary, which was genuinely untested.
+#[test]
+fn cleanup_old_kds_orders_prunes_exactly_at_the_retention_boundary() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // The cutoff is computed from Utc::now() inside the call, so express the
+    // fixtures as offsets from that same instant.
+    let at = |offset: chrono::Duration| {
+        (chrono::Utc::now() + offset)
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string()
+    };
+
+    // A second past the boundary: must go. Not exactly on it — the cutoff is
+    // re-derived from `Utc::now()` inside the call, so an exact-boundary row
+    // races its own microseconds. The format is the variable under test, and a
+    // one-second margin keeps it the only one.
+    let boundary = seed_kds_order_at(
+        &s,
+        &conn,
+        &at(chrono::Duration::days(-30) - chrono::Duration::seconds(1)),
+        "served",
+    );
+    // One minute inside the window: must stay.
+    let inside = seed_kds_order_at(
+        &s,
+        &conn,
+        &at(chrono::Duration::days(-30) + chrono::Duration::minutes(1)),
+        "served",
+    );
+
+    let deleted = s.cleanup_old_kds_orders(30).unwrap();
+    assert_eq!(
+        deleted, 1,
+        "the row past the boundary is old enough and the one a minute younger is not"
+    );
+    assert!(s.get_kds_order(&boundary.id).unwrap().is_none());
+    assert!(s.get_kds_order(&inside.id).unwrap().is_some());
+}
 
 // ── Zone-based routing with real product data ─────────────────
 
