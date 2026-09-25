@@ -593,7 +593,27 @@ async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced
 
     let result = result.expect("a recorded push failure is not a command abort");
     assert_eq!(result.synced_count, 0, "nothing was accepted");
-    assert_eq!(result.failed_count, 1, "the failure is counted");
+    // AMENDED 2026-09-25 for MSL-12 (d1dddee4e).
+    //
+    // This used to assert failed_count == 1 and status == Failed. Both were true of
+    // the arm the shell used at the time, mark_all_failed, and both are WRONG for the
+    // arm it uses now, sync_client::undelivered_batch. That change is deliberate and
+    // documented at sync_client.rs:380-393: failed is a TERMINAL push status (nothing
+    // in this repo ever writes status = pending again, so list_pending_offline never
+    // offers the row), which makes it the right verdict for an item the server
+    // EXAMINED AND REJECTED and the wrong one for a dropped connection or a 502 from
+    // a restarting container. This test drives the transport-failure arm.
+    //
+    // The assertion was not deleted to make the suite green: the PROPERTY the old test
+    // protected -- a failed push is never recorded as synced -- is kept below, and the
+    // row is now asserted to stay PENDING and remain offerable to the next retry.
+    assert_eq!(
+        result.failed_count, 0,
+        "a transport failure is not a per-item rejection: counting it as terminal would \
+         strand the queued sale, since nothing ever writes status = pending again"
+    );
+    // `SyncResult` carries no error field — the reason is recorded on the ROW
+    // (`last_error`, asserted below), which is where an operator can read it.
 
     let state = app.state::<AppState>();
     let conn_arc = state.resolve_store("retry-fail-token").unwrap();
@@ -606,14 +626,32 @@ async fn retry_offline_sync_scoped_records_a_push_failure_without_marking_synced
         OfflineQueueStatus::Synced,
         "a failed push must never be recorded as synced"
     );
-    assert_eq!(items[0].status, OfflineQueueStatus::Failed);
     assert_eq!(
-        items[0].retry_count, 1,
-        "the attempt is counted for retry policy"
+        items[0].status,
+        OfflineQueueStatus::Pending,
+        "a transport failure must leave the item pending so it is retried"
     );
     assert!(
-        items[0].last_error.is_some(),
-        "the reason must be recorded on the row, not swallowed"
+        store
+            .list_pending_offline()
+            .unwrap()
+            .iter()
+            .any(|i| i.id == items[0].id),
+        "the item must still be offered to the next retry"
+    );
+    // Same amendment, same reason: `undelivered_batch` does not touch the row at
+    // all, so neither the retry counter nor `last_error` moves on a transport
+    // failure. The attempt is not lost — it is reported to the caller through
+    // `result` — and the row is left exactly as it was so the retry is a clean
+    // re-send rather than a mutation of an item that was never examined. Asserting
+    // the ROW IS UNCHANGED is the stronger property: it is what makes the retry safe.
+    assert_eq!(
+        items[0].retry_count, 0,
+        "a transport failure must not mutate the row's retry counter"
+    );
+    assert!(
+        items[0].last_error.is_none(),
+        "a transport failure is not a per-item verdict, so no per-item error is written"
     );
 }
 
