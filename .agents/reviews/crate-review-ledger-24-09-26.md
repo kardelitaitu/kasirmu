@@ -5143,5 +5143,64 @@ both crates touched. Commits `afe1291c5` (MSL-54).
 
 **Tally:** 61 findings fixed (10 HIGH), 15 leads disproved. Two are preventive pins.
 
+## Pass 78 — MSL-55: the KDS retention boundary, and a limitation worth stating
+
+Took last round's named axis: the unattended sweeps. Thirteen exist; I adjudicated the two families the
+ledger had never opened — the four `memos.rs` sweeps and the two `kds_ops.rs` ones.
+
+**The memo cluster is clean, and two leads died by measurement.**
+
+1. `sweep_expired_archives` claims *"rows still referenced by a `RESTRICT` FK cannot exist here, so the
+   delete is unconditional once aged."* This is the exact claim MSL-53 falsified for roles, so I tested it
+   rather than reading it. The two `RESTRICT` edges (`20260911_memo_fk_restrict.sql`) point **outward**
+   — `memos.location_id → locations` and `memo_recipients.terminal_id → terminals` — and every FK that
+   points *at* `memos` is `ON DELETE CASCADE`. So no edge can block the sweep's `DELETE`, and
+   `retention_sweep_deletes_archives_only_past_the_window` already asserts zero child rows survive. Sound.
+2. `sweep_ended_to_archived` restamps `archived_at` with no `archived_at IS NULL` guard, which would move
+   the retention anchor forward. But its source predicate is `status IN ('stopped','expired')`, and
+   `'archived'` is written in exactly one place (`:529`) and never left — the sole other `archived` site
+   is the DELETE. The restamp is unreachable. Sound.
+
+**`cleanup_old_kds_orders` had a real coverage gap: the retention BOUNDARY was untested.** Its two existing
+tests seed a fixed `.000Z` literal and a 365-day window, so the comparison they exercise is a whole year
+wide — they pass identically for any cutoff within a year of correct. That is the same shape as the bug the
+memo sweep already paid for (a cutoff format that mis-sorted at the boundary and slipped deletions by up to
+a day). MSL-55 adds the boundary test: a row past `retention_days` is pruned, a row a minute younger
+survives, with the fixtures expressed as offsets from the same `Utc::now()` the call uses. Verified
+falsifiable — the first version failed at `deleted == 0` because an exact-boundary fixture races the
+cutoff's own microseconds, which is why the fixture now carries a one-second margin.
+
+**What I could NOT pin, stated because I nearly claimed it.** I wrote that the cutoff's `%S%.3fZ` spelling
+would be caught. It is not:
+
+| Cutoff spelling | Renders | Boundary test |
+|---|---|---|
+| `%S%.3fZ` (production) | `…:03.310Z` | passes |
+| `%S.%3fZ` | `…:03.310Z` — **byte-identical** | passes |
+| `%S%fZ` (nanoseconds) | `…:03.310230200Z` | **passes** |
+
+I measured all three. `%.3f` and `.3f` agree exactly, and even the nanoseconds form passes because a
+one-second margin swamps a sub-millisecond difference — the date-and-second prefix dominates the string
+comparison and only the tail varies. **So the cutoff's `%.3f` is correct but unpinned by anything**: no
+boundary I can write is tight enough to observe it. The format is verified correct by the column's own
+DEFAULT (`strftime('%Y-%m-%dT%H:%M:%fZ')` = `SS.SSS`) and by reading, not by a test, and the doc on
+MSL-55 now says so rather than implying coverage. A tautology I briefly added (asserting the length of my
+own fixture helper) was removed for the same reason: it tested the test, not the code.
+
+**The structural observation kept from this round:** `kds_ops.rs` repeats the same format literal **four**
+times — once for a write (`ack_kds_order`'s `started_at`/`acked_at`) and three times for cutoffs — across
+two producers (chrono) and one contract (the column's strftime shape). That is the second-definition shape
+this campaign has a named rule against, but it is a *tidiness* finding with no behaviour consequence
+(measured: all four agree, and one edit reverted clean). Recorded as a lead, not actioned: naming the
+constant is the fix and it is a refactor, not a repair, so it belongs in a chassis pass rather than an
+audit pass.
+
+**Verified:** 4 `cleanup_old_kds_orders` (was 2), 165 in the `kds` family, `clippy -D warnings` clean,
+`rustfmt` clean, `kds_ops.rs` byte-identical to HEAD (all falsification probes reverted). Commit
+`9c4c4bb86`.
+
+**Tally:** 62 findings fixed (10 HIGH), 17 leads disproved. Two are preventive pins.
+
+
 
 
