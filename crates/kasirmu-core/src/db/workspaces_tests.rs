@@ -1944,3 +1944,51 @@ fn count_quota_suspended_instances_counts_only_suspended() {
         0
     );
 }
+
+/// The owner-bypass arm lists role ids by hand; they must be the CANONICAL ids,
+/// or a role the taxonomy defines silently loses the bypass.
+///
+/// `list_workspaces_inner` compared `role_id` against seven literals, three of
+/// which — `admin`, `manager`, `auditor` — are not role ids at all: every preset
+/// id in `platform_core::rbac::ROLE_PRESETS` is `role-`-prefixed. Those three arms
+/// were unreachable, and the four that are real retyped constants that already
+/// exist. A hand-written list of ids is the "two correct copies are still two
+/// copies" defect this codebase names elsewhere, and its failure mode is silent:
+/// a taxonomy change would not be a compile error here.
+#[test]
+fn the_workspace_bypass_ids_are_the_canonical_ones() {
+    let (store, _) = fresh();
+
+    // Every id the taxonomy defines must be treated exactly as the bypass
+    // decides. The four bypassed roles resolve the full store listing (five
+    // seeded instances); staff and custom deliberately fall through to the
+    // assignment and role-type arms.
+    for (role, bypassed) in [
+        (platform_core::rbac::builtin_roles::OWNER, true),
+        (platform_core::rbac::builtin_roles::ADMIN, true),
+        (platform_core::rbac::builtin_roles::MANAGER, true),
+        (platform_core::rbac::builtin_roles::AUDITOR, true),
+        (platform_core::rbac::builtin_roles::STAFF, false),
+        (platform_core::rbac::builtin_roles::CUSTOM, false),
+    ] {
+        let dto = store.list_workspaces(role, None, DEFAULT_STORE).unwrap();
+        assert_eq!(
+            dto.len() == 5,
+            bypassed,
+            "role {role:?}: the bypass arm and the taxonomy disagree",
+        );
+    }
+
+    // The bare ids the old list carried are not roles, so their arms were dead.
+    for bogus in [BARE_ADMIN, BARE_MANAGER, BARE_AUDITOR] {
+        assert!(
+            !platform_core::rbac::is_builtin_role_id(bogus),
+            "{bogus:?} is not a role id, so its arm in the bypass was dead",
+        );
+    }
+}
+
+const DEFAULT_STORE: &str = "default";
+const BARE_ADMIN: &str = "admin";
+const BARE_MANAGER: &str = "manager";
+const BARE_AUDITOR: &str = "auditor";

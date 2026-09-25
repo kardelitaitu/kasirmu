@@ -102,14 +102,24 @@ impl Store<'_> {
         // explicit `user_workspace_instances` assignment (step 2) and the
         // `role_workspace_types` fallback (step 3), so a staff user only ever
         // sees workspaces assigned to them — never the full store listing.
-        if role_id == "role-owner"
-            || role_id == "role-admin"
-            || role_id == "admin"
-            || role_id == "role-manager"
-            || role_id == "role-auditor"
-            || role_id == "manager"
-            || role_id == "auditor"
-        {
+        //
+        // MSL-20: the ids come from the taxonomy that defines them, not from
+        // literals retyped here. The previous form listed SEVEN strings, three of
+        // which — `"admin"`, `"manager"`, `"auditor"` — are not role ids at all:
+        // `users.role_id` is `REFERENCES roles(id)`, and every preset id in
+        // `platform_core::rbac::ROLE_PRESETS` is `role-`-prefixed, so those three
+        // arms were unreachable. The four that were real duplicated constants
+        // that already exist. A hand-written id list is the "two correct copies
+        // are still two copies" defect this tree names elsewhere, and its failure
+        // mode is silent — a taxonomy change would not be a compile error here.
+        // `the_workspace_bypass_ids_are_the_canonical_ones` pins the set.
+        if matches!(
+            role_id,
+            platform_core::rbac::builtin_roles::OWNER
+                | platform_core::rbac::builtin_roles::ADMIN
+                | platform_core::rbac::builtin_roles::MANAGER
+                | platform_core::rbac::builtin_roles::AUDITOR
+        ) {
             return self.list_store_instances(store_id, user_id);
         }
 
