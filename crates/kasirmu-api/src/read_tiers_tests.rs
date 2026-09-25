@@ -443,3 +443,36 @@ async fn tier_matrix_audit_preset_only_reads_audit_and_reports() {
         assert_eq!(resp.status(), expected_status, "audit preset on {template}");
     }
 }
+/// Every `key` in [`READ_KEY_MAP`] must be a REGISTERED permission.
+///
+/// The map's keys are hand-typed literals, and the gate resolves them through
+/// the registry, which fails CLOSED: an unregistered key denies. So a typo here
+/// is not a crash — it is a route that silently 403s for every token, with
+/// nothing in the failure naming the cause.
+///
+/// `validate_keys` cannot catch it: that function validates a TOKEN's claims at
+/// mint time (`routes/tokens.rs:363`) and never sees this table. And
+/// `permission_registry_tests` covers the permission CONSTANTS and the role
+/// PRESETS — not the read-key map. So the one table deciding which key gates
+/// which route was the only one of the three never checked against the registry.
+#[test]
+fn every_read_key_map_entry_names_a_registered_permission() {
+    let mut unregistered: Vec<(&str, &str)> = Vec::new();
+    for entry in READ_KEY_MAP {
+        if !kasirmu_core::permission_registry::is_registered(entry.key) {
+            unregistered.push((entry.path, entry.key));
+        }
+    }
+    assert!(
+        unregistered.is_empty(),
+        "READ_KEY_MAP gates these routes with a permission the registry does not know, so \
+         they 403 for every token: {unregistered:?}"
+    );
+
+    // Floor: a broken walk would make the assertion above vacuous.
+    assert!(
+        READ_KEY_MAP.len() >= 5,
+        "the map must be walked in full, found {} entries",
+        READ_KEY_MAP.len()
+    );
+}
