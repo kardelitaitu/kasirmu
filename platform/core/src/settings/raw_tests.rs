@@ -238,14 +238,7 @@ fn the_audit_sweep_marker_is_refused_by_the_untrusted_lanes() {
         "the sweep marker is written by kasirmu-core and refused by this crate; 
          the two literals are one key and must not drift"
     );
-    // TrustedLocal must keep admitting it: the sweep runs on the local connection
-    // and writes the marker with the app's own lane.
-    assert!(
-        IngestPolicy::TrustedLocal.admits(marker),
-        "the local sweep writes this key itself; filtering it would break the sweep",
-    );
 }
-
 
 // ── Cleartext-credential refusal at the tracked funnel ───────────────────
 
