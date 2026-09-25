@@ -10,9 +10,11 @@
  * - Center zone: Data freshness with interactive refresh micro-action (spin on in-flight).
  * - Right zone: Operator identity + application version token (hidden on small viewports).
  */
+import { useContext } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { BrandContext } from '@/contexts/BrandContext';
 
 export interface StaffManagementFooterProps {
   /**
@@ -45,7 +47,8 @@ export function StaffManagementFooter({
   onRefresh,
 }: StaffManagementFooterProps) {
   const { l10n } = useLocalization();
-  const { activeInstance } = useWorkspace();
+  const { activeInstance, orgLabel } = useWorkspace();
+  const brand = useContext(BrandContext);
   const { session } = useAuth();
   const locale = [...l10n.bundles][0]?.locales[0] ?? 'en-US';
 
@@ -54,7 +57,14 @@ export function StaffManagementFooter({
       ? ''
       : new Date(loadedAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 
-  const workspaceName = activeInstance?.name ?? activeInstance?.store_name ?? '';
+  const brandStoreName = brand?.settings?.store_name ?? '';
+  const locationName =
+    activeInstance?.store_name ||
+    brandStoreName ||
+    orgLabel ||
+    (activeInstance?.name && activeInstance.name.toLowerCase() !== 'admin'
+      ? activeInstance.name
+      : '');
   const operatorName = session?.display_name ?? '';
 
   const statusTone: 'connected' | 'checking' | 'disconnected' = loadError
@@ -76,10 +86,14 @@ export function StaffManagementFooter({
           />
           <span>{statusLabel}</span>
         </span>
-        {workspaceName && (
+        {locationName && (
           <>
             <span className="staff-mgmt-footer-sep" aria-hidden="true">|</span>
-            <span className="staff-mgmt-footer-pill" data-testid="staff-footer-workspace">
+            <span
+              className="staff-mgmt-footer-pill"
+              data-testid="staff-footer-location"
+              title={locationName}
+            >
               <svg
                 className="staff-mgmt-footer-icon"
                 viewBox="0 0 24 24"
@@ -90,10 +104,10 @@ export function StaffManagementFooter({
                 strokeLinejoin="round"
                 aria-hidden="true"
               >
-                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
               </svg>
-              <span>{workspaceName}</span>
+              <span>{locationName}</span>
             </span>
           </>
         )}

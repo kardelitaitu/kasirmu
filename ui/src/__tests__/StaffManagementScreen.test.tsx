@@ -81,7 +81,7 @@ const SAMPLE_PROFILE = {
   is_complete: true,
 };
 
-const { invokeMock, setActiveWorkspaceMock, sessionPermissions } = vi.hoisted(() => ({
+const { invokeMock, setActiveWorkspaceMock, sessionPermissions, mockActiveInstance } = vi.hoisted(() => ({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invokeMock: vi.fn() as any,
   /** The back control's destination setter, from the mocked WorkspaceContext. */
@@ -93,6 +93,8 @@ const { invokeMock, setActiveWorkspaceMock, sessionPermissions } = vi.hoisted(()
    * `staff:delete`, which the base session below deliberately does not carry.
    */
   sessionPermissions: ['operator:impersonate', 'staff:manage_roles'] as string[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mockActiveInstance: { store_name: 'Main Store', name: 'Admin' } as any,
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -128,7 +130,11 @@ vi.mock('@/contexts/WorkspaceContext', () => ({
   // `setActiveWorkspace` is what the back control calls through useWorkspaceNav;
   // without it a click on the only route off this page throws instead of
   // navigating.
-  useWorkspace: () => ({ sessionToken: 'session-1', setActiveWorkspace: setActiveWorkspaceMock }),
+  useWorkspace: () => ({
+    sessionToken: 'session-1',
+    setActiveWorkspace: setActiveWorkspaceMock,
+    activeInstance: mockActiveInstance,
+  }),
 }));
 
 beforeEach(() => {
@@ -1899,6 +1905,11 @@ describe('StaffManagementScreen feedback and route entry', () => {
 
     expect(screen.getByTestId('staff-mgmt-footer')).toBeInTheDocument();
     expect(screen.getByTestId('staff-footer-sync')).toHaveTextContent('Connected');
+    expect(screen.getByTestId('staff-footer-location')).toHaveTextContent('Main Store');
+    expect(screen.getByTestId('staff-footer-location').querySelector('svg path')).toHaveAttribute(
+      'd',
+      'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'
+    );
     expect(screen.getByTestId('staff-footer-refresh-btn')).toBeInTheDocument();
     expect(screen.getByTestId('staff-footer-version')).toHaveTextContent('v0.0.40');
 
