@@ -343,6 +343,189 @@ fn spawn_once_runs_the_future_to_completion() {
         "finished"
     );
 }
+
+// ── C23: a dead daemon must be observable, not only logged ────────────
+//
+// The watchdog logged `ERROR <name> panicked` and did nothing else: no
+// registry, no state, no way for the shell or the operator to learn that a
+// daemon had died. A log line is not a report when nothing reads it — the
+// same reasoning as the `report_sales` write-only projection pinned below.
+//
+// These tests close that gap: a panicked daemon is recorded as `Panicked`,
+// a daemon that stops looping is `ExitedUnexpectedly`, and a healthy one is
+// `Running` — so "is everything still up?" becomes a question with an answer.
+
+/// A daemon that panics must be recorded as panicked.
+///
+/// This is the C23 defect in one assertion: before the registry, the only
+/// trace of a dead daemon was a log line, and `is_running()`-style checks
+/// could not see it.
+#[test]
+fn a_panicking_daemon_is_recorded_as_panicked() {
+    let registry = DaemonRegistry::new();
+    let sentinel = format!("test panicking daemon {}", std::process::id());
+    registry.register(sentinel.clone());
+
+    let r = registry.clone();
+    let name = sentinel.clone();
+    spawn_daemon_registered(&r, Box::leak(name.into_boxed_str()), async move {
+        panic!("boom");
+    });
+
+    let state = wait_for_state(&registry, &sentinel, |s| s != DaemonState::Running);
+    assert_eq!(
+        state,
+        DaemonState::Panicked,
+        "a panicking daemon must be recorded as Panicked; a log line nothing \
+         reads is not a report"
+    );
+}
+
+/// A daemon that returns instead of looping must be recorded too. This is
+/// the `announce_exit` case the old code logged as
+/// `WARN ... exited unexpectedly` and never stored.
+#[test]
+fn a_daemon_that_stops_looping_is_recorded_as_exited() {
+    let registry = DaemonRegistry::new();
+    let sentinel = format!("test exiting daemon {}", std::process::id());
+    registry.register(sentinel.clone());
+
+    let r = registry.clone();
+    let name = sentinel.clone();
+    spawn_daemon_registered(&r, Box::leak(name.into_boxed_str()), async move {
+        // Return immediately: a daemon that is meant never to resolve.
+    });
+
+    let state = wait_for_state(&registry, &sentinel, |s| s != DaemonState::Running);
+    assert_eq!(state, DaemonState::ExitedUnexpectedly);
+}
+
+/// A daemon still looping must read as Running, so the registry cannot pass
+/// vacuously by reporting every daemon dead.
+#[test]
+fn a_live_daemon_stays_running() {
+    let registry = DaemonRegistry::new();
+    let sentinel = format!("test live daemon {}", std::process::id());
+    registry.register(sentinel.clone());
+
+    let r = registry.clone();
+    let name = sentinel.clone();
+    let (_tx, rx) = std::sync::mpsc::channel::<()>();
+    spawn_daemon_registered(&r, Box::leak(name.into_boxed_str()), async move {
+        // Never resolves; dropped only when the test process ends.
+        let _keep = rx;
+        std::future::pending::<()>().await;
+    });
+
+    // Give the watchdog a chance to mis-report, then assert it did not.
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    assert_eq!(
+        registry.state(&sentinel),
+        DaemonState::Running,
+        "a live daemon must read as Running"
+    );
+}
+
+/// `spawn_once` must not mark a completed one-shot as a failure, and must
+/// not appear in the registry as a daemon at all.
+#[test]
+fn a_finished_one_shot_leaves_no_dead_daemon_record() {
+    let registry = DaemonRegistry::new();
+    let sentinel = format!("test one-shot {}", std::process::id());
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let r = registry.clone();
+    let name = sentinel.clone();
+    spawn_once_registered(&r, Box::leak(name.into_boxed_str()), async move {
+        let _ = tx.send(());
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the one-shot never ran");
+
+    // A one-shot that completes is not a failure; it must not be filed as
+    // Panicked or ExitedUnexpectedly.
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    let state = registry.state(&sentinel);
+    assert!(
+        matches!(state, DaemonState::Unknown | DaemonState::Completed),
+        "a finished one-shot must not be recorded as a failure, got {state:?}"
+    );
+}
+
+/// The registry must expose every daemon that has died, so a shell (or a
+/// future supervisor) can act on the set rather than scanning logs.
+#[test]
+fn the_registry_lists_every_dead_daemon() {
+    let registry = DaemonRegistry::new();
+    let a = format!("test dead a {}", std::process::id());
+    let b = format!("test dead b {}", std::process::id());
+    registry.register(a.clone());
+    registry.register(b.clone());
+
+    let r1 = registry.clone();
+    let n1 = a.clone();
+    spawn_daemon_registered(&r1, Box::leak(n1.into_boxed_str()), async move {
+        panic!("a died");
+    });
+    let r2 = registry.clone();
+    let n2 = b.clone();
+    spawn_daemon_registered(&r2, Box::leak(n2.into_boxed_str()), async move {});
+
+    wait_for_state(&registry, &a, |s| s != DaemonState::Running);
+    wait_for_state(&registry, &b, |s| s != DaemonState::Running);
+
+    let dead = registry.dead();
+    assert!(
+        dead.contains(&a) && dead.contains(&b),
+        "both dead daemons must be listed, got {dead:?}"
+    );
+}
+
+/// The REAL entry point the shells use: `spawn_daemon` must make a death
+/// visible through the process-global registry, with no call-site change.
+///
+/// This is the test that would fail if the wiring were reverted to a
+/// locally-created registry: the shells call `spawn_daemon`, not
+/// `spawn_daemon_registered`, so the global is the only path they take.
+#[test]
+fn spawn_daemon_records_into_the_process_global_registry() {
+    let sentinel = format!("test global daemon {}", std::process::id());
+    let name: &'static str = Box::leak(sentinel.clone().into_boxed_str());
+
+    spawn_daemon(name, async move {
+        panic!("boom");
+    });
+
+    let state = wait_for_state(daemon_registry(), &sentinel, |s| s != DaemonState::Running);
+    assert_eq!(
+        state,
+        DaemonState::Panicked,
+        "the shells call spawn_daemon; its deaths must reach the global registry"
+    );
+    assert!(
+        daemon_registry().dead().contains(&sentinel),
+        "the dead set must name it"
+    );
+}
+
+/// Poll the registry until `pred` holds, or fail with the last state seen.
+fn wait_for_state(
+    registry: &DaemonRegistry,
+    name: &str,
+    pred: impl Fn(DaemonState) -> bool,
+) -> DaemonState {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let state = registry.state(name);
+        if pred(state) {
+            return state;
+        }
+        if std::time::Instant::now() > deadline {
+            panic!("daemon {name} never left Running; last state {state:?}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
 // ── MSL-11: no write-only event projections ───────────────────────────
 
 /// A handler that appends to a table nothing reads is pure cost, and it is
@@ -447,4 +630,3 @@ fn report_sales_projection_stays_removed() {
          this pin with a note explaining what reads the table."
     );
 }
-

@@ -41,10 +41,15 @@ next: none | perf: N/A
 //! ```
 
 pub mod console;
+pub mod daemon_health;
 pub mod event_handlers;
 /// Startup hardware registration from the saved terminal profile.
 pub mod hardware;
 pub mod rate_sync;
+
+pub use daemon_health::{DaemonHealth, DaemonRegistry, DaemonState};
+
+use daemon_health::DaemonKind;
 
 use std::sync::{Arc, Mutex};
 
@@ -243,9 +248,7 @@ pub fn init_module_system(
                                 "stock.adjusted",
                                 Box::new(
                                     kasirmu_notification::handlers::StockLowAlertHandler::new(
-                                        client,
-                                        threshold,
-                                        phone,
+                                        client, threshold, phone,
                                     ),
                                 ),
                             );
@@ -369,16 +372,60 @@ fn spawn_watched(
     fut: impl std::future::Future<Output = ()> + Send + 'static,
     announce_exit: bool,
 ) {
+    spawn_watched_registered(daemon_registry(), name, fut, announce_exit);
+}
+
+/// The process-wide daemon registry (C23).
+///
+/// A background task's liveness is a property of the process, not of any one
+/// shell object, so the registry is a process global rather than a field on
+/// each shell's `AppState`. That is what lets every existing `spawn_daemon`
+/// call — 12 in the desktop shell, 5 in the tablet — be observed without
+/// touching a single call site, and it mirrors the `static RUNTIME` used a few
+/// lines above for the same reason.
+///
+/// Reads and writes go through the returned registry; see [`daemon_health`].
+pub fn daemon_registry() -> &'static DaemonRegistry {
+    static REGISTRY: std::sync::OnceLock<DaemonRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(DaemonRegistry::new)
+}
+
+/// Shared body of `spawn_daemon` and `spawn_once`, recording into a registry.
+///
+/// C23: the state the watchdog observes is written to `registry` as well as
+/// logged, so a daemon that dies stops being invisible. See
+/// [`daemon_health`] for why nothing restarts automatically.
+fn spawn_watched_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+    announce_exit: bool,
+) {
+    let kind = if announce_exit {
+        DaemonKind::Daemon
+    } else {
+        DaemonKind::OneShot
+    };
+    registry.register_named(name, kind);
+
+    let registry = registry.clone();
     spawn_detached(async move {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         // Watchdog: fired when the task future resolves or panics.
         spawn_detached(async move {
-            match rx.await {
-                Ok(()) if announce_exit => tracing::warn!("{name} exited unexpectedly"),
-                Ok(()) => {}
-                Err(_) => tracing::error!("{name} panicked"),
-            }
+            let state = match rx.await {
+                Ok(()) if announce_exit => {
+                    tracing::warn!("{name} exited unexpectedly");
+                    DaemonState::ExitedUnexpectedly
+                }
+                Ok(()) => DaemonState::Completed,
+                Err(_) => {
+                    tracing::error!("{name} panicked");
+                    DaemonState::Panicked
+                }
+            };
+            registry.record(name, state);
         });
 
         // Run the task.  If it panics, the `tx` drop during unwind
@@ -386,6 +433,31 @@ fn spawn_watched(
         fut.await;
         let _ = tx.send(());
     });
+}
+
+/// Spawn a daemon that records its health into `registry` (C23).
+///
+/// Identical to [`spawn_daemon`] except that the observed state is written to
+/// the caller's registry, so the shell can ask which daemons have died.
+pub fn spawn_daemon_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    spawn_watched_registered(registry, name, fut, true);
+}
+
+/// Spawn a one-shot that records its health into `registry` (C23).
+///
+/// Identical to [`spawn_once`] except for the registry. A one-shot that
+/// finishes is recorded as [`DaemonState::Completed`], which
+/// [`DaemonRegistry::dead`] deliberately does not report as a failure.
+pub fn spawn_once_registered(
+    registry: &DaemonRegistry,
+    name: &'static str,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+) {
+    spawn_watched_registered(registry, name, fut, false);
 }
 
 /// Open a dedicated WAL-mode connection for the pending-sale reaper.
