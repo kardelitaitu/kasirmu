@@ -1137,6 +1137,48 @@ describe('AppShell — KDS workspace navigation', () => {
       });
       expect(screen.queryByText('Access Denied')).not.toBeInTheDocument();
     });
+
+    it('preserves the fullscreen wrapper DOM element when navigating between routes in the same group', async () => {
+      sessionFor('owner', []);
+      const SharedScreen = () => <div data-testid="shared-group-screen" />;
+      registerPage({
+        route: 'test-group-a',
+        component: SharedScreen,
+        label: 'Group A',
+        fullscreen: true,
+        group: 'test-group',
+      });
+      registerPage({
+        route: 'test-group-b',
+        component: SharedScreen,
+        label: 'Group B',
+        fullscreen: true,
+        group: 'test-group',
+      });
+
+      window.location.hash = '#/test-group-a';
+      await renderWithProviders(<AppShell />, staffFtl);
+      await act(async () => {});
+
+      await waitFor(() => {
+        expect(screen.getByTestId('shared-group-screen')).toBeInTheDocument();
+      });
+
+      const wrapperBefore = document.querySelector('.workspace-fullscreen');
+      expect(wrapperBefore).not.toBeNull();
+
+      await act(async () => {
+        window.location.hash = '#/test-group-b';
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('shared-group-screen')).toBeInTheDocument();
+      });
+
+      const wrapperAfter = document.querySelector('.workspace-fullscreen');
+      expect(wrapperAfter).toBe(wrapperBefore);
+    });
   });
 
   describe('ADR #58 §2.6 — Revoked tenant gate', () => {

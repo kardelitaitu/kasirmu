@@ -648,8 +648,9 @@ export default function AppShell() {
         {bootBadges}
         {/* T5: wrap in workspace-fullscreen so registry fullscreen pages
             (mobile-setup, kiosk, …) get the same ws-page-enter animation
-            as hardcoded fullscreen workspaces. key= re-triggers on route change. */}
-        <div className="workspace-fullscreen" key={currentRoute}>
+            as hardcoded fullscreen workspaces. key= re-triggers on route change,
+            except for grouped routes (e.g. staff/roles/trash) which share one screen. */}
+        <div className="workspace-fullscreen" key={pageRegistration.group ?? currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
               <FullscreenPageComponent

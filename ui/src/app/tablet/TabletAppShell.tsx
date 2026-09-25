@@ -318,7 +318,7 @@ export default function TabletAppShell() {
     return PageComponent ? (
       <>
         {!isCustomerKiosk && <MemoBanner />}
-        <div className="workspace-fullscreen" key={currentRoute}>
+        <div className="workspace-fullscreen" key={pageRegistration.group ?? currentRoute}>
           {renderPageLayout(
             <LazyBoundary>
               <FullscreenPageComponent

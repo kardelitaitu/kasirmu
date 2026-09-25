@@ -46,6 +46,12 @@ export interface PageRegistration {
   component: PageComponent;
   /** Human-readable label for nav items. */
   label: string;
+  /**
+   * Optional group identifier for routes sharing the same parent/shell screen.
+   * When set, switching between routes within the same group preserves the
+   * mounted screen instead of remounting and re-triggering page-enter transitions.
+   */
+  group?: string;
   /** Optional feature key that must be enabled for this page to appear. */
   feature?: string;
   /** Optional role required to access this page. 'manager' includes owner. */
