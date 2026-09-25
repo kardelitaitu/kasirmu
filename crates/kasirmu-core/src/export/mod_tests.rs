@@ -652,6 +652,28 @@ fn a_custom_report_includes_rows_from_its_own_end_date() {
         .build_custom_report(req(Some("2026-06-01"), Some("2026-06-30")))
         .unwrap();
     assert_eq!(month.rows.len(), 1);
+
+    // The exclusive bound must not over-include: a row at midnight of the day
+    // AFTER the end date belongs to that next day, not to this range.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-16T00:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+    let still_same_day = s
+        .build_custom_report(req(Some("2026-06-15"), Some("2026-06-15")))
+        .unwrap();
+    assert_eq!(
+        still_same_day.rows.len(),
+        0,
+        "the next day's midnight is outside a range ending 2026-06-15"
+    );
+    // Restore the stamp for the control below.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-15T10:00:00.000Z'",
+        [],
+    )
+    .unwrap();
     let later = s
         .build_custom_report(req(Some("2026-07-01"), Some("2026-07-31")))
         .unwrap();

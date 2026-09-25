@@ -646,20 +646,36 @@ impl Store<'_> {
                 } else {
                     " WHERE"
                 };
-                sql.push_str(&format!("{} {} <= ?{}", where_clause, date_col, param_idx));
-                // Widen the end date to the LAST instant of that day in the
-                // column's own format. The bound is a TEXT comparison, and the
-                // columns this filters (`sales.created_at`, `customers.created_at`,
-                // `shifts.opened_at`) are all
-                // `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a 'T' at index 10.
-                // The bound used to be `"{date} 23:59:59"`, with a SPACE at index
-                // 10, and `' '` (0x20) sorts BELOW `'T'` (0x54): every row
-                // stamped on the end date itself compared GREATER than the bound
-                // and was silently dropped, so a single-day report came back
-                // empty while the rows plainly existed. `audit.rs`'s day-range
-                // filter already widens this way. Measured: end=2026-06-30 keeps a
-                // sale stamped 2026-06-15T10:00:00.000Z, end=2026-06-15 returns 0.
-                params.push(format!("{}T23:59:59.999Z", end_date));
+                sql.push_str(&format!("{} {} < ?{}", where_clause, date_col, param_idx));
+                // Widen the end date to an EXCLUSIVE midnight of the following
+                // day, in the column's own format — the same idiom (and the same
+                // reason) as the security-trail filter's `normalize_day_bound`,
+                // D84 ruling 3: a day range has to include the whole end day.
+                //
+                // The bound is a TEXT comparison, and the columns this filters
+                // (`sales.created_at`, `customers.created_at`, `shifts.opened_at`)
+                // all default to `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a 'T'
+                // at index 10. The bound used to be `"{date} 23:59:59"`, with a
+                // SPACE there, and `' '` (0x20) sorts BELOW `'T'` (0x54): every
+                // row stamped on the end date itself compared GREATER than the
+                // bound and was silently dropped, so a single-day report came back
+                // empty while the rows plainly existed — a false negative that
+                // errors nowhere and just reads as an empty report.
+                //
+                // Day+1 at midnight with `<` rather than `.999Z` with `<=`, because
+                // `.999` silently assumes millisecond precision; the exclusive form
+                // stays correct if the columns ever carry finer stamps. Only
+                // well-formed `YYYY-MM-DD` needs handling here: a malformed date
+                // simply produces a bound that matches nothing, which is the same
+                // answer the old form gave and is not a new failure mode.
+                let exclusive_end = chrono::NaiveDate::parse_from_str(end_date.trim(), "%Y-%m-%d")
+                    .ok()
+                    .and_then(|d| d.succ_opt())
+                    .map(|next| format!("{}T00:00:00.000Z", next.format("%Y-%m-%d")))
+                    // Unparsable: fall back to the raw day, which keeps the old
+                    // "matches nothing" behaviour rather than widening to everything.
+                    .unwrap_or_else(|| end_date.clone());
+                params.push(exclusive_end);
             }
         }
 
