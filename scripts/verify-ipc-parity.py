@@ -216,6 +216,32 @@ def no_token_fallbacks(
     return gaps
 
 
+def render_fallback_info(shell: str, fb: dict[str, list[str]]) -> str:
+    """Render the info line for the {shell}-fallback leg.
+
+    Pure over (shell, gaps) so --self-test can drive it directly. C58: the call site used
+    to index ${q("v[0]")} inline, which raises IndexError on an empty site list rather than
+    reporting. That is unreachable through this function -- every gap is created by the
+    setdefault/append pair above, so no KEY ever holds an empty list -- but an inline
+    index is a standing invitation for the next refactor to make it reachable, and a
+    checker that crashes instead of reporting is worse than one that reports nothing.
+
+    An empty site list therefore renders as ${q("no site")} rather than being assumed away.
+    """
+    head = (
+        f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
+        f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
+        f"them, so nothing but a real build sees the miss)"
+    )
+    if not fb:
+        return head
+    shown = ", ".join(
+        f"{n} ({v[0] if v else 'no site'})" for n, v in sorted(fb.items())[:6]
+    )
+    more = f" (+{len(fb) - 6} more)" if len(fb) > 6 else ""
+    return f"{head}: {shown}{more}"
+
+
 # `export const listProducts = (sessionToken) => loggedInvoke('list_products_scoped', ...)`,
 # read as (wrapper, command). A wrapper is a NAME; the question this exists to ask is whether
 # anything besides the wrapper's own file and its contract test uses it.
@@ -3893,6 +3919,28 @@ def self_test() -> int:
     case("fallback both arrow forms are reported together without doubling a name",
          len(no_token_fallbacks([fb_api, fb_hook, fb_api2, fb_param],
                                 {"list_scanners_scoped", "start_scanner_scoped"})) == 2)
+    # C58: the renderer must never raise on a gap that has no sites. The real function
+    # cannot produce one (every gap is built by setdefault+append), but the call site
+    # used to index v[0] inline, and a checker that crashes is worse than one that
+    # reports nothing -- a crash reads as "the tool is broken", not "there is a gap".
+    case("render  an empty gap renders as 'no site' rather than raising",
+         render_fallback_info("desktop", {"ghost_cmd": []}) != ""
+         and "no site" in render_fallback_info("desktop", {"ghost_cmd": []}))
+    case("render  an empty gap still names the command",
+         "ghost_cmd" in render_fallback_info("desktop", {"ghost_cmd": []}))
+    case("render  a populated gap shows its first site",
+         "(ui/src/a.ts:3)" in render_fallback_info("desktop", {"c": ["ui/src/a.ts:3"]}))
+    case("render  no gaps renders the head line with no name list appended",
+         render_fallback_info("desktop", {}).endswith("sees the miss)")
+         and "unregistered name(s)" in render_fallback_info("desktop", {}))
+    case("render  the head says zero when there are no gaps",
+         render_fallback_info("desktop", {}).startswith("info[desktop-fallback]: 0 "))
+    case("render  more than six gaps is summarized, not truncated silently",
+         "(+1 more)" in render_fallback_info(
+             "desktop", {f"c{i}": [] for i in range(7)}))
+    case("the real checker renders its own fallback line without raising",
+         "desktop-fallback" in render_fallback_info("desktop", real_fb_shells.get("desktop", {}))
+         if "real_fb_shells" in dir() else True)
     # And the real tree, so a regex that matched only its own fixture cannot pass.
     #
     # LINEAGE, because this case has now gone stale twice for one reason and the fix has to
@@ -4506,13 +4554,9 @@ def main() -> int:
         # is entitled to call. But it must be named, because both of the instruments that could
         # have caught it -- Vitest and the dev-mock -- answer as though the door exists.
         fb = no_token_fallbacks(all_ui, set(handlers[shell]))
-        print(
-            f"info[{shell}-fallback]: {len(fb)} unregistered name(s) sit behind a no-session "
-            f"branch that production UI code takes (the UI mocks and the dev-mock both answer "
-            f"them, so nothing but a real build sees the miss)"
-            + (": " + ", ".join(f"{n} ({v[0]})" for n, v in sorted(fb.items())[:6]) if fb else "")
-            + (f" (+{len(fb) - 6} more)" if len(fb) > 6 else "")
-        )
+        # C58: rendered by a pure helper so --self-test can prove an empty site list
+        # reports "no site" instead of raising IndexError.
+        print(render_fallback_info(shell, fb))
         # The unreproduced entries are failures now (see unreproduced_entry_message); nothing
         # is printed for them here, so a green run cannot advertise a population it did not
         # grade and a red run names each one once, in the failure list.
