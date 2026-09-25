@@ -190,7 +190,18 @@ mod debt;
 /// separate floors and separate numbers, and only the registering commit's own shape — one
 /// that touched neither pin — is common to both. The provenance is the point: this pass
 /// records what landed, it does not approve it.
-const REGISTERED_FLOOR: usize = 342;
+///
+/// The 342 -> 343 step is C67 (2026-09-25), and it closes a **hole this pin itself had**:
+/// the leg allowed the tree to sit up to `REGISTERED_SLACK` (24) above the floor, so
+/// `af77f0144` (feat(mobile-tauri): register the role re-seed door on the tablet) added
+/// `setup::seed_default_roles_scoped` and **the floor, the ledger total and the tree all
+/// disagreed with nothing going red** — 343 parsed, 342 floor, 342 ledger, comfortably
+/// inside 342 + 24. The leg now compares the tree to the floor by EQUALITY, which is what
+/// makes this step visible at all; the slack still governs the ledger's distance from the
+/// tree, which is the claim it was written for. Verified before raising: `af77f0144`
+/// touches `commands/setup.rs` and its tests but NOT this file or the generated ledger, so
+/// the lag was real and unattributed rather than a mis-parse.
+const REGISTERED_FLOOR: usize = 343;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
@@ -822,6 +833,14 @@ pub struct ByDesignEntry {
 pub const BY_DESIGN_UNGATED: &[ByDesignEntry] = &[];
 
 /// Leg 1 — the floor. A glob that stopped matching must not pass by finding nothing.
+///
+/// C67: this leg used to allow the TREE to sit up to `REGISTERED_SLACK` above the floor
+/// (`pairs.len() <= REGISTERED_FLOOR + REGISTERED_SLACK`), which meant a registration
+/// could land without moving the floor — and `fc2ea1938` landed three that way while the
+/// floor and the ledger agreed with each other and both lagged the tree. The slack is NOT
+/// removed (it is what lets the generated ledger lag the tree between regenerations, which
+/// is a different and legitimate claim); it is moved to the comparison it was written for.
+/// The floor now reads the tree exactly, matching the desktop pin's contract.
 #[test]
 fn drift_pin_registration_floor_is_met() {
     let pairs = registered_names(LIB_RS);
@@ -842,11 +861,35 @@ fn drift_pin_registration_floor_is_met() {
          is now guarding a number nobody measured",
         debt::REGISTERED_TOTAL,
     );
+    // C67: an EQUALITY against the tree, not a slack-tolerant ceiling. The slack above the
+    // floor is precisely what let three registrations land unnoticed: at 24 it could absorb
+    // a whole slice, so the pin whose purpose is to NOTICE registrations was the one pin
+    // that could not. `REGISTERED_SLACK` still governs the ledger's distance from the tree
+    // (the leg below), which is the claim it was written for.
+    // C67: an EQUALITY against the tree, not a slack-tolerant ceiling. The slack above the
+    // floor is precisely what let a registration land unnoticed: at 24 it could absorb a
+    // whole slice, so the pin whose purpose is to NOTICE registrations was the one pin
+    // that could not. `REGISTERED_SLACK` still governs the ledger's distance from the tree
+    // (the leg below), which is the claim it was written for.
+    assert_eq!(
+        pairs.len(),
+        REGISTERED_FLOOR,
+        "PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: lib.rs registers {} commands and this \
+         floor says {REGISTERED_FLOOR}. The floor reads the tree on purpose, so the only way \
+         to be red here is that names were registered -- and a command that arrives ALREADY \
+         GATED moves no ceiling and no ledger row, which makes this leg the only thing in the \
+         file able to see it. Raise the floor to {} in the same deliberate pass that names \
+         each addition in docs/records/JOURNAL.md; raising it records what landed, it does \
+         not approve it.",
+        pairs.len(),
+        pairs.len()
+    );
     assert!(
-        pairs.len() <= REGISTERED_FLOOR + REGISTERED_SLACK,
-        "the sweep parsed {} registered commands, more than {REGISTERED_SLACK} above the \
-         measured floor of {REGISTERED_FLOOR}: names were registered, and the ledger, the \
-         ceilings and this floor all need regenerating together in one deliberate pass.",
+        pairs.len().abs_diff(debt::REGISTERED_TOTAL) <= REGISTERED_SLACK,
+        "the generated ledger counts {} registered names while the tree counts {}, more \
+         than {REGISTERED_SLACK} apart: the ledger and this file are guarding separate \
+         measurements and need regenerating together in one deliberate pass.",
+        debt::REGISTERED_TOTAL,
         pairs.len()
     );
 }
