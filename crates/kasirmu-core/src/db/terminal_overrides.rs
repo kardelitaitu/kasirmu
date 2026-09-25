@@ -128,10 +128,27 @@ impl Store<'_> {
     }
 }
 
+/// Now, in the SAME shape the column's own DEFAULT writes.
+///
+/// `terminal_feature_overrides.created_at` / `updated_at` default to
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, which is MILLISECOND precision:
+/// `2026-09-25T23:46:15.606Z`, 24 characters. This helper feeds the explicit
+/// `VALUES` bind of the upsert — the row cannot simply take the DEFAULT,
+/// because `ON CONFLICT ... DO UPDATE` has to set `updated_at` — so the shape
+/// is spelled here too and has to agree.
+///
+/// It did not agree: `%S%.6fZ` is MICROSECONDS (`…15.606805Z`, 27 characters),
+/// and the old comment claiming "same format used by the SQL `strftime`
+/// default" was simply false. The two shapes sort incompatibly for the same
+/// whole second — at index 24 the SQLite stamp has `Z` (0x5A) and this one a
+/// digit — so a millisecond-precision row compares AFTER a microsecond row
+/// that is older. Nothing compares these columns today, which is why this was
+/// never visible; it is fixed so the first caller that DOES order by
+/// `updated_at` does not inherit the inversion. `%.3f` renders the dot, which
+/// is what `%f` means in SQLite (measured: both give `…15.606Z`).
 fn format_now() -> String {
-    // Same format used by the SQL `strftime` default in migrations.
     chrono::Utc::now()
-        .format("%Y-%m-%dT%H:%M:%S%.6fZ")
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
         .to_string()
 }
 

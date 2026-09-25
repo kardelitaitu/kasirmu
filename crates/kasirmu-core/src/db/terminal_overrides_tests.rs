@@ -316,3 +316,56 @@ fn delete_override_wrong_terminal_returns_not_found() {
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
 }
+
+/// The timestamps this table stores must be in ONE shape.
+///
+/// `created_at` / `updated_at` default to `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`
+/// — millisecond precision, 24 characters — but the upsert binds an explicit
+/// value, so `format_now` spells the shape a second time and the two can drift.
+/// They did: `%S%.6fZ` is microseconds (27 characters), and because the
+/// fractional digits are compared as TEXT, two rows in the same whole second
+/// sort by a different alphabet — `…15.606Z` vs `…15.606805Z` differ at index
+/// 24, where SQLite has `Z`. The older millisecond row lands last.
+///
+/// Read the SHAPE from SQLite rather than restating it here, so this test
+/// cannot pass by agreeing with its own copy of the format: it compares the
+/// stored stamp against what the column's DEFAULT actually produces, and
+/// asserts the stamp is one SQLite itself round-trips unchanged.
+#[test]
+fn override_timestamps_match_the_sqlite_column_shape() {
+    let conn = fresh();
+    seed_terminal(&conn);
+    let s = store(&conn);
+    s.set_terminal_override("term-1", "feature-x", true)
+        .unwrap();
+
+    let stored: String = conn
+        .query_row(
+            "SELECT updated_at FROM terminal_feature_overrides
+             WHERE terminal_id = 'term-1' AND feature = 'feature-x'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let sqlite_shape: String = conn
+        .query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+
+    assert_eq!(
+        stored.len(),
+        sqlite_shape.len(),
+        "stored {stored} must be the column's own shape {sqlite_shape}"
+    );
+    // And SQLite must round-trip it unchanged: the DEFAULT format re-renders
+    // the stamp byte-identically, which a microsecond value would not.
+    let reparsed: String = conn
+        .query_row(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?1)",
+            [&stored],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(reparsed, stored, "the stamp is not in the column's format");
+}
