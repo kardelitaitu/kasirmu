@@ -463,3 +463,43 @@ async fn update_tax_rate_carries_rounding_mode() {
     assert_eq!(mode, "truncate");
     assert_eq!(rate_bps, 1100, "update rewrote the row in place");
 }
+/// MSL-30: a DB failure in the scope probe must not be reported as a
+/// tenant-mismatch validation error.
+///
+/// `check_scope_target_sqlite` read the owner with `.unwrap_or(None)`, which
+/// maps EVERY `rusqlite::Error` to `None` -- so a broken query failed the
+/// tenant comparison and the caller got
+/// "legal_entity_id '...' does not reference an existing legal_entities of this
+/// tenant". A wrong diagnosis that also hides the fault. The Postgres twin
+/// (`pg::scope_target_exists`) propagates with `.map_err(PgError::Db)?`.
+#[tokio::test]
+async fn a_db_failure_in_the_scope_probe_is_not_reported_as_a_tenant_mismatch() {
+    let state = state();
+    {
+        let db = state.db.lock().await;
+        // The scope id EXISTS for this tenant...
+        db.execute(
+            "INSERT INTO legal_entities (id, tenant_id, name) VALUES ('le-1', 'default', 'Entity One')",
+            [],
+        )
+        .unwrap();
+        // ...but the probe's own READ will fail.
+        db.execute_batch("ALTER TABLE legal_entities RENAME TO legal_entities_hidden;")
+            .unwrap();
+    }
+
+    let mut req = body();
+    req.legal_entity_id = Some("le-1".into());
+    let resp = create_tax_rate(State(state), HeaderMap::new(), Extension(claims(None)), Json(req))
+        .await
+        .into_response();
+
+    let status = resp.status();
+    let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8_lossy(&bytes).to_string();
+
+    assert!(
+        !text.contains("does not reference an existing"),
+        "a DB failure must not be reported as a scope/tenant validation error; got {status} {text}"
+    );
+}

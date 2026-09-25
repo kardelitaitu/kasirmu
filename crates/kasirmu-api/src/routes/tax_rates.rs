@@ -19,6 +19,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
 };
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 
 use kasirmu_core::db::Store;
@@ -187,9 +188,16 @@ fn check_scope_target_sqlite(
     };
     // Table and column come from the match arms above, never from the request.
     let sql = format!("SELECT tenant_id FROM {table} WHERE id = ?1");
+    // MSL-30: `.optional()?`, NOT `.unwrap_or(None)`. The latter maps EVERY
+    // `rusqlite::Error` to `None`, so a broken query failed the tenant comparison
+    // below and the caller was told the target belongs to another tenant -- a
+    // wrong diagnosis that also hides the real fault. `optional()` maps ONLY
+    // `QueryReturnedNoRows` to `None` and propagates the rest, which is what the
+    // Postgres twin (`pg::scope_target_exists`) does with
+    // `.map_err(|e| PgError::Db(e.to_string()))?`.
     let owner: Option<String> = db
         .query_row(&sql, rusqlite::params![target], |row| row.get(0))
-        .unwrap_or(None);
+        .optional()?;
     if owner.as_deref() != Some(tenant_id) {
         return Err(CoreError::Validation {
             field: column,
