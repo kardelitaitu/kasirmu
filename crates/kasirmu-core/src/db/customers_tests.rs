@@ -19,6 +19,116 @@ fn seed_customers(conn: &Connection) {
     ).unwrap();
 }
 
+// ── MSL-44: an invalid email/phone must not be STORED ───────────
+
+/// The store wrote the raw string to the column while every API surface
+/// reported `None`, so the bad value persisted invisibly.
+///
+/// `create_customer` and `update_customer` both bind `email`/`phone` straight
+/// into the INSERT/UPDATE, and only apply `Email::new(..).ok()` when building
+/// the returned struct — so an invalid address is written to disk and then
+/// reported as absent:
+///
+/// ```text
+/// PROBE returned email      = None
+/// PROBE stored   email      = Some("not-an-email")
+/// PROBE read-back           = None
+/// PROBE after-update stored = Some("also-bad")
+/// ```
+///
+/// Every current caller validates first (the bridge's and tablet's
+/// `validate_customer_fields`, and the CLI), so this is a latent trap rather
+/// than a live wrong answer — but it is the worst kind: the type system says
+/// the field is `None` in every direction while the column holds garbage, and
+/// any future reader of the raw column (a report, an export, a sync push)
+/// silently picks it up. The store already validates `name` itself, so it is
+/// the right layer for these two as well.
+#[test]
+fn an_invalid_email_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let c = s
+        .create_customer("X", Some("not-an-email"), None, None)
+        .unwrap();
+    assert!(c.email.is_none(), "the API reports no email");
+
+    // The COLUMN must agree with the API. Before the fix it held the raw string,
+    // so a reader of the raw column saw a value every caller believed absent.
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT email FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "an unparseable email must be stored as NULL, not as the caller's raw string"
+    );
+    assert!(
+        s.get_customer(&c.id).unwrap().unwrap().email.is_none(),
+        "and the read path agrees"
+    );
+}
+
+#[test]
+fn an_invalid_phone_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+    let c = s
+        .create_customer("Bob", None, Some("+1-555-0102"), None)
+        .unwrap();
+
+    s.update_customer(&c.id, "Bob", None, Some("call me"), None)
+        .unwrap();
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT phone FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "an unparseable phone must be stored as NULL, not as the caller's raw string"
+    );
+}
+
+/// A valid value still round-trips verbatim, trimmed — the property the fix must
+/// not break.
+#[test]
+fn a_valid_email_and_phone_are_stored_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+    let c = s
+        .create_customer("Zoe", Some(" zoe@example.com "), Some("+1-555-0199"), None)
+        .unwrap();
+
+    assert_eq!(
+        c.email.as_ref().map(ToString::to_string).as_deref(),
+        Some("zoe@example.com")
+    );
+    assert_eq!(
+        c.phone.as_ref().map(ToString::to_string).as_deref(),
+        Some("+1-555-0199")
+    );
+    let (raw_e, raw_p): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT email, phone FROM customers WHERE id = ?1",
+            rusqlite::params![c.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        raw_e.as_deref(),
+        Some("zoe@example.com"),
+        "trimmed, not raw"
+    );
+    assert_eq!(raw_p.as_deref(), Some("+1-555-0199"));
+}
+
 // ── List ────────────────────────────────────────────────────────
 
 #[test]

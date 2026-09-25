@@ -10,10 +10,42 @@ use rusqlite::params;
 
 use foundation::{Email, Phone};
 
-use crate::Customer;
 use crate::error::CoreError;
+use crate::Customer;
 
 use super::Store;
+
+/// Normalise the optional contact fields of a customer row to what the API
+/// reports (MSL-44).
+///
+/// An unparseable address becomes `None` — the same answer the read path
+/// (`row_to_customer`) and the return-value builders already give, via
+/// `Email::new(..).ok()`. The bug was that the WRITE disagreed with both: it
+/// bound the caller's raw string straight into the INSERT/UPDATE, so the column
+/// held `Some("not-an-email")` while every API surface reported `email: None`.
+/// Measured before the fix:
+///
+/// ```text
+/// create returns        = None
+/// stored in the column  = Some("not-an-email")     <- the disagreement
+/// read-back returns     = None
+/// ```
+///
+/// The value was therefore invisible through the type system and permanent in
+/// storage: `create_customer_invalid_email_saved_as_none` names the intended
+/// behaviour precisely, and it is the COLUMN that was not honouring it. Any
+/// future reader of the raw column — a report, an export, a sync push — would
+/// have picked up what every caller believed was absent.
+///
+/// Returning `None` here (rather than rejecting) keeps the contract the suite
+/// already pins, so callers that validate first are unaffected either way.
+fn normalise_contact_field(raw: Option<&str>, valid: impl Fn(&str) -> bool) -> Option<String> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() || !valid(trimmed) {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
 
 impl Store<'_> {
     /// List all customers, ordered by name.
@@ -189,6 +221,9 @@ impl Store<'_> {
                 ),
             });
         }
+        // MSL-44: bind what the API reports, not the raw caller string.
+        let email = normalise_contact_field(email, |s| Email::new(s).is_ok());
+        let phone = normalise_contact_field(phone, |s| Phone::new(s).is_ok());
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
@@ -245,6 +280,10 @@ impl Store<'_> {
                 ),
             });
         }
+
+        // MSL-44: bind what the API reports, not the raw caller string.
+        let email = normalise_contact_field(email, |s| Email::new(s).is_ok());
+        let phone = normalise_contact_field(phone, |s| Phone::new(s).is_ok());
 
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
