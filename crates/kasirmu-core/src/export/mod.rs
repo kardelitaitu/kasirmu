@@ -647,7 +647,19 @@ impl Store<'_> {
                     " WHERE"
                 };
                 sql.push_str(&format!("{} {} <= ?{}", where_clause, date_col, param_idx));
-                params.push(format!("{} 23:59:59", end_date));
+                // Widen the end date to the LAST instant of that day in the
+                // column's own format. The bound is a TEXT comparison, and the
+                // columns this filters (`sales.created_at`, `customers.created_at`,
+                // `shifts.opened_at`) are all
+                // `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a 'T' at index 10.
+                // The bound used to be `"{date} 23:59:59"`, with a SPACE at index
+                // 10, and `' '` (0x20) sorts BELOW `'T'` (0x54): every row
+                // stamped on the end date itself compared GREATER than the bound
+                // and was silently dropped, so a single-day report came back
+                // empty while the rows plainly existed. `audit.rs`'s day-range
+                // filter already widens this way. Measured: end=2026-06-30 keeps a
+                // sale stamped 2026-06-15T10:00:00.000Z, end=2026-06-15 returns 0.
+                params.push(format!("{}T23:59:59.999Z", end_date));
             }
         }
 

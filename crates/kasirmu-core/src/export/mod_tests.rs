@@ -603,3 +603,72 @@ fn csv_cell_escaping() {
     assert_eq!(csv_cell("hello, world"), "\"hello, world\"");
     assert_eq!(csv_cell("say \"hi\""), "\"say \"\"hi\"\"\"");
 }
+
+/// The end-date bound must not drop the END DATE'S OWN rows.
+///
+/// The bound is a TEXT comparison against `sales.created_at`, which defaults to
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a `T` at index 10. The bound used to
+/// be `"{date} 23:59:59"`, whose index 10 is a SPACE, and `' '` (0x20) sorts
+/// below `'T'` (0x54): every row stamped on the end date compared GREATER than
+/// the bound and was silently dropped. A one-day custom report therefore came
+/// back empty while the row plainly existed — the worst shape of false negative
+/// in a report, because nothing errors and the totals just read zero.
+///
+/// The raw-SQL control is the point of the second assertion: it runs the exact
+/// old predicate and shows zero, so the test distinguishes the fixed code from
+/// the comparison that was actually wrong rather than from a broken fixture.
+#[test]
+fn a_custom_report_includes_rows_from_its_own_end_date() {
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    seed_sale(&conn, "sku-1", 1, 1000);
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-06-15T10:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+
+    let req = |start: Option<&str>, end: Option<&str>| CustomReportRequest {
+        dataset: "sales".into(),
+        columns: vec!["id".into()],
+        start_date: start.map(str::to_string),
+        end_date: end.map(str::to_string),
+        limit: None,
+        offset: None,
+    };
+
+    // The regression: the end date IS the row's own day.
+    let same_day = s
+        .build_custom_report(req(Some("2026-06-15"), Some("2026-06-15")))
+        .unwrap();
+    assert_eq!(
+        same_day.rows.len(),
+        1,
+        "a report ending on the row's own day must include it"
+    );
+
+    // A wider window still includes it, and a window AFTER the day still excludes it.
+    let month = s
+        .build_custom_report(req(Some("2026-06-01"), Some("2026-06-30")))
+        .unwrap();
+    assert_eq!(month.rows.len(), 1);
+    let later = s
+        .build_custom_report(req(Some("2026-07-01"), Some("2026-07-31")))
+        .unwrap();
+    assert_eq!(later.rows.len(), 0, "a later window must not match");
+
+    // The old bound, verbatim, is what dropped the row — so this pins the
+    // MECHANISM and not merely the outcome.
+    let old_bound: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sales
+              WHERE created_at >= '2026-06-15' AND created_at <= '2026-06-15 23:59:59'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        old_bound, 0,
+        "the space-separated bound is what excluded the row"
+    );
+}
