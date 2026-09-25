@@ -20,7 +20,7 @@
 **Status:** Loyalty cluster FULLY CLOSED 2026-08-31 — LOY-01 remediated; **LOY-06 CLOSED 2026-08-30** (earn now fires atomically at completion); SF-01 closed with it; **LOY-03 CLOSED 2026-08-31** (proportional refund reversal in-tx; void path proven unreachable + `void_sale` race fixed as CAS); LOY-04 verified fixed; LOY-05 verified fixed.
 
 Key open items:
-- ~~**LOY-02** — Earning points is not idempotent by sale~~ — **VERIFIED FIXED 2026-08-30**: migration 128 enforces a unique earn/redeem projection index (`crates/oz-core/src/db/loyalty_tests.rs:556`).
+- ~~**LOY-02** — Earning points is not idempotent by sale~~ — **VERIFIED FIXED 2026-08-30**: migration 128 enforces a unique earn/redeem projection index (`crates/kasirmu-core/src/db/loyalty_tests.rs:556`).
 - ~~**LOY-06** (P1) — loyalty earning never fires in production~~ — **CLOSED 2026-08-30**, landed in `3c23e47b` (swept by a concurrent website commit — content verified intact in HEAD; attribution recorded in the journal). Wiring (user decision: backend-atomic, base-currency): `earn_points` refactored into a connection-bound core `earn_points_with_conn` that joins the caller's transaction; `finalize_sale`/`finalize_sale_in_tx` award inside the same tx as the pending→completed transition (`changed == 1` guards replays; unique index guards races); the shortfall retry awards inline. Award uses `base_total_minor` when the CUR-02 snapshot is present (the formula is currency-naive — a low-exponent charge currency would multiply rewards). Failures logged non-fatal: a captured payment never rolls back over points. Pinned by 7 new core tests.
 - ~~**SF-01** (P1, found during the LOY-06 sweep) — shortfall retry sales stuck at `pending`~~ — **CLOSED 2026-08-30**, same commit: `complete_sale_with_resolved_shortfalls` wrote `status='pending'` + a 30-min expiry and nobody finalized retry sales — invisible to every report (they filter `status='completed'`) and an auto-void time bomb once the ADR-20 reaper is wired (the reaper is NOT currently wired on either client, so today's symptom is permanent-pending). The retry settles an already-captured payment → now writes `completed`, no expiry, returns `Completed`. Follow-up UX gap (open, minor): the dialog's `onComplete` still doesn't print a receipt the way the main path does.
 - ~~**LOY-03** — No refund or void compensation path for earned points~~ — **CLOSED 2026-08-31** (landed inside foreign commit `01d3932e` — swept while committing; content verified intact in HEAD): `create_refund` now reverses `round(award × refund/sale)` **in the same DB transaction**, capped at the not-yet-reversed remainder (cumulative refunds can never claw back more than the award). Ledger row records the full deduction (negative points, type `refund_reversal`, same sign convention as `redeem`); balance floors at zero (spent points aren't dragged negative); lifetime drops → tier demotion recomputes; `customers.loyalty_points` projection maintained. Idempotent per refund via deterministic PK `loyalty-reversal-<refund_id>`. Loyalty failure warns, never blocks the refund (policy matches the LOY-06 award hook). Semantics chosen by the user: proportional reversal. 8 tests (6 unit + 2 wiring). **Void path investigated and CLOSED as unreachable**: the transition table (`foundation/src/enums.rs`) only allows `Active→Voided` — a completed (paid, points-awarded) sale can never be voided, only refunded. That sweep did surface a real race in `void_sale`: the Active pre-check read outside the transaction and the UPDATE had no status predicate, so a concurrent finalize could be overwritten completed→voided; fixed as a compare-and-set (`AND status = 'active'`, explicit rollback on conflict).
@@ -36,7 +36,7 @@ Key open items:
 Key open items:
 - ~~**REP-02** — Revenue UI combines different currencies into one displayed total~~ — **VERIFIED FIXED 2026-08-30**: per-currency summing in `ui/src/features/reports/revenueTotals.ts` + DashboardScreen/SalesReportScreen tests.
 - ~~**REP-04** — Report queries do not show explicit refund/void/net-sales treatment~~ — **CLOSED 2026-08-30** (core `35d8bec4`; UI half landed inside foreign commit `98300bca` — content verified intact, attribution recorded in the journal): refunds never mutate the sale row, so revenue counted refunded sales at full value and the refund ledger was invisible everywhere. Daily/weekly/monthly revenue now aggregate sales and refunds via CTEs joined FULL OUTER on (period, currency) — each row carries `refund_minor` (attributed to the REFUND's own period) + `net_revenue_minor`; refund-only periods produce a row instead of dropping the refund. `refunds_summary` (per-currency count + totals) was added in core but never gained a consumer — **removed 2026-08-31** (the per-period `refund_minor` on the revenue rows already surfaces the same money in the UI; an orphaned query is exactly the dead-code shape CRM-06 proved dangerous — recoverable from `35d8bec4` if a dedicated panel is ever built). Voids were already surfaced (`voided_sales_summary`); net-sales semantics are now explicit in the row fields. SalesReportScreen shows Refunds + Net Revenue rows when the period has refunds.
-- ~~**REP-06** — cross-currency SUMs in the remaining report queries~~ — **CLOSED 2026-08-31** (core `38b456bd`, UI `3f9ced5c`): `top_products`, `hourly_heatmap`, `category_breakdown`, `payment_method_breakdown` and `voided_sales_summary` summed minor units across currencies into one number (the REP-02 class below the revenue trends). All five now GROUP BY currency with a `currency` field on every row; category percentages normalize WITHIN each currency; voided summary returns one row per currency; heatmap cells aggregate currency rows (orders sum, intensity tracks the display currency, labels list every amount); the refunds analytics card + its CSV are per-currency. **Follow-ups recorded:** (a) ~~the category PIE still compares slice areas across currencies — visual-semantics decision needed (per-currency pies vs currency filter)~~ — **CLOSED 2026-08-31 (`0c7f91e1`)**: per-currency tabs on the pie card (display currency default, strip only when the range spans currencies) + the CSV gained its missing currency column with per-row currency formatting; (b) ~~cloud `email_pg.rs` mirrors the old single-currency shapes AND lacks REP-04 refund netting — parity slice~~ — **CLOSED 2026-08-31**: the cloud already had the REP-06 per-currency shapes (note was stale; `4b8a630e`), REP-05 erasure fixed same-day, and **REP-04 netting landed in `88ea4e8c`** — the earlier "cloud schema has NO refunds table" note was WRONG: `refunds` existed in `init.pg.sql` all along (the prior grep had searched only `apps/`, missing `crates/oz-core/migrations/`); the real gaps were `tenant_id`, RLS policy, oz_app grants, cutover coverage and query wiring — all closed. `daily/weekly/monthly_revenue_pg` now mirror the local FULL OUTER netting semantics (PG rejects the correlated COGS subquery over ungrouped outer columns — E42803 — so COGS moved to a pre-aggregated CTE). **Still open:** the forecast queries (`category_popularity_pg`, `category_means_pg`) still INNER JOIN products (advisory consumers, deliberately not expanded); cloud email reports bucket in UTC — per-tenant timezone config does not exist in the cloud schema (REP-03 parity follow-up, needs a tenant-level setting + the same offset-string contract).
+- ~~**REP-06** — cross-currency SUMs in the remaining report queries~~ — **CLOSED 2026-08-31** (core `38b456bd`, UI `3f9ced5c`): `top_products`, `hourly_heatmap`, `category_breakdown`, `payment_method_breakdown` and `voided_sales_summary` summed minor units across currencies into one number (the REP-02 class below the revenue trends). All five now GROUP BY currency with a `currency` field on every row; category percentages normalize WITHIN each currency; voided summary returns one row per currency; heatmap cells aggregate currency rows (orders sum, intensity tracks the display currency, labels list every amount); the refunds analytics card + its CSV are per-currency. **Follow-ups recorded:** (a) ~~the category PIE still compares slice areas across currencies — visual-semantics decision needed (per-currency pies vs currency filter)~~ — **CLOSED 2026-08-31 (`0c7f91e1`)**: per-currency tabs on the pie card (display currency default, strip only when the range spans currencies) + the CSV gained its missing currency column with per-row currency formatting; (b) ~~cloud `email_pg.rs` mirrors the old single-currency shapes AND lacks REP-04 refund netting — parity slice~~ — **CLOSED 2026-08-31**: the cloud already had the REP-06 per-currency shapes (note was stale; `4b8a630e`), REP-05 erasure fixed same-day, and **REP-04 netting landed in `88ea4e8c`** — the earlier "cloud schema has NO refunds table" note was WRONG: `refunds` existed in `init.pg.sql` all along (the prior grep had searched only `apps/`, missing `crates/kasirmu-core/migrations/`); the real gaps were `tenant_id`, RLS policy, oz_app grants, cutover coverage and query wiring — all closed. `daily/weekly/monthly_revenue_pg` now mirror the local FULL OUTER netting semantics (PG rejects the correlated COGS subquery over ungrouped outer columns — E42803 — so COGS moved to a pre-aggregated CTE). **Still open:** the forecast queries (`category_popularity_pg`, `category_means_pg`) still INNER JOIN products (advisory consumers, deliberately not expanded); cloud email reports bucket in UTC — per-tenant timezone config does not exist in the cloud schema (REP-03 parity follow-up, needs a tenant-level setting + the same offset-string contract).
 - ~~**REP-05** — Current product/category joins can erase or rewrite historical sales attribution~~ — **ERASE HALF CLOSED 2026-08-31 (`cd4bdaa8`)**: `top_products`/`category_breakdown` INNER JOINed the mutable products table — deleting a product silently erased its historical sales from both reports (totals stopped reconciling; the category pie inflated surviving slices). Both LEFT JOIN now: deleted products keep revenue under their stored sku and bucket into Uncategorised. **Rewrite half remains open as a design item**: renames/category moves still retroactively change historical labels because `sale_lines` stores only `sku` — fixing it needs sale-line snapshot columns (name/category at sale time), a backfill for legacy rows, and cloud-sync parity; deliberately not smuggled into this slice. **REWRITE HALF CLOSED 2026-08-31 (`8952c558`)**: `sale_lines` gained snapshot columns (`product_id`, `product_name`, `category_id` — migration `20260826_sale_line_snapshots.sql` with best-effort backfill from current products for legacy rows; PG init + cloud `create_sale` + the cutover copy tool in parity). `insert_sale_line` resolves all three in its existing single product lookup. Both reports read snapshot-first with the products join as legacy fallback — renames, category moves and sku reuse now keep every sale era on its own correctly-labelled row (5 new core tests, incl. the flipped deleted-product semantics: a snapshot keeps its TRUE category instead of bucketing to Uncategorised).
 - ~~**REP-03** — Date boundaries have no store-timezone contract or input validation~~ — **CLOSED 2026-08-31 (`35f76dc3`)** per the design below, with one correction to the sketch: IANA names are NOT resolved (no `chrono-tz` dep) — the stored contract is a fixed offset string `'+HH:MM'`/`'-HH:MM'` (schema default `'UTC'` normalized to `'+00:00'`; anything unparseable falls back to UTC so a misconfigured store never silently shifts money buckets). The `UTC`→`+00:00` normalization is load-bearing: SQLite 3.45 (rusqlite bundled) treats the `UTC` *modifier* as a local→UTC conversion on bare values — `DATE('now','UTC')` shifted a whole day in tests; 3.50 behaves differently; `±HH:MM` is pure arithmetic and version-stable. Threaded through ALL date-bucket queries at once: 14 `reports.rs` functions incl. the REP-04 refund CTEs, `analytics.rs` staff series, `popularity.rs` trend (scoring decay windows stay UTC by design — rolling windows, not calendar buckets), `sales.rs` today-exports (both sides of the comparison shifted) and `shifts.rs` hourly labels (window filter stays on absolute instants). Boundaries validated as strict YYYY-MM-DD (SQLite silently NULLs garbage — a mistyped bound used to vanish rows instead of erroring). UI submits store-local boundary dates: `rangeForGranularity`/`cardRange`/presets/custom defaults anchor to the primary store day via `getPrimaryStoreScoped` (device-local legacy until the profile loads). **Open residual:** no settings UI exists to edit `store_profiles.timezone` (API + SQL only — the field had no editor before this slice either); cloud email tz parity needs a per-tenant setting (recorded above).
 - **ARCH-01 (new, found during the REP-04 cloud parity sweep 2026-08-31)** — POS terminals push offline_queue items to `/api/sync/push`, but the cloud stores them **store-and-forward with NO runtime drain into `sales`/`sale_lines`/`refunds`**: the cloud revenue tables are populated only by the `migrate_sqlite_to_pg` cutover tool and the REST `POST /api/v1/sales` path. Consequence: terminal sales and refunds never appear in cloud email reports — those reflect only cloud-owned (REST-created + cutover-copied) data. The approved "sync refunds to Postgres" premise for the netting slice was therefore WRONG as stated; slice 2 was honestly rescoped to cutover-copy coverage (refunds added to `DEFAULT_TABLES` + `tenant_id`/RLS/grants) + faithful query netting. **The drain gap is a separate architectural decision (who owns the write path, idempotency, tenant attribution of queued rows) — deliberately NOT silently fixed here.**
@@ -113,7 +113,7 @@ Key residual items:
 - ~~**CUR-10** — missing delete confirmation~~ — **VERIFIED FIXED 2026-08-30**: `ExchangeRateScreen` renders a `ConfirmDialog` (`currency-delete-confirm`, danger variant) before `deleteExchangeRate`; pinned by the delete tests.
 - **CUR-09** — locale/theme gaps (unverified; low value, left open)
 - ~~**CUR-11** — bounded/latest-rate APIs + e2e coverage~~ — **CLOSED 2026-08-31** (`8f026449` + `41598afa`): `CurrencyRepository::list_latest_exchange_rates` returns one row per pair (newest `effective_date`; `UNIQUE(pair, date)` makes ties impossible, `created_at`/`rowid` tail is defence in depth — `rowid`, not `id`, because rate ids are UUIDs), exposed as `list_latest_exchange_rates_scoped` on both clients behind `SETTINGS_READ`, and wired into the PaymentModal currency load (the picker needs current rates per pair, not the history; the rate editor keeps the full list). Playwright coverage added as a SCREEN-CONTRACT spec (route, columns, Save gating incl. same-pair rejection, CUR-10 delete-confirm) — the e2e run surfaced that **the exchange-rate commands have no cloud REST counterpart** (web/e2e mode serves them from the dev-mock; real CRUD is impossible there), an ARCH-01-family gap recorded rather than silently extended.
-- ~~**ARCH-01-family: rate REST gap**~~ — **CLOSED 2026-08-31** (`5b0f1662` + this batch): `crates/oz-api` gained the full rate surface mirroring the scoped IPC commands 1:1 — `GET /api/v1/exchange-rates` (CUR-04 order), `GET …/latest` (CUR-11), `GET …/latest/{from}/{to}` (case-insensitive), `POST …` (CUR-05 validation shared via `pg::validate_exchange_rate_request`), `DELETE …/{id}`. Dual-path like tax-rates: PG helpers in `pg.rs` (unique→409, FK→400) or SQLite fallback via `CurrencyRepository` with an explicit duplicate pre-check (the repo surfaces the constraint as a raw Db error). Rates are global reference data in the cloud schema (no `tenant_id`, no RLS — same treatment as categories). OpenAPI spec + protected-route assertions updated; 11 route tests + live-PG roundtrip + real-CRUD e2e (`api.spec.ts`, per-worker dates to survive parallel projects).
+- ~~**ARCH-01-family: rate REST gap**~~ — **CLOSED 2026-08-31** (`5b0f1662` + this batch): `crates/kasirmu-api` gained the full rate surface mirroring the scoped IPC commands 1:1 — `GET /api/v1/exchange-rates` (CUR-04 order), `GET …/latest` (CUR-11), `GET …/latest/{from}/{to}` (case-insensitive), `POST …` (CUR-05 validation shared via `pg::validate_exchange_rate_request`), `DELETE …/{id}`. Dual-path like tax-rates: PG helpers in `pg.rs` (unique→409, FK→400) or SQLite fallback via `CurrencyRepository` with an explicit duplicate pre-check (the repo surfaces the constraint as a raw Db error). Rates are global reference data in the cloud schema (no `tenant_id`, no RLS — same treatment as categories). OpenAPI spec + protected-route assertions updated; 11 route tests + live-PG roundtrip + real-CRUD e2e (`api.spec.ts`, per-worker dates to survive parallel projects).
 - **UUID-vs-rowid tiebreaker sweep — CLEAN 2026-08-31**: every other `ORDER BY … id` recency pattern was checked. `audit_log` (`created_at DESC, id DESC`) and `offline_queue` (`created_at ASC, id ASC`) are safe — both ids are UUID **v7** (time-ordered); `prune.rs` `ORDER BY id` is batch stability, not recency; `recipes`/PO-lines/transfer-lines `ORDER BY id` is listing order. `exchange_rates` was the only genuine trap (mixed id lineage possible) and it already pins `rowid` in SQLite / relies on `UNIQUE(pair, date)` in PG. No code change needed.
 - **.env poison — HARDENED 2026-08-31**: six Paddle note-lines with spaces in keys (`PADDLE PROD IDS = …`) broke `docker compose` for the whole e2e stack with the terse `failed to read .env: line 21: key cannot contain a space` (the root `.env` is untracked — the poison was local-only, commented out on discovery). Hardened with `scripts/validate-env.mjs` — a quote-state-aware dotenv validator (handles the real multi-line PEM value without false positives) wired as a pre-flight in `run-e2e.mjs startDocker()`, so the next poisoned line fails fast with every offending line numbered instead of dying inside compose. `.env.example` verified clean.
 - **Foreign breakage at HEAD — RESOLVED UPSTREAM + VERIFIED 2026-08-31**: the unused-`total` warning in tablet `pos.rs` (`192c5bc6`) and the nine red PaymentModal tests were fixed by the PROMO-3 owner's follow-up `100dcdef` mid-repair. Verified at the gate rather than assumed: fresh `cargo check` warning-free, `cargo clippy -p oz-pos-tablet -p oz-api --all-targets` clean, payment family 99/99 green.
@@ -132,7 +132,7 @@ Key residual items:
 > directory then. Two renames since then make several paths dead: `ui/src/features/stores/`
 > is now `ui/src/features/locations/`, and the `StoreProfile` type (and the `store` →
 > `location` vocabulary around it) is now `LocationProfile` in
-> `crates/oz-core/src/location_profile.rs`. `docs/api-reference.md` is now
+> `crates/kasirmu-core/src/location_profile.rs`. `docs/api-reference.md` is now
 > `docs/guides/api-reference.md`. Nothing else in these entries should be read as a
 > current path without checking.
 
@@ -189,7 +189,7 @@ Closed by that audit: the parity gate's scope (1 surface / `features/**` only �
 - **I18N-04 — 21 hardcoded sites classified benign, open to challenge** — **OPEN**: brand marks (kasir.mu ×2), an `aria-hidden` locked-tier preview (4), a hidden form-submit shim and `Ctrl`/`S`/`F12` key hints (4), a `Pro` tier badge, and input examples (`e.g. 50000`, `pcs / kg / box` ×2, `A-01` ×2). The `pcs / kg / box` and `A-01` **placeholders** are the defensible disagreement — they are user-visible hint text, and "not worth localizing" was the audit's judgment, not a measured one.
 - ~~**I18N-05 — `verify-ci-docs-drift.py` is red and unenforced** — **RESOLVED 2026-09 (0.0.37 CI-gate restoration)**: the two retired gates were restored into `dev-ci.yml#static-gates` + `#ci-docs-drift` (commits `bf8f0da3`, `ecbcc635`, `af246396`, `f5d94a20`, `6e270d70`), `scripts/gates.json` now carries 69 gate records (52 required + 1 advisory + 16 retired), and `verify-ci-docs-drift.py` exits **0 with 0 drift items** when run today. The "78 dead workflow references" were closed by `af246396` (police the hook's CI pointers, fix the four that were already wrong). The original root cause — `23c96330` retired `ci.yml`/`nightly.yml` without a `gates.json` record — is no longer live; the checker now polices hook→workflow references (consistent with AGENTS.md's re-injected "10 gates / dev-ci.yml" claims, which are accurate).~~
 
-## Bridge extraction (`crates/oz-bridge`) — 2026-09-11 — PRESERVED, NOT REMEDIATED
+## Bridge extraction (`crates/kasirmu-bridge`) — 2026-09-11 — PRESERVED, NOT REMEDIATED
 
 **Status:** New section, no fixes made. Every line below was located in the tree on
 2026-09-11 (branch `0.0.37`, measured from `3cc76b156` through `abbedfb4b`) and is deliberately **left in
@@ -212,61 +212,61 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 ### Security / authz-shaped
 
 - **BR-S1** — **[PBD]** the ungated backup pair takes no session at all and writes a
-  `.backup.db` beside the live db: `apps/desktop-client/src/commands/data.rs:33`
-  (`get_backup_status`), `:42` (`create_backup`) → `crates/oz-bridge/src/data.rs:274` /
-  `:294`, target derived at `crates/oz-bridge/src/data.rs:148` (`set_extension("backup.db")`);
-  `DATA_EXPORT` is held only by the twins `crates/oz-bridge/src/data.rs:712` and `:725`.
+  `.backup.db` beside the live db: `apps/desktop-tauri/src/commands/data.rs:33`
+  (`get_backup_status`), `:42` (`create_backup`) → `crates/kasirmu-bridge/src/data.rs:274` /
+  `:294`, target derived at `crates/kasirmu-bridge/src/data.rs:148` (`set_extension("backup.db")`);
+  `DATA_EXPORT` is held only by the twins `crates/kasirmu-bridge/src/data.rs:712` and `:725`.
   Not scope-aware, so it stays not scope-aware.
 - **BR-S2** — **[PBD]** `set_brand_logo_path` writes an **unvalidated** path whenever no
   `AppHandle` is present, under a comment skipping validation "for backward
-  compatibility" — `crates/oz-bridge/src/branding.rs:188-192` (comment `:189-190`) — and the
-  scoped twin repeats the same skip at `crates/oz-bridge/src/branding.rs:254-256`, so the
+  compatibility" — `crates/kasirmu-bridge/src/branding.rs:188-192` (comment `:189-190`) — and the
+  scoped twin repeats the same skip at `crates/kasirmu-bridge/src/branding.rs:254-256`, so the
   H-3 containment rule (`branding.rs:71-74`) is conditional on the shell, not on the caller.
 - **BR-S3** — **[PBD]** `set_brand_logo_path_scoped` gates `SETTINGS_EDIT`
-  (`crates/oz-bridge/src/branding.rs:247`), opens the scope's **store** db (`:249`) and then
+  (`crates/kasirmu-bridge/src/branding.rs:247`), opens the scope's **store** db (`:249`) and then
   persists to the **global** db (`:252`, `:255`) — while both siblings in the same file write
   the store db (`:215-217` colour, `:232-234` name). A scoped logo write therefore lands on
   the shared tenant row, not the store's.
 - **BR-S4** — **[PBD]** `open_product_images_scoped` authenticates and authorises nothing:
-  `apps/desktop-client/src/commands/browser.rs:32-41` delegates to
-  `crates/oz-bridge/src/browser.rs:64`, which calls `resolve_store` and no `require_permission`
-  anywhere in the module — the *intent* is stated at `crates/oz-bridge/src/browser.rs:61-63`
+  `apps/desktop-tauri/src/commands/browser.rs:32-41` delegates to
+  `crates/kasirmu-bridge/src/browser.rs:64`, which calls `resolve_store` and no `require_permission`
+  anywhere in the module — the *intent* is stated at `crates/kasirmu-bridge/src/browser.rs:61-63`
   and ADR #38 frames the same line as auth-only
   (`docs/decisions/2026-08-11-adr38-retail-row-context-menu-browser-images.md:81`, "resolves
   the session (auth precedent, ADR #7)"), which is why this reads as designed rather than
   as a hole. **Correction to the hand-off:** no `ADR #38` *code* comment describes the
   missing authorisation; the descriptive text is the module doc above plus the ADR line.
-- **BR-S5** — **[PBD]** `pick_logo_file` has no gate (`apps/desktop-client/src/commands/branding.rs:102`)
+- **BR-S5** — **[PBD]** `pick_logo_file` has no gate (`apps/desktop-tauri/src/commands/branding.rs:102`)
   where `pick_logo_file_scoped` holds `SETTINGS_EDIT`
-  (`apps/desktop-client/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
+  (`apps/desktop-tauri/src/commands/branding.rs:164`, gate at `:171`). Both keep their bodies
   desktop-side (no seam for `tauri::dialog` — ADR #49 §What was NOT extracted).
 - **BR-S6** — **[PBD]** `set_setting` authorises a **caller-supplied** identity:
-  `crates/oz-bridge/src/settings.rs:989` takes `user_id: &str` (`:993`) and gates *that* at
+  `crates/kasirmu-bridge/src/settings.rs:989` takes `user_id: &str` (`:993`) and gates *that* at
   `:1007` (`require_permission_for_user`), while the value arrives from the renderer at
-  `apps/desktop-client/src/commands/settings.rs:277` — the gate answers for whoever the
+  `apps/desktop-tauri/src/commands/settings.rs:277` — the gate answers for whoever the
   caller names, not for the session.
 - **BR-S7** — **[PBD]** `resolve_report_scope` authorises against the **global** identity db
-  (`crates/oz-bridge/src/reports.rs:65`, `:67-69`) and then opens
+  (`crates/kasirmu-bridge/src/reports.rs:65`, `:67-69`) and then opens
   `session.store_id`'s store db (`:71-73`) with no re-check of the binding between them.
 - **BR-S8** — **[PBD]** `get_customer_scoped` is the one customer door that fails on gate
   **kind** rather than gate order, and it is why the door is *not* delegated (ADR #49 §4:
   *"Gates that are not scope-aware stay not scope-aware; an extraction is not the place to
   widen a gate."*). The tablet gates with the **non-scope-aware**
-  `require_customer_permission` (`apps/tablet-client/src/commands/customers.rs:91` →
+  `require_customer_permission` (`apps/mobile-tauri/src/commands/customers.rs:91` →
   `require_permission_for_user` on the global identity db, `:279-286`), where
-  `crates/oz-bridge/src/customers.rs:428` uses the scope-aware
+  `crates/kasirmu-bridge/src/customers.rs:428` uses the scope-aware
   `ctx.require_session_permission`. The bridge's doc block (`:410-414`) asserts the shell
-  used the scope-aware form — true of the **desktop** (`apps/desktop-client/src/
+  used the scope-aware form — true of the **desktop** (`apps/desktop-tauri/src/
   commands/customers.rs:193-195` already delegates), false of the tablet. A third
   two-shell fork for the same owner ruling as `history`'s five export doors and
   `settings`' six scoped setters.
 - **BR-S9** — **[PBD]** the two receipt-format **setters** are a two-shell gate fork, which is why they
   are *not* delegated. The tablet runs **one** gate, the scope-aware
   `require_permission_for_session(&state, &session, permissions::SETTINGS_EDIT)`
-  (`apps/tablet-client/src/commands/receipt_format.rs:41`, `:99`); the bridge twins run the **same** gate
+  (`apps/mobile-tauri/src/commands/receipt_format.rs:41`, `:99`); the bridge twins run the **same** gate
   and then a **second**, ADR #47 hierarchical-resource gate —
   `ctx.require_permission_for_session_resource(session, SETTINGS_EDIT, ScopeType::Location, …)` at
-  `crates/oz-bridge/src/receipt_format.rs:65-69` (the workspace id) and `:150-154` (the primary location
+  `crates/kasirmu-bridge/src/receipt_format.rs:65-69` (the workspace id) and `:150-154` (the primary location
   id, resolved by the bridge-only helper `primary_location_id`, `:120`). Delegating would therefore
   **add** a gate the tablet has never enforced, which §4 forbids as plainly as removing one. The
   tablet's own module doc (`receipt_format.rs:1-4`) already records why: *"the location-resource scoping
@@ -276,15 +276,15 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - **BR-S10** — **[PBD]** `update_staff_scoped` is not delegated because the two shells disagree on the
   security-audit `debug_upgrade` flag — a divergence in **what gets audited**, not in a gate, so it is
   not covered by the BR-S8/BR-X4/BR-S9 ruling. `Store::record_security_event(event, debug_upgrade)`
-  (`crates/oz-core/src/db/audit_security.rs:382-392`) drops the write for a CONFIRMED Free tier
+  (`crates/kasirmu-core/src/db/audit_security.rs:382-392`) drops the write for a CONFIRMED Free tier
   (`ent.loaded && ent.tier.audit_retention_days().is_none()`), and `debug_upgrade` decides whether the
   desktop's dev Free→Premium promotion applies first. The tablet wrapper passes **`false`**
-  (`apps/tablet-client/src/commands/auth.rs:81`); the bridge wrapper passes **`true`**
-  (`crates/oz-bridge/src/auth.rs:160`) — the desktop's behaviour. The core doc states the intent at
+  (`apps/mobile-tauri/src/commands/auth.rs:81`); the bridge wrapper passes **`true`**
+  (`crates/kasirmu-bridge/src/auth.rs:160`) — the desktop's behaviour. The core doc states the intent at
   `audit_security.rs:370-374`: *"tablet passes `false` so it never mirrors the desktop divergence"*.
   Delegating would therefore begin writing security events for Free-tier staff updates on the tablet in
   debug builds. Pinned by `confirmed_free_records_nothing_even_in_a_debug_build`
-  (`apps/tablet-client/src/commands/staff_security_events_tests.rs:179-194`), which went red during the
+  (`apps/mobile-tauri/src/commands/staff_security_events_tests.rs:179-194`), which went red during the
   port and is how this was found. `create_staff_scoped` carries the same fork but not the exposure:
   `enforce_staff_quota` precedes the recorder and Free caps staff at one account, so a Free tenant
   cannot reach that `record_security_event` call.
@@ -292,71 +292,71 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 ### Correctness / robustness
 
 - **BR-C1** — **[PBD]** `register_terminal` is a registered-shaped command that is **not in
-  `invoke_handler!`**: `apps/desktop-client/src/commands/terminals.rs:123` carries
-  `#[tauri::command]`, but `apps/desktop-client/src/lib.rs:1036-1051` registers 16
+  `invoke_handler!`**: `apps/desktop-tauri/src/commands/terminals.rs:123` carries
+  `#[tauri::command]`, but `apps/desktop-tauri/src/lib.rs:1036-1051` registers 16
   `commands::terminals::` entries and `register_terminal` is not one of them (16 of 17).
   Dead on the wire, alive in the test suite.
 - **BR-C2** — **[PBD]** `build_device_binding_dto` treats a keyring **read failure** as an
-  invalid signature: `crates/oz-bridge/src/terminals.rs:343` →
+  invalid signature: `crates/kasirmu-bridge/src/terminals.rs:343` →
   `verify_binding(...).unwrap_or(false)` at `:357-364`, so `signature_valid:false` cannot be
   distinguished from "the device secret could not be read" (`verify_binding` is at `:78`).
 - **BR-C3** — **[PBD]** `export_data` accepts `date_from` / `date_to` over IPC
-  (`crates/oz-bridge/src/data.rs:63`, `:65`) and **never reads them** — zero references in
+  (`crates/kasirmu-bridge/src/data.rs:63`, `:65`) and **never reads them** — zero references in
   the whole body `:310-485`. A user-scoped "export this date range" silently exports
   everything.
 - **BR-C4** — **[PBD]** `create_backup` holds the **global connection guard** from
   `Store::backup` through a filesystem stat with no explicit drop:
-  `crates/oz-bridge/src/data.rs:299` (`lock_global`) → `:301` (`store.backup`) → `:302`
+  `crates/kasirmu-bridge/src/data.rs:299` (`lock_global`) → `:301` (`store.backup`) → `:302`
   (`std::fs::metadata`).
 - **BR-C5** — **[PBD]** `import_data` mixes connection-bound existence probes with
-  transaction writes inside one open transaction: tx at `crates/oz-bridge/src/data.rs:518`,
+  transaction writes inside one open transaction: tx at `crates/kasirmu-bridge/src/data.rs:518`,
   `store.conn()` probes at `:562`, `:589`, `:614`, `:645`, `tx.execute` writes at `:570`,
   `:575`, `:624`, `:629`, `:653`, `:659`. The two paths can disagree about the same row.
 - **BR-C6** — **[PBD]** `export_data`'s features map silently **empties** on a read error:
-  `crates/oz-bridge/src/data.rs:424-427` (`load_features().map(...).unwrap_or_default()`)
+  `crates/kasirmu-bridge/src/data.rs:424-427` (`load_features().map(...).unwrap_or_default()`)
   — a failed feature read exports as "no features", not as an error.
 - **BR-C7** — **[PBD]** `gather_usage` turns four database faults into logged zeros:
-  `crates/oz-bridge/src/subscription.rs:127-145` (`count_locations`, `count_staff_users`,
+  `crates/kasirmu-bridge/src/subscription.rs:127-145` (`count_locations`, `count_staff_users`,
   `count_terminals`, `count_warehouse_locations`, each `unwrap_or_else(|e| { warn; 0 })`), so
   quota gates see "no usage" rather than "unknown".
 - **BR-C8** — **[PBD]** `per_location_over_quota_rows` has a TOCTOU shape:
-  `crates/oz-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
+  `crates/kasirmu-bridge/src/subscription.rs:639` probes `manager.store_db_exists(store_id)` and
   `:642` then opens it (`open_store`); the file can appear or vanish between the two. A
   store that fails to answer is skipped, not fatal (`:660-663`).
 - **BR-C9** — **[PBD]** `gate_permission` is computed twice for the same feature in one
-  verdict: `crates/oz-bridge/src/subscription.rs:382` and again at `:386`.
+  verdict: `crates/kasirmu-bridge/src/subscription.rs:382` and again at `:386`.
 - **BR-C10** — **[PBD]** `get_hardware_settings_scoped` carries an inherited **double
-  session read**: `crates/oz-bridge/src/settings.rs:672` resolves the session, `:676` calls
-  `resolve_scope`, which resolves it **again** (`crates/oz-bridge/src/ctx.rs:170`), and `:677`
+  session read**: `crates/kasirmu-bridge/src/settings.rs:672` resolves the session, `:676` calls
+  `resolve_scope`, which resolves it **again** (`crates/kasirmu-bridge/src/ctx.rs:170`), and `:677`
   delegates to `get_hardware_settings` (`:557`). Preserved because the unscoped reader is
   shared; the second resolve is what makes an expiry between the two calls observable.
 - **BR-C11** — **[PBD]** `run_list_credit_sales` binds the **payment reference** into the
-  **customer name** column: `crates/oz-bridge/src/settings.rs:380` selects
+  **customer name** column: `crates/kasirmu-bridge/src/settings.rs:380` selects
   `p.gateway_reference` at index 1 and `:392` reads it as
   `customer_name: row.get::<_, Option<String>>(1)?` (DTO field declared at `:167`).
 
 ### Consistency across modules — **a PATTERN, three independent instances**
 
 - **BR-X1** — **[PBD]** store-open asymmetry inside one module:
-  `crates/oz-bridge/src/terminals.rs` reaches the store db through `db_manager.open_store` in
+  `crates/kasirmu-bridge/src/terminals.rs` reaches the store db through `db_manager.open_store` in
   **9** commands (`:436`, `:474`, `:525`, `:556`, `:591`, `:664`, `:700`, `:758`, `:810`) and
   through `ctx.resolve_store` in **7** (`:187`, `:217`, `:240`, `:265`, `:285`, `:308`, `:332`)
   — two session-resolution paths with different failure text and different re-entry
   behaviour, in the same file.
 - **BR-X2** — **[PBD]** same split as a *db-selection* asymmetry in features:
-  `list_all_features` reads the **global** db (`crates/oz-bridge/src/features.rs:53-54`) while
+  `list_all_features` reads the **global** db (`crates/kasirmu-bridge/src/features.rs:53-54`) while
   `list_all_features_scoped` reads the scope's **store** db
-  (`crates/oz-bridge/src/features.rs:629-633`) — the pair can answer differently for one user.
-- **BR-X3** — **[PBD]** and in prose: `apps/desktop-client/src/commands/settings.rs:9-11`
+  (`crates/kasirmu-bridge/src/features.rs:629-633`) — the pair can answer differently for one user.
+- **BR-X3** — **[PBD]** and in prose: `apps/desktop-tauri/src/commands/settings.rs:9-11`
   still promises that store name / currency / features "may be exposed here in the future",
   while the generic key-value (`:274` `set_setting`), hardware (`:178`, `:351`) and batch
   (`:311` `set_settings_scoped`) commands are already exposed in that same file.
 - **BR-X4** — **[PBD]** and as a **two-shell fork** in `customers`, which is why five of its
   seven doors are *not* delegated. The tablet opens the store db **before** the permission
   gate (`resolve_scope` → `require_customer_permission`) at
-  `apps/tablet-client/src/commands/customers.rs:115-116` (`create`), `:141-142` (`update`),
+  `apps/mobile-tauri/src/commands/customers.rs:115-116` (`create`), `:141-142` (`update`),
   `:167-168` (`delete`), `:194-195` (`search`) and `:226-227` (`history`); the bridge twins
-  gate first and open afterwards (`crates/oz-bridge/src/customers.rs:458-460`, `:488-490`,
+  gate first and open afterwards (`crates/kasirmu-bridge/src/customers.rs:458-460`, `:488-490`,
   `:516-518`, `:545-547`, `:579-581`). The bridge is **not** consistent about this — it
   preserves the open-before-gate order in `gift_cards` (`:49-51`), `loyalty` (`:87-89`) and
   `purchasing` (`:500-502`) — so this is the desktop body the module was ported from, not a
@@ -370,14 +370,14 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 ### Doc / test debt
 
 - **BR-D1** — **[PBD]** `"all 32 features"` is wrong in three places —
-  `apps/desktop-client/src/commands/features.rs:9`, `crates/oz-bridge/src/features.rs:45` and
-  `:383` — while the enum carries **39** variants (`crates/oz-core/src/features.rs:31`), the
-  metadata table returns **39** rows (`crates/oz-bridge/src/features.rs:385`), and the desktop
+  `apps/desktop-tauri/src/commands/features.rs:9`, `crates/kasirmu-bridge/src/features.rs:45` and
+  `:383` — while the enum carries **39** variants (`crates/kasirmu-core/src/features.rs:31`), the
+  metadata table returns **39** rows (`crates/kasirmu-bridge/src/features.rs:385`), and the desktop
   test enumeration lists **39** (`apps/desktop-client/src/commands/features_tests.rs:195`).
   Additional drift found while counting: the two core test enumerations carry **33** and **37**
-  (`crates/oz-core/src/features_tests.rs:181`, `:389`) — neither matches 39 either.
+  (`crates/kasirmu-core/src/features_tests.rs:181`, `:389`) — neither matches 39 either.
 - **BR-D2** — **[PBD]** `device_hostname` is undocumented at
-  `crates/oz-bridge/src/features.rs:375`: its doc block (`:348-352`) is fused into the comment
+  `crates/kasirmu-bridge/src/features.rs:375`: its doc block (`:348-352`) is fused into the comment
   run that ends on `feature_to_module_id`'s own doc (`:353-358`), so rustdoc attaches both
   runs to `feature_to_module_id` (`:359`) and `missing_docs` never fires for the helper.
 - **BR-D3** — **[PBD]** caller-outside-tests-only desktop adapters. **Correction to the
@@ -396,17 +396,17 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   second is `SALES_PROCESS`, not `SALE_PROCESS`, and both live tablet-side (registered in
   tablet `lib.rs:550-551`). **Second correction to this entry, 2026-09-13 09:50 +07, tip
   `ad76c16c2`:** the two clauses it just lost were both wrong. the declarations are
-  `apps/tablet-client/src/commands/pos.rs:278` (`list_active_carts_scoped`) and `:313`
+  `apps/mobile-tauri/src/commands/pos.rs:278` (`list_active_carts_scoped`) and `:313`
   (`get_active_cart_scoped`) — not `:270`/`:305`, stale by eight (query: `git grep -n
   "fn list_active_carts_scoped\|fn get_active_cart_scoped" --
-  apps/tablet-client/src/commands/pos.rs`, 09:45 +07). and there is no desktop-scoped
+  apps/mobile-tauri/src/commands/pos.rs`, 09:45 +07). and there is no desktop-scoped
   `scoped_orphans` list that could hold anything: `scripts/ipc-parity-allowlist.json` carries
   **one shared** `scoped_orphans` section at `:188-214`, while `desktop` (`:3`) and `tablet`
   (`:32`) are separate per-shell lists (query: read the file's top-level keys, 09:45 +07). the
   clause promised a reader a section that does not exist, and this week it sent a worker to the
   wrong lines of that file.
 - **BR-D5** — **[PBD]** four model helpers are `pub` **only** so `model_tests.rs` can reach
-  them: `crates/oz-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`
+  them: `crates/kasirmu-bridge/src/topology/model.rs:27` (`ser_f64_finite`), `:35`
   (`de_f64_or_null`), `:55` (`de_direction_or_null`), `:250` (`default_direction`). They are
   the narrowable half of the topology visibility cost in ADR #49 §Consequences (4 of 28).
 
@@ -417,10 +417,10 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
   (`orphan_permission`, `:246`) reads bodies through a **non-recursive** glob —
   `scripts/verify-ipc-parity.py:272` (`for rs in sorted(cmd_dir.glob("*.rs"))`).
   **Correction to the hand-off:** the line is `:272`, not `:277`. Consequence:
-  `apps/desktop-client/src/commands/topology/` — 7 `require_permission` sites today, all in
+  `apps/desktop-tauri/src/commands/topology/` — 7 `require_permission` sites today, all in
   `topology/commands.rs` — has never been examined by that half.
 - **BR-T2** — the extraction's own count invariant is blind in the same way: `grep -rh
-  'pub async fn' apps/desktop-client/src/commands/*.rs` is non-recursive, so it cannot see the
+  'pub async fn' apps/desktop-tauri/src/commands/*.rs` is non-recursive, so it cannot see the
   **12** sites under `commands/topology/`. Measured today: **488** top-level vs **500**
   recursive. Any lane pinning "488" is pinning a glob artefact, not a property of the code.
 - **BR-T3** — an isolated git worktree that shares the main `CARGO_TARGET_DIR` can produce a
@@ -436,7 +436,7 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 - **BR-T4** — **new, found while cross-checking BR-T1**: `orphan_permission`'s body window is
   the **desktop** file (`scripts/verify-ipc-parity.py:272-291`, "`require_permission` not in
   body → None"), but after extraction the gate text lives in the bridge
-  (`crates/oz-bridge/src/pos.rs:232`, `:345`). 16 of the 25 allowlisted orphans now have zero
+  (`crates/kasirmu-bridge/src/pos.rs:232`, `:345`). 16 of the 25 allowlisted orphans now have zero
   gate text in their desktop body; for those 16 the bridge body also has none, so no verdict
   has flipped **yet** — but the check can no longer see an extracted desktop gate, and the
   campaign is still moving bodies. The two GATED verdicts in `BR-D4` were reachable only
@@ -444,9 +444,9 @@ sibling lane may shift them, so re-grep the symbol before trusting a number.
 
 ### dated addendum, 2026-09-13 09:50 +07 (tip `ad76c16c2`) — the two cart orphans, and the recurrence
 
-- dead **and** gated, zero ui callers (four greps, 09:45 +07): scoped names over `ui/` → 0; wrappers `listActiveCartsScoped|getActiveCartScoped` over `ui/src` → 0; unscoped literals over `ui/src` → the only 2 hits are handler rows at `ui/src/dev-mock/handlers/sales.ts:515-516`, not callers; tree-wide the names exist only in tablet `pos.rs:278`/`:313`, tablet `lib.rs:550-551`, the allowlist and docs. their unscoped twins at `pos.rs:268`/`:300` are declared but registered in neither shell (same grep over `apps/desktop-client` and `apps/tablet-client`).
+- dead **and** gated, zero ui callers (four greps, 09:45 +07): scoped names over `ui/` → 0; wrappers `listActiveCartsScoped|getActiveCartScoped` over `ui/src` → 0; unscoped literals over `ui/src` → the only 2 hits are handler rows at `ui/src/dev-mock/handlers/sales.ts:515-516`, not callers; tree-wide the names exist only in tablet `pos.rs:278`/`:313`, tablet `lib.rs:550-551`, the allowlist and docs. their unscoped twins at `pos.rs:268`/`:300` are declared but registered in neither shell (same grep over `apps/desktop-tauri` and `apps/mobile-tauri`).
 - the guard cannot fire: `SALES_PROCESS` is granted at `platform/core/src/rbac_presets.rs:53`, `:137`, `:166` — Manager, Staff and Admin, which is both presets carrying `TERMINALS_REGISTER` (`:117`, `:231`) — and Owner holds `&["*"]` at `:46`. note that `apps/desktop-client/src/rbac_presets.rs` does not exist (`git ls-files apps/desktop-client/src/rbac_presets.rs` → empty, 09:47 +07): rbac lives in `platform/core`, and notes and briefs keep citing the phantom path.
-- a pin over unreachable code is a monument, so the honest repair is **deletion**, parked with the tablet crate owner because the delete slice crosses into `apps/tablet-client` and into the allowlist, neither of which this lane edits.
+- a pin over unreachable code is a monument, so the honest repair is **deletion**, parked with the tablet crate owner because the delete slice crosses into `apps/mobile-tauri` and into the allowlist, neither of which this lane edits.
 - the recurrence: `docs/plans/_backlog/0.0.36-backlog.md:3127-3135` records this exact error once — a manual triage reported 6 gated, the gate found 8, because permissions were checked only for orphans whose unscoped twin the ui calls and the group where neither was called was skipped. tonight's sweep (`python scripts/verify-ipc-parity.py`, 09:48 +07, exit 1) prints `2 GATED DEAD SURFACE -> get_active_cart_scoped=SALES_PROCESS, list_active_carts_scoped=SALES_PROCESS` against those 8. one mechanism, one sentence: **a manual sweep restricted to orphans with a called unscoped twin systematically undercounts the gated ones.** that backlog file is right and was not touched.
 
 ## Git scratch — `git clean -xdf` deletes the ignored `.agents/` set (`GH-CLEAN-01`, OPEN, added 2026-09-13 11:15 +07, tip `867cec26a`)
@@ -673,14 +673,14 @@ reproduce; each correction is inline, in the bullet that carries it.
   sync-conflict review route, parked twice today waiting on its owner, was resolved from outside at
   **11:24:12 +07** by `ded4686776` `fix(tablet): register and gate sync-conflict review commands for
   IPC parity`: **317 insertions / 3 deletions across 6 files** (`git show --numstat
-  --date=iso-strict ded4686776`, 11:38 +07) — `apps/tablet-client/src/commands/sync.rs` 186/0 (the 186
-  lines of real tablet commands), `apps/tablet-client/src/commands/sync_tests.rs` 89/0,
-  `apps/tablet-client/src/lib.rs` 2/0 (the two registrations,
+  --date=iso-strict ded4686776`, 11:38 +07) — `apps/mobile-tauri/src/commands/sync.rs` 186/0 (the 186
+  lines of real tablet commands), `apps/mobile-tauri/src/commands/sync_tests.rs` 89/0,
+  `apps/mobile-tauri/src/lib.rs` 2/0 (the two registrations,
   `commands::sync::list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped`),
-  `apps/tablet-client/src/commands/registration_gate_tests.rs` 22/1,
-  `apps/desktop-client/src/commands/sync.rs` 7/1,
-  `apps/desktop-client/src/commands/registration_gate_tests.rs` 11/1. It was fixed by **registering**,
-  not by allowlisting: both names are present in `apps/tablet-client/src/lib.rs` at HEAD and neither
+  `apps/mobile-tauri/src/commands/registration_gate_tests.rs` 22/1,
+  `apps/desktop-tauri/src/commands/sync.rs` 7/1,
+  `apps/desktop-tauri/src/commands/registration_gate_tests.rs` 11/1. It was fixed by **registering**,
+  not by allowlisting: both names are present in `apps/mobile-tauri/src/lib.rs` at HEAD and neither
   `sync_conflict` string appears in `scripts/ipc-parity-allowlist.json` (11:49 +07), so the
   crate-owning lane took the port option and the inert stubs are gone at the source. **Two figures in
   the hand-off are corrected by this record, and neither correction is a criticism of the repair.**
@@ -690,11 +690,11 @@ reproduce; each correction is inline, in the bullet that carries it.
   parity OK, and that did not reproduce at any minute measured here: the command **exits 1** at 11:37
   +07 (tip `9c6a30099`), at 11:48 +07 (tip `81e4589c1`) and at 11:55 +07 (tip `25dfa4659`), each time
   with 2 violations — now `get_kds_routing_rules_scoped` and `save_kds_routing_rules_scoped`, desktop
-  registrations present in `apps/desktop-client/src/lib.rs` and absent from the allowlist (11:48 +07).
+  registrations present in `apps/desktop-tauri/src/lib.rs` and absent from the allowlist (11:48 +07).
   What the repair demonstrably closed is the class it named: no `sync_conflict` name appears anywhere
   in the gate's output at 11:55 +07. The parity verdict on this checkout changed state under three
   different tips inside twenty minutes because the tree is shared and moving, so cite it only with its
-  minute and its tip. This belongs to `apps/tablet-client`, not to this lane.
+  minute and its tip. This belongs to `apps/mobile-tauri`, not to this lane.
 
 ### Dated correction (2026-09-20, 13:53 +07) — GI-1's note half is closed, and the `ci` keys were the true half
 
@@ -1120,7 +1120,7 @@ now the canary; it is informational by contract, so a human has to read line 2.
 **The premise under the entry above is false, and two lanes disproved it.** That entry counted `17`
 newly-visible sites, and the 00:53 entry queued them as product work in `ui/`, both on the reading that
 a missing token check had been found. Measured at 02:23 the reading was wrong: the finding says a
-command is not registered on the shell being graded. That is an `apps/tablet-client` registration and
+command is not registered on the shell being graded. That is an `apps/mobile-tauri` registration and
 allowlist fact, not a component fact, and it is not fixable in `ui/`.
 
 **`LicenseActivationScreen.tsx` has no token string at all.** In the 361-line file, `sessionToken`,
@@ -1129,9 +1129,9 @@ tablet list — `:96`, `:100`, `:106`, `:115` — and its wrappers take no token
 pre-auth cold path: `AppShell.tsx:642` mounts it inside the `step === 'activate'` branch, before any
 session exists, so a token bail there guards nothing and disables license activation on both shells.
 And there is no twin to route to. `activate_license_scoped` has **0** references across `ui/src`, `apps`
-and `crates`; `apps/tablet-client/src` registers `activate_license` **0** times while
-`apps/desktop-client/src/lib.rs:1177` registers it once; and
-`apps/desktop-client/src/commands/registration_gate_debt.generated.rs:102` already carries
+and `crates`; `apps/mobile-tauri/src` registers `activate_license` **0** times while
+`apps/desktop-tauri/src/lib.rs:1177` registers it once; and
+`apps/desktop-tauri/src/commands/registration_gate_debt.generated.rs:102` already carries
 `("license::activate_license", "no_session_resolution")` — a no-session command recorded as accepted,
 which is the opposite of a missed guard.
 
@@ -1181,7 +1181,7 @@ inside a guard rather than around a read.
 NAMES and already filed the same fact on its own side, in one line:
 `info[tablet]: 458 UI command strings, 322 registered, 156 unregistered UI command names … (154 allowlisted)`,
 with per-name lines naming
-`apps/tablet-client/src/lib.rs` `generate_handler` as the place a name is missing.
+`apps/mobile-tauri/src/lib.rs` `generate_handler` as the place a name is missing.
 `verify-scoped-reads.py` owns the set of CALL SITES: 105 of them over those same 64 names. So 105
 component tickets would double-book 64 gaps that are already known, against an owner that is not the
 reporting component — and the 00:53 entry's queue of 17 pointed "in `ui/`" is aimed at the wrong tree.
@@ -1653,9 +1653,9 @@ that the global queue stays empty. Its sibling
 genuine HTTP failure records `Failed` and never `Synced`. The C54 divergence pin that asserted the old
 `NotFound` behaviour was deleted by the fixing commit, on purpose.
 
-**Path note (corrected here).** This entry originally named `apps/tablet-client/src/commands/offline.rs`,
-`crates/oz-bridge/src/offline.rs`, `apps/tablet-client/src/state.rs`, `crates/oz-bridge/src/ctx.rs` and
-`crates/oz-core/*` — all pre-rebrand paths that no longer exist, so a reader following the record could
+**Path note (corrected here).** This entry originally named `apps/mobile-tauri/src/commands/offline.rs`,
+`crates/kasirmu-bridge/src/offline.rs`, `apps/mobile-tauri/src/state.rs`, `crates/kasirmu-bridge/src/ctx.rs` and
+`crates/kasirmu-core/*` — all pre-rebrand paths that no longer exist, so a reader following the record could
 not reach the code. The real paths are `apps/mobile-tauri/src/commands/offline.rs`,
 `crates/kasirmu-bridge/src/offline.rs`, `apps/mobile-tauri/src/state.rs`, `crates/kasirmu-bridge/src/ctx.rs`
 and `crates/kasirmu-core/src/*`.
