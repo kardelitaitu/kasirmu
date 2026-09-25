@@ -1796,3 +1796,176 @@ async fn nudge_coalesces_a_burst_into_one_permit() {
         "three nudges must coalesce into one permit; a second permit means Notify queued"
     );
 }
+
+// ── C23: the running flag must not outlive the task that owns it ─────
+//
+// The daemon owns `running` for as long as its run-loop task lives. The
+// pre-C23 code cleared the flag with a statement placed AFTER the loop, so a
+// panic unwinding out of a tick skipped it: `running` stayed true and
+// `start` then refused with "already running" until the process restarted.
+//
+// The guard that replaces it decides supersession by comparing the sender in
+// the shutdown slot against this run's OWN sender. "The slot is Some" is not
+// that test -- a healthy run holds its own sender there for its whole life --
+// and these tests pin the difference in both directions.
+
+/// What a run owns at spawn: its shared status, the shutdown slot, and the
+/// guard that releases the flag when the task ends.
+type ArmedGuard = (
+    Arc<RwLock<DaemonStatus>>,
+    Arc<Mutex<Option<watch::Sender<bool>>>>,
+    RunningFlagGuard<DaemonStatus>,
+);
+
+/// Build the triple above.
+fn armed_guard(running: bool) -> ArmedGuard {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running,
+        ..Default::default()
+    }));
+    let (tx, _rx) = watch::channel(false);
+    let own = tx.clone();
+    let slot = Arc::new(Mutex::new(Some(tx)));
+    let guard = RunningFlagGuard::arm(Arc::clone(&status), Arc::clone(&slot), own);
+    (status, slot, guard)
+}
+
+/// THE DEFECT. A panic inside a tick must still release the flag.
+#[tokio::test]
+async fn the_running_flag_is_cleared_when_the_owning_task_panics() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (tx, _rx) = watch::channel(false);
+    let own = tx.clone();
+    let slot = Arc::new(Mutex::new(Some(tx)));
+
+    let task = tokio::spawn({
+        let status = Arc::clone(&status);
+        let slot = Arc::clone(&slot);
+        async move {
+            let _guard = RunningFlagGuard::arm(status, slot, own);
+            panic!("tick panicked");
+        }
+    });
+
+    assert!(
+        task.await.is_err(),
+        "the spawned task must actually panic for this test to mean anything"
+    );
+
+    for _ in 0..100 {
+        if !status.read().await.running {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!(
+        "running is still true after the owning task panicked -- the daemon is wedged          and start() will refuse with 'already running' until restart (C23)"
+    );
+}
+
+/// The orderly path clears synchronously, so `stop()` -- which awaits the
+/// run-loop task -- observes the flag already cleared.
+#[tokio::test]
+async fn the_orderly_path_clears_the_flag() {
+    let (status, _slot, guard) = armed_guard(true);
+    guard.clear().await;
+    assert!(
+        !status.read().await.running,
+        "clear() must clear the flag before returning"
+    );
+}
+
+/// A run that still owns the slot clears on drop: the normal exit and every
+/// early return, neither of which goes through `clear()`.
+#[tokio::test]
+async fn a_run_that_still_owns_the_slot_clears_on_drop() {
+    let (status, _slot, guard) = armed_guard(true);
+    drop(guard);
+    assert!(
+        !status.read().await.running,
+        "dropping the guard with the slot still ours must clear the flag"
+    );
+}
+
+/// Supersession: a newer run has installed ITS OWN sender, so the old run must
+/// leave the status alone. This is the rule the manual code carried.
+#[tokio::test]
+async fn a_superseded_run_does_not_clear_the_new_runs_flag() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (old_tx, _old_rx) = watch::channel(false);
+    let (new_tx, _new_rx) = watch::channel(false);
+    let slot = Arc::new(Mutex::new(Some(new_tx)));
+
+    // Orderly path: clear() must honour the ownership rule.
+    RunningFlagGuard::arm(Arc::clone(&status), Arc::clone(&slot), old_tx.clone())
+        .clear()
+        .await;
+    assert!(
+        status.read().await.running,
+        "a superseded run cleared the flag a newer run owns (orderly path)"
+    );
+
+    // Drop path: the panic/early-return route must apply the same rule.
+    drop(RunningFlagGuard::arm(Arc::clone(&status), slot, old_tx));
+    assert!(
+        status.read().await.running,
+        "a superseded run cleared the flag a newer run owns (drop path)"
+    );
+}
+
+/// An EMPTY slot is NOT supersession. `stop()` takes this run's sender
+/// before awaiting the loop, so the slot is `None` on the ordinary shutdown
+/// path — and the flag must still clear. An earlier revision read `None` as
+/// "not ours" and left `running` true after every stop, which the lifecycle
+/// tests caught; this pins the case directly so it cannot regress again.
+#[tokio::test]
+async fn an_empty_slot_still_clears_the_flag() {
+    let (status, slot, guard) = armed_guard(true);
+    // Simulate stop(): consume the slot's sender.
+    *slot.lock().await = None;
+
+    guard.clear().await;
+    assert!(
+        !status.read().await.running,
+        "an empty slot means stop() took our sender -- the normal path -- and \
+         must clear the flag, not be mistaken for supersession"
+    );
+}
+
+/// The same case on the drop path.
+#[tokio::test]
+async fn an_empty_slot_clears_the_flag_on_drop() {
+    let (status, slot, guard) = armed_guard(true);
+    *slot.lock().await = None;
+    drop(guard);
+    assert!(
+        !status.read().await.running,
+        "an empty slot must clear the flag on the drop path too"
+    );
+}
+
+/// Presence of a sender is NOT ownership: the run's own sender is absent from
+/// the slot, so the flag must stand even though the slot is `Some`.
+#[tokio::test]
+async fn presence_of_a_sender_is_not_ownership() {
+    let status = Arc::new(RwLock::new(DaemonStatus {
+        running: true,
+        ..Default::default()
+    }));
+    let (own_tx, _own_rx) = watch::channel(false);
+    let (other_tx, _other_rx) = watch::channel(false);
+    let slot = Arc::new(Mutex::new(Some(other_tx)));
+
+    drop(RunningFlagGuard::arm(Arc::clone(&status), slot, own_tx));
+
+    assert!(
+        status.read().await.running,
+        "the slot holds a sender, but not this run's -- the flag must stand"
+    );
+}

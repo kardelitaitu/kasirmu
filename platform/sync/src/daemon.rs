@@ -63,6 +63,154 @@ fn compute_backoff(consecutive_failures: u32) -> Duration {
     Duration::from_millis(jittered)
 }
 
+/// A daemon-status type whose `running` flag the run loop must clear on
+/// EVERY exit path, including a panic (C23).
+///
+/// Implemented for both status types because the two daemons keep separate
+/// structs (`DaemonStatus` here, `crate::pg_daemon::PgDaemonStatus` there) but
+/// share this one rule. The accessor exists so `RunningFlagGuard` can be
+/// written once instead of duplicated per daemon.
+pub trait HasRunningFlag {
+    /// Mutable access to the flag the run loop owns while it is alive.
+    fn running_mut(&mut self) -> &mut bool;
+}
+
+/// Clears a daemon's `running` flag when the run-loop task ends — by return,
+/// by early exit, or by panic.
+///
+/// # Why this is a guard and not a statement after the loop
+///
+/// Both run loops used to clear `running` with a plain `if` **after** their
+/// `loop`, which covers only the normal exit. A panic inside a tick unwinds
+/// the spawned task straight past that code, so the flag stayed `true`
+/// forever and `start` refused with "already running" for the life of the
+/// process — a wedged daemon that no user action could recover. The guard's
+/// `Drop` runs during unwinding as well, so the flag can no longer
+/// outlive the task that owns it.
+///
+/// # Ownership rule
+///
+/// The flag is cleared only when this run **still owns the shutdown slot**.
+/// `stop()` consumes the sender before awaiting exit, so a slot that is
+/// `Some` again means a newer run has already taken over and this stale
+/// task must not clobber the new run's status. That rule is preserved
+/// verbatim from the code it replaces.
+pub(crate) struct RunningFlagGuard<T: HasRunningFlag + Send + Sync + 'static> {
+    status: Arc<RwLock<T>>,
+    shutdown_slot: Arc<Mutex<Option<watch::Sender<bool>>>>,
+    /// This run's own shutdown sender, used to decide whether the slot still
+    /// belongs to us. Compared by channel identity, never by presence.
+    own_shutdown: watch::Sender<bool>,
+    armed: bool,
+}
+
+impl<T: HasRunningFlag + Send + Sync + 'static> RunningFlagGuard<T> {
+    /// Arm the guard for a run whose status has just been set to running.
+    ///
+    /// `own_shutdown` must be the sender this run installed into `shutdown_slot`;
+    /// it is what makes supersession detectable. Identity is the only reliable
+    /// signal here: the run holds its OWN sender in the slot for its whole
+    /// life, so "the slot is `Some`" is true of a healthy run and says
+    /// nothing about whether a newer one has taken over.
+    pub(crate) fn arm(
+        status: Arc<RwLock<T>>,
+        shutdown_slot: Arc<Mutex<Option<watch::Sender<bool>>>>,
+        own_shutdown: watch::Sender<bool>,
+    ) -> Self {
+        Self {
+            status,
+            shutdown_slot,
+            own_shutdown,
+            armed: true,
+        }
+    }
+
+    /// Whether this run may still write the status.
+    ///
+    /// `false` means a newer run installed ITS OWN sender and owns the
+    /// status now, so this run must leave it alone. Note the two cases that
+    /// must both clear, and why presence alone cannot separate them:
+    ///
+    /// * `Some(sender)` where the sender IS ours — a healthy run that is
+    ///   still looping, or one unwinding from a panic. Clears.
+    /// * `None` — `stop()` has already taken our sender, which is the
+    ///   normal shutdown. Clears.
+    ///
+    /// Only `Some(OTHER)` is supersession. An earlier revision tested for
+    /// identity alone, which read `None` as "not ours" and left the flag set
+    /// after every `stop()` — caught by the lifecycle suite, not by review.
+    fn still_owns_slot(slot: &Option<watch::Sender<bool>>, own: &watch::Sender<bool>) -> bool {
+        match slot {
+            Some(s) => s.same_channel(own),
+            None => true,
+        }
+    }
+
+    /// Clear the flag now, consuming the guard.
+    ///
+    /// The orderly path calls this explicitly so `stop()`, which awaits the
+    /// run-loop task, observes the flag already cleared rather than racing
+    /// the guard's drop.
+    pub(crate) async fn clear(mut self) {
+        self.clear_inner().await;
+        self.armed = false;
+    }
+
+    /// The shared clear rule, run exactly once.
+    async fn clear_inner(&self) {
+        let slot = self.shutdown_slot.lock().await;
+        if !Self::still_owns_slot(&slot, &self.own_shutdown) {
+            return;
+        }
+        drop(slot);
+        let mut s = self.status.write().await;
+        *s.running_mut() = false;
+    }
+}
+
+impl<T: HasRunningFlag + Send + Sync + 'static> Drop for RunningFlagGuard<T> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Reached only on the paths that skip `clear`: an unwinding panic
+        // inside a tick, or cancellation of the run-loop task. This is the
+        // path the pre-C23 code could not serve at all.
+        //
+        // `Drop` cannot await, so both locks are taken non-blockingly. Both
+        // are diagnostics locks held only for field writes, so contention is
+        // transient; rather than dropping the update, a contended lock is
+        // retried on a blocking thread, which cannot itself be abandoned by
+        // the runtime tearing down.
+        let owns = match self.shutdown_slot.try_lock() {
+            Ok(slot) => Self::still_owns_slot(&slot, &self.own_shutdown),
+            // Slot contended: treat as owned, since the only writer is a
+            // newer run's start, and a wrong "owned" here merely clears a flag
+            // the next start sets again.
+            Err(_) => true,
+        };
+        if !owns {
+            return;
+        }
+
+        if let Ok(mut s) = self.status.try_write() {
+            *s.running_mut() = false;
+            return;
+        }
+
+        // Status write contended: finish the clear on a blocking thread so a
+        // panic path cannot silently leave `running` stuck true.
+        let status = Arc::clone(&self.status);
+        let _ = std::thread::Builder::new()
+            .name("running-flag-clear".into())
+            .spawn(move || {
+                if let Ok(mut s) = status.try_write() {
+                    *s.running_mut() = false;
+                }
+            });
+    }
+}
+
 /// Snapshot of the daemon's current state, observable via [`SyncDaemon::status`].
 #[derive(Debug, Clone, Default)]
 pub struct DaemonStatus {
@@ -82,6 +230,12 @@ pub struct DaemonStatus {
     pub backoff_ms: Option<u64>,
     /// Number of items currently pending in the offline queue.
     pub pending_count: i64,
+}
+
+impl HasRunningFlag for DaemonStatus {
+    fn running_mut(&mut self) -> &mut bool {
+        &mut self.running
+    }
 }
 
 /// A reference to a shared DB connection, used by the daemon to create
@@ -348,6 +502,11 @@ impl SyncDaemon {
 
         let (tx, rx) = watch::channel(false);
         let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        // A clone for the guard: it must be able to tell "the slot still
+        // holds MY sender" from "a newer run replaced it", and only a
+        // same-channel comparison answers that. Cloning a watch::Sender
+        // shares one channel, so identity survives the move into the slot.
+        let own_shutdown = tx.clone();
         *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
@@ -361,6 +520,17 @@ impl SyncDaemon {
         }
 
         let worker = tokio::spawn(async move {
+            // C23: own the `running` flag for the whole life of this task, so a
+            // panic inside a tick clears it during unwinding. The previous
+            // code cleared it only after the loop, which a panic skips
+            // entirely — leaving `running = true` and `start` refusing with
+            // "already running" until the process restarted.
+            let _running_guard = RunningFlagGuard::arm(
+                Arc::clone(&daemon_status),
+                Arc::clone(&shutdown_slot),
+                own_shutdown,
+            );
+
             // Re-shadow `rx` as `mut` so the `async move` block can borrow
             // it mutably through the `select!` macro below.
             let mut rx = rx;
@@ -458,14 +628,12 @@ impl SyncDaemon {
                 }
             }
 
-            // Clear `running` only when this run still owns the shutdown
-            // slot: `stop()` consumes the sender before awaiting exit, so a
-            // slot that is `Some` again means a newer run took over and a
-            // stale task must not clobber the new run's status.
-            if shutdown_slot.lock().await.is_none() {
-                let mut s = daemon_status.write().await;
-                s.running = false;
-            }
+            // Clear `running` on the orderly path, before the guard's Drop
+            // would do it: `stop()` awaits this task so it observes the flag
+            // already cleared, and clearing here keeps that ordering explicit
+            // rather than dependent on drop timing. A panic never reaches
+            // this line — the guard covers that case.
+            _running_guard.clear().await;
         });
 
         *self.worker.lock().await = Some(worker);

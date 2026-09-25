@@ -23,7 +23,7 @@ use kasirmu_core::events::SettingsUpdated;
 use kasirmu_core::offline::OfflineQueueItem;
 use kasirmu_core::settings::Settings;
 
-use crate::daemon::SettingsChangedSink;
+use crate::daemon::{HasRunningFlag, RunningFlagGuard, SettingsChangedSink};
 use crate::pg_transport::PgTransport;
 use crate::queue::SyncQueue;
 use crate::{SyncError, SyncResult, import_snapshot};
@@ -64,6 +64,12 @@ pub struct PgDaemonStatus {
     pub last_error: Option<String>,
     /// Number of items currently pending in the offline queue.
     pub pending_count: i64,
+}
+
+impl HasRunningFlag for PgDaemonStatus {
+    fn running_mut(&mut self) -> &mut bool {
+        &mut self.running
+    }
 }
 
 /// A reference to a shared DB connection, used by the daemon to create
@@ -160,6 +166,9 @@ impl PgSyncDaemon {
 
         let (tx, rx) = watch::channel(false);
         let shutdown_slot = Arc::clone(&self.shutdown_tx);
+        // See SyncDaemon::start_inner: the guard identifies supersession by
+        // channel identity, so it needs its own handle to this run's sender.
+        let own_shutdown = tx.clone();
         *shutdown_slot.lock().await = Some(tx);
 
         let interval = self.interval;
@@ -173,6 +182,18 @@ impl PgSyncDaemon {
         }
 
         let worker = tokio::spawn(async move {
+            // C23: own the `running` flag for the whole life of this task, so a
+            // panic inside a tick clears it during unwinding. Clearing only
+            // after the loop, as this used to, is skipped entirely by a panic
+            // — leaving `running = true` and `start` refusing with "already
+            // running" until the process restarted. Same defect and same fix
+            // as `SyncDaemon`; see RunningFlagGuard.
+            let running_guard = RunningFlagGuard::arm(
+                Arc::clone(&daemon_status),
+                Arc::clone(&shutdown_slot),
+                own_shutdown,
+            );
+
             let mut rx = rx;
 
             tracing::info!(interval_ms = interval.as_millis(), "pg sync daemon started");
@@ -200,14 +221,9 @@ impl PgSyncDaemon {
                 }
             }
 
-            // Clear `running` only when this run still owns the shutdown
-            // slot: `stop()` consumes the sender before awaiting exit, so a
-            // slot that is `Some` again means a newer run took over and a
-            // stale task must not clobber the new run's status.
-            if shutdown_slot.lock().await.is_none() {
-                let mut s = daemon_status.write().await;
-                s.running = false;
-            }
+            // Clear on the orderly path; the guard's Drop covers a panic or
+            // an early return, which never reach this line.
+            running_guard.clear().await;
         });
 
         *self.worker.lock().await = Some(worker);
