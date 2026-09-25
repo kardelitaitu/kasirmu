@@ -13,12 +13,25 @@
 //! membership — same pattern as `lookup_sale_by_gateway_reference`), while
 //! every write sets `oz.tenant_id` first so RLS scopes it to one tenant.
 //!
-//! Idempotency: [`mark_status`] refuses to move a row OUT of a settled
+//! Idempotency: [`mark_status`] refuses to move a row OUT of any TERMINAL
 //! status, and the webhook handler treats the row's status as the
 //! already-processed gate. Fully concurrent duplicates (both handlers read
 //! before either writes) may double-enqueue — a benign no-op on the device —
 //! because the alternative order would let a transient enqueue failure eat a
 //! paid sale forever.
+//!
+//! **The terminal set is three statuses and lives in exactly two places that
+//! must agree**: `mark_status`'s SQL guard (Postgres and SQLite arms) and the
+//! webhook's `already_processed` check
+//! (`webhooks/midtrans.rs:219-221`). They are `settlement`, `capture` and
+//! `amount_mismatch`. **`amount_mismatch` is NOT a settled status** — it is an
+//! INCIDENT status, written when a correctly-signed settlement disagrees with the
+//! amount charged — and it belongs in the set for the opposite reason to the
+//! other two: a settlement must not be downgraded because the money arrived, and a
+//! mismatch must not be overwritten because the discrepancy still needs a human.
+//! Dropping it from either list silently erases an incident record while leaving
+//! the discrepancy in place; that is the defect `16a2f454c` fixed, and this
+//! paragraph exists so the next editor changing one list sees the other.
 
 use std::sync::Arc;
 

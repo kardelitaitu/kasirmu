@@ -177,3 +177,83 @@ async fn amount_mismatch_is_never_overwritten_by_a_later_status() {
         "an amount mismatch is terminal: a later notification must not erase the record of a signed-amount discrepancy"
     );
 }
+
+
+// ── The terminal set is defined twice and must stay one set ────────────
+
+/// The ledger guard and the webhook's already-processed check list the SAME
+/// terminal statuses.
+///
+/// **This is the guard for `16a2f454c`, written because the defect it fixed was a
+/// DRIFT, not a mistake.** The terminal set has two definitions in two files:
+/// `mark_status`'s SQL guard (which protects a row from being overwritten) and the
+/// webhook's `already_processed` check (which decides a redelivery needs no work).
+/// They were `settlement`/`capture` and `settlement`/`capture`/`amount_mismatch` —
+/// so a mismatch row was overwritable by any later notification, erasing the record
+/// of a signed-amount discrepancy while the discrepancy itself remained.
+///
+/// The two sites are correct now, and neither test in this file would notice if one
+/// drifted again: each exercises its OWN site. So the agreement itself is asserted
+/// here, by reading both definitions out of source. Read rather than exercised,
+/// because the property is *"these two lists are the same list"* and no single
+/// runtime path can observe both.
+///
+/// If this fails after a deliberate change, update BOTH sites — and check the two
+/// module docs (`midtrans_ledger.rs`, `webhooks/midtrans.rs`), which state the set
+/// in prose as well.
+#[test]
+fn the_terminal_status_set_is_defined_once_in_effect() {
+    // Paths are relative to THIS file, which sits in `src/` beside the ledger
+    // module and above `webhooks/`.
+    let ledger = include_str!("midtrans_ledger.rs");
+    let webhook = include_str!("webhooks/midtrans.rs");
+
+    // Every quoted status in the ledger's SQL guards.
+    const GUARD: &str = "status NOT IN (";
+    let mut guard_sets: Vec<&str> = Vec::new();
+    let mut rest = ledger;
+    while let Some(i) = rest.find(GUARD) {
+        let after = &rest[i + GUARD.len()..];
+        let end = after.find(')').expect("guard list must close");
+        guard_sets.push(&after[..end]);
+        rest = &after[end..];
+    }
+    assert_eq!(
+        guard_sets.len(),
+        2,
+        "expected exactly two SQL guard arms (Postgres + SQLite); found {}. If a third was added, keep it in step with the others and update this count.",
+        guard_sets.len()
+    );
+    // Both arms must agree with each other first — the PG/SQLite split is itself a
+    // place where they could diverge.
+    assert_eq!(
+        guard_sets[0], guard_sets[1],
+        "the Postgres and SQLite arms of the ledger guard disagree"
+    );
+
+    // The statuses the webhook treats as already-processed.
+    let webhook_set = ["settlement", "capture", "amount_mismatch"];
+    for status in webhook_set {
+        assert!(
+            guard_sets[0].contains(&format!("'{status}'")),
+            "the webhook treats `{status}` as terminal but the ledger guard does not, so a row in that status can be overwritten. Guard reads: {}",
+            guard_sets[0]
+        );
+    }
+    // And the guard must not protect something the webhook does not know about —
+    // the other direction, which would mean a row that can never be updated.
+    for quoted in guard_sets[0].split(',') {
+        let name = quoted.trim().trim_matches('\'');
+        assert!(
+            webhook_set.contains(&name),
+            "the ledger guard protects `{name}`, which the webhook's already-processed check does not list. Add it there or remove it here."
+        );
+    }
+    // The webhook's own comparison must actually name all three.
+    for status in webhook_set {
+        assert!(
+            webhook.contains(&format!("entry.status == \"{status}\"")),
+            "the webhook no longer compares against `{status}`"
+        );
+    }
+}
