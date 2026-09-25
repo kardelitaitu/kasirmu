@@ -49,6 +49,15 @@ pub struct MenuEngineeringRow {
     pub total_margin_minor: i64,
     /// Total revenue: unit_price * volume.
     pub total_revenue_minor: i64,
+    /// ISO-4217 code the three money fields above are denominated in.
+    ///
+    /// C22: this report used to sum every line regardless of currency, so a
+    /// USD line and an IDR line produced one total that was not money in any
+    /// currency — and the screen, having no code to read, formatted it with
+    /// the workspace default. Rows are now grouped per (product, currency)
+    /// and this field is what lets the UI label them correctly. It is always
+    /// non-empty: `sale_lines.currency` is NOT NULL.
+    pub currency: String,
 }
 
 /// Menu engineering classification quadrant.
@@ -91,8 +100,14 @@ pub fn query_menu_engineering(
         // menu history of any product later deleted, while margin reporting and
         // daily_summary still counted those lines (reproduced: 0 rows after
         // delete_product). `sale_lines.sku` has no foreign key to products.
+        // C22: `sl.currency` is part of BOTH the grouping and the ordering key.
+        // Without it, USD and IDR amounts were added into one number that is
+        // money in no currency, and the row carried no code for the UI to
+        // format with. Same convention as the rest of the report suite --
+        // see db/reports/product_sales.rs:175 and revenue.rs:144.
         "SELECT COALESCE(p.id, sl.sku) AS product_id, sl.sku AS sku,
                 COALESCE(p.name, sl.sku) AS name,
+                sl.currency AS currency,
                 COALESCE(SUM(sl.qty), 0) AS total_volume,
                 sl.unit_minor AS unit_price_minor,
                 COALESCE(sl.cost_minor, p.cost_minor, 0) AS unit_cost_minor,
@@ -104,7 +119,7 @@ pub fn query_menu_engineering(
          LEFT JOIN products p ON sl.sku = p.sku
          WHERE s.status = 'completed'
            AND DATE(s.created_at) BETWEEN ?1 AND ?2
-         GROUP BY COALESCE(p.id, sl.sku), sl.unit_minor
+         GROUP BY COALESCE(p.id, sl.sku), sl.currency, sl.unit_minor
          ORDER BY total_revenue_minor DESC",
     )?;
 
@@ -120,6 +135,7 @@ pub fn query_menu_engineering(
                 margin_per_unit: row.get("margin_per_unit")?,
                 total_margin_minor: row.get("total_margin_minor")?,
                 total_revenue_minor: row.get("total_revenue_minor")?,
+                currency: row.get("currency")?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -141,14 +157,19 @@ pub fn query_menu_engineering(
     })
 }
 
-/// Merge rows that belong to the same product (different sale prices).
+/// Merge rows that belong to the same product sold at different prices.
+///
+/// The key is `(sku, currency)`, not `sku` alone: C22's whole point is
+/// that a product sold in two currencies is two different amounts of money,
+/// and keying on the SKU would fuse them straight back together after the
+/// SQL had separated them.
 fn merge_same_product_rows(rows: Vec<MenuEngineeringRow>) -> Vec<MenuEngineeringRow> {
-    let mut merged: std::collections::HashMap<String, MenuEngineeringRow> =
+    let mut merged: std::collections::HashMap<(String, String), MenuEngineeringRow> =
         std::collections::HashMap::new();
 
     for row in rows {
         use std::collections::hash_map::Entry;
-        match merged.entry(row.sku.clone()) {
+        match merged.entry((row.sku.clone(), row.currency.clone())) {
             Entry::Occupied(mut existing) => {
                 let existing = existing.get_mut();
                 existing.total_volume += row.total_volume;

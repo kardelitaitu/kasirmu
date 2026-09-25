@@ -266,6 +266,7 @@ fn menu_engineering_row_serde_roundtrip() {
         margin_per_unit: 250,
         total_margin_minor: 25000,
         total_revenue_minor: 35000,
+        currency: "USD".into(),
     };
     let json = serde_json::to_string(&row).unwrap();
     let back: MenuEngineeringRow = serde_json::from_str(&json).unwrap();
@@ -378,4 +379,105 @@ fn menu_quadrant_recommendation_strings_stable() {
     assert!(quadrant_recommendation(MenuQuadrant::Plowhorse).contains("Plowhorse"));
     assert!(quadrant_recommendation(MenuQuadrant::Puzzle).contains("Puzzle"));
     assert!(quadrant_recommendation(MenuQuadrant::Dog).contains("Dog"));
+}
+
+// ── C22: currency separation ─────────────────────────────────────────
+//
+// C22: this report summed every line regardless of currency, so a USD
+// line and an IDR line produced ONE revenue figure that is not money in
+// any currency, and the screen then formatted it with the workspace's
+// default currency -- actively mislabelling it. `sale_lines.currency`
+// is NOT NULL, so the fix is to group by it and carry it to the row.
+
+/// Seed a completed sale whose line carries an explicit currency.
+///
+/// Built with raw SQL rather than `create_sale` because a sale's cart is
+/// single-currency by construction, and this test needs one product sold
+/// in two currencies in the same period — the exact shape that used to be
+/// summed together.
+fn seed_sale_with_line(conn: &Connection, sale_id: &str, sku: &str, currency: &str, line_minor: i64) {
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES (?1, ?2, ?3, 1, 'completed', '2026-07-10T10:00:00.000Z', '2026-07-10T10:00:00.000Z', ?2, 0)",
+        params![sale_id, line_minor, currency],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES (?1, ?2, ?3, 1, ?4, ?4, ?5, 0)",
+        params![format!("sl-{sale_id}"), sale_id, sku, line_minor, currency],
+    )
+    .unwrap();
+}
+
+/// The defect: two currencies in one period must not be added together.
+#[test]
+fn menu_engineering_separates_currencies() {
+    let conn = fresh();
+    seed_product(&conn, "LATTE", 100, 40);
+    // SAME unit price in both currencies. This is what makes the fixture
+    // reproduce the defect: the old GROUP BY was (product, unit_price), so
+    // differing prices would have split the rows by accident and the test
+    // would pass with or without the fix -- verified by reverting the fix and
+    // watching it pass. Equal prices put both currencies in one row, which is
+    // exactly the shape that used to be summed.
+    seed_sale_with_line(&conn, "me-usd", "LATTE", "USD", 700);
+    seed_sale_with_line(&conn, "me-idr", "LATTE", "IDR", 700);
+
+    let result = query_menu_engineering(&conn, "2026-07-01", "2026-07-31").unwrap();
+
+    assert_eq!(
+        result.rows.len(),
+        2,
+        "one row per (product, currency): adding USD and IDR produced a single \
+         meaningless total"
+    );
+
+    let usd = result.rows.iter().find(|r| r.currency == "USD").unwrap();
+    assert_eq!(usd.total_revenue_minor, 700);
+    assert_eq!(usd.total_volume, 1);
+
+    let idr = result.rows.iter().find(|r| r.currency == "IDR").unwrap();
+    assert_eq!(idr.total_revenue_minor, 700);
+    assert_eq!(idr.total_volume, 1);
+
+    // The bug's signature, asserted directly: nothing may carry the combined
+    // total, which is money in neither currency.
+    assert!(
+        !result.rows.iter().any(|r| r.total_revenue_minor == 1_400),
+        "1400 is the meaningless USD+IDR sum; no row may carry it"
+    );
+}
+
+/// Every row must state the currency its amounts are in, because the
+/// screen formats money with the workspace default otherwise.
+#[test]
+fn every_row_declares_its_currency() {
+    let conn = fresh();
+    seed_product(&conn, "LATTE", 100, 40);
+    seed_sale_with_line(&conn, "me-usd2", "LATTE", "USD", 700);
+
+    let result = query_menu_engineering(&conn, "2026-07-01", "2026-07-31").unwrap();
+    assert_eq!(result.rows.len(), 1);
+    assert_eq!(result.rows[0].currency, "USD");
+    assert!(
+        !result.rows[0].currency.is_empty(),
+        "an empty currency would silently reformat as the workspace default"
+    );
+}
+
+/// Single-currency behaviour must be unchanged: the common case still yields
+/// exactly one row per product, so this fix is not a behaviour change there.
+#[test]
+fn a_single_currency_period_still_yields_one_row_per_product() {
+    let conn = fresh();
+    seed_product(&conn, "STEAK", 2500, 800);
+    seed_sale_with_line(&conn, "me-a", "STEAK", "USD", 5000);
+    seed_sale_with_line(&conn, "me-b", "STEAK", "USD", 2500);
+
+    let result = query_menu_engineering(&conn, "2026-07-01", "2026-07-31").unwrap();
+    assert_eq!(result.rows.len(), 1, "same currency must still merge");
+    assert_eq!(result.rows[0].currency, "USD");
+    assert_eq!(result.rows[0].total_volume, 2);
+    assert_eq!(result.rows[0].total_revenue_minor, 7500);
 }

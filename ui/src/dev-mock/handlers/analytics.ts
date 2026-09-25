@@ -360,6 +360,9 @@ export const analyticsHandlers: Record<string, MockHandler> = {
         margin_per_unit: Math.floor(p.price.minor_units * 0.4),
         total_margin_minor: Math.floor(p.price.minor_units * 0.4) * (2 + (i * 5) % 40),
         total_revenue_minor: p.price.minor_units * (2 + (i * 5) % 40),
+        // C22: rows carry their own currency; the screen formats with it and
+        // would render 'undefined' money without it.
+        currency: p.price.currency,
       })),
       median_volume: 15,
       median_margin: 500_000,

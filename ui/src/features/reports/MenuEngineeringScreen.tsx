@@ -27,7 +27,6 @@ import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Spinner } from '@/components/Spinner';
-import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
 import { buildCsv, downloadCsv } from './csv';
 import './MenuEngineeringScreen.css';
@@ -125,7 +124,9 @@ export default function MenuEngineeringScreen() {
 
 function MenuEngineeringScreenContent() {
   const { l10n } = useLocalization();
-  const { currency } = useCurrency();
+  // C22: no workspace-default currency is read here any more. Every amount on
+  // this screen comes from a row that carries its own code, so pulling a
+  // default would only reintroduce the mislabelling this fix removes.
   // R36-07: read the token through the useWorkspace() hook rather than the
 // raw context object. The global test harness mocks the hook, not the
 // context, so the direct form silently yielded an empty token and skipped
@@ -245,19 +246,22 @@ const { sessionToken: rawToken } = useWorkspace();
           <div className="menu-eng-tooltip-grid">
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-volume')}:</span>
             <span>{row.total_volume}</span>
+            {/* C22: the row's OWN currency. Using the workspace default here
+                printed USD amounts as Rp, which is a misstatement rather than
+                a rounding artefact. */}
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-revenue')}:</span>
-            <span>{fmtCurrency(row.total_revenue_minor, currency)}</span>
+            <span>{fmtCurrency(row.total_revenue_minor, row.currency)}</span>
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-margin')}:</span>
-            <span>{fmtCurrency(row.total_margin_minor, currency)}</span>
+            <span>{fmtCurrency(row.total_margin_minor, row.currency)}</span>
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-price')}:</span>
-            <span>{fmtCurrency(row.unit_price_minor, currency)}</span>
+            <span>{fmtCurrency(row.unit_price_minor, row.currency)}</span>
             <span>{requiredLocalized(l10n, 'menu-eng-tooltip-cost')}:</span>
-            <span>{fmtCurrency(row.unit_cost_minor, currency)}</span>
+            <span>{fmtCurrency(row.unit_cost_minor, row.currency)}</span>
           </div>
         </div>
       );
     },
-    [l10n, currency],
+    [l10n],
   );
 
   // Compute max axis values for scatter plot (avoids Infinity issues).
@@ -274,19 +278,22 @@ const { sessionToken: rawToken } = useWorkspace();
   // ── CSV Export ──────────────────────────────────────────────────────
   const exportCsv = () => {
     if (!result) return;
+    // C22: 'Currency' is a column, and each amount is formatted with the
+    // row's own code, so a mixed-currency export cannot be read as one total.
     const headers = [
-      'Name', 'SKU', 'Qty', 'Revenue', 'Margin', 'Margin/Unit',
+      'Name', 'SKU', 'Currency', 'Qty', 'Revenue', 'Margin', 'Margin/Unit',
       'Unit Price', 'Unit Cost', 'Quadrant', 'Recommendation',
     ];
     const rows = rowsWithMeta.map((r) => [
       r.name,
       r.sku,
+      r.currency,
       String(r.total_volume),
-      fmtCurrency(r.total_revenue_minor, currency),
-      fmtCurrency(r.total_margin_minor, currency),
-      fmtCurrency(r.margin_per_unit, currency),
-      fmtCurrency(r.unit_price_minor, currency),
-      fmtCurrency(r.unit_cost_minor, currency),
+      fmtCurrency(r.total_revenue_minor, r.currency),
+      fmtCurrency(r.total_margin_minor, r.currency),
+      fmtCurrency(r.margin_per_unit, r.currency),
+      fmtCurrency(r.unit_price_minor, r.currency),
+      fmtCurrency(r.unit_cost_minor, r.currency),
       r.quadrant,
       recommendation(r.quadrant),
     ]);
@@ -315,8 +322,22 @@ const { sessionToken: rawToken } = useWorkspace();
     );
   }
 
-  const totalRevenue = result?.rows.reduce((s, r) => s + r.total_revenue_minor, 0) ?? 0;
-  const totalMargin = result?.rows.reduce((s, r) => s + r.total_margin_minor, 0) ?? 0;
+  // C22: rows are grouped per (product, currency), so money must be summed
+  // PER CURRENCY. A single reduce over all rows adds USD cents to IDR rupiah,
+  // and the result is not an amount in either -- which is what this card used
+  // to print. The map keeps one bucket per code and renders one KPI per
+  // bucket, so a single-currency store sees exactly what it saw before.
+  const totalsByCurrency = (() => {
+    const buckets = new Map<string, { revenue: number; margin: number }>();
+    for (const r of result?.rows ?? []) {
+      const b = buckets.get(r.currency) ?? { revenue: 0, margin: 0 };
+      b.revenue += r.total_revenue_minor;
+      b.margin += r.total_margin_minor;
+      buckets.set(r.currency, b);
+    }
+    // Stable order so the cards do not reshuffle between renders.
+    return [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b));
+  })();
   const totalProducts = result?.rows.length ?? 0;
 
   return (
@@ -380,28 +401,37 @@ const { sessionToken: rawToken } = useWorkspace();
           </span>
           <span className="menu-eng-kpi-value">{totalProducts}</span>
         </Card>
-        <Card shadow="sm" className="menu-eng-kpi">
-          <span className="menu-eng-kpi-label">
-            <Localized id="menu-eng-total-revenue">Total Revenue</Localized>
-          </span>
-          <span className="menu-eng-kpi-value">{fmtCurrency(totalRevenue, currency)}</span>
-        </Card>
-        <Card shadow="sm" className="menu-eng-kpi">
-          <span className="menu-eng-kpi-label">
-            <Localized id="menu-eng-total-margin">Total Margin</Localized>
-          </span>
-          <span className="menu-eng-kpi-value">{fmtCurrency(totalMargin, currency)}</span>
-        </Card>
-        <Card shadow="sm" className="menu-eng-kpi">
-          <span className="menu-eng-kpi-label">
-            <Localized id="menu-eng-margin-rate">Margin Rate</Localized>
-          </span>
-          <span className="menu-eng-kpi-value">
-            {totalRevenue > 0
-              ? `${((totalMargin / totalRevenue) * 100).toFixed(1)}%`
-              : '—'}
-          </span>
-        </Card>
+        {totalsByCurrency.map(([code, t]) => (
+          <Card key={code} shadow="sm" className="menu-eng-kpi">
+            <span className="menu-eng-kpi-label">
+              <Localized id="menu-eng-total-revenue">Total Revenue</Localized>
+              {totalsByCurrency.length > 1 ? ` ${code}` : null}
+            </span>
+            <span className="menu-eng-kpi-value">{fmtCurrency(t.revenue, code)}</span>
+          </Card>
+        ))}
+        {totalsByCurrency.map(([code, t]) => (
+          <Card key={`margin-${code}`} shadow="sm" className="menu-eng-kpi">
+            <span className="menu-eng-kpi-label">
+              <Localized id="menu-eng-total-margin">Total Margin</Localized>
+              {totalsByCurrency.length > 1 ? ` ${code}` : null}
+            </span>
+            <span className="menu-eng-kpi-value">{fmtCurrency(t.margin, code)}</span>
+          </Card>
+        ))}
+        {totalsByCurrency.map(([code, t]) => (
+          <Card key={`rate-${code}`} shadow="sm" className="menu-eng-kpi">
+            <span className="menu-eng-kpi-label">
+              <Localized id="menu-eng-margin-rate">Margin Rate</Localized>
+              {totalsByCurrency.length > 1 ? ` ${code}` : null}
+            </span>
+            <span className="menu-eng-kpi-value">
+              {t.revenue > 0
+                ? `${((t.margin / t.revenue) * 100).toFixed(1)}%`
+                : '—'}
+            </span>
+          </Card>
+        ))}
       </div>
 
       {/* ── Quadrant Summary Cards ──────────────────── */}
@@ -639,13 +669,13 @@ const { sessionToken: rawToken } = useWorkspace();
                 </span>
                 <span role="cell">{row.total_volume}</span>
                 <span role="cell" className="menu-eng-table-mono">
-                  {fmtCurrency(row.total_revenue_minor, currency)}
+                  {fmtCurrency(row.total_revenue_minor, row.currency)}
                 </span>
                 <span role="cell" className="menu-eng-table-mono">
-                  {fmtCurrency(row.total_margin_minor, currency)}
+                  {fmtCurrency(row.total_margin_minor, row.currency)}
                 </span>
                 <span role="cell" className="menu-eng-table-mono">
-                  {fmtCurrency(row.margin_per_unit, currency)}
+                  {fmtCurrency(row.margin_per_unit, row.currency)}
                 </span>
                 <span role="cell">
                   <span
