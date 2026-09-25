@@ -4132,4 +4132,69 @@ that file, not mine, so I left it alone. A scoped `--check` plus a hand edit is 
 `cargo fmt` on a crate is not.
 
 **Tally:** 45 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 62 — the census finished: MSL-38 and MSL-39, and the end of the wall-clock class
+
+Last pass ended with a recommendation rather than a new file: the MSL-36/37 pair were the same root cause
+found twice, so the high-value work was to **enumerate every remaining wall-clock `effective_tier()`
+caller and judge each** instead of reading modules and hoping to notice. That is what this pass did. Nine
+raw hits, five real callers after comments and the module under test, and all five are now adjudicated:
+
+| site | what it does | rollback guard upstream | verdict |
+|---|---|---|---|
+| `db/downgrade.rs:66` | `persist_over_quota_markers` | **none** (self-resolves) | **MSL-38 fixed** |
+| `api/routes/products.rs:280` | product-creation cap | **none anywhere in the crate** | **MSL-39 fixed** |
+| `db/workspaces_lifecycle.rs:31` | `enforce_instance_quota` | yes at its only caller | judged safe, pinned by MSL-37 |
+| `bridge/workspaces.rs:558,610` | recover/suspend surplus instances | yes (`:544`, `:596`) | judged safe |
+| `bridge/topology/commands.rs:709` | warehouse quota + capacity | yes (`:705`) | judged safe |
+
+### MSL-38 (MEDIUM, FIXED): the marker refresh re-resolved the tier, for itself, from the clock
+
+`persist_over_quota_markers` derives the tier a SECOND time — `TenantSubscription::load` +
+`effective_tier()` — rather than taking the one its caller already has. After MSL-36 the gates enforce
+the ledger tier, and this function is called from **inside** them (`quota_gate.rs:188`,
+`locations.rs:302`, `products_crud.rs:686`, `staff.rs:755,797`, `workspaces_lifecycle.rs:392,417`). So a
+creation could be refused against the ledger tier while the marker refresh, running a few lines later in
+the same call, recorded markers computed against a different one.
+
+Its own doc states the contract it broke — *"obtained the same way the creation gates get it"* — which
+makes this the same species as MSL-35 (a comment promising a check the code did not make) and MSL-34 (a
+sibling rule applied to three arms of four).
+
+Falsified and restored. The test is the interesting part: with aligned clocks the seeded store fits
+Premium comfortably and **zero** markers are due, so the baseline is asserted first; then the ledger is
+rolled 40 days on and the seeded store — 2 terminals, 2 active warehouses, 2 active staff — is over every
+Free cap, so an empty refresh can only mean the markers were computed against the wall clock. Watched
+failing on exactly that assertion, then restored.
+
+### MSL-39 (MEDIUM, FIXED): the API product gate, on a surface with no rollback guard at all
+
+`routes/products.rs:280` gated product creation on the wall-clock tier. The instinct is to call that safe
+— a cloud server's clock is not the merchant's to roll — so I checked rather than reason from the name:
+`kasirmu-api` contains **zero** `validate_clock_rollback` calls, and `kasirmu-local-api` mounts the SAME
+`router_with_openapi` over the merchant's local SQLite DB (`lib.rs:450`). So this router does run on the
+device, where the clock is the merchant's, with no rollback guard on the path. The wall-clock reader
+keeps the paid product cap after the grace window lapsed; the ledger reader fails closed to Free.
+
+### The remaining three, judged rather than assumed
+
+`enforce_instance_quota` is the one worth naming: it is a genuine creation gate reading the wall clock,
+and its safety is entirely its **caller's** — `bridge/workspaces.rs:394` guards the clock at `:377`. The
+function itself documents nothing about that dependency, so it is a latent trap for the next caller even
+though it is correct today. Recorded as such rather than "fixed" with a connection argument it does not
+have; the two `workspaces.rs` sites and the topology site are guarded directly at `:544`/`:596` and `:705`.
+
+### Why this closes the class
+
+Six instances deep — MSL-32 (the ledger read itself), MSL-36 (four capability gates), MSL-37 (the caps
+payload MSL-36 broke), MSL-38 (the markers those gates refresh), MSL-39 (the same gate in the API) — every
+remaining `effective_tier()` caller is now either ledger-aware or guarded, and the census means that is a
+closed statement rather than a sample. The two I did not change are recorded with the reason, so the next
+pass reads a verdict instead of re-deriving one.
+
+**Verified:** 3317 `kasirmu-core` lib tests (was 3316), 336 `kasirmu-api`, 1401 `kasirmu-bridge`, clippy
+clean on both changed crates. Commit `a4aa3f6bd`.
+
+**Tally:** 47 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
