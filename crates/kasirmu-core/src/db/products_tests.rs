@@ -750,6 +750,41 @@ fn create_and_list_product_variants() {
     assert!(variants[0].is_active);
 }
 
+/// MSL-48 sibling: `product_variants.parent_sku` is the SAME FK shape
+/// (`REFERENCES products(sku)`), written from an untyped `String`, and reachable
+/// from the variant editor where the parent SKU is free text. A mistyped parent
+/// must name the product that is missing, not surface a bare FK failure.
+#[test]
+fn a_variant_naming_a_missing_parent_is_a_typed_error() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "NO-SUCH-PARENT".into(),
+        name: "Small".into(),
+        sku: "NO-SUCH-PARENT-SMALL".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+
+    let err = s
+        .create_product_variant(&v)
+        .expect_err("a missing parent product must be refused");
+    match err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(entity, "product", "the missing thing is a product");
+            assert_eq!(id, "NO-SUCH-PARENT", "and it names the SKU to fix");
+        }
+        other => panic!("expected NotFound naming the parent SKU, got {other:?}"),
+    }
+}
+
 #[test]
 fn list_product_variants_empty() {
     let conn = fresh();

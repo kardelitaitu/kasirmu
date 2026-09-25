@@ -30,6 +30,48 @@ use super::Store;
 /// `NotFound` with `entity: "product"` and the offending SKU as `id` is the
 /// answer the UI can act on, and it matches how the rest of the crate reports a
 /// reference to a row that is not there.
+/// Insert one `product_bundles` row, mapping a missing bundle product to a typed
+/// error naming the SKU (MSL-48).
+///
+/// `bundle_sku` is `UNIQUE REFERENCES products(sku)`: a bundle is itself a
+/// product, so the bundle SKU must already exist. The same raw-FK problem as the
+/// item SKUs, on the row written first.
+fn insert_bundle_row(
+    tx: &rusqlite::Transaction<'_>,
+    bundle: &ProductBundle,
+) -> Result<(), CoreError> {
+    let result = tx.execute(
+        "INSERT INTO product_bundles (id, bundle_sku, name, description, bundle_price_minor, currency, active, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            bundle.id,
+            bundle.bundle_sku,
+            bundle.name,
+            bundle.description,
+            bundle.bundle_price_minor,
+            bundle.currency,
+            if bundle.active { 1 } else { 0 },
+            bundle.created_at,
+            bundle.updated_at,
+        ],
+    );
+    match result {
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            // `UNIQUE` on bundle_sku and `REFERENCES products(sku)` both raise
+            // ConstraintViolation here; either way the SKU is what the caller
+            // must change, so one message serves both.
+            Err(CoreError::NotFound {
+                entity: "product",
+                id: bundle.bundle_sku.clone(),
+            })
+        }
+        Err(e) => Err(e.into()),
+        Ok(_) => Ok(()),
+    }
+}
+
 fn insert_bundle_item(tx: &rusqlite::Transaction<'_>, item: &BundleItem) -> Result<(), CoreError> {
     let result = tx.execute(
         "INSERT INTO bundle_items (id, bundle_id, sku, qty, unit_price_minor)
@@ -152,21 +194,7 @@ impl Store<'_> {
     ) -> Result<BundleWithItems, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        tx.execute(
-            "INSERT INTO product_bundles (id, bundle_sku, name, description, bundle_price_minor, currency, active, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                bundle.id,
-                bundle.bundle_sku,
-                bundle.name,
-                bundle.description,
-                bundle.bundle_price_minor,
-                bundle.currency,
-                if bundle.active { 1 } else { 0 },
-                bundle.created_at,
-                bundle.updated_at,
-            ],
-        )?;
+        insert_bundle_row(&tx, bundle)?;
 
         for item in items {
             insert_bundle_item(&tx, item)?;
@@ -188,7 +216,9 @@ impl Store<'_> {
     ) -> Result<BundleWithItems, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
 
-        tx.execute(
+        // MSL-48: the same typed mapping as the create path — renaming a bundle
+        // onto a SKU that is not a product would otherwise leak a raw FK error.
+        let renamed = tx.execute(
             "UPDATE product_bundles
              SET bundle_sku = ?2, name = ?3, description = ?4,
                  bundle_price_minor = ?5, currency = ?6, active = ?7,
@@ -204,7 +234,16 @@ impl Store<'_> {
                 if bundle.active { 1 } else { 0 },
                 bundle.updated_at,
             ],
-        )?;
+        );
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &renamed
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::NotFound {
+                entity: "product",
+                id: bundle.bundle_sku.clone(),
+            });
+        }
+        renamed?;
 
         // Delete old items and re-insert.
         tx.execute(

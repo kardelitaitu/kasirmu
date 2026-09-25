@@ -343,6 +343,51 @@ fn an_item_naming_a_missing_product_is_a_typed_error() {
 }
 
 /// The update path is held to the same rule, since it re-inserts every item.
+/// The bundle SKU itself is `UNIQUE REFERENCES products(sku)` — a bundle is a
+/// product — so a `bundle_sku` that names nothing is the third instance of the
+/// same raw-FK leak, on the row written before the items.
+#[test]
+fn a_bundle_sku_that_is_not_a_product_is_a_typed_error() {
+    let store = fresh_store();
+    let mut bundle = make_bundle("Sampler");
+    bundle.bundle_sku = "NOT-A-PRODUCT".into();
+
+    let err = store
+        .create_bundle(&bundle, &[])
+        .expect_err("a bundle SKU naming no product must be refused");
+    match err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(entity, "product");
+            assert_eq!(id, "NOT-A-PRODUCT", "the error names the SKU to fix");
+        }
+        other => panic!("expected NotFound naming the bundle SKU, got {other:?}"),
+    }
+}
+
+/// Renaming a bundle onto a non-product SKU is refused the same way.
+#[test]
+fn renaming_a_bundle_onto_a_missing_product_is_a_typed_error() {
+    let store = fresh_store();
+    let bundle = make_bundle("Edit Me");
+    store.create_bundle(&bundle, &[]).unwrap();
+
+    let mut renamed = bundle.clone();
+    renamed.bundle_sku = "NOT-A-PRODUCT".into();
+    let err = store
+        .update_bundle(&renamed, &[])
+        .expect_err("renaming onto a missing product must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::NotFound {
+                entity: "product",
+                ..
+            }
+        ),
+        "expected NotFound for the product, got {err:?}"
+    );
+}
+
 #[test]
 fn updating_onto_a_missing_product_is_a_typed_error() {
     let store = fresh_store();

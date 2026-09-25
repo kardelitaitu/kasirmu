@@ -272,7 +272,13 @@ impl Store<'_> {
         price_minor: Option<i64>,
         currency_str: Option<&str>,
     ) -> Result<(), CoreError> {
-        conn.execute(
+        // MSL-48: name the missing parent rather than leaking the raw FK failure —
+        // the same mapping the bundle-item writer applies to its identical
+        // `REFERENCES products(sku)` column. The parent SKU is free text in the
+        // variant editor and the bridge only checks it is non-empty
+        // (`product_variants.rs:271`), so a typo would otherwise read as a
+        // storage fault with no field to correct.
+        let result = conn.execute(
             "INSERT INTO product_variants (id, parent_sku, name, sku, price_minor, currency, barcode,
                                            sort_order, is_active, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -282,8 +288,19 @@ impl Store<'_> {
                 variant.sort_order, variant.is_active as i64,
                 variant.created_at, variant.updated_at,
             ],
-        )?;
-        Ok(())
+        );
+        match result {
+            Err(rusqlite::Error::SqliteFailure(e, _))
+                if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                Err(CoreError::NotFound {
+                    entity: "product",
+                    id: variant.parent_sku.clone(),
+                })
+            }
+            Err(e) => Err(e.into()),
+            Ok(_) => Ok(()),
+        }
     }
 
     /// Update an existing product variant (matched by SKU).
