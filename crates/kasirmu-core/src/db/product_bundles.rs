@@ -73,6 +73,39 @@ fn insert_bundle_row(
 }
 
 fn insert_bundle_item(tx: &rusqlite::Transaction<'_>, item: &BundleItem) -> Result<(), CoreError> {
+    // MSL-51: `bundle_items.qty` is `INTEGER NOT NULL DEFAULT 1` with no CHECK, and
+    // nothing validated it on the write path — the desktop editor guards it
+    // client-side (`BundleManagementScreen.tsx:136`) but both shells reach the
+    // same bridge command, so the tablet or any IPC caller could store a
+    // non-positive quantity. Negative component counts are meaningless: nothing
+    // sums them for money (the bundle has its own price), so they survive as
+    // corrupt rows that stock deduction and reporting would read as real.
+    //
+    // Rejecting here rather than adding a DB CHECK keeps the failure a named
+    // field instead of a raw constraint error (the MSL-40 lesson), and avoids a
+    // migration for a rule the store can enforce.
+    if item.qty <= 0 {
+        return Err(CoreError::Validation {
+            field: "qty",
+            message: format!("bundle item quantity must be positive, got {}", item.qty),
+        });
+    }
+    // MSL-51, same class: `unit_price_minor` is a price OVERRIDE with no CHECK and
+    // no store-side validation, while the editor refuses negatives. Nothing in
+    // `kasirmu-core` sums this column today (the `qty * unit_price_minor`
+    // arithmetic at `sales_tax.rs:385` is SALE lines), so a negative value is
+    // inert — this is a consistency pin rather than a live wrong answer, recorded
+    // as such. It belongs here because the column is money: the first consumer to
+    // trust it would otherwise inherit a value the UI believes is impossible.
+    if item.unit_price_minor.is_some_and(|p| p < 0) {
+        return Err(CoreError::Validation {
+            field: "unit_price_minor",
+            message: format!(
+                "bundle item price override must not be negative, got {}",
+                item.unit_price_minor.unwrap_or_default()
+            ),
+        });
+    }
     let result = tx.execute(
         "INSERT INTO bundle_items (id, bundle_id, sku, qty, unit_price_minor)
          VALUES (?1, ?2, ?3, ?4, ?5)",

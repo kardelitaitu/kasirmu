@@ -172,14 +172,25 @@ fn create_bundle_with_many_items() {
 
 #[test]
 fn create_bundle_with_zero_qty_item() {
+    // MSL-51 CHANGED THIS EXPECTATION, deliberately. This test lives in the
+    // "Additional edge-case tests" block and used to record that a zero quantity
+    // was stored verbatim — a description of behaviour, not a business rule: the
+    // schema never carried a CHECK, and the desktop editor has always refused
+    // `qty < 1` (`BundleManagementScreen.tsx:136`), so the two disagreed and
+    // only the client guarded anything. A bundle containing "0 of ITEM-A" is not
+    // a meaningful bundle, so the store now refuses it and every caller agrees.
     let store = fresh_store();
     let bundle = make_bundle("Hamper");
     let items = vec![make_item(&bundle.id, "ITEM-A", 0)];
-    store.create_bundle(&bundle, &items).unwrap();
 
-    let found = store.get_bundle(&bundle.id).unwrap().unwrap();
-    assert_eq!(found.items.len(), 1);
-    assert_eq!(found.items[0].qty, 0);
+    let err = store
+        .create_bundle(&bundle, &items)
+        .expect_err("a zero-quantity component is refused at the store boundary");
+    assert!(
+        matches!(err, CoreError::Validation { field: "qty", .. }),
+        "expected a qty Validation, got {err:?}"
+    );
+    assert!(store.get_bundle(&bundle.id).unwrap().is_none());
 }
 
 #[test]
@@ -321,6 +332,115 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
 /// pointing at the field. This is MSL-40's shape once more — a constraint
 /// violation reported as a storage fault — but here the constraint is an FK
 /// and the offending value is on screen.
+// ── MSL-51: a bundle item quantity must be positive ─────────────
+
+/// `bundle_items.qty` has `DEFAULT 1` and **no CHECK**, and nothing validates it
+/// on the write path — so a zero or negative quantity is stored.
+///
+/// The desktop editor guards it client-side (`BundleManagementScreen.tsx:136`:
+/// `qty < 1` throws), which is precisely why it went unnoticed: the check exists,
+/// just not where the other callers reach. Both shells forward to the same bridge
+/// command, so the tablet, a script, or any future IPC caller can store "−2 of
+/// ITEM-A" in a bundle.
+///
+/// Unlike MSL-48 this is not a constraint being misreported — there is no
+/// constraint. The fix adds the rule at the store, where every caller meets it,
+/// and the DB CHECK is deliberately left alone (adding one would need a migration
+/// and would turn a bad value into a raw failure rather than a named field).
+#[test]
+fn a_bundle_item_quantity_must_be_positive() {
+    let store = fresh_store();
+    let bundle = make_bundle("Gift Box");
+
+    for bad in [0_i64, -1, -99] {
+        let items = vec![make_item(&bundle.id, "ITEM-A", bad)];
+        let err = store
+            .create_bundle(&bundle, &items)
+            .expect_err("a non-positive item quantity must be refused");
+        match err {
+            CoreError::Validation { field, message } => {
+                assert_eq!(field, "qty", "the error names the quantity");
+                assert!(
+                    message.contains(&bad.to_string()),
+                    "and echoes the rejected value {bad}: {message}"
+                );
+            }
+            other => panic!("expected a qty Validation for {bad}, got {other:?}"),
+        }
+    }
+
+    // Nothing was written: the refused create leaves no bundle behind.
+    assert!(store.get_bundle(&bundle.id).unwrap().is_none());
+}
+
+/// The update path re-inserts every item, so it is held to the same rule.
+/// The sibling of the quantity rule: `unit_price_minor` is a price OVERRIDE, so a
+/// negative value is money that should never exist.
+///
+/// `bundle_items.unit_price_minor` is `INTEGER` with no CHECK, and the store
+/// validated nothing — the editor refuses negatives (`BundleManagementScreen.tsx:137`:
+/// `unitPrice < 0`), so again only the client guarded it.
+///
+/// **Severity, stated honestly:** nothing in `kasirmu-core` sums this column —
+/// `line.qty * line.unit_price_minor` belongs to SALE lines (`sales_tax.rs:385`), a
+/// different table — so a negative override is inert today and this is a
+/// consistency fix, not a live wrong answer. It is worth pinning because the
+/// column is a price: the first consumer to trust it would otherwise inherit a
+/// value the UI already believes is impossible.
+#[test]
+fn a_bundle_item_price_override_cannot_be_negative() {
+    let store = fresh_store();
+    let bundle = make_bundle("Sampler");
+    let mut item = make_item(&bundle.id, "ITEM-A", 1);
+    item.unit_price_minor = Some(-500);
+
+    let err = store
+        .create_bundle(&bundle, &[item])
+        .expect_err("a negative price override must be refused");
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "unit_price_minor");
+            assert!(message.contains("-500"), "echoes the value: {message}");
+        }
+        other => panic!("expected a unit_price_minor Validation, got {other:?}"),
+    }
+}
+
+/// A valid override and the `None` case still round-trip — the property the fix
+/// must not break.
+#[test]
+fn a_valid_price_override_still_round_trips() {
+    let store = fresh_store();
+    let bundle = make_bundle("Edit Me");
+    let mut with_override = make_item(&bundle.id, "ITEM-A", 1);
+    with_override.unit_price_minor = Some(250);
+    let without = make_item(&bundle.id, "ITEM-B", 1);
+
+    store
+        .create_bundle(&bundle, &[with_override, without])
+        .unwrap();
+    let found = store.get_bundle(&bundle.id).unwrap().unwrap();
+    assert_eq!(found.items[0].unit_price_minor, Some(250));
+    assert_eq!(found.items[1].unit_price_minor, None, "None stays None");
+}
+
+#[test]
+fn updating_a_bundle_with_a_non_positive_quantity_is_refused() {
+    let store = fresh_store();
+    let bundle = make_bundle("Hamper");
+    store
+        .create_bundle(&bundle, &[make_item(&bundle.id, "ITEM-A", 2)])
+        .unwrap();
+
+    let err = store
+        .update_bundle(&bundle, &[make_item(&bundle.id, "ITEM-A", 0)])
+        .expect_err("a non-positive quantity must be refused on update");
+    assert!(
+        matches!(err, CoreError::Validation { field: "qty", .. }),
+        "expected a qty Validation, got {err:?}"
+    );
+}
+
 #[test]
 fn an_item_naming_a_missing_product_is_a_typed_error() {
     let store = fresh_store();
