@@ -4197,4 +4197,75 @@ pass reads a verdict instead of re-deriving one.
 clean on both changed crates. Commit `a4aa3f6bd`.
 
 **Tally:** 47 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 63 — MSL-40: an unvalidated status vocabulary, found by enumerating rather than reading
+
+### Why `purchasing.rs` and not a module
+
+Pass 62 concluded that enumerating a shape across the tree beats reading modules front-to-back. So this
+pass opened with the next-largest swallow family — 252 production `unwrap_or_default()` sites — and
+grouped them by file to find where they concentrate. `kasirmu-bridge/src/purchasing.rs` led at 32, a
+module with no ledger coverage at all.
+
+**The 32 sites are all benign**, and worth recording so no later pass re-derives them: every one is an
+`Option<&str>` request field mapped to `""` (`args.contact_person.as_deref().unwrap_or_default()` and
+friends) across four near-identical supplier/PO blocks. That is "an absent optional means empty", not a
+swallowed error — the same judgement as the row-column reads at `db/mod.rs:622`.
+
+But the four repeated blocks are a divergence *invitation*, so I diffed them field by field. They are
+identical — except that `update_supplier` carries one argument the create path does not:
+
+```rust
+args.status.as_deref().unwrap_or("active"),   // both update_supplier and update_supplier_scoped
+```
+
+### MSL-40 (MEDIUM, FIXED): a raw constraint failure reported as a storage fault
+
+`UpdateSupplierArgs.status` is a free `Option<String>` from the client. `update_supplier` passes it
+straight through to the column, whose only guard is the schema:
+
+```sql
+status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive'))
+```
+
+`name` and `code` are validated in the same function for emptiness AND length before the write, so a bad
+value there is a typed `CoreError::Validation`. `status` was the one updatable field with no check, so an
+out-of-vocabulary value surfaced as:
+
+```
+Db(SqliteFailure(Error { code: ConstraintViolation, extended_code: 275 },
+   Some("CHECK constraint failed: status IN ('active', 'inactive')")))
+```
+
+A storage fault reported for a validation mistake, with no field name for the command layer to render.
+
+**Two sibling comparisons settle it as a divergence rather than a style preference.**
+
+1. `update_po_status` — the adjacent command in the same module family — validates its own vocabulary
+   explicitly (`purchase_orders.rs:329-335`) and documents it in its `# Errors` block.
+2. `db/payables.rs` goes further still: a `PayableStatus` enum with `from_db`, `can_transition`, and a
+   `parse_status_filter` that rejects unknown values at the bridge boundary.
+
+So the tree has three different levels of rigor for the same problem — enum, explicit list, nothing —
+and `update_supplier` held the outlier.
+
+**The fix narrows no accepted input.** The CHECK is exact-match, so `" active"` never satisfied it
+either; the change converts the *error type* only. That is why it is safe without a migration.
+
+**Falsified before committing.** Disabling the new check makes the test fail with the exact
+`ConstraintViolation` above, then restored. Both directions are pinned: an out-of-vocabulary value is a
+typed `Validation` **and** the row is left untouched, while both legitimate values still round-trip.
+3319 `kasirmu-core` lib tests pass (was 3317), clippy clean. Commit `382ae4639`.
+
+### The census this implies, and what it found
+
+The schema carries about twenty `CHECK (… IN (…))` vocabulary constraints. Rather than sample, I
+enumerated which of them can be reached by a client-supplied string, and the answer is: very few.
+Most of the `status: String` fields in the bridge are **response DTOs** (reading the value out), and the
+two other write paths checked — `purchase_orders` and `payables` — both validate properly. MSL-40 looks
+to be the sole unvalidated one, which is consistent with it being the one whose sibling sits in the same
+file family: the divergence lens again.
+
+**Tally:** 48 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
