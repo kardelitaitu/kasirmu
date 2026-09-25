@@ -3395,3 +3395,54 @@ changed.
 
 **Tally:** 35 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
 
+---
+
+## Pass 52 — `sales_lifecycle.rs`: a failed recipe read settled the sale without deducting
+
+### MSL-28 (MEDIUM, FIXED): `.unwrap_or_default()` turned a read failure into "no recipe"
+
+Continuing the silent-fallback lens from `.ok()` (MSL-27) onto `unwrap_or_default()` on a
+`Result`. One site in the money path stood out, because it has a SIBLING that disagrees:
+
+```rust
+// sales_lifecycle.rs:228  (shortfall settlement door)
+let recipe = match product_info.as_ref() {
+    Some((pid, _)) => self.get_recipe_ingredients(pid).unwrap_or_default(),
+    None => vec![],
+};
+
+// sales_checkout.rs:259   (checkout door, SAME read)
+let recipe = self.get_recipe_ingredients(pid)?;
+```
+
+A DB failure in the first becomes an EMPTY recipe, which flips `has_recipe` false, which flips
+`needs_stock` false — and the line is never deducted. The sale settles with inventory
+under-reported and no error anywhere.
+
+**Narrowing the reachability took two attempts, and the first was wrong.** My initial test used
+a `retail` product and PASSED against the unfixed code, so I instrumented it rather than
+declaring the lead dead: `result_is_ok=true`, because a retail product has
+`tracks_inventory() == true` and deducts regardless of the recipe. Re-reading
+`ProductType::tracks_inventory` (`modules/inventory/src/models.rs:132`) showed the only false
+case is `service`. So the defect needs a **service product whose stock comes solely from its
+recipe** — then `has_recipe` is the only thing making `needs_stock` true.
+
+With that fixture the deviation is measured: the sale returned `Ok` (`result_is_ok=true`) while
+the ingredient's stock stayed at **10** (`left: 10, right: 9`). Silent success, no deduction.
+
+**Fix.** `?`, matching the checkout door. After the change the same test shows
+`result_is_ok=false` with `database error: no such table: product_recipes` — the real cause,
+propagated. The test asserts the error names `product_recipes` and that the ingredient still
+holds 10, so it pins both the propagation and the rollback.
+
+**Verified:** 190 `db::sales` tests and the full `kasirmu-core` suite pass; clippy clean.
+
+### A note on an earlier finding converging
+
+Commit `0b480dabb` (another agent) amended a bridge paused-capabilities assertion "to the MSL-13
+explicit-verdict rule" — i.e. a sibling suite was reconciled with the semantics MSL-13 changed.
+Verified green here (`kasirmu-bridge --lib subscription`: 34 passed). Worth recording that a
+cross-crate semantic change can land in a test another lane owns, and the lane notices.
+
+**Tally:** 36 findings fixed (8 HIGH), 12 leads disproved. Two are preventive pins.
+
