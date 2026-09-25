@@ -334,15 +334,29 @@ impl Store<'_> {
         }
 
         // 4. Synchronous threshold check (ADR-18 §9e-ii).
-        // Errors are silent — threshold alerts are advisory and should not
-        // block the stock adjustment transaction.
-        let _ = self.check_stock_threshold_and_alert_in_tx(
+        //
+        // NON-FATAL by design: a threshold alert is advisory, so a failure here
+        // must not roll back the stock adjustment the caller asked for. But it is
+        // not SILENT (MSL-26) -- the previous `let _ = ...` dropped the error
+        // entirely, so an alert that never reached `stock_alert_events` left no
+        // evidence anywhere. The sibling legacy-inventory arm 10 lines above
+        // already logs its expected case, and `active_stock_alerts` reads this
+        // table to render the low-stock list, so a lost row is a lost warning.
+        if let Err(e) = self.check_stock_threshold_and_alert_in_tx(
             tx,
             &product_id,
             location_id.as_str(),
             new_qty,
             &now,
-        );
+        ) {
+            tracing::warn!(
+                product_id = %product_id,
+                location_id = %location_id,
+                error = %e,
+                "stock threshold check failed; the adjustment is unaffected but no \
+                 alert row was written"
+            );
+        }
 
         if let Some(cache) = &self.cache {
             cache.invalidate_inventory(&product_id);

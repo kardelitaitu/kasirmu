@@ -1778,6 +1778,68 @@ fn threshold_triggers_alert_on_deduction_below_threshold() {
 }
 
 #[test]
+fn a_failing_threshold_check_does_not_block_the_stock_adjustment() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+    let loc = crate::inventory::LocationId::from(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID);
+
+    let prod_id = s.product_id_by_sku("FOOD-001").unwrap().unwrap();
+    let tid = seed_with_threshold(
+        &conn,
+        &prod_id,
+        crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID,
+        10,
+    );
+
+    // Force the threshold check to FAIL: a trigger aborting every insert into the
+    // alert table. This is the exact situation the non-fatal arm exists for, and it
+    // must not roll back the adjustment the caller asked for.
+    conn.execute_batch(
+        "CREATE TRIGGER test_block_alert_insert BEFORE INSERT ON stock_alert_events
+         BEGIN SELECT RAISE(ABORT, 'alert insert blocked for test'); END;",
+    )
+    .unwrap();
+
+    // Read the CANONICAL per-location surface, not `get_stock` (which reads the
+    // legacy cross-location aggregate and is 0 until the first aggregate write).
+    let qty_at = |conn: &rusqlite::Connection| -> i64 {
+        conn.query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            rusqlite::params![prod_id, crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let before = qty_at(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let result = s.adjust_stock_at_location_with_reason(
+        &tx, "FOOD-001", -3, &loc, Some("sale"), None, None, None,
+    );
+    assert!(
+        result.is_ok(),
+        "a failed threshold check must not fail the adjustment: {result:?}"
+    );
+    tx.commit().unwrap();
+
+    // The adjustment landed: the canonical per-location qty moved by the delta.
+    assert_eq!(
+        qty_at(&conn),
+        before - 3,
+        "the adjustment itself must be applied despite the alert failure"
+    );
+
+    // And no alert row exists -- which is exactly why the failure must be LOGGED
+    // rather than dropped: the low-stock list is now missing an entry.
+    assert_eq!(
+        count_active_alerts(&conn, &tid),
+        0,
+        "the blocked insert wrote nothing, the case MSL-26 now logs"
+    );
+}
+
+#[test]
 fn threshold_no_alert_when_above_threshold() {
     let conn = fresh();
     seed_everything(&conn);
