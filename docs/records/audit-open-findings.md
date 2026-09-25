@@ -150,13 +150,13 @@ Closed items:
   re-verified during this audit, stamp refreshed to 26-08-26.
 - **TOP-UI-03** — ADR #34 cited `topologyCard.ts` as the pairing-table home and row order that
   drifted from the JSON; doc now references `topologySemantics.json` and matches row order.
-- **TOP-UI-04** — `docs/api-reference.md` missing `can_save_topology` command; row added.
+- **TOP-UI-04** — `docs/guides/developer/api-reference.md` missing `can_save_topology` command; row added. (This cited `docs/api-reference.md`, which moved during the docs restructure; repointed 2026-09-25 while closing C62's dead-ref guard.)
 - **TOP-UI-05** — `topology.rs` module doc said "four #[tauri::command]" but only 3 exist
   (the 4th is a startup daemon); comment corrected to "three".
 - **TOP-UI-06** — 4 pre-existing `topologyNodeCard.test.tsx` failures (validation text renders
   twice: tooltip + SR-only span; dismiss button hidden in the tooltip portal); tests now query
   `getAllByText` / `hidden: true`.
-- **TOP-UI-07** — `docs/multi_pos_one_location_support.md` cited `topologyEditor.tsx`; actual
+- **TOP-UI-07** — `docs/archived/multi_pos_one_location_support.md` cited `topologyEditor.tsx`; actual
   file is `NodeTopologyEditor.tsx`; path corrected.
 
 ---
@@ -990,7 +990,7 @@ recorded here. Every path in this repo's real cargo-llvm-cov exports is ASCII.
 
 `scripts/verify-ftl-orphans.py` dies with a `Traceback` at **exit 1** when a locale file is being
 written underneath it. Reported by the closing worker at 19:39 from a run it made at 19:29:
-the *real tree*, not a temp copy — a `PermissionError` reading `ui/src/locales/kds.ftl` while
+the *real tree*, not a temp copy — a `PermissionError` reading `shared-ui/locales/kds.ftl` while
 another session was writing it, exit 1, one traceback. Same shape as the hollow-root crash fixed
 by `683eb1eac` (12/0, 19:38), and **`hollow_root_reason()` cannot see it**: the directory exists,
 the bundles exist, the read simply fails this instant. It hits `--census` identically.
