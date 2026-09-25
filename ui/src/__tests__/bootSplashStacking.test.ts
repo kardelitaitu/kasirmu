@@ -127,3 +127,54 @@ describe.each(SHELLS)('%s splash lifetime', (shell) => {
     expect(src).toContain('{!loading && renderActiveView()}');
   });
 });
+
+// ── Theme is decided before first paint ─────────────────────────────
+//
+// The inline script in each entry promises "restore saved theme before
+// first paint to prevent theme flash". It could never work: it read
+// 'oz-pos-theme-v4', the LEGACY key that ThemeProvider migrates FROM and
+// then DELETES on load, while the app writes 'kasirmu-theme-v4'. So the
+// attribute was never set, the CSS fell through to prefers-color-scheme,
+// and a light-OS machine running the app in dark theme painted a WHITE
+// frame before the dark splash. These assertions pin the contract.
+
+describe.each(HTML_ENTRIES)('%s pre-paint theme', (entry) => {
+  const html = readFileSync(resolve(UI_ROOT, entry), 'utf-8');
+
+  it('reads the key the app actually writes', () => {
+    expect(html).toContain("localStorage.getItem('kasirmu-theme-v4')");
+  });
+
+  it('still migrates the legacy key it replaced', () => {
+    // Existing installs have their choice under the old key until
+    // ThemeProvider migrates it, so the boot script must read both.
+    expect(html).toContain("localStorage.getItem('oz-pos-theme-v4')");
+  });
+
+  it('always sets data-theme, so prefers-color-scheme cannot disagree', () => {
+    // Every branch assigns the attribute. Leaving it unset on "nothing
+    // stored" is what let the OS override the app's dark default.
+    const sets = (html.match(/setAttribute\('data-theme'/g) ?? []).length;
+    expect(sets).toBeGreaterThanOrEqual(3);
+  });
+
+  it('does not leave the OS to decide the theme', () => {
+    // A prefers-color-scheme branch here would be a second, competing
+    // answer to a question the script above has already settled.
+    expect(html).not.toContain('@media (prefers-color-scheme: light)');
+  });
+});
+
+// ── The static splash paints its own themed background ──────────────
+
+describe.each(HTML_ENTRIES)('%s splash background', (entry) => {
+  const html = readFileSync(resolve(UI_ROOT, entry), 'utf-8');
+
+  it('gives .app-splash a background instead of relying on <body>', () => {
+    expect(staticSplashRule(html)).toContain('background-color');
+  });
+
+  it('paints a light background for a light-themed first frame', () => {
+    expect(html).toMatch(/html\[data-theme="light"\] \.app-splash\s*\{[^}]*#ffffff/);
+  });
+});
