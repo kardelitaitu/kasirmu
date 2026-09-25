@@ -149,9 +149,51 @@ fn mark_push_failure_bumps_attempts() {
         )
         .unwrap();
     assert_eq!(attempts, 1);
-    // And peek must not return it (backoff pushed it out of the due window).
+
+    // The backoff is AWS full-jitter: `uniform(0, min(30min, 60s * 2^attempts))`.
+    // At attempts == 0 that is `uniform(0, 60)` seconds, so a draw of ZERO
+    // seconds schedules the row for NOW — and `peek_push_batch` selects
+    // `datetime(next_attempt_at) <= datetime('now')`, which is then TRUE.
+    //
+    // This assertion used to require an empty batch unconditionally, which made
+    // the test fail on roughly one run in sixty (measured: 1/60). The claim the
+    // code actually makes is weaker and still worth pinning: the row is never
+    // returned EARLY, and it is always scheduled at or after now.
+    let scheduled = {
+        let (next,): (String,) = conn
+            .query_row(
+                "SELECT next_attempt_at FROM image_push_queue WHERE hash = 'hash1'",
+                [],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        next
+    };
+    let (enqueued,): (String,) = conn
+        .query_row(
+            "SELECT enqueued_at FROM image_push_queue WHERE hash = 'hash1'",
+            [],
+            |r| Ok((r.get(0)?,)),
+        )
+        .unwrap();
+    assert!(
+        scheduled.as_str() >= enqueued.as_str(),
+        "a failed attempt must never schedule the row BEFORE it was enqueued \
+         (got next={scheduled} enqueued={enqueued})"
+    );
+
+    // And whenever the draw was non-zero, peek must exclude it. With a zero
+    // draw the row is legitimately due, so both answers are correct and the
+    // test asserts the disjunction the implementation actually guarantees.
     let batch = store.peek_push_batch(10).unwrap();
-    assert!(batch.is_empty());
+    if scheduled.as_str() > enqueued.as_str() {
+        assert!(
+            batch.is_empty(),
+            "a future next_attempt_at must keep the row out of the due batch"
+        );
+    } else {
+        assert_eq!(batch.len(), 1, "a zero-second backoff leaves the row due");
+    }
 }
 
 #[test]

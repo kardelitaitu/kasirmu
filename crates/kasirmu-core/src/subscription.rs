@@ -1160,6 +1160,30 @@ pub enum SubscriptionLifecycleState {
 }
 
 impl SubscriptionLifecycleState {
+    /// Whether this state keeps the subscription's entitlements flowing.
+    ///
+    /// The whole point of this method is that the set `{Active, Grace}` was
+    /// written out THREE times — `entitlements::addon_grant_flows`,
+    /// `availability::explain_availability`'s `lifecycle_denies`, and the
+    /// verdict test — and three copies of one predicate are three chances for
+    /// them to drift. Every one of those sites now asks this question instead.
+    ///
+    /// `Grace` counts as flowing on purpose: it is the payment-retry window,
+    /// and the tier is still the paid one (`is_within_grace_period_at`), so a
+    /// merchant settling an invoice keeps working. The other five states —
+    /// `Expired`, `Canceled`, `Revoked`, `Paused`, `Unavailable` — do not:
+    /// `Paused`/`Canceled` are deliberately register-reverting (see
+    /// `pos_read_only`), `Revoked` is an abuse verdict, and `Unavailable` is the
+    /// fail-closed answer for a row that did not parse.
+    ///
+    /// Note this is the LIFECYCLE axis, not the quota axis: a flowing state can
+    /// still have its quota reached, and a caller wanting the tier's limits asks
+    /// `TenantSubscription::effective_tier` for them separately.
+    #[must_use]
+    pub fn grants_entitlements(&self) -> bool {
+        matches!(self, Self::Active | Self::Grace)
+    }
+
     /// Database/wire representation (snake_case, matches the serde form).
     pub fn as_str(&self) -> &'static str {
         match self {

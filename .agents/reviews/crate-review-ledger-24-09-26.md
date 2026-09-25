@@ -2619,3 +2619,83 @@ another agent's committed warning, untouched).
 
 **Tally:** 22 findings fixed (7 HIGH), 8 leads disproved.
 
+---
+
+## Pass 39 — the second-derivation class: one predicate written three times, and two false alarms
+
+This pass started from the method that produced MSL-12 and MSL-13: a decision made
+in one place while a second place derives it independently. It found one latent
+structural risk and one measured flaky test — and two `as_str` leads that turned out
+to be MY test asserting a contract that never existed.
+
+### MSL-15 (LOW, FIXED): `{Active, Grace}` was written out three times
+
+The set of lifecycle states that keep entitlements flowing existed as a literal in
+three places: `Entitlements::addon_grant_flows` (`entitlements.rs:118`),
+`explain_availability`'s `lifecycle_denies` (`availability.rs:385`), and the verdict
+test. All three agreed, so this is LATENT, not live — but three copies of one
+predicate are three chances to drift, and `availability_tests.rs:276` already
+documents the exact hazard for one variant (`Revoked` was absorbed by the allow-list
+with no compile error).
+
+**Fix.** One definition, `SubscriptionLifecycleState::grants_entitlements`, on the
+type that owns the vocabulary. Both consumers delegate. `every_lifecycle_state_
+declares_whether_it_grants_entitlements` walks all seven variants (named one by one,
+so a new variant is a compile error there) and asserts each consumer agrees with the
+shared predicate.
+
+### MSL-16 (LOW, FIXED): `mark_push_failure_bumps_attempts` failed ~1 run in 60
+
+**Measured, not reasoned:** 60 consecutive runs produced exactly 1 failure. The cause
+is in the TEST, not the code. `mark_push_attempt` uses AWS full-jitter —
+`uniform(0, min(30min, 60s * 2^attempts))` — so at `attempts == 0` the draw is
+`uniform(0, 60)` seconds. A draw of ZERO schedules the row for NOW, and
+`peek_push_batch` selects `datetime(next_attempt_at) <= datetime('now')`, which is
+then true. The test asserted an empty batch unconditionally.
+
+**Fix.** The test now pins the guarantee the code actually makes — the row is never
+scheduled BEFORE it was enqueued, and `peek` excludes it whenever the draw was
+non-zero — asserting the genuine disjunction instead of a promise the jitter does not
+make. Re-measured: **0 failures in 40 runs**. A test that fails randomly is worse
+than no test, because it teaches the reader to re-run rather than to look.
+
+### Two `as_str` leads pursued and DISPROVED — both were my tests' fault
+
+Worth recording because the reflex (found a failing assertion, reached for a
+production edit) was wrong twice in a row.
+
+1. **`every_lifecycle_state_declares...` reported `Entitlements` and the shared
+   predicate disagreeing about `Grace`.** My fixture wrote `state.as_str()` into the
+   `status` COLUMN, and the reader matches the SERVER's vocabulary — where the
+   string is `grace_period`. `Grace.as_str()` is `grace` (the WIRE form), which the
+   reader correctly fails closed to `Unavailable`. Fixing the fixture to use the
+   column vocabulary made it pass; no production change was warranted.
+
+2. **A round-trip test `lifecycle_state_at(as_str()) == self` failed on `Grace`.**
+   I nearly filed this as a defect. It is not: `as_str` and `lifecycle_state_at`
+   speak two different vocabularies and only overlap on the five statuses spelled
+   identically. Confirmed against the client: `ui/src/api/subscription.ts:14` types
+   the union with `'grace'` and `SubscriptionContext.test.tsx` asserts
+   `state === 'grace'`, so `as_str`'s value is RIGHT for the wire; the licensing
+   layer's `GracePeriod` (camelCase, `kasirmu-bridge/src/license.rs`) is a third
+   spelling on a third axis. The test was replaced by one pinning BOTH vocabularies
+   and the deliberate non-round-trip between them.
+
+**Lesson.** A failing assertion is evidence about MY test as much as about the code.
+Both false alarms came from a fixture that invented a contract — round-tripping two
+vocabularies that were never meant to convert. Check the client that consumes the
+value before calling the value wrong.
+
+### Cleared
+
+- `crates/kasirmu-core/src/db/tax/scopes.rs` (962) — exemplary. `location_legal_entity`
+  derives the entity from the location row specifically so a caller cannot claim one
+  its branch lacks; the window's `effective_to` is documented EXCLUSIVE and
+  `validate` refuses an empty period; a stored date that does not parse is SKIPPED
+  rather than trusted or rewritten; `parse_effective_date` is strict (rejects RFC3339,
+  `YYYY-M-D`, trailing space, month 13) and compares as `NaiveDate`, not as text.
+  The caller-owns-the-business-date deferral names the open timezone question and
+  refuses to invent a policy inside money math.
+
+**Tally:** 24 findings fixed (7 HIGH), 10 leads disproved.
+

@@ -111,12 +111,12 @@ impl Entitlements {
     /// Whether the add-on analytics grant can flow (C4.3): the
     /// subscription must be active or in grace — canceled/expired rows
     /// keep the downgraded answer.
+    ///
+    /// Delegates to the state's own predicate so this and the availability
+    /// verdict cannot disagree about which states flow.
     #[must_use]
     pub fn addon_grant_flows(&self) -> bool {
-        matches!(
-            self.state,
-            SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
-        )
+        self.state.grants_entitlements()
     }
 
     /// Project the caps DTO's location cap from this instance through

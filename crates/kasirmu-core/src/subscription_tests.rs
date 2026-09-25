@@ -2265,3 +2265,60 @@ fn server_expired_status_does_not_keep_the_paid_tier() {
     );
 }
 
+/// `as_str` and `lifecycle_state_at` speak TWO DIFFERENT vocabularies, and this
+/// pins both so neither drifts into the other.
+///
+/// I first wrote this as a round-trip test (`lifecycle_state_at(as_str()) == self`)
+/// and it FAILED on `Grace`, which looked like a defect. It is not: the two
+/// strings come from different sources and only happen to overlap.
+///
+///   - `as_str` is the WIRE/DB form of the *normalized* state. It is the serde
+///     `snake_case` form (`ui/src/api/subscription.ts` types this exact union
+///     and its `SubscriptionContext` tests assert `state === "grace"`), and it
+///     is what `AvailabilityFacts::state` is rendered from.
+///   - `lifecycle_state_at` reads the SERVER's `tenant_subscription.status`
+///     column, whose vocabulary is the license server's: `active`,
+///     `grace_period`, `paused`, `canceled`, `revoked`, `expired`.
+///
+/// So `Grace` is "grace" on the wire and `grace_period` in the column, and the
+/// licensing layer's `GracePeriod` (camelCase, `kasirmu-bridge/src/license.rs`)
+/// is a THIRD spelling on a third axis. Round-tripping across them is not a
+/// contract and must not be made one -- the only statuses the two share
+/// literally are the five that are spelled identically.
+#[test]
+fn lifecycle_state_as_str_is_the_wire_form_not_the_status_column_vocabulary() {
+    // The wire form, pinned against the UI union in ui/src/api/subscription.ts.
+    assert_eq!(SubscriptionLifecycleState::Grace.as_str(), "grace");
+
+    // The column vocabulary, pinned at the reader. `grace` is NOT a status the
+    // server writes, so it fails closed to Unavailable -- correctly.
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "grace_period", None).lifecycle_state(),
+        SubscriptionLifecycleState::Grace,
+    );
+    assert_eq!(
+        state_sub(SubscriptionTier::Plus, "grace", None).lifecycle_state(),
+        SubscriptionLifecycleState::Unavailable,
+        "the column never holds the wire spelling; Unavailable is the fail-closed answer",
+    );
+
+    // Every state's wire form is a value the UI union declares, and each is
+    // distinct -- so a new variant cannot silently collide with an old one.
+    let all = [
+        SubscriptionLifecycleState::Active,
+        SubscriptionLifecycleState::Grace,
+        SubscriptionLifecycleState::Expired,
+        SubscriptionLifecycleState::Canceled,
+        SubscriptionLifecycleState::Revoked,
+        SubscriptionLifecycleState::Paused,
+        SubscriptionLifecycleState::Unavailable,
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for state in all {
+        assert!(
+            seen.insert(state.as_str()),
+            "two states share the wire string {state:?}",
+        );
+    }
+    assert_eq!(seen.len(), 7, "every variant must have its own wire form");
+}

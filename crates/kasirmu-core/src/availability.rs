@@ -380,10 +380,9 @@ pub fn explain_availability(facts: &AvailabilityFacts<'_>) -> FeatureVerdict {
     // place the precedence ordering lives.
     let server_denies = facts.server_grant == Some(false);
     let server_grants = facts.server_grant == Some(true);
-    let lifecycle_denies = !matches!(
-        facts.state,
-        SubscriptionLifecycleState::Active | SubscriptionLifecycleState::Grace
-    );
+    // One definition, shared with `Entitlements::addon_grant_flows`, so the
+    // two answers to "does this state keep working" cannot drift apart.
+    let lifecycle_denies = !facts.state.grants_entitlements();
     let tier_denies = !server_grants && !feature.tier_allows(facts.tier);
     let limit = feature.tier_limit(facts.tier);
     let usage = feature.usage(facts.usage);

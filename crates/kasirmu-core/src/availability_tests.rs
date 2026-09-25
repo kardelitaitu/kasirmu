@@ -18,7 +18,8 @@ use super::{
     AvailabilityFacts, AvailabilityFeature, AvailabilityReason, FeatureVerdict, UsageCounts,
     explain_availability,
 };
-use crate::subscription::{SubscriptionLifecycleState, SubscriptionTier};
+use crate::entitlements::Entitlements;
+use crate::subscription::{SubscriptionLifecycleState, SubscriptionTier, TenantSubscription};
 
 /// A probe case: one feature plus the tiers that grant and withhold it.
 ///
@@ -429,3 +430,71 @@ fn verdict_serializes_camel_case_for_the_ipc_wire() {
         "detail keys must be camelCase, got {detail}"
     );
 }
+/// The one shared predicate behind the lifecycle arm: every state is either
+/// explicitly flowing or explicitly denied, and no variant is left to inherit
+/// an answer silently.
+///
+/// `explain_availability`'s `lifecycle_denies` and
+/// `Entitlements::addon_grant_flows` are two consumers of ONE decision, and
+/// before `grants_entitlements` each wrote the set `{Active, Grace}` out
+/// separately. An allow-list absorbs a new enum variant with no compile error,
+/// so a future `SubscriptionLifecycleState` would have inherited "denied" in
+/// both places without anyone choosing it — the hazard
+/// `revoked_denies_availability_exactly_like_canceled_does` already documents
+/// for one variant. This walks ALL of them.
+#[test]
+fn every_lifecycle_state_declares_whether_it_grants_entitlements() {
+    // Named one by one, so adding a variant is a compile error HERE rather
+    // than a silently-passing test.
+    let all = [
+        SubscriptionLifecycleState::Active,
+        SubscriptionLifecycleState::Grace,
+        SubscriptionLifecycleState::Expired,
+        SubscriptionLifecycleState::Canceled,
+        SubscriptionLifecycleState::Revoked,
+        SubscriptionLifecycleState::Paused,
+        SubscriptionLifecycleState::Unavailable,
+    ];
+    let flowing: Vec<&str> = all
+        .iter()
+        .filter(|s| s.grants_entitlements())
+        .map(|s| s.as_str())
+        .collect();
+    assert_eq!(
+        flowing,
+        vec!["active", "grace"],
+        "a state changing sides here changes what every gate in the app allows",
+    );
+
+    // Each consumer must agree with it, because agreeing is why it exists.
+    for state in all {
+        // The COLUMN vocabulary, not `as_str()` (the wire form): the reader
+        // matches the server's status strings and `Grace` is `grace_period`
+        // there. See `lifecycle_state_as_str_is_the_wire_form_not_the_status_
+        // column_vocabulary`.
+        let column_status = match &state {
+            SubscriptionLifecycleState::Grace => "grace_period",
+            other => other.as_str(),
+        };
+        let sub = TenantSubscription {
+            tenant_id: "default".into(),
+            tier: SubscriptionTier::Premium,
+            status: column_status.into(),
+            expires_at: Some((chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339()),
+            max_locations: 99,
+            max_pos_instances: 99,
+            allowed_types_json: "[]".into(),
+            signature: String::new(),
+            signed_payload: String::new(),
+            api_key: String::new(),
+            updated_at: String::new(),
+        };
+        let ent = Entitlements::from_subscription(&sub, UsageCounts::default());
+        assert_eq!(
+            ent.addon_grant_flows(),
+            state.grants_entitlements(),
+            "Entitlements and the shared predicate disagree about {state:?}",
+        );
+    }
+}
+
