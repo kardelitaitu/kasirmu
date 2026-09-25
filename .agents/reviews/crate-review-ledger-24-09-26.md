@@ -4419,4 +4419,58 @@ a defect repair — recorded here so the next pass does not rediscover the CSS c
   caller left in the tree"), which is the right disposition for a public-but-uncalled function.
 
 **Tally:** 49 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 66 — MSL-42: an unvalidated currency, and two wrong diagnoses I had to correct
+
+### The finding
+
+`update_location_profile` (`db/locations.rs:224`) writes `locations.currency` raw. Its
+sibling `update_regional_config_for_location` (`db/regional.rs:178`) validates the SAME column through the
+shared axis validator, and the bridge layer between them (`locations.rs:320`) validates the
+`timezone` sitting beside it in the same function — so currency was the one field with no check at any
+layer. The column is `TEXT NOT NULL DEFAULT 'USD'` with no CHECK.
+
+Reachable from the UI by ordinary typing: the inspector renders timezone as a three-option preset
+`<select>` with a client-side guard, and currency as a free-text `<input>` whose **only** constraint is
+`maxLength={3}`. `regional_config_for_location` reads that column straight into the Location layer of the
+chain the POS resolves money through.
+
+**Fix:** parse through `Currency` — the same rule the sibling path reaches — producing a typed
+`CoreError::Validation { field: "currency" }`. Falsified by reverting to the raw write, which persists
+`currency: ""`; restored, 85 `locations` tests pass.
+
+### Two diagnoses I got wrong, and what caught them
+
+This is the part worth recording, because both errors were the same kind: **I asserted a contract without
+reading the thing that defines it.**
+
+1. **"`XYZ` is an invalid currency."** My first test asserted a non-ISO code would be rejected. It was not
+   — and the fix I had already written did not reject it either. Reading `Currency::from_str`
+   (`foundation/src/money.rs:119`) settled it: the parser checks **shape only** — exactly three ASCII
+   alphabetic bytes, uppercased — with no ISO-4217 membership table. `XYZ` is a legal value *by design*;
+   `US`, `USDD` and `""` are not. The doc comment saying "ISO-4217 alpha-3" describes that shape, not a
+   registry lookup. My premise was wrong, not the parser.
+2. **"The regional path should also reject blank."** I extended the fix so a blank currency would
+   preserve rather than clear, reasoning that `locations.currency` is the *resolved* value. An existing
+   test failed immediately: `write_blank_clears_each_axis_to_inherit` pins the opposite as deliberate —
+   blank clears the Location layer so the chain falls through to the entity layer, which is exactly what
+   the regional design means by "not set at this scope". I reverted the second fix.
+
+The two writers therefore have **different blank semantics on purpose**, and the corrected test pins both
+directions so a later refactor cannot "unify" them into whichever one it reads first. That the existing
+suite caught my overreach is the system working; the alternative — writing the assertion to match what my
+fix happened to do — is how a suite stops being evidence.
+
+**A redundancy I then removed by measurement.** My fix carried an explicit blank check before the parse. I
+disabled it and the test stayed green: `"".parse::<Currency>()` already fails on length, with the same
+typed error, for blank *and* for any string that trims to blank. The branch was dead, so it is gone — the
+whole fix is now the parse plus its message.
+
+### Verified
+
+3321 `kasirmu-core` lib tests (was 3319 — two new, both proven to fail against the unfixed code), 1403
+`kasirmu-bridge`, clippy clean. Commit `8f9de1af2`.
+
+**Tally:** 50 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
