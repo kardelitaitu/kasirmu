@@ -2892,3 +2892,64 @@ of the literal predicate.
 
 **Tally:** 26 findings fixed (8 HIGH), 12 leads disproved.
 
+---
+
+## Pass 43 — `db/stock_transfers.rs` (765): an empty transfer could be claimed as received
+
+### MSL-19 (MEDIUM, FIXED): zero lines means a false `received` state
+
+`receive_transfer` derives the final status from the transfer's LINES:
+
+```rust
+all_received     = COUNT(*) WHERE transfer_id = ? AND received_qty < qty  == 0
+has_any_received = COUNT(*) WHERE transfer_id = ? AND received_qty > 0   > 0
+final = if all_received { received } else if has_any_received { received_partial } else { in_transit }
+```
+
+On a transfer with **zero lines**, `all_received` counts 0 rows and is therefore true,
+while `has_any_received` is false. The status resolves to `received`: a completed
+transfer that moved nothing. Nothing required a line to exist — `create_transfer` takes
+a `lines` slice with no non-empty guard, `add_transfer_line` only checks `status =
+'draft'`, and `send_transfer`'s `qty <= 0` guard is **per-line**, so on an empty transfer
+the loop body never runs and the guard is vacuous.
+
+**Measured, not reasoned.** `an_empty_transfer_cannot_be_claimed_as_received` created a
+transfer with `&[]`, sent it, and received it: it came back `"received"`. Written first,
+observed to fail, then fixed.
+
+**Reachability, stated honestly.** The shipped UI guards its own button —
+`WarehouseConsole.tsx:164` returns early when `session.isEmpty` — but that is a
+client-side check on a payload the API accepts directly, and the bridge validates
+locations and terminals while never validating the line set
+(`bridge/stock_transfers.rs:158-171`). The empty array is in fact the SHIPPED call shape:
+`WarehouseConsole.tsx:173` passes `[]` to `create_stock_transfer_scoped` and then appends
+lines one at a time in a loop at `:175-183`. A mid-loop failure leaves a live transfer
+with partial lines. So the defect is reachable from the wire even though the happy-path
+button is guarded.
+
+**Fix, at the layer that owns the invariant.** `send_transfer` refuses a transfer with no
+lines. Refused THERE rather than at `receive_transfer` because that is where the in-transit
+state is created: if a transfer can never enter `in_transit` empty, no later step has an
+empty one to mishandle. The invariant belongs where the data is written, not where the
+button is clicked.
+
+The test now pins three things: the send is refused with `field: "lines"`, the transfer
+**stays `draft`** (a refused send must not advance the lifecycle), and the receive door is
+therefore unreachable for it.
+
+**One integration fixture was relying on the old behaviour.**
+`add_line_to_non_draft_transfer_fails` sent an empty draft to reach `in_transit`; its
+subject is the add-line guard on a non-draft transfer, so it now creates the draft with a
+real line. Corrected as a fixture, with the reason in the body, not deleted.
+
+### Cleared
+
+The rest of `stock_transfers.rs` is careful work and worth recording as such: every
+lifecycle transition claims its status INSIDE the transaction that does the inventory
+work (so a concurrent cancel cannot let a receive credit stock on a cancelled transfer),
+the per-line-in-transaction idiom `add_transfer_line` uses is documented as C18 P1.11 with
+the exact defect it closes, and `receive_transfer` refuses a received quantity that exceeds
+the ordered quantity or DECREASES after inventory was already credited.
+
+**Tally:** 27 findings fixed (8 HIGH), 12 leads disproved.
+
