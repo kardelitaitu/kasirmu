@@ -1002,6 +1002,101 @@ fn both_push_entry_points_share_the_disabled_decision() {
     );
 }
 
+// ── C53: one disabled-capability rule, not six copies ────────────────
+//
+// The C51 extraction gave the push path a single decision
+// (`push_outcomes_without_http`) and this pins the same property for its
+// siblings. Six stubs carried the SAME literal message in their own bodies,
+// so a change to the wording, the error type, or the advice given to an
+// operator had to be made six times — and one would be missed. That is the
+// copy-drift trap C51's delegation pin already exists to close; this widens
+// it from one function to the whole disabled-capability family.
+
+/// The shared decision must be an error that names the cause.
+#[test]
+fn the_disabled_capability_error_names_the_cause() {
+    let err = sync_http_disabled_error();
+    assert!(matches!(err, SyncHttpError::Client(_)));
+    assert!(
+        err.to_string().contains("sync-http feature is disabled"),
+        "the message must name the cause, got: {err}"
+    );
+}
+
+/// Every disabled sibling must DELEGATE to the one rule.
+///
+/// Asserted on the source text rather than by calling each stub, because the
+/// stubs are feature-gated and a default test run cannot reach four of them —
+/// the same reason C51's pin reads the file. A body that re-inlined its own
+/// `SyncHttpError::Client("...".into())` would satisfy a behavioural test
+/// (same message, same variant) while restoring exactly the drift this fixes,
+/// so the assertion is on the SHAPE.
+#[test]
+fn every_disabled_sibling_delegates_to_the_one_rule() {
+    let src = include_str!("sync_client.rs");
+    let siblings = [
+        "ack_memo_on_server",
+        "fetch_active_memos_from_server",
+        "qris_charge_on_server",
+        "qris_status_from_server",
+    ];
+    for name in siblings {
+        // The disabled stub is the LAST declaration (the feature-gated real
+        // one comes first), matching the convention C51's pin established.
+        let stub = src
+            .split(&format!("pub async fn {name}("))
+            .last()
+            .unwrap_or_else(|| panic!("{name} must exist in sync_client.rs"));
+        // Stop at the closing brace of the stub's own body, which sits at
+        // column 0 (the function's items are indented). A plain "\n}" split
+        // matched an earlier nested brace and truncated the body to nothing,
+        // which made the failure message useless -- and, worse, would have
+        // made a re-inlined literal in a LATER part of the body invisible.
+        let body = stub.split("\n}").next().unwrap_or(stub);
+        assert!(
+            body.contains("sync_http_disabled_error()"),
+            "{name}'s disabled stub must delegate to the shared rule, not \
+             reimplement it; body was:\n{body}"
+        );
+        assert!(
+            !body.contains("\"sync-http feature is disabled\".into()"),
+            "{name}'s disabled stub must NOT inline the message literal"
+        );
+    }
+}
+
+/// The pull sibling must delegate too, and must use the shared VARIANT.
+///
+/// C53 flagged this one explicitly ("decide whether it should unify or stay
+/// distinct, and say why"). It unified: it returned `SyncHttpError::Network`
+/// where the other five returned `Client`, and a build with no HTTP is not a
+/// network failure — nothing is attempted. No caller branches on the variant
+/// (the only variant-naming match is `Err(AuthExpired)`; the rest is a
+/// catch-all `e.to_string()`), so nothing is lost by agreeing, while the
+/// message an operator sees now has ONE author.
+#[test]
+fn the_pull_stub_delegates_to_the_shared_rule_and_variant() {
+    let src = include_str!("sync_pull.rs");
+    let stub = src
+        .split("pub async fn fetch_snapshot_from_server(")
+        .last()
+        .expect("the disabled pull stub must exist in sync_pull.rs");
+    let body = stub.split("\n}").next().unwrap_or(stub);
+    assert!(
+        body.contains("sync_http_disabled_error()"),
+        "the pull stub must delegate to the shared rule; body was:\n{body}"
+    );
+    assert!(
+        !body.contains("SyncHttpError::Network"),
+        "a disabled build must not report a NETWORK failure — no request is \
+         attempted; body was:\n{body}"
+    );
+    assert!(
+        !body.contains("cannot pull snapshot from server"),
+        "the pull-only second phrasing must be gone, so the message has one author"
+    );
+}
+
 // ── Derived sync URL (ADR #55: auth and sync are one origin) ─────────
 
 #[test]

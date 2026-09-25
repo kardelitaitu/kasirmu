@@ -517,9 +517,35 @@ pub fn sync_pending(store: &Store, config: &SyncConfig) -> Result<SyncAttemptRes
 /// still pin the behaviour.
 #[cfg(any(not(feature = "sync-http"), test))]
 fn push_outcomes_without_http() -> Result<Vec<PushOutcome>, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
+}
+
+/// The ONE expression of "this build has no HTTP", for every disabled stub.
+///
+/// # Why this exists (C53)
+///
+/// C51 extracted the push path's disabled decision and, in doing so, left the
+/// rule expressed in six places: `ack_memo_on_server`,
+/// `fetch_active_memos_from_server`, `qris_charge_on_server`,
+/// `qris_status_from_server`, `push_outcomes_without_http` and
+/// `sync_pull::fetch_snapshot_from_server` each carried their own copy of the
+/// same literal. A change to the wording, the error type, or the advice given
+/// to an operator therefore had to be made six times, and the sixth would be
+/// missed -- which is the copy-drift trap C51's own delegation pin exists to
+/// close, one layer up from where it was applied.
+///
+/// Note the message is a CONTRACT, not cosmetic: `sync_client_tests.rs` and
+/// the mobile/bridge error paths assert on it, so unifying the production
+/// sites is what lets those assertions keep meaning something.
+///
+/// Compiled when the feature is off (where the stubs need it) or under
+/// `test`, matching `push_outcomes_without_http`'s own gating: a
+/// default build carries no dead code, and a default `cargo test` can still
+/// reach the disabled decision, because `--no-default-features` does not
+/// compile this crate at all.
+#[cfg(any(not(feature = "sync-http"), test))]
+pub(crate) fn sync_http_disabled_error() -> SyncHttpError {
+    SyncHttpError::Client("sync-http feature is disabled".into())
 }
 
 /// Blocking variant of send_items_to_server — only for spawn_blocking contexts.
@@ -782,9 +808,7 @@ pub async fn ack_memo_on_server(
     _memo_id: &str,
     _user_id: Option<&str>,
 ) -> Result<MemoAckCloud, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 /// Push the tenant's complete memo state to the cloud via
@@ -936,9 +960,7 @@ pub async fn fetch_active_memos_from_server(
     config: &SyncConfig,
     _terminal_id: &str,
 ) -> Result<ActiveMemosCloudResponse, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 // ── QRIS Auto (dynamic Midtrans charge via the cloud) ───────────────
@@ -1049,9 +1071,7 @@ pub async fn qris_charge_on_server(
     _amount_minor: i64,
     _idempotency_key: Option<&str>,
 ) -> Result<QrisChargeResult, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 /// Poll one QRIS charge's settlement status from the cloud (async). A 404
@@ -1102,9 +1122,7 @@ pub async fn qris_status_from_server(
     _config: &SyncConfig,
     _order_id: &str,
 ) -> Result<QrisStatusResult, SyncHttpError> {
-    Err(SyncHttpError::Client(
-        "sync-http feature is disabled".into(),
-    ))
+    Err(sync_http_disabled_error())
 }
 
 #[cfg(test)]
