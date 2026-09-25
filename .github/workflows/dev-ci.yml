@@ -646,12 +646,19 @@ jobs:
       # manager-codebase-review-checklist.md, which a concurrent session was
       # actively writing during the audit (count grew 2 -> 7 mid-session as the
       # peer kept writing) -- racing it would have been the wrong move, and
-      # check.sh cannot host the leg either (step() exits on first failure). FLIP: drop continue-on-error and advisory_at, set the
-      # gate to required when check-dead-refs reports 0 -- the same arc
-      # ci-docs-drift took in R36-10, with the trigger written down.
+      # check.sh cannot host the leg either (step() exits on first failure).
+      # This was registered with that flip condition written down rather than
+      # implied -- the same arc ci-docs-drift took in R36-10 -- and it has now
+      # been taken. See the FLIPPED note below.
       # Gate: scripts/gates.json -> "dead-refs".
+      # FLIPPED TO BLOCKING 2026-09-25 (C62): the condition above was met.
+      # The audit register's 82 pre-rebrand paths were repointed to the real
+      # files, and the four remaining hits are deliberate absences (a quoted
+      # typo cited as evidence, a brief naming a directory that is gone, an
+      # illustrative non-test path, and prose quoting the dead names as the
+      # finding) -- each now carries the NEGATIVE_MARKERS wording the checker
+      # documents for that case. Measured before flipping: 9 -> 0.
       - name: Docs dead references
-        continue-on-error: true
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 
   # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────

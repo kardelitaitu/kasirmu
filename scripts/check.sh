@@ -427,6 +427,18 @@ step "ci docs drift" "python3 scripts/verify-ci-docs-drift.py" python3 scripts/v
 # noticed, plus a control that must still pass, so "the drift gate is green" cannot
 # mean "the drift gate stopped looking".
 step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-test" python3 scripts/verify-ci-docs-drift.py --self-test
+# C62 FLIP: this gate was registered advisory with continue-on-error and NO
+# check.sh runner, for a stated reason -- its findings sat in
+# manager-codebase-review-checklist.md while a peer session was actively
+# writing that file, so racing it would have broken every local pre-push.
+# The note named the flip condition explicitly ("when check-dead-refs reports
+# 0, drop continue-on-error and advisory_at, set status required, and add
+# runners.check.sh") and it is now met: the register was repointed
+# (c6ebcc165) and the four remaining quoted/illustrative paths were given the
+# NEGATIVE_MARKERS wording the checker documents for deliberate absence.
+# Measured before flipping: 9 unresolved -> 0.
+# Gate: scripts/gates.json -> "dead-refs".
+step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py" python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 # docs/records/README.md calls itself the single entry point, and its freshness
 # gate was "unbuilt by decision" (docs/README.md) — a decision the 2026-09-23
 # documentation audit reversed once the generator defect behind seven dead
