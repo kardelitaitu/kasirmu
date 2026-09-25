@@ -70,6 +70,28 @@ impl Store<'_> {
             });
         }
 
+        // MSL-52: the vocabulary is the schema's CHECK, and until this guard it was
+        // the ONLY thing enforcing it — the bridge checks non-emptiness only
+        // (`terminals.rs:703`) and the UI types the field as a bare `string`, so an
+        // unknown value surfaced as a raw `CHECK constraint failed` naming no field.
+        // The front-end branches on `profileType === 'kds_kiosk'`
+        // (`useTerminalProfile.ts:79`), so the vocabulary is a real contract, and
+        // one lookup names the reject instead of leaking a storage fault.
+        const PROFILE_TYPES: [&str; 4] = [
+            "counter_pos",
+            "kds_kiosk",
+            "customer_display",
+            "unrestricted",
+        ];
+        if !PROFILE_TYPES.contains(&profile_type) {
+            return Err(CoreError::Validation {
+                field: "profile_type",
+                message: format!(
+                    "profile_type must be one of {PROFILE_TYPES:?}, got {profile_type:?}"
+                ),
+            });
+        }
+
         self.conn.execute(
             "INSERT INTO terminal_profiles (terminal_id, profile_type, locked_screen, updated_at)
              VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))

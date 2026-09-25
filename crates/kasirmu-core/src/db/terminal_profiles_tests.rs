@@ -52,6 +52,71 @@ fn get_profile_not_found_when_terminal_does_not_exist() {
     assert!(profile.is_none());
 }
 
+// ── MSL-52: the profile vocabulary is enforced by the CHECK alone ──
+
+/// `terminal_profiles.profile_type` carries
+/// `CHECK (profile_type IN ('counter_pos', 'kds_kiosk', 'customer_display', 'unrestricted'))`
+/// and nothing else validates it: the store binds a raw `&str`, the bridge checks
+/// only that it is non-empty (`terminals.rs:703`), and the UI types it as
+/// `profileType: string` with no screen constraining it.
+///
+/// So a value outside the vocabulary reaches SQLite and comes back as a raw
+/// `Db(SqliteFailure(ConstraintViolation))` naming no field — the MSL-40/50 shape,
+/// on a column whose whole point is to select which UI a terminal renders.
+///
+/// Latent rather than live: the only UI caller passes a value it chooses, so no
+/// user types a bad one today. Pinned because the vocabulary is a real contract
+/// (the front-end branches on `profileType === 'kds_kiosk'`, `useTerminalProfile.ts:79`)
+/// and a wrong value should name the field rather than read as a storage fault.
+#[test]
+fn set_rejects_a_profile_type_outside_the_vocabulary() {
+    let conn = fresh();
+    seed_terminal(&conn, "t1", "Front Counter", "dev-1");
+
+    let err = store(&conn)
+        .set_terminal_profile("t1", "tablet_mode", None)
+        .expect_err("a profile type outside the vocabulary must be refused");
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "profile_type", "the error names the field");
+            assert!(
+                message.contains("tablet_mode"),
+                "and echoes the rejected value: {message}"
+            );
+        }
+        other => panic!("expected a profile_type Validation, got {other:?}"),
+    }
+
+    // Nothing was written for the refused terminal.
+    assert!(store(&conn).get_terminal_profile("t1").unwrap().is_none());
+}
+
+/// Every value the CHECK admits is still accepted, so the guard matches the
+/// schema rather than narrowing it.
+#[test]
+fn set_accepts_every_value_the_check_admits() {
+    let conn = fresh();
+    seed_terminal(&conn, "t1", "Front Counter", "dev-1");
+    for allowed in [
+        "counter_pos",
+        "kds_kiosk",
+        "customer_display",
+        "unrestricted",
+    ] {
+        store(&conn)
+            .set_terminal_profile("t1", allowed, None)
+            .unwrap();
+        assert_eq!(
+            store(&conn)
+                .get_terminal_profile("t1")
+                .unwrap()
+                .unwrap()
+                .profile_type,
+            allowed
+        );
+    }
+}
+
 // ── Set ─────────────────────────────────────────────────────────
 
 #[test]
