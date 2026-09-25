@@ -131,15 +131,16 @@
            booting. That is the exact property the "keep values in sync"
            comment above promises is kept. */
         z-index: var(--z-splash, 700);
-        /* Own background, so the splash never depends on what is behind it.
-           It used to be transparent and rely on <body>, whose base is the
-           DARK gradient — so stage 1 painted dark in BOTH themes and a
-           light-themed install saw a dark loading screen. The React stage
-           always had this (components.css sets --color-bg-primary); stage 1
-           did not, which is the drift that let it differ.
-           The literals are the :root/tokens.css values, needed because
-           tokens.css has not loaded when this rule first paints. */
-        background-color: var(--color-bg-primary, #111827);
+        /* Own background matching StaffLoginScreen, so the splash seamlessly
+           shares canvas with the login screen without any color pop or shift. */
+        background-color: var(--color-bg, #12141a);
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            color-mix(in srgb, var(--color-accent, #147EFB) 6%, transparent),
+            transparent 70%
+          ),
+          var(--color-bg, #12141a);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -150,15 +151,29 @@
         font-size: var(--text-base, 0.875rem);
       }
       /* Theme-aware first frame. The var() fallback above cannot know the
-         theme, so a light install would still paint #111827 until tokens.css
+         theme, so a light install would still paint dark until tokens.css
          lands. These rules use the same hardcoded palette the <body> rules
-         use, and they match the React stage's --color-bg-primary per theme. */
+         use, and match the login screen background per theme. */
       html[data-theme="dark"] .app-splash,
       html:not([data-theme="light"]) .app-splash {
-        background-color: #111827;
+        background-color: #12141a;
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            rgba(20, 126, 251, 0.06),
+            transparent 70%
+          ),
+          #12141a;
       }
       html[data-theme="light"] .app-splash {
         background-color: #ffffff;
+        background:
+          radial-gradient(
+            ellipse 80% 60% at 50% 30%,
+            rgba(20, 126, 251, 0.04),
+            transparent 70%
+          ),
+          #f4f5f7;
       }
       html[data-theme="light"] .app-splash { color: #596577; }
       .app-splash__label { font-size: var(--text-sm, 0.75rem); }
