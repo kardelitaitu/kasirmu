@@ -49,6 +49,7 @@ pos-login-required = Perlu Login
 pos-login-desc = Silakan masuk untuk menggunakan POS.
 pos-shift-loading = Memuat shift…
 pos-shift-no-active = Tidak ada shift aktif
+pos-shift-unavailable = Shift tidak tersedia di perangkat ini
 pos-shift-elapsed = { $h ->
     [0] { $m }mnt
    *[other] { $h }j { $m }mnt

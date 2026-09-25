@@ -37,6 +37,23 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   const activeShiftRef = useRef(activeShift);
   activeShiftRef.current = activeShift;
   const [shiftLoading, setShiftLoading] = useState(true);
+  // -- Shift-service availability ------------------------------------
+  // Whether the shift feature is reachable AT ALL on this shell. Shifts are
+  // INFORMATIONAL (cash reconciliation + the weekly reporting chart), and
+  // open_shift_scoped / get_active_shift_scoped / close_shift_scoped are
+  // registered on the desktop client only: the tablet's generate_handler!
+  // carries none of them. The load below used to collapse every failure into
+  // `activeShift = null`, which made "the command does not exist here"
+  // indistinguishable from "no shift is open". That mattered because the POS
+  // guards (add-to-cart, pay, barcode) read `activeShiftRef.current` and REFUSE
+  // when it is null, so on a shell without the commands `activeShift` could
+  // never become non-null and an informational feature silently blocked every
+  // sale behind the misleading toast "Open a shift first". Tracking the
+  // failure and making the guards feature-aware is what stops an unreachable
+  // reporting feature from gating the till.
+  const [shiftUnavailable, setShiftUnavailable] = useState(false);
+  const shiftUnavailableRef = useRef(shiftUnavailable);
+  shiftUnavailableRef.current = shiftUnavailable;
   // Live elapsed-shift clock: while a shift is open, tick every minute so
   // the header can show a running "2h 15m" instead of the bare opening
   // time (which read like a wall clock). The interval stops when the
@@ -100,16 +117,36 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   );
 
   // Load active shift on mount and when session changes.
+  //
+  // A rejection here is NOT the same as "no shift is open", and the two used
+  // to be collapsed by a bare .catch(() => setActiveShift(null)). The
+  // distinction is load-bearing: on a shell whose generate_handler! does not
+  // carry the shift commands, every load rejects, and the swallowed rejection
+  // left activeShift permanently null — indistinguishable from a store where
+  // nobody had opened a shift. The guards then refused every sale. Setting
+  // shiftUnavailable makes the failure observable, lets the guards stand down,
+  // and keeps a genuine no-shift-open store on the original path.
   useEffect(() => {
     if (!userId) {
       setActiveShift(null);
+      setShiftUnavailable(false);
       setShiftLoading(false);
       return;
     }
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)
-      .then((shift) => { setActiveShift(shift); })
-      .catch(() => { setActiveShift(null); })
+      .then((shift) => {
+        setActiveShift(shift);
+        setShiftUnavailable(false);
+      })
+      .catch(() => {
+        // The shift service could not be reached. We cannot tell a missing
+        // command from a transport failure here, and refusing to sell on
+        // either would gate the till on an informational feature — so the
+        // shift UI stands down and the POS keeps working.
+        setActiveShift(null);
+        setShiftUnavailable(true);
+      })
       .finally(() => setShiftLoading(false));
   }, [userId, sessionToken]);
 
@@ -180,6 +217,8 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   return {
     activeShift,
     activeShiftRef,
+    shiftUnavailable,
+    shiftUnavailableRef,
     shiftLoading,
     shiftNow,
     setShowCloseShift,

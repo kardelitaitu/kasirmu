@@ -106,6 +106,8 @@ export interface CartPanelProps {
   deductionOverridden: boolean;
   shiftLoading: boolean;
   activeShift: ShiftDto | null;
+  /** Shifts are informational; true when this shell cannot reach them at all. */
+  shiftUnavailable: boolean;
   shiftNow: number;
   handleCloseShiftClick: () => void;
   handleOpenShiftClick: () => void;
@@ -200,6 +202,7 @@ export function CartPanel({
   deductionOverridden,
   shiftLoading,
   activeShift,
+  shiftUnavailable,
   shiftNow,
   handleCloseShiftClick,
   handleOpenShiftClick,
@@ -394,6 +397,8 @@ export function CartPanel({
           <div className="pos-cart-header-shift">
             {shiftLoading ? (
               <span className="pos-shift-bar-label">{l10n.getString('pos-shift-loading')}</span>
+            ) : shiftUnavailable ? (
+              <span className="pos-shift-bar-label">{l10n.getString('pos-shift-unavailable')}</span>
             ) : activeShift ? (
               <>
                 <span className="pos-shift-bar-indicator pos-shift-bar-indicator--open" />

@@ -27,8 +27,15 @@ type L10nRef = { current: Parameters<typeof requiredLocalized>[0] };
 export interface UsePosCartActionsParams {
   sessionToken: string;
   addToast: AddToast;
-  /** Pass-through from usePosShifts: adding to the cart requires an open shift. */
+  /**
+   * Pass-through from usePosShifts: adding to the cart requires an open shift
+   * WHEN the shift service is reachable. Shifts are informational (cash
+   * reconciliation + reporting), so a shell that does not register the shift
+   * commands must not have the till gated on them — see shiftUnavailableRef.
+   */
   activeShiftRef: { current: ShiftDto | null };
+  /** True when the shift commands could not be reached at all on this shell. */
+  shiftUnavailableRef: { current: boolean };
   /** Bundle ref, threaded so the unbound-cart toast keeps its localised text. */
   l10nRef: L10nRef;
   addProduct: PosState['addProduct'];
@@ -60,6 +67,7 @@ export function usePosCartActions({
   sessionToken,
   addToast,
   activeShiftRef,
+  shiftUnavailableRef,
   l10nRef,
   addProduct,
   updateQty,
@@ -118,7 +126,11 @@ export function usePosCartActions({
 
   const handleAddProduct = useCallback(
     (product: Product, qty?: number) => {
-      if (!activeShiftRef.current) {
+      // Refuse only when the shift service is REACHABLE and no shift is
+      // open. When it is unreachable the requirement does not apply: shifts
+      // are informational, and blocking here would gate the till on a
+      // reporting feature the shell does not ship.
+      if (!activeShiftRef.current && !shiftUnavailableRef.current) {
         addToast({ message: 'Open a shift first', type: 'warning' });
         return;
       }
@@ -129,7 +141,7 @@ export function usePosCartActions({
       }
       addProduct(product, qty);
     },
-    [addProduct, addToast, cartId, activeShiftRef, l10nRef], // refs stable; identity of the wrapped value must not enter deps
+    [addProduct, addToast, cartId, activeShiftRef, shiftUnavailableRef, l10nRef], // refs stable; identity of the wrapped value must not enter deps
   );
 
   // ADR-19 §17: badge click → FastPINOverlay for manager override

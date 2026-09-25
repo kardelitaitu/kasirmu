@@ -602,6 +602,7 @@ pos-shift-difference = Difference
 pos-shift-expected-cash = Expected Cash
 pos-shift-loading = Loading shift…
 pos-shift-no-active = No active shift
+pos-shift-unavailable = Shifts unavailable on this device
 pos-shift-elapsed = { $h ->
     [0] { $m }m
    *[other] { $h }h { $m }m

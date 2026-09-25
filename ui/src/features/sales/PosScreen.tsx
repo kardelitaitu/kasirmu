@@ -276,6 +276,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const {
     activeShift,
     activeShiftRef,
+    shiftUnavailable,
+    shiftUnavailableRef,
     shiftLoading,
     shiftNow,
     setShowCloseShift,
@@ -329,6 +331,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     sessionToken,
     addToast,
     activeShiftRef,
+    shiftUnavailableRef,
     l10nRef,
     addProduct,
     updateQty,
@@ -350,7 +353,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     enabled: activeWorkspace !== 'restaurant-pos',
     sessionToken,
     onProductFound: useCallback(async (payload: BarcodeScannedPayload) => {
-      if (!activeShiftRef.current) {
+      if (!activeShiftRef.current && !shiftUnavailableRef.current) {
         addToast({ message: 'Open a shift first', type: 'warning' });
         return;
       }
@@ -395,7 +398,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       } catch {
         // Silently ignore — the scanner will beep, user retries.
       }
-    }, [handleAddProduct, addToast, sessionToken, activeShiftRef, l10nRef]), // l10n via ref
+    }, [handleAddProduct, addToast, sessionToken, activeShiftRef, shiftUnavailableRef, l10nRef]), // l10n via ref
     onError: useCallback(
       (error: string) => {
         addToast({
@@ -412,18 +415,20 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   });
 
   const handlePay = useCallback(() => {
-    if (!activeShiftRef.current) {
+    // Same rule as the cart guard: an unreachable shift service must not
+    // block payment, because shifts are informational.
+    if (!activeShiftRef.current && !shiftUnavailableRef.current) {
       addToast({ message: 'Open a shift first', type: 'warning' });
       return;
     }
     if (!total) return;
     setShowPayment(true);
-  }, [total, addToast, activeShiftRef]);
+  }, [total, addToast, activeShiftRef, shiftUnavailableRef]);
 
   // P7-1: Swipe left on cart panel → open payment modal (tablet flow)
   const cartSwipe = useSwipe({
     onSwipeLeft: () => {
-      if (total && activeShiftRef.current) {
+      if (total && (activeShiftRef.current || shiftUnavailableRef.current)) {
         setShowPayment(true);
       }
     },
@@ -681,7 +686,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     startResize, cartPanelRef, cartWidth, handleCartPanelKeyDown, cartSwipe, activeWorkspace,
   };
   const shiftRow = {
-    shiftLoading, activeShift, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
+    shiftLoading, activeShift, shiftUnavailable, shiftNow, handleCloseShiftClick, handleOpenShiftClick,
     shiftErrorExit, closeShiftError,
   };
   const deductionBinding = {
