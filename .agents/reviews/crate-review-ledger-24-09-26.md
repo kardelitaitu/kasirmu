@@ -4074,8 +4074,62 @@ formatting equivalent of a bare `git commit`. Never run it on a crate here; form
 diff, or accept `--check` as the gate and leave it to the hook.
 
 **Tally:** 44 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
 
+## Pass 61 — MSL-37: my own MSL-36 fix created a caps-payload divergence
 
+### The regression, found by following the fix rather than the code
 
+MSL-36 made the four unguarded capability gates resolve the tier against the LEDGER. That immediately
+raised a question about the door I had just touched from the other side: the caps DTO — the payload the
+UI renders every gate from — is built by `load_capabilities` → `build_entitlements` →
+`Entitlements::from_subscription`, which is the WALL-CLOCK reader. If the two disagree, a rolled-back
+install shows Premium caps in the UI while the gate refuses the action: the exact "verdict contradicts
+the gate" drift the one-read-model work exists to prevent, and one I would have introduced.
 
+It is real, and the test says so precisely:
+
+```
+assertion `left == right` failed: the caps payload must report the tier the gate enforces, not the wall clock's
+  left: "premium"          <- dto.tier, what the UI shows
+ right: "free"             <- store.resolve_tier_fail_closed(), what the gate enforces
+```
+
+The test drives the divergence the way the clock behaves rather than the way a fixture would: it stamps
+Premium, expires the row 20 days back (inside Premium's 30-day grace), asserts the aligned-clock answers
+AGREE, then moves the ledger 40 days forward — the same relative state a rollback produces — and asserts
+they still agree. It also asserts the wall-clock reader still says Premium, so the test would notice if
+the fix were reverted rather than silently passing.
+
+### The fix, and why it lives on the trait
+
+Scattering `from_subscription_for_connection` through the bridge would have left the next caller free to
+pick the wrong one — the failure mode MSL-36 was. Instead `SubscriptionLoader` gained
+`entitlements_for(&self, sub, usage)`, whose **default** is the wall-clock assembly (correct for a loader
+with no database behind it, which is what the crate's own tests are) and which `impl SubscriptionLoader
+for Store` **overrides** with the ledger-aware one. `build_entitlements` now routes through the loader,
+so every database-backed caller gets the ledger tier by construction and only the deliberately
+connection-less test loaders keep the old behaviour.
+
+There is exactly one implementor (`Store`) — verified by grep, not assumed — so the default is not a
+silent second path for production code.
+
+**A comment this makes true rather than changes:** `load_over_quota_report` already said *"The effective
+tier is what the gates enforce — assess against it, not the nominal tier, so the report matches the next
+rejection."* Before this fix that sentence was aspirational: the report used the wall clock while the
+gates had moved to the ledger. Now it holds.
+
+**Falsified before committing.** Removing the `Store` override makes the test fail with the same
+`premium` / `free` pair, so the override — not something else — is what makes it pass. Restored: 3316
+`kasirmu-core` lib tests pass, and the full bridge suite is re-run below.
+
+### Correction to my own formatting practice
+
+Last pass I learned that `cargo fmt -p <crate>` writes to other agents' files. This pass I used
+`rustfmt --check <file>` to get the exact preferred form for the ONE file I had edited, then applied the
+two hunks by hand — and verified the third remaining hunk was a **pre-existing** import-order issue in
+that file, not mine, so I left it alone. A scoped `--check` plus a hand edit is the correct form here;
+`cargo fmt` on a crate is not.
+
+**Tally:** 45 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
