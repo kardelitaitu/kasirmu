@@ -36,6 +36,8 @@ npx vitest run src/__tests__/themeTokenCompliance.test.ts src/__tests__/composed
 
 Caveats: each suite grades a fixed set of shapes (a printed denominator, not full coverage); walkers read the working tree, so record dirty `.css` paths alongside any result. Full analysis: `docs/audits/frontend/css-verification.md`.
 
+One shape needs a suite of its own: a motion-enabling `!important` declaration outranks the blanket reduced-motion kill in `reset.css` (both important → specificity decides, and the kill sits at (0,0,0)). `npx vitest run src/__tests__/motionImportantEscapes.test.ts` flags those; it exists because `animationCompliance` never reads `transition` declarations at all, which is where all six escapes found on 2026-09-25 were hiding.
+
 ## Lanes, chokepoints and parallel work
 
 The lane map, the chokepoint list, the manager loop and a quick-start tutorial live in

@@ -12224,6 +12224,99 @@ committed and that file may be dirty in a sibling lane. `scripts/verify-scoped-c
 scope (fixed separately in `19568c216`). No census row moved: `desktop_link` gates nothing in either
 shell under this decision.
 
+## 2026-09-25 — Animation audit: four validated defects repaired, one claim disproved (ui/hooks, ui/theme, ui/features/kds)
+
+**Request:** "a very deep bug hunting on animation for our app both windows or mobile." The audit swept
+140 sheets / 63 keyframes files / 513 transitions / 18 `requestAnimationFrame` sites / 24
+exit-animation callers across both entries (`index.html`+`main.tsx`, `index.mobile.html`+
+`main.mobile.tsx`). Seven candidate defects came out of it; **every one was validated before a line of
+implementation was touched** — Red first, and one of them did not survive validation.
+
+**Validation (evidence, not assertion).** Each claim got its own failing test or a measurement:
+
+| # | Claim | Verdict | Evidence |
+|---|---|---|---|
+| 1 | `useAnimatedModal` reopen race strands a modal at opacity 0 | **confirmed** | 2 Red tests, `exiting` stuck `true` |
+| 2 | `useAnimatedModal` ignores reduced motion | **confirmed** | 2 Red tests, `mounted` held 200ms |
+| 3 | `!important` transitions outrank the blanket reduce kill | **confirmed** | 6 escapes, two independent scans (Python + the new TS gate) agreeing line-for-line |
+| 4 | KDS WAAPI tab pill ignores reduced motion | **confirmed** | control test plays `{duration:340}`, reduce test shows it still playing |
+| 5 | WorkspaceSettingsModal/FastPIN exit timer longer than the CSS | **DISPROVED as a bug** | see below |
+| 6 | `components/UpdateBanner` is dead while the shipped twin has no exit | **confirmed** | 3 greps: only its own test imports it |
+| 7 | backdrop-filter / layout-prop / `transition:all` / box-shadow-pulse jank | **measured, not unit-testable** | keyframe property scan + `animationCompliance`'s own harvest line |
+
+**#5 is the finding that failed validation, and it is the one worth remembering.** My claim was
+"the panel is invisible but still hit-testable for 100ms." Reading the markup instead of guessing:
+`WorkspaceSettingsModal.tsx:156-171` nests `.panel` INSIDE `.backdrop`, and
+`WorkspaceSettingsModal.module.css:21` puts `pointer-events: none` on `.backdrop--exiting` deliberately
+ungated — "refusing stale clicks while closing is function, not decoration." The panel inherits it.
+`FastPINOverlay.css:60` does the same for its overlay, and the card inherits from that. So neither
+mismatch is a hit-test hazard; what survives is only that `overlayOut`/`slideoverOut` reach opacity 0
+at 200ms while the backdrop runs to 300ms — a visual asymmetry, and a documentation inconsistency
+(`useExitAnimation.ts:66-70` states the duration MUST equal the surface's own rule, then cites this
+very component as a correct example of passing one explicitly). Left alone this round on purpose:
+changing 200→300 is a design judgement about entry/exit symmetry, not a defect repair.
+
+**Solution — three repairs, each driven by its Red test:**
+
+1. `ui/src/hooks/useAnimatedModal.ts` — the close branch used to `return () => clearTimeout(timer)`
+   before `prevShow.current = show`, so the ref read `true` for the whole exit. A reopen inside the
+   window then matched NEITHER branch: React's cleanup cancelled the unmount (so `mounted` survived)
+   while nothing cleared `exiting`, pinning the surface on its `animation: … forwards` keyframe at
+   opacity 0 with the caller's focus trap off (`mOpen && !eOpen`). Recording the edge on that path is
+   the whole fix — it lets the opening branch fire on the way back in. Same file: the delay now runs
+   through `animDuration()`, the last exit path in the app that did not.
+2. `ui/src/features/kds/useKdsTabIndicator.ts` — gated the `Element.animate()` flourish on
+   `prefersReducedMotion()`. **WAAPI is invisible to both stylesheet guards**: `reset.css`'s blanket
+   `animation-duration: 0.01ms !important` and `tokens.css`'s `animation: none` address CSS animations
+   only, so a reduced-motion user was getting a full-speed 340ms squeeze-and-overshoot on every KDS
+   tab change. Same class as the topology simulation pulse fixed 2026-08-12; the pill still MOVES
+   (position is state-driven), only the flourish is suppressed.
+3. **Six `!important` escapes**, each scoped under `@media (prefers-reduced-motion: no-preference)`
+   rather than stripped of `!important` — stripping would have changed cascade behaviour in the normal
+   case for no gain, while the media gate makes the declaration not exist under `reduce`. The blanket
+   kill is an `!important` longhand on `*` = (0,0,0); two important declarations are settled by
+   specificity, so anything at ≥(0,1,0) beat it: `tokens.css` `html.is-theme-transitioning *` (0,1,1)
+   and its `.kds-theme-indicator` override (0,2,1) — a 200ms document crossfade plus a 280ms pill slide
+   after every theme toggle — and `KdsScreen.css` `.kds-switch` (0,1,0) / `.kds-switch::after` (0,2,0),
+   the last one carrying real motion (the knob slides 24px). The `tokens.css` pair is exactly the
+   "pre-existing quirk … worth a future round" this journal already logged on 2026-09-11; it is now
+   closed. The misleading comment at `KdsScreen.css:2399` that justified omitting `.kds-switch` (it
+   claimed tokens.css kills animation/transition "on all elements") was rewritten to state the real
+   rule.
+
+**Why a new gate was needed:** `animationCompliance.test.ts`'s own harvest line says
+"513 transition declarations are never read" — all six escapes were transitions, so the existing
+suite was structurally incapable of surfacing them. `ui/src/__tests__/motionImportantEscapes.test.ts`
+closes that hole and is written so it cannot go vacuous: four synthetic cases pin the predicate (bare
+escape flagged; `no-preference`-scoped accepted; `none`/`0.01ms`/iteration-count-1 kills accepted;
+a comment that narrates a reduce block does NOT excuse a real declaration), and a corpus case asserts
+the walker still sees >100 sheets including `reset.css`/`tokens.css`/`KdsScreen.css`. CI picks it up
+for free — `dev-ci.yml:421` runs bare `npm test`.
+
+**Verification:** `tsc --noEmit` clean; `eslint` 0 errors (56 warnings, all pre-existing); targeted
+suites 94/94 (animation + modal + hook), 847/847 (KDS + shift), 111/111 (5 CSS compliance + 4 theme),
+6/6 (new gate); full `vitest run` 10,495 passed / 2 failed — those 2 were load flakes (different files
+every run: AnalyticsScreen, DesignSystem, useNewTicketSound, TopologyRevisionBrowser,
+SalesDashboardScreen), and all five pass in isolation. `animationCompliance` harvest numbers are
+byte-identical to the pre-change baseline (140 sheets / 334 declarations / 161 graded / 48.2% /
+76 swallowed / 30 reduce blocks / 513 transitions), so restructuring those six declarations changed
+no graded count. Skill drift guard: 2 findings, both pre-existing in `figma-bridge/SKILL.md`.
+
+**Deliberately NOT done:** (a) the perf findings — `backdrop-filter` animated in 11 modal enter/exit
+keyframe families, `left`+`width` transitions with permanent `will-change` on `.kds-tab-indicator`,
+55 `transition: all` declarations, infinite `box-shadow` pulses on always-on KDS/kiosk/payment
+surfaces, and `mousemove`-only cart-resize drag (inert to touch) — are measured and evidenced but not
+unit-testable, so they need a perf/E2E slice rather than a TDD one. (b) The dead `components/UpdateBanner`
+twin: confirmed dead (only its own test imports it; not exported from `components/index.ts`), while the
+shipped `app/UpdateBanner.tsx` snaps away on dismiss (`app/UpdateBanner.css` has 0 `exiting` rules) and
+is the sole one of 63 keyframes sheets with no reduced-motion handling at all. That is a retirement
+plus a feature, so it is its own slice. (c) `index.html:116` still claims React clears `#boot-splash` on
+mount — false, the node is a sibling before `#root`; `index.mobile.html` documents it correctly.
+
+**Commits:** `cfbf3199a` fix(ui): clear exiting on mid-fade reopen and honour reduced motion ·
+`fd159742d` fix(ui): gate KDS tab pill WAAPI flourish on reduced motion ·
+`22caae2d5` fix(ui): scope important motion declarations to no-preference — plus this docs entry.
+
 
 
 
