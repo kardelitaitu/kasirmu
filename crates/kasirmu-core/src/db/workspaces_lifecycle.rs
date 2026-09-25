@@ -164,6 +164,21 @@ impl Store<'_> {
                 message: "type_key must not be empty".into(),
             });
         }
+        // MSL-50: membership, not just non-emptiness. `type_key` is
+        // `REFERENCES workspace_types(key)`, so an unknown key was rejected by the
+        // FK as an opaque storage failure — the same shape MSL-48/49 closed on
+        // the product and currency FKs. One indexed lookup names the field.
+        let known: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM workspace_types WHERE key = ?1",
+            params![type_key],
+            |row| row.get(0),
+        )?;
+        if known == 0 {
+            return Err(CoreError::Validation {
+                field: "type_key",
+                message: format!("unknown workspace type: {type_key:?}"),
+            });
+        }
         if store_id.trim().is_empty() {
             return Err(CoreError::Validation {
                 field: "store_id",

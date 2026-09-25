@@ -222,6 +222,40 @@ fn create_workspace_instance_basic() {
     assert!(dto.iter().any(|w| w.instance_id == "test-cashier-1"));
 }
 
+/// MSL-50: `type_key` is validated non-empty but not against the FK target, so a
+/// bogus key leaks a raw `FOREIGN KEY constraint failed`.
+///
+/// `workspace_instances.type_key` is `REFERENCES workspace_types(key)` and the
+/// create path checks only `type_key.trim().is_empty()`. The bridge/UI supply a
+/// key from a picker, so this is latent rather than a live user action — but the
+/// shape is the one MSL-48/49 closed elsewhere, and a wrong key should name the
+/// field rather than read as a storage fault.
+#[test]
+fn create_instance_rejects_an_unknown_workspace_type() {
+    let (store, _) = fresh();
+    let err = store
+        .create_workspace_instance_with_purpose(CreateWorkspaceInstanceArgs {
+            id: "ws-bogus".into(),
+            type_key: "not-a-workspace-type".into(),
+            store_id: "default".into(),
+            name: "Bogus".into(),
+            description: String::new(),
+            colour: None,
+            purpose_key: "general".into(),
+        })
+        .expect_err("an unknown workspace type must be refused");
+    match err {
+        CoreError::Validation { field, message } => {
+            assert_eq!(field, "type_key", "the error names the offend field");
+            assert!(
+                message.contains("not-a-workspace-type"),
+                "and echoes the rejected key: {message}"
+            );
+        }
+        other => panic!("expected a Validation naming type_key, got {other:?}"),
+    }
+}
+
 #[test]
 fn purpose_key_is_independent_from_type_and_name() {
     let (store, _) = fresh();
