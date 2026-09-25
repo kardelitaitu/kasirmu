@@ -4268,4 +4268,68 @@ to be the sole unvalidated one, which is consistent with it being the one whose 
 file family: the divergence lens again.
 
 **Tally:** 48 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 64 — the status-vocabulary census, completed: no new defects
+
+### The enumeration, and what it closed
+
+MSL-40 was one unvalidated status writer found by comparing siblings. This pass asked the obvious next
+question — *is it the only one?* — and answered it by enumeration rather than sampling, so the answer is
+a closed statement. The property: a store function that writes a vocabulary column from a caller-supplied
+`&str`, where the column carries a `CHECK (… IN (…))` and validation would otherwise be the schema's job.
+
+Nine such functions exist across `kasirmu-core/src/db`. **All nine are now adjudicated:**
+
+| function | guard | verdict |
+|---|---|---|
+| `suppliers.rs:162` `update_supplier` | none (schema only) | **MSL-40, fixed last pass** |
+| `kds_orders.rs:387` `update_kds_status` | `KdsStatus::from_str` + transition state machine | clean |
+| `kds_lines.rs:318` `update_kds_line_item_status` | `KdsStatus::from_str` + in-tx transition check | clean |
+| `tables.rs:259` `update_table_status` | `TableStatus::from_str` + occupied-requires-a-sale rule | clean |
+| `purchase_orders.rs:324` `update_po_status` | explicit `valid_statuses` list + documented in `# Errors` | clean |
+| `legal_entities.rs:14` `validate_entity_fields` | `matches!(status, "active" \| "inactive")`, called on BOTH create and update | clean |
+| `kds_orders.rs:260`, `kds_lines.rs:289` | `&str` forwarders into the validated fns above | clean |
+| `stock_transfers.rs:197` | a `WHERE status = ?1` READ filter, not a write | n/a |
+
+**`suppliers` was the sole outlier**, and the tree already contained the exact repair: `legal_entities.rs:27`
+writes the same two-value vocabulary with the same `matches!` form I used. That the one unguarded function
+sat beside its own sibling is the divergence lens again, and it is why MSL-40 was correctly scoped rather
+than over-stated.
+
+### Three shapes of rigor, and why that is not a defect
+
+The nine split into three tiers — a typed enum with `from_str` and a state machine (`KdsStatus`,
+`TableStatus`, `PayableStatus`), an explicit `&[&str]` list (`update_po_status`), and a `matches!` literal
+(`legal_entities`). That looks like drift and is not: each is a **deliberate ladder**, and the vocabulary
+grows as the state machine does. Suppliers need two values and no transitions, so `matches!` is right; KDS
+needs four states and a legal-transition matrix, so an enum pays for itself. Rewriting the two-value cases
+into enums would be churn, and MSL-40's fix follows the local precedent rather than inventing a fourth shape.
+
+### Why `status` is still a `String` rather than a new enum
+
+The idiomatically "better" fix is a `SupplierStatus` enum beside `TableStatus`. I did not do it, and the
+reason is scope rather than difficulty: `Supplier.status` is a **public struct field** (`supplier.rs:37`)
+whose doc already states the contract — *"Status: 'active' or 'inactive'"* — and it flows into
+`SupplierDto`, the bridge args, and the Suppliers screen, which renders it into a CSS class. Changing the
+field's type is a public-API design change touching three crates and the UI; validating at the write
+boundary is the defect repair, and it makes the existing doc comment true rather than restating it in a new
+type. The enum remains a reasonable follow-up if a third status ever appears — recorded, not silently deferred.
+
+### Also checked, no findings
+
+- **Client-string passthroughs.** Every bridge command feeding these nine (`kds.rs:407`, `purchasing.rs:445`,
+  `:598`, `:724`, `tables.rs:154`) reaches a validated store function, so the vocabulary is enforced once,
+  at the boundary that owns the column.
+- **Scoped vs unscoped.** `update_po_status` / `update_supplier` have unscoped variants with no session or
+  permission gate — which looked like a hole until I checked registration: only the `_scoped` forms are in
+  either shell's `generate_handler!` list. The unscoped ones are the pre-ADR#7 dead form, consistent
+  across the whole module.
+- **Insert paths.** `legal_entities` validates through the same helper on create and update
+  (`:71`, `:101`); `create_supplier` hardcodes `'active'` so it has no status to validate. No gap.
+
+**No defects in this pass.** 3319 `kasirmu-core` lib tests, 337 `kasirmu-api`, 1401 `kasirmu-bridge`, clippy
+clean on both crates. Nothing was committed except this record.
+
+**Tally:** 48 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
 
