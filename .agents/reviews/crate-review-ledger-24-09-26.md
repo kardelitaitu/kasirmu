@@ -2830,3 +2830,65 @@ actually COLLECTED, not merely that the suite is green.
 
 **Tally:** 25 findings fixed (8 HIGH), 11 leads disproved.
 
+---
+
+## Pass 42 — `sales_lifecycle.rs` (793): the pending-sale void left no trace
+
+### MSL-18 (MEDIUM, FIXED): `void_pending_sale` contradicted its own module invariant
+
+The module header states the invariant plainly (`sales_lifecycle.rs:9-11`): *"every
+status transition bumps `version` inside a transaction; voiding never adjusts inventory;
+**voids write audit entries**."* Its sibling `void_sale` honours it — line 829 writes
+`sale.void` with the reason, the user and the total, and that action is what
+`audit_integration.rs` asserts on.
+
+`void_pending_sale` (line 620) wrote **no audit row at all** while doing strictly more
+reversible work than `void_sale`: it iterates `deduction_locations` and credits stock
+back at every original source, cancels KDS tickets in the ghost window, then flips the
+row to `voided`. It is reachable from the register UI (`ui/src/api/sales.ts:395`) behind
+`SALES_PROCESS`. So an operator asking *who voided this sale?* got an answer for a
+completed sale and silence for a pending one — and the pending path is the one the
+payment-failure fallback takes.
+
+**Test.** `void_pending_sale_writes_an_audit_entry` drives the real path
+(`complete_sale_deduction` → `void_pending_sale`) and counts `sale.void` rows for the
+sale. Written FIRST and observed to FAIL (`left: 0, right: 1`), then pass.
+
+**Fix.** The audit row is written through `log_audit`, which JOINS the caller's
+transaction rather than opening its own, so it commits or dies with the void — the same
+join `void_sale` relies on. The reason is recorded as a
+`"reversal": "pending_sale_void"` marker rather than free text, because this method's
+two callers (the UI failure path and the stale-pending reaper) pass no user-supplied
+reason, and the reaper is not a user at all. The actor is `system` for that reason.
+
+**A duplicated doc block, left alone.** `find_stale_pending_sales`'s doc comment appears
+twice (`:717-722` and `:723-732`), the second nearly identical to the first. Harmless —
+rustdoc renders the union — and deleting it is a pure cosmetic diff on a line I have no
+other reason to touch. Recorded rather than actioned.
+
+### Disproved lead #12: the negative-stock trigger is not the MSL-17 shape
+
+`20261012_stock_summary_qty_nonnegative.sql` permits a negative `stock_summary.qty` when
+a `workspace_inventory_locations` binding has `allow_negative_stock = 1` — structurally
+the same "security gate keyed on a row another lane can write" shape as MSL-17. It is
+NOT the same class:
+
+- `allow_negative_stock` is a **documented shipped feature** (ADR 2026-07-18 §476;
+  `LocationPicker.tsx:429` renders the badge), so forging it grants a capability the
+  product intends to grant, rather than defeating a guard;
+- the binding write is gated on `INVENTORY_LOCATIONS_MANAGE` through a session-resolved
+  store-scoped command (`bridge/inventory.rs:277-289`), so the forgery requires the
+  stock-policy authority the feature belongs to anyway;
+- the trigger is a *backstop* over Layer 1, not the only guard. Verified rather than
+  assumed: `adjust.rs:221-236` initialises `allow_negative = false` and can only set it
+  from a binding, so a location with no binding is refused by
+  `InsufficientStockAtLocation` in Rust before the trigger is consulted. The migration's
+  claim that an unbound location has "no opt-out to violate" is accurate.
+
+The migration itself is a model of the genre: it names the `CHECK (qty >= 0)` it rejected
+AND the test that would have broken, states what it does not guarantee (ledger/rollup
+drift, which the C12 variance report exists to surface), and explains its one refinement
+of the literal predicate.
+
+**Tally:** 26 findings fixed (8 HIGH), 12 leads disproved.
+
