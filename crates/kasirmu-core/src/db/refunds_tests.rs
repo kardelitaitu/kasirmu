@@ -918,6 +918,88 @@ fn create_refund_spend_reversal_floors_at_zero() {
     assert_eq!(spent, 0, "spend floors at zero, never negative");
 }
 
+// ── C64: the clamp's reachable set, measured rather than assumed ─────
+//
+// C64's claim: because the accrual is an increment and the reversal is a
+// CLAMPED subtraction, a refund applied before its sale is counted would be
+// swallowed by the floor, and a later accrual would then add the full sale on
+// top of a base that never absorbed the refund.
+//
+// INVESTIGATED 2026-09-25, and the arithmetic is exactly as C64 describes —
+// the case below shows 0 where a non-clamping subtraction gives -350. But the
+// ORDERING IS NOT REACHABLE, and that is the finding:
+//
+//   1. The product path refuses it. `process_refund` (kasirmu-bridge
+//      refunds.rs:109-114) rejects any sale whose status is not Completed, and
+//      the accrual runs on the transition TO completed (finalize_sale ->
+//      apply_customer_stats_on_completion). A sale is therefore always accrued
+//      before it can be refunded.
+//   2. The sync path refuses it too, for a different reason. When a refund
+//      arrives for a sale this terminal does not have, the applier takes
+//      `credit_refund_effect_without_sale` (queue.rs:751), which credits STOCK
+//      only — its own doc comment says loyalty and customer spend "have nothing
+//      to attach to, and this arm never fabricates a sale row".
+//
+// So the only way to reach the clamp is to bypass the guard by hand, which is
+// what the case below does. It is kept as the RECORD of why the floor is safe
+// here, not as an endorsement of the ordering: it proves the arithmetic is
+// guarded by callers rather than by the value's own definition.
+#[test]
+fn the_refund_before_accrual_ordering_is_unreachable_and_the_floor_is_why_it_is_safe() {
+    let conn = fresh();
+    seed_completed_sale(&conn);
+
+    // Force the ordering C64 describes, bypassing the bridge guard above. If a
+    // future refactor removes that guard, this test still passes while the
+    // real path starts double-counting — the guard's own tests are what cover
+    // that (kasirmu-bridge refunds_tests.rs).
+    conn.execute("UPDATE sales SET status = 'pending' WHERE id = 'ref-sale-1'", [])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at)
+         VALUES ('cust-ref', 'Bob', '', 0, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE sales SET customer_id = 'cust-ref' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
+
+    let s = store(&conn);
+    let line = RefundLine::new("ref-sl-1", "COFFEE", 1, price(350), price(350));
+    let refund = Refund::new("ref-sale-1", price(350), "before accrual", "", "user-1", vec![line]);
+    s.create_refund(&refund).unwrap();
+
+    let spent = |c: &Connection| -> i64 {
+        c.query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-ref'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+
+    // The clamp eats the reversal: 0, not -350. FALSIFIED by removing the
+    // clamp, which yields -350 — so this asserts the floor is load-bearing.
+    assert_eq!(
+        spent(&conn),
+        0,
+        "the clamp swallows a reversal with nothing to reverse"
+    );
+
+    // And the later accrual then adds the full sale on top of that zeroed
+    // base — the double-count C64 predicted, shown here so the consequence of
+    // losing either guard is on the record.
+    s.finalize_sale("ref-sale-1").unwrap();
+    assert_eq!(
+        spent(&conn),
+        700,
+        "with the guard bypassed, the customer reads the full sale having had 350 refunded"
+    );
+}
+
 // ── Cumulative QUANTITY bound ──────────────────────────────────
 //
 // The sale total bounds VALUE; nothing bounded UNITS per sale line, so one
