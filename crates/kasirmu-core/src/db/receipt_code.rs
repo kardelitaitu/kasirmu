@@ -340,27 +340,39 @@ impl crate::db::Store<'_> {
     }
 }
 
-/// Parse a stored `locations.timezone` value (`'+HH:MM'` / `'-HH:MM'` /
-/// `'UTC'` / `'Z'`) into a total offset in seconds, or `None` when the value
-/// is not a fixed offset core can interpret (e.g. an IANA name). Mirrors the
-/// contract enforced by [`crate::db::reports::datetime::tz_modifier`].
+/// Parse a stored `locations.timezone` value into a total offset in seconds, or
+/// `None` when the value cannot be resolved at all.
+///
+/// MSL-29: this used to parse ONLY the numeric forms (`'+HH:MM'` / `'-HH:MM'` /
+/// `'UTC'` / `'Z'`), so an IANA zone name — a value the model SUPPORTS and the
+/// reports path resolves — fell to UTC here. A store set to `Asia/Jakarta` got
+/// reports bucketed at +07 (`tz_modifier` -> `parse_utc_offset` ->
+/// `offset_for_zone`) while its RECEIPT NUMBERS were dated at +00, and the date
+/// feeds both the printed `yymmdd` and the `fiscal_year` that selects the
+/// sequence: the receipt could land in the wrong fiscal year with no trace
+/// (`receipt_code.rs` has zero `tracing::` calls, while `tz_modifier` warns on
+/// its own fallback).
+///
+/// It now delegates to the same resolver `tz_modifier` uses, so the two paths
+/// cannot disagree on one stored value. The shared helper returns a `±HH:MM`
+/// string, which is also why an IANA name is resolved rather than passed on.
 fn offset_seconds(tz: &str) -> Option<i64> {
-    let tz = tz.trim();
-    if tz.is_empty() || tz.eq_ignore_ascii_case("UTC") || tz.eq_ignore_ascii_case("Z") {
+    // `Z` is the one spelling `parse_fixed_offset` does not carry, and it means
+    // UTC — the same answer, so normalise it before delegating.
+    let raw = tz.trim();
+    if raw.eq_ignore_ascii_case("Z") {
         return Some(0);
     }
-    // An offset with no sign at all is already `None` for this function, so
-    // `?` carries the second arm instead of a nested match that re-says it.
-    let (sign, rest) = match tz.strip_prefix('+') {
+    let offset = crate::db::reports::parse_utc_offset(raw)?;
+    // `parse_utc_offset` is the single source of the `±HH:MM` shape, so this
+    // split cannot see a third form; an unparsable result is unresolvable.
+    let (sign, rest) = match offset.strip_prefix('+') {
         Some(r) => (1i64, r),
-        None => (-1i64, tz.strip_prefix('-')?),
+        None => (-1i64, offset.strip_prefix('-')?),
     };
     let (h, m) = rest.split_once(':')?;
     let h: i64 = h.parse().ok()?;
     let m: i64 = m.parse().ok()?;
-    if !(0..=14).contains(&h) || !(0..=59).contains(&m) {
-        return None;
-    }
     Some(sign * (h * 3600 + m * 60))
 }
 

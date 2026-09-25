@@ -328,9 +328,55 @@ fn resolve_receipt_date_honours_the_location_offset() {
     // A negative offset also shifts the day backwards.
     let (yymmdd_west, _) = resolve_receipt_date("2026-09-18T02:30:00Z", "-05:00").unwrap();
     assert_eq!(yymmdd_west, "260917");
-    // A value core cannot interpret (an IANA name) falls back to UTC.
-    let (yymmdd_utc, _) = resolve_receipt_date("2026-09-18T23:30:00Z", "Asia/Jakarta").unwrap();
-    assert_eq!(yymmdd_utc, "260918");
+    // MSL-29: an IANA name now RESOLVES rather than falling to UTC. This line
+    // used to assert `260918` (the UTC fallback), which is exactly the divergence
+    // MSL-29 fixed: `tz_modifier` bucketed this instant as the 19th in Jakarta
+    // while the receipt printed the 18th. The unknown-name fallback is still UTC
+    // and is asserted in `resolve_receipt_date_resolves_iana_zone_names_like_the_reports_path`.
+    let (yymmdd_jakarta, _) = resolve_receipt_date("2026-09-18T23:30:00Z", "Asia/Jakarta").unwrap();
+    assert_eq!(yymmdd_jakarta, "260919");
+}
+
+/// MSL-29: `resolve_receipt_date` must resolve the SAME zone vocabulary its
+/// documented mirror does.
+///
+/// `tz_modifier` (`reports/datetime.rs:120-130`) states the contract: `timezone`
+/// holds `'+HH:MM'` / `'-HH:MM'` / `'UTC'` / **an IANA zone name** — the last
+/// resolved through `crate::timezone::offset_for_zone`, so reports and the tax
+/// path agree on the business day. `resolve_receipt_date` uses `offset_seconds`,
+/// which parses only the NUMERIC forms: an IANA name is "a value core cannot
+/// interpret" and falls to UTC.
+///
+/// That makes the two paths disagree on the same stored value. A store set to
+/// `Asia/Jakarta` gets reports bucketed at +07 and receipt numbers dated at +00,
+/// and the date feeds BOTH the printed `yymmdd` and the `fiscal_year` that
+/// selects the sequence — so the receipt can land in the wrong fiscal year with
+/// no trace at all (`receipt_code.rs` contains zero `tracing::` calls, while
+/// `tz_modifier` warns on its own fallback).
+#[test]
+fn resolve_receipt_date_resolves_iana_zone_names_like_the_reports_path() {
+    // 2026-09-18T23:30:00Z is 2026-09-19 06:30 in Jakarta (+07). UTC would
+    // print 260918; the reports path buckets this instant as the 19th.
+    let (yymmdd, year) = resolve_receipt_date("2026-09-18T23:30:00Z", "Asia/Jakarta").unwrap();
+    assert_eq!(
+        yymmdd, "260919",
+        "an IANA zone the reports path understands must date the receipt the same way"
+    );
+    assert_eq!(year, "2026");
+
+    // And the two paths must agree for every zone the helper knows.
+    for (zone, expected_day) in [
+        ("Asia/Jakarta", "260919"),
+        ("Asia/Makassar", "260919"), // +08
+        ("Asia/Jayapura", "260919"), // +09
+    ] {
+        let (d, _) = resolve_receipt_date("2026-09-18T23:30:00Z", zone).unwrap();
+        assert_eq!(d, expected_day, "{zone} must resolve, not fall back to UTC");
+    }
+
+    // A name NEITHER path can resolve still falls back to UTC, unchanged.
+    let (utc, _) = resolve_receipt_date("2026-09-18T23:30:00Z", "Not/AZone").unwrap();
+    assert_eq!(utc, "260918", "an unknown name keeps the documented UTC fallback");
 }
 
 #[test]
