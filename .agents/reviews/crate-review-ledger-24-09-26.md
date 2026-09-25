@@ -4903,4 +4903,69 @@ lookup, naming `type_key` and echoing the value. Falsified before committing.
 `kasirmu-api`, clippy clean on both changed crates. Commits `4d67961cd`, `0a33edea6`.
 
 **Tally:** 57 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 74 — MSL-51: a rule only the client enforced, and a test I had to change
+
+### The family, and the shift in shape
+
+Passes 72-73 closed the FK family. This pass enumerated the **non-vocabulary CHECK constraints** — 26 range,
+sign and business rules — and found that most quantity writers already validate: sales, refunds and stock
+transfers all check `qty` explicitly. Two did not, and both live on `bundle_items`.
+
+The shape shifted here, and the shift matters: MSL-48/49/50 were a *constraint being misreported*. This is
+**no constraint at all**.
+
+### MSL-51: `bundle_items.qty` — the check existed, just not where the callers reach
+
+`qty INTEGER NOT NULL DEFAULT 1`, no CHECK, and no store-side validation. The desktop editor has always
+refused it (`BundleManagementScreen.tsx:136`: `qty < 1` throws) — which is precisely why it went unnoticed.
+Both shells forward to the same bridge command (`create_bundle_scoped`, `update_bundle_scoped`), and the
+bridge does no qty validation, so the **tablet app, a script, or any future IPC caller** could store "−2 of
+ITEM-A" in a bundle.
+
+That is a client-side guard standing in for a boundary rule — the same lesson as MSL-40 from the other side.
+
+**A test I changed, deliberately, and why that is the honest resolution.** Fixing this broke
+`create_bundle_with_zero_qty_item`, which asserted `found.items[0].qty == 0`. I read it in context before
+deciding: it sits in a block labelled *"Additional edge-case tests"* and its job is to record what the store
+does with an odd input. It documents behaviour; it does not establish a rule. Three things then broke the tie
+against it — the schema never carried a CHECK, the editor contradicts it (`qty < 1` is rejected), and nothing
+sums the column for money (a bundle has its own price). I updated the test to assert the new validation and
+wrote the reasoning into the test rather than only the ledger, so the next reader sees the decision where the
+assertion is.
+
+This is the third time a pre-existing test has decided a question for me (MSL-44, 46, 51). Twice it
+corrected me; this once it recorded a behaviour I judged wrong. Reading it before overriding it is the whole
+discipline.
+
+### MSL-51 (continued): `unit_price_minor` — pinned, and rated honestly
+
+The sibling is a price OVERRIDE, `INTEGER` with no CHECK, validated by the editor (`unitPrice < 0`) and not by
+the store. Traced properly before rating it: **nothing in `kasirmu-core` sums this column** — the
+`qty * unit_price_minor` arithmetic at `sales_tax.rs:385` belongs to SALE lines, a different table — so a
+negative value is inert today.
+
+**MEDIUM at most, and I have written it as a consistency pin rather than a live wrong answer.** It is worth
+fixing because the column is money: the first consumer to trust it would inherit a value the UI already
+believes is impossible. Both guards sit in `insert_bundle_item`, the one place every item passes through, and
+both are falsified.
+
+### Also checked, no findings
+
+- `product_recipes.quantity_required` carries `CHECK (> 0)` but has **no production writer** anywhere in the
+  tree — the table is migration-seeded only, so the constraint is unreachable. Recorded so a later pass does
+  not re-derive it.
+- The remaining 24 non-vocabulary CHECKs are on sale lines, payments, stock counts and similar paths whose
+  writers validate explicitly (the `qty <= 0` census above).
+
+**Verified:** 3344 `kasirmu-core` lib tests (was 3338 — three new plus one updated expectation), 1970 in the
+`db::` layer alone, 1404 `kasirmu-bridge`, clippy clean. Commit `0ef4330c3`.
+
+**An unrelated failure, correctly attributed:** a full-suite run showed
+`sync_client::tests::the_pull_stub_delegates_to_the_shared_rule_and_variant` failing. `sync_client.rs`,
+`sync_client_tests.rs` and `sync_pull.rs` are dirty with another lane's in-flight work; my module (28 tests)
+and the whole `db::` layer (1970) pass in isolation. Recorded rather than "fixed" — it is not mine to touch.
+
+**Tally:** 58 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
