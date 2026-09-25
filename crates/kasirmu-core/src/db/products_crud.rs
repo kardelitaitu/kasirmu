@@ -15,6 +15,31 @@ use rusqlite::{Transaction, TransactionBehavior};
 use crate::downgrade::QuotaDimension;
 use crate::subscription::SubscriptionTier;
 
+/// Normalise an optional barcode to what the API reports (MSL-45).
+///
+/// `Barcode::new` rejects only empty/whitespace, and until this helper the
+/// write path bound the caller's raw string while the return/read paths applied
+/// `Barcode::new(..).ok()`. A whitespace-only barcode therefore landed in the
+/// column (trimmed by nothing), was reported as `None` by every surface, and —
+/// because `uq_products_barcode` is UNIQUE — consumed the one NULL-free slot,
+/// so the NEXT blank-barcode product was refused with
+/// `Conflict { field: "sku or barcode" }` even when its SKU was unique.
+///
+/// Reachable from the product screen (`VariantManagementScreen.tsx` binds the
+/// raw field and passes `form.barcode || null`, where a spaces-only string is
+/// truthy) and unvalidated by the bridge's write path.
+///
+/// Returning `None` for a blank value makes the column agree with the API and
+/// releases the unique slot; a real barcode still stores trimmed, which is the
+/// same normalisation `Barcode::new` performs internally.
+fn normalise_barcode(barcode: Option<&str>) -> Option<String> {
+    let trimmed = barcode?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
+
 // ── Product CRUD ─────────────────────────────────────────────────────
 
 impl Store<'_> {
@@ -306,6 +331,10 @@ impl Store<'_> {
             })?
             .to_owned();
 
+        // MSL-45: bind what the API reports, so a blank value cannot occupy the
+        // UNIQUE barcode slot while reading back as absent.
+        let barcode = normalise_barcode(barcode);
+
         let tx = self.conn.unchecked_transaction()?;
 
         let result = tx.execute(
@@ -562,6 +591,11 @@ impl Store<'_> {
         // window, and the row left behind is always one caller's intent in
         // full — never a blend of two.
         let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+
+        // MSL-45: same normalisation as the create path (see `normalise_barcode`),
+        // so an update cannot install the blank value the create path now refuses
+        // to leave behind.
+        let barcode = normalise_barcode(barcode);
 
         // One statement, not two mutually exclusive arms: a NULL
         // `expected_version` disables the CAS predicate, a value turns it into

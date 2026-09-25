@@ -71,6 +71,96 @@ fn adjust_stock(s: &Store<'_>, conn: &Connection, sku: &str, delta: i64) -> Resu
     Ok(result)
 }
 
+// ── MSL-45: a blank barcode must not occupy the UNIQUE slot ─────
+
+/// A whitespace barcode is stored verbatim, reported as absent, and then
+/// blocks every later blank barcode with a misleading conflict.
+///
+/// `create_product` binds the caller's raw string and applies
+/// `Barcode::new(..).ok()` only when building the returned struct, so:
+///
+/// ```text
+/// PROBE returned barcode = None            <- the API says "no barcode"
+/// PROBE stored   barcode = Some("   ")     <- the column holds whitespace
+/// PROBE second product   = Err(Conflict { field: "sku or barcode" })
+/// ```
+///
+/// `Barcode::new` rejects only empty/whitespace, so whitespace is the one
+/// trigger — and it is reachable: the products screen binds the raw field
+/// (`VariantManagementScreen.tsx:400`) and passes `form.barcode || null`,
+/// where `"   "` is truthy and travels as a non-null value. The bridge does
+/// not validate the barcode on the write path either (it trims only for
+/// lookup, `products.rs:372`).
+///
+/// Two consequences, the second worse than the first: the value is invisible
+/// through the type system, AND because `uq_products_barcode` is UNIQUE it
+/// consumes the one slot — so the next product the operator saves with a
+/// blank barcode is refused with `Conflict { field: "sku or barcode" }` even
+/// though its SKU is unique. That is a user-facing dead end with an error
+/// that blames the wrong field.
+#[test]
+fn a_whitespace_barcode_is_stored_as_null_not_verbatim() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let a = s
+        .create_product("SKU-A", "A", price(100), None, Some("   "), 0, None)
+        .unwrap();
+    assert!(a.barcode.is_none(), "the API reports no barcode");
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-A'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        raw, None,
+        "a whitespace barcode must be stored as NULL, not occupy the unique slot"
+    );
+
+    // The symptom the operator sees: a second blank-barcode product must save.
+    let b = s.create_product("SKU-B", "B", price(100), None, Some("   "), 0, None);
+    assert!(
+        b.is_ok(),
+        "a second product with a blank barcode must save, not collide on a hidden value: {:?}",
+        b.err()
+    );
+}
+
+/// A real barcode still round-trips, trimmed — the property the fix must keep.
+#[test]
+fn a_real_barcode_is_still_stored_and_lookupable() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_product(
+        "SKU-C",
+        "C",
+        price(100),
+        None,
+        Some(" 5901234123457 "),
+        0,
+        None,
+    )
+    .unwrap();
+
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-C'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(raw.as_deref(), Some("5901234123457"), "trimmed, not raw");
+    assert!(
+        s.lookup_product_with_details_by_barcode("5901234123457")
+            .unwrap()
+            .is_some(),
+        "and the lookup the scanner uses still finds it"
+    );
+}
+
 fn usd() -> Currency {
     "USD".parse().unwrap()
 }
