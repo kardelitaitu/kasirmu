@@ -99,7 +99,11 @@ pub(super) fn sqlite_push_batch_multirow(
                     results.push(PushOutcome::Accepted);
                 }
                 _ => results.push(PushOutcome::Rejected {
-                    reason: format!("duplicate id: {}", item.id),
+                    reason: format!(
+                        "{} {}",
+                        kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX,
+                        item.id
+                    ),
                 }),
             }
         }

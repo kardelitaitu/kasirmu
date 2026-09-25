@@ -2623,20 +2623,71 @@ fn metric_classifier_shares_the_client_predicate() {
         "the hand-written prefix literal must not come back"
     );
 
-    // The PRODUCER side cannot call the constant: both store arms build the
-    // reason with a literal (`format!("duplicate id: {}", item.id)`), and
-    // C50's fence forbids changing them. So pin the two ends by requiring
-    // each producer's source to contain the CONSTANT'S VALUE verbatim:
-    // a reword of `DUPLICATE_ID_REJECTION_PREFIX` fails HERE, naming the
-    // files that must move with it, instead of silently splitting the metric
-    // from the thing it measures.
+    // The PRODUCER side: C50 pinned these by VALUE ("the fence forbids changing
+    // them"), which caught a one-sided reword but could not stop a producer from
+    // re-typing the literal. C50b lifted that fence so every site calls the
+    // constant, which SUBSUMES the value check: a source naming the constant
+    // necessarily contains its value, and one that copies the value without
+    // naming it is caught by `every_duplicate_id_producer_calls_the_shared_constant`.
+    // Kept as the weaker belt-and-braces assertion rather than deleted, because it
+    // still fails loudly and by name if a producer is reverted to a literal.
     for (name, producer) in [
         ("sync_store/sqlite.rs", include_str!("sync_store/sqlite.rs")),
         ("sync_store/pg.rs", include_str!("sync_store/pg.rs")),
+        ("sync_store.rs", include_str!("sync_store.rs")),
     ] {
         assert!(
-            producer.contains(kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX),
-            "{name} must format its reason with the shared prefix value; if it was reworded, reword it there too"
+            producer.contains("DUPLICATE_ID_REJECTION_PREFIX")
+                || producer.contains(kasirmu_core::sync_client::DUPLICATE_ID_REJECTION_PREFIX),
+            "{name} must take its prefix from the shared constant, by name or by value; if it was reworded, reword it there too"
         );
     }
+}
+
+/// C50b: the producers must CALL the constant, not merely contain its value.
+///
+/// The pin above is honest about its own limit -- it checks that each producer's
+/// source contains the constant's VALUE verbatim, which catches a reword moving
+/// one side only, but cannot stop a producer from re-typing the literal. C50's
+/// fence forbade changing those files; that fence is now lifted, so this asserts
+/// the stronger property: one constant PRODUCES and CLASSIFIES the reason, so a
+/// change moves both ends by construction rather than by agreement.
+///
+/// Why an `include_str!` assertion and not a behavioural one: the coupling is a
+/// compile-time fact. Two independent literals that happen to be equal today
+/// produce byte-identical reasons at runtime and diverge tomorrow, so no
+/// assertion on the OUTPUT can distinguish the shapes this test must tell apart.
+#[test]
+fn every_duplicate_id_producer_calls_the_shared_constant() {
+    // Every site that builds a duplicate-id reason, by file. `sync_store.rs` was
+    // missed by the original item, which named only the two backend modules --
+    // it holds two more arms of the same shape.
+    for (name, producer) in [
+        ("sync_store/sqlite.rs", include_str!("sync_store/sqlite.rs")),
+        ("sync_store/pg.rs", include_str!("sync_store/pg.rs")),
+        ("sync_store.rs", include_str!("sync_store.rs")),
+    ] {
+        assert!(
+            producer.contains("DUPLICATE_ID_REJECTION_PREFIX"),
+            "{name} must build its reason FROM the shared constant, not a copy of its value"
+        );
+        assert!(
+            !producer.contains("\"duplicate id:\""),
+            "{name} still types the literal; the constant must be the only author of the prefix"
+        );
+    }
+    // And the classifier side, so both halves of C50/C50b are covered by one leg.
+    // Scoped to the FUNCTION, not the file: `sync_api.rs` quotes the old literal in
+    // the doc comment that explains the C50 fix, and a file-wide assertion would
+    // forbid the comment that records why the code changed. The sibling pin below
+    // scopes the same way for the same reason.
+    let api = include_str!("sync_api.rs");
+    let classifier = api
+        .split("fn push_outcome_label(")
+        .nth(1)
+        .expect("push_outcome_label must exist in sync_api.rs");
+    assert!(
+        !classifier.contains("starts_with(\"duplicate id:\")"),
+        "the classifier must not re-type the prefix either"
+    );
 }
