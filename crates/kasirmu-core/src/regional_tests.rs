@@ -161,6 +161,54 @@ fn absent_market_stays_absent() {
     assert_eq!(cfg.country_code, None);
 }
 
+/// MSL-34: a blank `country_code` must mean "not set here", like every
+/// other axis.
+///
+/// `resolve` builds the market axis with a bare `find_map`, while locale,
+/// timezone and currency go through `pick`, which re-checks blankness per
+/// layer. `RegionalLayer`'s fields are public precisely so a caller may
+/// build one directly (the IPC mapping in Slice 2 is named as one), and a
+/// layer constructed that way can carry `Some("")` or `Some("   ")`.
+///
+/// The divergence is what makes the blank reach the answer: `pick` would
+/// skip a blank layer, `find_map` stops at it. A blank market on a NARROW
+/// layer (the location, whose `blank` constructor is called with a literal
+/// `""` at `db/regional.rs:114`) then shadows a real market declared on the
+/// entity above it — and an empty string is not "no country", it is a
+/// country-shaped value nothing validates, which the fiscalisation path
+/// would carry as the market.
+#[test]
+fn a_blank_market_does_not_shadow_a_declared_one() {
+    let cfg = RegionalConfig::resolve(
+        "loc-1",
+        None,
+        &[
+            // Narrow layer declares an EMPTY market (not None — the shape a
+            // directly-built layer can carry, and the shape a blank column
+            // has before the constructor trims it).
+            layer(ConfigScope::Location, None, None, None, Some("")),
+            layer(ConfigScope::LegalEntity, None, None, None, Some("ID")),
+        ],
+    );
+    assert_eq!(
+        cfg.country_code.as_deref(),
+        Some("ID"),
+        "a blank market must mean \"not set here\", so the entity's declared market wins"
+    );
+
+    // Whitespace is blank too -- the same rule `pick` applies to the other
+    // three axes, and the one `blank_to_none` implements.
+    let cfg = RegionalConfig::resolve(
+        "loc-1",
+        None,
+        &[
+            layer(ConfigScope::Location, None, None, None, Some("   ")),
+            layer(ConfigScope::LegalEntity, None, None, None, Some("ID")),
+        ],
+    );
+    assert_eq!(cfg.country_code.as_deref(), Some("ID"));
+}
+
 #[test]
 fn language_is_a_projection_of_locale() {
     let mut cfg = RegionalConfig::resolve(

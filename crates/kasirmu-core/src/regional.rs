@@ -378,7 +378,16 @@ impl RegionalConfig {
             !layers.is_empty(),
             "regional resolution needs at least one layer"
         );
-        let country_code = layers.iter().find_map(|layer| layer.country_code.clone());
+        // MSL-34: the market axis reuses `pick`'s per-layer blank rule rather
+        // than a bare `find_map`. `country_code` is the one axis with no
+        // built-in default (see the field doc), so it cannot call `pick` for
+        // the fallback -- but it must share the blankness rule, or a blank
+        // value on a narrow layer shadows a real market declared above it.
+        // `RegionalLayer`'s fields are public, so a directly-built layer can
+        // carry `Some("")`; `pick` would skip it and `find_map` stopped on it.
+        let country_code = layers
+            .iter()
+            .find_map(|layer| layer.country_code.as_deref().and_then(blank_to_none));
         Self {
             location_id: location_id.into(),
             legal_entity_id: legal_entity_id.and_then(|id| blank_to_none(&id)),
