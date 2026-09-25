@@ -4720,4 +4720,65 @@ wrong fix.
 Commit `a28b42a49`.
 
 **Tally:** 54 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 71 — the UNIQUE-column census completed: no new defects
+
+### Finishing what pass 70 started
+
+MSL-46 fixed `inventory_locations.name`. The obvious follow-up — *is it the only UNIQUE string column
+written untrimmed?* — is what this pass answered, by enumerating every remaining UNIQUE string column and
+tracing its writers rather than sampling. **All are now adjudicated:**
+
+| column | how it is protected | verdict |
+|---|---|---|
+| `inventory_locations.name` | — | **MSL-46, fixed last pass** |
+| `suppliers.code` | `code.trim()` before the bind, both writers | clean |
+| `purchase_orders.po_number` | `po_number.trim()`, both writers | clean |
+| `users.username` | `trim().to_lowercase()` | clean |
+| `users.email` | **shape-validated**: local@domain.tld, no whitespace | clean |
+| `users.national_id_hash` | **shape-validated**: 9 digits (ssn) / 16 (nik) | clean |
+| `locations.ticket_prefix` | `normalize_ticket_prefix` (trim + ASCII-uppercase) | clean |
+| `sync_applied_items.effect_key` | machine-built by the sync client; partial index ignores NULL | clean |
+
+### Two hypotheses tested and disproved, which is the point of measuring
+
+The email column looked like the strongest candidate — UNIQUE, held in a profile struct, bound verbatim at
+`profile.rs:815`, and with no normalization anywhere upstream in the bridge. Two probes:
+
+```text
+PROBE second user, padded email + padded national id
+      = Err(Validation { field: "national_id", message: "national id must be 9 digits for ssn" })
+PROBE second user, padded email only
+      = Err(Validation { field: "email", message: "email address is not well-formed" })
+```
+
+Both were **refused**. `validate()` (`profile.rs:187-204`) checks the national id is exactly N *ASCII
+digits* and the email contains *no whitespace*, and either rule inherently excludes padding — I had
+reasoned from "the value is bound raw" to "the value can be padded" without reading the validator that
+runs first. The hash then makes the uniqueness proof match the shape-checked plaintext, so the pair cannot
+disagree.
+
+**Judged, not silently skipped:** `locations.name` (the store profile, distinct from
+`inventory_locations.name`) is bound untrimmed by both its writers. That is *consistent* between them and
+the column carries no UNIQUE index — only `idx_locations_primary` on a boolean — so no constraint is
+defeated and no duplicate is hidden. Cosmetic; recorded rather than changed, because trimming it would be
+churn on a column with no contract to honour.
+
+### No defects in this pass
+
+3332 `kasirmu-core` lib tests and clippy clean on the unmodified tree; no commit beyond this record. The
+probe was appended, measured, and removed — `git status --porcelain -- crates/kasirmu-core/src/db` is empty
+at the end of the pass.
+
+### What the census establishes
+
+Five findings (MSL-40 through MSL-46) all came from one question asked at a different layer or column:
+*which layer owns this rule, and does every path to the column agree?* The UNIQUE-column variant is now
+closed as a census — the remaining columns are protected by a validator, a normalizer, or are machine-built,
+and that is a statement about the whole set rather than a sample. The next productive question is likely a
+different constraint family (FK-referenced codes, or the `WHERE`-clause predicates the partial indexes rely
+on) rather than a sixth pass over string columns.
+
+**Tally:** 54 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
