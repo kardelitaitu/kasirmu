@@ -16,6 +16,50 @@ use crate::product_bundle::{BundleItem, BundleWithItems, ProductBundle};
 
 use super::Store;
 
+/// Insert one `bundle_items` row, mapping a missing component product to a
+/// typed error naming the SKU (MSL-48).
+///
+/// `bundle_items.sku` is `REFERENCES products(sku)`, and the SKU arrives as an
+/// untyped `String` that the editor renders as free text. Without this mapping
+/// a typo reaches the caller as a bare `FOREIGN KEY constraint failed` — no
+/// field, no SKU, and nothing saying the *product* is what is missing — while
+/// the bridge forwards the value unvalidated and the screen shows its generic
+/// "could not be saved" message, because a DB error is not the client-side
+/// validation error that catch distinguishes.
+///
+/// `NotFound` with `entity: "product"` and the offending SKU as `id` is the
+/// answer the UI can act on, and it matches how the rest of the crate reports a
+/// reference to a row that is not there.
+fn insert_bundle_item(tx: &rusqlite::Transaction<'_>, item: &BundleItem) -> Result<(), CoreError> {
+    let result = tx.execute(
+        "INSERT INTO bundle_items (id, bundle_id, sku, qty, unit_price_minor)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            item.id,
+            item.bundle_id,
+            item.sku,
+            item.qty,
+            item.unit_price_minor
+        ],
+    );
+    match result {
+        Err(rusqlite::Error::SqliteFailure(e, _))
+            if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            // A nameable component beats the raw FK message: the only FK on this
+            // table is `sku -> products(sku)` (the `bundle_id` FK is satisfied by
+            // the row this same transaction just wrote), so the SKU is what is
+            // wrong.
+            Err(CoreError::NotFound {
+                entity: "product",
+                id: item.sku.clone(),
+            })
+        }
+        Err(e) => Err(e.into()),
+        Ok(_) => Ok(()),
+    }
+}
+
 // ── Row mappers ──────────────────────────────────────────────────────────
 
 fn row_to_bundle(row: &rusqlite::Row) -> rusqlite::Result<ProductBundle> {
@@ -125,17 +169,7 @@ impl Store<'_> {
         )?;
 
         for item in items {
-            tx.execute(
-                "INSERT INTO bundle_items (id, bundle_id, sku, qty, unit_price_minor)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    item.id,
-                    item.bundle_id,
-                    item.sku,
-                    item.qty,
-                    item.unit_price_minor
-                ],
-            )?;
+            insert_bundle_item(&tx, item)?;
         }
 
         tx.commit()?;
@@ -178,17 +212,7 @@ impl Store<'_> {
             params![bundle.id],
         )?;
         for item in items {
-            tx.execute(
-                "INSERT INTO bundle_items (id, bundle_id, sku, qty, unit_price_minor)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    item.id,
-                    item.bundle_id,
-                    item.sku,
-                    item.qty,
-                    item.unit_price_minor
-                ],
-            )?;
+            insert_bundle_item(&tx, item)?;
         }
 
         tx.commit()?;

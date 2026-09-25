@@ -298,6 +298,74 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
     assert!(store.get_bundle_by_sku("NO-SUCH-SKU").unwrap().is_none());
 }
 
+// ── MSL-48: a bundle item naming a missing product must say so ──
+
+/// The component SKU is free text in the editor, and a typo currently reaches
+/// the caller as a bare `FOREIGN KEY constraint failed`.
+///
+/// `bundle_items.sku` is `REFERENCES products(sku)`, and both writers bind
+/// `item.sku` from an untyped `String` (`product_bundle.rs:41`). Measured:
+///
+/// ```text
+/// PROBE create_bundle with bad sku = Err(Db(SqliteFailure(
+///     ConstraintViolation, 787, Some("FOREIGN KEY constraint failed"))))
+/// ```
+///
+/// No field, no SKU, and no statement that the product is the missing thing —
+/// while the bridge forwards `i.sku` unvalidated (`bundles.rs:170`) and the
+/// editor renders it as an `<input>` (`BundleManagementScreen.tsx:424`) whose
+/// save failure shows the generic `bundles-error-save` message, because a DB
+/// error is not the client-side `BundleValidationError` the catch distinguishes.
+///
+/// So a mistyped SKU reads as "the bundle could not be saved" with nothing
+/// pointing at the field. This is MSL-40's shape once more — a constraint
+/// violation reported as a storage fault — but here the constraint is an FK
+/// and the offending value is on screen.
+#[test]
+fn an_item_naming_a_missing_product_is_a_typed_error() {
+    let store = fresh_store();
+    let bundle = make_bundle("Gift Box");
+    let items = vec![make_item(&bundle.id, "NO-SUCH-SKU", 1)];
+
+    let err = store
+        .create_bundle(&bundle, &items)
+        .expect_err("a missing component product must be refused");
+    match err {
+        CoreError::NotFound { entity, id } => {
+            assert_eq!(entity, "product", "the missing thing is a product");
+            assert_eq!(id, "NO-SUCH-SKU", "and the error names the SKU to fix");
+        }
+        other => panic!("expected NotFound naming the SKU, got {other:?}"),
+    }
+
+    // Nothing was half-written: the bundle row must not survive the refusal.
+    assert!(store.get_bundle(&bundle.id).unwrap().is_none());
+}
+
+/// The update path is held to the same rule, since it re-inserts every item.
+#[test]
+fn updating_onto_a_missing_product_is_a_typed_error() {
+    let store = fresh_store();
+    let bundle = make_bundle("Hamper");
+    store
+        .create_bundle(&bundle, &[make_item(&bundle.id, "ITEM-A", 1)])
+        .unwrap();
+
+    let err = store
+        .update_bundle(&bundle, &[make_item(&bundle.id, "NO-SUCH-SKU", 1)])
+        .expect_err("a missing component product must be refused");
+    assert!(
+        matches!(
+            err,
+            CoreError::NotFound {
+                entity: "product",
+                ..
+            }
+        ),
+        "expected NotFound for the product, got {err:?}"
+    );
+}
+
 #[test]
 fn update_nonexistent_bundle_is_noop() {
     let store = fresh_store();
