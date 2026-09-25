@@ -3919,6 +3919,72 @@ ledger as verified pins while being blind to the thing they claimed to pin.
 - A workspace-wide `find_map` census confirms MSL-34 was the ONLY instance of that shape.
 
 **Tally:** 43 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 59 — the authz-gate sweep: no findings, and two of my own false trails
+
+MSL-35 was an authorization-gate divergence, so this pass stopped reading files and enumerated every
+gate decision in `kasirmu-api` instead: all 24 production sites of `admin_key_authorised`,
+`require_admin_write`, `terminal_id.is_*`, `allow_terminal_credentials` and `SingleTenantSurface`. There
+are now four distinct gate shapes in the tree, and the sweep is what makes their relationships
+auditable in one view:
+
+| shape | sites | admin key | terminal scope | claims? |
+|---|---|---|---|---|
+| `require_admin_write` | products x2, tax_rates x2, exchange_rates x2 | yes | deny | yes |
+| `users.rs::may_manage_users` + inline key | users | yes | deny | yes |
+| `require_tenant_write` | memos::sync | yes | flag-gated (MSL-35) | yes |
+| bare `admin_key_authorised` | settings x2, plans x1, terminals x1, tokens x2 | yes | n/a | **no** |
+
+### Why the fourth row is correct, not a gap
+
+The bare-key row looked like the same omission MSL-35 fixed — four handlers checking the admin key with
+no terminal-scope test alongside it. It is not, and the reason is checkable rather than arguable:
+**those handlers do not take `Extension<ApiTokenClaims>` at all.** `settings.rs` and `terminals.rs`
+contain zero references to the claims type; `plans.rs`'s only two references are the import and the
+*read* handler's extractor (`:41`), not the write handler at `:89`. With no tenant claim in scope there
+is no terminal identity to test, and a device credential can satisfy an admin-key check no better than
+any other caller. A terminal-scope denial would have nothing to read.
+
+### Also verified clean
+
+- `users.rs` hand-rolls both defences instead of calling `require_admin_write`, but in the same order and
+  with the same status codes (401 then 403, `insufficient_scope`). A duplication worth noting; not a
+  divergence.
+- `exchange_rates.rs` serves three GETs with no tenant parameter and no auth claims. Verified this is
+  correct rather than assuming: `modules/currency` has **zero** references to `tenant_id`, so these rates
+  are global reference data, not tenant-scoped rows.
+- `read_tiers.rs` + `read_tiers_tests.rs` — the anti-drift test derives the GET route set by parsing the
+  router source, after an earlier hand-typed list let `GET /api/v1/memos/active` pass unchecked. It
+  guards against its own vacuous pass (`get_routes.len() >= 10`), requires a *reason* per exemption, and
+  its failure mode is a missed route rather than a false alarm. I checked the 13 READ_KEY_MAP entries
+  against the router by hand: exact cover, no gaps. This is the model the rest of the audit should
+  imitate — a structual check that cannot drift.
+- `cache.rs` (505) — every Redis error degrades to miss/noop, the fail-safe direction for a cache; the
+  B48 fix (`inventory_invalidation_target`) is precise and its reasoning is preserved verbatim.
+- `plans.rs:43` / `memos.rs:46` / `images.rs` — `.unwrap_or("default")` on `claims.tenant_id`. Correct:
+  `None` is the legacy single-store token shape, and `create_token_full` only omits the claim for it.
+
+### Two false trails of my own, both caught by checking rather than concluding
+
+1. **"`sync_pull.rs` has no tests at all."** I grepped `sync_pull_tests.rs` for `pin_hash|upsert_users`,
+   got nothing, and checked the *sibling* test file — concluding the SYNC-06 credential invariant was
+   unmechanized. Wrong: the tests live in `sync_client_tests.rs` (the module is wired as a submodule of
+   `sync_client`, `sync_client.rs:264`), and all four pass —
+   `apply_snapshot_writes_placeholder_pin_hash_for_new_users`,
+   `apply_snapshot_preserves_existing_local_pin_hash_on_conflict`,
+   `snapshot_user_with_pin_hash_is_rejected`, `snapshot_user_without_pin_hash_deserializes`. The
+   invariant's header claims are all backed. **A grep miss inside one file is not evidence about the
+   module; the `#[path]` wiring means the test file can live elsewhere entirely.**
+2. **"`plans.rs` has no claims on its write path."** True (verified), but I had first concluded it from a
+   truncated read of the handler signature; the grep count of 2 made me look again and confirm which
+   handler owns them.
+
+**No defects in this pass.** 336 `kasirmu-api` lib tests and 49 `sync_client` tests pass on the
+unmodified tree; nothing was committed. The `bridge` suite re-ran green at 1400 for the third time.
+
+**Tally:** 43 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
 
 
 
