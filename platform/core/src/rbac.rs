@@ -331,7 +331,9 @@ impl RolePreset {
 #[path = "rbac_presets.rs"]
 mod rbac_presets;
 
-pub use rbac_presets::{ALL_ENFORCED, ROLE_PRESETS, is_builtin_role_id};
+pub use rbac_presets::{
+    ALL_ENFORCED, ROLE_PRESETS, is_builtin_role_id, role_bypasses_workspace_assignment,
+};
 
 #[cfg(test)]
 #[path = "rbac_preset_tests.rs"]

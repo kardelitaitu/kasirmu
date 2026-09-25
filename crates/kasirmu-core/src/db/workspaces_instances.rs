@@ -113,13 +113,7 @@ impl Store<'_> {
         // are still two copies" defect this tree names elsewhere, and its failure
         // mode is silent — a taxonomy change would not be a compile error here.
         // `the_workspace_bypass_ids_are_the_canonical_ones` pins the set.
-        if matches!(
-            role_id,
-            platform_core::rbac::builtin_roles::OWNER
-                | platform_core::rbac::builtin_roles::ADMIN
-                | platform_core::rbac::builtin_roles::MANAGER
-                | platform_core::rbac::builtin_roles::AUDITOR
-        ) {
+        if platform_core::rbac::role_bypasses_workspace_assignment(role_id) {
             return self.list_store_instances(store_id, user_id);
         }
 
@@ -532,18 +526,16 @@ impl Store<'_> {
             }
         }
 
-        // 1. Owner/admin bypass.
+        // 1. Management bypass.
         // Staff is deliberately NOT in this bypass: access resolves through
         // explicit `user_workspace_instances` (step 2) or `role_workspace_types`
         // (step 3) so a staff user can only open assigned workspaces.
-        if role_id == "role-owner"
-            || role_id == "role-admin"
-            || role_id == "admin"
-            || role_id == "role-manager"
-            || role_id == "role-auditor"
-            || role_id == "manager"
-            || role_id == "auditor"
-        {
+        //
+        // MSL-21: the set comes from the taxonomy, not from literals retyped
+        // here. This copy and the one in `list_workspaces_inner` had drifted from
+        // the role table in the same way (three dead `admin`/`manager`/`auditor`
+        // arms apiece); one predicate now serves both.
+        if platform_core::rbac::role_bypasses_workspace_assignment(role_id) {
             // Instance must exist and be active in this store.
             let exists: bool = self
                 .conn

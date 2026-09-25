@@ -1989,6 +1989,38 @@ fn the_workspace_bypass_ids_are_the_canonical_ones() {
 }
 
 const DEFAULT_STORE: &str = "default";
+/// MSL-21: the SAME set is asserted directly on the shared predicate, so a copy
+/// cannot reintroduce a private list. `can_access_instance` and
+/// `list_workspaces_inner` now both call it, and this walks every preset id.
+#[test]
+fn the_bypass_predicate_admits_exactly_the_management_roles() {
+    use platform_core::rbac::{builtin_roles, role_bypasses_workspace_assignment}
+    ;
+
+    let expected = [
+        (builtin_roles::OWNER, true),
+        (builtin_roles::ADMIN, true),
+        (builtin_roles::MANAGER, true),
+        (builtin_roles::AUDITOR, true),
+        // Staff and Custom must resolve through an assignment, never a blanket
+        // bypass — Staff especially: a checkout-only role seeing every workspace
+        // in the store is the precise thing the assignment model prevents.
+        (builtin_roles::STAFF, false),
+        (builtin_roles::CUSTOM, false),
+    ];
+    for (role, bypassed) in expected {
+        assert_eq!(
+            role_bypasses_workspace_assignment(role),
+            bypassed,
+            "predicate and taxonomy disagree about {role:?}",
+        );
+    }
+
+    // The three literals every hand-written copy carried are not roles.
+    for bogus in [BARE_ADMIN, BARE_MANAGER, BARE_AUDITOR] {
+        assert!(!role_bypasses_workspace_assignment(bogus), "{bogus:?} must not bypass");
+    }
+}
 const BARE_ADMIN: &str = "admin";
 const BARE_MANAGER: &str = "manager";
 const BARE_AUDITOR: &str = "auditor";

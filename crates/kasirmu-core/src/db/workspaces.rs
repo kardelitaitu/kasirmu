@@ -181,14 +181,24 @@ impl Store<'_> {
         role_id: &str,
         user_id: Option<&str>,
     ) -> Result<Vec<WorkspaceRow>, CoreError> {
-        if role_id == "role-owner"
-            || role_id == "role-admin"
-            || role_id == "admin"
-            || role_id == "role-manager"
-            || role_id == "role-staff"
-            || role_id == "role-auditor"
-            || role_id == "manager"
-            || role_id == "auditor"
+        // MSL-21: three of the eight literals below are not role ids at all —
+        // `admin`, `manager`, `auditor`. Every preset id is `role-`-prefixed and
+        // `users.role_id` is `REFERENCES roles(id)`, so those arms were dead. The
+        // four real ones are now taken from the taxonomy.
+        //
+        // NOTE the deliberate difference from
+        // `platform_core::rbac::role_bypasses_workspace_assignment`, which does NOT
+        // admit `role-staff`: this legacy reader resolves from the pre-ADR-#4
+        // tables (`user_workspaces`, `role_workspaces`) and its bypass historically
+        // included Staff. It is ALSO unreachable — `list_workspaces_legacy` has no
+        // caller outside its own tests — so the divergence is inert and is recorded
+        // rather than silently reconciled: changing a policy on a dead path would
+        // make the next reader think the two agree.
+        if platform_core::rbac::builtin_roles::OWNER == role_id
+            || platform_core::rbac::builtin_roles::ADMIN == role_id
+            || platform_core::rbac::builtin_roles::MANAGER == role_id
+            || platform_core::rbac::builtin_roles::STAFF == role_id
+            || platform_core::rbac::role_bypasses_workspace_assignment(role_id)
         {
             return self.list_all_workspace_types();
         }
