@@ -2,7 +2,8 @@
 
 **Status:** OPEN — census round complete (§1–§6); scale-review journal appended 2026-09-25
 (§7, §8, §9); §9 also closes the verification backlog and records the first pass over the test
-mass. No code touched, no axis chosen.
+mass; §10 is the instrument round — first measurements in the todo (crate graph, cycle check,
+test-sleep floor). No code touched, no axis chosen.
 **Date:** 2026-09-25 · **Branch:** `0.0.40` · **Recorded against:** `c7767e73e` (§8). §1–§7 recorded against HEAD at their own time of measurement.
 
 ---
@@ -168,7 +169,7 @@ largely command wiring, which resists unit testing. Noted, not acted on.
 
 ---
 
-## 4. What this census does NOT tell us — no instrument was run
+## 4. What this census does NOT tell us — no instrument was run _(partially closed by §10)_
 
 Everything below is unmeasured. It is listed so that no one mistakes §1 for evidence about it.
 
@@ -181,6 +182,11 @@ Everything below is unmeasured. It is listed so that no one mistakes §1 for evi
 | how much is behind feature flags | per-crate `[features]` read + `cargo tree -f` |
 | test wall-clock per crate | `cargo test -p <crate> -- --report-time`, or `cargo nextest run` (per-test timing) |
 | whether any crate is a dependency cycle | `cargo tree` / a cycle check — not run |
+
+**Updated 2026-09-25 — §10 earned three of these rows and partially earned two.** Fan-in/fan-out
+and the cycle check are now measured (there are **zero** cycles); the test wall-clock row has a
+measured stated-sleep floor. Compile time, binary size and dead-code volume are still unearned.
+See §10C for the row-by-row status and §10D for why no build was run.
 
 Build profiles, for context only — not a work item:
 `[profile.release]` is `opt-level = 3`, `lto = "thin"`, `codegen-units = 8`,
@@ -1237,3 +1243,145 @@ exists in the repo — O-T01 and O-T02 are simply the files that did not adopt i
   is funded from this journal, the candidates in priority order are: **O-H26** (live panic),
   **O-H24** (double charge), **O-H23** (UI stall), then **O-T04 → O-T01 → O-T02** for suite
   wall-clock.
+
+---
+
+## 10. Round 5 (2026-09-25) — the instrument round
+
+Rounds 1–4 produced 100+ findings and **zero measurements**. Every ranking in §3 and §5 rested on
+line counts used as a proxy for cost. This round runs instruments instead. **No crate code has
+been changed.**
+
+**Method.** `cargo metadata --offline` for the dependency graph, plus source scans. **No
+compilation** — see §10D for why that was deliberate rather than an oversight. All figures below
+were measured on branch `0.0.40` on 2026-09-25 in this checkout.
+
+### 10A. The crate graph, measured — and it contradicts §5 axis D
+
+39 workspace members, **154 internal edges** (130 normal, 24 dev-only).
+
+**Zero dependency cycles.** None on normal+build edges, and none even when dev-edges are included.
+DFS over both graphs.
+
+| top fan-IN (dependents, normal+build) | | top fan-OUT (sibling deps) | |
+|---|---|---|---|
+| `foundation` | **27** | `kasirmu-app` (desktop) | 26 |
+| `kasirmu-core` | 14 | `kasirmu-mobile` | 20 |
+| `platform-core` | 8 | `platform-startup` | 19 |
+| `modules-currency` | 6 | `kasirmu-core` | 11 |
+| `kasirmu-hal` | 5 | `kasirmu-bridge` | 10 |
+| `modules-{crm,inventory,sales,staff,tax,terminal}` | 4 each | `kasirmu-cloud` | 6 |
+
+Six members have nothing depending on them — the genuine entry points:
+`kasirmu-app`, `kasirmu-cli`, `kasirmu-cloud`, `kasirmu-media`, `kasirmu-mobile`, `qris-core`.
+
+**Axis D is wrong twice over and cannot be funded as written.** §5 defines it as *"Reduce fan-in
+to `kasirmu-core`, break cycles, move what does not belong."* Measured:
+
+1. **There are no cycles to break.** That half of the axis has no subject.
+2. **The hub is `foundation`, not `kasirmu-core`** — 27 dependents against 14, nearly double.
+
+Volume misled the earlier rounds here. §3/F1 established `kasirmu-core` as 33.3% of our Rust and
+treated that as centrality; by dependency it is second. Normalising by size:
+
+| crate | lines | dependents | dependents per 1,000 lines |
+|---|---|---|---|
+| `foundation` | 7,198 | **27** | **3.75** |
+| `kasirmu-core` | 151,425 | 14 | 0.09 |
+
+`foundation` carries ~40× the coupling per line of `kasirmu-core`. It is 1.6% of the codebase and
+the most depended-upon crate in it. Two consequences worth recording: any change to `foundation`
+has the widest blast radius per byte of anything in the workspace, and the invariant §8 measured
+there — **zero `f32`/`f64`, all money `i64` minor units — is the single most load-bearing
+property in the repo**, because 27 crates inherit it. That is a stronger argument for protecting
+it than any line count gave us.
+
+If axis D is funded at all, retarget it to `foundation` and drop the cycle half.
+
+### 10B. The test-suite floor, measured (partially)
+
+Scan of every `*_tests.rs` file under the 39 members: **477 files, 221,328 lines, 111 `sleep`
+statements, 28,560 ms of stated sleep — a 28.6 s floor.**
+
+| sub-crate | test files | sleeps | stated ms |
+|---|---|---|---|
+| `platform/sync` | 15 | 44 | **16,600** |
+| `crates/kasirmu-core` | 131 | 24 | 5,698 |
+| `apps/cloud-server` | 24 | 1 | 2,000 |
+| `crates/kasirmu-lan` | 3 | 13 | 1,800 |
+| `apps/desktop-tauri` | 15 | 8 | 1,000 |
+| `platform/startup` | 4 | 10 | 660 |
+| `crates/kasirmu-logging` | 5 | 1 | 300 |
+| `crates/kasirmu-bridge` | 72 | 2 | 230 |
+| `crates/kasirmu-payment` | 13 | 4 | 150 |
+| `crates/kasirmu-local-api` | 1 | 2 | 120 |
+| `crates/kasirmu-{notification,security}` | 12 | 2 | 2 |
+| all others (16 crates) | — | 0 | 0 |
+
+The floor is **concentrated, not spread**: `platform/sync` alone holds 58% of it (16.6 s), and
+three crates hold 85%. `cloud-server`'s entire 2 s is one statement — the Redis TTL wait at
+`redis_backend_tests.rs:153` recorded as O-T14.
+
+Two caveats that bound the number, stated rather than buried:
+
+- **28.6 s is a serial sum, not a wall-clock floor.** Under `cargo nextest` test binaries run as
+  parallel processes and tests within a binary as parallel threads, so the real floor is nearer
+  the worst *binary* — `platform/sync` at 16.6 s — than the 28.6 s sum.
+- **The scan is a floor, not a measurement of time.** It counts only `Duration::from_millis` /
+  `from_secs` literals on a line containing `sleep(`. It misses sleeps built from variables,
+  `Instant`-based polling loops, busy-waits, and the time inside `#[ignore]`d tests. Actual
+  wall-clock remains unmeasured.
+
+Note also that 477 / 221,328 differs from §3's 476 / 240,257: §3 counted `*_tests.rs` **and**
+`*/tests/*.rs`, this scan counts only `*_tests.rs`. The two are different instruments; do not
+quote them as the same one.
+
+### 10C. §4 status — what this round earned, and what it did not
+
+| §4 claim | status after round 5 |
+|---|---|
+| fan-in / fan-out between our crates | **EARNED** — §10A (154 edges, full table) |
+| whether any crate is a dependency cycle | **EARNED — zero**, both graphs (§10A) |
+| how much is behind feature flags | **PARTIAL** — 9 of 39 manifests declare `[features]`; no per-feature code volume measured |
+| how much of our code is unreachable | **NOT EARNED.** Proxy only: **368** `#[allow(dead_code…)]` / `#[allow(unused…)]` / `#[allow(clippy::…)]` attributes across the 39 members. An `allow` is not evidence of dead code — it is evidence someone silenced a lint. Counting it as dead code would be a category error |
+| test wall-clock per crate | **PARTIALLY EARNED** — stated sleep floor measured (§10B); actual wall-clock still not run |
+| which crates are slow to compile | **NOT EARNED** — no build run (§10D) |
+| which crates cost binary size | **NOT EARNED** — no release build |
+
+Three of seven rows are now earned, two partially. **Compile time remains the largest unmeasured
+claim in this journal** — it is also the premise of axis A, which §5 offered as one of only two
+axes with order-of-magnitude potential. That guess is still a guess.
+
+### 10D. Why no build was run — a decision, not an omission
+
+`cargo build --timings` and `cargo bloat` are the two remaining instruments, and neither was run.
+The reason is the checkout, not the cost: this is a **shared working tree** where several sessions
+commit concurrently, and a workspace build takes the `target/` lock for its duration — it would
+stall anyone else compiling. Worse, timings measured while another session holds that lock are
+worthless, so the number would be wrong as well as rude.
+
+Recorded so nobody later mistakes the gap for an oversight. To earn the last two rows, run on a
+quiet tree (or a scratch worktree):
+
+```bash
+cargo build --timings --workspace            # per-crate wall clock → axis A
+cargo nextest run --workspace --report-time  # per-test wall clock  → axis B
+cargo bloat --release -p kasirmu-app         # binary size          → axis E
+```
+
+### 10E. What the instruments changed
+
+- **Axis D is retargeted or dropped.** No cycles exist; the hub is `foundation` (27 dependents,
+  3.75 per 1,000 lines) rather than `kasirmu-core` (14, 0.09). Funding axis D as written would
+  send work at the wrong crate to fix a problem that does not exist.
+- **Axis B now has a measured target instead of a suspicion.** 28.6 s stated serial floor, 58% of
+  it in `platform/sync`. Fixing O-T05 (the `daemon_tests` sleeps) addresses the largest single
+  block in the workspace.
+- **Axis A is unchanged and still unfunded, but is now the explicit biggest hole.** §5 recommended
+  funding B first "with `--timings` run once to confirm the guess rather than trust it". The
+  timings have not been run, so that confirmation is still outstanding.
+- **A new invariant worth protecting:** `foundation`'s zero-float-money property (§8) is inherited
+  by 27 of 39 crates — 69% of the workspace. It is the highest-leverage invariant measured so far,
+  and nothing in the journal previously said so.
+
+**No crate code has been changed.** §6's rules stand.
