@@ -645,7 +645,6 @@ export default function WorkspaceHome() {
             </header>
             <SkeletonGrid />
           </div>
-          <div className="ws-footer" />
         </div>
         <span className="ws-sr-status" role="status" aria-live="polite">
           {loading ? requiredLocalized(l10n, 'workspace-home-loading') : error && !loading ? requiredLocalized(l10n, 'workspace-home-sr-error') : requiredLocalized(l10n, 'workspace-home-available', { count: sortedWorkspaces.length })}
@@ -909,7 +908,6 @@ export default function WorkspaceHome() {
             </div>
           )}
         </div>
-        <div className="ws-footer" />
       </div>
 
       {/* Layer 5: Overlays */}

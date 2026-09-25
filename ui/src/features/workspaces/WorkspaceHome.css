@@ -173,7 +173,9 @@
 
 /* ═══════════════════════════════════════════════════════════════════
  * Layer 2: Content Container
- * Split into header (8%) + main content (86%) + footer (6%).
+ * Split into header (8%) + main content (remaining). The footer box that
+ * took the last 6% was removed in 0.0.40 — .ws-main is flex:1, so it simply
+ * grows into that space.
  * ═══════════════════════════════════════════════════════════════════ */
 
 .ws-layer-content {
@@ -222,12 +224,6 @@
      hidden — the e2e contract forbids body-level x-overflow. */
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-/* ── Footer box (bottom 8%) ─────────────────────────────────────── */
-
-.ws-footer {
-  flex: 0 0 6%;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
