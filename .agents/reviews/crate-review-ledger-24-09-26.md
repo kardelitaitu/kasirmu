@@ -4597,4 +4597,67 @@ is *wrong data that nothing can see*, which is strictly worse than a crash the f
 Commit `24144c794`.
 
 **Tally:** 52 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 69 — MSL-45: the same disagreement, where it also blocked the operator
+
+### Following the shape rather than the file
+
+MSL-44 established a shape — a store method whose RETURN VALUE parses a field while the PERSISTED COLUMN
+takes it raw — so this pass enumerated every `.ok()` parse-on-return in the db layer (62 sites) and looked
+for the same split. Three candidates in `products_crud.rs` used `foundation::Barcode::new(&s).ok()`, and the
+write path beside them bound `barcode` raw.
+
+### The finding, and why it is worse than MSL-44
+
+A probe on a whitespace barcode:
+
+```text
+PROBE returned barcode = None
+PROBE stored   barcode = Some("   ")
+PROBE second product   = Err(Conflict { entity: "product", field: "sku or barcode" })
+```
+
+`Barcode::new` rejects only empty/whitespace, so whitespace is the one trigger — and unlike the customer
+case it produces a **user-visible dead end**, for two independent reasons:
+
+1. the value is invisible through the API (same as MSL-44), and
+2. because `uq_products_barcode` is UNIQUE, it consumes the one slot — so the NEXT product saved with a
+   blank barcode is refused with `Conflict { field: "sku or barcode" }` **while its SKU is perfectly unique**.
+   The operator gets an error naming the wrong field and no way to see why.
+
+**Reachability measured, not assumed.** The products screen binds the raw field
+(`VariantManagementScreen.tsx:400`) and passes `form.barcode || null` — where `"   "` is truthy and travels
+as a non-null value. The bridge validates the barcode on the LOOKUP path only (`products.rs:372`) and
+passes it straight through on create/update (`:720`, `:926`). So typing spaces into the barcode box is an
+ordinary action, not a crafted call. That makes this HIGH-adjacent: a live, silent, user-facing failure.
+
+### The fix, and the one path that did not need it
+
+`normalise_barcode` — blank becomes `None`, everything else is trimmed — wired into **both** `create_product`
+and `update_product`, so an update cannot install what the create path now refuses to leave behind.
+Normalising rather than rejecting follows the contract MSL-44 confirmed: the read path and the return path
+already say "absent" via `Barcode::new(..).ok()`, so only the column disagreed.
+
+**`product_variants.barcode` was checked and needs nothing**: it takes a typed `Barcode` argument
+(`products.rs:281`, `:352`), so the type system prevents the gap there. That is also the evidence that
+`products` was the only text-based path — the tree already had the better design one table over.
+
+**Falsified before committing.** Making the helper a pass-through reproduces both failures (the stored
+`Some("   ")` and the missed trim), then restored. Two tests added: the blank-barcode round trip including
+the second-product save, and a real barcode still storing trimmed AND remaining findable by the scanner's
+lookup — the property a careless fix would break. 13 `products` barcode tests pass.
+
+**Verified:** 3328 `kasirmu-core` lib tests (was 3326 — two new), 1403 `kasirmu-bridge`, clippy clean.
+Commit `a425669cc`.
+
+### A note on where this is heading
+
+Two findings in a row from one shape, and both were found by enumerating the shape rather than reading the
+file. The remaining `.ok()` sites are mostly JSON decoding and float parsing, which do not have a
+"persisted column" half. The productive next question is probably not "which other column" but "which
+UNIQUE or FK-constrained column is written from an unvalidated string" — the constraint is what turns an
+invisible value into a blocked operator.
+
+**Tally:** 53 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
