@@ -4529,4 +4529,72 @@ across the boundary.
 code), 1403 `kasirmu-bridge`, clippy clean. Commit `6fedc69bb`.
 
 **Tally:** 51 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 68 — MSL-44: the column disagreed with every surface that reported it
+
+### Leaving the currency vein, as planned
+
+Pass 67 concluded the `locations.currency` vein was exhausted — all three writers now validate — so this
+pass picked a different column and asked the same question: *which layer owns this rule, and does every
+path agree?* `customers.email` / `customers.phone` have four writers and, unlike currency, a value-object
+type (`foundation::Email`, `foundation::Phone`) that the tree clearly intends to gate them.
+
+### The finding, measured rather than reasoned
+
+`create_customer` and `update_customer` bind the caller's raw string straight into the INSERT/UPDATE and
+apply `Email::new(..).ok()` only when BUILDING THE RETURNED STRUCT. So a probe gives:
+
+```text
+PROBE returned email      = None
+PROBE stored   email      = Some("not-an-email")
+PROBE read-back           = None
+PROBE after-update stored = Some("also-bad")
+```
+
+**The column held a value every API surface reported as absent.** The read path applies the same
+`.and_then(..ok())`, so nothing in the type system could ever surface it, and it persists indefinitely.
+Any future reader of the raw column — a report, an export, a sync push — silently picks up what every
+caller believes is not there.
+
+### The correction: the existing test was right, my first fix was not
+
+My first fix **rejected** an invalid email with a typed `Validation` error, and it broke
+`create_customer_invalid_email_saved_as_none` — a pre-existing test whose name states the intended
+contract outright, and whose comment explains it (`Email::new` returns `Err`, so `and_then` yields
+`None`).
+
+Read carefully, that test pins a **reporting** rule and asserts only the returned struct. It never
+asserts the column. So the bug was never "the store accepts a bad email" — it was **the column not
+honouring the contract the suite already pinned**. My rejecting fix would have overridden a deliberate,
+tested decision with my own preference.
+
+The correct, smaller fix: normalise on the way in, binding `None` for an unparseable value so the column,
+the read path and the return value finally all say the same thing. Same commit as the bug, one helper,
+no contract changed. `create_customer_invalid_email_saved_as_none` now passes **because the behaviour it
+describes is true** rather than in spite of it.
+
+**Falsified before committing.** Rebinding the raw values reproduces the exact disagreement:
+
+```
+assertion `left == right` failed: an unparseable email must be stored as NULL, not as the caller's raw string
+  left: Some("not-an-email")
+ right: None
+```
+
+Three tests added: both directions of the normalisation, plus a valid value round-tripping **trimmed**
+(the property the fix must not break). 24 `customers` tests pass.
+
+### Reachability, stated honestly
+
+All four production writers validate upstream — the bridge's `validate_customer_fields` and the tablet's
+hand-maintained duplicate (functionally identical, verified line by line) — and the CLI validates too. So
+no user can currently store a bad address, and this is a latent trap rather than a live wrong answer.
+MEDIUM. The reason it is worth fixing anyway is that the trap is silent by construction: the failure mode
+is *wrong data that nothing can see*, which is strictly worse than a crash the first time it happens.
+
+**Verified:** 3326 `kasirmu-core` lib tests (was 3323 — three new), 1403 `kasirmu-bridge`, clippy clean.
+Commit `24144c794`.
+
+**Tally:** 52 findings fixed (9 HIGH), 15 leads disproved. Two are preventive pins.
 
