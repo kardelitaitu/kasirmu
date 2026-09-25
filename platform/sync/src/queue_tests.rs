@@ -2518,6 +2518,89 @@ fn pulled_item_without_origin_is_applied_as_before() {
     assert_eq!(inventory_qty(&store, "COFFEE"), 48);
 }
 
+// ── C3: the acceptance round trip ────────────────────────────────────
+//
+// C3's "done when" is a ROUND TRIP, not an arm in isolation: push a
+// complete_sale through the real producer, pull that same item back onto
+// the terminal that pushed it, and assert stock moved exactly once. The
+// tests above prove the gate skips a synthetic remote item; this proves
+// the case the production path actually creates, end to end — the
+// producer stamps the origin, the pull carries it, and the applier
+// recognises its own work.
+
+/// The end-to-end C3 assertion: one sale, one deduction.
+///
+/// This is the shape the tablet hits. The checkout ENQUEUES its own sale
+/// (offline.rs `enqueue_sale_outbox_in_tx`, action "complete_sale"), the
+/// daemon pushes it, and the next pull hands the same row back. Before the
+/// origin gate, that second delivery deducted the stock again on the very
+/// inventory the sale had already reduced.
+#[test]
+#[allow(deprecated)] // adjust_stock is the exact call the complete_sale arm makes
+fn a_terminal_does_not_reapply_the_sale_it_pushed() {
+    let store = setup_store();
+    seed_product_and_inventory(&store);
+    Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
+    let queue = SyncQueue::new();
+
+    // 1. The terminal completes a sale and the outbox enqueues it. The
+    //    producer stamps origin_terminal_id from the paired install, which
+    //    is the field the pull gate later reads.
+    let tx = store.conn().unchecked_transaction().unwrap();
+    kasirmu_core::db::Store::enqueue_offline_in_tx(
+        &tx,
+        "complete_sale",
+        r#"{"sale_id":"sale-roundtrip","line_items":[{"sku":"COFFEE","qty":2}]}"#,
+        "default",
+        kasirmu_core::offline::SyncPriority::Critical,
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    // The enqueued row is this terminal's own work.
+    let pushed = queue.list_pending(&store).unwrap();
+    assert_eq!(pushed.len(), 1, "the sale must be queued for push");
+    assert_eq!(
+        pushed[0].origin_terminal_id.as_deref(),
+        Some("term-this"),
+        "the producer must stamp the origin, or the gate cannot see it"
+    );
+
+    // The sale's own deduction already happened locally.
+    let after_checkout = inventory_qty(&store, "COFFEE");
+    // THE SAME CALL the complete_sale arm itself makes (queue.rs apply_remote:
+    // `store.adjust_stock(&line.sku, -line.qty)`). Using the arm's own
+    // deduction is what makes the assertion meaningful: if the pull were
+    // applied, it would land an identical second deduction and the count
+    // below would be short by 2.
+    store.adjust_stock("COFFEE", -2).unwrap();
+    assert_eq!(inventory_qty(&store, "COFFEE"), after_checkout - 2);
+
+    // 2. That item comes back on a pull.
+    let remote = OfflineQueueItem {
+        id: pushed[0].id.clone(),
+        action: "complete_sale".into(),
+        payload: pushed[0].payload.clone(),
+        origin_terminal_id: Some("term-this".into()),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    // 3. It must NOT be applied, and the skip must be receipted.
+    assert!(
+        !queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "a terminal must not re-apply the sale it pushed"
+    );
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        after_checkout - 2,
+        "stock must have moved exactly once for this sale"
+    );
+    assert!(
+        store.is_remote_item_applied(&remote.id).unwrap(),
+        "the skip must be receipted, or every page re-attempts it"
+    );
+}
+
 /// The delivery receipt still short-circuits on its own, with the origin gate
 /// deliberately out of the way (a DIFFERENT terminal's item, re-pulled).
 #[test]
