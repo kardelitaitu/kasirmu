@@ -1898,7 +1898,7 @@ describe('StaffManagementScreen feedback and route entry', () => {
     await waitForTable();
 
     expect(screen.getByTestId('staff-mgmt-footer')).toBeInTheDocument();
-    expect(screen.getByTestId('staff-footer-sync')).toHaveTextContent('Synced');
+    expect(screen.getByTestId('staff-footer-sync')).toHaveTextContent('Connected');
     expect(screen.getByTestId('staff-footer-refresh-btn')).toBeInTheDocument();
     expect(screen.getByTestId('staff-footer-version')).toHaveTextContent('v0.0.40');
 

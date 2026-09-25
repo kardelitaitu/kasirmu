@@ -59,15 +59,11 @@ export function StaffManagementFooter({
 
   const statusTone: 'connected' | 'checking' | 'disconnected' = loadError
     ? 'disconnected'
-    : loading
-      ? 'checking'
-      : 'connected';
+    : 'connected';
 
   const statusLabel = loadError
     ? 'Offline'
-    : loading
-      ? 'Syncing…'
-      : 'Synced';
+    : 'Connected';
 
   return (
     <footer className="staff-mgmt-footer" data-testid="staff-mgmt-footer" role="contentinfo">
@@ -105,34 +101,17 @@ export function StaffManagementFooter({
 
       {/* ── Center Zone: Freshness & Background Tasks ── */}
       <div className="staff-mgmt-footer-center">
-        {loading ? (
-          <span className="staff-mgmt-footer-pill staff-mgmt-footer-pill--busy" data-testid="staff-footer-refresh-btn">
-            <svg
-              className="staff-mgmt-footer-icon staff-mgmt-footer-icon--spin"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <polyline points="1 20 1 14 7 14" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-            <span>Refreshing…</span>
-          </span>
-        ) : loadedAt !== null ? (
+        {loadedAt !== null && (
           <button
             type="button"
-            className="staff-mgmt-footer-btn"
-            onClick={onRefresh}
+            className={loading ? 'staff-mgmt-footer-btn staff-mgmt-footer-btn--busy' : 'staff-mgmt-footer-btn'}
+            onClick={loading ? undefined : onRefresh}
+            disabled={loading}
             aria-label="Refresh staff data"
             data-testid="staff-footer-refresh-btn"
           >
             <svg
-              className="staff-mgmt-footer-icon"
+              className={loading ? 'staff-mgmt-footer-icon staff-mgmt-footer-icon--spin' : 'staff-mgmt-footer-icon'}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -149,7 +128,7 @@ export function StaffManagementFooter({
               <span>Updated {updatedTime}</span>
             </Localized>
           </button>
-        ) : null}
+        )}
       </div>
 
       {/* ── Right Zone: Operator & Version ── */}

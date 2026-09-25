@@ -595,7 +595,7 @@ export default function StaffManagementScreen() {
                 </Button>
               </div>
             </Card>
-          ) : loading ? (
+          ) : loading && loadedAt === null ? (
             <div className="staff-mgmt-loading-skeleton" aria-hidden="true">
               {/* No header mimic here: the real header is rendered above for
                   every branch, so a second one would duplicate the tab strip

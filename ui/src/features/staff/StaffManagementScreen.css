@@ -319,8 +319,9 @@ body:has(.memo-stack) .staff-mgmt-main {
   white-space: nowrap;
 }
 
-.staff-mgmt-footer-pill--busy {
+.staff-mgmt-footer-btn--busy {
   color: var(--color-primary);
+  cursor: default;
 }
 
 .staff-mgmt-footer-dot {
