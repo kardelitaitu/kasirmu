@@ -3007,3 +3007,48 @@ same verify-immediately discipline as production code.
 
 **Tally:** 28 findings fixed (8 HIGH), 12 leads disproved.
 
+---
+
+## Pass 45 — the workspace role bypass: one set, three hand-written copies
+
+### MSL-21 (LOW, FIXED): three copies of an authorization predicate, all with dead arms
+
+MSL-20 fixed ONE copy of this list. Applying the same lens mechanically found the rest:
+the "which roles see every workspace" set was written out by hand in **three** places,
+two of them live authorization paths —
+`db/workspaces_instances.rs::list_workspaces_inner` (the listing), its sibling
+`can_access_instance` (the per-instance gate), and
+`db/workspaces.rs::list_workspaces_legacy`. Every copy carried the same three non-role
+literals (`admin`, `manager`, `auditor`), all dead for the same proven reason:
+`users.role_id` is `REFERENCES roles(id)` and every preset id is `role-`-prefixed.
+
+**One definition now.** `platform_core::rbac::role_bypasses_workspace_assignment`, in
+`rbac_presets.rs` beside `is_builtin_role_id` and built FROM `builtin_roles`, re-exported
+through `rbac`. Both live sites call it. The set cannot fork and a taxonomy change lands
+in one place.
+
+**The legacy copy was NOT silently reconciled, and that is the deliberate part.**
+`list_workspaces_legacy` also admitted `role-staff`, which the shared predicate excludes.
+Rather than change a policy on a dead path, its literals were replaced with the canonical
+constants while KEEPING its `role-staff` arm, and the divergence is documented at the
+site: the function resolves from the pre-ADR-#4 tables (`user_workspaces`,
+`role_workspaces`) and has **no caller outside its own tests** (verified: the only
+external user in the tree is `list_all_workspace_types`, a different function). Making a
+dead path agree would leave the next reader believing the two are one policy.
+
+**Severity is LOW and checked, not asserted.** Two tests:
+`the_workspace_bypass_ids_are_the_canonical_ones` (the listing, every preset id) and
+`the_bypass_predicate_admits_exactly_the_management_roles` (the predicate directly, plus
+that the three bare literals do not bypass). The first PASSES against the pre-fix code, so
+no live authorization outcome was wrong — this is duplication plus dead code, and the
+ledger says so rather than inflating it.
+
+**The file had already flagged itself.** `db/workspaces.rs`'s own audit stamp reads
+*"hardcoded role-id allowlist (8 variants) is fragile if presets change"* — a correct
+diagnosis that sat in a comment while the code kept the shape.
+
+**Verified:** 75 `db::workspaces` tests, 415 `platform-core` tests, and the full
+`kasirmu-core` suite all pass; clippy clean on both crates.
+
+**Tally:** 29 findings fixed (8 HIGH), 12 leads disproved.
+
