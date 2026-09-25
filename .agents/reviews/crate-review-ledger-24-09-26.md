@@ -2699,3 +2699,71 @@ value before calling the value wrong.
 
 **Tally:** 24 findings fixed (7 HIGH), 10 leads disproved.
 
+---
+
+## Pass 40 — `topology.rs`, the API spec, and the terminal-secret timing lead
+
+### Disproved lead #11 (the most instructive one): the terminal secret compare is NOT a timing oracle
+
+`crates/kasirmu-api/src/routes/terminals.rs:79` looks up a terminal with
+`WHERE terminal_id = ?1 AND secret_hash = ?2` — a plain SQL `=` on a secret digest.
+The codebase has a documented, enforced convention of constant-time secret comparison:
+`Mac::verify_slice` in `bridge/terminals.rs:129`, `bridge/picker.rs:79`,
+`bridge/workspaces.rs:823`, and `api/routes/tokens.rs:133`, where API-2 fixed exactly
+this shape and `tokens_tests.rs:257` pins it. So this looked like the missed sibling.
+
+**It is not, and the distinction is the transferable part.** The bridge's own doc
+(`bridge/terminals.rs:79-86`) states the criterion: the dangerous shape is
+*"re-sign and compare the two hex strings"*, because there the STORED value's bytes are
+steerable — they are the HMAC of attacker-influenced input, so a forger can walk the
+prefix one hex character at a time. Here:
+
+- the stored value is `SHA-256(secret)` where `secret` is `generate_device_secret()` →
+  `Uuid::new_v4().simple()`, **server-generated and never returned to the attacker**
+  except once at registration;
+- the candidate is hashed too, so BOTH sides of the comparison are uniform 64-char
+  digests with no steerable prefix;
+- and the row is reached by `terminal_id`, which is the PRIMARY KEY, so an attacker must
+  already know the exact id.
+
+A byte-at-a-time oracle needs the attacker to control the bytes being compared. Here
+they control neither side's content and cannot even influence the digest. Non-constant
+time is fine because there is nothing to learn. **A constant-time comparison is not a
+reflex; it is required when an attacker-chosen value is compared against a secret, and
+the digest indirection is precisely what removes that property.**
+
+The path is also better tested than I assumed before looking: `terminals_tests.rs`
+covers plaintext-never-stored (asserting the hash does not even EMBED the secret, `:236`),
+rotation invalidating the old secret, digest stability, and correct-secret-only matching.
+
+### Cleared: `crates/kasirmu-core/src/topology.rs` (832)
+
+Pure semantic-JSON validation — no DB, no money, no authz. Notable for its own rigour:
+every gate carries the ADR clause that added it and the defect it closes, including
+`duplicate-node` (an `or_insert` that "SILENTLY DROPPED" a node and then validated the
+collapsed graph — the one defect no later gate can recover from) and
+`multiple-ticket-inputs` (present in the TypeScript validator, absent here). It also
+removes a hand-built set with the note *"Two correct copies are still two copies"* — the
+same rule this audit has been applying. Direction is deliberately excluded from the
+location-wire gate because the frontend treats it as presentation-only.
+
+### Cleared: `crates/kasirmu-api/src/spec/` (1,428)
+
+Hand-written OpenAPI. `spec_tests.rs` verifies the STRUCTURAL properties (every `$ref`
+resolves, `x-oz-scope=both` on every base operation with a floor, no cloud-only path
+leaked into the shared document, Parameter Objects not parked under `components/schemas`,
+pagination refs moved with the objects). The factual claims I spot-checked hold:
+"only its SHA-256 hash is persisted" is true (verified at `terminals.rs:156-196`), and
+the rotation-without-409 behaviour matches the handler.
+
+### Cleared: `crates/kasirmu-core/src/db/popularity.rs` (832)
+
+Local analytics only (ADR #37), not money. Checked the one thing worth checking — that
+the single-SKU path (`recompute_popularity` → `sale_day_counts`, `activity_day_counts`)
+and the full pass (`recompute_all_popularity`) bucket days identically. They do: all
+three use `strftime('%Y-%m-%d', created_at)` with the same `window_modifier()`. UTC
+bucketing is uniform across every reader, and `days_ago` fails out-of-range days to
+`i64::MAX` so the formula window drops them rather than scoring them.
+
+**Tally:** 24 findings fixed (7 HIGH), 11 leads disproved.
+
