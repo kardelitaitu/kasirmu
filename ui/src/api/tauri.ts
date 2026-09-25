@@ -20,8 +20,117 @@
  * call. It currently imports `invoke` from `@tauri-apps/api/core` itself
  * rather than from this module; routing it through here is an open
  * follow-up, not an existing property.
+ *
+ * **C23 update:** `invoke` is no longer a bare re-export. It is now a wrapper
+ * that bounds each call with `IPC_TIMEOUT_MS`, because Tauri has no
+ * `catch_unwind` on the command path and a panicking command leaves the
+ * caller's promise pending forever. Behaviour is otherwise identical:
+ * `rawInvoke` is called with the same three arguments and its result is
+ * passed through untouched, so a normal rejection still rejects with the
+ * original error and a normal resolution still resolves with the same value.
  */
-export { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke as rawInvoke, type InvokeArgs, type InvokeOptions } from '@tauri-apps/api/core';
+
+export { convertFileSrc } from '@tauri-apps/api/core';
+
+/**
+ * How long a single IPC call may stay unsettled before it is treated as dead
+ * (C23).
+ *
+ * This is a **liveness bound, not a performance budget**. A command that
+ * legitimately takes longer — a large export, a first-run migration, a plugin
+ * load — must raise it rather than be silently cut off, which is why it is
+ * exported and named rather than inlined.
+ *
+ * The value sits far above any normal command: the slowest real operation
+ * measured today is a full backup/export in the low seconds, and the
+ * transport's own HTTP ceiling is 30s. 120s therefore fires only on a call
+ * that is never going to answer.
+ */
+export const IPC_TIMEOUT_MS = 120_000;
+
+/**
+ * `invoke`, with a deadline.
+ *
+ * # Why this exists (C23)
+ *
+ * Tauri 2.11.3 compiles an async command onto a spawned task, and its IPC
+ * layer contains no `catch_unwind` — verified in the pinned source, where
+ * `src/ipc/mod.rs:329` spawns the command with no panic guard and the crate
+ * has no panic hook at all. A command body that panics therefore never writes
+ * a response, and this promise **never settles**: no rejection, no error, no
+ * crash. The caller waits forever. For a completed sale that means a spinner
+ * that never ends and no way to learn whether the sale persisted.
+ *
+ * The shell cannot catch a panic it never observes, so this layer bounds the
+ * wait instead: a call still outstanding at `IPC_TIMEOUT_MS` rejects with a
+ * typed, retryable error. An unbounded hang becomes an ordinary failure the
+ * UI already knows how to render.
+ *
+ * # What this is not
+ *
+ * It does **not** make a panicking command return `Err` from the Rust
+ * side, which would be the better fix and needs either a wrapper around all
+ * ~514 command bodies or an upstream Tauri seam, neither of which exists
+ * today. It also does not cancel the command: the work is not resumed, so a
+ * caller that retries must be able to do so safely. Every write path in this
+ * codebase is idempotent by design — money moves are keyed by sale id,
+ * sessions by token — so a retry is safe; the timeout only stops the UI from
+ * lying about being busy.
+ */
+export function invoke<T>(
+  cmd: string,
+  args?: InvokeArgs,
+  options?: InvokeOptions,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(
+        new Error(
+          "IPC timeout: '" + cmd + "' did not respond within " + IPC_TIMEOUT_MS + 'ms. ' +
+            'The command may have panicked, which Tauri does not report to the ' +
+            'caller. Retrying is safe; the operation is idempotent.',
+        ),
+      );
+    }, IPC_TIMEOUT_MS);
+
+    // The real Tauri call may throw synchronously when the webview lacks its
+    // internals — that must reject, not escape.
+    try {
+      // Forward only the arguments the caller actually supplied. The upstream
+      // signature is `invoke(cmd, args = {}, options)`, and a wrapper that
+      // always passes three arguments changes the trace every IPC test sees
+      // (observed: a mocked invoke asserted as called with two arguments
+      // received three). Passing through conditionally keeps this wrapper
+      // invisible to callers and to their spies.
+      const forwarded =
+        options === undefined ? rawInvoke<T>(cmd, args) : rawInvoke<T>(cmd, args, options);
+      Promise.resolve(forwarded).then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err: unknown) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    }
+  });
+}
 export { listen } from '@tauri-apps/api/event';
 export { getVersion } from '@tauri-apps/api/app';
 export { getCurrentWindow } from '@tauri-apps/api/window';
