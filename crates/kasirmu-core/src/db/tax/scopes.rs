@@ -12,7 +12,7 @@
 //! Split from `db/tax.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use crate::db::Store;
 use crate::error::CoreError;
@@ -130,13 +130,20 @@ impl Store<'_> {
         self.validate_scope_target(scope)?;
 
         let tx = self.conn.unchecked_transaction()?;
-        let existing = tx
+        // MSL-27: `.optional()?`, NOT `.ok()`. A bare `.ok()` collapses EVERY
+        // rusqlite error to `None`, so a genuine DB failure here was reported to
+        // the caller as `NotFound` -- "no such tax rate" while the database was
+        // actually failing. That is a wrong diagnosis on the money path, and it
+        // hides a real fault. `optional()` maps ONLY `QueryReturnedNoRows` to
+        // `None` and propagates anything else, which is the crate's standard
+        // idiom (38 uses against this file's zero before this change).
+        let existing: Option<String> = tx
             .query_row(
                 "SELECT created_at FROM tax_rates WHERE id = ?1 AND is_active = 1",
                 params![id],
                 |row| row.get::<_, String>(0),
             )
-            .ok();
+            .optional()?;
         let Some(created_at) = existing else {
             return Err(CoreError::NotFound {
                 entity: "tax_rate",
@@ -239,6 +246,11 @@ impl Store<'_> {
                 message: format!("{column} must not be empty; NULL means unscoped"),
             });
         }
+        // MSL-27: `.optional()?` for the same reason as the existence probe in
+        // `update_tax_rate_scoped`. A `.ok()` here turned a DB failure into
+        // "no such {table} row", so an operator whose scope target DID exist was
+        // told it did not -- a wrong validation message that also swallowed the
+        // real error.
         let exists: Option<i64> = self
             .conn
             .query_row(
@@ -246,7 +258,7 @@ impl Store<'_> {
                 params![id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         if exists.is_none() {
             return Err(CoreError::Validation {
                 field: column,

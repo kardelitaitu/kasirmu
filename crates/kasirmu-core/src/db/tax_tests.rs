@@ -2100,3 +2100,47 @@ fn list_tax_rate_rounding_modes_ignores_archived_rows() {
          longer resolves it"
     );
 }
+#[test]
+fn a_db_failure_in_the_rate_probe_is_not_reported_as_not_found() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Rate",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    // Force a REAL database error in the existence probe: rename the table the
+    // probe reads, so the query fails for a reason that is not "no such row".
+    //
+    // Under the old `.ok()` this collapsed to `None` and the caller was told
+    // `NotFound { entity: "tax_rate" }` -- "this rate does not exist" while the
+    // row was present and the database was failing. The assertion is that the
+    // failure surfaces as a DB error, NOT as NotFound.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME TO tax_rates_hidden;")
+        .unwrap();
+
+    let err = s
+        .update_tax_rate_scoped(
+            &rate.id,
+            "Renamed",
+            1200,
+            false,
+            false,
+            &TaxRateScope::Global,
+            &TaxRateWindow::default(),
+        )
+        .unwrap_err();
+
+    assert!(
+        !matches!(err, CoreError::NotFound { .. }),
+        "a DB failure must not be reported as NotFound: that is a wrong diagnosis \
+         which also hides the real fault; got {err:?}"
+    );
+}
