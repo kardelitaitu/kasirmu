@@ -3731,5 +3731,108 @@ tenant mismatch, an empty ledger, a disabled flag. Ask what the default lets thr
 operator is spelled `unwrap_or(None)` or `.ok()`.
 
 **Tally:** 41 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+---
+
+## Pass 57 — `routes/images.rs` clean, and MSL-34: the one axis with a bare `find_map`
+
+### `images.rs` (517) — no findings, and the swallows are decisions
+
+The largest remaining unread `kasirmu-api` route, and the only one wrapping a filesystem. Read end
+to end. It carries **three** swallow-shaped fallbacks, and every one is a documented decision with a
+loud warning rather than an oversight — which is the distinction this sweep exists to draw:
+
+- `get_image_pack` (`:423`): a failed `image_ref_exists` reads as "unreferenced" and skips the frame.
+  The comment states the direction AND the reason: *"Fail-CLOSED by decision, not by accident: this is
+  the content-spine tenancy gate, so an error must read as 'not referenced' … Skipping is recoverable
+  … but it is otherwise silent, so name it."* It is named — `tracing::warn!` with the tenant, the hash,
+  the operation and the error.
+- `get_image_missing` (`:508`, `:525`): both the PG and SQLite legs answer an empty set on error, and
+  the comment explains that this endpoint only REORDERS the desktop push queue (the uploaded set comes
+  from `image_push.rs::peek_push_batch`, never from this list) — so failing the request would be worse
+  than an empty answer. It goes further and names the cost: *"an empty answer is now AMBIGUOUS: it
+  means either 'nothing is missing' or 'the lookup failed', and the warning is the only way to tell
+  them apart."*
+- `process_image` / `store_image_atomic`: the temp+rename race is handled explicitly (a concurrent
+  winner is treated as a duplicate, not an error), and a refcount failure rejects the image.
+
+The module header discloses the residual abuse surface without being asked: PUT accepts any tenant JWT
+and *"no per-tenant byte quota or rate limit exists: an authenticated tenant can fill the volume by
+repeatedly hitting the 32 KB / 512 KB caps."* That is a product decision about a device cohort holding
+valid credentials, correctly recorded as accepted rather than left to be rediscovered.
+
+**Judged benign in the same sweep** (so no later pass re-derives them):
+
+- `products.rs:276-283` — `TenantSubscription::load(&db, tenant_id).ok().flatten()` feeding a tier, then
+  `.unwrap_or(Free)`. The comment says why: *"An unknown or tampered subscription fails closed at the
+  Free cap."* Every arm (`Err`, `None`, bad signature) lands on `Free`, the most restrictive tier. A
+  fail-closed default, not a swallow.
+- `terminals.rs:134` — `body.label.unwrap_or_default()` is a request-body default, not a read.
+- `attestation.rs:361` — `source_for(origin).unwrap_or(OriginSource::Main)` labels an origin that
+  already passed `probe_origin_with`. The fallback is a classification tag for the log line, not a
+  trust decision, and every rung of the compiled ladder has a `source_for`.
+
+### MSL-34 (MEDIUM, FIXED): `country_code` was the one axis not going through `pick`
+
+`regional.rs` (519) was the largest core module with **zero** ledger coverage. Its `RegionalConfig::resolve`
+walks a narrowest-first layer chain taking the first non-blank value per axis. Three of the four axes
+call `pick`, which re-checks blankness per layer:
+
+```rust
+fn pick(layers, get, default) -> RegionalValue {
+    for layer in layers {
+        if let Some(value) = get(layer).and_then(|v| blank_to_none(&v)) { … }   // <- the re-check
+    }
+}
+```
+
+and `pick`'s own doc says why the re-check is there rather than trusted from the constructors:
+*"`RegionalLayer`'s fields are public, so a caller that builds one directly (the tests do, and so will
+the IPC mapping in Slice 2) can put `Some("   ")` in a field. 'Blank means inherit' is the contract of
+the whole chain, not of one constructor."*
+
+The fourth axis did not:
+
+```rust
+let country_code = layers.iter().find_map(|layer| layer.country_code.clone());   // no blank re-check
+```
+
+So a blank market on a **narrow** layer stopped the walk, where a blank locale/timezone/currency would
+have been skipped. `Some("")` is not `None`: it is a country-shaped value nothing validates, and the
+fiscalisation path carries it as the market. This is the sibling-divergence lens applied *inside one
+function* — three arms of one `Self { … }` literal sharing a rule, the fourth not.
+
+**Severity is MEDIUM, not HIGH, and the reason is worth recording.** Every production layer is built by
+`RegionalLayer::blank` (`db/regional.rs:92,109`), which applies `blank_to_none` itself, so the shipped
+DB path cannot currently produce the shadowing — verified by reading the constructor, not assumed. The
+defect is live for the direct-literal construction that `pick`'s doc explicitly anticipates ("so will
+the IPC mapping in Slice 2"), which is where it would have shipped. Ranked as a latent wrong-turn on a
+path the module documents as imminent, not a wrong answer today.
+
+**Proven by a watched regression.** `a_blank_market_does_not_shadow_a_declared_one` builds a location
+layer carrying `Some("")` and an entity layer declaring `"ID"`, and asserts `"ID"` wins; it repeats the
+case with `"   "`. Against the unfixed code it fails with exactly the predicted pair:
+
+```
+assertion `left == right` failed: a blank market must mean "not set here", so the entity's declared market wins
+  left: Some("")
+ right: Some("ID")
+```
+
+The existing `country_code` tests did not catch it because both build their layers through the test
+helper `layer()` — a raw struct literal that bypasses `blank_to_none` — yet only ever pass `None`, never
+`Some("")`. The fix reuses `blank_to_none` on the market axis. Fix reverted and the failure re-observed
+(41 passed / 1 failed), then restored: 42 `regional` tests pass, 3315 `kasirmu-core` lib tests pass,
+clippy clean. Commit `87b60078f`.
+
+### Corrections and closures
+
+- The `bridge` suite that returned no output in pass 56 completed on re-run: **1400 passed, 0 failed**
+  (869s). The earlier silent result was a harness artifact, not a failure — the run is now on record.
+- `kasirmu-core` clippy caught a `redundant_closure` in my own first fix
+  (`.and_then(|v| blank_to_none(v))` → `.and_then(blank_to_none)`). Fixed before commit; the lint is
+  why the commit shows the narrower form.
+
+**Tally:** 42 findings fixed (8 HIGH), 15 leads disproved. Two are preventive pins.
+
 
 
