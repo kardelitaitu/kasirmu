@@ -78,7 +78,18 @@
         color: #f0f6ff;
         margin: 0;
         padding: 0;
-        min-height: 100dvh;
+        /* `height` + `overflow: hidden`, matching index.mobile.html. This entry
+           used `min-height: 100dvh` on html, body AND #root, so three
+           full-viewport minimums stacked and the document ran a fraction
+           taller than the window — enough to raise a scrollbar over the
+           splash, which is position:fixed inset:0 and therefore exactly
+           viewport-sized. The shell itself never scrolls the document:
+           .app-layout is height:100dvh/overflow:hidden and .app-content owns
+           the only content scroll (AppLayout.css), so clamping the document
+           cannot take scrolling away from any screen. */
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
       }
 
       /* Light theme override (applied via data-theme attribute or OS preference).
@@ -93,7 +104,13 @@
         color: #1e293b;
       }
 
-      #root { min-height: 100dvh; }
+      /* height, not min-height: the third stacked viewport block was the
+         overflow this entry's scrollbar came from. Mirrors index.mobile.html,
+         which already shipped this shape. */
+      #root {
+        height: 100%;
+        overflow: hidden;
+      }
     </style>
 
     <!-- Boot splash (stage 1): token-first with static fallbacks so the

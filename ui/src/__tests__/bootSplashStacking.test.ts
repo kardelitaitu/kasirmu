@@ -178,3 +178,38 @@ describe.each(HTML_ENTRIES)('%s splash background', (entry) => {
     expect(html).toMatch(/html\[data-theme="light"\] \.app-splash\s*\{[^}]*#ffffff/);
   });
 });
+
+// ── The boot frame cannot scroll ────────────────────────────────────
+//
+// The splash is `position: fixed; inset: 0`, so it is exactly
+// viewport-sized. If the document is any taller, the scrollbar renders
+// OVER the splash — which is what a "scrollbar on the splash screen"
+// was. The desktop entry had it and the mobile entry did not: the
+// desktop sized html, body AND #root with `min-height: 100dvh`, three
+// independent viewport minimums that stacked into a document taller
+// than the window. Both entries now pin height and clamp the axis.
+
+describe.each(HTML_ENTRIES)('%s boot frame', (entry) => {
+  const html = readFileSync(resolve(UI_ROOT, entry), 'utf-8');
+
+  it('clamps document overflow, so no scrollbar can cross the splash', () => {
+    const base = html.slice(0, html.indexOf('.app-splash {'));
+    expect(base).toMatch(/html,\s*body\s*\{[^}]*overflow:\s*hidden/);
+  });
+
+  it('pins the document with height, not a stack of min-heights', () => {
+    // Inspect DECLARATIONS only. The comments above these rules quote the
+    // removed `min-height: 100dvh` while explaining why it went, so a plain
+    // substring search over the file would match prose and fail forever.
+    const base = html.slice(0, html.indexOf('.app-splash {'));
+    // Strip /* ... */ blocks (including multi-line ones) before searching:
+    // the surviving comments quote the removed declaration while explaining
+    // why it went.
+    const declarations = base.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(declarations).not.toContain('min-height: 100dvh');
+  });
+
+  it('sizes #root to the frame rather than to the viewport', () => {
+    expect(html).toMatch(/#root\s*\{[^}]*height:\s*100%/);
+  });
+});
