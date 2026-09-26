@@ -102,7 +102,7 @@ impl Store<'_> {
     /// catalog snapshot response.
     ///
     /// The candidate list is data-driven and unbounded (see
-    /// [`IMAGE_REFS_IN_CHUNK`]), so it is read in chunks inside ONE
+    /// `IMAGE_REFS_IN_CHUNK`), so it is read in chunks inside ONE
     /// transaction: each chunk rebuilds its placeholders and argument vector
     /// and feeds the same `present` set, and the result is projected
     /// at the end in the CALLER'S candidate order. The statement never ordered

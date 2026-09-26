@@ -851,7 +851,7 @@ impl TenantSubscription {
     ///
     /// Orthogonal to the tier on purpose: `SubscriptionTier::from_db("trial")`
     /// keeps resolving to Free, so this flag is the only thing that survives
-    /// the collapse. See [`Self::parsed_trial`] for the fail-closed contract.
+    /// the collapse. See `Self::parsed_trial` for the fail-closed contract.
     #[must_use]
     pub fn is_trial(&self) -> bool {
         self.parsed_trial().0
@@ -896,7 +896,7 @@ impl TenantSubscription {
     /// `"analytics"` is not a recognised key and silently does nothing.
     ///
     /// Parsed from the signed payload like [`Self::addons`] and
-    /// [`Self::parsed_trial`], so the signature covers it and no migration
+    /// `Self::parsed_trial`, so the signature covers it and no migration
     /// is needed.
     #[must_use]
     pub fn payload_features(&self) -> std::collections::HashMap<String, bool> {

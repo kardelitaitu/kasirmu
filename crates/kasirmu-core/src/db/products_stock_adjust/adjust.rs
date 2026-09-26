@@ -70,7 +70,7 @@ impl Store<'_> {
     ///
     /// Every reader that must tell the two apart calls this: the Layer-1
     /// pre-check and the batch Phase-1 pre-read (via
-    /// [`Store::legacy_aware_location_qty`]), the legacy bridge gate below, and
+    /// `Store::legacy_aware_location_qty`), the legacy bridge gate below, and
     /// the sync dispatcher in `platform_sync::queue`. Public so that last one
     /// can reach it: the alternative was a fourth copy of the same EXISTS.
     pub fn product_has_location_rows(

@@ -349,7 +349,7 @@ impl Store<'_> {
     /// coverage hears the history reason, which is the permanent one.
     ///
     /// A rate that is the last row covering a scoped location is blocked too
-    /// — see [`Self::ensure_scoped_coverage_survives`]. The check runs inside
+    /// — see `Self::ensure_scoped_coverage_survives`. The check runs inside
     /// this transaction, so the coverage it judged is the coverage the archive
     /// changes; the tenant-global tier is deliberately exempt there, which is
     /// also why a single-rate tenant can still turn its tax off.

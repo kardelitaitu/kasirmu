@@ -329,7 +329,7 @@ impl Store<'_> {
     ///                               × tier.earn_multiplier_millionths
     ///                               / (100 × 1_000_000))   — exact i128
     ///
-    /// Thin transactional wrapper over [`earn_points_with_conn`]; kept for
+    /// Thin transactional wrapper over `earn_points_with_conn`; kept for
     /// the standalone IPC path. `Ok(None)` (total too small) maps to the
     /// historical `Validation` error for this public entry point.
     pub fn earn_points(
@@ -880,7 +880,7 @@ pub(crate) fn earn_points_with_conn(
 /// (`loyalty-reversal-<refund_id>`) turns a retry into a no-op.
 ///
 /// Runs on the CALLER's connection/transaction — like
-/// [`earn_points_with_conn`] this must commit or roll back atomically
+/// `earn_points_with_conn` this must commit or roll back atomically
 /// with the refund row itself.
 ///
 /// C18 P3 verdict: NOT wrapped, and deliberately so. It is a free function on

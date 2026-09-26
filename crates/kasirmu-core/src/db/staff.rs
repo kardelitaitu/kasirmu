@@ -2,7 +2,7 @@
 //!
 //! Key items: [`Store::create_user`], [`Store::update_user`],
 //! [`Store::require_permission`] and its scoped siblings, and
-//! [`Store::seed_default_roles`]. [`Store::authorize_with`] is the
+//! [`Store::seed_default_roles`]. `Store::authorize_with` is the
 //! deny-by-default resolver every gate funnels through.
 //!
 //! Role AUTHORING is not here: `create_role`, `update_role`, `soft_delete_role` and

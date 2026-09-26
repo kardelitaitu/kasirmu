@@ -31,7 +31,7 @@ impl Store<'_> {
     /// Everything is checked BEFORE the transaction opens: name and rate bounds,
     /// a strict `YYYY-MM-DD` window with `effective_from < effective_to`, and a
     /// scope target that is non-empty and actually exists
-    /// ([`Self::validate_scope_target`]).
+    /// (`Self::validate_scope_target`).
     ///
     /// # Overlapping windows in one tier are legal
     ///

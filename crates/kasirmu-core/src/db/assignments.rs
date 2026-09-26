@@ -359,7 +359,7 @@ impl Store<'_> {
     /// enforcing: spec 0048's branch/workspace dimension
     /// ([`Assignment::matches_scope`], run by
     /// [`crate::db::Store::require_permission_scoped`]) AND the ADR #47
-    /// resource axis ([`Store::resource_covered_by`], downward walk
+    /// resource axis (`Store::resource_covered_by`, downward walk
     /// included). Keeping the composite in one place is the point — the
     /// desktop and tablet verdict commands each carried a byte-identical
     /// copy of it, which is three implementations of one rule free to drift.

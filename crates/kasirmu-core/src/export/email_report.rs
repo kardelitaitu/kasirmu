@@ -125,7 +125,7 @@ pub const SMTP_CONFIG_SETTINGS_KEY: &str = "smtp_config";
 /// derived rather than enumerated. `SmtpConfig` declares no serde defaults, so
 /// a required field cannot be absent or `null` in a blob that has just
 /// deserialized into it — which means "absent or null after a successful
-/// parse" IS the optional set, read off the struct by [`optional_smtp_fields`].
+/// parse" IS the optional set, read off the struct by `optional_smtp_fields`.
 /// No per-field list lives here, and an `Option` added to the struct tomorrow
 /// is preserved by this code with no edit — the class of silent gap this
 /// file has been chasing all week.

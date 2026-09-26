@@ -642,7 +642,7 @@ impl Store<'_> {
     /// fails closed on an empty one (the shared WHERE builder's rule).
     ///
     /// Reuses the paged listing's WHERE construction via
-    /// [`build_audit_where`] — no third copy of the filter logic — and
+    /// `build_audit_where` — no third copy of the filter logic — and
     /// caps at [`MAX_AUDIT_EXPORT_ROWS`] exactly like AUD-09. Newest-first
     /// `(created_at, id)` order, same deterministic snapshot shape.
     pub fn list_audit_entries_export_filtered(
