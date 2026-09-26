@@ -2,6 +2,7 @@ package mu.kasir.mobile
 
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -42,6 +43,7 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     hideSystemBars()
+    keepScreenOn()
     installBackGuard()
   }
 
@@ -90,6 +92,22 @@ class MainActivity : TauriActivity() {
   override fun onWindowFocusChanged(hasFocus: Boolean) {
     super.onWindowFocusChanged(hasFocus)
     if (hasFocus) hideSystemBars()
+  }
+
+  /**
+   * A POS terminal must not sleep under a cashier who is mid-transaction.
+   *
+   * `FLAG_KEEP_SCREEN_ON` is the whole fix: it is a window flag, so it needs no
+   * permission, no foreground service and no Tauri plugin, and the platform
+   * clears it on its own when the activity is no longer foregrounded — which is
+   * exactly the lifetime wanted here. A `WakeLock` would have asked for
+   * `WAKE_LOCK`, held the CPU awake (battery) beyond the visible screen, and
+   * still done nothing about the Low Memory Killer reaping the process.
+   *
+   * Set on the window in `onCreate`, after `super` has attached it.
+   */
+  private fun keepScreenOn() {
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
   }
 
   private fun hideSystemBars() {

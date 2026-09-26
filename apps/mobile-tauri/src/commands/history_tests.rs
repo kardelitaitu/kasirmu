@@ -349,14 +349,14 @@ async fn list_sales_scoped_requires_sales_view() {
     let app = mock_app(state);
 
     // Deny first: this is the leg a missing check cannot pass.
-    let denied = list_sales_scoped(DENIED_TOKEN.into(), app.state()).await;
+    let denied = list_sales_scoped(DENIED_TOKEN.into(), None, None, app.state()).await;
     let Err(AppError::PermissionDenied(message)) = denied else {
         panic!("list_sales_scoped let a session without sales:view through: {denied:?}")
     };
     assert_refusal_text("list_sales_scoped", &message);
 
     // Allow: the same door, same data, one role apart.
-    let allowed = list_sales_scoped(GRANTED_TOKEN.into(), app.state()).await;
+    let allowed = list_sales_scoped(GRANTED_TOKEN.into(), None, None, app.state()).await;
     assert!(
         allowed.is_ok(),
         "list_sales_scoped must still open for a session holding sales:view: {allowed:?}"

@@ -107,6 +107,24 @@ pub async fn list_products(state: State<'_, AppState>) -> Result<Vec<ProductDto>
     run_list_products(&db)
 }
 
+/// R3: clamp an optional `(limit, offset)` window onto a row count.
+///
+/// Mirrors `paginate()` in `ui/src/utils/list-policy.ts` — the same
+/// `start = offset`, `end = start + limit` arithmetic the UI pager uses — so
+/// the two halves of the bounded list path cannot drift apart.
+///
+/// `None` for either bound means "unbounded", which is what preserves
+/// today's behaviour for a caller that passes neither (every existing
+/// caller, desktop included).
+pub(crate) fn page_window(total: usize, limit: Option<u64>, offset: Option<u64>) -> (usize, usize) {
+    let start = offset.unwrap_or(0).min(total as u64) as usize;
+    let end = limit
+        .map(|l| (start as u64).saturating_add(l))
+        .unwrap_or(total as u64)
+        .min(total as u64) as usize;
+    (start, end.max(start))
+}
+
 /// Business logic for listing products (extracted for testing).
 fn run_list_products(conn: &rusqlite::Connection) -> Result<Vec<ProductDto>, AppError> {
     let store = Store::new(conn);
@@ -333,10 +351,50 @@ pub async fn adjust_stock_scoped(
 }
 
 /// Session-scoped variant of `list_products`.
+///
+/// R3: `limit` and `offset` are **optional and additive**. A caller that
+/// passes neither gets the whole catalog, byte-identical to before — which is
+/// what every existing caller (the desktop shell's own body, the catalog
+/// cache, the KDS picker, the kiosk grid) relies on. The return type is
+/// deliberately UNCHANGED for the same reason: the door is shared with
+/// `apps/desktop-tauri`, so a page envelope here would break that shell's
+/// bare-array contract at runtime.
+///
+/// What the bounds buy is the thing R3 asks for: the IPC payload and the
+/// renderer's copy are capped at `limit` rows instead of the whole catalog.
+///
+/// # KNOWN LIMITATION — the DB read is unbounded (DEFERRED)
+///
+/// This window is applied in Rust, AFTER `Store::list_products` has read and
+/// materialised every row. So the **IPC payload and the renderer are bounded,
+/// the query is not**: peak memory inside this command is still the whole
+/// catalog. Closing it means a LIMIT/OFFSET in `kasirmu-core`, and that is
+/// deferred because it is NOT additive there:
+///
+/// * `Store::list_products(&self) -> Result<Vec<ProductWithDetails>, CoreError>`
+///   (`crates/kasirmu-core/src/db/products_crud.rs:47`) has no bound parameters,
+///   and it has ~40 call sites across `apps/`, `crates/`, `platform/` and
+///   `cli/` (plus core's own integration tests) — every one of which would need
+///   `None, None` threading. A new sibling `list_products_paged(limit, offset)`
+///   would be additive and safe; changing this signature is not.
+/// * The precedent for the sibling already exists in core and should be
+///   mirrored, not invented: `Store::list_sales_for_customer` does a real
+///   `LIMIT ?2 OFFSET ?3` (`crates/kasirmu-core/src/db/sales_crud.rs:432`) and
+///   `Store::search_customers` clamps its page to `[1, 100]`
+///   (`crates/kasirmu-core/src/db/customers.rs:118-125`).
+///
+/// Why the deferral is survivable for now: the catalog is entitlement-capped
+/// upstream — `SubscriptionTier::max_products()` returns `Some(10_000)` for
+/// Premium (`crates/kasirmu-core/src/subscription.rs:211`), and `None` for
+/// Enterprise (`:212`), i.e. **unlimited**. So 10k is the realistic ceiling on
+/// Premium and this deferral is honest there; on Enterprise the read is
+/// genuinely unbounded and the sibling method above is the fix that matters.
 #[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn list_products_scoped(
     session_token: String,
+    limit: Option<u64>,
+    offset: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ProductDto>, AppError> {
     let (_session, conn_arc) = state.resolve_scope(&session_token)?;
@@ -344,7 +402,9 @@ pub async fn list_products_scoped(
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
-    run_list_products(&db)
+    let mut products = run_list_products(&db)?;
+    let (start, end) = page_window(products.len(), limit, offset);
+    Ok(products.drain(start..end).collect())
 }
 
 /// Fetch warehouse-tracked products only (excludes services) resolved from a session token. ADR #7.
