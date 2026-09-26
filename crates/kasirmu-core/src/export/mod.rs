@@ -635,48 +635,47 @@ impl Store<'_> {
 
         if dataset.has_date_filter {
             let date_col = dataset.date_column;
-            if let Some(ref start_date) = req.start_date {
-                sql.push_str(&format!(" WHERE {} >= ?1", date_col));
-                params.push(start_date.clone());
-            }
-            if let Some(ref end_date) = req.end_date {
-                let param_idx = params.len() + 1;
-                let where_clause = if req.start_date.is_some() {
-                    " AND"
-                } else {
-                    " WHERE"
-                };
-                sql.push_str(&format!("{} {} < ?{}", where_clause, date_col, param_idx));
-                // Widen the end date to an EXCLUSIVE midnight of the following
-                // day, in the column's own format — the same idiom (and the same
-                // reason) as the security-trail filter's `normalize_day_bound`,
-                // D84 ruling 3: a day range has to include the whole end day.
-                //
-                // The bound is a TEXT comparison, and the columns this filters
-                // (`sales.created_at`, `customers.created_at`, `shifts.opened_at`)
-                // all default to `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — a 'T'
-                // at index 10. The bound used to be `"{date} 23:59:59"`, with a
-                // SPACE there, and `' '` (0x20) sorts BELOW `'T'` (0x54): every
-                // row stamped on the end date itself compared GREATER than the
-                // bound and was silently dropped, so a single-day report came back
-                // empty while the rows plainly existed — a false negative that
-                // errors nowhere and just reads as an empty report.
-                //
-                // Day+1 at midnight with `<` rather than `.999Z` with `<=`, because
-                // `.999` silently assumes millisecond precision; the exclusive form
-                // stays correct if the columns ever carry finer stamps. Only
-                // well-formed `YYYY-MM-DD` needs handling here: a malformed date
-                // simply produces a bound that matches nothing, which is the same
-                // answer the old form gave and is not a new failure mode.
-                let exclusive_end = chrono::NaiveDate::parse_from_str(end_date.trim(), "%Y-%m-%d")
-                    .ok()
-                    .and_then(|d| d.succ_opt())
-                    .map(|next| format!("{}T00:00:00.000Z", next.format("%Y-%m-%d")))
-                    // Unparsable: fall back to the raw day, which keeps the old
-                    // "matches nothing" behaviour rather than widening to everything.
-                    .unwrap_or_else(|| end_date.clone());
-                params.push(exclusive_end);
-            }
+            let start = req
+                .start_date
+                .clone()
+                .unwrap_or_else(|| "0000-01-01".into());
+            let end = req.end_date.clone().unwrap_or_else(|| "9999-12-31".into());
+            // REP-03: the range is in STORE-LOCAL days, exactly as every
+            // date-bucketed report is, and this is that idiom —
+            // `DATE(col, tz) BETWEEN start AND end`, the same shape
+            // `db/reports/` uses at all 37 of its range predicates.
+            //
+            // It replaced a raw comparison against the column (`created_at >=
+            // ?1`, and an exclusive next-day bound for the end). Two things
+            // were wrong with that. The bound was once
+            // `"{date} 23:59:59"` — a SPACE at index 10 where the column
+            // (`strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`) has `T`, and
+            // `' '` (0x20) sorts BELOW `'T'` (0x54), so a row stamped on the
+            // end date itself compared GREATER than the bound and a single-day
+            // report came back empty while its rows plainly existed.
+            //
+            // Fixing that left the deeper half: the column was still compared in
+            // UTC while the user picks a LOCAL day. Measured on an
+            // `Asia/Jakarta` store, a sale at `2026-07-31T20:00:00.000Z` is
+            // 1 August locally — the reports path says August, this filter said
+            // July. `DATE(col, tz)` removes both problems at once: the column is
+            // converted to the store day before comparison, so the sub-second
+            // shape stops mattering and the day means the operator's day.
+            //
+            // `tz` is `±HH:MM` from the single REP-03 resolver and is embedded
+            // after that validation, so it can inject nothing beyond a date
+            // modifier. An absent bound widens to an open end rather than
+            // narrowing the range.
+            let tz = self.tz_modifier();
+            let param_idx = params.len() + 1;
+            sql.push_str(&format!(
+                " WHERE DATE({date_col}, ?{param_idx}) BETWEEN ?{} AND ?{}",
+                param_idx + 1,
+                param_idx + 2
+            ));
+            params.push(tz);
+            params.push(start);
+            params.push(end);
         }
 
         // Add LIMIT and OFFSET

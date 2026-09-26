@@ -694,3 +694,74 @@ fn a_custom_report_includes_rows_from_its_own_end_date() {
         "the space-separated bound is what excluded the row"
     );
 }
+
+/// The export range is in STORE-LOCAL days, and agrees with the report screens.
+///
+/// REP-03: every date-bucketed report resolves the store's timezone and buckets
+/// on the LOCAL calendar day. This filter used to compare the raw UTC column
+/// against the operator's date, so an `Asia/Jakarta` (UTC+7) store disagreed
+/// with its own report screens about which day a late-evening sale belongs to:
+/// a sale at `2026-07-31T20:00:00.000Z` is 1 August locally, the reports path
+/// said August, and this filter said July.
+///
+/// The fix adopts the reports idiom — `DATE(col, tz) BETWEEN start AND end` — so
+/// the test asserts BOTH halves: the local day is right, and the two surfaces
+/// give the same answer. The second half matters on its own, because a future
+/// change could fix this filter into a third idiom that is locally correct and
+/// still inconsistent with the reports a user reads beside it.
+#[test]
+fn a_custom_report_filters_in_store_local_days() {
+    let conn = migrations::fresh_db();
+    migrations::seed_provisioned_baseline(&conn);
+    let s = Store::new(&conn);
+    // Configure a non-UTC store the way the setup wizard does.
+    conn.execute(
+        "UPDATE locations SET timezone = 'Asia/Jakarta' WHERE is_primary = 1",
+        [],
+    )
+    .unwrap();
+    assert_eq!(s.tz_modifier(), "+07:00", "the fixture store is UTC+7");
+
+    seed_sale(&conn, "sku-tz", 1, 1000);
+    // 20:00Z is 03:00 on 1 August in WIB, so the LOCAL day is 1 August.
+    conn.execute(
+        "UPDATE sales SET created_at = '2026-07-31T20:00:00.000Z'",
+        [],
+    )
+    .unwrap();
+
+    let req = |start: &str, end: &str| CustomReportRequest {
+        dataset: "sales".into(),
+        columns: vec!["id".into()],
+        start_date: Some(start.into()),
+        end_date: Some(end.into()),
+        limit: None,
+        offset: None,
+    };
+
+    let july = s
+        .build_custom_report(req("2026-07-01", "2026-07-31"))
+        .unwrap();
+    let august = s
+        .build_custom_report(req("2026-08-01", "2026-08-31"))
+        .unwrap();
+    assert_eq!(
+        (july.rows.len(), august.rows.len()),
+        (0, 1),
+        "the sale belongs to the LOCAL August, not to UTC July"
+    );
+
+    // And the report screens answer the same way for the same store and day.
+    assert_eq!(
+        (
+            s.payment_method_breakdown("2026-07-01", "2026-07-31")
+                .unwrap()
+                .len(),
+            s.payment_method_breakdown("2026-08-01", "2026-08-31")
+                .unwrap()
+                .len(),
+        ),
+        (0, 1),
+        "the export filter and the report screens must not disagree"
+    );
+}
