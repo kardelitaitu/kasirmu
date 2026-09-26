@@ -181,8 +181,13 @@ apps/mobile-tauri/gen/android/buildSrc/.kotlin/
 # UI  (ui/.gitignore already covers node_modules, dist*, .vite, coverage,
 #  .eslintcache — only what it misses is listed here.)
 /ui/.stylelintcache
-# ui/vite.config.js is emitted from vite.config.ts by the TS build.
+# vite.config.{js,d.ts} are emitted from vite.config.ts by the TS build
+# (`tsconfig.node.json` is `composite: true`, so `tsc -b` writes both). Both
+# are generated artefacts; the .js was ignored from the start but its .d.ts
+# sibling was tracked until 2026-09-26, which is the one build output that
+# reached version control (review C28 sub-claim A).
 ui/vite.config.js
+ui/vite.config.d.ts
 
 # Node deps, incremental-build state & local overrides — unanchored so a new
 # sub-project can't leak its node_modules the way the old /node_modules/ +
