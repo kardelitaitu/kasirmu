@@ -5986,6 +5986,51 @@ touched one Markdown file.
 absence-based passes came back empty** — the same inversion that produced MSL-59 (a stale mirror note) and
 MSL-63 (a doc under-claiming its own design) in earlier arcs.
 
+## Pass 94 — MSL-72: the cross-file line citations, and four that had drifted
+
+Continued last pass's inversion — ask **"what is wrong"** rather than **"what is missing"** — on a target
+whose ground truth is checkable without judgement: doc comments that cite a **concrete file and line**. 40
+distinct citations across the crate; a stale one sends a reader to the wrong code, and unlike prose a line
+number is either reachable or it is not.
+
+**MSL-72 (LOW, fixed): six citations, four of them pointing at content that had moved.**
+
+| Citation | Claimed | Actually |
+|---|---|---|
+| `db/refunds.rs:315` → `db/reports.rs:467, :534` | report netting reads `refunds.total_minor` | **`db/reports.rs` is 40 lines** — the module was split into `db/reports/{datetime,revenue,sales_summary,product_sales}.rs`, so the target is categorically unreachable. The three real sites are `reports/revenue.rs:148, :215, :277`, and I verified each reads `SUM(total_minor) FROM refunds` |
+| `cache.rs:453` → `apps/.../state.rs:331` | `is_healthy()` sampled once at startup | drifted to `:360`; I confirmed it is sampled there and `cache_healthy` appears nowhere else, so the *"sampled once and never polled"* claim is still true |
+| `export/email_report.rs:134` → `bridge/sync.rs:72-74, :157-159` | the API-key and PG keep-on-blank rule | API key is now `:137-142`; the `:157-159` target no longer exists at all — the PG settings are `:172-178` |
+| `export/email_report.rs:333-334` → `settings.rs:731-738`, `sync.rs:36` | the `stripe.api_key` read-back shape and `SyncSettingsDto::has_api_key` | `:731-738` is a db-lock error path; the real read-back is `gateway_status` at `settings.rs:987-992`. `sync.rs:36` is a doc about terminal secrets; `has_api_key` is at `:96` |
+
+**The one citation I checked that was exactly right** is worth recording because it is the pattern the others
+should follow: `terminal_profiles.rs:75` cited `terminals.rs:703` for "the bridge checks non-emptiness only" —
+i read it, and `crates/kasirmu-bridge/src/terminals.rs:703` is precisely `validate_not_empty("profile_type",
+...)`. The **path** was ambiguous though (a `db/terminals.rs` exists in core and is 454 lines, so a reader
+looking there finds nothing), so I made the crate explicit. That fix is a clarification; that comment is mine
+from MSL-52, and the citation it carries was correct.
+
+**One near-miss on my own checker, the same shape as the last three passes.** My first reachability pass
+reported **13 unreachable citations**, which would have been a much larger finding. Ten were false: my
+resolver only tried three path prefixes, so cross-crate citations (`bridge/src/sync.rs`,
+`platform/startup/src/lib.rs`) and slash-separated ones (`foundation/src/cart.rs`) all came back missing. I
+resolved each by globbing its basename before believing any of them — and of the ten, two were genuinely
+stale (recorded above) and eight land on plausible content.
+
+**The transferable point, since it is now the fourth instance:** a pattern-derived *absence* is a hypothesis,
+and the corrective is always the same — widen the referent set and re-run. Here the referent set was "path
+prefixes", and widening it turned 13 into 2. This is the check I should run *first* on any future census, not
+after the numbers look surprising.
+
+**Verified:** 52 `db::refunds`, 18 `db::terminal_profiles` tests, 0 failed;
+`clippy -p kasirmu-core --lib -D warnings` clean; all four files `rustfmt`-clean; the diff is 9 insertions /
+8 deletions with **every changed line a comment** (`//`, `///` or `//!`), confirmed by a filter that accepts
+all three forms after the first one flagged plain `//` lines as code. Commit `2d99359e0` (verified by hash).
+
+**Tally:** 77 findings fixed (11 HIGH), 23 leads disproved, 27 clean censuses. Two findings this pass and
+eleven last pass, from the same inversion — which continues to be the higher-yield direction now that
+absence-based sweeps on guards and quotas have been exhausted.
+
+
 
 
 
