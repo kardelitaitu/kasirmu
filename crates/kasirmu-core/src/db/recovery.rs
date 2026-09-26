@@ -127,14 +127,27 @@ fn build_schema() -> Option<String> {
 
 /// The migration ids a candidate has applied; empty when it has no
 /// `schema_migrations` table (an un-migrated or non-kasir.mu file).
-fn applied_migration_ids(conn: &Connection) -> Vec<String> {
-    let Ok(mut stmt) = conn.prepare("SELECT id FROM schema_migrations") else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) else {
-        return Vec::new();
-    };
-    rows.filter_map(Result::ok).collect()
+///
+/// An ABSENT table and an UNREADABLE one are different verdicts. The absent
+/// table is the documented oldest state and stays restorable; a table whose
+/// rows cannot decode is a candidate this build cannot judge, so the error
+/// propagates and `validate_candidate` refuses it. Collapsing the two here
+/// let an undecodable id read as "no migrations applied" — the oldest,
+/// restorable state — and a newer candidate could be written over the live
+/// database (the boot-brick path the gate exists to close).
+fn applied_migration_ids(conn: &Connection) -> Result<Vec<String>, CoreError> {
+    let has_table: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_table {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn.prepare("SELECT id FROM schema_migrations")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
 }
 
 /// Open `path` read-only and run `PRAGMA integrity_check` on it.
@@ -189,7 +202,16 @@ pub fn validate_candidate(path: &Path) -> CandidateReport {
                 None,
             );
         }
-        applied_migration_ids(&conn)
+        match applied_migration_ids(&conn) {
+            Ok(ids) => ids,
+            Err(e) => {
+                return report(
+                    CandidateVerdict::Corrupt,
+                    format!("cannot read '{}' schema_migrations: {e}", path.display()),
+                    None,
+                );
+            }
+        }
     };
 
     let candidate = newest_dated_id(ids.iter().map(String::as_str)).map(str::to_string);
@@ -430,3 +452,7 @@ pub fn restore_from(candidate: &Path, db_path: &Path) -> Result<CandidateReport,
 #[cfg(test)]
 #[path = "recovery_inline_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "recovery_gate_tests.rs"]
+mod gate_tests;
