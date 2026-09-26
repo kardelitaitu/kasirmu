@@ -6347,6 +6347,64 @@ harvest is yielding something other than un-repaired defects: code that is **cor
 an audit recorded a right fix and left the branch untested. That is the target to carry forward rather than
 looking for new defects.
 
+## Pass 101 — MSL-80: a test I wrote and then withdrew, because its precondition is not committed
+
+Acted on last pass's stated target — **code that is correct and undefended** — by enumerating it rather than
+picking items one at a time: all **16** production `CoreError::Conflict` returns in `kasirmu-core`, checked
+against every sibling test file for a `Conflict` assertion.
+
+**The enumeration.** Ten files assert a `Conflict` somewhere; the ones with **zero** assertions were
+`kds_orders.rs`, `products_stock_query.rs` and `workspaces_lifecycle.rs` (the latter two recorded for a later
+pass). The most valuable was `kds_orders.rs:494` — a compare-and-set whose own comment claims it is *"the same
+shape and same reason as `update_po_status`"*, and whose precedent **is** pinned by
+`update_po_status_race_cannot_overwrite_a_competing_transition`. The copy had no test, so deleting its
+`AND status = ?4` predicate would leave the suite green while a rival transition was silently overwritten.
+
+**I wrote the test, it works, and I withdrew it.** A two-connection race using the precedent's *busy-handler*
+technique (not a fixed timer — the precedent's own doc explains a timer is load-dependent and can fail a
+correct implementation, so I followed it rather than repeating the simpler version I used in MSL-79). It
+passes in 0.9s and falsifies correctly: dropping the predicate fails on the *"winner's status must survive"*
+assertion, proving the lost update the comment describes.
+
+The first run failed for a reason worth recording: I had A request `pending -> ready`, which the KDS state
+machine **rejects before any write**, so A never reached the UPDATE and the busy-handler deadline fired
+("A never reached its write lock within 10s"). Changing it to `pending -> cancelled` established the
+interleaving. A race test whose setup is invalid fails by *timeout*, not by assertion — worth knowing.
+
+**Why it is not committed: its precondition is another lane's uncommitted work.** Checking the diff before
+committing showed `kds_orders.rs` had **40 changed lines** when I had touched one predicate, and the diff was
+*adding* the whole CAS: at HEAD the UPDATE is an unconditional `WHERE id = ?3` with **0** `Conflict` returns
+(the worktree has **1**). The file's mtime was 10:46:53, five minutes before my own edits — another agent is
+actively writing it right now.
+
+So my test asserts a `Conflict` branch that **does not exist at HEAD**, and committing it would break
+`cargo test` for every other lane. Committing `kds_orders.rs` alongside it would sweep their in-flight change
+under my message, which the house rules forbid outright. Neither option is acceptable, so the test was
+withdrawn.
+
+**A revert I got wrong, and caught.** Removing the test by slicing lines 1..4186 also deleted **876 lines**
+of real content — I had read `totalLines: 4286` and mistaken a line *count* for the original file length, so
+the slice cut into the pre-existing suite. `git checkout --` restored it and the kds family went back to 174
+passing. Recorded because it is the failure mode of range-based edits: the range must come from the *diff*,
+not from a line count read later.
+
+**What is left for the next pass, and the right order to do it in:** the test is reconstructable from this
+entry when `kds_orders.rs` lands (the CAS, the `pending -> cancelled` transition, the busy-handler
+interleaving, and the two assertions — `Conflict { entity: "kds_order" }` and status stays `preparing`).
+`products_stock_query.rs:324` and `workspaces_lifecycle.rs:210` remain uncovered and are **not** blocked by
+anyone, so they are the safer next targets.
+
+**Verified:** kds family back to **174 passed** after the restore, and the full core suite re-run at
+**3339 passed, 0 failed** (55 `sync_client` filtered for the concurrent lane) — the earlier 3341 was a run
+that still included my test, so it is not comparable; `clippy -D warnings` clean; `rustfmt` clean;
+`kds_tests.rs` byte-identical to HEAD (`git status` clean for it). No commit this pass — nothing of mine
+survived to commit.
+
+**Tally:** 82 findings fixed (12 HIGH), 23 leads disproved, 29 clean censuses. One lead recorded rather than
+actioned: the enumeration produced a real gap, a working fix, and a reason not to land it that only appeared
+when I checked the diff against HEAD — which is the check the commit policy exists to force.
+
+
 
 
 
