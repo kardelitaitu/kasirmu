@@ -127,8 +127,11 @@ impl Store<'_> {
                      WHERE user_id = ?1",
                 )?
                 .query_map(params![uid], |row| row.get::<_, String>(0))?
-                .filter_map(|r| r.ok())
-                .collect();
+                // A decode failure is an error, NOT an empty assignment set:
+                // empty is the sentinel that falls through to the wider
+                // phase-3 role-type grant, so dropping a bad row here would
+                // silently promote the caller (COR-30/25 family).
+                .collect::<Result<Vec<_>, _>>()?;
 
             if !instance_ids.is_empty() {
                 return self.list_instances_by_ids(&instance_ids, store_id, uid);
@@ -575,3 +578,7 @@ impl Store<'_> {
         Ok(has_role_access)
     }
 }
+
+#[cfg(test)]
+#[path = "workspaces_instances_tests.rs"]
+mod tests;
