@@ -148,11 +148,74 @@ fn deactivate_is_soft_and_keeps_the_row() {
         .get_kds_device(&device.id)
         .unwrap()
         .expect("the row must still exist after deactivation");
-    assert!(!fetched.is_active, "deactivation flips the flag, not the row");
+    assert!(
+        !fetched.is_active,
+        "deactivation flips the flag, not the row"
+    );
 }
 
 #[test]
 fn get_returns_none_for_an_unknown_device() {
     let conn = fresh();
     assert!(store(&conn).get_kds_device("nobody").unwrap().is_none());
+}
+
+// ── A corrupt station list must not become the broadcast sentinel ──────
+//
+// An `station_ids` value that cannot be parsed used to be
+// `unwrap_or_default()`-ed, and the empty vec is NOT a neutral default here:
+// `resolve_targets_by_station` Phase 2 (kds.rs) gives a device with empty
+// `station_ids` EVERY order — it is the Expo "see everything" sentinel. So a
+// station-scoped screen whose column is unreadable silently escalated to a
+// broadcast screen. Contrast `connection_status` just below, whose
+// `.unwrap_or(Disconnected)` is safe because it defaults to the NARROW end of
+// that enum. Fail closed: surface the decode failure instead of widening the
+// device's scope.
+
+/// Corrupt a device's `station_ids` in place — the only way this column is
+/// ever unreadable (`register_kds_device` always serializes a valid array).
+fn corrupt_station_ids(conn: &rusqlite::Connection, id: &str) {
+    conn.execute(
+        "UPDATE kds_devices SET station_ids = 'not-a-json-array' WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_corrupt_station_list_is_refused_by_the_lookup() {
+    let conn = fresh();
+    seed_pos(&conn);
+    let s = store(&conn);
+    let device = s
+        .register_kds_device(input("Grill", vec!["station-grill"]))
+        .unwrap();
+    corrupt_station_ids(&conn, &device.id);
+
+    let err = s
+        .get_kds_device(&device.id)
+        .expect_err("an unreadable station list must not read as broadcast mode");
+    assert!(
+        format!("{err:?}").contains("station_ids") || matches!(err, CoreError::Db(_)),
+        "the refusal must name the station list, got: {err:?}"
+    );
+}
+
+#[test]
+fn a_corrupt_station_list_is_refused_by_the_listing() {
+    let conn = fresh();
+    seed_pos(&conn);
+    let s = store(&conn);
+    let device = s
+        .register_kds_device(input("Grill", vec!["station-grill"]))
+        .unwrap();
+    corrupt_station_ids(&conn, &device.id);
+
+    // Routing reads the listing; a silently-empty device here would be
+    // targeted for every order by Phase 2.
+    let listed = s.list_kds_devices_for_restaurant("pos-1");
+    assert!(
+        listed.is_err(),
+        "the listing must surface the corrupt row rather than return it as an Expo device, got: {listed:?}"
+    );
 }

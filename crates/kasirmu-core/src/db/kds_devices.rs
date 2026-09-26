@@ -81,8 +81,6 @@ impl Store<'_> {
         })
     }
 
-
-
     /// Retrieve a KDS device by ID.
     pub fn get_kds_device(&self, id: &str) -> Result<Option<KdsDevice>, CoreError> {
         let mut stmt = self.conn.prepare(
@@ -168,7 +166,20 @@ impl Store<'_> {
 
     fn row_to_kds_device(&self, row: &rusqlite::Row) -> rusqlite::Result<KdsDevice> {
         let station_ids_str: String = row.get("station_ids")?;
-        let station_ids: Vec<String> = serde_json::from_str(&station_ids_str).unwrap_or_default();
+        // Fail CLOSED. An empty `station_ids` is the BROADCAST sentinel — see
+        // [`KdsDevice::station_ids`] and `resolve_targets_by_station` Phase 2
+        // (`kds.rs`), which hands such a device EVERY order. Defaulting an
+        // unreadable value to `[]` therefore silently widened a station-scoped
+        // screen into an Expo "see everything" screen. Surface the decode
+        // failure instead, using the same row-mapping idiom as
+        // `db::row_to_product`. (The `connection_status` default below stays:
+        // `Disconnected` is the NARROW end of that enum, so defaulting there is
+        // already fail-closed.)
+        let station_ids: Vec<String> = serde_json::from_str(&station_ids_str).map_err(|e| {
+            rusqlite::Error::ToSqlConversionFailure(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
+            )
+        })?;
         let status_str: String = row.get("connection_status")?;
         Ok(KdsDevice {
             id: row.get("id")?,
@@ -185,7 +196,13 @@ impl Store<'_> {
     }
 
     fn row_from_kds_device_row(&self, row: KdsDeviceRow) -> Result<KdsDevice, CoreError> {
-        let station_ids: Vec<String> = serde_json::from_str(&row.station_ids).unwrap_or_default();
+        // Fail CLOSED — see `row_to_kds_device` for why an empty list must not
+        // be the default for an unreadable value.
+        let station_ids: Vec<String> = serde_json::from_str(&row.station_ids).map_err(|e| {
+            CoreError::Internal(format!(
+                "kds_devices.station_ids is not a JSON string array: {e}"
+            ))
+        })?;
         Ok(KdsDevice {
             id: row.id,
             name: row.name,
