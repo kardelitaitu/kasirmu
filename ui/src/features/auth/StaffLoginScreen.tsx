@@ -79,14 +79,13 @@ function useResizedLogo(src: string | null | undefined, targetSize = 256) {
   return { resizedUrl, error };
 }
 
-// ── Component ───────────────────────────────────────────────────────
+// ── Staff Login Logo Component ──────────────────────────────────────
 
-type Step = 'username' | 'pin';
+interface StaffLoginLogoProps {
+  small?: boolean;
+}
 
-/** Staff login screen — two-step authentication flow with username entry followed by PIN pad input and shake animation on error. */
-export default function StaffLoginScreen() {
-  const { l10n } = useLocalization();
-  const { login, loading: authLoading, error, clearError, session } = useAuth();
+function StaffLoginLogo({ small = false }: StaffLoginLogoProps) {
   const { settings: brandSettings, loading: brandLoading } = useBrand();
   // Convert local filesystem path to a Tauri-compatible asset URL.
   const logoUrl = useMemo(() => {
@@ -102,6 +101,52 @@ export default function StaffLoginScreen() {
 
   const { resizedUrl, error: primaryLogoError } = useResizedLogo(logoUrl, 256);
   const [fallbackSvgError, setFallbackSvgError] = useState(false);
+
+  const logoClass = `staff-login-logo${small ? ' staff-login-logo--small' : ''}`;
+  const storeName = brandSettings?.store_name || '';
+
+  // While brand settings are loading, show a skeleton placeholder
+  // so the logo doesn't flash between different images.
+  if (brandLoading) {
+    return (
+      <div className={logoClass}>
+        <div className="staff-login-logo skeleton" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={logoClass}>
+      {!primaryLogoError && resizedUrl ? (
+        <img
+          src={resizedUrl}
+          alt={storeName || 'kasir.mu'}
+          className="staff-login-logo-img"
+        />
+      ) : !fallbackSvgError ? (
+        <img
+          src="/branding/logo-mark.svg"
+          alt={storeName || 'kasir.mu'}
+          className="staff-login-logo-img"
+          onError={() => setFallbackSvgError(true)}
+        />
+      ) : (
+        <UserIcon />
+      )}
+    </div>
+  );
+}
+
+// ── Component ───────────────────────────────────────────────────────
+
+type Step = 'username' | 'pin';
+
+const LOCKOUT_DURATION_MS = 30_000;
+
+/** Staff login screen — two-step authentication flow with username entry followed by PIN pad input and shake animation on error. */
+export default function StaffLoginScreen() {
+  const { l10n } = useLocalization();
+  const { login, loading: authLoading, error, clearError, session } = useAuth();
   const { addToast } = useToast();
   const [step, setStep] = useState<Step>('username');
   const [username, setUsername] = useState('');
@@ -125,9 +170,7 @@ export default function StaffLoginScreen() {
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const pinWrapRef = useRef<HTMLDivElement>(null);
   const pinSubmitted = useRef(false);
-  const [pinAttempts, setPinAttempts] = useState(0);
-  // pinAttempts is used internally for lockout counter but not displayed
-  void pinAttempts;
+  const pinAttemptsRef = useRef(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const toastShownForError = useRef<string | null>(null);
   // P7-4: Keyboard avoidance — scroll inputs into view on mobile
@@ -159,15 +202,17 @@ export default function StaffLoginScreen() {
     addToast({ type: 'error', message: error, duration: 5000 });
     setPin([]);
 
-    // Parse backend rate limit error to sync lockout timer. (Per-attempt
-    // counting happens in attemptLogin so it survives identical messages.)
+    // Parse backend rate limit error to sync lockout timer.
     const lockoutMatch = error.match(/Try again in (\d+)s/);
     if (lockoutMatch && lockoutMatch[1]) {
       const seconds = parseInt(lockoutMatch[1], 10);
       setLockedUntil(Date.now() + seconds * 1000);
-      setPinAttempts(MAX_PIN_ATTEMPTS);
+      pinAttemptsRef.current = MAX_PIN_ATTEMPTS;
+    } else if (pinAttemptsRef.current >= MAX_PIN_ATTEMPTS) {
+      // Local client-side lockout (defense-in-depth)
+      setLockedUntil(Date.now() + LOCKOUT_DURATION_MS);
     }
-  }, [error, step]);
+  }, [error, step, addToast]);
 
   // ── Auto-unlock after lockout period ──────────────────────────
 
@@ -176,12 +221,12 @@ export default function StaffLoginScreen() {
     const remaining = lockedUntil - Date.now();
     if (remaining <= 0) {
       setLockedUntil(null);
-      setPinAttempts(0);
+      pinAttemptsRef.current = 0;
       return;
     }
     const timer = setTimeout(() => {
       setLockedUntil(null);
-      setPinAttempts(0);
+      pinAttemptsRef.current = 0;
     }, remaining);
     return () => clearTimeout(timer);
   }, [lockedUntil]);
@@ -233,11 +278,8 @@ export default function StaffLoginScreen() {
     // S1: Enforce minimum 4-digit PIN — both client-side (prevents
     // wasted server round-trips) and server-side (defense in depth).
     if (pin.length < MAX_PIN_LENGTH) return;
-    // Count every submitted PIN as an attempt so the client-side
-    // rate-limit/lockout counter advances even when the backend returns
-    // an identical error message on consecutive failures (the error effect
-    // dedupes duplicate toasts but must not freeze the attempt counter).
-    setPinAttempts((prev) => prev + 1);
+    // Count every submitted PIN as an attempt for internal lockout defense-in-depth.
+    pinAttemptsRef.current += 1;
     login(username.trim(), pin.join(''));
   }, [pin, username, login]);
 
@@ -339,43 +381,6 @@ export default function StaffLoginScreen() {
     }
   }, [step]);
 
-  // ── Logo renderer ────────────────────────────────────────────
-
-  const renderLogo = (small = false) => {
-    const logoClass = `staff-login-logo${small ? ' staff-login-logo--small' : ''}`;
-    const storeName = brandSettings?.store_name || '';
-
-    // While brand settings are loading, show a skeleton placeholder
-    // so the logo doesn't flash between different images.
-    if (brandLoading) {
-      return (
-        <div className={logoClass}>
-          <div className="staff-login-logo skeleton" />
-        </div>
-      );
-    }
-
-    return (
-      <div className={logoClass}>
-        {!primaryLogoError && resizedUrl ? (
-          <img
-            src={resizedUrl}
-            alt={storeName || 'kasir.mu'}
-            className="staff-login-logo-img"
-          />
-        ) : !fallbackSvgError ? (
-          <img
-            src="/branding/logo-mark.svg"
-            alt={storeName || 'kasir.mu'}
-            className="staff-login-logo-img"
-            onError={() => setFallbackSvgError(true)}
-          />
-        ) : (
-          <UserIcon />
-        )}
-      </div>
-    );
-  };
 
   // ── PIN dots ─────────────────────────────────────────────────
 
@@ -425,12 +430,14 @@ export default function StaffLoginScreen() {
                 <button
                   type="button"
                   className="staff-login-pad-key"
-                  onClick={() => handlePinDigit(digit)}                          aria-label={digit}                      disabled={authLoading || isLocked}
-                    >
-                      {digit}
-                    </button>
-                  </Localized>
-                ))}
+                  onClick={() => handlePinDigit(digit)}
+                  aria-label={digit}
+                  disabled={authLoading || isLocked}
+                >
+                  {digit}
+                </button>
+              </Localized>
+            ))}
           </div>
         ))}
         <div className="staff-login-pad-row">
@@ -474,15 +481,22 @@ export default function StaffLoginScreen() {
 
   // ── Render ───────────────────────────────────────────────────
 
-  // Focus management: clicking anywhere refocuses the active input
-  const handleScreenKeyDown = useCallback(
+  // Focus & keyboard management: when card itself has focus, Space/Enter refocuses
+  // the active element, and hardware PIN keys forward to the PIN handler.
+  const handleCardKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === ' ') {
-        e.preventDefault();
-        handleScreenClick();
+      if (e.target === e.currentTarget) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          handleScreenClick();
+          return;
+        }
+        if (step === 'pin') {
+          handleKeyDown(e);
+        }
       }
     },
-    [handleScreenClick],
+    [handleScreenClick, step, handleKeyDown],
   );
 
   return (
@@ -494,7 +508,7 @@ export default function StaffLoginScreen() {
       <div
         className={`staff-login-card ${step === 'pin' ? 'staff-login-card--pin' : ''}`}
         onClick={handleScreenClick}
-        onKeyDown={handleScreenKeyDown}
+        onKeyDown={handleCardKeyDown}
         tabIndex={-1}
         ref={(el) => {
           (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
@@ -517,7 +531,7 @@ export default function StaffLoginScreen() {
 
         {/* ── Top bar: logo (username) / store + dots (PIN) ── */}
         <div className="staff-login-top-bar">
-          {step === 'username' && renderLogo()}
+          {step === 'username' && <StaffLoginLogo />}
           {step === 'pin' && (
             <div className="staff-login-pin-top">
               {renderPinDots()}
