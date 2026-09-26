@@ -11,7 +11,7 @@
 //!
 //! ADR #57 §2.2 is the clause that keeps the control from being decorative:
 //! **absence of a verdict is treated as a verdict.** A missing, malformed or
-//! unparseable report classifies as [`BuildFingerprintVerdict::Unknown`] and is
+//! unparseable report classifies as [`BuildFingerprintVerdict::Unknown`](crate::build_fingerprint::BuildFingerprintVerdict::Unknown) and is
 //! NEVER treated as valid. Without that, an attacker bypasses the control by
 //! deleting the reporting line rather than defeating the comparison — the
 //! cheapest possible attack.

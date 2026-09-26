@@ -9,7 +9,7 @@
 //! Key types: [`AvailabilityFeature`](crate::availability::AvailabilityFeature) (the v1 key set — exactly the surface
 //! the existing gates consume, no new flags), [`AvailabilityFacts`](crate::availability::AvailabilityFacts) (the
 //! inputs, gathered by the caller), and [`FeatureVerdict`](crate::availability::FeatureVerdict) / [`VerdictDetail`](crate::availability::VerdictDetail)
-//! (the output). Entry point: [`explain_availability`].
+//! (the output). Entry point: [`explain_availability`](crate::availability::explain_availability).
 //!
 //! Invariants:
 //!
@@ -21,7 +21,7 @@
 //!   causes are still computed into [`VerdictDetail`](crate::availability::VerdictDetail) but never reported.
 //! - **Fixed precedence:** server_policy > lifecycle > tier > quota > role >
 //!   scope (todo-global-saas-3.md, Feature-flag observability design).
-//! - **Fail closed on unknown keys.** [`AvailabilityFeature::parse`] returns
+//! - **Fail closed on unknown keys.** [`AvailabilityFeature::parse`](crate::availability::AvailabilityFeature::parse) returns
 //!   `None` for anything unrecognized; an unknown key is never default-allow.
 //! - **`scope` cannot outrank `role`.** Role is evaluated first on purpose:
 //!   naming a location the caller cannot act on is worse than saying they

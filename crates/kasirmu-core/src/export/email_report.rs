@@ -53,7 +53,7 @@ pub struct SmtpConfig {
     /// transparently by [`Store::get_smtp_config`]. `None` on a save does
     /// NOT mean "clear it" — it means the masked front-end field was not
     /// modified, so the stored secret is carried over. See
-    /// [`merge_smtp_password_with_stored`].
+    /// [`merge_smtp_password_json`].
     pub password: Option<String>,
     /// From-address for outgoing emails.
     pub from: String,

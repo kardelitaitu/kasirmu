@@ -11,7 +11,7 @@
 //! Key types:
 //! - [`Entitlements`](crate::entitlements::Entitlements) — the read model, built from the signed
 //!   `TenantSubscription` row plus the usage counts the gates consult.
-//! - [`build_entitlements`] — the shared fail-closed row loader (missing /
+//! - [`build_entitlements`](crate::entitlements::build_entitlements) — the shared fail-closed row loader (missing /
 //!   tampered / unreadable yields `None`, which projects as Free +
 //!   `unavailable` rather than an error).
 //!

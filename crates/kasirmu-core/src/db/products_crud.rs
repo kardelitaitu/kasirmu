@@ -127,7 +127,7 @@ impl Store<'_> {
 
     /// List inventory-tracked products with stock at a specific location.
     ///
-    /// Like [`list_warehouse_products`] but reads `stock_summary.qty` for
+    /// Like [`list_warehouse_products`](Self::list_warehouse_products) but reads `stock_summary.qty` for
     /// the given `location_id` instead of summing across all locations.
     /// Returns 0 for products with no stock row at this location.
     pub fn list_warehouse_products_at_location(

@@ -78,7 +78,7 @@ impl SessionContext {
     /// Create a new session context (legacy 8-field constructor).
     ///
     /// Sets `restaurant_pos_id` to `None` (default for all current sessions).
-    /// For multi-KDS sessions, use [`new_with_restaurant_pos`] instead.
+    /// For multi-KDS sessions, use [`new_with_restaurant_pos`](crate::session::SessionContext::new_with_restaurant_pos) instead.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         user_id: String,
@@ -106,7 +106,7 @@ impl SessionContext {
     /// Create a session context scoped to a specific Restaurant POS.
     ///
     /// Used by KDS devices that need to be isolated to a single Restaurant POS.
-    /// When `restaurant_pos_id` is `None`, behaves identically to [`new`].
+    /// When `restaurant_pos_id` is `None`, behaves identically to [`new`](crate::session::SessionContext::new).
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_restaurant_pos(
         user_id: String,

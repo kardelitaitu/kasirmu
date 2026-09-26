@@ -10,7 +10,8 @@
 //!   series (ONE per entity per document kind, UNIQUE-guarded): prefix +
 //!   counter + optional period reset + zero-padding.
 //!
-//! The counter only ever moves through [`Store::claim_document_number_in_tx`],
+//! The counter only ever moves through
+//! [`Store::claim_statutory_number_for_sale`](crate::db::Store::claim_statutory_number_for_sale),
 //! whose single `UPDATE … RETURNING` statement is the whole concurrency
 //! story: there is no SELECT-then-UPDATE anywhere on the path, so two
 //! concurrent claims can never observe the same number, and a claim made

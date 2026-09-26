@@ -29,7 +29,7 @@
 //! (plus the trash's `restore_role`, `list_trashed_roles` and
 //! `purge_expired_roles`) and [`Store::role_reference_counts`]. A fifth write,
 //! `seed_default_roles`,
-//! deliberately stays in [`super::staff`] — it is the preset upsert this
+//! deliberately stays in [`super::staff`](crate::db::staff) — it is the preset upsert this
 //! module exists to keep callers away from, and it does not route through
 //! any of these four.
 

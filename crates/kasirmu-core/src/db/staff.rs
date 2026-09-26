@@ -6,7 +6,7 @@
 //! deny-by-default resolver every gate funnels through.
 //!
 //! Role AUTHORING is not here: `create_role`, `update_role`, `soft_delete_role` and
-//! `role_reference_counts` live in [`super::roles`] behind that module's single
+//! `role_reference_counts` live in [`super::roles`](crate::db::roles) behind that module's single
 //! grant validator and preset-id guard. This module keeps the preset side only
 //! — [`Store::seed_default_roles`] upserts every `RolePreset` row and overwrites
 //! its grants, which is the very fact that guard refuses on — plus the two role

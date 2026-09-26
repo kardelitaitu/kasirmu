@@ -3,8 +3,8 @@
 //! # Decomposition (13-09-26)
 //!
 //! The 1,463-line monolith split along its real seams into submodules:
-//! [`rates`] (rate-record CRUD, dependency counts, rounding-directive reads),
-//! [`scopes`] (the scope/window model, scoped authoring, the resolver walk
+//! `rates` (rate-record CRUD, dependency counts, rounding-directive reads),
+//! `scopes` (the scope/window model, scoped authoring, the resolver walk
 //! and applicability filter) and [`assignments`] (product/category ↔
 //! rate junctions). This file keeps only the module wiring and the
 //! re-exports callers and the test module resolve through it — no logic

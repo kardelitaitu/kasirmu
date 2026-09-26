@@ -21,9 +21,9 @@
 //! - **Over quota** (`current > limit`) — the tenant is *above* the cap
 //!   and holds resources that must be archived or the plan upgraded.
 //!   This is the §J "mark resources above the new quota as `over_quota`"
-//!   condition and what [`QuotaUsage::is_over_quota`] reports.
+//!   condition and what [`QuotaUsage::is_over_quota`](crate::downgrade::QuotaUsage::is_over_quota) reports.
 //! - **At the cap** (`current == limit`) — fully compliant, but the next
-//!   creation is blocked. Reported by [`QuotaUsage::blocks_creation`] so
+//!   creation is blocked. Reported by [`QuotaUsage::blocks_creation`](crate::downgrade::QuotaUsage::blocks_creation) so
 //!   a UI can distinguish "remove some" from "you can't add more".
 //!
 //! An unlimited tier (`limit == None`) is never over quota and never
