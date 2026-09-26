@@ -232,10 +232,7 @@ async fn throwaway_test_pool(
             return None;
         }
     };
-    let stale: Vec<String> = stale_rows
-        .iter()
-        .map(|r| r.get::<_, String>(0))
-        .collect();
+    let stale: Vec<String> = stale_rows.iter().map(|r| r.get::<_, String>(0)).collect();
     for d in &stale {
         if let Err(e) = admin
             .batch_execute(&format!("DROP DATABASE IF EXISTS {d} WITH (FORCE);"))
@@ -831,8 +828,19 @@ async fn pg_integration_rest_rls_non_owner() {
     // Cleanup: owner removes the namespaced rows, then the probe role
     // (DROP OWNED clears its grants first, so the drop can't fail). Both the
     // role drop and the DROP DATABASE are cluster DDL, so take the same
-    // lock; it releases when `_ddl` drops at the end of the test.
-    let _ddl = pg_ddl_guard(&url).await;
+    // lock -- ONCE, for both steps.
+    //
+    // This guard used to be taken TWICE in a row (`let _ddl = ...` here, then a
+    // second `let ddl = ...` before the DROP DATABASE below). The advisory lock
+    // is session-scoped and NOT reentrant across connections, so the second
+    // guard waited on the first for the whole 120s `SCHEMA_LOCK_TIMEOUT` and only
+    // then ran *unlocked* -- the window it was taken to protect was the one window
+    // it did not protect. Measured on a real Postgres: the test took **140.3s**,
+    // nextest reported it SLOW, and terminating the idle first-guard holder
+    // mid-run dropped it to **22.2s** -- the other 120s was this self-deadlock.
+    // One guard, released explicitly, so the DROP DATABASE below really is inside
+    // the lock and the test does not spend its budget waiting on itself.
+    let ddl = pg_ddl_guard(&url).await;
     owner
         .batch_execute(&format!(
             "DELETE FROM sale_lines WHERE sale_id = '{}' AND sale_id IN \
@@ -846,10 +854,7 @@ async fn pg_integration_rest_rls_non_owner() {
         .await
         .expect("cleanup should succeed");
 
-    // Cleanup: drop the throwaway database.
-    // DROP DATABASE is cluster DDL too: take the same lock so a
-    // concurrent worker's CREATE DATABASE cannot interleave with it.
-    let ddl = pg_ddl_guard(&url).await;
+    // Cleanup: drop the throwaway database -- inside the SAME guard taken above.
     drop(pool);
     admin_pool
         .get()
