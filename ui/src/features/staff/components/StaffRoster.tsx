@@ -152,6 +152,20 @@ const ImpersonateIcon = () => (
   </svg>
 );
 
+const WorkspaceIcon = () => (
+  <svg {...iconProps} width={13} height={13}>
+    <path d="M3 21h18" />
+    <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+    <path d="M9 9h1M9 13h1M9 17h1M14 9h1M14 13h1M14 17h1" />
+  </svg>
+);
+
+const PhoneIcon = () => (
+  <svg {...iconProps} width={13} height={13}>
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
+
 /** The Staff tab's main content. */
 export function StaffRoster({
   staff,
@@ -344,108 +358,134 @@ export function StaffRoster({
                 className={`staff-mgmt-card${member.is_active ? '' : ' staff-mgmt-card--inactive'}`}
                 data-testid={`staff-card-${member.id}`}
               >
-                <div className="staff-mgmt-card-top">
-                  <ProductThumb
-                    className="staff-mgmt-avatar"
-                    hash={member.avatar ?? null}
-                    name={member.display_name}
-                    size={40}
-                    shape="circle"
-                    lazy={false}
-                    hue={hueFromName(member.display_name)}
-                  />
-                  <div className="staff-mgmt-card-who">
-                    <span className="staff-mgmt-card-name">{member.display_name}</span>
+                {/* 1. Header: Avatar + Identity + Status */}
+                <div className="staff-mgmt-card-header">
+                  <div className="staff-mgmt-card-identity">
+                    <div className="staff-mgmt-avatar-wrap">
+                      <ProductThumb
+                        className="staff-mgmt-avatar"
+                        hash={member.avatar ?? null}
+                        name={member.display_name}
+                        size={42}
+                        shape="circle"
+                        lazy={false}
+                        hue={hueFromName(member.display_name)}
+                      />
+                    </div>
+                    <div className="staff-mgmt-card-who">
+                      <span className="staff-mgmt-card-name">{member.display_name}</span>
+                      <div className="staff-mgmt-card-sub-row">
+                        <span className="staff-mgmt-card-username">
+                          <span className="staff-mgmt-card-at" aria-hidden="true">@</span>
+                          <span className="staff-mgmt-card-username-val">{member.username}</span>
+                        </span>
+                        {!member.is_profile_complete && (
+                          <Badge variant="warning" className="staff-mgmt-incomplete-badge">
+                            <Localized id="staff-profile-incomplete">
+                              <span>Profile incomplete</span>
+                            </Localized>
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`staff-mgmt-status-pill ${member.is_active ? 'staff-mgmt-status-pill--active' : 'staff-mgmt-status-pill--inactive'}`}
+                    role="img"
+                    aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+                  >
+                    <span
+                      className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
+                      aria-hidden="true"
+                    />
+                    <span className="staff-mgmt-status-text">
+                      {l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+                    </span>
+                  </span>
+                </div>
+
+                {/* 2. Metadata: Workspace & Phone */}
+                <div className="staff-mgmt-card-meta">
+                  <div className={`staff-mgmt-meta-item${assignedAll ? '' : ' staff-mgmt-meta-item--wide'}`}>
+                    <div className="staff-mgmt-meta-header">
+                      <WorkspaceIcon />
+                      <span className="staff-mgmt-meta-label">
+                        <Localized id="staff-col-workspace"><span>Workspace</span></Localized>
+                      </span>
+                    </div>
+                    <span className="staff-mgmt-meta-val">{workspaceLabel}</span>
+                  </div>
+                  <div className="staff-mgmt-meta-item">
+                    <div className="staff-mgmt-meta-header">
+                      <PhoneIcon />
+                      <span className="staff-mgmt-meta-label">
+                        <Localized id="staff-col-phone"><span>Phone</span></Localized>
+                      </span>
+                    </div>
+                    <span className={`staff-mgmt-meta-val${member.phone ? ' staff-mgmt-mono' : ' staff-mgmt-meta-val--empty'}`}>
+                      {member.phone ?? '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. Footer: Role Badge on Left, Action Group on Right */}
+                <div className="staff-mgmt-card-footer">
+                  <div className="staff-mgmt-card-footer-left">
                     <Badge variant={roleVariant(member.role_name)}>
                       <span className="staff-mgmt-role-badge-content">
-                        <RoleIcon role={member.role_name} size={16} className="staff-mgmt-role-icon" />
+                        <RoleIcon role={member.role_name} size={14} className="staff-mgmt-role-icon" />
                         <span>{member.role_name}</span>
                       </span>
                     </Badge>
-                    {!member.is_profile_complete && (
-                      <Badge variant="warning" className="staff-mgmt-incomplete-badge">
-                        <Localized id="staff-profile-incomplete">
-                          <span>Profile incomplete</span>
-                        </Localized>
-                      </Badge>
-                    )}
                   </div>
-                  {/* Status is a dot in the corner, and the word is its accessible
-                      name — so the state is announced rather than carried by
-                      colour alone. No `title`: native tooltips are gated off
-                      (nativeTooltipCompliance), and the filled-vs-hollow shape
-                      is what separates the two states for everyone else. */}
-                  <span
-                    className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
-                    role="img"
-                    aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
-                  />
-                </div>
 
-                <dl className="staff-mgmt-meta">
-                  <div className="staff-mgmt-meta-item">
-                    <Localized id="staff-col-username"><dt>Username</dt></Localized>
-                    <dd className="staff-mgmt-mono">{member.username}</dd>
-                  </div>
-                  <div className="staff-mgmt-meta-item">
-                    <Localized id="staff-col-phone"><dt>Phone</dt></Localized>
-                    <dd className="staff-mgmt-mono">{member.phone ?? '—'}</dd>
-                  </div>
-                  {/* Workspace spans the row: a scoped member lists every key. */}
-                  <div className="staff-mgmt-meta-item staff-mgmt-meta-item--wide">
-                    <Localized id="staff-col-workspace"><dt>Workspace</dt></Localized>
-                    <dd>{workspaceLabel}</dd>
-                  </div>
-                </dl>
-
-                <div className="staff-mgmt-card-actions">
-                  <Localized id="staff-edit-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                    <Button
-                      unstyled
-                      className="staff-mgmt-icon-btn"
-                      onClick={() => onEdit(member)}
-                      data-testid={`staff-edit-${member.id}`}
-                    >
-                      <EditIcon />
-                    </Button>
-                  </Localized>
-                  <Localized id={member.is_active ? 'staff-deactivate-aria' : 'staff-restore-aria'} attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                    <Button
-                      unstyled
-                      className={`staff-mgmt-icon-btn ${member.is_active ? 'staff-mgmt-icon-btn--warn' : 'staff-mgmt-icon-btn--restore'}`}
-                      onClick={() => onToggleActive(member)}
-                      data-testid={`staff-toggle-active-${member.id}`}
-                    >
-                      <PowerIcon />
-                    </Button>
-                  </Localized>
-                  {/* Only an inactive member is deletable — the backend
-                      refuses the rest, so the rule is stated by the button's
-                      presence rather than by a dialog that would fail. */}
-                  {onDelete && !member.is_active && (
-                    <Localized id="staff-delete-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                      <Button
-                        unstyled
-                        className="staff-mgmt-icon-btn staff-mgmt-icon-btn--warn"
-                        onClick={() => onDelete(member)}
-                        data-testid={`staff-delete-${member.id}`}
-                      >
-                        <TrashIcon />
-                      </Button>
-                    </Localized>
-                  )}
-                  {canImpersonate && (
-                    <Localized id="staff-impersonate-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                  <div className="staff-mgmt-card-actions">
+                    <Localized id="staff-edit-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
                       <Button
                         unstyled
                         className="staff-mgmt-icon-btn"
-                        onClick={() => onImpersonate(member)}
-                        data-testid={`staff-impersonate-${member.id}`}
+                        onClick={() => onEdit(member)}
+                        data-testid={`staff-edit-${member.id}`}
                       >
-                        <ImpersonateIcon />
+                        <EditIcon />
                       </Button>
                     </Localized>
-                  )}
+                    <Localized id={member.is_active ? 'staff-deactivate-aria' : 'staff-restore-aria'} attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                      <Button
+                        unstyled
+                        className={`staff-mgmt-icon-btn ${member.is_active ? 'staff-mgmt-icon-btn--warn' : 'staff-mgmt-icon-btn--restore'}`}
+                        onClick={() => onToggleActive(member)}
+                        data-testid={`staff-toggle-active-${member.id}`}
+                      >
+                        <PowerIcon />
+                      </Button>
+                    </Localized>
+                    {onDelete && !member.is_active && (
+                      <Localized id="staff-delete-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                        <Button
+                          unstyled
+                          className="staff-mgmt-icon-btn staff-mgmt-icon-btn--warn"
+                          onClick={() => onDelete(member)}
+                          data-testid={`staff-delete-${member.id}`}
+                        >
+                          <TrashIcon />
+                        </Button>
+                      </Localized>
+                    )}
+                    {canImpersonate && (
+                      <Localized id="staff-impersonate-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                        <Button
+                          unstyled
+                          className="staff-mgmt-icon-btn"
+                          onClick={() => onImpersonate(member)}
+                          data-testid={`staff-impersonate-${member.id}`}
+                        >
+                          <ImpersonateIcon />
+                        </Button>
+                      </Localized>
+                    )}
+                  </div>
                 </div>
               </li>
             );
