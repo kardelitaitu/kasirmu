@@ -275,8 +275,26 @@ pub fn encrypt_smtp_at_rest(password: &str) -> Result<String, CryptoError> {
 /// ciphertext format that FAIL decryption are tampering, not legacy,
 /// and return an error instead of silently handing back ciphertext.
 pub fn decrypt_smtp_at_rest(encrypted: &str) -> Result<String, CryptoError> {
-    let key = portable_key(SMTP_AT_REST_DOMAIN, derive_static_key);
-    match decrypt(encrypted, &key) {
+    decrypt_smtp_at_rest_under(
+        encrypted,
+        &candidate_keys(SMTP_AT_REST_DOMAIN, derive_static_key),
+    )
+}
+
+/// [`decrypt_smtp_at_rest`] with its candidate key list injected.
+///
+/// Split out so a test can drive the PRODUCTION read with an explicit key list.
+/// The alternative -- setting `OZ_MASTER_KEY` and calling the public function --
+/// would race every other case in the binary that reads the same variable, which
+/// is the reason the sibling `decrypt_with_candidates` case takes this shape too.
+///
+/// The legacy arm is preserved exactly: a value that is not in our ciphertext
+/// format is returned unchanged, while one that IS and fails every candidate is
+/// tampering and errors. On the candidate path "fails" now means "fails under
+/// every key", which is what makes the master branch able to open a row the
+/// legacy branch wrote -- and vice versa.
+fn decrypt_smtp_at_rest_under(encrypted: &str, keys: &[[u8; 32]]) -> Result<String, CryptoError> {
+    match decrypt_with_candidates(encrypted, keys) {
         Ok(plaintext) => Ok(plaintext),
         Err(_) if !looks_like_ciphertext(encrypted) => Ok(encrypted.to_string()),
         Err(e) => Err(e),

@@ -311,6 +311,52 @@ fn decrypt_with_candidates_accepts_any_authenticating_key() {
     );
 }
 
+/// The SMTP at-rest family must read through the SAME branch-tolerant path as
+/// every other portable family.
+///
+/// `decrypt_smtp_at_rest` was the one reader still calling the single-key
+/// `portable_key`, so a row written while `OZ_MASTER_KEY` was set could not be
+/// opened once the master branch was in use -- the exact orphaning the
+/// branch-tolerant reader exists to prevent, and one of the blast-radius
+/// locations review C1/D1 enumerates.
+///
+/// Exercised with explicit key lists (like the `decrypt_with_candidates` case
+/// above) rather than by setting `OZ_MASTER_KEY`, which other cases in this
+/// binary read and which a `set_var` here would race.
+#[test]
+fn smtp_at_rest_reads_are_branch_tolerant() {
+    let legacy = derive_static_key(SMTP_AT_REST_DOMAIN);
+    let master = hmac_key(&[0x33u8; 32], SMTP_AT_REST_DOMAIN);
+    // A row the MASTER branch wrote -- unreachable for the old single-key reader.
+    let row = encrypt("smtp-secret", &master).unwrap();
+
+    // The property that matters: a master-written row opens when the master key
+    // is among the candidates, in either position. `decrypt_smtp_at_rest_under`
+    // is the PRODUCTION reader with its key list injected, so this asserts the
+    // real path rather than a reimplementation of it.
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&row, &[legacy, master]).unwrap(),
+        "smtp-secret"
+    );
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&row, &[master, legacy]).unwrap(),
+        "smtp-secret"
+    );
+
+    // Tolerance is not "any key works": without the key that wrote the row the
+    // reader still fails, and it fails CLOSED rather than returning ciphertext.
+    assert!(
+        decrypt_smtp_at_rest_under(&row, &[hmac_key(&[0x44u8; 32], SMTP_AT_REST_DOMAIN)]).is_err()
+    );
+
+    // The legacy arm is unchanged: a value that is not ciphertext still passes
+    // through byte for byte, which is the compatibility the doc promises.
+    assert_eq!(
+        decrypt_smtp_at_rest_under("plaintext-legacy", &[legacy]).unwrap(),
+        "plaintext-legacy"
+    );
+}
+
 /// With no usable `OZ_MASTER_KEY` there is exactly one candidate, so a
 /// read stays byte-for-byte the single-key decrypt it was.
 #[test]
