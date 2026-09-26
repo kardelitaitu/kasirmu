@@ -667,6 +667,77 @@ fn close_shift_attributes_a_refund_to_the_shift_that_processed_it() {
     );
 }
 
+/// RED: `get_shift_report.refund_count` must attribute a refund to the shift of
+/// the user who PROCESSED it, exactly as `close_shift.total_refunds_minor` does.
+/// The close path was fixed to join on `refunds.processed_by` (review 8.4), but
+/// the report's count still joined on the ORIGINAL sale's `s.user_id` — so the
+/// two surfaces of one shift disagreed: the seller's report claimed a refund
+/// whose cash never left their drawer, and the processor's report, the one whose
+/// drawer actually lost the cash, counted zero.
+///
+/// Same shape as `close_shift_attributes_a_refund_to_the_shift_that_processed_it`
+/// above: user-1 sells for cash, user-2 processes the refund on their own shift.
+#[test]
+fn get_shift_report_refund_count_attributes_to_the_processor() {
+    let conn = fresh();
+    seed_user(&conn);
+    conn.execute_batch(
+        "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at) VALUES
+         ('user-2', 'bob', 'hash', 'Bob', 'role-staff', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    let s = store(&conn);
+    let usd: crate::Currency = "USD".parse().unwrap();
+    let money = |minor: i64| crate::Money {
+        minor_units: minor,
+        currency: usd,
+    };
+
+    // The original $10 cash sale, made by user-1.
+    conn.execute_batch(
+        "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at, product_type)
+         VALUES ('p-sku', 'SKU', 'Sku', 1000, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'retail');
+         INSERT INTO sales (id, total_minor, currency, line_count, status, payment_method,
+                            created_at, updated_at, user_id, version)
+         VALUES ('sale-ref', 1000, 'USD', 1, 'completed', 'cash',
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'user-1', 1);
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position)
+         VALUES ('sl-1', 'sale-ref', 'SKU', 1, 1000, 1000, 'USD', 1);"
+    )
+    .unwrap();
+
+    // Shift A is user-1's (the seller); shift B is user-2's (the processor).
+    let shift_a = s.open_shift("user-1", None, 5000).unwrap();
+    let shift_b = s.open_shift("user-2", None, 5000).unwrap();
+    s.create_refund(&crate::Refund::new(
+        "sale-ref",
+        money(1000),
+        "refund",
+        "",
+        "user-2",
+        vec![crate::RefundLine::new(
+            "sl-1",
+            "SKU",
+            1,
+            money(1000),
+            money(1000),
+        )],
+    ))
+    .unwrap();
+
+    let report_a = s.get_shift_report(&shift_a.id).unwrap();
+    assert_eq!(
+        report_a.refund_count, 0,
+        "user-2's refund must not appear on the SELLER's shift report"
+    );
+
+    let report_b = s.get_shift_report(&shift_b.id).unwrap();
+    assert_eq!(
+        report_b.refund_count, 1,
+        "the refund belongs to the report of the user who processed it"
+    );
+}
+
 #[test]
 fn get_shift_report_empty_shift() {
     let conn = fresh();

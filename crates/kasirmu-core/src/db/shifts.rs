@@ -433,11 +433,16 @@ impl Store<'_> {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
-        // Refund count from refunds table.
+        // Refund count, attributed to the user who PROCESSED the refund —
+        // the same `refunds.processed_by` attribution `close_shift` uses for
+        // `total_refunds_minor` (review 8.4). Joining the ORIGINAL sale's
+        // `s.user_id` instead (the pre-fix shape) filed the count under the
+        // SELLER's shift while the cash actually left the PROCESSOR's drawer,
+        // so the report and the close disagreed by construction for any refund
+        // handled by someone other than the seller.
         let refund_count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM refunds r
-             JOIN sales s ON r.sale_id = s.id
-             WHERE s.user_id = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
+             WHERE r.processed_by = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
             params![user, start, end],
             |row| row.get(0),
         )?;
