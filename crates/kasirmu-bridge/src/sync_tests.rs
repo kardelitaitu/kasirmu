@@ -935,7 +935,9 @@ async fn store_linked_terminal_stores_credentials_and_enables_sync() {
         Some("term-device-123")
     );
     assert_eq!(
-        Settings::get_sync_terminal_secret(&conn).unwrap().as_deref(),
+        Settings::get_sync_terminal_secret(&conn)
+            .unwrap()
+            .as_deref(),
         Some("sec-abc-xyz")
     );
     assert!(Settings::is_sync_enabled(&conn).unwrap());
@@ -986,5 +988,3 @@ async fn store_linked_terminal_mints_token_when_server_url_configured() {
     );
     assert!(Settings::is_sync_enabled(&conn).unwrap());
 }
-
-

@@ -139,8 +139,11 @@ fn process_refund_unchecked_refuses_a_sale_that_never_completed() {
     let conn = fresh_conn();
     seed_completed_sale(&conn);
     // The exact ordering C64 describes: the sale exists but has not accrued.
-    conn.execute("UPDATE sales SET status = 'pending' WHERE id = 'sale-1'", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE sales SET status = 'pending' WHERE id = 'sale-1'",
+        [],
+    )
+    .unwrap();
 
     let lines = [RefundLineArg {
         sale_line_id: "sl-1".into(),

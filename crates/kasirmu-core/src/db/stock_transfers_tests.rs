@@ -807,7 +807,10 @@ fn an_empty_transfer_cannot_be_claimed_as_received() {
 
     // And the transfer stays a draft: the refused send must not have advanced it.
     let still = s.get_transfer(&transfer.id).unwrap().unwrap();
-    assert_eq!(still.status, "draft", "a refused send must not move the lifecycle");
+    assert_eq!(
+        still.status, "draft",
+        "a refused send must not move the lifecycle"
+    );
 
     // The receive door is therefore unreachable for it.
     assert!(

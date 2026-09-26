@@ -131,8 +131,8 @@ fn patch_stock_response_serialization() {
 /// the divergence here keeps the gate honest without a router harness.
 #[test]
 fn the_product_gate_resolves_the_tier_from_the_ledger() {
-    use kasirmu_core::subscription::TenantSubscription;
     use kasirmu_core::SubscriptionTier;
+    use kasirmu_core::subscription::TenantSubscription;
 
     let conn = kasirmu_core::migrations::fresh_db();
     let ledger_now = chrono::Utc::now();

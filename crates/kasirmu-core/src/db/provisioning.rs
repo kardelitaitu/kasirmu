@@ -602,12 +602,7 @@ fn validate_provision_args(args: &ProvisionDeviceArgs) -> Result<(), CoreError> 
     //
     // The parser is `Currency`'s own, the same rule MSL-42 applies to the plain
     // location update, so all three writers of this vocabulary now agree.
-    if args
-        .currency
-        .trim()
-        .parse::<crate::Currency>()
-        .is_err()
-    {
+    if args.currency.trim().parse::<crate::Currency>().is_err() {
         return Err(CoreError::Validation {
             field: "currency",
             message: format!(

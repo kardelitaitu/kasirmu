@@ -1850,7 +1850,8 @@ pub async fn complete_sale_with_resolved_shortfalls_scoped(
 
     // Apply discount if configured
     if args.discount_percent > 0
-        && let Some(pct) = foundation::Percentage::new(checkout_discount_percent(args.discount_percent) as u8)
+        && let Some(pct) =
+            foundation::Percentage::new(checkout_discount_percent(args.discount_percent) as u8)
     {
         cart.set_discount(pct, args.discount_label.clone());
     }

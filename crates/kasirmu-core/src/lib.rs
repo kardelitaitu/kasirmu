@@ -283,14 +283,12 @@ pub use stock_transfer::{StockTransfer, StockTransferLine};
 pub use subscription::{InstanceStatus, SubscriptionTier, TenantSubscription};
 pub use supplier::Supplier;
 pub use sync_client::{
-    PingResult, PullResult, Snapshot, SyncAttemptResult, SyncConfig, SyncHttpError,
+    PingResult, PullResult, Snapshot, SyncAttemptResult, SyncAuthHealth, SyncConfig, SyncHttpError,
     TerminalRegistrationResult, TokenResult, admin_key_from_env, apply_snapshot,
-    apply_sync_outcomes, fetch_snapshot_from_server, mark_all_failed, mint_token,
-    undelivered_batch,
-    derive_sync_url_if_unset, persist_refreshed_api_key, ping_server, probe_sync_auth,
-    probe_sync_connection, register_terminal, should_derive_sync_url,
-    request_refresh_token, request_token, request_token_client_credentials,
-    send_items_to_server, sync_pending, SyncAuthHealth,
+    apply_sync_outcomes, derive_sync_url_if_unset, fetch_snapshot_from_server, mark_all_failed,
+    mint_token, persist_refreshed_api_key, ping_server, probe_sync_auth, probe_sync_connection,
+    register_terminal, request_refresh_token, request_token, request_token_client_credentials,
+    send_items_to_server, should_derive_sync_url, sync_pending, undelivered_batch,
 };
 pub use table::{Table, TableStatus};
 pub use terminal::Terminal;

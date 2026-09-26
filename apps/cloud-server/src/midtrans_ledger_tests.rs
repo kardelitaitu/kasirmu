@@ -54,7 +54,10 @@ async fn duplicate_order_id_is_rejected_not_merged() {
         "a different charge under the same order_id must not be merged into it"
     );
     let e = l.lookup("QRIS-dup").await.unwrap().unwrap();
-    assert_eq!(e.tenant_id, "tenant-A", "the first charge must be untouched");
+    assert_eq!(
+        e.tenant_id, "tenant-A",
+        "the first charge must be untouched"
+    );
     assert_eq!(e.sale_id, "sale-1");
     assert_eq!(e.amount_minor, 1000);
 }
@@ -84,7 +87,10 @@ async fn identical_retry_is_absorbed_as_a_replay() {
     assert_eq!(e.tenant_id, "tenant-A");
     assert_eq!(e.sale_id, "sale-1");
     assert_eq!(e.amount_minor, 1000);
-    assert_eq!(e.status, "issued", "a replay must not move the row's status");
+    assert_eq!(
+        e.status, "issued",
+        "a replay must not move the row's status"
+    );
 }
 
 #[tokio::test]
@@ -177,7 +183,6 @@ async fn amount_mismatch_is_never_overwritten_by_a_later_status() {
         "an amount mismatch is terminal: a later notification must not erase the record of a signed-amount discrepancy"
     );
 }
-
 
 // ── The terminal set is defined twice and must stay one set ────────────
 

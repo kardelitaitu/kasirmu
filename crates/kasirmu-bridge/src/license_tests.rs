@@ -248,11 +248,10 @@ fn a_failed_settings_write_rolls_back_the_new_tier() {
     // The settings write is made to fail; the subscription write is not.
     let tx = conn.unchecked_transaction().unwrap();
     store_subscription(&tx, "default", payload, "SIG_PRO").expect("subscription write");
-    conn.execute_batch("DROP TABLE settings;").expect("drop settings");
-    let settings_result = Settings::set_batch(
-        &tx,
-        &[("license.payload".to_string(), payload.to_string())],
-    );
+    conn.execute_batch("DROP TABLE settings;")
+        .expect("drop settings");
+    let settings_result =
+        Settings::set_batch(&tx, &[("license.payload".to_string(), payload.to_string())]);
     assert!(
         settings_result.is_err(),
         "the settings write must fail against a dropped table"
@@ -301,10 +300,14 @@ fn a_failed_settings_write_rolls_back_a_renewal_too() {
 
     let tx = conn.unchecked_transaction().unwrap();
     store_subscription(&tx, "default", payload, "SIG_PREMIUM").expect("subscription write");
-    conn.execute_batch("DROP TABLE settings;").expect("drop settings");
+    conn.execute_batch("DROP TABLE settings;")
+        .expect("drop settings");
     assert!(
-        Settings::set_batch(&tx, &[(keys::LICENSE_PAYLOAD.to_string(), payload.to_string())])
-            .is_err(),
+        Settings::set_batch(
+            &tx,
+            &[(keys::LICENSE_PAYLOAD.to_string(), payload.to_string())]
+        )
+        .is_err(),
         "the settings write must fail against a dropped table"
     );
     drop(tx); // unwinds, as the caller's `?` would

@@ -211,7 +211,10 @@ fn sync_pending_multiple_items() {
     // `sync_pending_keeps_items_pending_on_a_transport_error`). Counting them
     // as failures would mark the whole queue terminal on one dropped packet.
     assert_eq!(result.synced, 0);
-    assert_eq!(result.failed, 0, "a transport error is not a per-item verdict");
+    assert_eq!(
+        result.failed, 0,
+        "a transport error is not a per-item verdict"
+    );
     assert!(result.error.is_some(), "should report a network error");
     assert_eq!(
         store.list_pending_offline().unwrap().len(),
@@ -1115,9 +1118,14 @@ fn derive_requires_an_unset_url() {
 fn derive_writes_the_origin_when_nothing_is_configured() {
     let store = setup();
     let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
-    assert!(wrote, "a fresh install has no URL, so the origin must be stored");
+    assert!(
+        wrote,
+        "a fresh install has no URL, so the origin must be stored"
+    );
     assert_eq!(
-        Settings::get_sync_server_url(store.conn()).unwrap().as_deref(),
+        Settings::get_sync_server_url(store.conn())
+            .unwrap()
+            .as_deref(),
         Some("https://license.kasir.mu")
     );
 }
@@ -1130,7 +1138,9 @@ fn derive_leaves_an_operator_url_untouched() {
     let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
     assert!(!wrote, "a configured URL must never be overwritten");
     assert_eq!(
-        Settings::get_sync_server_url(store.conn()).unwrap().as_deref(),
+        Settings::get_sync_server_url(store.conn())
+            .unwrap()
+            .as_deref(),
         Some("https://shop.example.test"),
         "the operator's value must survive derivation"
     );
@@ -1240,4 +1250,3 @@ fn sync_pending_keeps_items_pending_on_a_transport_error() {
         "a dropped connection is not a verdict on the item"
     );
 }
-

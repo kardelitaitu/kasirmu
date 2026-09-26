@@ -277,7 +277,11 @@ fn over_quota_markers_use_the_same_tier_as_the_gate() {
     // inside Premium on every dimension.
     assert_eq!(s.resolve_tier_fail_closed().unwrap().tier_key(), "premium");
     let baseline = s.persist_over_quota_markers().unwrap();
-    assert_eq!(baseline.len(), 0, "Premium fits the seeded store comfortably");
+    assert_eq!(
+        baseline.len(),
+        0,
+        "Premium fits the seeded store comfortably"
+    );
 
     // Roll the ledger 40 days forward while the wall clock stays put: the
     // grace window has provably lapsed, so the gate now enforces Free.

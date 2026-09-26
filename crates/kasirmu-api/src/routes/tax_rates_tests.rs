@@ -490,9 +490,14 @@ async fn a_db_failure_in_the_scope_probe_is_not_reported_as_a_tenant_mismatch() 
 
     let mut req = body();
     req.legal_entity_id = Some("le-1".into());
-    let resp = create_tax_rate(State(state), HeaderMap::new(), Extension(claims(None)), Json(req))
-        .await
-        .into_response();
+    let resp = create_tax_rate(
+        State(state),
+        HeaderMap::new(),
+        Extension(claims(None)),
+        Json(req),
+    )
+    .await
+    .into_response();
 
     let status = resp.status();
     let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();

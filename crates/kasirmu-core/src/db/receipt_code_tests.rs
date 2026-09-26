@@ -376,7 +376,10 @@ fn resolve_receipt_date_resolves_iana_zone_names_like_the_reports_path() {
 
     // A name NEITHER path can resolve still falls back to UTC, unchanged.
     let (utc, _) = resolve_receipt_date("2026-09-18T23:30:00Z", "Not/AZone").unwrap();
-    assert_eq!(utc, "260918", "an unknown name keeps the documented UTC fallback");
+    assert_eq!(
+        utc, "260918",
+        "an unknown name keeps the documented UTC fallback"
+    );
 }
 
 #[test]

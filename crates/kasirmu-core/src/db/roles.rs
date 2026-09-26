@@ -83,7 +83,9 @@ const ROLE_REFERRERS: [(&str, Option<&str>); 4] = [
     ("users", Some("deleted_at IS NULL")),
     (
         "assignments",
-        Some("EXISTS (SELECT 1 FROM users u WHERE u.id = assignments.user_id AND u.deleted_at IS NULL)"),
+        Some(
+            "EXISTS (SELECT 1 FROM users u WHERE u.id = assignments.user_id AND u.deleted_at IS NULL)",
+        ),
     ),
     ("role_workspace_types", None),
     ("role_workspaces", None),

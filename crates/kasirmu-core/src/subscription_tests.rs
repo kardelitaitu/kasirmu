@@ -2125,9 +2125,8 @@ fn debug_redacts_credential_fields_but_keeps_the_row_readable() {
 fn lifecycle_state_and_grace_period_agree_except_for_the_documented_carve_outs() {
     let now = chrono::Utc::now();
     let day = chrono::Duration::days(1);
-    let iso = |off: chrono::Duration| {
-        (now + off).to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-    };
+    let iso =
+        |off: chrono::Duration| (now + off).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     let statuses = [
         "active",

@@ -95,8 +95,14 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // Every narrowing of the i64 wire field, in any formatting.
     for (needle, what) in [
         ("Percentage::new(discount_percent as u8)", "preview door"),
-        ("Percentage::new(args.discount_percent as u8)", "shortfall checkout door"),
-        ("Percentage::new((args.discount_percent) as u8)", "shortfall checkout door"),
+        (
+            "Percentage::new(args.discount_percent as u8)",
+            "shortfall checkout door",
+        ),
+        (
+            "Percentage::new((args.discount_percent) as u8)",
+            "shortfall checkout door",
+        ),
         ("Percentage::new((discount_percent) as u8)", "preview door"),
     ] {
         assert!(
@@ -108,7 +114,10 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // And the truncation trap itself, stated so a future edit cannot
     // reintroduce it by "simplifying" the clamp away.
     assert_eq!(300i64 as u8, 44, "as u8 truncates rather than clamps");
-    assert_eq!(256i64 as u8, 0, "256 truncates to 0 - the discount vanishes");
+    assert_eq!(
+        256i64 as u8, 0,
+        "256 truncates to 0 - the discount vanishes"
+    );
 }
 // -- The broken-seed leg for a PROPAGATING command (crate::testing, RULE at :217-221) --
 

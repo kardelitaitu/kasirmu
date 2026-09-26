@@ -246,19 +246,23 @@ fn read_key_map_covers_all_protected_get_routes() {
     // Routes that are intentionally NOT in READ_KEY_MAP: public (no auth), or
     // GET-with-no-read-key because the handler does its own gate.
     let exempt: &[&str] = &[
-        "/api/v1/health",       // public
-        "/api/v1/settings",     // admin-key gated in the handler
-        "/api/openapi.json",    // public document
-        "/api/v1/terminals",    // POST-only registration
-        "/api/v1/tokens",       // POST-only mint
+        "/api/v1/health",    // public
+        "/api/v1/settings",  // admin-key gated in the handler
+        "/api/openapi.json", // public document
+        "/api/v1/terminals", // POST-only registration
+        "/api/v1/tokens",    // POST-only mint
     ];
 
     let mut get_routes: Vec<String> = Vec::new();
     for chunk in src.split(".route(").skip(1) {
         // The path is the first quoted literal in the call.
-        let Some(open) = chunk.find('"') else { continue };
+        let Some(open) = chunk.find('"') else {
+            continue;
+        };
         let rest = &chunk[open + 1..];
-        let Some(close) = rest.find('"') else { continue };
+        let Some(close) = rest.find('"') else {
+            continue;
+        };
         let path = &rest[..close];
         // Only GET routes are read-gated. The call's own text runs to the next
         // `.route(` boundary; look for a `get(` there.

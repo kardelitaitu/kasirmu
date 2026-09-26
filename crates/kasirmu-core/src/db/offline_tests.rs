@@ -348,7 +348,6 @@ fn mark_offline_synced_refuses_to_resurrect_dead_lettered_row() {
     assert_eq!(synced_at, "", "no sync timestamp may be invented");
 }
 
-
 /// The TENANT-SCOPED mark must preserve the terminal state exactly as its
 /// unscoped sibling does.
 ///
@@ -378,7 +377,8 @@ fn tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row() {
     )
     .unwrap();
 
-    s.mark_offline_synced_for_tenant("oq-f", "tenant-a").unwrap();
+    s.mark_offline_synced_for_tenant("oq-f", "tenant-a")
+        .unwrap();
 
     let (status, retry, last_error, synced_at): (String, i64, String, String) = conn
         .query_row(

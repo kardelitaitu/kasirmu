@@ -79,7 +79,9 @@ fn list_workspaces_falls_through_to_role_types_when_no_assignment_exists() {
         .expect("a genuine absence must not be an error");
 
     assert_eq!(
-        list.iter().map(|d| d.instance_id.as_str()).collect::<Vec<_>>(),
+        list.iter()
+            .map(|d| d.instance_id.as_str())
+            .collect::<Vec<_>>(),
         vec!["default-kds"],
         "role-type fallback must still grant the role's allowed types"
     );

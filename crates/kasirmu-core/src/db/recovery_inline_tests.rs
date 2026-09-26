@@ -13,8 +13,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(label: &str) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("oz_restore_{label}_{}", uuid::Uuid::now_v7()));
+        let dir = std::env::temp_dir().join(format!("oz_restore_{label}_{}", uuid::Uuid::now_v7()));
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }
@@ -288,7 +287,10 @@ fn recovery_roundtrip_restores_business_data_from_a_backup_of_the_live_db() {
         // 2. Back up through the SAME call the app's command uses.
         s.backup(&backup.to_string_lossy()).unwrap();
     }
-    assert!(backup.exists(), "the backup must exist before the corruption");
+    assert!(
+        backup.exists(),
+        "the backup must exist before the corruption"
+    );
 
     // 3. Corrupt the LIVE database the way a bad write would: overwrite the
     //    file with bytes that are not a database.
@@ -318,4 +320,3 @@ fn recovery_roundtrip_restores_business_data_from_a_backup_of_the_live_db() {
         "the restored row must carry the values it was written with"
     );
 }
-

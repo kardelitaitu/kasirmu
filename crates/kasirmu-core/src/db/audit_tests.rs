@@ -1373,4 +1373,3 @@ fn a_forged_sweep_marker_defeats_audit_immutability() {
     );
     assert_eq!(audit_count(&conn), 0, "the row is really gone");
 }
-

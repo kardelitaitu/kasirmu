@@ -2037,8 +2037,7 @@ const DEFAULT_STORE: &str = "default";
 /// `list_workspaces_inner` now both call it, and this walks every preset id.
 #[test]
 fn the_bypass_predicate_admits_exactly_the_management_roles() {
-    use platform_core::rbac::{builtin_roles, role_bypasses_workspace_assignment}
-    ;
+    use platform_core::rbac::{builtin_roles, role_bypasses_workspace_assignment};
 
     let expected = [
         (builtin_roles::OWNER, true),
@@ -2061,7 +2060,10 @@ fn the_bypass_predicate_admits_exactly_the_management_roles() {
 
     // The three literals every hand-written copy carried are not roles.
     for bogus in [BARE_ADMIN, BARE_MANAGER, BARE_AUDITOR] {
-        assert!(!role_bypasses_workspace_assignment(bogus), "{bogus:?} must not bypass");
+        assert!(
+            !role_bypasses_workspace_assignment(bogus),
+            "{bogus:?} must not bypass"
+        );
     }
 }
 const BARE_ADMIN: &str = "admin";

@@ -1347,7 +1347,6 @@ fn midtrans_gross_parse_policy() {
     assert_eq!(midtrans_gross_to_minor(""), None);
 }
 
-
 /// The amount parser's EDGES: negative, multi-dot, signed and huge inputs.
 ///
 /// **The existing `midtrans_gross_parse_policy` covers the happy shapes and the
@@ -1382,10 +1381,7 @@ fn midtrans_gross_parse_edges() {
     // the parser's.
     assert_eq!(midtrans_gross_to_minor("-15000"), Some(-15000));
     // Overflow past `i64` is rejected rather than wrapping.
-    assert_eq!(
-        midtrans_gross_to_minor("99999999999999999999999999"),
-        None
-    );
+    assert_eq!(midtrans_gross_to_minor("99999999999999999999999999"), None);
     // A plain zero is a legal parse; the webhook's own `amount_minor` guard is what
     // keeps a zero-value charge from existing in the first place.
     assert_eq!(midtrans_gross_to_minor("0"), Some(0));

@@ -497,4 +497,3 @@ fn every_lifecycle_state_declares_whether_it_grants_entitlements() {
         );
     }
 }
-

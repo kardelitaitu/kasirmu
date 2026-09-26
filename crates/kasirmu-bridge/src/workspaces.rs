@@ -203,8 +203,8 @@ pub async fn list_workspace_screens(
         .as_secs() as i64;
     let user_id = crate::picker::verify_picker_ticket(&ctx.picker_ticket_secret, &ticket, now_ts)
         .ok_or_else(|| {
-            BridgeError::PermissionDenied("invalid or expired picker session".into())
-        })?;
+        BridgeError::PermissionDenied("invalid or expired picker session".into())
+    })?;
 
     // Resolve the REAL user and require live access to the named store,
     // mirroring `list_workspaces` step 2. The picker has not chosen an

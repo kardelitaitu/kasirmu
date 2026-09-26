@@ -41,8 +41,10 @@ fn set_terminal_override_is_a_single_statement_upsert() {
     let s = store(&conn);
 
     // First write inserts, second updates — both must succeed and leave one row.
-    s.set_terminal_override("term-1", "card-payment", true).unwrap();
-    s.set_terminal_override("term-1", "card-payment", false).unwrap();
+    s.set_terminal_override("term-1", "card-payment", true)
+        .unwrap();
+    s.set_terminal_override("term-1", "card-payment", false)
+        .unwrap();
 
     let rows: i64 = conn
         .query_row(

@@ -65,12 +65,9 @@ pub async fn store_linked_terminal(
     };
 
     if !server_url.is_empty() {
-        let token_resp = sync_client::request_token_client_credentials(
-            &server_url,
-            terminal_id,
-            device_secret,
-        )
-        .await;
+        let token_resp =
+            sync_client::request_token_client_credentials(&server_url, terminal_id, device_secret)
+                .await;
         // Collapsed: `token.is_some()` was checked and then re-proved by the
         // `if let` immediately inside it, so the outer test could only ever be
         // true. Clippy's collapsible_if (C25) is right that this was one

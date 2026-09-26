@@ -953,8 +953,11 @@ fn the_refund_before_accrual_ordering_is_unreachable_and_the_floor_is_why_it_is_
     // future refactor removes that guard, this test still passes while the
     // real path starts double-counting — the guard's own tests are what cover
     // that (kasirmu-bridge refunds_tests.rs).
-    conn.execute("UPDATE sales SET status = 'pending' WHERE id = 'ref-sale-1'", [])
-        .unwrap();
+    conn.execute(
+        "UPDATE sales SET status = 'pending' WHERE id = 'ref-sale-1'",
+        [],
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at)
          VALUES ('cust-ref', 'Bob', '', 0, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
@@ -969,7 +972,14 @@ fn the_refund_before_accrual_ordering_is_unreachable_and_the_floor_is_why_it_is_
 
     let s = store(&conn);
     let line = RefundLine::new("ref-sl-1", "COFFEE", 1, price(350), price(350));
-    let refund = Refund::new("ref-sale-1", price(350), "before accrual", "", "user-1", vec![line]);
+    let refund = Refund::new(
+        "ref-sale-1",
+        price(350),
+        "before accrual",
+        "",
+        "user-1",
+        vec![line],
+    );
     s.create_refund(&refund).unwrap();
 
     let spent = |c: &Connection| -> i64 {

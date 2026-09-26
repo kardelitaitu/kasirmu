@@ -179,14 +179,21 @@ impl LedgerDb {
                     )
                     .await
                     .map_err(|e| format!("ledger replay read: {e}"))?;
-                check_replay(row.as_ref().map(|r| {
-                    (
-                        r.get::<_, String>(0),
-                        r.get::<_, String>(1),
-                        r.get::<_, i64>(2),
-                        r.get::<_, String>(3),
-                    )
-                }), order_id, tenant_id, sale_id, amount_minor, currency)?;
+                check_replay(
+                    row.as_ref().map(|r| {
+                        (
+                            r.get::<_, String>(0),
+                            r.get::<_, String>(1),
+                            r.get::<_, i64>(2),
+                            r.get::<_, String>(3),
+                        )
+                    }),
+                    order_id,
+                    tenant_id,
+                    sale_id,
+                    amount_minor,
+                    currency,
+                )?;
             }
             tx.commit()
                 .await
@@ -220,7 +227,14 @@ impl LedgerDb {
                 )
                 .optional()
                 .map_err(|e| format!("ledger replay read: {e}"))?;
-            check_replay(existing, order_id, tenant_id, sale_id, amount_minor, currency)?;
+            check_replay(
+                existing,
+                order_id,
+                tenant_id,
+                sale_id,
+                amount_minor,
+                currency,
+            )?;
         }
         Ok(())
     }
