@@ -5841,6 +5841,59 @@ clean `cargo doc -D warnings`. The reusable part is not the count but the method
 **Tally:** 75 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Doc debt: **0 of every
 kind**, with `-D warnings` armed on the doc tool for the first time in this crate.
 
+## Pass 91 — MSL-69: the quota TOCTOU family is clean, and already pinned
+
+Returned to code after closing the doc arc. Swept the **check-then-write** shape: 85 `SELECT COUNT(*)`
+sites, filtered to those where a count decides a later write.
+
+**The quota gates are the interesting subset, and they are disciplined.** Eight production call sites arm a
+dimension and re-check in-transaction (`take_armed_quota`): Locations, Products, Warehouses, PosRegisters, and
+Staff **three times** (create, profile write, reactivation). All eight share one shape — read the count
+inside the caller's write transaction and refuse with `current > limit` — which is the only version that
+closes the TOCTOU a pre-transaction gate cannot, since under WAL a pre-tx count reads its own snapshot.
+
+**The Staff trio looked like the "one rule, four places" defect and is not.** Four copies of the identical
+predicate exist — `count_staff_users` (`staff.rs:243`) and the three in-tx rechecks (`staff.rs:474`,
+`staff.rs:661`, `profile.rs:609`) — all byte-identical (`is_active = 1 AND role_id != ?1`, OWNER bound), and
+the docs claim they agree. Unlike the earlier duplication findings, I found this one is **already pinned
+behaviourally**:
+
+| Door | Test | How it catches drift |
+|---|---|---|
+| `create_user` | `create_user_tx_veto_closes_limit_race` | fills to `count_staff_users()`'s own limit, asserts the veto refuses the next and the count holds — a divergent predicate either persists the over-cap row or refuses a legal one |
+| reactivation | `update_user_tx_veto_closes_the_reactivation_door` | asserts the over-cap refusal AND that the under-cap reactivation still succeeds |
+| profile write | `profile_tests.rs:894-938` | same shape, baselined against `count_staff_users()` |
+
+**And every other dimension is armed by a test too** — Locations ×2, PosRegisters ×1, Products ×2,
+Warehouses ×2, Staff ×4 — plus a generic loop over all dimensions. So the answer here is "already done",
+which is worth recording as a clean result rather than manufacturing a change.
+
+**A near-miss on my own method, recorded because it is the failure mode of grep-driven censuses.** My first
+pass reported **Products: 0 arming sites** — which would have been a real finding (a dimension with an
+in-tx recheck and no test). It was false: `products_tests.rs` writes the path fully qualified
+(`crate::downgrade::QuotaDimension::Products`), which my shorter pattern missed. Two lines of confirmation —
+grepping the bare `arm_creation_quota` — showed 2 sites. The lesson is the one this campaign keeps
+re-learning: a zero from a pattern is a hypothesis, not a measurement, and it should be checked against a
+second spelling before it becomes a claim.
+
+**One deliberate asymmetry, verified rather than assumed.** `staff.rs:657` reads through `self.conn` while
+the other seven read through `tx`, because that function does not own the transaction — the comment says
+returning makes the caller's `?` unwind and its guard roll back. I confirmed that is the actual contract:
+the guard runs POST-update inside the caller's transaction, for the same WAL reason `create_user` counts
+after its insert. Correct as written; nothing to change.
+
+**No code change this pass.** The sweep found no defect, and the two things I could have "fixed" (a
+duplicated predicate, a differing read handle) are both already pinned and reasoned. Recorded as a clean
+census with the coverage table above, so the next pass does not re-walk it.
+
+**Verified:** no files changed. The census rests on reading all eight production sites, all four predicate
+copies, and the six test modules that arm them.
+
+**Tally:** 75 findings fixed (11 HIGH), 23 leads disproved, 24 clean censuses. This is the second family
+(after the KDS visibility mirror, MSL-63) where the answer was "the codebase already does this" — which is
+the outcome a census is supposed to be able to produce.
+
+
 
 
 
