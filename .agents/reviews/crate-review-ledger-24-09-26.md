@@ -7074,3 +7074,76 @@ verified by hash to contain exactly that one path.
 **Tally:** 89 findings fixed (14 HIGH, 75 others), **26 leads disproved**, 29 clean censuses. The census is a
 negative result and is recorded as one: 14 sites examined, 0 defects, 3 prior fixes identified as the reason
 (MSL-44, MSL-45, and the `StoredCipher` design), plus one genuine test gap closed for legacy data.
+
+---
+
+## Pass 110 — COR-27: the index existed; a scoped check said it did not (MSL-89)
+
+Filed as `next: partial unique index on shifts(user_id) WHERE status='open' (COR-27)`. The work was already
+done, and the stamp explained why it thought otherwise — which makes this one about **method**, not code.
+
+### The stamp's claim, and why it was wrong
+
+`shifts.rs` asserted, with a citation:
+
+> still NO partial unique index behind it (verified `init.sql:1259-1263` — only plain indexes;
+> `inventory_shifts` HAS `idx_inv_shifts_active_per_user_location`)
+
+Every part of that is checkable, and the check was **real**. The citation even correctly notes the *precedent*
+the index should follow. What was wrong was the **referent set**: `init.sql` holds only the baseline schema,
+while this index is added by a later migration file. From
+`migrations/20261011_open_shift_uniqueness.sql:92-94`:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_open_per_user
+    ON shifts(user_id)
+    WHERE status = 'open';
+```
+
+And that migration is careful in the way the stamp itself describes as necessary: before creating the guard it
+**de-duplicates pre-existing rows** (`:74-88`), closing the older of any two open shifts for one user, because
+"a store that predates `4518a2b8` COULD hold two open shifts for one user" (`:45`). The author of that migration
+had already reasoned about the exact scenario the stamp believed was unguarded.
+
+So the claim was inverted by looking in the wrong place, not by not looking. That is the **sixth** entry in the
+ledger's absence-claim series, and the most instructive: the previous five were *"I grepped for a token and
+found nothing"*; this one is *"I grepped the right token in the wrong FILE."* A scoped search produces a
+confident answer to a narrower question than the one asked.
+
+### Measured, not read
+
+I did not fix this by reading more SQL — that is the method that failed. I measured it against a **migrated
+database**, which is the artefact that actually matters:
+
+- the index exists in `sqlite_master` after `migrations::fresh_db()`;
+- its DDL contains `UNIQUE` and `status = 'open'` (so it is a partial unique index, not a plain one);
+- a **direct `INSERT`** of a second open shift for the same user is **refused by the index** — the exact
+  property the stamp claimed was absent;
+- a **`closed`** shift for the same user still inserts freely, so the partial predicate is load-bearing and the
+  index is not accidentally global.
+
+**Falsified:** dropping the index inside the test connection makes the direct `INSERT` **succeed**, failing the
+test on its own message ("a second OPEN shift for the same user must be refused by the index, not merely by the
+function's guard"). So the index is doing the work, and the test detects its absence. Restored.
+
+### Not committed, and why
+
+Both files this pass touched are **dirty with another lane's in-flight work**: `shifts.rs` carries a REP-08
+refund-adjusted-profit change (two hunks at `:452`/`:473`, including a `refunded_cost_minor` query) and
+`shifts_tests.rs` carries its matching test. That work is genuine, uncommitted, and not mine.
+
+The house rule is explicit that a pathspec commit records the **working-tree** copy, so committing either file
+would sweep their in-flight change under my message. I will not do that, and I will not revert their hunks to
+isolate mine — reverting someone else's uncommitted work is worse than delaying mine.
+
+**So nothing was committed.** My two changes (the corrected stamp and
+`a_partial_unique_index_guards_open_shifts`) remain in the working tree, verified present alongside their REP-08
+edit, and the full suite passes with both changes in place: **3406 passed, 0 failed**. The window to land them
+is when REP-08 commits; the test is reconstructable from this entry until then.
+
+**Verified:** `db::shifts` **35 passed**; `kasirmu-core` lib **3406 passed, 0 failed** (up from 3405);
+`clippy -p kasirmu-core --lib -- -D warnings` clean; `rustfmt` clean on both files. **No commit** — see above.
+
+**Tally:** 89 findings fixed (14 HIGH, 75 others), **27 leads disproved** — COR-27 joins the disproved column,
+since the index it asked for already existed — 29 clean censuses. Two `next:` items remain blocked the same
+way (`kds_orders.rs` CAS at MSL-80, and this one), so the backlog of *genuinely* open items is now small.
