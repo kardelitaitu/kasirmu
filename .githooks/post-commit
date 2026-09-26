@@ -268,7 +268,7 @@ esac
     "$_CBM_EXE" cli index_repository \
         --repo-path "$_REPO_ROOT" \
         --mode full \
-        --name "oz-pos" >>"$_CBM_LOG_FILE" 2>&1
+        --name "kasirmu" >>"$_CBM_LOG_FILE" 2>&1
     _CBM_STATUS=$?
     printf '%s index exit=%s\n' "$(date -Iseconds 2>/dev/null)" "$_CBM_STATUS" >>"$_CBM_LOG_FILE"
 ) &
