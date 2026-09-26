@@ -5794,6 +5794,54 @@ hash).
 links**, and **12 pre-existing private-item links** newly counted and recorded — the honest denominator I had
 been quoting the wrong half of.
 
+## Pass 90 — MSL-68: `cargo doc -D warnings` is clean, and the doc-debt arc closes
+
+Took the increment MSL-67 named. **All three rustdoc warning counts are now zero on `kasirmu-core`, and
+`RUSTDOCFLAGS="-D warnings" cargo doc` passes** — it failed before this arc started. That is the durable
+outcome: the crate had no signal at all on a broken doc link, so a real one could be introduced freely.
+
+```text
+                    pass 85    now
+unresolved links       46   ->   0
+redundant targets       3   ->   0
+links to private       12   ->   0
+```
+
+**MSL-68 (LOW, fixed): the last twelve, each verified private before touching it.** This family is one
+diagnostic with one remedy — the item cannot be linked, so the name stays in plain backticks — but I checked
+every target rather than assuming the pattern, and the visibilities are not uniform: `resource_covered_by`
+and `earn_points_with_conn` are `pub(crate)`, `ensure_scoped_coverage_survives` is `pub(super)`, and
+`build_audit_where`, `authorize_with`, `validate_scope_target`, `optional_smtp_fields`, `parsed_trial` plus
+`IMAGE_REFS_IN_CHUNK` are bare. All twelve take the same remedy, but three different visibilities is exactly
+the case where assuming would have picked the wrong one for some site.
+
+**Ten files, 12 insertions / 12 deletions, every changed line a doc comment** — verified by filtering
+`git diff -U0` for non-doc additions across exactly the files named in the commit. No foreign hunks this
+time: the `roles.rs` reformat that dogged the last two passes belongs to another lane and that file is not
+in this commit at all.
+
+**The honest close on the arc.** Five passes (85-90) took this crate from "52 unexplained broken links" to a
+clean `cargo doc -D warnings`. The reusable part is not the count but the method, which held every time:
+
+- **Measure the tool, never the diff.** Every self-inflicted regression in this arc — six double-applied
+  links in MSL-66, two redundant targets in MSL-67 and again here — was invisible in the diff and visible
+  only in rustdoc's output. `cargo doc` was re-run and its count re-read after every single step.
+- **Classify by cause before fixing.** "52 broken links" was five families with *four different remedies*
+  (qualify a path, unescape a backtick, drop the syntax, correct a stale name). A blind sweep would have
+  widened the public API to satisfy a doc.
+- **Read the definition, not the name.** Confirming `pub` vs `pub(crate)` vs bare `fn` decided the remedy per
+  site, and caught my own error when I qualified the private `validate_table_geometry` (MSL-67).
+- **Count the right diagnostic.** I reported a falling *unresolved* number for five passes before noticing
+  the *private-item* class was never in it at all. The denominator was wrong, not just the numerator.
+
+**Verified:** 3313 `kasirmu-core` lib tests, 0 failed (55 `sync_client` filtered for the concurrent lane);
+`clippy -p kasirmu-core --lib -D warnings` clean; `RUSTDOCFLAGS="-D warnings" cargo doc -p kasirmu-core
+--no-deps --lib` **passes**; all ten files `rustfmt`-clean. Commit `4d243bfba` (verified by hash).
+
+**Tally:** 75 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Doc debt: **0 of every
+kind**, with `-D warnings` armed on the doc tool for the first time in this crate.
+
+
 
 
 
