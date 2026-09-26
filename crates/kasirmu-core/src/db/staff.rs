@@ -899,6 +899,19 @@ impl Store<'_> {
         let now = chrono::Utc::now().timestamp();
         let window_start = now - window_secs as i64;
 
+        // C18: the prune, the three limit checks, the INSERT and the re-check are
+        // ONE decision and run inside one transaction. They were separate
+        // autocommit statements, so a failure after the prune committed the
+        // deletion while recording no attempt at all -- the stored history was
+        // destroyed AND the attempt stayed invisible to every limit, which is the
+        // opposite of what a rate limiter may do under failure. `is_autocommit()`
+        // owns-or-joins, so a caller that already holds a transaction keeps it.
+        let tx = if self.conn.is_autocommit() {
+            Some(self.conn.unchecked_transaction()?)
+        } else {
+            None
+        };
+
         // Prune expired entries for the whole table (account + device +
         // global counters all share the same window).
         self.conn.execute(
@@ -914,6 +927,11 @@ impl Store<'_> {
         )?;
         if account_count >= max_attempts as i64 {
             let strikes = (account_count as usize / max_attempts).max(1);
+            // The breach is decided; the prune is still a legitimate effect and
+            // commits with it. No attempt is recorded on this path.
+            if let Some(tx) = tx {
+                tx.commit()?;
+            }
             return Ok(Err(Self::login_backoff_secs(
                 window_secs,
                 strikes,
@@ -930,6 +948,9 @@ impl Store<'_> {
             )?;
             if device_count >= device_max_attempts as i64 {
                 let strikes = (device_count as usize / device_max_attempts).max(1);
+                if let Some(tx) = tx {
+                    tx.commit()?;
+                }
                 return Ok(Err(Self::login_backoff_secs(
                     window_secs,
                     strikes,
@@ -944,6 +965,9 @@ impl Store<'_> {
                 .query_row("SELECT COUNT(*) FROM login_attempts", [], |row| row.get(0))?;
         if global_count >= global_max_attempts as i64 {
             let strikes = (global_count as usize / global_max_attempts).max(1);
+            if let Some(tx) = tx {
+                tx.commit()?;
+            }
             return Ok(Err(Self::login_backoff_secs(
                 window_secs,
                 strikes,
@@ -963,6 +987,11 @@ impl Store<'_> {
             params![username],
             |row| row.get(0),
         )?;
+        // The attempt IS recorded, so the prune and the INSERT commit together.
+        if let Some(tx) = tx {
+            tx.commit()?;
+        }
+
         if new_count >= max_attempts as i64 {
             let strikes = (new_count as usize / max_attempts).max(1);
             return Ok(Err(Self::login_backoff_secs(

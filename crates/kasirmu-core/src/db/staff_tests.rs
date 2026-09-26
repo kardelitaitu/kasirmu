@@ -1191,6 +1191,50 @@ fn record_login_attempt_returns_remaining() {
     assert_eq!(second, 1);
 }
 
+/// C18: the prune, the three limit checks, the INSERT and the re-check are ONE
+/// decision and must be atomic. They ran as separate autocommit statements, so a
+/// failure after the prune committed the deletion while recording no attempt --
+/// the recorded history is destroyed AND the attempt is invisible to the limits.
+///
+/// This forces the INSERT to fail AFTER the prune has already run, and asserts
+/// the prune did not survive. On the pre-fix code the stale row is gone; with
+/// the transaction it is still there, which is the all-or-nothing contract.
+#[test]
+fn record_login_attempt_is_all_or_nothing_when_the_insert_fails() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Seed an OLD attempt that the prune would delete (outside the window).
+    let stale_at = chrono::Utc::now().timestamp() - LIMITS.window_secs as i64 - 60;
+    conn.execute(
+        "INSERT INTO login_attempts (id, username, device_id, attempted_at) VALUES ('stale-1', 'alice', NULL, ?1)",
+        rusqlite::params![stale_at],
+    )
+    .unwrap();
+    let before: i64 = conn
+        .query_row("SELECT COUNT(*) FROM login_attempts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(before, 1, "one stale row is seeded");
+
+    // Make the INSERT fail with a trigger, AFTER the prune statement has run.
+    conn.execute_batch(
+        "CREATE TRIGGER fail_login_insert BEFORE INSERT ON login_attempts \
+         BEGIN SELECT RAISE(ABORT, 'forced insert failure'); END;",
+    )
+    .unwrap();
+    let err = s.record_login_attempt_scoped("alice", None, LIMITS);
+    assert!(err.is_err(), "the forced insert failure must surface");
+
+    // THE ASSERTION: the prune must have been rolled back with the insert.
+    let after: i64 = conn
+        .query_row("SELECT COUNT(*) FROM login_attempts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        after, 1,
+        "a failed insert must not leave the prune committed: the whole sequence is one decision"
+    );
+}
+
 #[test]
 fn device_limit_applies_across_usernames() {
     // device_max=2 → two usernames sharing a device exhaust the device
