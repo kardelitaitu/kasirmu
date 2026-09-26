@@ -41,6 +41,30 @@ fn sale_count(conn: &Connection) -> i64 {
 
 /// Seed a stocked retail product at the canonical default location, so the
 /// door's Phase-1 stock check passes without shortfalls.
+/// A file-backed migrated DB, for the two-connection race below.
+///
+/// Mirrors `gift_cards_tests::fresh_file`: the in-memory `fresh()` cannot be
+/// opened twice, and a race needs two real connections on one file.
+fn fresh_file(dir: &std::path::Path) -> Connection {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("kasir.db");
+    let mut file_conn = Connection::open(&path).unwrap();
+    {
+        let template = migrations::fresh_db();
+        let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+        backup
+            .run_to_completion(10, std::time::Duration::from_millis(0), None)
+            .unwrap();
+    }
+    file_conn
+        .pragma_update(None, "journal_mode", "WAL")
+        .unwrap();
+    file_conn
+        .pragma_update(None, "busy_timeout", "5000")
+        .unwrap();
+    file_conn
+}
+
 fn seed_stocked_product(conn: &Connection, sku: &str) {
     let product_id = uuid::Uuid::now_v7().to_string();
     conn.execute(
@@ -452,4 +476,84 @@ fn a_failed_recipe_read_does_not_silently_skip_the_deduction() {
         ing_qty, 10,
         "a failed settlement must not have deducted anything"
     );
+}
+/// COR-8: the in-transaction CAS must refuse a void that lost the race.
+///
+/// `void_sale` reads the sale OUTSIDE its transaction, so the `status != active`
+/// pre-check cannot see a transition that lands in between. The `UPDATE ...
+/// WHERE id = ?2 AND status = 'active'` predicate is what actually closes that,
+/// with `rows == 0` mapped to `Conflict`. Nothing exercised that branch before:
+/// the existing refusal test (`refused_void_writes_no_outbox_row`) trips the
+/// PRE-check, which reports `Validation { field: "status" }` — a different arm.
+///
+/// The shape is the one MSL-78 also had: a real fix with no test defending it,
+/// where deleting the `AND status = 'active'` predicate would leave the suite
+/// green while a completed (paid, points-awarded) sale could be overwritten to
+/// voided. Needs a real second connection, hence the file-backed DB.
+#[test]
+fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale() {
+    let dir = std::env::temp_dir().join(format!("oz_void_race_{}", uuid::Uuid::now_v7()));
+    let db_path = dir.join("kasir.db");
+    let sale_id = {
+        let conn = fresh_file(&dir);
+        let mut cart = Cart::new(usd());
+        cart.add_line(CartLine::new(Sku::new("VOID-RACE"), 1, price(1000)))
+            .unwrap();
+        let sale = Sale::from_cart(&cart).unwrap();
+        store(&conn).create_sale(&sale).unwrap();
+        store(&conn)
+            .update_sale_status(&sale.id, crate::SaleStatus::Active)
+            .unwrap();
+        sale.id
+    };
+
+    // B stages the completing transition and holds the write lock, so A's
+    // `void_sale` gets past its out-of-transaction pre-check (the row is still
+    // `active` when A reads it) and THEN blocks on the UPDATE.
+    let (staged_tx, staged_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let sale_id = sale_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE sales SET status = 'completed' WHERE id = ?1",
+                    rusqlite::params![sale_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival must stage the sale it is completing");
+            staged_tx.send(()).unwrap();
+            // B releases on its own timer: A is blocked inside `void_sale`.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            tx.commit().unwrap();
+        })
+    };
+    staged_rx.recv().unwrap();
+
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "5000").unwrap();
+    let outcome = store(&conn_a).void_sale(&sale_id, "user-2", "too late");
+    rival.join().unwrap();
+
+    // The race was LOST, so the CAS matched zero rows and reported the conflict.
+    assert!(matches!(
+        outcome,
+        Err(CoreError::Conflict { entity: "sale", .. })
+    ));
+
+    // B's transition survived: the void must not have overwritten it.
+    let status: String = conn_a
+        .query_row(
+            "SELECT status FROM sales WHERE id = ?1",
+            rusqlite::params![sale_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(status, "completed", "the loser must not win the column");
+
+    drop(conn_a);
+    let _ = std::fs::remove_dir_all(&dir);
 }
