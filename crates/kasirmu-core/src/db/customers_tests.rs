@@ -285,6 +285,62 @@ fn delete_customer_not_found() {
     let err = store(&conn).delete_customer("nope").unwrap_err();
     assert!(matches!(err, CoreError::NotFound { .. }));
 }
+/// COR-23: a blocked delete must NAME what is holding the row.
+///
+/// The reference guard is the FK itself (`sales.customer_id` and
+/// `loyalty_accounts.customer_id`, both NO ACTION) and that is deliberate —
+/// CUST-11 wants the delete blocked rather than cascading. What was missing is
+/// only the reporting: the bare `DELETE` met a raw
+/// `FOREIGN KEY constraint failed` and reached the client as `CoreError::Db`,
+/// which names neither the customer nor the blocker, so a UI can only show a
+/// storage fault. `Conflict` is the right variant over `NotFound` because the
+/// customer genuinely exists.
+#[test]
+fn delete_customer_with_sales_is_a_named_conflict() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, customer_id,
+                          created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('s-1', 2500, 'USD', 1, 'completed', 'cust-1',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 2500, 0)",
+        [],
+    )
+    .unwrap();
+
+    let err = store(&conn).delete_customer("cust-1").unwrap_err();
+    let CoreError::Validation { field, message } = &err else {
+        panic!("a blocked delete must be a typed Validation, not a raw FK error: {err:?}");
+    };
+    assert_eq!(
+        *field, "customer_id",
+        "the field names the blocker, not the entity"
+    );
+    assert!(
+        message.contains("loyalty account") && message.contains("reassigned"),
+        "the message must say what is holding the row and what to do: {message}"
+    );
+    // And the row survives — the guard still blocks, only the message changed.
+    assert!(store(&conn).get_customer("cust-1").unwrap().is_some());
+}
+
+/// The loyalty half of the same guard, since it is a SECOND referrer and a
+/// mapping that only covered `sales` would report this one as a raw DB error.
+#[test]
+fn delete_customer_with_a_loyalty_account_is_the_same_named_conflict() {
+    let conn = fresh();
+    seed_customers(&conn);
+    store(&conn)
+        .get_or_create_loyalty_account("cust-1")
+        .unwrap();
+
+    let err = store(&conn).delete_customer("cust-1").unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Validation { field, .. } if *field == "customer_id"),
+        "the loyalty referrer must produce the same typed refusal: {err:?}"
+    );
+    assert!(store(&conn).get_customer("cust-1").unwrap().is_some());
+}
 
 // ── Additional edge cases ─────────────────────────────────────
 

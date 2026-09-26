@@ -2,16 +2,16 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 3)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean CRUD; PII-bounded search per CUST-06 (server-side LIKE with ESCAPE, clamped page [1,100], count for pagination); store soft-scoping documented (migration 069/117); COR-23 INFO: delete_customer hard-deletes regardless of sales history / loyalty account — dangling references possible; single-statement writes rely on SQLite statement atomicity (crate-wide RUST-08 convention)
-next: consider soft-delete or referential guard on delete_customer (COR-23) | perf: N/A
+findings: clean CRUD; PII-bounded search per CUST-06 (server-side LIKE with ESCAPE, clamped page [1,100], count for pagination); store soft-scoping documented (migration 069/117); single-statement writes rely on SQLite statement atomicity (crate-wide RUST-08 convention); COR-23 CLOSED 26-09-26 — and one correction to how it was first stated: it read "hard-deletes regardless of sales history / loyalty account — dangling references possible", which is NOT what happens. `sales.customer_id` and `loyalty_accounts.customer_id` are NO ACTION and `foreign_keys` is ON on every connection path, so the FK rejects the delete outright and a dangling reference is impossible (CUST-11 intends exactly that). The real gap was reporting, not safety: the refusal reached the client as `CoreError::Db` with a raw "FOREIGN KEY constraint failed", naming neither the customer nor the blocker, so a UI could only show a storage fault. Now mapped to `Validation { field: "customer_id", .. }` with a message that says what holds the row and what to do
+next: none | perf: N/A
 */
 
 use rusqlite::params;
 
 use foundation::{Email, Phone};
 
-use crate::error::CoreError;
 use crate::Customer;
+use crate::error::CoreError;
 
 use super::Store;
 
@@ -306,9 +306,34 @@ impl Store<'_> {
 
     /// Delete a customer by id.
     pub fn delete_customer(&self, id: &str) -> Result<(), CoreError> {
-        let rows = self
+        // COR-23: the referential guard is the FK itself (`sales.customer_id`
+        // and `loyalty_accounts.customer_id`, both NO ACTION), which is the
+        // INTENDED design — CUST-11 blocks the delete so no orphaned child rows
+        // can be left behind. What was missing is only the NAME of the failure:
+        // a bare `DELETE` met `FOREIGN KEY constraint failed`, which reaches the
+        // client as `CoreError::Db` and names neither the customer nor what is
+        // holding it. Mapped to `Validation` rather than `Conflict`: the
+        // customer EXISTS, so `NotFound` would be a lie, and the shared
+        // `Conflict` message is written for a uniqueness collision ("already
+        // exists") which reads as a failed CREATE here. `Validation` carries a
+        // free-form message, so the refusal can say what holds the row and what
+        // to do — and `field: "customer_id"` names the column both referrers
+        // share.
+        let deleted = self
             .conn
-            .execute("DELETE FROM customers WHERE id = ?1", params![id])?;
+            .execute("DELETE FROM customers WHERE id = ?1", params![id]);
+        if let Err(rusqlite::Error::SqliteFailure(e, _)) = &deleted
+            && e.code == rusqlite::ErrorCode::ConstraintViolation
+        {
+            return Err(CoreError::Validation {
+                field: "customer_id",
+                message: "this customer still has sales or a loyalty account; those rows \
+                          reference it and must be removed or reassigned before the customer \
+                          can be deleted"
+                    .to_owned(),
+            });
+        }
+        let rows = deleted?;
         if rows == 0 {
             return Err(CoreError::NotFound {
                 entity: "customer",
