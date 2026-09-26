@@ -5276,6 +5276,57 @@ untouched). Commits `faaa9a256` (MSL-56), `1869f2309` + `a630f00c9` (MSL-57).
 
 **Tally:** 64 findings fixed (11 HIGH), 19 leads disproved. Two are preventive pins.
 
+## Pass 80 — MSL-58: the census widens to bound parameters, and a test I refused to leave flaky
+
+Continued the timestamp-shape axis from MSL-56/57, which had only looked at `.format()` **producer** sites.
+A Rust string can also meet a SQLite column as a **bound parameter** with no `.format()` to grep for, so I
+enumerated every comparison of a timestamp column against `?N` (29 sites) and then every
+`to_rfc3339_opts` precision in production code.
+
+**The discriminator is precision, and the safe idiom is the right one.** 159 production sites use
+`SecondsFormat::Millis` — which renders exactly the 24-character `…00.000Z` shape
+`strftime('%Y-%m-%dT%H:%M:%fZ')` writes — and three use `Secs`. Two of the three are sound (one records a
+display timestamp into a settings row; one builds a diagnostic deadline that nothing compares). The third
+was not.
+
+**MSL-58 (LOW, fixed): `archive_stock_movements` compared a second-precision cutoff against millisecond
+columns.** `stock_movements.created_at` defaults to `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, and all three
+archive statements compare `created_at < ?` lexically. The cutoff was built with `SecondsFormat::Secs` —
+`…:00Z`, 20 characters — so at index 19 the cutoff has `Z` (0x5A) where any stored row has `.` (0x2E), and
+`'.'` sorts BELOW `'Z'`. A row in the same whole second as the cutoff therefore still satisfies `<` and is
+archived early. Measured before the fix: a row stamped from the column's own `strftime` was archived by a
+**zero-day** window. Bounded to sub-second drift on a day-scale retention, so LOW — but on a live path, and
+the same class as MSL-56/57.
+
+**Why 30 days of existing tests could not see it, which is the transferable part.** Every other archive
+test seeds `'2020-01-01T00:00:00Z'` — **the very shape the cutoff was wrongly using** — against a 30-day
+window whose date portion decides the comparison long before index 19 is reached. Fixture and bound agreed
+with each other while both disagreed with the schema. The new fixtures are built from the column's own
+`strftime` expression, which is what makes them able to disagree with it.
+
+**A flaky test I wrote and then refused to keep.** My first version used a zero-day window and asserted the
+same-second row survives. It discriminates **correctly** against the bug and fails on the fix — because
+with a whole-DAY parameter both the fixture and the cutoff read the wall clock, so the row lands
+microseconds *before* the cutoff and archiving it is right. I could not make the same-second case
+deterministic, and rather than ship a test that passes for the wrong reason I retargeted it: the fixtures
+assert the column shape, and the behaviour assertion is the day-scale one that is genuinely stable.
+The doc says outright what it does not pin. Falsified by changing the cutoff sign, which the retargeted
+test catches.
+
+**Environment note, recorded because it cost three retries:** a bare `cargo test -p kasirmu-core --lib`
+from another lane hung twice and held the shared test binary `kasirmu_core-90b1da…exe`, so every link failed
+with `rust-lld: failed to write output … permission denied`. I killed only the orphaned test **binary** —
+never another lane's cargo parent — and then moved my own builds to `CARGO_TARGET_DIR=target-review` so my
+runs stop contending for that artifact at all.
+
+**Verified:** 10 `archive_movements` (was 9), 1982 `db::`, `clippy -D warnings` clean, both files
+`rustfmt`-clean apart from one pre-existing hunk at `products_tests.rs:2012` left untouched. Commit
+`c1ac67d34` (verified by hash — HEAD had moved to another lane's `45d8fdabc` between the commit and the
+read, which is exactly why the policy is to check the hash and never HEAD).
+
+**Tally:** 65 findings fixed (11 HIGH), 21 leads disproved. Two are preventive pins.
+
+
 
 
 
