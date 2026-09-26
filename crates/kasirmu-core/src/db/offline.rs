@@ -682,12 +682,35 @@ impl Store<'_> {
     /// (`SUM(retry_count) WHERE status = 'failed'`) silently stops counting.
     /// A row that exists but is NOT pending is the idempotent no-op the CAS is
     /// built to produce, so it returns `Ok(())` rather than erroring.
+    /// # Transaction behaviour (C19 slice B)
+    ///
+    /// Joins a caller-owned transaction and opens its own only in autocommit,
+    /// matching [`Self::mark_offline_synced`]: the write and the existence probe
+    /// below must be atomic, or a concurrent delete landing between them makes
+    /// the probe answer with a state the write never saw.
     pub fn mark_offline_synced_for_tenant(
         &self,
         id: &str,
         tenant_id: &str,
     ) -> Result<(), CoreError> {
-        let affected = self.conn.execute(
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::mark_synced_for_tenant_on(&tx, id, tenant_id)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::mark_synced_for_tenant_on(self.conn, id, tenant_id)
+        }
+    }
+
+    /// The guarded tenant-scoped write, on a connection or a caller-owned
+    /// transaction (`Transaction` derefs to `Connection`).
+    fn mark_synced_for_tenant_on(
+        conn: &rusqlite::Connection,
+        id: &str,
+        tenant_id: &str,
+    ) -> Result<(), CoreError> {
+        let affected = conn.execute(
             "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE id = ?1 AND tenant_id = ?2 AND status = 'pending'",
             params![id, tenant_id],
@@ -700,7 +723,7 @@ impl Store<'_> {
         // non-pending state. Only the FIRST is NotFound — the same
         // "probe instead of guessing which one happened" shape
         // [`Self::mark_synced_on`] uses, narrowed to the tenant.
-        let exists: i64 = self.conn.query_row(
+        let exists: i64 = conn.query_row(
             "SELECT COUNT(*) FROM offline_queue WHERE id = ?1 AND tenant_id = ?2",
             params![id, tenant_id],
             |row| row.get(0),
@@ -720,13 +743,68 @@ impl Store<'_> {
     ///
     /// Sets status to 'synced' and records the resolution type in
     /// `last_error` so the status summary can count conflict resolutions.
+    ///
+    /// # Guarded transition (C19 slice B)
+    ///
+    /// This is the THIRD sibling of the compare-and-set shape
+    /// ([`Self::mark_offline_synced`], [`Self::mark_offline_synced_for_tenant`])
+    /// and the last one to gain the guard. Its predicate was a bare
+    /// `WHERE id = ?1`, so a stale or double caller flipped a dead-lettered
+    /// (`failed`) row to `synced` and invented a `synced_at` over a row whose
+    /// `retry_count` and `last_error` still recorded the failure — an
+    /// internally contradictory row, and one the queue-status summary
+    /// (`SUM(retry_count) WHERE status = 'failed'`) silently stops counting.
+    ///
+    /// A row that exists but is NOT pending is the idempotent no-op the CAS
+    /// produces, so it returns `Ok(())` rather than erroring — matching the
+    /// sibling's contract, which `mark_offline_synced_is_idempotent` pins.
+    ///
+    /// # Transaction behaviour
+    ///
+    /// Joins a caller-owned transaction and opens its own only in autocommit,
+    /// exactly like [`Self::mark_offline_synced`]: SQLite has no nested
+    /// `BEGIN`, and the existence probe must be atomic with the write it
+    /// decides on, or a concurrent delete between them answers with a state
+    /// that never existed.
     pub fn mark_offline_resolved(&self, id: &str, resolution: &str) -> Result<(), CoreError> {
+        if self.conn.is_autocommit() {
+            let tx = self.conn.unchecked_transaction()?;
+            Self::mark_resolved_on(&tx, id, resolution)?;
+            tx.commit()?;
+            Ok(())
+        } else {
+            Self::mark_resolved_on(self.conn, id, resolution)
+        }
+    }
+
+    /// The guarded resolution write, on a connection or a caller-owned
+    /// transaction (`Transaction` derefs to `Connection`).
+    ///
+    /// A row that exists but is not `pending` is not an error: the CAS
+    /// correctly changed nothing and the caller gets `Ok(())`.
+    fn mark_resolved_on(
+        conn: &rusqlite::Connection,
+        id: &str,
+        resolution: &str,
+    ) -> Result<(), CoreError> {
         let marker = format!("resolved: conflict ({})", resolution);
-        let affected = self.conn.execute(
-            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_error = ?1 WHERE id = ?2",
+        let affected = conn.execute(
+            "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_error = ?1
+             WHERE id = ?2 AND status = 'pending'",
             params![marker, id],
         )?;
-        if affected == 0 {
+        if affected == 1 {
+            return Ok(());
+        }
+        // rows == 0: the id is absent, or it is present in a non-pending state.
+        // Only the first is an error; the second is the no-op the CAS exists to
+        // produce. Probe instead of guessing which one happened.
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM offline_queue WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )?;
+        if exists == 0 {
             return Err(CoreError::NotFound {
                 entity: "offline_queue",
                 id: id.to_owned(),

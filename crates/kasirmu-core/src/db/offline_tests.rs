@@ -393,6 +393,173 @@ fn tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row() {
     assert_eq!(synced_at, "", "no sync timestamp may be invented");
 }
 
+/// The TENANT-SCOPED mark must also join a caller's transaction (C19 slice B).
+///
+/// Its unscoped sibling pins this contract
+/// (`mark_offline_synced_joins_caller_transaction`), and the tenant variant
+/// carried the same gap the resolution mark had: it ran a bare
+/// `self.conn.execute` and an existence probe against the BARE connection,
+/// so the probe could read a state the write never saw, and a rolled-back
+/// caller left the row marked. Both are fixed here rather than left to the
+/// next reader, because C19 slice A's own doc names this as the reason the
+/// wrapper exists ("the existence probe and the write that depends on it are
+/// atomic").
+#[test]
+fn tenant_scoped_mark_synced_joins_caller_transaction() {
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id)
+         VALUES ('oq-tx', 'sale.create', '{}', 'pending', 0, '', '2025-01-01T10:00:00.000Z', '', 'tenant-a');"
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn)
+        .mark_offline_synced_for_tenant("oq-tx", "tenant-a")
+        .unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-tx'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-tx'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+// ── C19 slice B: mark_offline_resolved ──────────────────────────
+
+/// The conflict-resolution mark must not resurrect a dead-lettered row either.
+///
+/// `mark_offline_resolved` is the THIRD sibling of this shape and the only one
+/// with no guard at all: its UPDATE is `WHERE id = ?2`, with no
+/// `status = 'pending'` term, so a stale or double caller flips a
+/// `failed` row to `synced` and invents a `synced_at` over a row whose
+/// `retry_count` and `last_error` still record the failure — an internally
+/// contradictory row that the queue-status summary
+/// (`SUM(retry_count) WHERE status = 'failed'`) silently stops counting.
+///
+/// This is the same data-losing case as
+/// `mark_offline_synced_refuses_to_resurrect_dead_lettered_row` and
+/// `tenant_scoped_mark_synced_refuses_to_resurrect_a_dead_lettered_row`, which
+/// is why the guard belongs here too. Unlike those two, no test covered this
+/// sibling at all before this one — verified by grep:
+/// `mark_offline_resolved` had ZERO references in this file.
+#[test]
+fn mark_offline_resolved_refuses_to_resurrect_a_dead_lettered_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    // oq-4 is the shared fixture's `failed` row (retry_count 3, last_error
+    // 'server error', empty synced_at) — the same one the unscoped mark is
+    // pinned against, so the two siblings are compared on identical data.
+    store(&conn)
+        .mark_offline_resolved("oq-4", "local won")
+        .unwrap();
+
+    let (status, retry_count, last_error, synced_at): (String, i64, String, String) = conn
+        .query_row(
+            "SELECT status, retry_count, last_error, synced_at FROM offline_queue WHERE id = 'oq-4'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "failed", "a terminal failure must stay terminal");
+    assert_eq!(retry_count, 3, "the retry count is part of the record");
+    assert_eq!(last_error, "server error", "the failure text must survive");
+    assert_eq!(synced_at, "", "no sync timestamp may be invented");
+}
+
+/// A PENDING row is still resolved normally — the fix must not break the path.
+#[test]
+fn mark_offline_resolved_still_resolves_a_pending_row() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    store(&conn)
+        .mark_offline_resolved("oq-1", "local won")
+        .unwrap();
+
+    let (status, last_error): (String, String) = conn
+        .query_row(
+            "SELECT status, last_error FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "synced");
+    assert_eq!(
+        last_error, "resolved: conflict (local won)",
+        "the resolution marker is how the status summary counts conflicts"
+    );
+}
+
+/// The resolution mark must JOIN a caller's transaction, not open its own.
+///
+/// The same contract `mark_offline_synced_joins_caller_transaction` pins
+/// for the sibling: a caller that rolls back must leave the row un-marked,
+/// because the action the resolution belongs to did not happen. If this
+/// function autocommitted, the rollback below would leave the row `synced`.
+#[test]
+fn mark_offline_resolved_joins_caller_transaction() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let tx = conn.unchecked_transaction().unwrap();
+    store(&conn)
+        .mark_offline_resolved("oq-1", "crdt merge")
+        .unwrap();
+    let inside: String = tx
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(inside, "synced", "visible inside the caller's transaction");
+    tx.rollback().unwrap();
+
+    let after: String = conn
+        .query_row(
+            "SELECT status FROM offline_queue WHERE id = 'oq-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        after, "pending",
+        "a rolled-back caller must leave the row un-marked"
+    );
+}
+
+/// An unknown id is still NotFound, not a silent no-op.
+#[test]
+fn mark_offline_resolved_still_reports_an_unknown_id() {
+    let conn = fresh();
+    seed_pending_and_synced(&conn);
+
+    let err = store(&conn)
+        .mark_offline_resolved("does-not-exist", "local won")
+        .unwrap_err();
+    assert!(
+        matches!(err, CoreError::NotFound { .. }),
+        "a missing row must stay NotFound; got {err:?}"
+    );
+}
+
 // ── Mark failed ─────────────────────────────────────────────────
 
 #[test]
