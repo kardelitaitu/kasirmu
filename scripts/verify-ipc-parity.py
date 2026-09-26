@@ -464,6 +464,19 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
         # Per-file, not per-scan: a flag shared across sources would let one file's open block
         # silence a real call in the next file, which is the same leak in a louder shape.
         in_block = False
+        # Aliased foreign modules: `use kasirmu_core::sync_client;` makes a later
+        # `sync_client::f()` a FOREIGN path whose chain is the single segment
+        # `sync_client` -- which is not in FOREIGN_PATH_ROOTS, so the check below
+        # missed it and graded another crate's function as this shell's own call.
+        # Measured on `terminals::register_terminal` at sync_bootstrap.rs:325, whose
+        # real callee is `kasirmu_core::sync_client::register_terminal`. The root the
+        # alias points AT is what makes it foreign, so it is resolved here rather than
+        # guessed from capitalisation. Per-file for the same reason as `in_block`.
+        aliased_foreign = set(re.findall(
+            r"^\s*use\s+(?:" + "|".join(sorted(FOREIGN_PATH_ROOTS)) + r")::(\w+)",
+            text,
+            re.MULTILINE,
+        ))
         for number, line in enumerate(text.splitlines(), 1):
             stripped = line.strip()
             if in_block:
@@ -487,6 +500,10 @@ def fn_call_sites(name: str, sources: list[tuple[str, str]]) -> list[str]:
                         continue
                     last = chain[-1] if chain else ""
                     if TYPE_QUALIFIER_RE.search(last):
+                        continue
+                    # A single-segment qualifier that an alias bound to a foreign
+                    # crate is that crate's module, not one of ours.
+                    if len(chain) == 1 and last in aliased_foreign:
                         continue
                 hits.append(f"{label}:{number}")
     return hits
@@ -3867,6 +3884,29 @@ def self_test() -> int:
     # would read cleaner than the truth, so the code below the block is the load-bearing half.
     case("call   prose inside a block comment is not a call, and code after it still is",
          "m.rs:13" not in call_sites and "m.rs:15" in call_sites)
+    # The aliased-import hole, found by review C17's F-006 census on 2026-09-26. The
+    # exclusion above matches the `::` chain against crate ROOTS, so a path written as
+    # `kasirmu_core::sync_client::register_terminal(...)` is excluded -- but the SAME
+    # call after `use kasirmu_core::sync_client;` is written `sync_client::...`, whose
+    # chain is the single segment `sync_client`, which is not a root. The desktop
+    # command `terminals::register_terminal` was graded "called by this shell's own
+    # code" on exactly that false positive (`sync_bootstrap.rs:325`), while the real
+    # callee is a different function in `kasirmu_core` -- the same class of
+    # spelling collision the case above documents, arriving by a second route.
+    alias_sites = fn_call_sites(
+        "register_terminal",
+        [("alias.rs", chr(10).join([
+            "use kasirmu_core::sync_client;",
+            "let r = sync_client::register_terminal(&ctx);",
+            "let s = register_terminal(&ctx);",
+            "let t = kasirmu_core::sync_client::register_terminal(&ctx);",
+        ]))])
+    case("call   an aliased foreign module path is NOT this shell's call (C17)",
+         "alias.rs:2" not in alias_sites)
+    case("call   the same call written in full is still excluded",
+         "alias.rs:4" not in alias_sites)
+    case("call   a genuine local call beside them is still counted",
+         "alias.rs:3" in alias_sites)
     # The delegation blind spot, found 2026-09-16 by the red this leg gave the coursing lane:
     # `set_line_course_scoped` was reported as an ungated redundant twin whose caller should be
     # allowlisted as "host-only", while `crates/kasirmu-bridge/src/pos.rs:505` gates it on
