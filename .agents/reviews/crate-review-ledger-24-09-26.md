@@ -5476,6 +5476,65 @@ is comment lines only, confirmed with `git diff`. Commit `246a535fa` (verified b
 
 **Tally:** 68 findings fixed (11 HIGH), 23 leads disproved. Two are preventive pins.
 
+## Pass 84 — MSL-62: an unpoliced promise — eleven copies of one security mapper
+
+This round I censused the *shape* the last three findings shared: **one rule stated in more than one
+place.** I harvested every doc comment claiming a named partner (`Mirrors X`, "the same rule as Y",
+"kept in step") and adjudicated each pair. 39 claims; most hold, and the pattern concentrated in one
+neighbourhood.
+
+**The authorization gates agree, and I checked all four pairs rather than the two the docs name.**
+`apps/desktop-tauri/src/commands/authz.rs` has four gates; `kasirmu-bridge/src/ctx.rs` carries the
+bridge-side equivalents under different names. Compared clause by clause — same underlying call, same
+argument order, and for the two resource gates the same **scoped-then-resource** sequence with identical
+arguments. No drift.
+
+**MSL-62: `map_gate_error` exists in ELEVEN places, and nothing checks they agree.**
+
+| Copy | Location |
+|---|---|
+| canonical | `kasirmu-bridge/src/ctx.rs:109` |
+| shell | `apps/desktop-tauri/src/commands/authz.rs:48` (targets `AppError`) |
+| 9 mirrors | `bridge/{staff,loyalty,customers,categories,inventory_counts,inventory,regional,stock_transfers,tax}.rs` |
+
+**The copies are load-bearing, which is why drift would matter.** `impl From<CoreError> for
+BridgeError` (`error.rs:62`) maps `CoreError::PermissionDenied` to `BridgeError::Core { sub_kind:
+PermissionDenied }` — a *generic* core error — while the UI branches on `BridgeError::PermissionDenied`
+itself. Every gate needs that correction, so a copy that drifts hands the front end the wrong wire shape
+for a denial, silently.
+
+**The duplication is deliberate and already ruled on — I checked before touching it.** The port journal
+(`docs/archived/manager-2-journal.md`) records the ruling per wave: *"Tax gate STAYS non-scope-aware
+`Store::require_permission` with `map_gate_error` mirror (D-B12 categories ruling applied)"*, and names a
+dedupe that was to ride a later gate-fix. It did not land: `ctx::map_gate_error` is still private, is not
+re-exported, and the scheduled cleanup lost its tracker when the journal was **archived** — the active
+checklist has zero mentions of it. So this is not a new defect and not a refactor to do unilaterally
+mid-migration; it is a **known duplication whose only tracking artifact was retired, with nothing failing
+when a copy changes.**
+
+**So I pinned agreement instead of refactoring.** No test existed for it (zero `map_gate_error` hits across
+all 63 bridge test files). `gate_error_mapping_tests.rs` reads the real sources via `include_str!` — the
+idiom `settings_tests.rs` already uses across crates — extracts each mapper's **match arms only** (doc
+comments and signatures legitimately vary per module and are not the rule), and compares all ten bridge
+copies against a literal canonical set. A second test asserts the shell copy still translates a denial to
+`AppError::PermissionDenied` rather than routing it through `AppError::from`.
+
+**The canonical expectation is a literal, not derived from `ctx.rs`**, and that is deliberate: deriving it
+would let the test pass whenever all copies agree with *each other*, including when every one of them had
+drifted together — the failure that matters most. The doc says so. A module missing its mapper PANICS
+rather than passing as "no drift", so the eventual dedupe is reported rather than silently absorbed.
+
+Falsified by making `tax.rs`'s copy wrap the message: the test fails naming `tax.rs` and the rule it
+broke. Restored, and `tax.rs` is byte-identical to HEAD.
+
+**Verified:** 1406 `kasirmu-bridge` (was 1404), 0 failed; `clippy -p kasirmu-bridge --lib -D warnings`
+clean; both files `rustfmt`-clean. Commit `81d1557bf` (verified by hash; new file landed through the §3
+`add` + pathspec chain, `create mode` confirmed).
+
+**Tally:** 69 findings fixed (11 HIGH), 23 leads disproved. Two are preventive pins. One new pin: a
+checked agreement standing in for a retired tracking artifact.
+
+
 
 **Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
 analytics UI's deliberate UTC anchoring (`analytics-data.ts`) and the tax path's separate resolver — belong
