@@ -135,7 +135,7 @@ helper, which is documented and non-arithmetic.
 ## References
 
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §2 C-1 / §6 X-3 / §9 / §10 / §11
-- `modules/currency/src/models.rs` (`ExchangeRateRow`, moved from the old `crates/oz-core/src/exchange_rate.rs`)
+- `modules/currency/src/models.rs` (`ExchangeRateRow`; it MOVED here from a pre-rebrand core path that no longer exists)
 - `crates/kasirmu-core/migrations/20260813_init.sql`
 - `crates/kasirmu-core/src/db/settings.rs`
 - `crates/kasirmu-core/tests/currency_integration.rs`

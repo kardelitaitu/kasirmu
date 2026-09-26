@@ -116,7 +116,7 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 - `apps/cloud-server/src/sync_api.rs`
 - `platform/sync/src/lib.rs`
 - `platform/sync/src/daemon.rs`
-- `crates/kasirmu-core/src/kasirpkg.rs` (renamed from `crates/oz-core/src/ozpkg.rs`)
+- `crates/kasirmu-core/src/kasirpkg.rs` (RENAMED from a pre-rebrand `ozpkg` path that no longer exists)
 - `platform/sync/src/transport.rs`
 
 > last audited 24-07-26 by Hermes-Agent

@@ -400,6 +400,76 @@ def is_historical_doc(path, text):
         return True
     return False
 
+# ── Rename rescue for exempt directories (C70) ───────────────────────────────
+#
+# HIST_DIR_PREFIXES exempts _active/, plans/ and the dated records because their
+# paths are "files still to be created". That reasoning cannot tell a PLANNED path
+# from a PRE-RENAME one, so a live spec's acceptance command may name a crate that
+# was renamed away and this tool stays silent by policy -- the hole C70 found with
+# 20 files inside it.
+#
+# The distinguisher is structural, not textual, and measured before it was written:
+#
+#   crates/oz-core/src/ozpkg.rs          -> deepest existing prefix is `crates` (1 of 4)
+#   crates/oz-core/migrations/XXX_x.sql  -> deepest existing prefix is `crates` (1 of 4)
+#   crates/kasirmu-core/src/planned.rs   -> deepest existing prefix is 3 of 4
+#
+# A PLAN sits INSIDE a crate that exists, so its parent directories resolve. A
+# RENAME takes the crate directory itself away, so the path dies at segment one --
+# and the same-named crate exists under the rebranded spelling. That second half is
+# what keeps this from firing on a merely-deleted module: `crates/oz-core/src/db/
+# encryption.rs` also dies at segment one, but the rescue below requires the RENAMED
+# crate to exist, and then reports the reference as a rename rather than hiding it.
+#
+# The rename table is VERIFIED against the tree at load time, not trusted: an entry
+# whose new path does not exist is dropped, so a future un-rename cannot make this
+# rule invent findings.
+# Only docs/specs/_active/ is rescued, and the exemption's own comment names why:
+# "_active/ is the tell: a spec that is still open has not finished moving the tree."
+# An ACTIVE spec is open work whose acceptance commands a reader is meant to RUN, so a
+# pre-rename crate there is live drift. Every other exempt prefix is a RECORD of a
+# past state -- an ADR, a dated record, a finished plan -- and rewriting one would be
+# falsifying it, which is exactly what C70 refused to do to the two audit stamps.
+# Measured before narrowing: rescuing across all eight prefixes produced **213 findings
+# in 57 docs**, almost all in ADRs and plans. That is the "gate that cries wolf" this
+# file's own comment warns about, so the scope is one directory, not eight.
+RENAME_RESCUE_PREFIXES = ("docs/specs/_active/",)
+
+RENAME_PREFIXES = (
+    ("crates/oz-bridge/", "crates/kasirmu-bridge/"),
+    ("crates/oz-core/", "crates/kasirmu-core/"),
+    ("crates/oz-api/", "crates/kasirmu-api/"),
+    ("crates/oz-security/", "crates/kasirmu-security/"),
+    ("crates/oz-plugin/", "crates/kasirmu-plugin/"),
+    ("crates/oz-hal/", "crates/kasirmu-hal/"),
+    ("crates/oz-lua/", "crates/kasirmu-lua/"),
+    ("crates/oz-crypto/", "crates/kasirmu-crypto/"),
+    ("crates/oz-payment/", "crates/kasirmu-payment/"),
+    ("crates/oz-reporting/", "crates/kasirmu-reporting/"),
+    ("apps/desktop-client/", "apps/desktop-tauri/"),
+    ("apps/tablet-client/", "apps/mobile-tauri/"),
+)
+
+
+def renamed_crate_target(token, exists):
+    """The post-rebrand spelling of `token`, or None.
+
+    Pure over (token, exists) so --self-test can drive it without a tree: `exists`
+    is the predicate a live run binds to the filesystem and the self-test binds to a
+    fixture set. Returns None unless the OLD prefix is gone AND the NEW one exists,
+    which is what makes the answer a rename claim rather than a guess.
+    """
+    for old, new in RENAME_PREFIXES:
+        if not token.startswith(old):
+            continue
+        if exists(old.rstrip("/")):
+            return None          # the old path is real; nothing to rescue
+        if not exists(new.rstrip("/")):
+            return None          # no twin on disk: not a rename we can vouch for
+        return new + token[len(old):]
+    return None
+
+
 def resolve_ok(token, files, dirs, basenames, src_dir=""):
     b = token.split("#")[0].rstrip("/").rstrip(".-")
     if not b:
@@ -667,6 +737,39 @@ def self_test():
                            "[t](./target.md#no-such-heading)")) == 0))
     cases.append(("dated record stays historical",
                   is_historical_doc("docs/records/2026-01-01-x.md", "t") is True))
+    # C70: the rename rescue inside an exempt directory. `exists` is injected so the
+    # rule is exercised without a tree, matching every other case here.
+    PRE = "crates/oz-core/src/db/offline.rs"
+    NEW = "crates/kasirmu-core/src/db/offline.rs"
+
+
+    def only_renamed(p):
+        return p in ("crates/kasirmu-core",)
+
+
+    cases.append(("rename  a pre-rebrand path under an exempt dir resolves to its twin",
+                  renamed_crate_target(PRE, only_renamed) == NEW))
+    cases.append(("rename  the same path is left alone once the old crate is real",
+                  renamed_crate_target(PRE, lambda p: True) is None))
+    cases.append(("rename  no twin on disk means no claim is made",
+                  renamed_crate_target(PRE, lambda p: False) is None))
+    cases.append(("rename  a planned path inside a LIVE crate is not rescued",
+                  renamed_crate_target(
+                      "crates/kasirmu-core/src/zzz_planned.rs",
+                      lambda p: p in ("crates/kasirmu-core",)) is None))
+    cases.append(("rename  a path outside the rename table is untouched",
+                  renamed_crate_target("docs/specs/_active/x.md", lambda p: True) is None))
+    cases.append(("rename  an app-shell rename is covered too",
+                  renamed_crate_target("apps/tablet-client/src/state.rs",
+                                       lambda p: p == "apps/mobile-tauri")
+                  == "apps/mobile-tauri/src/state.rs"))
+    # The table is verified against the tree, not trusted.
+    cases.append(("rename  every table entry's target exists in this checkout",
+                  all((ROOT / new.rstrip("/")).is_dir()
+                      for _old, new in RENAME_PREFIXES)))
+    cases.append(("rename  every table entry's OLD path is gone from this checkout",
+                  not any((ROOT / old.rstrip("/")).exists()
+                          for old, _new in RENAME_PREFIXES)))
     bad = [n for n, ok in cases if not ok]
     if bad:
         print("SELF-TEST WRONG: " + ", ".join(bad), file=sys.stderr)
@@ -758,7 +861,25 @@ def main():
 
     acc = {}
     hacc = {}
+    # C70: a reference inside an exempt directory whose crate was RENAMED is not a
+    # planned path -- it is live drift the exemption was never meant to cover. Rescue
+    # it into the live set so it is reported like any other dead path. The predicate is
+    # bound to the same index the resolver uses, so the answer comes from the tree.
+    def on_disk(rel):
+        return rel in dirs or rel in files or (ROOT / rel).exists()
+
+    rescued = 0
     for f, n, c, historical in rows:
+        if historical and f.startswith(RENAME_RESCUE_PREFIXES):
+            base = c.split('#', 1)[0]
+            stem = os.path.normpath(os.path.join(f.rsplit('/', 1)[0] if '/' in f else '', base))
+            stem = stem.replace(os.sep, '/')
+            hit = next((tok for tok in (stem, base)
+                        if renamed_crate_target(tok, on_disk) is not None), None)
+            if hit is not None:
+                acc.setdefault(f, []).append((n, c))
+                rescued += 1
+                continue
         (hacc if historical else acc).setdefault(f, []).append((n, c))
     live = sorted(acc.items(), key=lambda kv: kv[0])
     hist = sorted(hacc.items(), key=lambda kv: kv[0])

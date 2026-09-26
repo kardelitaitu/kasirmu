@@ -309,11 +309,11 @@ Run the following (broader pattern, captures field declarations and parameter ty
 ```bash
 grep -rnE '\b(f32|f64)\b' \
     crates/kasirmu-core crates/kasirmu-payment crates/kasirmu-reporting \
-    modules/ apps/desktop-client/src/ \
+    modules/ apps/desktop-tauri/src/ \
     | grep -vE '//|test|tests/|format!|ToString|Display|#[doc'
 ```
 
-Initial audit pass on `apps/desktop-client/src/**/*.rs` returned only `commands/exchange_rates.rs:23, 54`. Workspace-wide application of the broader grep above will surface additional offenders for ticket X-3.
+Initial audit pass on `apps/desktop-tauri/src/**/*.rs` returned only `commands/exchange_rates.rs:23, 54`. (This read `apps/desktop-client`, the shell's pre-rebrand directory name; the rename landed after this audit, and the command above was repointed with it.) Workspace-wide application of the broader grep above will surface additional offenders for ticket X-3.
 
 #### Baseline snapshotting for re-audit
 
@@ -374,12 +374,12 @@ The next auditor should run the same baseline block **plus** the following non-c
 
 ```bash
 # C-1: f64/f32 in money-domain fields (run from project root) — CLOSED
-# Expected empty for crates/kasirmu-core, apps/desktop-client/src/, apps/tablet-client/src/,
+# Expected empty for crates/kasirmu-core, apps/desktop-tauri/src/, apps/mobile-tauri/src/,
 # platform/startup/src/, modules/currency/. oz-payment/oz-reporting may still surface
 # non-finite uses for follow-up.
 grep -rn ': f64\|: Option<f64>\|pub.*[0-9].*f64' \
     crates/kasirmu-core crates/kasirmu-payment crates/kasirmu-reporting \
-    modules/ apps/desktop-client/src/ \
+    modules/ apps/desktop-tauri/src/ \
     | grep -v 'ToString\|Display\|format\|test\|tests/'
 
 # C-2: std::env::set_var / remove_var in apps/desktop-client — CLOSED (expect empty)
@@ -392,7 +392,7 @@ jq '.app.security.csp' apps/desktop-client/tauri.conf.json
 grep -rn 'TcpListener::bind\|TcpListener::bind_raw' apps/desktop-client/
 
 # C-5: license material — CLOSED (expect keyring-based storage)
-grep -rn 'license\.' apps/desktop-client/src/commands/ | grep -i 'set\|set_batch'
+grep -rn 'license\.' apps/desktop-tauri/src/commands/ | grep -i 'set\|set_batch'
 
 # H-3: brand logo path validation — CLOSED (expect canonicalize + app_data_dir)
 grep -rn 'canonicalize\|app_data_dir' apps/desktop-client/src/commands/branding.rs
@@ -421,7 +421,7 @@ Add the result of each grep to the next audit report under a "Closure" column. I
 
 | File | Change |
 |------|--------|
-| `crates/oz-core/src/exchange_rate.rs` | `ExchangeRateRow.rate: f64` → `rate_millionths: i64`; new `display_rate()` helper. |
+| `modules/currency/src/models.rs` (was `crates/oz-core/src/exchange_rate.rs`) | `ExchangeRateRow.rate: f64` → `rate_millionths: i64`; new `display_rate()` helper. Repointed 2026-09-25: the type moved to the `modules-currency` crate, so the old path no longer exists. |
 | `crates/kasirmu-core/migrations/20260813_init.sql` | NEW: `ADD COLUMN rate_millionths INTEGER DEFAULT 0` → `UPDATE … = ROUND(rate * 1e6)` → `DROP COLUMN rate`. Documented rollback path. |
 | `crates/kasirmu-core/src/migrations.rs` | Registered migration `071` next to `070`. |
 | `crates/kasirmu-core/src/db/settings.rs` | `list_exchange_rates` / `create_exchange_rate` / `upsert_exchange_rate` all consume `i64 millionths`; the `<= 0` validation guard added to `create_exchange_rate` (defence in depth — `upsert_exchange_rate` already had it). |

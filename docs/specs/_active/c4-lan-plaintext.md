@@ -127,7 +127,7 @@ cargo fmt --all -- --check
 # — expect: connection closed within 1s, tracing::warn! emitted
 
 # 5. Audit grep §10 line 4 returns the new bind config
-grep -rn 'TcpListener::bind' apps/desktop-client/src/
+grep -rn 'TcpListener::bind' apps/desktop-tauri/src/
 # expect: "127.0.0.1:9180" (or via settings table)
 ```
 

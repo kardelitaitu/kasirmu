@@ -45,7 +45,7 @@ segfault under contention).
 ## Acceptance criteria
 
 - [x] No `unsafe { std::env::set_var(...) }` in any production path
-      (grep `apps/desktop-client/src/` and `apps/tablet-client/src/`)
+      (grep `apps/desktop-tauri/src/` and `apps/mobile-tauri/src/` — the old `apps/desktop-client`/`apps/tablet-client` directories no longer exist; renamed in the rebrand)
 - [x] No `unsafe { std::env::remove_var(...) }` in any production path
 - [x] `AppState.terminal_id: Arc<Mutex<Option<String>>>` typed field
       replaces env var (simpler than the proposed `AppConfig` struct —
@@ -119,7 +119,7 @@ segfault under contention).
 
 ```bash
 # 1. No more unsafe env mutation
-grep -rn 'env::set_var\|env::remove_var' apps/desktop-client/src/ apps/tablet-client/src/
+grep -rn 'env::set_var\|env::remove_var' apps/desktop-tauri/src/ apps/mobile-tauri/src/
 # expect: 0 matches in production paths
 
 # 2. Tests pass
