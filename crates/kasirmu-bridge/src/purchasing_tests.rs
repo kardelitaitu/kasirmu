@@ -39,7 +39,7 @@ fn make_po_line() -> PurchaseOrderLine {
 /// (`purchasing.rs` — `args.status.as_deref().unwrap_or("active")`), and the
 /// Suppliers screen never sends one: its edit form is seeded from the row but
 /// carries no status field, and the payload omits it entirely
-/// (`SuppliersScreen.tsx` builds `UpdateSupplierArgs` without `status`).
+/// (the supplier-management screen builds `UpdateSupplierArgs` without `status`).
 ///
 /// So editing a supplier — any edit, even fixing a phone number — silently
 /// RE-ACTIVATES an inactive one. The row the user was looking at said

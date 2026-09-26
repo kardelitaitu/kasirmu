@@ -25,7 +25,7 @@ use crate::subscription::SubscriptionTier;
 /// so the NEXT blank-barcode product was refused with
 /// `Conflict { field: "sku or barcode" }` even when its SKU was unique.
 ///
-/// Reachable from the product screen (`VariantManagementScreen.tsx` binds the
+/// Reachable from the product screen (its variant-management view binds the
 /// raw field and passes `form.barcode || null`, where a spaces-only string is
 /// truthy) and unvalidated by the bridge's write path.
 ///

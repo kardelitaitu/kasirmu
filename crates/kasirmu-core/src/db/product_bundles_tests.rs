@@ -176,7 +176,7 @@ fn create_bundle_with_zero_qty_item() {
     // "Additional edge-case tests" block and used to record that a zero quantity
     // was stored verbatim — a description of behaviour, not a business rule: the
     // schema never carried a CHECK, and the desktop editor has always refused
-    // `qty < 1` (`BundleManagementScreen.tsx:136`), so the two disagreed and
+    // `qty < 1` (the bundle-management screen), so the two disagreed and
     // only the client guarded anything. A bundle containing "0 of ITEM-A" is not
     // a meaningful bundle, so the store now refuses it and every caller agrees.
     let store = fresh_store();
@@ -324,7 +324,7 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
 ///
 /// No field, no SKU, and no statement that the product is the missing thing —
 /// while the bridge forwards `i.sku` unvalidated (`bundles.rs:170`) and the
-/// editor renders it as an `<input>` (`BundleManagementScreen.tsx:424`) whose
+/// editor renders it as an `<input>` (the bundle-management screen) whose
 /// save failure shows the generic `bundles-error-save` message, because a DB
 /// error is not the client-side `BundleValidationError` the catch distinguishes.
 ///
@@ -337,7 +337,7 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
 /// `bundle_items.qty` has `DEFAULT 1` and **no CHECK**, and nothing validates it
 /// on the write path — so a zero or negative quantity is stored.
 ///
-/// The desktop editor guards it client-side (`BundleManagementScreen.tsx:136`:
+/// The desktop editor guards it client-side (the bundle-management screen:
 /// `qty < 1` throws), which is precisely why it went unnoticed: the check exists,
 /// just not where the other callers reach. Both shells forward to the same bridge
 /// command, so the tablet, a script, or any future IPC caller can store "−2 of
@@ -378,7 +378,7 @@ fn a_bundle_item_quantity_must_be_positive() {
 /// negative value is money that should never exist.
 ///
 /// `bundle_items.unit_price_minor` is `INTEGER` with no CHECK, and the store
-/// validated nothing — the editor refuses negatives (`BundleManagementScreen.tsx:137`:
+/// validated nothing — the editor refuses negatives (the bundle-management screen:
 /// `unitPrice < 0`), so again only the client guarded it.
 ///
 /// **Severity, stated honestly:** nothing in `kasirmu-core` sums this column —

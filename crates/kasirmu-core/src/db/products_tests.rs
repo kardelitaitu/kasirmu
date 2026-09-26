@@ -87,7 +87,7 @@ fn adjust_stock(s: &Store<'_>, conn: &Connection, sku: &str, delta: i64) -> Resu
 ///
 /// `Barcode::new` rejects only empty/whitespace, so whitespace is the one
 /// trigger — and it is reachable: the products screen binds the raw field
-/// (`VariantManagementScreen.tsx:400`) and passes `form.barcode || null`,
+/// (its variant-management view) and passes `form.barcode || null`,
 /// where `"   "` is truthy and travels as a non-null value. The bridge does
 /// not validate the barcode on the write path either (it trims only for
 /// lookup, `products.rs:372`).

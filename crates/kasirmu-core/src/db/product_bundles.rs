@@ -75,7 +75,7 @@ fn insert_bundle_row(
 fn insert_bundle_item(tx: &rusqlite::Transaction<'_>, item: &BundleItem) -> Result<(), CoreError> {
     // MSL-51: `bundle_items.qty` is `INTEGER NOT NULL DEFAULT 1` with no CHECK, and
     // nothing validated it on the write path — the desktop editor guards it
-    // client-side (`BundleManagementScreen.tsx:136`) but both shells reach the
+    // client-side (the bundle-management screen) but both shells reach the
     // same bridge command, so the tablet or any IPC caller could store a
     // non-positive quantity. Negative component counts are meaningless: nothing
     // sums them for money (the bundle has its own price), so they survive as
