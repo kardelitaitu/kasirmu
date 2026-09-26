@@ -480,7 +480,7 @@ impl Store<'_> {
         // created here: a transfer can never reach `in_transit` with no lines, so
         // there is no empty transfer for any later step to mis-handle.
         //
-        // The UI guards its own button (`WarehouseConsole.tsx` renders Send only
+        // The UI guards its own button (the warehouse console renders Send only
         // when the scan session is non-empty), but that is a client-side check on
         // a payload the API accepts directly — the bridge validates locations and
         // terminals and never the line set. The invariant belongs where the data
@@ -493,8 +493,7 @@ impl Store<'_> {
         if line_count == 0 {
             return Err(CoreError::Validation {
                 field: "lines",
-                message: "a transfer with no lines has nothing to move and cannot be sent"
-                    .into(),
+                message: "a transfer with no lines has nothing to move and cannot be sent".into(),
             });
         }
 
