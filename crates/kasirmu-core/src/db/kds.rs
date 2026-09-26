@@ -200,8 +200,19 @@ impl Store<'_> {
 
     fn row_to_kds_line_item(row: &rusqlite::Row) -> rusqlite::Result<KdsLineItem> {
         let modifiers_json: Option<String> = row.get("modifiers_json")?;
+        // Fail CLOSED. NULL (and the empty string the write path never stores)
+        // is the legitimate "no modifiers" sentinel; an unreadable blob is NOT,
+        // because defaulting it to `[]` made a corrupt row indistinguishable
+        // from a plain item — the kitchen screen then silently dropped "no
+        // onions". Same shape as MOD-A's silently-empty BOM list: the empty
+        // collection is the code path for a DIFFERENT, wrong semantic. Surface
+        // the decode failure instead, using the `row_to_product` idiom.
         let modifiers: Vec<KdsModifier> = match modifiers_json {
-            Some(json) if !json.is_empty() => serde_json::from_str(&json).unwrap_or_default(),
+            Some(json) if !json.is_empty() => serde_json::from_str(&json).map_err(|e| {
+                rusqlite::Error::ToSqlConversionFailure(
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()).into(),
+                )
+            })?,
             _ => vec![],
         };
         Ok(KdsLineItem {

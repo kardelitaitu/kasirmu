@@ -3839,3 +3839,37 @@ fn cleanup_old_kds_orders_joins_a_caller_transaction() {
         "the FK-ordered children must not be deleted while their order survives"
     );
 }
+
+// ── A corrupt modifiers blob must not read as "no modifiers" ────────────
+//
+// `kds_line_items.modifiers_json` is nullable TEXT with NO CHECK / `json_valid`
+// constraint (20260813_init.sql:254), so nothing in the schema rejects a bad
+// value. `row_to_kds_line_item` parsed it with `.unwrap_or_default()`, which
+// made an unreadable blob byte-identical to the column's legitimate NULL —
+// i.e. to "this line has no modifiers". The kitchen screen then renders a plain
+// item and silently drops "no onions" / "extra cheese". That is the MOD-A
+// shape: the empty list is the code path for a DIFFERENT, wrong semantic, so
+// the default is not tolerant mapping — it is a lost instruction. Fail closed.
+
+#[test]
+fn a_corrupt_modifiers_blob_is_refused_not_read_as_no_modifiers() {
+    let conn = fresh();
+    let s = store(&conn);
+    let order = seed_kds_order_at(&s, &conn, "2026-01-01T10:00:00.000Z", "pending");
+    conn.execute(
+        "INSERT INTO kds_line_items (id, kds_order_id, sku, display_name, qty, line_position,
+                                     item_status, modifiers_json, created_at)
+         VALUES ('line-corrupt', ?1, 'STEAK', 'Steak', 1, 0, 'pending', 'not-a-json-array',
+                 '2026-01-01T10:00:00.000Z')",
+        rusqlite::params![order.id],
+    )
+    .unwrap();
+
+    let err = s
+        .get_kds_order_lines(&order.id)
+        .expect_err("an unreadable modifiers blob must not read as 'no modifiers'");
+    assert!(
+        format!("{err:?}").contains("modifiers") || matches!(err, CoreError::Db(_)),
+        "the refusal must surface the decode failure, got: {err:?}"
+    );
+}
