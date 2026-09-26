@@ -6404,22 +6404,120 @@ survived to commit.
 actioned: the enumeration produced a real gap, a working fix, and a reason not to land it that only appeared
 when I checked the diff against HEAD — which is the check the commit policy exists to force.
 
+---
 
+## Pass 102 — the sync replay that dead-letters a valid non-retail product (MSL-81)
 
+Pass 101 closed with `products_stock_query.rs:324` named as the next uncovered `Conflict` branch and
+explicitly *not* blocked by any other lane. This pass took it and found something larger than a missing
+assertion: the branch was **wrong**, not merely untested.
 
+### What the branch is for
 
+`create_product_if_absent_in_tx` is the `product.created` pull arm's storage door. It reads the existing row
+for the SKU and decides *idempotent replay* vs *genuine conflict*:
 
+```
+let same = existing_name == name.trim()
+    && existing_price == price.minor_units
+    && existing_currency == cur_str
+    && existing_category.as_deref() == category_id
+    && existing_barcode.as_deref() == barcode
+    && existing_type == product_type;   // <-- this line
+```
 
+Its own doc says *"a repeated SKU is only idempotent when it describes the same product"*. The comparison is
+the right idea; the sixth conjunct was comparing against a value the producer **cannot supply**.
 
+### The defect: the producer's event has no `product_type` at all
 
+`InventorySyncEnqueuer::handle` (`platform/startup/src/event_handlers.rs:151`) builds the queue payload from
+the `ProductCreated` domain event:
 
+```
+let payload = serde_json::json!({
+    "sku": event.sku, "name": event.name, "price_minor": event.price_minor,
+    "currency": event.currency, "category_id": event.category_id,
+    "barcode": event.barcode, "initial_stock": event.initial_stock,
+}).to_string();
+```
 
+There is no `product_type` key, and there **cannot** be one: `ProductCreated` (`foundation/src/events.rs:54`)
+has seven fields and none of them is a type. The event cannot express the type it is announcing.
 
+The consumer then invented one:
 
+```
+let product_type = payload["product_type"].as_str().unwrap_or("retail");
+```
 
+So an *absent* key became the *value* `"retail"`, and that invented value was fed into the equality check
+above. For a product created as anything else the conjunct is `"service" == "retail"` — false — and a
+byte-for-byte replay of a product the terminal itself just created is reported as
+`Conflict { entity: "product", field: "sku" }`, fails its apply, and burns a retry unit toward the
+dead-letter budget.
 
+The write path proves the value is real and user-supplied: `CreateProductScopedArgs.product_type: String`
+(`crates/kasirmu-bridge/src/products.rs:80`, default `"retail"` at `:636`) reaches the DB at `:722` and the
+event at `:738` — passing through the publish without ever being added to it.
 
+### The stamp was confidently wrong
 
+The module stamp at `platform/sync/src/queue.rs:5` asserted the opposite in as many words: the
+`unwrap_or("")`/`unwrap_or(-1)` defaults are *"fully caught at the storage boundary"*. For `sku`, `name`,
+`price_minor` and `currency` that is true — the defaults are blank/invalid and get validated. For
+`product_type` the default is a **plausible legal value**, so nothing catches it; it is silently compared as
+if it were data. A default that is *valid* is more dangerous than one that is invalid, because the validation
+layer designed to catch the invalid ones cannot see it. This is the same failure the ledger recorded four
+times before: a confident statement about a mechanism is a hypothesis until the mechanism is executed.
 
+### Fix
 
+Three coordinated changes, smallest complete set across the real data flow:
 
+1. **`crates/kasirmu-core/src/db/products_stock_query.rs`** — the type is now `Option<&str>` on a new
+   `create_product_if_absent_with_tx`; the conjunct becomes
+   `product_type.is_none_or(|t| existing_type == t)`. The old `create_product_if_absent_in_tx` is kept with
+   its exact signature and now delegates with `Some(product_type)`, so `is_none_or` degrades to
+   `existing_type == t` and **no existing caller's semantics change**. The INSERT uses
+   `product_type.unwrap_or("retail")` (the column default), and the service short-circuit reads
+   `product_type == Some("service")`.
+2. **`platform/sync/src/queue.rs`** — `let product_type = payload["product_type"].as_str();`, absent
+   passed through as absent, with a comment naming the event struct as the reason.
+3. **`platform/sync/src/queue_tests.rs`** — the regression test below.
+
+### Why not fix it in the event instead
+
+Adding `product_type` to `ProductCreated` would be the *better* long-term shape, but it is a wider change
+(the struct, its `Deserialize` contract, and every publisher: `crates/kasirmu-bridge/src/products.rs:738`,
+`apps/mobile-tauri/src/commands/products.rs:488`, plus three test constructors) and it would change a
+serialized event's schema. Passing absence through as absence fixes the live bug at the boundary that
+actually misreads it, and stays correct for any other producer that also omits the key. Recorded as a lead:
+**`ProductCreated` should carry `product_type`; the consumer's `Option` is the compatibility shim that lets
+it be added later without another break.**
+
+### Regression test and falsification
+
+`a_non_retail_product_replay_is_idempotent_despite_the_producers_missing_type` seeds a `service` row, then
+replays the payload in *byte-for-byte the shape `InventorySyncEnqueuer` enqueues* — every key it sets, and
+no `product_type` key. It asserts the apply succeeds, the receipt is written, **no** dead-letter failure row
+is created, and the stored type survives as `Service`.
+
+Falsified by restoring the old line in the consumer and re-running: it fails exactly as predicted —
+`called Result::unwrap() on an Err value: Conflict { entity: "product", field: "sku" }` — then the fix was
+restored and the test passed again. The fix is load-bearing.
+
+**Verified:** `platform-sync` lib **436 passed, 0 failed**; `kasirmu-core` lib **3395 passed, 0 failed**
+(up from 3339 at pass 101); `products_stock_query` family 3/3; `clippy -D warnings` clean on both crates;
+`rustfmt` clean on my three files. Committed as `633bee434`, verified by hash to contain exactly those three
+paths.
+
+**Foreign hunk refused again.** `crates/kasirmu-core/src/db/products_stock_query.rs` and its sibling
+`products_stock_query_tests.rs` were dirty before I started: a tree-wide `cargo fmt` from another lane
+(reflowing `publish_inventory_change(...)` and a set of trait method bodies). The test file is **100% theirs**
+and was not committed; the one foreign hunk that had landed in the *production* file I reverted by hand so my
+commit is exactly my three hunks. The residue rustfmt still reports at `products_stock_query.rs:488` is that
+lane's, present at HEAD, and is none of my change.
+
+**Tally:** 83 findings fixed (13 HIGH), 23 leads disproved, 29 clean censuses. One new lead recorded:
+`ProductCreated` should carry `product_type`.
