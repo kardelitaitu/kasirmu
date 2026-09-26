@@ -38,14 +38,15 @@ pub const TOPOLOGY_RUNTIME_SETTING_KEY: &str = "oz-pos/topology-runtime";
 
 /// The tax scope for a sale rung up at `location_id` right now.
 ///
-/// `as_of` is the UTC calendar date, and that is a recorded compromise rather
-/// than the answer: `locations.timezone` is written as an IANA name but read as
-/// a fixed offset (todo-global-saas-2.md §Regional configuration, open question
-/// 1), so a locally-correct business date is not available yet. UTC is what
-/// `sale.created_at` already records, which keeps the cart preview and the
-/// checkout receipt resolving on the SAME date instead of straddling a rate
-/// boundary differently — the failure mode that matters, because
-/// `effective_to` is exclusive and a boundary day must have exactly one answer.
+/// `as_of` is the STORE-LOCAL business date (ADR #48 Decision 3), resolved by
+/// applying the location's IANA zone to the current instant — not the raw UTC
+/// date. It matters because `effective_to` is exclusive, so a boundary day must
+/// have exactly one answer: a 00:30 WIB sale is that local day, and resolving it
+/// in UTC would look up yesterday's rate while the receipt shows today's date.
+///
+/// A missing or corrupt `locations.timezone` falls back to UTC inside
+/// [`kasirmu_core::timezone::business_date_in_zone`], which is the old behaviour
+/// and never resolves a wrong day rather than guessing an offset.
 pub fn tax_scope_now(store: &Store, location_id: &str) -> kasirmu_core::TaxSaleScope {
     // ADR #48 (Decision 3): as_of is the location business date, so resolve it in
     // the store's IANA zone, not raw UTC. The instant stays Utc::now(); only the
