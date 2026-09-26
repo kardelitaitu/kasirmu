@@ -302,7 +302,16 @@ fn create_workspace_instance_duplicate_fails() {
         "",
         None,
     );
-    assert!(result.is_err());
+    // MSL-82: this must name the id as a conflict, NOT surface the raw
+    // `UNIQUE constraint failed: workspace_instances.id` a bare INSERT would
+    // raise. `is_err()` alone passes for both, so the variant is the assertion.
+    match result.expect_err("a duplicate id must be refused") {
+        CoreError::Conflict { entity, field } => {
+            assert_eq!(entity, "workspace instance");
+            assert_eq!(field, "id");
+        }
+        other => panic!("expected Conflict on the id, got {other:?}"),
+    }
 }
 
 #[test]
