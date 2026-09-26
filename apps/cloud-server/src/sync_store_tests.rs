@@ -815,6 +815,142 @@ async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
     );
 }
 
+/// C19(a): the `AutoMergeDeltas` policy is REACHABLE IN PRODUCTION and its
+/// decision was consumed by nobody -- a concurrent stock adjustment was resolved
+/// by writing ONE side's payload, dropping the other's delta.
+///
+/// Reachability, verified rather than assumed: `platform/startup/src/
+/// event_handlers.rs:199` enqueues `stock.adjusted` with a `delta`/`new_qty`
+/// payload, and `InventorySyncEnqueuer` is registered at startup
+/// (`platform/startup/src/lib.rs:161` and `:173`). `is_stock_entity` matches it,
+/// so `policy_for` returns `MergePolicy::AutoMergeDeltas` and `classify` returns
+/// `Decision::AutoMerge`. `detect_conflict` matched neither arm and fell through
+/// to "keep the stored payload", so the incoming adjustment vanished.
+///
+/// The policy's own doc names the intended outcome: "Additive deltas: both sides
+/// apply. Stock movements."
+#[tokio::test]
+async fn sqlite_concurrent_stock_adjustments_merge_their_deltas() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Two terminals each adjusted the same SKU by -1. Concurrent vectors, so
+    // this really does reach the policy table.
+    // `entity_id` is what `entity_id_of` reads, so both sides must name the SAME
+    // entity or they are compared as unrelated rows and no conflict is seen at all.
+    let first = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P1", "sku": "P1", "delta": -1, "new_qty": 9 })
+            .to_string(),
+        "t1",
+        1,
+    );
+    let second = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P1", "sku": "P1", "delta": -1, "new_qty": 9 })
+            .to_string(),
+        "t2",
+        1,
+    );
+
+    store
+        .push_batch(
+            &[detection_item("st-a", "stock.adjusted", &first)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("st-b", "stock.adjusted", &second)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    // An additive merge needs no human, so no review row is raised.
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "additive deltas are the one policy that merges without review"
+    );
+
+    // The merged payload must carry BOTH deltas. Before the fix it carried
+    // whichever side happened to be written last, i.e. -1 instead of -2.
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'stock.adjusted' \
+               AND entity_id = 'P1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(
+        parsed["delta"].as_i64(),
+        Some(-2),
+        "both adjustments must apply: the deltas are additive (got: {live})"
+    );
+}
+
+/// The fallback half of the additive merge: a body that cannot be summed must
+/// NOT produce an invented number.
+///
+/// `delta` is the additive field the policy names, and if either side lacks a
+/// numeric one there is nothing to add. The conservative outcome is to keep the
+/// stored body -- never to write a quantity neither terminal reported, which is
+/// the failure mode a merge on unparseable input would introduce.
+#[tokio::test]
+async fn sqlite_auto_merge_falls_back_when_a_delta_is_not_a_number() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let stored = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P2", "delta": -3, "sku": "P2" }).to_string(),
+        "t1",
+        1,
+    );
+    // A delta that is a STRING, so the sum is undefined rather than zero.
+    let incoming = platform_sync::crdt::stamp_payload(
+        &serde_json::json!({ "entity_id": "P2", "delta": "unparseable", "sku": "P2" }).to_string(),
+        "t2",
+        1,
+    );
+
+    for (id, payload) in [("am-a", &stored), ("am-b", &incoming)] {
+        store
+            .push_batch(&[detection_item(id, "stock.adjusted", payload)], "tenant-a")
+            .await
+            .unwrap();
+    }
+
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'stock.adjusted' \
+               AND entity_id = 'P2'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(
+        parsed["delta"].as_i64(),
+        Some(-3),
+        "an unsummable pair keeps the stored delta rather than inventing one (got: {live})"
+    );
+    assert!(
+        !live.contains("unparseable"),
+        "the unsummable incoming body must not be written as if it merged"
+    );
+}
+
 /// C19: when `LastWriterWins` picks the STORED side, the incoming payload
 /// must NOT be persisted.
 ///
