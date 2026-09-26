@@ -67,9 +67,25 @@ impl Store<'_> {
         older_than_days: i64,
         max_groups: usize,
     ) -> Result<usize, CoreError> {
-        // Compute the cutoff timestamp (now minus older_than_days).
+        // Compute the cutoff timestamp (now minus older_than_days), in the
+        // SAME shape the column writes.
+        //
+        // `stock_movements.created_at` defaults to
+        // `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — MILLISECOND precision, 24
+        // characters, `…:00.000Z`. This cutoff used to be built with
+        // `SecondsFormat::Secs`, which renders `…:00Z` (20 characters, no
+        // fractional part), and the three comparisons below are lexical
+        // (`created_at < ?`) against that millisecond column. At index 19 the
+        // stored row has `.` (0x2E) and the Secs cutoff has `Z` (0x5A), so
+        // `.` sorts BELOW `Z` and a row stamped in the SAME whole second as the
+        // cutoff still satisfies `<`: measured, a row 500ms AFTER the cutoff is
+        // archived. The window is sub-second, so on a day-scale retention this
+        // archives slightly early rather than losing anything — real but small.
+        //
+        // `Millis` is both the column's precision and the idiom used for `now`
+        // below, so this now has one shape rather than two in one function.
         let cutoff = chrono::Utc::now() - chrono::Duration::days(older_than_days);
-        let cutoff_str = cutoff.to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let cutoff_str = cutoff.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         // Find item_ids that have archivable rows (excluding rollup rows).
         let mut stmt = self.conn.prepare(

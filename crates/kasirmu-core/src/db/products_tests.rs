@@ -1452,6 +1452,78 @@ fn archive_movements_respects_max_groups() {
     let count2 = s.archive_stock_movements(30, 50).unwrap();
     assert_eq!(count2, 1, "second group archived");
 }
+/// The archive comparisons see stamps in the COLUMN's shape, not the cutoff's old
+/// one.
+///
+/// `stock_movements.created_at` defaults to
+/// `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — 24 characters, `…:00.000Z` — and all
+/// three archive comparisons are lexical (`created_at < ?`). The cutoff used to be
+/// built with `SecondsFormat::Secs`, which renders `…:00Z`: 20 characters, no
+/// fractional part. At index 19 the cutoff then has `Z` (0x5A) where any stored row
+/// has `.` (0x2E), and `'.'` sorts BELOW `'Z'` — so a row in the same whole second
+/// as the cutoff still satisfies `<` and is archived early. Measured before the fix:
+/// a row stamped from the column's own `strftime` was archived by a ZERO-day window.
+///
+/// Every other archive test seeds `'2020-01-01T00:00:00Z'` — the very shape the
+/// cutoff was wrongly using — so their fixtures and their bound agreed with each
+/// other while both disagreed with the schema. These fixtures come from the
+/// column's own expression instead, which is what makes them able to disagree.
+///
+/// WHAT THIS DOES NOT PIN, stated because the neighbouring pass (MSL-55) mistook a
+/// wide-window test for a boundary test: the same-second case cannot be expressed
+/// deterministically through a whole-DAY parameter — the fixture and the cutoff both
+/// read the wall clock — so this asserts the shape of the fixtures and the stable
+/// day-scale behaviour, not the sub-second tie-break. The tie-break is verified by
+/// the type change and by measurement, not by an assertion here.
+#[test]
+fn archive_movements_compares_stamps_in_the_column_shape() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+
+    // Fixtures in the COLUMN's shape, from the column's own expression.
+    let stamp = |offset_days: i64| -> String {
+        conn.query_row(
+            &format!("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-{offset_days} days')"),
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    let old = stamp(90);
+    let recent = stamp(0);
+    assert_eq!(old.len(), 24, "fixture is in the column shape: {old}");
+    assert_eq!(recent.len(), 24, "fixture is in the column shape: {recent}");
+
+    for (id, when) in [("sm-old", &old), ("sm-new", &recent)] {
+        conn.execute(
+            "INSERT INTO stock_movements (id, item_id, delta, reason, store_id, created_at)
+             VALUES (?1, 'prod-1', 7, 'restock', '', ?2)",
+            rusqlite::params![id, when],
+        )
+        .unwrap();
+    }
+
+    // A 30-day window: the 90-day row goes, the one from this second does not.
+    let count = s.archive_stock_movements(30, 50).unwrap();
+    assert_eq!(count, 1, "the one item group with an old row is archived");
+
+    let remaining: Vec<String> = conn
+        .prepare("SELECT id FROM stock_movements ORDER BY id")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        remaining.contains(&"sm-new".to_string()),
+        "the row from this second survives: {remaining:?}"
+    );
+    assert!(
+        !remaining.contains(&"sm-old".to_string()),
+        "the 90-day-old row is gone: {remaining:?}"
+    );
+}
 
 #[test]
 fn archive_movements_does_not_archive_rollup_rows() {
