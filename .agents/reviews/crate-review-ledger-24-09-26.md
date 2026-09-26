@@ -5426,6 +5426,15 @@ user reads beside it. Falsified by dropping the `DATE(col, tz)` conversion — t
 
 **Tally:** 67 findings fixed (11 HIGH), 22 leads disproved. Two are preventive pins.
 
+**Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
+analytics UI's deliberate UTC anchoring (`analytics-data.ts`) and the tax path's separate resolver — belong
+to C6/C6b's owners and are recorded there. This pass claims only the export custom-report filter.
+
+**Leads carried forward, not actioned:** `export`'s date filter compares in raw UTC while `db/reports/`
+applies a store-local tz modifier (`REP-03`). That is a pre-existing semantic difference my fix did not
+introduce and did not silently change — the two surfaces can disagree about which day a late-evening sale
+belongs to. Worth its own pass; recorded so it is not lost.
+
 ## Pass 83 — MSL-61: re-checked my own carried items, then a doc that contradicts itself
 
 Started by auditing my own backlog rather than the code: the ledger has accumulated carried-forward items
@@ -6177,6 +6186,62 @@ the productive move was not a new sweep but **taking a tracked-but-unfixed item 
 adjacencies its original author had not** — the PG twin and the second named function. Both checks changed
 the remedy.
 
+## Pass 98 — MSL-76: COR-23 closed, its stamp corrected, and two orphaned fragments reunited
+
+Continued last pass's productive shape — **take a tracked-but-unfixed item from an audit stamp and check the
+adjacencies its author missed** — by harvesting all 66 non-`none` `next:` lines in `kasirmu-core`.
+
+**One stamp item was already done.** `db/shifts.rs:6` asks for *"partial unique index on `shifts(user_id)`
+WHERE status='open' (COR-27)"* — and `20261011_open_shift_uniqueness.sql:92` already creates
+`idx_shifts_open_per_user`. Stale in the safe direction.
+
+**MSL-76 (LOW, fixed): COR-23 was real, but stated wrong, and the remedy narrower than the item asks.**
+`delete_customer` is a bare `DELETE`. The stamp claimed it *"hard-deletes regardless of sales history /
+loyalty account — **dangling references possible**"*. That is **false**: `sales.customer_id` and
+`loyalty_accounts.customer_id` are both NO ACTION and `foreign_keys` is ON on every connection path
+(`migrations.rs:463`, `:535`, `:580`), so the FK rejects the delete outright — CUST-11 intends exactly that,
+and its test already asserted the row survives.
+
+So there was **no safety hole**, and the item's own remedy (*"consider soft-delete or referential guard"*)
+would have added a guard the schema already provides. The real gap was **reporting**: the refusal reached the
+client as `CoreError::Db` with a raw `FOREIGN KEY constraint failed`, naming neither the customer nor the
+blocker. Now `Validation { field: "customer_id", .. }` with a message saying what holds the row and what to
+do.
+
+**Why `Validation` and not `Conflict` — which I first wrote, then corrected.** `Conflict` is the obvious
+variant for "cannot delete", but its shared `Display` is `"conflict: {entity} already exists ({field})"`,
+written for a uniqueness collision, and it reads as a **failed create** here. I checked before switching: all
+22 production `Conflict` sites are uniqueness collisions and none is a blocked delete, so this would have been
+the first and would have carried the wrong sentence. `Validation` takes a free-form message, and its
+`CoreErrorKind::Validation` still reaches the UI as a distinct `sub_kind` — the actual gain over `Db`.
+
+**Both halves falsified separately.** Deleting the mapping fails both new tests with the defect verbatim in
+the output: `Db(SqliteFailure(ConstraintViolation, 787, "FOREIGN KEY constraint failed"))`. Sales and loyalty
+are tested apart, because a mapping covering only `sales` would still leak a raw error for the loyalty
+referrer.
+
+**The bridge test was strengthened rather than left passing.** It asserted `BridgeError::Core { .. }`, which
+my change still satisfied — a weaker assertion that would have kept passing while the message regressed. It
+now asserts the exact `sub_kind` and that the message names the reference and the remedy, which also proves
+the new shape survives the bridge boundary.
+
+**MSL-77 (LOW, fixed): two fragments of the ledger itself were orphaned 760 lines from their entry.** While
+reading the file to append this pass I found two closing blocks — Pass 82's "Note on scope" and "Leads
+carried forward" — stranded at the end of the file, separated from Pass 82 by twelve blank lines and seven
+later passes. Each appeared exactly once, so they were not duplicates but **misplaced**: a reader following
+Pass 82 (the export timezone fix) never saw the scope note or the carried lead. Moved both back inside
+Pass 82, immediately after its tally; the file now ends at the newest entry rather than trailing old prose.
+This is also what made the carried lead findable again — it is the `export`/`reports` UTC divergence that
+MSL-60 left open.
+
+**Verified:** 3332 `kasirmu-core` lib tests (55 `sync_client` filtered for the concurrent lane), 0 failed; 28
+`customers`; 47 `kasirmu-bridge` `customers`; `clippy -D warnings` clean; all three source files
+`rustfmt`-clean. Commit `20cf1cbbc` (verified by hash).
+
+**Tally:** 80 findings fixed (11 HIGH), 23 leads disproved, 29 clean censuses. Two passes of the stamp-harvest
+shape have produced two fixes and two tracking-note corrections — it is yielding better than the comment
+sweeps did, because each item already names a location and a suspected defect, so the work is verification
+rather than search.
 
 
 
@@ -6187,20 +6252,6 @@ the remedy.
 
 
 
-
-
-
-
-
-**Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
-analytics UI's deliberate UTC anchoring (`analytics-data.ts`) and the tax path's separate resolver — belong
-to C6/C6b's owners and are recorded there. This pass claims only the export custom-report filter.
-
-
-**Leads carried forward, not actioned:** `export`'s date filter compares in raw UTC while `db/reports/`
-applies a store-local tz modifier (`REP-03`). That is a pre-existing semantic difference my fix did not
-introduce and did not silently change — the two surfaces can disagree about which day a late-evening sale
-belongs to. Worth its own pass; recorded so it is not lost.
 
 
 
