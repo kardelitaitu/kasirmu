@@ -155,37 +155,103 @@ impl Store<'_> {
             });
         }
 
-        // Calculate sales totals from the sales table for sales made during this shift.
-        let (total_sales, total_cash, total_card, total_other, total_voids): (i64, i64, i64, i64, i64) = tx.query_row(
-            "SELECT
-                COALESCE(SUM(CASE WHEN status = 'completed' THEN total_minor ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method = 'cash' THEN total_minor ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method = 'card' THEN total_minor ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN status = 'completed' AND payment_method NOT IN ('cash', 'card') THEN total_minor ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN status = 'voided' THEN total_minor ELSE 0 END), 0)
-             FROM sales WHERE user_id = ?1 AND created_at >= ?2 AND created_at <= ?3",
+        // Calculate sales totals for sales made during this shift.
+        //
+        // ── TENDER METHODS COME FROM `payments` FOR SPLIT SALES ─────────────
+        // `sales.payment_method` is a SUMMARY stamp, not the tender record: a
+        // split tender is stamped `split` (bridge/pos.rs SPLIT_MARKER), which
+        // matched neither `cash` nor `card` and fell into `total_other` -- so
+        // the cash leg of every split tender was invisible to the drawer
+        // expectation, the drawer read short, and the cashier was recorded
+        // over/short with no error. The real tenders ARE recorded, one row per
+        // split in `payments` (sales_checkout.rs / sales_lifecycle.rs), and the
+        // shift REPORT already reads that table (get_shift_report) -- so the
+        // close and the report disagreed by construction (review 8.4).
+        //
+        // Scope, deliberately narrow: `payments` rows exist ONLY for split
+        // tenders -- both checkout doors write them when `payment_splits` is
+        // non-empty and write nothing otherwise, so a plain one-tender sale
+        // has its method on the sale alone. The three tender buckets therefore
+        // read `payments` exactly for the sales that carry the `split` stamp
+        // and keep reading `payment_method` for every other sale, which is why
+        // this is a CASE over the stamp and not a join over all sales.
+        //
+        // `total_sales` and `total_voids` are unchanged: the defect was in
+        // tender attribution, not in which sales count.
+        //
+        // The tender buckets are summed over a `payments`-driven view, and the
+        // bucket totals are TENDER AMOUNTS, not sale totals: a $20 sale paid
+        // $10 cash + $10 card contributes 1000 to cash, not 2000. That is what
+        // makes the drawer agree with get_shift_report's payment_breakdown,
+        // which sums `payments.amount_minor` the same way.
+        let (total_sales, total_cash, total_card, total_other, total_voids): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+        ) = tx.query_row(
+            "WITH tender AS (
+                 SELECT s.id AS sale_id,
+                        COALESCE(p.method, s.payment_method) AS tender,
+                        COALESCE(p.amount_minor, s.total_minor) AS amount_minor
+                   FROM sales s
+                   LEFT JOIN payments p ON p.sale_id = s.id
+                  WHERE s.status = 'completed'
+                    AND s.user_id = ?1 AND s.created_at >= ?2 AND s.created_at <= ?3
+             )
+             SELECT
+                COALESCE((SELECT SUM(total_minor) FROM sales
+                           WHERE status = 'completed'
+                             AND user_id = ?1 AND created_at >= ?2 AND created_at <= ?3), 0),
+                COALESCE((SELECT SUM(amount_minor) FROM tender WHERE tender = 'cash'), 0),
+                COALESCE((SELECT SUM(amount_minor) FROM tender WHERE tender = 'card'), 0),
+                COALESCE((SELECT SUM(amount_minor) FROM tender
+                           WHERE tender NOT IN ('cash', 'card')), 0),
+                COALESCE((SELECT SUM(total_minor) FROM sales
+                           WHERE status = 'voided'
+                             AND user_id = ?1 AND created_at >= ?2 AND created_at <= ?3), 0)",
             params![shift.user_id, shift.opened_at, now],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )?;
 
-        // Calculate total refunds for sales made by this user during the shift.
+        // Refunds are attributed to the user who PROCESSED them
+        // (`refunds.processed_by`), not to the seller of the original sale.
+        // The old join on `s.user_id` filed a refund under whoever rang up the
+        // sale, so a refund handled the next day by another cashier belonged to
+        // no shift at all -- silently absent from every drawer (review 8.4).
         let total_refunds: i64 = tx.query_row(
             "SELECT COALESCE(SUM(r.total_minor), 0)
              FROM refunds r
-             JOIN sales s ON r.sale_id = s.id
-             WHERE s.user_id = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
+             WHERE r.processed_by = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
             params![shift.user_id, shift.opened_at, now],
             |row| row.get(0),
         )?;
 
         // Cash refunds take cash OUT of the drawer, so the expected cash must
-        // subtract them — otherwise a refund makes the drawer look OVER by
+        // subtract them -- otherwise a refund makes the drawer look OVER by
         // the refunded amount (a false positive that masks a real shortage).
+        //
+        // Attribution follows `processed_by` exactly as `total_refunds` above.
+        // The CASH test still reads the ORIGINAL sale's tender, and that is the
+        // honest limit of this calculation: `refunds` has no tender column and
+        // nothing anywhere records how a refund was paid out, so there is no
+        // "the refund's own tender" to read. Re-typing a cash sale's refund as
+        // a card payout would need a column this schema does not have; do not
+        // pretend otherwise here (review 8.4, second half).
         let cash_refunds: i64 = tx.query_row(
             "SELECT COALESCE(SUM(r.total_minor), 0)
              FROM refunds r
              JOIN sales s ON r.sale_id = s.id
-             WHERE s.user_id = ?1 AND s.payment_method = 'cash'
+             WHERE r.processed_by = ?1 AND s.payment_method = 'cash'
                AND r.created_at >= ?2 AND r.created_at <= ?3",
             params![shift.user_id, shift.opened_at, now],
             |row| row.get(0),
