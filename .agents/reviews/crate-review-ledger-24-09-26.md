@@ -6521,3 +6521,80 @@ lane's, present at HEAD, and is none of my change.
 
 **Tally:** 83 findings fixed (13 HIGH), 23 leads disproved, 29 clean censuses. One new lead recorded:
 `ProductCreated` should carry `product_type`.
+
+---
+
+## Pass 103 — the variant-blind assertion on `workspaces_lifecycle.rs:210` (MSL-82)
+
+Pass 102 closed naming this as the last uncovered `Conflict` branch. It was not uncovered — it was covered
+by an assertion that **cannot tell the difference**, and the census that called it uncovered was itself
+the same pattern-derived absence the ledger has now recorded five times.
+
+### The census was wrong, and the way it was wrong is the lesson
+
+I grepped `Conflict` in `workspaces_tests.rs` and found **zero** matches, so I wrote "zero assertions" into my
+working note. The branch *is* exercised — by `create_workspace_instance_duplicate_fails` at `:295`, which
+predates this pass:
+
+```
+let result = store.create_workspace_instance("default-restaurant-pos", ...);
+assert!(result.is_err());
+```
+
+`assert!(result.is_err())` passes for *any* error. The referent of my search was the **error variant**, but I
+searched for the **token** `Conflict` — and the test never spells it. A pattern-derived absence is a
+hypothesis, not a measurement; the referent set has to be enumerated and re-run, exactly as recorded at
+MSL-59/63/64 and four more times since. The honest statement was never "uncovered", it was "pinned by an
+assertion blind to the distinction the branch exists to create".
+
+### What the branch actually does, proven rather than assumed
+
+`create_workspace_instance_with_purpose` probes `COUNT(*) > 0 FROM workspace_instances WHERE id = ?1`, and
+returns `Conflict { entity: "workspace instance", field: "id" }` when true, before a bare `INSERT`.
+`workspace_instances.id` is `TEXT PRIMARY KEY` (`migrations/20260813_init.sql:984`), so the INSERT is
+independently protected by a real uniqueness constraint. That makes the two failure modes distinguishable:
+
+- the pre-check fires → the documented `Conflict`;
+- a race that slips past the pre-check → `UNIQUE constraint failed`, surfacing as a raw
+  `Db(SqliteFailure(...))`.
+
+I falsified by disabling the pre-check (`if false && exists`) and re-running the strengthened test:
+
+```
+expected Conflict on the id, got Db(SqliteFailure(Error { code: ConstraintViolation,
+  extended_code: 1555 }, Some("UNIQUE constraint failed: workspace_instances.id")))
+```
+
+So the pre-check is **load-bearing** — it is the only thing converting a storage fault into the error the
+function's own doc at `:99` promises. The old `is_err()` assertion would have passed just as happily with the
+pre-check deleted. This is MSL-79's shape (`void_sale`'s CAS was correct but unpinned) with one difference:
+there the assertion was missing, here it was present and vacuous. **A test that cannot fail for the reason the
+code exists is worse than no test, because it reports as coverage.**
+
+### Fix
+
+One hunk in `crates/kasirmu-core/src/db/workspaces_tests.rs` — the weak assertion becomes a match on the
+variant, asserting `entity == "workspace instance"` and `field == "id"`, with a `panic!` naming the actual
+error. No production change was needed: the branch was correct, only unpinned. Confirmed by restoring the file
+to HEAD (`git status` clean for `workspaces_lifecycle.rs`).
+
+**Verified:** the strengthened test passes; the workspaces family **78 passed, 0 failed**; `kasirmu-core` lib
+**3395 passed, 0 failed**; `rustfmt` clean on my file. Committed as `1c4f9d5ff`, verified by hash to contain
+exactly that one file. The falsification edit was reverted and `workspaces_lifecycle.rs` is byte-identical to
+HEAD.
+
+**Foreign hunks refused again — two in the same file.** `workspaces_tests.rs` carried a second lane's
+`cargo fmt` reflow (a `use` statement's stray `\n    ;` and a wrapped `assert!`), which I reverted by hand so
+the commit is exactly my one hunk.
+
+**A clippy note worth recording, not fixing here:** `cargo clippy -p kasirmu-core --all-targets -- -D
+warnings` currently fails on **three pre-existing** lints in files *not* mine — `product_bundles_tests.rs:334`
+(`empty line after doc comment`), `gift_cards_tests.rs:971` and `workspaces_instances_tests.rs:60` (`match` for
+single-pattern destructuring). The first two are **clean at HEAD**, so this is repo-wide debt older than this
+pass, not a regression I introduced; the third is another lane's dirty file. My own files are lint-clean under
+`--lib`. Recorded because `clippy -D warnings` is a stated gate that no live workflow runs, so it will stay
+red until someone owns it.
+
+**Tally:** 84 findings fixed (13 HIGH, 71 others), 24 leads disproved, 29 clean censuses. The branch census
+from pass 101 is now closed: every production `Conflict` return in `kasirmu-core` has a variant-pinning
+assertion except the two recorded as belonging to other lanes (`kds_orders.rs`, MSL-80's withdrawal).
