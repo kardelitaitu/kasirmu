@@ -5375,6 +5375,62 @@ This was already on the ledger as an open LOW; it is now closed.
 
 **Tally:** 66 findings fixed (11 HIGH), 22 leads disproved. Two are preventive pins.
 
+## Pass 82 — MSL-60: the carried-forward lead, proven, and its home found
+
+Ran down the lead MSL-59 explicitly carried: **`export`'s custom report compared dates in raw UTC while
+`db/reports/` applies the store-local timezone (REP-03).**
+
+**First, I checked whether someone already owns this.** Searching the tree for the timezone contract
+surfaced another lane's review doc, and its checklist shows **C6 DONE** (`7559a3f6b`, "resolve report
+timezone via the IANA zone resolver") and **C6b DONE** (`1fea7d78`, `validate_provision_args` validates the
+timezone it writes). That is the area I was about to work in, so the next question was not "is this a bug"
+but "is this bug outside their fence". `git show --stat 7559a3f6b` touches exactly four files —
+`reports/datetime.rs`, `reports/datetime_tests.rs`, `reports_tests.rs`, `timezone.rs` — and neither C6's
+fence list nor C6b mentions `export/mod.rs` or `build_custom_report`. The export filter sits **outside** a
+closed item, on the same defect class, so it is mine to fix and not a duplicate.
+
+**Measured, on an `Asia/Jakarta` (UTC+7) store**, with a sale at `2026-07-31T20:00:00.000Z` — which is
+03:00 on 1 August locally:
+
+```text
+tz_modifier = "+07:00"
+export  July = 1   August = 0      <- the bug
+reports July = 0   August = 1
+```
+
+Same store, same row, opposite days. A user exporting "July" got a July that contains an August sale, and
+the Analytics screen sitting beside it said August.
+
+**A probe that lied to me first, and why.** My initial run showed both surfaces agreeing on July — which
+would have killed the finding. It was wrong because `fresh_db()` seeds **no `locations` row at all**, so my
+`UPDATE locations SET timezone = ...` matched nothing and `tz_modifier()` fell back to `+00:00` for both
+paths. The probe needed `seed_provisioned_baseline`. Worth recording: the *fallback* is what made the bug
+invisible, and a fixture without a primary location is exactly the shape that hides it.
+
+**The fix adopts the reports idiom rather than a third one.** `DATE(col, tz) BETWEEN ?1 AND ?2` —
+byte-identical in shape to the 37 predicates in `db/reports/`. It collapses the two-branch
+`>= start` / `< day+1` construction into one predicate and fixes both defects at once: the column is
+converted to the store day *before* comparison, so the sub-second shape stops mattering (MSL-57's
+class) and the day means the operator's day. An absent bound now widens to an open end
+(`0000-01-01`/`9999-12-31`) instead of narrowing the range. `tz` comes from the single REP-03 resolver and
+is embedded only after that validation, so it can inject nothing beyond a date modifier.
+
+**The test asserts two things on purpose.** The local day is right, *and* the export filter agrees with
+`payment_method_breakdown` for the same store and day. The second half is not redundant: a future change
+could fix this filter into a third idiom that is locally correct and still disagrees with the reports a
+user reads beside it. Falsified by dropping the `DATE(col, tz)` conversion — the test then fails
+`left: (0, 0), right: (0, 1)`, the raw `BETWEEN` matching neither month.
+
+**Verified:** 142 `export` (was 141), 1982 `db::`, `clippy -D warnings` clean, both files
+`rustfmt`-clean. Commit `261387b20` (verified by hash).
+
+**Tally:** 67 findings fixed (11 HIGH), 22 leads disproved. Two are preventive pins.
+
+**Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
+analytics UI's deliberate UTC anchoring (`analytics-data.ts`) and the tax path's separate resolver — belong
+to C6/C6b's owners and are recorded there. This pass claims only the export custom-report filter.
+
+
 **Leads carried forward, not actioned:** `export`'s date filter compares in raw UTC while `db/reports/`
 applies a store-local tz modifier (`REP-03`). That is a pre-existing semantic difference my fix did not
 introduce and did not silently change — the two surfaces can disagree about which day a late-evening sale
