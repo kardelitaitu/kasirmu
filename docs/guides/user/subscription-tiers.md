@@ -206,9 +206,18 @@ existed. What is enforced now, all through `QuotaDimension`
 
 A breach returns `QuotaError::*Limit`, surfaced as `SubscriptionLimitExceeded`, which
 the UI maps to an upgrade CTA; unlimited tiers are `None` and pass. Each published number
-is pinned by a `*_matches_published_contract` test, so a row above that disagrees with
-code fails `cargo test` — that is the mechanism that replaced "the pricing-page invariant
-test pins it".
+is pinned by a test asserting the literal tier-by-tier values, so a row above that
+disagrees with code fails `cargo test` — that is the mechanism that replaced "the
+pricing-page invariant test pins it".
+
+Two naming conventions carry that pin, and a new cap should follow one of them rather
+than go unpublished: `tier_max_products_matches_published_contract`
+(`db/products_tests.rs`) and `tier_max_kds_screens_matches_published_contract`
+(`db/workspaces_tests.rs`) name the contract in the test name, while locations, POS
+registers, warehouses and staff are pinned by the `tier_max_*` tests in
+`subscription_tests.rs`. Both assert the same thing — the literal `Some(n)` per tier —
+so choose either; what matters is that the number is asserted somewhere, because this
+page cites code rather than duplicating the table.
 
 KDS specifically: Free/Plus `Some(0)`, Pro `Some(2)`, Premium/Enterprise `None`, and a
 third Pro screen is rejected with its own actionable message rather than the register or
