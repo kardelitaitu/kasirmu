@@ -328,9 +328,10 @@
   color: var(--color-fg);
   text-align: center;
   letter-spacing: var(--tracking-wide);
-  transition:
-    border-color var(--duration-150) var(--ease-out),
-    outline var(--duration-150) var(--ease-out);
+  transition: border-color var(--duration-150) var(--ease-out);
+  /* outline deliberately NOT transitioned — animating it causes the ring to
+     flash through the browser default (white/transparent) before reaching
+     --color-accent. The ring appears instantly at the accent color instead. */
 }
 
 /* The username text field keeps its focus ring. The ring-free decision on this

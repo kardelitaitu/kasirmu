@@ -93,16 +93,23 @@ function renderScreen() {
 }
 
 describe('StaffLoginScreen', () => {
-  it('focuses username input when the screen background is clicked', async () => {
+  it('does NOT refocus the input when clicking outside the card (screen background)', async () => {
+    // Focus is scoped to the card: clicks on the background gradient do not
+    // steal focus back to the input, so a user can scroll or tap elsewhere
+    // without triggering unwanted re-focus.
     const user = userEvent.setup();
     renderScreen();
 
-    const input = screen.getByRole('textbox', { name: /username/i });
+    // blur any auto-focused element first so the starting state is known
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 
     const screenEl = document.querySelector('.staff-login-screen')!;
     await user.click(screenEl);
 
-    expect(document.activeElement).toBe(input);
+    // The screen root no longer carries the click handler — focus stays wherever
+    // the user left it (body or whichever element they last interacted with).
+    const input = screen.getByRole('textbox', { name: /username/i });
+    expect(document.activeElement).not.toBe(input);
   });
 
   it('focuses username input when the card area is clicked', async () => {

@@ -486,18 +486,21 @@ export default function StaffLoginScreen() {
   );
 
   return (
-    /* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- focus convenience, keyboard covered below */
     <div
       className="staff-login-screen"
       data-testid="staff-login-screen"
-      onClick={handleScreenClick}
-      onKeyDown={handleScreenKeyDown}
-      tabIndex={-1}
     >
-      <div className={`staff-login-card ${step === 'pin' ? 'staff-login-card--pin' : ''}`} ref={(el) => {
-        (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = (el?.parentElement ?? null) as HTMLDivElement | null;
-      }}>
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- focus convenience scoped to card only; keyboard covered below */}
+      <div
+        className={`staff-login-card ${step === 'pin' ? 'staff-login-card--pin' : ''}`}
+        onClick={handleScreenClick}
+        onKeyDown={handleScreenKeyDown}
+        tabIndex={-1}
+        ref={(el) => {
+          (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+          (keyboardAvoidRef as React.MutableRefObject<HTMLDivElement | null>).current = (el?.parentElement ?? null) as HTMLDivElement | null;
+        }}
+      >
         {step === 'pin' && (
           <button
             type="button"
