@@ -259,6 +259,116 @@ fn update_kds_status_rejects_regression() {
     );
 }
 
+/// C18/C19: the status transition is a CHECK-THEN-WRITE and must be atomic.
+///
+/// `update_kds_status` reads the current status, validates the transition
+/// against it, then issues `UPDATE ... WHERE id = ?` -- unconditional on the
+/// status it just validated. A competing transition landing between the read
+/// and the write is therefore overwritten and the call reports success: a lost
+/// update on the column that drives the kitchen board and the prep timer.
+///
+/// Same shape as the already-fixed `update_po_status`
+/// (`purchase_orders.rs:354-365`), and fixed the same way. Without the
+/// compare-and-set this test fails because A overwrites B's transition.
+#[test]
+fn update_kds_status_race_cannot_overwrite_a_competing_transition() {
+    /// Set by A's busy handler -- i.e. A has passed its pre-read and is now
+    /// blocked on the write lock B holds.
+    static A_IS_BLOCKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    fn note_blocked(_attempts: i32) -> bool {
+        A_IS_BLOCKED.store(true, std::sync::atomic::Ordering::SeqCst);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        true
+    }
+
+    let dir = std::env::temp_dir().join(format!("oz_kds_race_{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let db_path = dir.join("kasir.db");
+    let order_id = {
+        let file_conn = {
+            let mut file_conn = Connection::open(&db_path).unwrap();
+            {
+                let template = fresh();
+                let backup = rusqlite::backup::Backup::new(&template, &mut file_conn).unwrap();
+                backup
+                    .run_to_completion(10, std::time::Duration::from_millis(0), None)
+                    .unwrap();
+            }
+            file_conn
+                .pragma_update(None, "journal_mode", "WAL")
+                .unwrap();
+            file_conn
+                .pragma_update(None, "busy_timeout", "5000")
+                .unwrap();
+            file_conn
+        };
+        let s = store(&file_conn);
+        let (order, _sale) = seed_completed_sale_to_kds(&s);
+        // Move it to `preparing`, which is cancellable, so both transitions
+        // are individually legal and only the interleaving decides the loser.
+        s.update_kds_status(&order.id, "preparing").unwrap();
+        order.id
+    };
+
+    A_IS_BLOCKED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+    let rival = {
+        let db_path = db_path.clone();
+        let order_id = order_id.clone();
+        std::thread::spawn(move || {
+            let conn_b = Connection::open(&db_path).unwrap();
+            conn_b.pragma_update(None, "busy_timeout", "5000").unwrap();
+            let tx = conn_b.unchecked_transaction().unwrap();
+            let rows = tx
+                .execute(
+                    "UPDATE kds_orders SET status='ready' WHERE id=?1",
+                    rusqlite::params![order_id],
+                )
+                .unwrap();
+            assert_eq!(rows, 1, "the rival transition must touch the order");
+            locked_tx.send(()).unwrap();
+            // Hold the write lock until A is demonstrably blocked on it.
+            let mut waited = 0u64;
+            while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) && waited < 5000 {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                waited += 10;
+            }
+            assert!(
+                A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst),
+                "A never reached its UPDATE: the interleaving was not established"
+            );
+            tx.commit().unwrap();
+        })
+    };
+
+    locked_rx.recv().unwrap();
+
+    // A: pre-read `preparing` -> wants `cancelled`. Its UPDATE blocks until B
+    // commits `ready`, then must REFUSE rather than overwrite.
+    let conn_a = Connection::open(&db_path).unwrap();
+    conn_a.pragma_update(None, "busy_timeout", "0").unwrap();
+    conn_a.busy_handler(Some(note_blocked)).unwrap();
+    let result = store(&conn_a).update_kds_status(&order_id, "cancelled");
+    rival.join().unwrap();
+
+    let final_status: String = conn_a
+        .query_row(
+            "SELECT status FROM kds_orders WHERE id=?1",
+            rusqlite::params![order_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        final_status, "ready",
+        "B's committed transition must survive; A must not overwrite it"
+    );
+    assert!(
+        result.is_err(),
+        "A's transition no longer matched and must be refused, got: {result:?}"
+    );
+}
+
 /// RED: served is terminal — a served order must not go back to the queue.
 #[test]
 fn update_kds_status_served_is_terminal() {

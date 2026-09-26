@@ -14,6 +14,7 @@ use crate::db::Store;
 use crate::error::CoreError;
 use crate::{CreateKdsOrderInput, KdsOrder, KdsStatus};
 use rusqlite::params;
+use rusqlite::{Transaction, TransactionBehavior};
 
 impl Store<'_> {
     /// Create a KDS order from input, auto-incrementing the display number per day.
@@ -461,18 +462,41 @@ impl Store<'_> {
             _ => "",
         };
 
-        if timestamp_col.is_empty() {
-            self.conn.execute(
-                "UPDATE kds_orders SET status = ?1, prep_time_seconds = ?2 WHERE id = ?3",
-                params![new_status, prep_time, id],
-            )?;
+        // ── Compare-and-set on the status this transition validated against ──
+        // `current` was read before the write lock was taken, so a competing
+        // transition can land in between. An unconditional `WHERE id = ?` then
+        // overwrites it and reports success -- a lost update on the column that
+        // drives the kitchen board and the prep timer. The predicate makes the
+        // write conditional on the status still being the one the state machine
+        // approved, so a rival that got there first turns this into a refusal.
+        // Same shape and same reason as `update_po_status`
+        // (`db/purchase_orders.rs:354-365`).
+        let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
+        let rows = if timestamp_col.is_empty() {
+            tx.execute(
+                "UPDATE kds_orders SET status = ?1, prep_time_seconds = ?2 \
+                 WHERE id = ?3 AND status = ?4",
+                params![new_status, prep_time, id, current.status],
+            )?
         } else {
             let sql = format!(
-                "UPDATE kds_orders SET status = ?1, {timestamp_col} = ?2, prep_time_seconds = ?3 WHERE id = ?4"
+                "UPDATE kds_orders SET status = ?1, {timestamp_col} = ?2, prep_time_seconds = ?3 \
+                 WHERE id = ?4 AND status = ?5"
             );
-            self.conn
-                .execute(&sql, params![new_status, now, prep_time, id])?;
+            tx.execute(
+                &sql,
+                params![new_status, now, prep_time, id, current.status],
+            )?
+        };
+
+        if rows == 0 {
+            tx.rollback()?;
+            return Err(CoreError::Conflict {
+                entity: "kds_order",
+                field: "status",
+            });
         }
+        tx.commit()?;
 
         self.get_kds_order(id)?.ok_or_else(|| CoreError::NotFound {
             entity: "kds_order",
