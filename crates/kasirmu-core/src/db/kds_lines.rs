@@ -63,17 +63,22 @@ impl Store<'_> {
             id: sale_id.to_owned(),
         })?;
 
-        // Keep only lines whose product is restaurant or both.
-        let kds_lines: Vec<_> = sale
-            .lines
-            .iter()
-            .filter(|l| {
-                self.product_type_by_sku(&l.sku)
-                    .ok()
-                    .flatten()
-                    .is_some_and(|pt| pt == "restaurant" || pt == "both")
-            })
-            .collect();
+        // Keep only lines whose product is restaurant or both. The eligibility
+        // read has two different absences and they must not be conflated:
+        // `Ok(None)` = the SKU has no product row (a legitimate "not a kitchen
+        // item" — skipped), `Err` = the read itself failed. Collapsing them
+        // with `.ok().flatten()` made a PAID line ineligible on a transient
+        // error, so it vanished from every ticket with no ticket and no error.
+        // Only the error may abort — and it now does.
+        let mut kds_lines: Vec<&crate::SaleLine> = Vec::new();
+        for line in &sale.lines {
+            match self.product_type_by_sku(&line.sku)? {
+                Some(product_type) if product_type == "restaurant" || product_type == "both" => {
+                    kds_lines.push(line);
+                }
+                _ => {}
+            }
+        }
 
         if kds_lines.is_empty() {
             return Ok(vec![]);

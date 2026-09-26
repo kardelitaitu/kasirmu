@@ -3922,3 +3922,63 @@ fn fanout_refuses_a_corrupt_sale_line_modifiers_blob() {
         .unwrap();
     assert_eq!(tickets, 0, "a refused fanout must not leave a partial ticket");
 }
+
+// ── The eligibility lookup must not conflate "no product" with "unreadable" ──
+//
+// `product_type_by_sku` returns `Ok(None)` when the SKU simply has no product
+// row, and `Err` when the read itself fails. The fan-out's filter collapsed
+// both with `.ok().flatten()`, so a transient DB error made a PAID line
+// ineligible and it silently vanished from the kitchen ticket — no ticket, no
+// error, nothing for the kitchen to see. `Ok(None)` must still skip the line;
+// only an error may abort.
+
+/// The high-severity direction: an unreadable eligibility read must abort.
+#[test]
+fn fanout_refuses_when_the_eligibility_lookup_errors() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Make the eligibility read itself fail: the `products` table the lookup
+    // queries is gone (a corrupt/mismatched schema, the only way this SELECT
+    // errors). The line is restaurant-eligible, so the pre-fix code returned
+    // `Ok(vec![])` — a paid dish silently absent from every ticket.
+    conn.execute_batch("ALTER TABLE products RENAME TO products_hidden;")
+        .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "an unreadable product_type read must abort the fan-out, not drop the line, got: {result:?}"
+    );
+}
+
+/// The distinction the fix must preserve: a SKU with NO product row is a
+/// legitimate "not a kitchen item" and is skipped, not an error.
+#[test]
+fn fanout_skips_a_line_whose_product_row_is_absent() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // `sale_lines.sku` carries no FK to `products` (20260813_init.sql:583), so
+    // a sale line may legitimately reference a SKU with no product row.
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("GHOST"), 1, price(500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s
+        .complete_sale_to_kds(&sale.id, None)
+        .expect("an absent product row is a skip, not an error");
+    assert!(
+        orders.is_empty(),
+        "no product row means no kitchen ticket, got: {orders:?}"
+    );
+}
