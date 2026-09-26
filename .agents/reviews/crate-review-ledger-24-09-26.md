@@ -5939,6 +5939,54 @@ correction above, which is the transferable part.
 back "already handled" (MSL-63 visibility, MSL-69 quotas, MSL-70 gates), which is what a census should be
 able to produce — and each time the useful residue was a method correction, not a patch.
 
+## Pass 93 — MSL-71: inverted the sweep — guards that over-report rather than under-guard
+
+Last pass ended noting that sweeps for **absent** guards were returning clean while method corrections kept
+landing. So I inverted the premise: instead of "is a check missing", ask "does a check that exists say the
+right thing". Two axes, one finding.
+
+**Axis A — do Validation errors name the field they guard?** 373 production `field: "..."` sites across ~150
+distinct names. I cross-checked every name against the schema columns and then against each site's message
+text. Two sites looked wrong on the heuristic (`sales_lifecycle.rs:255` reports `field: "resolutions"` for a
+message about a SKU; `sales_tax.rs:139` reports `field: "rate_bps"` for a message naming a SKU) and **both
+are correct on reading** — the field names the guarded input, and the message carries the SKU as useful
+context. The heuristic was catching prose, not defects. Axis clean; 75 field names with no matching column
+proved nothing, because many legitimately name request-payload fields or composite names (`payments` is a
+line array, `dataset` an export parameter).
+
+**Axis B — do documented numbers match the code?** This is a positive check, which is why it was worth
+running after three consecutive absence-based false positives. The subscription caps are documented as a
+**published contract** (`docs/guides/user/subscription-tiers.md`, "single source of truth for tier pricing,
+quotas and feature gates"), so a doc/code divergence is customer-facing.
+
+**The numbers all match — I verified every tier.** `max_locations` Premium `Some(5)` against the doc's 5;
+`max_pos_instances` 1/2/5/None; `max_warehouses` 1/2/3/None; `max_staff_users` 1/5/20/50/None;
+`max_products` 200/500/1_000/10_000/None; `max_kds_screens` 0/2/None. Every one agrees with both the page
+and its own doc comment.
+
+**MSL-71 (LOW, fixed): the page named one pinning convention as if it covered all six caps.** It said
+*"Each published number is pinned by a `*_matches_published_contract` test"*. Exactly **two** tests carry
+that name (`tier_max_products_matches_published_contract` at `db/products_tests.rs:2673`,
+`tier_max_kds_screens_matches_published_contract` at `db/workspaces_tests.rs:1772`); the other four caps are
+pinned by the `tier_max_*` tests in `subscription_tests.rs` (14 number-assertion sites), which assert the
+same literal values under different names.
+
+So the substance was true and the mechanism description was not — and the failure mode it invites is
+specific: a maintainer adding a seventh cap, grepping for `matches_published_contract` to see what to
+imitate, would find two of six and could reasonably conclude their cap needs no pin. Corrected to describe
+both conventions, with the file and line of each named test, and the reason it matters (this page cites code
+rather than duplicating the table).
+
+**Verified:** the two cited test names were grepped at their exact paths before being written down, and the
+14 `subscription_tests.rs` assertion sites counted. No code changed, so no test run was needed; the round
+touched one Markdown file.
+
+**Tally:** 76 findings fixed (11 HIGH), 23 leads disproved, 26 clean censuses. Worth recording that
+**changing the question from "what is missing" to "what is wrong" produced a finding after three
+absence-based passes came back empty** — the same inversion that produced MSL-59 (a stale mirror note) and
+MSL-63 (a doc under-claiming its own design) in earlier arcs.
+
+
 
 
 
