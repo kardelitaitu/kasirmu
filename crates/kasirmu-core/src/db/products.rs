@@ -13,10 +13,10 @@
 //! stays i64 minor units.
 
 /*
-last audited 25-07-26 by RSA-Agent (kasirmu-core slice B2: products deep read)
+last audited 26-09-26 by DSH (COR-14 CLOSED)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: money/stock paths sound (update_product has REAL version CAS -> Conflict; create_product idempotent-with-payload-compare for sync replay, ON CONFLICT(tenant_id,sku) backstop; adjust_stock_batch precheck-then-execute with checked_add + typed InsufficientStockAtLocation; allow_negative lookup fails safe to deny); COR-12 CLOSED 26-09-26 (update_product now applies the same 255-char ceiling as the create path, and the cloud `pg::create_product` branch of the same route applies it too — pinned by `update_product_refuses_the_name_length_the_create_path_already_did`); COR-14 INFO: variant mapper silently drops invalid stored barcode via .ok(); deprecated adjust_stock_with_reason self-documents its ADR-19 §3.4 stale-source foot-gun (tracked, no new finding)
-next: COR-14 (log the variant barcode parse failure) | perf: batch SKU lookups; upsert_stock_summary_in_tx canonical per ADR-19 §3
+findings: money/stock paths sound (update_product has REAL version CAS -> Conflict; create_product idempotent-with-payload-compare for sync replay, ON CONFLICT(tenant_id,sku) backstop; adjust_stock_batch precheck-then-execute with checked_add + typed InsufficientStockAtLocation; allow_negative lookup fails safe to deny); COR-12 CLOSED 26-09-26 (update_product now applies the same 255-char ceiling as the create path, and the cloud `pg::create_product` branch of the same route applies it too — pinned by `update_product_refuses_the_name_length_the_create_path_already_did`); COR-14 CLOSED 26-09-26 — `row_to_product_variant` no longer discards the reason for an unrepresentable stored value. Two arms, not one: the barcode (`.ok()` swallowing `Barcode::new`'s rejection) and the ADJACENT currency arm at the same site, which the original filing did not mention — an unparseable `product_variants.currency` also became a silent `None`, rendering the variant as having no price. Both now `warn!` naming the SKU while preserving the existing `None` contract (no caller changes). Both columns are unconstrained TEXT with no CHECK, and the write paths validate only in Rust, so an import, a sync payload or the per-tenant-uniqueness migration can carry an unusable value in; the loss is now visible instead of vanishing. Deprecated adjust_stock_with_reason self-documents its ADR-19 §3.4 stale-source foot-gun (tracked, no new finding).
+next: none for COR-14. | perf: batch SKU lookups; upsert_stock_summary_in_tx canonical per ADR-19 §3
 */
 
 use rusqlite::params;
@@ -392,24 +392,62 @@ impl Store<'_> {
         let price_minor: Option<i64> = row.get("price_minor")?;
         let currency_str: Option<String> = row.get("currency")?;
         let price = match (price_minor, currency_str) {
-            (Some(minor), Some(cur)) => {
-                let c: Result<Currency, _> = cur.parse();
-                c.ok().map(|currency| Money {
+            (Some(minor), Some(cur)) => match cur.parse::<Currency>() {
+                Ok(currency) => Some(Money {
                     minor_units: minor,
                     currency,
-                })
-            }
+                }),
+                // COR-14 (currency arm, same shape as the barcode one below):
+                // the column is unconstrained TEXT, so a row written by an
+                // import or carried through a migration can hold a code this
+                // build does not know. Dropping it silently rendered the
+                // variant as "no price" with no signal that a value was lost.
+                Err(e) => {
+                    tracing::warn!(
+                        sku = row.get::<_, String>("sku").as_deref().unwrap_or("?"),
+                        currency = %cur,
+                        error = %e,
+                        "product_variants.currency is not a valid currency code; \
+                         the variant will report no price"
+                    );
+                    None
+                }
+            },
             _ => None,
         };
 
+        // COR-14: `.ok()` here discarded the reason. `Barcode::new` rejects only
+        // empty/whitespace-only input, so a `None` in the output means the STORED
+        // column held an unusable value — data that exists and is being hidden.
+        // `product_variants.barcode` is unconstrained `TEXT` (only the Rust
+        // write paths validate), so sync payloads, imports and the
+        // per-tenant-uniqueness migration can all carry one in. Warn rather than
+        // vanish: the caller sees the same `None`, but the loss is now visible.
         let barcode_raw: Option<String> = row.get("barcode")?;
+        let sku: String = row.get("sku")?;
+        let barcode = match barcode_raw {
+            Some(raw) => match foundation::Barcode::new(&raw) {
+                Ok(b) => Some(b),
+                Err(e) => {
+                    tracing::warn!(
+                        sku = %sku,
+                        error = %e.message,
+                        "product_variants.barcode holds a value this build cannot \
+                         represent; the variant will report no barcode"
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
+
         Ok(ProductVariant {
             id: row.get("id")?,
             parent_sku: row.get("parent_sku")?,
             name: row.get("name")?,
-            sku: row.get("sku")?,
+            sku,
             price,
-            barcode: barcode_raw.and_then(|s| foundation::Barcode::new(&s).ok()),
+            barcode,
             sort_order: row.get("sort_order")?,
             is_active: row.get::<_, i64>("is_active")? != 0,
             created_at: row.get("created_at")?,

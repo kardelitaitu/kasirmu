@@ -792,6 +792,119 @@ fn create_and_list_product_variants() {
     assert!(variants[0].is_active);
 }
 
+/// COR-14: a stored variant barcode that this build cannot represent must not
+/// vanish without trace.
+///
+/// `product_variants.barcode` is unconstrained `TEXT` — only the Rust write
+/// paths validate, and those store a `Barcode`'s trimmed string, so an empty
+/// value can only arrive through an import, a sync payload, or the
+/// per-tenant-uniqueness migration that copies rows. `Barcode::new` rejects
+/// exactly that input, and the mapper's `.ok()` turned the rejection into a
+/// silent `None` — the caller sees "no barcode" and cannot tell it apart from a
+/// genuinely absent one, while the unusable value stays in the column.
+///
+/// The contract is unchanged (`None` for an unrepresentable value, so no caller
+/// breaks); what is added is a `warn!` naming the SKU. This test pins the
+/// contract half, since a log line is not directly assertable here.
+#[test]
+fn an_unrepresentable_stored_barcode_still_reads_as_none() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "PARENT-001".into(),
+        name: "Empty barcode".into(),
+        sku: "PARENT-001-NOBAR".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+    s.create_product_variant(&v).unwrap();
+
+    // Simulate a writer that bypassed validation (import / migration / sync).
+    conn.execute(
+        "UPDATE product_variants SET barcode = '   ' WHERE sku = ?1",
+        ["PARENT-001-NOBAR"],
+    )
+    .unwrap();
+
+    let read = s
+        .list_product_variants("PARENT-001")
+        .unwrap()
+        .into_iter()
+        .find(|x| x.sku == "PARENT-001-NOBAR")
+        .expect("the variant must still be listed");
+    assert!(
+        read.barcode.is_none(),
+        "an unrepresentable stored value reads as None, not as garbage"
+    );
+    // The value is still in the column — reading must not have destroyed it.
+    let still_stored: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM product_variants WHERE sku = ?1",
+            ["PARENT-001-NOBAR"],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        still_stored.as_deref(),
+        Some("   "),
+        "a read must never mutate the stored value it cannot represent"
+    );
+}
+
+/// The currency column has the same shape and the same fix (COR-14, second arm):
+/// a malformed code yields `None` on the price, never a fabricated zero.
+///
+/// The threshold is the SHAPE, not ISO-4217 membership: `Currency::from_str`
+/// accepts any three ASCII letters (`foundation/src/money.rs:119-123`), so
+/// `"ZZZ"` is a *valid* `Currency` and this test would be wrong to reject it —
+/// my first draft did exactly that and failed against correct code. Only a
+/// wrong length or a non-alphabetic byte is rejected. Recorded because the
+/// distinction matters: an unknown-but-well-formed code is representable and is
+/// deliberately preserved, not dropped.
+#[test]
+fn a_malformed_stored_currency_reads_as_no_price() {
+    let conn = fresh();
+    seed_product_variant_parent(&conn);
+    let s = store(&conn);
+
+    let v = ProductVariant {
+        id: uuid::Uuid::now_v7().to_string(),
+        parent_sku: "PARENT-001".into(),
+        name: "Odd currency".into(),
+        sku: "PARENT-001-ODD".into(),
+        price: Some(price(800)),
+        barcode: None,
+        sort_order: 1,
+        is_active: true,
+        created_at: "2025-01-01T00:00:00.000Z".into(),
+        updated_at: "2025-01-01T00:00:00.000Z".into(),
+    };
+    s.create_product_variant(&v).unwrap();
+    // Wrong shape: not three letters. (`'ZZZ'` would be accepted — see above.)
+    conn.execute(
+        "UPDATE product_variants SET currency = 'ZZ' WHERE sku = ?1",
+        ["PARENT-001-ODD"],
+    )
+    .unwrap();
+
+    let read = s
+        .list_product_variants("PARENT-001")
+        .unwrap()
+        .into_iter()
+        .find(|x| x.sku == "PARENT-001-ODD")
+        .expect("the variant must still be listed");
+    assert!(
+        read.price.is_none(),
+        "an unknown currency must yield no price, never a price in a wrong currency"
+    );
+}
 /// MSL-48 sibling: `product_variants.parent_sku` is the SAME FK shape
 /// (`REFERENCES products(sku)`), written from an untyped `String`, and reachable
 /// from the variant editor where the parent SKU is free text. A mistyped parent
