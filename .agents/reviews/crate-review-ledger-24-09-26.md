@@ -6924,3 +6924,83 @@ on both files. Committed as `4584e125c`, verified by hash to contain exactly the
 **Tally:** 88 findings fixed (14 HIGH, 74 others), 25 leads disproved, 29 clean censuses. This is the third
 `next:` item closed from the enumerated backlog (SEC-1, SEC-5, COR-2), and the second one in a row where the
 filing's framing was accurate but the mechanism was worse than the summary implied.
+
+---
+
+## Pass 108 — COR-14: the second arm at the same site, and a test whose premise was false (MSL-87)
+
+Filed as *"log the variant barcode parse failure"*, an INFO. Two things came out of it: a real second defect
+the filing did not mention, and a mistake of my own that is worth more than the fix.
+
+### The filing's arm
+
+`row_to_product_variant` ended with:
+
+```
+barcode: barcode_raw.and_then(|s| foundation::Barcode::new(&s).ok()),
+```
+
+`Barcode::new` rejects **only** empty/whitespace-only input, so a `None` in the output cannot mean "the field
+was empty" in the ordinary sense — it means the *stored column held a value this build cannot represent*, and
+`.ok()` threw away the reason. The caller sees "no barcode" and cannot distinguish it from a genuinely absent
+one, while the unusable bytes stay in the column.
+
+The column makes that reachable: `product_variants.barcode` is bare `TEXT`
+(`migrations/20260813_init.sql:432`) with **no CHECK constraint**, and only the Rust write paths validate. An
+import, a sync payload, or `20260831_per_tenant_unique_rebuild.sql:176` — a **migration that copies these rows**
+— can carry an empty value in. So this is not defensive coding against an impossible state; it is a state the
+schema permits.
+
+### The arm the filing missed — same line, one block up
+
+Immediately above it:
+
+```
+let c: Result<Currency, _> = cur.parse();
+c.ok().map(|currency| Money { minor_units: minor, currency })
+```
+
+Identical shape, identical silence, and `product_variants.currency` is equally unconstrained. An unparseable
+currency rendered the variant as **having no price at all** — a worse outcome than a missing barcode, because
+a price is what the till charges. The stamp named one arm; there were two, and the reason is structural: a
+`.ok()` chain is easy to notice in isolation and easy to miss in a pair, because reading the first one
+satisfies the eye that the pattern has been seen.
+
+**Fix.** Both arms now `warn!` with the SKU and the reason, while preserving the existing `None` contract — no
+caller changes, no API change. The loss becomes visible; the value is still never fabricated.
+
+### My own error: a test whose premise was false
+
+I wrote `an_unknown_stored_currency_reads_as_no_price`, setting the column to `'ZZZ'` and asserting the price
+came back `None`. **It failed, and the code was right.** `Currency::from_str`
+(`foundation/src/money.rs:119-123`) checks the **shape** — exactly three ASCII alphabetic bytes — not ISO-4217
+membership. `"ZZZ"` is a perfectly valid `Currency`. I had assumed a stronger validation than exists.
+
+This is the moment where the house rule matters: *do not weaken a test to pass*. The correct action was not to
+loosen the assertion but to recognise the **claim was wrong**, and change what the test asserts: a
+**malformed** code (`"ZZ"`, wrong length) yields no price; a well-formed unknown code is representable and is
+deliberately preserved. The test is renamed to say what it actually pins
+(`a_malformed_stored_currency_reads_as_no_price`) and the doc comment records the distinction and that my first
+draft got it wrong.
+
+So the pass produced **three** results: a fix, a defect the filing missed, and a corrected belief about the
+currency validator. The third only surfaced because the falsification discipline runs in both directions — I
+did not get to keep a passing test that asserted something untrue.
+
+### Verification
+
+**Falsified:** making the barcode mapper substitute a placeholder instead of `None` fails the regression on
+its own message (*"an unrepresentable stored value reads as None, not as garbage"*); restored, 110 products
+tests pass. The regression also asserts the read **does not mutate** the column it cannot represent — the
+unusable bytes must survive for a future build that can read them.
+
+**Verified:** `db::products::tests` **110 passed**; `kasirmu-core` lib full run **3400 passed, 0 failed**
+(up from 3398); `clippy -p kasirmu-core --lib -- -D warnings` clean; `rustfmt` clean on both files (rustfmt
+run on `products.rs` reports a diff in `products_stock_query.rs:488` — the sibling module it recurses into,
+which is another lane's pre-existing hunk, not mine). Committed as `ff96e794c`, verified by hash to contain
+exactly the two paths.
+
+**Tally:** 89 findings fixed (14 HIGH, 75 others), 25 leads disproved, 29 clean censuses. Fourth `next:` item
+closed (SEC-1, SEC-5, COR-2, COR-14). The adjacent-arm harvest is now the productive part of these passes:
+three of the last four findings came from checking the neighbourhood of a named defect rather than the defect
+itself.
