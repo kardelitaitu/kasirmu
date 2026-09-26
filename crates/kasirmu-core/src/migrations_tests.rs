@@ -3024,7 +3024,7 @@ fn a_terminal_without_the_legacy_signal_is_never_backfilled() {
 
 /// The registry position of the migration under test, so the pre-index leg
 /// below is expressed as "everything except this migration" rather than as a
-/// brittle \`ALL.len() - 1\`.
+/// brittle `ALL.len() - 1`.
 fn open_shift_uniqueness_position() -> usize {
     ALL.iter()
         .position(|m| m.id == "20261011_open_shift_uniqueness.sql")
@@ -3037,7 +3037,7 @@ fn open_shift_uniqueness_sql() -> &'static str {
     ALL[open_shift_uniqueness_position()].sql
 }
 
-/// One user, so a raw \`shifts\` INSERT has a row for its FK to resolve.
+/// One user, so a raw `shifts` INSERT has a row for its FK to resolve.
 fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
     conn.execute(
         "INSERT OR IGNORE INTO roles (id, name) VALUES ('role-osu', 'Open Shift Test')",
@@ -3053,9 +3053,9 @@ fn seed_shift_user(conn: &rusqlite::Connection, user_id: &str) {
 }
 
 /// 1. A fresh database accepts the index, and it is the PARTIAL one — the
-///    \`WHERE status = 'open'\` clause is in the stored SQL, so closed shifts
+///    `WHERE status = 'open'` clause is in the stored SQL, so closed shifts
 ///    are outside the constraint (a table-wide UNIQUE would refuse the second
-///    day's shift). \`migration_surface_pins\` covers the count; this pins the
+///    day's shift). `migration_surface_pins` covers the count; this pins the
 ///    shape.
 #[test]
 fn open_shift_uniqueness_index_is_partial_on_open_status() {
@@ -3087,7 +3087,7 @@ fn open_shift_uniqueness_index_is_partial_on_open_status() {
 }
 
 /// 2. THE GUARD BITES, proved through raw SQL so it is the INDEX under test and
-///    not \`Store::open_shift\`.
+///    not `Store::open_shift`.
 ///
 ///    Leg A is the negative control and the reason this test is honest: the same
 ///    statement runs against a database built from the registry WITHOUT this
@@ -3182,7 +3182,7 @@ fn open_shift_uniqueness_index_bites_on_raw_sql() {
 
 /// 3. THE MIGRATION CANNOT BRICK AN EXISTING STORE.
 ///
-///    A store written before \`open_shift\` was atomic can already hold two open
+///    A store written before `open_shift` was atomic can already hold two open
 ///    shifts for one user. If the CREATE ran against that state it would fail,
 ///    and the app would not start — so the reconciliation must close the extras
 ///    FIRST. This test builds the FINAL schema (the whole registry), plants the

@@ -1,7 +1,7 @@
 //! Tests for the read-only stock variance report (checklist item C12).
 //!
-//! Focus: a \`(item, location)\` whose \`stock_summary.qty\` disagrees with
-//! \`SUM(stock_movements.delta)\` is REPORTED (with the correct difference) and
+//! Focus: a `(item, location)` whose `stock_summary.qty` disagrees with
+//! `SUM(stock_movements.delta)` is REPORTED (with the correct difference) and
 //! never repaired — the whole point of C12 is that a double-deducted row is
 //! surfaced to an operator instead of being silently rewritten by a rebuild.
 use super::*;
@@ -74,7 +74,7 @@ fn movement_count(conn: &Connection) -> i64 {
         .unwrap()
 }
 
-/// The C12 scenario: a terminal re-applied its own pushed \`complete_sale\`, so
+/// The C12 scenario: a terminal re-applied its own pushed `complete_sale`, so
 /// the ledger shows -6 while the summary was deducted twice, down to 8.
 #[test]
 fn divergent_row_is_reported_with_the_correct_difference() {
@@ -120,7 +120,7 @@ fn consistent_row_is_excluded_by_default_and_zero_at_min_zero() {
 
 /// C12 is a report, not a repair: the stored qty and the ledger are byte-for-byte
 /// what they were before the call. This is the guard against a future "helpful"
-/// \`qty = SUM(delta)\` rewrite landing inside the reader.
+/// `qty = SUM(delta)` rewrite landing inside the reader.
 #[test]
 fn report_performs_no_writes() {
     let conn = fresh();
@@ -140,7 +140,7 @@ fn report_performs_no_writes() {
 }
 
 /// A pair with movement history but NO summary row is a real drift too — the
-/// ledger drives the join so it reports \`stored_qty = 0\` instead of vanishing.
+/// ledger drives the join so it reports `stored_qty = 0` instead of vanishing.
 #[test]
 fn movement_without_summary_row_is_reported_as_zero_stored() {
     let conn = fresh();
@@ -158,7 +158,7 @@ fn movement_without_summary_row_is_reported_as_zero_stored() {
 }
 
 /// Operator triage reads top-down: the biggest absolute disagreement first, and
-/// the \`limit\` bounds how much a single call can pull.
+/// the `limit` bounds how much a single call can pull.
 #[test]
 fn rows_are_ordered_by_absolute_difference_and_limited() {
     let conn = fresh();
