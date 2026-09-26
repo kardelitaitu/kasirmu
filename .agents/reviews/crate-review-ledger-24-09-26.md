@@ -6030,6 +6030,53 @@ all three forms after the first one flagged plain `//` lines as code. Commit `2d
 eleven last pass, from the same inversion — which continues to be the higher-yield direction now that
 absence-based sweeps on guards and quotas have been exhausted.
 
+## Pass 95 — MSL-73: cardinality and liveness claims — one finding, four verified
+
+Kept pushing the "what is wrong" inversion onto another **checkable** class: doc comments asserting a
+cardinality or a liveness fact ("the only caller", "three copies", "read here and nowhere else"). 38 such
+claims; a cardinality is either right or wrong, which is what makes them worth checking rather than reading.
+
+**Four claims verified true, and the verification is the point.**
+
+| Claim | Verified how |
+|---|---|
+| `cache.rs:485` "`RedisCache`'s listener thread is the only caller" of `inventory_invalidation_target` | one production call site (`cache.rs:262`), everything else tests; and the enclosing `#[cfg(feature = "cache-redis")]` at `:154` confirms the *"that only caller is gated"* half |
+| `memos.rs:524` "is the only writer of the column" | `SET status = 'archived'` appears once in `memos.rs:529`; the second hit is a `WHERE`, the third a different table |
+| `subscription.rs:1173` "three copies of one predicate" | `grants_entitlements()` exists and both named sites now call it — `availability.rs:385` and `entitlements.rs:151` |
+| `sync_client.rs:528` "rule expressed in six places" | all five named sync fns have a gated real body plus a disabled stub delegating to `sync_http_disabled_error()`; the sixth is `sync_pull::fetch_snapshot_from_server` |
+
+**MSL-73 (LOW, fixed): one note wrong on all three of its claims.** `tax/scopes.rs:351-357` said the four
+columns from `20260921` are *"read here and nowhere else"*, and that *"nothing in the sale computation path
+calls this yet, because nothing can author a scoped row until the write-side slice lands"*. Measured:
+
+- the columns are read widely — `effective_from`/`effective_to` have 31 production sites each outside this
+  file (`sync_pull` writes and reads them; `sales_tax` reads them), `legal_entity_id` has 89;
+- the sale path **does** call the resolver: `db/sales_tax.rs:577` is the level-3 lookup, documented at `:487`;
+- scoped rows **can** be authored: `create_tax_rate_scoped` / `update_tax_rate_scoped` landed and are called
+  from `tax.rs:341` / `:398`.
+
+The note describes a slice's landing state that has since been superseded by two later slices. Corrected to
+state the current behaviour, to name why the old note existed, and to keep the part that is still the real
+justification — one resolver, so the sale, the authoring UI and the diagnostics cannot disagree about which
+rate applies on a day. I verified the two `db/sales_tax.rs` line numbers and both `Self::` link targets
+before writing them into a permanent comment.
+
+**Why this class is worth a pass even though four of five came back clean.** These claims are the ones a
+reader *acts* on — "the only caller" tells you it is safe to change a signature, "nothing calls this yet"
+tells you the path is dead. When they rot they do not fail any test; they authorise a wrong change. The one
+that had rotted was exactly of that kind: a maintainer reading it would conclude the sale path is unaffected
+by the resolver, which is the opposite of the truth.
+
+**Verified:** 78 `db::tax` tests, 0 failed; `clippy -p kasirmu-core --lib -D warnings` clean;
+`RUSTDOCFLAGS="-D warnings" cargo doc` still passes (so the new intra-doc links resolve); `rustfmt` clean;
+the diff is 18 insertions / 7 deletions with **every changed line a comment**. Commit `bea0c29b3` (verified
+by hash).
+
+**Tally:** 78 findings fixed (11 HIGH), 23 leads disproved, 28 clean censuses. Three consecutive passes from
+the inversion have now produced findings after the absence-based sweeps on guards, quotas and links had all
+gone quiet.
+
+
 
 
 
