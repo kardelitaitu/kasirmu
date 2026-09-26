@@ -5637,6 +5637,56 @@ hash).
 **Tally:** 71 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. One crate-wide item
 narrowed from "52 unexplained" to "46, four named families, one closed".
 
+## Pass 87 — MSL-65: the non-public link families, repaired by cause
+
+Continued MSL-64's four named families, which I had characterised but deliberately not touched because each
+site needs a decision. This pass made those decisions and repaired two families.
+
+**First, a measurement correction I owe the ledger.** MSL-64 reported "52 → 46 unresolved links" and
+attributed the six to the escaped-backtick family. Half right: rustdoc emits **46 link warnings across 20
+locations**, and the two counts move independently. Re-measuring properly gave the round a real baseline —
+**20 locations / 46 links** — and the end state is **15 locations / 41 links**, with zero newly introduced
+(checked, not assumed: the round briefly showed 17 when my `replace_all` made an already-correct link
+explicitly targeted, producing a *redundant explicit link target* warning; reverted).
+
+**MSL-65 (LOW, fixed): two families, seven files, 13 lines — all doc-only.** The fix differs by family, which
+is exactly why a blind sweep would have been wrong:
+
+| Family | Sites | Remedy chosen |
+|---|---|---|
+| link to a non-public item | `roles.rs` ×6 (`reject_builtin_role_id` `pub(crate)`, `validate_permission_grants` `pub(crate)`, `map_role_conflict` private, `HOLDERS_FROM_WHERE` private const, `ROLE_FK_REFERRERS` private const), `topology.rs` ×1 (`semantic_type_key` private fn) | drop the link syntax, keep the name in plain backticks — these are internal helpers, and naming one is useful while linking it is impossible |
+| public item out of scope | `QuotaError::{Staff,Product,Register,Store}Limit` ×4, `QuotaError` ×1 | keep the link, qualify the path (`crate::subscription::QuotaError::…`) — `QuotaError` **is** public (`subscription.rs:1211`) and a reader benefits from following it |
+
+Each decision was made by **reading the definition**, not by pattern: I confirmed all five `roles.rs`
+targets are `pub(crate)` or bare `fn`, while the two names *in the same sentences* (`update_role`,
+`role_holders`) are `pub` and were already resolving — so the failure is specifically about visibility, not
+about the link syntax in general. For `QuotaError` I confirmed the module is `pub mod subscription` and that
+all four variants exist before qualifying.
+
+**A foreign hunk I refused to commit.** `roles.rs` came back dirty with **two** changes: my seven doc lines,
+and a rustfmt reformat of the pre-existing 105-character `EXISTS` line that another lane's tree-wide
+`cargo fmt` left uncommitted. Committing the file would have filed their formatting under my message, so I
+reverted just that hunk — the file is back to its HEAD shape for that line — leaving the commit a clean
+13 insertions / 13 deletions with every changed line a doc comment. Verified with a filter over
+`git diff -U0` for added lines that are not `///`/`//!`, which returns nothing.
+
+**Still open, and now the smaller half:** 41 links / 15 locations across `assignments`, `audit`,
+`image_refs`, `loyalty` (×2), `products_crud`, `products_stock_adjust/adjust`, `tax/rates`, `tax/scopes`,
+`export/email_report` (×2), `session` (×2), `subscription` (×2) and `quota_gate`. The recurring names there —
+`FiscalScheme`, `DocumentNumberSequence`, `Payable`, `MemoStatus`, `Entitlements`, `SecurityEvent` — look
+like the same "public but out of scope" family, and the module links (`super::roles`, `super::staff`, `rates`,
+`revenue`, `scopes`, `datetime`, `product_sales`) are the private-module family. Recorded with the remedy
+per family already established, so the next pass is mechanical rather than another census.
+
+**Verified:** 49 `roles`, 92 `staff`, 8 `quota_gate`, 63 `topology` tests, 0 failed;
+`clippy -p kasirmu-core --lib -D warnings` clean; all seven files `rustfmt`-clean apart from the one
+pre-existing HEAD hunk in `roles.rs` deliberately left untouched; `cargo doc` recounted after every edit.
+Commit `c6965cbb1` (verified by hash).
+
+**Tally:** 72 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Crate-wide doc debt:
+**52 → 41 links, 20 → 15 locations**, both counted directly.
+
+
 
 
 
