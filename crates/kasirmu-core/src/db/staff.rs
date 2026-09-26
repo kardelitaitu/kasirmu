@@ -252,7 +252,7 @@ impl Store<'_> {
     /// leakage from unlimited Free/Plus team accounts).
     ///
     /// When the tier's `max_staff_users()` cap is reached, returns
-    /// [`QuotaError::StaffLimit`] (surfaced as `SubscriptionLimitExceeded`,
+    /// [`QuotaError::StaffLimit`](crate::subscription::QuotaError::StaffLimit) (surfaced as `SubscriptionLimitExceeded`,
     /// which the UI maps to an upgrade CTA). Unlimited tiers (`None`) pass.
     pub fn enforce_staff_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
         // W4-S1: decision centralized in `quota_gate`; same limit source

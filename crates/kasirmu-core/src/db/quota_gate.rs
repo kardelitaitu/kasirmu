@@ -13,7 +13,7 @@
 //!
 //! Equivalence contract: the ~40 existing per-gate tests pass unmodified.
 //! `current + 1 > limit` is the same predicate as `current >= limit`; each
-//! per-dimension count and each [`QuotaError`] variant is the one its
+//! per-dimension count and each [`QuotaError`](crate::subscription::QuotaError) variant is the one its
 //! legacy gate consulted, so the only observable change is centralized
 //! duplication.
 //!

@@ -203,7 +203,7 @@ impl Store<'_> {
     /// a new terminal.
     ///
     /// When the tier's `max_pos_instances()` cap is reached, returns
-    /// [`QuotaError::RegisterLimit`]. Unlimited tiers (`None`) pass.
+    /// [`QuotaError::RegisterLimit`](crate::subscription::QuotaError::RegisterLimit). Unlimited tiers (`None`) pass.
     pub fn enforce_terminal_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
         // W4-S1: decision centralized in `quota_gate`; same limit source
         // (`max_pos_instances`), same count, same `RegisterLimit` error.

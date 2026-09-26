@@ -233,7 +233,7 @@ impl Store<'_> {
     /// database this [`Store`] wraps (per-location catalog).
     ///
     /// When the tier's `max_products()` cap is reached, returns
-    /// [`QuotaError::ProductLimit`] (surfaced as
+    /// [`QuotaError::ProductLimit`](crate::subscription::QuotaError::ProductLimit) (surfaced as
     /// `SubscriptionLimitExceeded`, which the UI maps to an upgrade CTA).
     /// Unlimited tiers (`None`) pass.
     pub fn enforce_product_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {

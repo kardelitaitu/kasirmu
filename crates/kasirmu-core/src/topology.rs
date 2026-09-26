@@ -173,7 +173,7 @@ pub fn semantic_node_type(node: &Value) -> Option<&str> {
 /// languages instead of a hand-written condition in each. `store` is the
 /// serialized compatibility alias for `branch-location` (ADR #34 §1), so the
 /// contract only ever speaks the canonical name. A workspace with no recorded
-/// type key is the Store POS baseline, matching [`semantic_type_key`].
+/// type key is the Store POS baseline, matching `semantic_type_key`.
 pub fn node_kind_token(node: &Value) -> String {
     match semantic_node_type(node) {
         Some("store") => "branch-location".to_string(),

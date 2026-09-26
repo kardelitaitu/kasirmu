@@ -151,7 +151,7 @@ impl Store<'_> {
     /// leakage from unlimited multi-location usage on lower tiers).
     ///
     /// When the tier's `max_locations()` cap is reached, returns
-    /// [`QuotaError::StoreLimit`]. Unlimited tiers (`None`) pass.
+    /// [`QuotaError::StoreLimit`](crate::subscription::QuotaError::StoreLimit). Unlimited tiers (`None`) pass.
     pub fn enforce_location_quota(&self, tier: &SubscriptionTier) -> Result<(), CoreError> {
         // W4-S1: decision centralized in `quota_gate`; same limit source
         // (`max_locations`), same org-wide count, same `StoreLimit` error.

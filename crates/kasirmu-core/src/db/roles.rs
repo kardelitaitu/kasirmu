@@ -224,7 +224,7 @@ impl Store<'_> {
         Self::role_references_on(self.conn, id)
     }
 
-    /// Whether any row in [`ROLE_FK_REFERRERS`] would block a `DELETE FROM roles`
+    /// Whether any row in `ROLE_FK_REFERRERS` would block a `DELETE FROM roles`
     /// for this id — the FK's question, not the roster's.
     ///
     /// Table names come from the constant, never from a caller, so the
@@ -282,7 +282,7 @@ impl Store<'_> {
 
     /// Insert a new authored role.
     ///
-    /// Preset ids are refused — see [`Store::reject_builtin_role_id`]. This is
+    /// Preset ids are refused — see `Store::reject_builtin_role_id`. This is
     /// the create-side half of the rule [`Store::update_role`] and
     /// [`Store::soft_delete_role`] already enforce: `seed_default_roles` upserts
     /// every `RolePreset` id and overwrites its grants, so a row minted at one
@@ -293,7 +293,7 @@ impl Store<'_> {
     /// command layer asked of itself, and the core write path would have
     /// accepted a preset id from any other caller.
     ///
-    /// Grants go through [`Store::validate_permission_grants`], the same rule
+    /// Grants go through `Store::validate_permission_grants`, the same rule
     /// `update_role` applies, so create and update can never disagree about
     /// what a legal permission list is.
     ///
@@ -303,7 +303,7 @@ impl Store<'_> {
     /// grant set; [`CoreError::Conflict`] when `id` or `name` collides with an
     /// existing row. Known imprecision, carried over unchanged from the
     /// pre-fold version rather than silently fixed here: SQLite reports both
-    /// as a bare constraint violation, and [`Store::map_role_conflict`] names
+    /// as a bare constraint violation, and `Store::map_role_conflict` names
     /// `field: "name"` for either. A duplicate `id` therefore surfaces as a
     /// name conflict. Changing that error shape is a separate call — it is
     /// what the authoring UI reads — so this commit documents it instead of
@@ -442,7 +442,7 @@ impl Store<'_> {
 
     /// How many accounts resolve to this role — the count, without the rows.
     ///
-    /// Built on the same [`HOLDERS_FROM_WHERE`] as [`Self::role_holders`],
+    /// Built on the same `HOLDERS_FROM_WHERE` as [`Self::role_holders`],
     /// deliberately: the "N accounts" a surface prints must never disagree
     /// with the list rendered beside it.
     ///
@@ -481,7 +481,7 @@ impl Store<'_> {
     /// read time has to hold on the write path too, or the registry stops
     /// being the only source of truth.
     ///
-    /// Preset ids are refused; see [`Store::reject_builtin_role_id`].
+    /// Preset ids are refused; see `Store::reject_builtin_role_id`.
     ///
     /// # Errors
     ///
@@ -698,7 +698,7 @@ impl Store<'_> {
     /// whose only referrer is a member in or past the trash. Deleting on the guard
     /// answer alone met `SQLITE_CONSTRAINT_FOREIGNKEY`, and because the loop runs in
     /// ONE transaction that aborted the whole sweep, not just the un-deletable row.
-    /// The sweep therefore consults [`ROLE_FK_REFERRERS`] first and leaves such a row
+    /// The sweep therefore consults `ROLE_FK_REFERRERS` first and leaves such a row
     /// trashed rather than pretending it collected it. Reporting it as removed while
     /// leaving it on disk would be the worse failure: the count is what an operator
     /// reads to decide the sweep works.
