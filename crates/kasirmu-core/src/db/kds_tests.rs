@@ -3920,7 +3920,10 @@ fn fanout_refuses_a_corrupt_sale_line_modifiers_blob() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(tickets, 0, "a refused fanout must not leave a partial ticket");
+    assert_eq!(
+        tickets, 0,
+        "a refused fanout must not leave a partial ticket"
+    );
 }
 
 // ── The eligibility lookup must not conflate "no product" with "unreadable" ──
@@ -3981,4 +3984,68 @@ fn fanout_skips_a_line_whose_product_row_is_absent() {
         orders.is_empty(),
         "no product row means no kitchen ticket, got: {orders:?}"
     );
+}
+
+// ── The zone lookup must not conflate "no zone" with "unreadable" ────────
+//
+// `product_kitchen_zone_by_sku` returns `Ok(None)` for a missing row / NULL
+// zone and `Err` when the read itself fails. The fan-out's grouping collapsed
+// them with `.ok()`, so an unreadable zone silently routed the line to the
+// UNZONED ticket instead of its real zone — the grill screen never saw it.
+// `Ok(None)` and an empty zone must still mean "unzoned"; only an error aborts.
+
+/// The bug: make ONLY the zone read fail, so the fan-out reaches the grouping
+/// step (the eligibility read of `product_type` still succeeds). Dropping just
+/// the `kitchen_zone` column is surgical to that one query.
+#[test]
+fn fanout_refuses_when_the_zone_lookup_errors() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    conn.execute_batch("ALTER TABLE products DROP COLUMN kitchen_zone;")
+        .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "an unreadable kitchen_zone read must abort the fan-out, not route the line \
+         to the unzoned ticket, got: {result:?}"
+    );
+}
+
+/// The distinction the fix must preserve: a NULL zone and an explicitly empty
+/// zone are both legitimate "unzoned" and still group onto the unzoned ticket.
+#[test]
+fn fanout_routes_a_line_with_no_zone_to_the_unzoned_ticket() {
+    let conn = fresh();
+    let s = store(&conn);
+    // STEAK: kitchen_zone never set (NULL). SALAD: explicitly empty string.
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+    seed_product_with_zone(&conn, "SALAD", "Garden Salad", "");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    cart.add_line(CartLine::new(Sku::new("SALAD"), 1, price(600)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    let orders = s
+        .complete_sale_to_kds(&sale.id, None)
+        .expect("a missing zone is the unzoned ticket, not an error");
+    assert_eq!(
+        orders.len(),
+        1,
+        "both unzoned lines share one ticket, got: {orders:?}"
+    );
+    assert_eq!(orders[0].kitchen_zone, None);
+    assert_eq!(s.get_kds_order_lines(&orders[0].id).unwrap().len(), 2);
 }

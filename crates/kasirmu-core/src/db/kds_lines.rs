@@ -104,11 +104,17 @@ impl Store<'_> {
         let mut by_zone: std::collections::BTreeMap<Option<String>, Vec<&crate::SaleLine>> =
             std::collections::BTreeMap::new();
         for line in &kds_lines {
-            let zone = self
-                .product_kitchen_zone_by_sku(&line.sku)
-                .ok()
-                .flatten()
-                .filter(|z| !z.is_empty());
+            // Two different absences again, and they must not be conflated:
+            // `Ok(None)` (no product row / NULL zone) and an explicitly empty
+            // zone both legitimately mean "unzoned", but `Err` is a failed
+            // read. Collapsing them with `.ok()` silently mis-routed a line to
+            // the unzoned ticket instead of its real zone, so the station
+            // screen that should have cooked it never saw the line. Only the
+            // error aborts.
+            let zone = match self.product_kitchen_zone_by_sku(&line.sku)? {
+                Some(zone) if !zone.is_empty() => Some(zone),
+                _ => None,
+            };
             by_zone.entry(zone).or_default().push(line);
         }
 
