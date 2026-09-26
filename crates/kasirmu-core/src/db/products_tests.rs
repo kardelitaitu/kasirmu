@@ -129,6 +129,52 @@ fn a_whitespace_barcode_is_stored_as_null_not_verbatim() {
     );
 }
 
+/// MSL-45 fixed the WRITE path; it did not migrate existing rows, and the
+/// migration that later rebuilt this table copies `barcode` verbatim into a
+/// bare `TEXT` column with no CHECK
+/// (`20260831_per_tenant_unique_rebuild.sql:167`). A database written before
+/// MSL-45 can therefore still hold a whitespace-only barcode — precisely the
+/// value the old path bound raw while every API surface reported `None`.
+///
+/// This pins the behaviour on that legacy data, which is the residue COR-14's
+/// warning exists for: the read path must report absence (never invent a
+/// barcode from unusable bytes) and must leave the stored value alone so a
+/// later repair can find it.
+#[test]
+fn a_legacy_whitespace_barcode_row_reads_as_absent() {
+    let conn = fresh();
+    let s = store(&conn);
+    s.create_product("SKU-LEGACY", "Legacy", price(100), None, None, 0, None)
+        .unwrap();
+
+    // Reproduce a row written by the pre-MSL-45 code path.
+    conn.execute(
+        "UPDATE products SET barcode = '   ' WHERE sku = 'SKU-LEGACY'",
+        [],
+    )
+    .unwrap();
+
+    let read = s.get_product("SKU-LEGACY").unwrap().unwrap();
+    assert!(
+        read.product.barcode.is_none(),
+        "an unrepresentable stored barcode must read as absent, not as garbage"
+    );
+
+    // The read must not have repaired or cleared the column behind our back.
+    let still: Option<String> = conn
+        .query_row(
+            "SELECT barcode FROM products WHERE sku = 'SKU-LEGACY'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        still.as_deref(),
+        Some("   "),
+        "reading a value we cannot represent must not mutate it"
+    );
+}
+
 /// A real barcode still round-trips, trimmed — the property the fix must keep.
 #[test]
 fn a_real_barcode_is_still_stored_and_lookupable() {
