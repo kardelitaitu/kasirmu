@@ -132,8 +132,10 @@ Key residual items:
 > directory then. Two renames since then make several paths dead: `ui/src/features/stores/`
 > is now `ui/src/features/locations/`, and the `StoreProfile` type (and the `store` →
 > `location` vocabulary around it) is now `LocationProfile` in
-> `crates/kasirmu-core/src/location_profile.rs`. `docs/api-reference.md` is now
-> `docs/guides/api-reference.md`. Nothing else in these entries should be read as a
+> `crates/kasirmu-core/src/location_profile.rs`. `docs/api-reference.md` was renamed to
+> `docs/guides/developer/api-reference.md` (the intermediate `docs/guides/api-reference.md`
+> spelling has itself since moved, so use the `developer/` path).
+> Nothing else in these entries should be read as a
 > current path without checking.
 
 ## Topology — Editor UI (`31-topology-editor-ui.md` — ✅ ALL CLOSED 2026-08-26)
@@ -521,7 +523,7 @@ this checkout — sibling sessions are writing into it continuously.
   (`cat-file --batch-check` → `blob` ×14) but **0 of 14** appear in `git rev-list --objects --all`
   (79,057 objects) and **0 of 14** are loose — packs only, which puts `git gc --prune` on the same
   material as a different command, mitigated by the outside copies at
-  `backups/git-20260913-061103` and `backups/packdir-20260913-062232` (`.agents/incident-object-loss.md:8`,
+  `backups/git-20260913-061103` and `backups/packdir-20260913-062232` (`.agents/incidents/incident-object-loss.md:8`,
   `:144`). The 14 salvaged blobs are therefore **not** the fragile half; the 16 uncommitted scratch
   files are.
 - **Residual risk, one line:** an in-flight scratch directory is unrecoverable if cleaned — 16 of
@@ -743,7 +745,7 @@ tree. That is GI-2's point and this correction does not touch it.
 - **Where it sits in this register's own taxonomy.** same class as GI-2, new instance, a scope hole rather than a numeric one.
 - **What was NOT confirmed, filed as not confirmed.** the 14-stated-against-16-real pairing reported by an earlier pass was NOT confirmed, two greps
   found no such claim in the file and its 14 hits are other subjects, the files own 16
-  references agree with .agents/parity-unanswerable-16.md, so the confirmed defect is the scope
+  references agree with .agents/planning/parity-unanswerable-16.md, so the confirmed defect is the scope
   and not the number.
 - **Why it is left open rather than fixed here.** widening MIRRORS is a design change with its own noise cost and this pass learned that the hard
   way.
@@ -756,7 +758,7 @@ tree. That is GI-2's point and this correction does not touch it.
   (tracked, and clean in status at that minute), **and it is 731 lines with this entry in it (731 after the line below is fixed), so the
   count quoted in the verbatim text above is already one entry behind — which is the finding, not an
   error in it**; the quoted figures are reproduced at `docs/records/audit-open-findings.md:568`;
-  `.agents/parity-unanswerable-16.md` exists, 17,614 bytes, and carries the 16. The
+  `.agents/planning/parity-unanswerable-16.md` exists, 17,581 bytes, and carries the 16. The
   non-confirmation holds on this lane's re-grep too: the only two lines pairing 14 against 16 in
   this file are `:249` (`BridgeCtx` public fields) and `:513` (salvaged-blob and scratch counts
   under `GH-CLEAN-01`) — both other subjects. So the scope half is measured and the numeric half
@@ -1554,7 +1556,7 @@ agree:
 | The route itself | `requiredRole: 'manager'` + `requiredPermission: 'analytics:view'` | `ui/src/features/analytics/register.tsx:12` |
 
 The route's permission arm is **authoritative**, not advisory — `passesGate`
-(`ui/src/platform/ui/page-registry/index.ts:139`) returns `hasGrantedPermission(permissions, …)` and
+(`ui/src/registries/page-registry/index.ts:166`) returns `hasGrantedPermission(permissions, …)` and
 never consults `requiredRole` whenever the session carries granted keys. And the `role-manager` preset
 **does** hold that key: `permissions::ANALYTICS_VIEW` is the 36th entry of its list
 (`platform/core/src/rbac_presets.rs:84`, inside the block opening at `:49`).
@@ -1629,7 +1631,7 @@ gate — nothing in CI calls it, and it was deliberately **not** added to `scrip
 sed -n '180p' ui/src/features/workspaces/tools.tsx
 sed -n '12p' ui/src/features/analytics/register.tsx
 sed -n '84p' platform/core/src/rbac_presets.rs
-sed -n '139p' ui/src/platform/ui/page-registry/index.ts
+sed -n '166p' ui/src/registries/page-registry/index.ts
 sed -n '730,732p' todo-tools.md
 ```
 
