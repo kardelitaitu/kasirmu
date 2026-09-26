@@ -384,3 +384,43 @@ fn selection_flag_tracks_the_derived_key() {
         "the flag must be true exactly when the derived key is not the legacy one"
     );
 }
+
+// ── The static fallback, pinned (review C1) ─────────────────────────
+
+/// The static fallback IS the default derivation, in every build profile.
+///
+/// `derive_static_key` derives from a public constant, so it is obfuscation
+/// rather than confidentiality -- its own doc says so. Review C1's done-condition
+/// asks for "a test [that] asserts the static fallback cannot be reached in a
+/// release build". That cannot be written yet, because no such mechanism EXISTS:
+/// reaching the static branch is what every shipped install does today, since
+/// NOTHING in the repository sets `OZ_MASTER_KEY` (zero occurrences in `ops/`,
+/// `scripts/`, `.github/`, `.env.example`, any compose file or Dockerfile).
+///
+/// What CAN be written is the other direction, and it is worth having: this pins
+/// the CURRENT reachability. Adding the release gate the item asks for is a
+/// change to where the key comes from -- which is decision D1 -- so when that
+/// lands this test must go red and be inverted DELIBERATELY, rather than the
+/// behaviour changing while every test stays green.
+#[test]
+fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
+    if master_key_from_env().is_some() {
+        // Ambient master key: the fallback is not the selected branch here, and
+        // this case is about the default. Covered by the branch-tolerant cases.
+        return;
+    }
+    // `portable_key` is the PRODUCTION selector -- every at-rest write and every
+    // single-key read calls it. Asserting on it, rather than on the parameterised
+    // `portable_key_with` (which takes the master key as an argument and therefore
+    // cannot observe this branch at all), is what makes this pin non-vacuous. The
+    // first version of this test used the helper and PASSED with the production
+    // selector deliberately broken -- the falsification caught it.
+    let selected = portable_key(SMTP_AT_REST_DOMAIN, derive_static_key);
+    assert_eq!(
+        selected,
+        derive_static_key(SMTP_AT_REST_DOMAIN),
+        "with no master key the static derivation is selected -- if this fails, a \
+         release gate was added and C1's decision was taken; invert this test \
+         deliberately in the same change"
+    );
+}
