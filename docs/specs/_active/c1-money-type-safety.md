@@ -31,7 +31,7 @@ helper, which is documented and non-arithmetic.
 
 ## Baseline (pre-fix)
 
-- `ExchangeRateRow.rate: f64` in `crates/oz-core/src/exchange_rate.rs:15`
+- `ExchangeRateRow.rate: f64` in `modules/currency/src/models.rs` (this cited `crates/oz-core/src/exchange_rate.rs:15`; the type moved to the `modules-currency` crate and is fixed-point there — repointed 2026-09-25 while closing C70)
   contaminated every downstream `Money` conversion through the FX
   multiplier. The `if args.rate <= 0.0` validation was sign-unstable
   near zero (`1e-20` flips to negative).
@@ -52,7 +52,7 @@ helper, which is documented and non-arithmetic.
 - [x] `Store::upsert_exchange_rate` validation guard (pre-existing, kept)
 - [x] Migration `071_exchange_rate_minor_units.sql` (ADD COLUMN → UPDATE
       with `ROUND(rate * 1e6)` → DROP COLUMN `rate`)
-- [x] `crates/oz-core/src/migrations.rs` registers 071
+- [x] `crates/kasirmu-core/src/migrations.rs` registers 071
 - [x] `rate_sync.rs` Frankfurter daemon converts via
       `(rate * RATE_SCALE).round() as i64` with documented clippy-allow
 - [x] `ExchangeRateRow::display_rate()` for presentation only
@@ -66,19 +66,19 @@ helper, which is documented and non-arithmetic.
 
 ## Plan (as executed)
 
-1. Add `crates/oz-core/migrations/20260813_init.sql` with
+1. Add `crates/kasirmu-core/migrations/20260813_init.sql` with
    `ADD COLUMN rate_millionths INTEGER NOT NULL DEFAULT 0`, an
    `UPDATE … = CAST(ROUND(rate * 1000000) AS INTEGER)` backfill, and
    `ALTER TABLE exchange_rates DROP COLUMN rate`. Documented rollback path.
-2. Register 071 in `crates/oz-core/src/migrations.rs`.
+2. Register 071 in `crates/kasirmu-core/src/migrations.rs`.
 3. Replace `ExchangeRateRow.rate: f64` with
-   `rate_millionths: i64` in `crates/oz-core/src/exchange_rate.rs`; add
+   `rate_millionths: i64` in `modules/currency/src/models.rs`; add
    `display_rate()` helper. Update the inline unit tests in that file.
-4. Update `crates/oz-core/src/db/settings.rs`: `list_exchange_rates`,
+4. Update `crates/kasirmu-core/src/db/settings.rs`: `list_exchange_rates`,
    `create_exchange_rate`, and `upsert_exchange_rate` consume i64
    millionths; add the `<= 0` guard to `create_exchange_rate` (the
    upsert path already had it).
-5. Update `crates/oz-core/tests/currency_integration.rs` to 38 tests
+5. Update `crates/kasirmu-core/tests/currency_integration.rs` to 38 tests
    covering ordering, FK constraints, validation rejection, small/large
    rates, timestamps, delete, source, currencies list, currency parsing,
    Money multi-currency, `display_rate` formatting, and roundtrips.
@@ -108,7 +108,7 @@ helper, which is documented and non-arithmetic.
 | `cargo test -p oz-core --test currency_integration` | 38 passed, 0 failed |
 | `cargo test -p platform-startup` | 27 passed, 0 failed |
 | `cargo fmt --all -- --check` | clean |
-| `grep -rnE ': f64\b\|: Option<f64>\b\|rate: f64\b'` across `crates/oz-core`, `modules/currency`, `apps/*/src/commands/exchange_rates.rs`, `platform/startup/src/rate_sync.rs` | 0 hits in the FX domain |
+| `grep -rnE ': f64\b\|: Option<f64>\b\|rate: f64\b'` across `crates/kasirmu-core`, `modules/currency`, `apps/*/src/commands/exchange_rates.rs`, `platform/startup/src/rate_sync.rs` | 0 hits in the FX domain |
 
 ## Residual / follow-ups (out of this card's scope)
 
@@ -135,10 +135,10 @@ helper, which is documented and non-arithmetic.
 ## References
 
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §2 C-1 / §6 X-3 / §9 / §10 / §11
-- `crates/oz-core/src/exchange_rate.rs`
-- `crates/oz-core/migrations/20260813_init.sql`
-- `crates/oz-core/src/db/settings.rs`
-- `crates/oz-core/tests/currency_integration.rs`
+- `modules/currency/src/models.rs` (`ExchangeRateRow`, moved from the old `crates/oz-core/src/exchange_rate.rs`)
+- `crates/kasirmu-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/src/db/settings.rs`
+- `crates/kasirmu-core/tests/currency_integration.rs`
 - `apps/desktop-client/src/commands/exchange_rates.rs`
 - `apps/tablet-client/src/commands/exchange_rates.rs`
 - `platform/startup/src/rate_sync.rs`

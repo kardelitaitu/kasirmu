@@ -5,10 +5,14 @@ owner: kasir.mu maintainers
 implementer: Buffy
 priority: P0
 scope:
-  - crates/oz-core/migrations/119_sync_remote_failures.sql
-  - crates/oz-core/src/migrations.rs
-  - crates/oz-core/src/db/offline.rs
-  - crates/oz-core/src/db/products.rs
+  # `119_sync_remote_failures.sql` no longer exists: migrations were consolidated into
+  # `20260813_init.sql` (which is where `sync_remote_failures` is defined now). Kept as a
+  # note rather than repointed, because the numbered file was never renamed -- it was
+  # absorbed, so there is no single target to point at.
+  - crates/kasirmu-core/migrations/20260813_init.sql
+  - crates/kasirmu-core/src/migrations.rs
+  - crates/kasirmu-core/src/db/offline.rs
+  - crates/kasirmu-core/src/db/products.rs
   - platform/sync/src/queue.rs
   - platform/sync/src/daemon.rs
   - docs/specs/_active/0045-sync-conflict-dead-letter-recovery/

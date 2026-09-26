@@ -45,7 +45,7 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 
 ## Plan
 
-1. **Priority type**: Add `SyncPriority` enum to `crates/oz-core/src/offline.rs` (or a new `sync.rs` module). Derive required traits. Add `priority` field to `OfflineQueueItem` struct.
+1. **Priority type**: Add `SyncPriority` enum to `crates/kasirmu-core/src/offline.rs` (or a new `sync.rs` module). Derive required traits. Add `priority` field to `OfflineQueueItem` struct.
 2. **Migration**: Create `crates/oz-core/migrations/XXX_offline_queue_priority.sql`: `ALTER TABLE offline_queue ADD COLUMN priority INTEGER NOT NULL DEFAULT 1;`. Register in `migrations.rs`. Update DDL in `018_offline_queue.sql` for new installs.
 3. **Event handlers**: Update `platform/startup/src/event_handlers.rs`: enqueue `SaleCompleted` with `Critical`, inventory events with `Normal`, settings with `Low`.
 4. **Batching**: Modify `build_batches()` in `platform/sync/src/lib.rs` to sort pending items by priority before the existing byte-size chunking loop.
@@ -75,8 +75,8 @@ Ensure critical sale records propagate before inventory syncs by introducing pri
 
 - `docs/decisions/2026-07-13-sync-performance-compression-batching.md` (Strategy overview — priority tiers and concurrency limits)
 - `docs/specs/_active/p1-sync-batching-compression-retention.md`
-- `crates/oz-core/src/offline.rs`
-- `crates/oz-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/src/offline.rs`
+- `crates/kasirmu-core/migrations/20260813_init.sql`
 - `platform/startup/src/event_handlers.rs`
 - `apps/cloud-server/src/main.rs`
 - `apps/cloud-server/src/sync_api.rs`

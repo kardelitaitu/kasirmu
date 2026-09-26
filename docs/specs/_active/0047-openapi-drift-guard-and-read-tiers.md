@@ -34,9 +34,9 @@ precedent); token revocation lists.
 | Prod binary `oz-cloud-server` (supervisord `program:sync`) embeds oz-api's router via `oz_api::build_api_router` | `apps/unified/supervisord.conf:49`, `apps/cloud-server/src/main.rs:449-451`, `Cargo.toml:18` |
 | axum **0.7.9** — `Router: IntoIterator<Item = (String, MethodRouter)>` exists in this version | `Cargo.lock` axum 0.7.9 |
 | 13 GET operations declared in the spec (the read surface) | `grep '"get"' openapi.rs` |
-| Claims shape: `sub, jti, exp, iat, tenant_id, terminal_id` — no scope/permission field | `crates/oz-api/src/auth.rs:45-55` |
-| Mint paths: admin-key mint (arbitrary tenant), terminal client-credentials (`client_id`+`client_secret`, no admin key) | `crates/oz-api/src/routes/tokens.rs:110-126` |
-| Read authorization today: router-wide JWT middleware only — any valid token reads everything | `crates/oz-api/src/lib.rs:265` (verified during G-1) |
+| Claims shape: `sub, jti, exp, iat, tenant_id, terminal_id` — no scope/permission field | `crates/kasirmu-api/src/auth.rs:45-55` |
+| Mint paths: admin-key mint (arbitrary tenant), terminal client-credentials (`client_id`+`client_secret`, no admin key) | `crates/kasirmu-api/src/routes/tokens.rs:110-126` |
+| Read authorization today: router-wide JWT middleware only — any valid token reads everything | `crates/kasirmu-api/src/lib.rs:265` (verified during G-1) |
 | Permission registry + `has_permission` resolver already in the dependency tree with read keys (`products:read`, `sales:view`, `reports:view`, `audit:view`, `customers:view`, `staff:read`, `settings:read`, `staff:read_identity`, `staff:read_payroll`) | `platform/core/src/permission_registry.rs`, user-role campaign stamps A/C |
 | Known drift marker: module doc "20 endpoints across 7 tag groups" vs 18 declared tags | `openapi.rs:16` vs `openapi.rs:35-53` |
 

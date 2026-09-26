@@ -41,7 +41,7 @@ injection, but the entropy is too low).
 
 ## Acceptance criteria
 
-> **CORRECTION 2026-09-12 — every criterion below that assumes whole-file encryption is a goal that was rejected, not work outstanding. The database file is NOT encrypted and no criterion that tests for it can pass.** Re-verified against the tree: no `Cargo.toml` in the workspace mentions sqlcipher in any form (`git grep -i sqlcipher -- '*.toml'` matches nothing; the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`), the `keyring` crate is in no manifest either, `crates/oz-core/src/db/encryption.rs` (step 7's target) does not exist, and neither does `docs/security/LICENSE-ENCRYPTION.md`. `docs/archived/sqlcipher-migration-plan.md` records the decision: SQLCipher at-rest encryption did not ship, status NEVER ADOPTED. What shipped instead, and is why the criteria marked ⚠ below are now wrong in the opposite direction, is **field-level** encryption of named secrets through their typed accessors, via `crates/oz-crypto` since `e105109f6` (2026-08-29) — a per-column measure, not the per-file one this card asks for. See the correction on ADR #4 §5 for the whole-file vs field-level distinction and for the fail-open read path that follows from it.
+> **CORRECTION 2026-09-12 — every criterion below that assumes whole-file encryption is a goal that was rejected, not work outstanding. The database file is NOT encrypted and no criterion that tests for it can pass.** Re-verified against the tree: no `Cargo.toml` in the workspace mentions sqlcipher in any form (`git grep -i sqlcipher -- '*.toml'` matches nothing; the SQLite dependency is plain `rusqlite` with `features = ["bundled", "backup"]`), the `keyring` crate is in no manifest either, `crates/oz-core/src/db/encryption.rs` (step 7's target) does not exist, and neither does `docs/security/LICENSE-ENCRYPTION.md`. `docs/archived/sqlcipher-migration-plan.md` records the decision: SQLCipher at-rest encryption did not ship, status NEVER ADOPTED. What shipped instead, and is why the criteria marked ⚠ below are now wrong in the opposite direction, is **field-level** encryption of named secrets through their typed accessors, via `crates/kasirmu-crypto` since `e105109f6` (2026-08-29) — a per-column measure, not the per-file one this card asks for. See the correction on ADR #4 §5 for the whole-file vs field-level distinction and for the fail-open read path that follows from it.
 
 - [ ] ~~SQLite database is encrypted at rest using SQLCipher
       (rusqlite `bundled-sqlcipher` feature or `sqlcipher` crate)~~
@@ -71,7 +71,7 @@ injection, but the entropy is too low).
       **CANNOT PASS as written — 2026-09-12: the header is the standard SQLite
       one. Note the two criteria immediately below are equally stale in the
       other direction: `license.api_key` IS still a row in the settings table
-      (`crates/oz-bridge/src/license.rs` writes it through
+      (`crates/kasirmu-bridge/src/license.rs` writes it through
       `Settings::set_batch`), so "not in the settings table" is false and
       "is in the OS credential store" is false — what is true is that its
       VALUE is stored as machine-bound ciphertext rather than plaintext, which
@@ -92,7 +92,7 @@ injection, but the entropy is too low).
 ## Plan (proposed)
 
 1. **Add `rusqlite` with `bundled-sqlcipher` feature** to
-   `crates/oz-core/Cargo.toml` (and any other crates that open
+   `crates/kasirmu-core/Cargo.toml` (and any other crates that open
    the database directly). The `sqlcipher` feature compiles
    SQLCipher into rusqlite and exposes an `KEY` PRAGMA.
 2. **Add a key-derivation step** at database open: read or
@@ -121,7 +121,7 @@ injection, but the entropy is too low).
    - On hardware change (detected via SMBIOS or volume
      serial number changes), re-key the license and rotate
      the API key.
-7. **Add unit tests** in `crates/oz-core/src/db/encryption.rs`:
+7. **Add unit tests** in `crates/kasirmu-core/src/db/encryption.rs` (a file that does not exist yet — the crate was renamed from `oz-core`; the path is given in its post-rebrand spelling so the target is reachable when the work lands):
    - `sqlite_header_is_encrypted` — opens a fresh DB, reads
      the first 16 bytes, asserts they match the SQLCipher
      magic (not the standard SQLite header).
@@ -213,7 +213,7 @@ cargo fmt --all -- --check
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §2 C-5
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §7 release-blocker list
 - `apps/desktop-client/src/commands/license.rs:108`
-- `crates/oz-core/src/db/mod.rs` (where the SQLCipher open
+- `crates/kasirmu-core/src/db/mod.rs` (where the SQLCipher open
   logic will live)
 - `apps/desktop-client/Cargo.toml` (where `keyring` will be added)
 - `apps/desktop-client/src/main.rs` (where the keyring init

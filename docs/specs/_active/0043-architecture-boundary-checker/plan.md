@@ -17,7 +17,7 @@ The Phase 1/2 audit verified:
 
 - The Cargo workspace contains 29 members.
 - `oz-core` has normal path dependencies on ten business modules and re-exports
-  module-owned models from `crates/oz-core/src/`.
+  module-owned models from `crates/kasirmu-core/src/`.
 - No broad runtime refactor should begin until dependency ownership is explicit.
 - Production UI code calls `invoke()` directly outside `ui/src/api/` in:
   - `ui/src/frontend/shell/UpdateBanner.tsx`
@@ -30,9 +30,9 @@ The Phase 1/2 audit verified:
 Relevant anchors:
 
 - `Cargo.toml`
-- `crates/oz-core/Cargo.toml`
-- `crates/oz-core/src/product.rs`
-- `crates/oz-core/src/db/settings.rs`
+- `crates/kasirmu-core/Cargo.toml`
+- `crates/kasirmu-core/src/product.rs`
+- `crates/kasirmu-core/src/db/settings.rs`
 - `ARCHITECTURE.md` Rule 2 and Rule 3
 - `docs/ARCHITECTURE.md` UI API rule
 

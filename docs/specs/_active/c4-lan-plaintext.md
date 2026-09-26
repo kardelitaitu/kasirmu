@@ -165,9 +165,9 @@ grep -rn 'TcpListener::bind' apps/desktop-client/src/
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §6 X-2 (epic)
 - `docs/specs/_active/2026-07-12-desktop-app-audit.md` §7 release-blocker list
 - `apps/desktop-client/src/lan_server.rs:56, 95-110`
-- `crates/oz-core/src/settings.rs` (where the `lan_server_bind`
+- `crates/kasirmu-core/src/settings.rs` (where the `lan_server_bind`
   setting will live)
-- `crates/oz-core/src/db/settings.rs` (`Settings::get_lan_server_bind`
+- `crates/kasirmu-core/src/db/settings.rs` (`Settings::get_lan_server_bind`
   and `Settings::set_lan_server_bind` to be added)
 
 > last audited 22-07-26 by Hermes-Agent

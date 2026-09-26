@@ -7,8 +7,8 @@ priority: P0
 scope:
   - platform/sync/src/queue.rs
   - platform/sync/src/daemon.rs
-  - crates/oz-core/src/db/offline.rs
-  - crates/oz-core/src/db/products.rs
+  - crates/kasirmu-core/src/db/offline.rs
+  - crates/kasirmu-core/src/db/products.rs
   - docs/specs/_active/0044-critical-delivery-and-sync-replay-safety/
 
 problem:

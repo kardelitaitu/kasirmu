@@ -32,7 +32,7 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 - [ ] Pull response compression (Phase 1 Gzip) applies to each page independently
 
 ### Snapshot endpoint
-- [ ] `GET /api/sync/snapshot` returns compressed `.ozpkg` file (zstd, via existing `crates/oz-core/src/ozpkg.rs`)
+- [ ] `GET /api/sync/snapshot` returns compressed `.kasirpkg` file (zstd, via existing `crates/kasirmu-core/src/kasirpkg.rs` — the module was renamed from `ozpkg.rs` in the rebrand, and the format's own extension moved with it)
 - [ ] Snapshot endpoint is protected by the same JWT auth middleware as push/pull/status (tenant-scoped)
 - [ ] Cached files stored at `{OZ_CACHE_DIR}/snapshots/{tenant_id}/{generation_timestamp}.ozpkg`. `OZ_CACHE_DIR` defaults to `<data_dir>/cache`.
 - [ ] Snapshot contains: all products, tax rates, users, and settings for the requesting tenant
@@ -116,7 +116,7 @@ Handle large pull responses (terminals offline 90+ days) via cursor-based pagina
 - `apps/cloud-server/src/sync_api.rs`
 - `platform/sync/src/lib.rs`
 - `platform/sync/src/daemon.rs`
-- `crates/oz-core/src/ozpkg.rs`
+- `crates/kasirmu-core/src/kasirpkg.rs` (renamed from `crates/oz-core/src/ozpkg.rs`)
 - `platform/sync/src/transport.rs`
 
 > last audited 24-07-26 by Hermes-Agent

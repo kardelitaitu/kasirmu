@@ -19,8 +19,8 @@ Eliminate OOM risk on low-end terminals and reduce bandwidth cost by (1) splitti
 - `platform/sync/src/lib.rs`: `SyncEngine::run_sync_cycle()` sends **all** pending items in a single `transport.push_items()` call. A terminal with 500 pending items pushes ~3 MB of JSON in one HTTP request.
 - `platform/sync/src/transport.rs`: `reqwest::Client` has no `.gzip(true)`. No compression headers. JSON payloads are sent and received uncompressed.
 - `platform/sync/src/daemon.rs`: `SyncDaemon` sleeps a fixed random range (60-120s) on each cycle. No exponential backoff. The `retry_count` field is incremented on failure but **never read**.
-- `crates/oz-core/migrations/20260813_init.sql`: No `PRAGMA auto_vacuum`. Synced and failed items accumulate indefinitely. There is no cleanup mechanism.
-- `crates/oz-core/migrations/20260813_init.sql`: No archive table, no pruning mechanism. The `stock_movements` delta ledger grows unbounded — a busy store doing 500 transactions/day accumulates ~180K rows/year per product. With 50 products, that's 9M rows/year, degrading `SUM(delta)` query performance on low-end Android 9 tablets.
+- `crates/kasirmu-core/migrations/20260813_init.sql`: No `PRAGMA auto_vacuum`. Synced and failed items accumulate indefinitely. There is no cleanup mechanism.
+- `crates/kasirmu-core/migrations/20260813_init.sql`: No archive table, no pruning mechanism. The `stock_movements` delta ledger grows unbounded — a busy store doing 500 transactions/day accumulates ~180K rows/year per product. With 50 products, that's 9M rows/year, degrading `SUM(delta)` query performance on low-end Android 9 tablets.
 
 ## Acceptance criteria
 
@@ -101,7 +101,7 @@ Audit queries for date ranges older than 90 days use `UNION ALL SELECT … FROM 
 5. **Backoff**: Modify `platform/sync/src/daemon.rs` `run()` loop to track failure count, apply exponential backoff formula, reset on success. Keep existing on-event trigger path that bypasses backoff.
 6. **Retention migration — `offline_queue`**: Create `crates/oz-core/migrations/XXX_offline_queue_autovacuum.sql` enabling `PRAGMA auto_vacuum = INCREMENTAL;`. Register in `migrations.rs`.
 7. **Ledger retention migration — `stock_movements`**: Create `crates/oz-core/migrations/XXX_stock_movements_archive.sql` creating the `stock_movements_archive` table (identical schema to `stock_movements`). Enable `PRAGMA auto_vacuum = INCREMENTAL;` on `stock_movements`. Register in `migrations.rs`. Update the `20260813_init.sql` base DDL for new installs (migrations consolidated 2026-08-14, commit `db6198a3`).
-8. **Ledger archiving logic**: Add `archive_stock_movements(conn, older_than_days: i64)` function to `crates/oz-core/src/db/products.rs` (or a new `prune.rs` module). Implements the per-item_id archive-rollup transaction loop described in the acceptance criteria. Returns the number of item groups archived.
+8. **Ledger archiving logic**: Add `archive_stock_movements(conn, older_than_days: i64)` function to `crates/kasirmu-core/src/db/products.rs` (or a new `prune.rs` module). Implements the per-item_id archive-rollup transaction loop described in the acceptance criteria. Returns the number of item groups archived.
 9. **Pruning background task**: Add a new file `apps/cloud-server/src/prune.rs` with a `start_prune_loop(db: Arc<tokio::sync::Mutex<rusqlite::Connection>>)` function that runs on `tokio::time::interval(Duration::from_secs(3600))`. Implements the cursor-based DELETE loop for `offline_queue` + calls `archive_stock_movements()` for the ledger. Spawn this task in `main.rs` after the Axum server starts.
    - **Client-side pruning** (`stock_movements` only): Spawn a `tokio::task` in `platform/sync/src/daemon.rs` alongside `SyncDaemon::start()`. The task sleeps for 60-120s (same randomized interval as the daemon) and calls `archive_stock_movements()` on the local DB connection. This keeps the implementation co-located with the sync lifecycle. The client does NOT prune `offline_queue` — that's cloud-server only.
 10. **AnchorExpired error**: Define `SyncErrorCode::AnchorExpired` variant in shared crate with `oldest_available: Option<DateTime<Utc>>` field. Return from pull handler when `since` < oldest retained row. On the client side, add catch logic in `run_sync_cycle()` that logs a warning and returns early, so the next scheduled cycle retries naturally.
@@ -139,9 +139,9 @@ Audit queries for date ranges older than 90 days use `UNION ALL SELECT … FROM 
 - `platform/sync/src/daemon.rs`
 - `apps/cloud-server/src/sync_api.rs`
 - `apps/cloud-server/src/main.rs`
-- `crates/oz-core/migrations/20260813_init.sql`
-- `crates/oz-core/migrations/20260813_init.sql`
-- `crates/oz-core/src/db/products.rs` (`adjust_stock_with_reason`, `insert_stock_movement`, `rebuild_stock_summary`, `get_stock_from_ledger`, `list_stock_movements`)
+- `crates/kasirmu-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/migrations/20260813_init.sql`
+- `crates/kasirmu-core/src/db/products.rs` (`adjust_stock_with_reason`, `insert_stock_movement`, `rebuild_stock_summary`, `get_stock_from_ledger`, `list_stock_movements`)
 
 ---
 
