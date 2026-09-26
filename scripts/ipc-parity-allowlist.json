@@ -121,7 +121,6 @@
     "save_kds_routing_rules_scoped",
     "save_report_schedule",
     "save_topology_template",
-    "seed_default_roles_scoped",
     "send_test_report",
     "set_location_ticket_prefix_scoped",
     "set_primary_location_scoped",
