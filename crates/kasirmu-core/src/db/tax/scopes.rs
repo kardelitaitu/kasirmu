@@ -348,13 +348,24 @@ impl Store<'_> {
 
     // ── Scoped resolution ─────────────────────────────────────────────
     //
-    // tax-separation P1 slice 1 (todo-global-saas-2.md, "Separate business
-    // tax configuration from application defaults"). The four columns added by
-    // 20260921_tax_rate_scoping.sql are read here and nowhere else; nothing in
-    // the sale computation path calls this yet, because nothing can author a
-    // scoped row until the write-side slice lands. Wiring the resolver into
-    // `compute_sale_tax` before then would change money math on every sale to
-    // serve a table that can only ever hold tenant-global rows.
+    // tax-separation P1 (todo-global-saas-2.md, "Separate business tax
+    // configuration from application defaults"). The four columns added by
+    // 20260921_tax_rate_scoping.sql (`legal_entity_id`, `location_id`,
+    // `effective_from`, `effective_to`) are resolved here into one answer per
+    // (location, entity, business date).
+    //
+    // The comment here used to say the columns were "read here and nowhere
+    // else" and that "nothing in the sale computation path calls this yet,
+    // because nothing can author a scoped row until the write-side slice
+    // lands". Both halves have since become false and are corrected rather
+    // than left to mislead: the authoring doors landed
+    // ([`Self::create_tax_rate_scoped`] / [`Self::update_tax_rate_scoped`]), and
+    // [`Store::resolve_tax_rate_for_location`] is now the sale path's own
+    // level-3 lookup (`db/sales_tax.rs:577`, documented at `:487`). Writes to
+    // the window columns also arrive through `sync_pull`. What that old note
+    // was protecting against is still true and still the reason resolution is
+    // centralised here: one resolver, so the sale, the authoring UI and the
+    // diagnostic surfaces cannot disagree about which rate applies on a day.
 
     /// Resolve the tax rate that applies at one location on one business date.
     ///
