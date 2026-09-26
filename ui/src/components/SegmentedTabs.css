@@ -84,6 +84,12 @@
      the ring paints the same line inside the halo and costs no layout size. */
   box-shadow: inset 0 0 0 1px var(--color-border);
   border-radius: var(--radius-lg);
+  /* Clip the thumb and button hover fills to the track's rounded shape. Without
+     this the thumb's own border-radius leaves a crescent gap at its corners —
+     visible as a white sliver at the first and last segment on any DPR. The
+     inset box-shadow ring is not clipped: shadows draw outside the overflow box
+     (they are part of the element's shadow painting, not the content area). */
+  overflow: hidden;
 }
 
 /* The thumb: .btn--primary's fill, .btn--md's box, one column wide, inset by the
@@ -98,11 +104,10 @@
   bottom: 2px;
   left: 2px;
   width: calc((100% - 4px) / var(--segmented-tab-count, 1));
-  /* NESTED radius — the correction that makes the corner clean. Two rounded rects
-     nest only while the inner radius is the outer one minus the gap; at equal
-     radii the two --radius-lg arcs, their centres a whole gap apart, crossed and
-     the gap pinched to nothing along the diagonal. The gap is the 2px halo, and
-     --radius-lg is in rem, so this tracks at every root font size. */
+  /* border-radius still rounds interior-facing corners of non-edge segments.
+     The edge corners against the track border are now clipped by overflow:hidden
+     on the parent, which is more reliable than the nested-radius formula at
+     sub-pixel DPR values (1.5x, 1.75x) where the crescent gap was visible. */
   border-radius: calc(var(--radius-lg) - 2px);
   background: var(--color-accent);
   transform: translateX(calc(var(--segmented-tab-index, 0) * 100%));
