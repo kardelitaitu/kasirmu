@@ -271,7 +271,7 @@ export function StaffRoster({
           <span className="staff-mgmt-toolbar-sep" aria-hidden="true" />
 
           <div className="staff-mgmt-role-stat" data-testid="staff-role-stat">
-            <RoleIcon role="admin" size={14} className="staff-mgmt-role-stat-icon" />
+            <RoleIcon role="admin" size={16} className="staff-mgmt-role-stat-icon" />
             <span className="staff-mgmt-role-stat-label">
               <Localized id="nav-roles"><span>Roles</span></Localized>
             </span>
