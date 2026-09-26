@@ -624,7 +624,7 @@ body:has(.memo-stack) .staff-mgmt-main {
 }
 
 .staff-mgmt-search-field:focus-within {
-  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+  outline: none;
 }
 
 .staff-mgmt-search-field svg {
@@ -641,6 +641,13 @@ body:has(.memo-stack) .staff-mgmt-main {
   color: var(--color-fg);
   font-family: var(--font-sans);
   font-size: var(--text-xs);
+}
+
+.staff-mgmt-search-input:focus,
+.staff-mgmt-search-input:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .staff-mgmt-search-input::placeholder {
@@ -703,9 +710,10 @@ body:has(.memo-stack) .staff-mgmt-main {
   box-shadow: inset 0 0 0 1px var(--color-border-hover);
 }
 
+.staff-mgmt-sort:focus,
 .staff-mgmt-sort:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .staff-mgmt-toolbar-skeleton {
