@@ -5590,6 +5590,54 @@ Commit `bb8ed4ca8` (verified by hash).
 **Tally:** 70 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins plus the MSL-62 agreement
 pin. One crate-wide item recorded: 52 broken intra-doc links in `kasirmu-core`, none of them mine.
 
+## Pass 86 — MSL-64: the escaped-backtick family, and the doc-link census
+
+Ran down the crate-wide item MSL-63 recorded: 52 broken intra-doc links in `kasirmu-core`, none of them
+mine. Treating it as a number was the wrong shape, so I characterised it by CAUSE first and found it is
+not one defect but five families — and one of them was a real authoring bug with a clear blast radius.
+
+**MSL-64 (LOW, fixed): every backtick in `stock_variance.rs` was escaped with a literal backslash.** Lines
+1-31 of the module doc and its function docs read ``[\`Store::stock_variance_report\`]`` — the `\` escapes
+the backtick, so rustdoc sees broken syntax: the inline code never renders (the reader gets literal
+backslashes) and the link never forms. Measured: **31 occurrences in the production file**, 6 in its test
+file, 6 in `migrations_tests.rs` — 43 total, and the crate had exactly three files carrying the defect, all
+of them the same authoring slip.
+
+The fix is the mechanical one, applied only to lines matching `^\s*(//!|///)` — never to a string literal or
+a code line — and proven so: the diff is 43 insertions / 43 deletions, and a filter over `git diff -U0` for
+added lines that are NOT doc comments returns **nothing**. One further site in the same module needed a real
+change, not an unescape: `[\`StockVarianceRow\`]` still failed after unescaping because the module doc
+resolves in the parent namespace, so it now carries an explicit `(crate::stock_variance::StockVarianceRow)`
+target.
+
+**`cargo doc -D warnings` on `kasirmu-core` went 52 → 46 unresolved links.** The six resolved are exactly
+the six link sites this pass repaired, verified by re-filtering the error list for `StockVariance`,
+`stock_variance` and `StockVarianceRow` — now zero hits.
+
+**The other four families, characterised rather than fixed, because each needs its own judgement:**
+
+| Family | Examples | Why it fails |
+|---|---|---|
+| `Store::x` where `x` is non-public | `reject_builtin_role_id` (`pub(crate)`), `map_role_conflict` (private), `validate_scope_target` (private) | rustdoc cannot link a non-public item from public docs |
+| bare name needing a path | `QuotaError`, `Payable`, `MemoStatus`, `Entitlements` | the item exists but is not in scope at the doc site |
+| private module | `super::roles`, `super::staff`, `rates`, `revenue`, `scopes`, `datetime`, `product_sales` | the module is not public |
+| intra-doc link to a private fn | `claim_document_number_in_tx`, `stock_variance_report`, `list_warehouse_products` | same as family 1 |
+
+I verified family 1 by reading the definitions rather than inferring it: all five samples are `pub(crate)`
+or bare `fn`. That matters because it decides the remedy — the fix is either to make the item public or to
+drop the link syntax and leave the name in plain backticks, and which one is right differs per site. A blind
+sweep would either widen the public API to satisfy a doc or mangle a link that should stay. Left recorded:
+**46 known broken intra-doc links in `kasirmu-core`, with the cause of the largest family stated**, and no
+CI signal on it either way (nothing runs `cargo doc`).
+
+**Verified:** 6 `stock_variance` tests, 0 failed; `clippy -p kasirmu-core --lib -D warnings` clean; all three
+files `rustfmt`-clean; `cargo doc` recount run twice, before and after. Commit `007211828` (verified by
+hash).
+
+**Tally:** 71 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. One crate-wide item
+narrowed from "52 unexplained" to "46, four named families, one closed".
+
+
 
 
 
