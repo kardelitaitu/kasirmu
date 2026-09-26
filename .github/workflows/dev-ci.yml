@@ -738,6 +738,12 @@ jobs:
         run: bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
       - name: Unified healthcheck script test
         run: sh apps/unified/test-healthcheck.sh
+      # Orphaned until 2026-09-26 (review 12.2): the script existed, worked and passed,
+      # while two source files and a plan asserted it ran "in CI" -- and the unified
+      # image was unbuildable for five days with nothing to notice. Same shape as the
+      # R36-11 release.yml finding below: a workflow that never runs cannot report.
+      - name: Dockerfile workspace parity
+        run: python3 scripts/verify-dockerfile-workspace.py
       # Restored to CI by R36-12. It was excluded from the first version of this
       # job because it FAILS, and adding a red gate would have turned every
       # unrelated PR red. The failures turned out to be the scanner's own bug --

@@ -105,6 +105,11 @@ step "architecture boundaries" "python3 scripts/verify-architecture-boundaries.p
 step "server origins" "node scripts/check-server-origins.mjs" node scripts/check-server-origins.mjs
 step "env docs" "python .agents/skills/docs-auditor/scripts/check-env-docs.py" python .agents/skills/docs-auditor/scripts/check-env-docs.py
 step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/check-auditor-selftests.sh
+# Every workspace member must be represented in BOTH Dockerfiles' cache stages.
+# Orphaned until 2026-09-26 (review 12.2): it existed, worked, and passed, while two
+# source files and a plan claimed it ran "in CI" -- and the unified image was in fact
+# unbuildable from 2026-09-13 to 2026-09-18 with nothing to catch it.
+step "dockerfile workspace" "python3 scripts/verify-dockerfile-workspace.py" python3 scripts/verify-dockerfile-workspace.py
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────

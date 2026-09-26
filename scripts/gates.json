@@ -126,6 +126,14 @@
       }
     },
     {
+      "id": "dockerfile-workspace",
+      "label": "Dockerfile workspace parity",
+      "status": "required",
+      "_note": "Wired 2026-09-26 (review 12.2). scripts/verify-dockerfile-workspace.py compares every workspace member against BOTH ops/docker Dockerfiles' cache stages. It existed, worked and passed while running NOWHERE -- no gates.json id, no check.sh step, no workflow step, no hook -- and two source files (ops/docker/Dockerfile.server:93, ops/docker/Dockerfile.unified:62) plus docs/plans/_active/northflank-p1-p7-plan.md:26 asserted it ran 'in CI'. The only workflow that ever referenced it is .github/workflows/attic/ci.yml.bak:668, a retired file GitHub does not execute. Its absence is the same five days in which the unified image was unbuildable (2026-09-13 to 2026-09-18) with nothing to notice.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "runners": { "check.sh": ["dockerfile workspace"] }
+    },
+    {
       "id": "no-raw-params",
       "label": "No raw params (ADR #7 Phase 4)",
       "status": "required",

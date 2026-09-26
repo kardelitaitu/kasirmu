@@ -154,12 +154,109 @@ def check_dockerfile(name: str, members: list[str]) -> list[str]:
     return errors
 
 
+def apt_packages(dockerfile: str) -> set[str]:
+    """Packages named on `apt-get install` lines in one Dockerfile text.
+
+    Only the PACKAGE tokens are collected: continuation backslashes, the `-y`,
+    `--no-install-recommends` and `install` words are dropped, and a trailing `\\`
+    is stripped so a wrapped line reads like a single one. Comments are skipped,
+    because this repo's Dockerfiles carry long explanatory blocks that name
+    packages in prose (`libudev-dev is REQUIRED, not optional`) and counting those
+    would invent packages neither file installs.
+    """
+    packages: set[str] = set()
+    collecting = False
+    for raw in dockerfile.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            continue
+        if not collecting:
+            if not re.search(r"apt-get\s+install\b", line):
+                continue
+            collecting = True
+            line = line.split("install", 1)[1]
+        # Only a line ending in a backslash continues the install run. The
+        # trailing `&& rm -rf /var/lib/apt/lists/*` does NOT, and treating any
+        # non-backslash line as still-collecting added `rm` to the set.
+        if line.endswith("\\"):
+            line = line[:-1]
+        else:
+            collecting = False
+        for chunk in line.split("&&"):
+            for token in chunk.replace("\\", " ").split():
+                if token.startswith("-") or token in ("install", "&&", "|"):
+                    continue
+                if re.fullmatch(r"[a-z0-9][a-z0-9.+-]*", token):
+                    packages.add(token)
+    return packages
+
+
+# Apt packages that ONLY some Dockerfiles install, with the reason the asymmetry
+# is deliberate. A builder-stage tool (`libc-dev`, `libssl-dev`, `pkg-config`,
+# `libudev-dev`) exists to compile Rust; an image that ships a prebuilt binary
+# and never runs cargo must not be told to install it. `libudev1` is recorded
+# because the file itself measures it (see below). The divergence report still
+# names every remaining package -- this table only silences the documented ones.
+APT_PARITY_EXEMPT: dict[str, str] = {
+    "libudev-dev": "builder-stage header for libudev-sys; no runtime image compiles Rust",
+    "libudeb-dev": "builder-stage header for libudev-sys; no runtime image compiles Rust",
+    "libssl-dev": "builder-stage header; no runtime image compiles Rust",
+    "pkg-config": "builder-stage tool; no runtime image compiles Rust",
+    "libc-dev": "builder-stage header; no runtime image compiles Rust",
+    "libudev1": (
+        "DOCKER-14: already present in debian:bookworm-slim as a util-linux dependency; "
+        "Dockerfile.server lists it belt-and-braces, Dockerfile.unified deliberately does not"
+    ),
+    "gosu": "Dockerfile.server drops privileges with gosu; the unified image uses supervisord",
+    "supervisor": "Dockerfile.unified runs caddy + the server under supervisord; the server image is single-process",
+    "jq": "Dockerfile.unified's healthcheck parses JSON with jq; the server image has no such check",
+}
+
+
+def apt_divergence(texts: dict[str, str]) -> list[str]:
+    """Packages installed by some Dockerfiles and not others.
+
+    This is the gap `ops/docker/Dockerfile.unified:62-63` names in its own words:
+    "scripts/verify-dockerfile-workspace.py compares the two files' cache-priming
+    manifests but NOT their apt package lists." That omission is not theoretical --
+    the unified image was unbuildable from 2026-09-13 to 2026-09-18 because
+    `Dockerfile.server` installed `libudev-dev` and `Dockerfile.unified` did not, and
+    nothing compared the two. The failure surfaced only as a dead Northflank build.
+
+    The split is reported per package rather than as a diff, because the question a
+    reader has is "which file is missing what", and a bare set difference cannot say
+    whether the server is behind or the unified one is.
+    """
+    per_file = {name: apt_packages(text) for name, text in texts.items()}
+    everything: set[str] = set()
+    for pkgs in per_file.values():
+        everything |= pkgs
+    findings: list[str] = []
+    for package in sorted(everything):
+        have = sorted(n for n, pkgs in per_file.items() if package in pkgs)
+        missing = sorted(n for n, pkgs in per_file.items() if package not in pkgs)
+        if not missing:
+            continue
+        verdict = ""
+        if package in APT_PARITY_EXEMPT:
+            verdict = f" [exempt: {APT_PARITY_EXEMPT[package]}]"
+        findings.append(
+            f"{package}: installed by {', '.join(have)} but NOT by "
+            f"{', '.join(missing)}{verdict}"
+        )
+    return findings
+
+
 def main() -> int:
     members = workspace_members()
     all_errors: list[str] = []
 
     for name in DOCKERFILES:
         all_errors.extend(check_dockerfile(name, members))
+
+    texts = {name: (ROOT / name).read_text(encoding="utf-8") for name in DOCKERFILES}
+    apt_findings = apt_divergence(texts)
+    apt_drift = [f for f in apt_findings if "[exempt:" not in f]
 
     if all_errors:
         print("DOCKER-09 drift: cache-priming stage is out of sync with Cargo.toml workspace members:")
@@ -168,10 +265,67 @@ def main() -> int:
         print("Add the member's manifest COPY + dummy src dir to the failing Dockerfile (see DOCKER-09).")
         return 1
 
+    if apt_drift:
+        print("DOCKER-10 drift: the Dockerfiles install different apt package sets:")
+        for f in apt_drift:
+            print(f"  - {f}")
+        print("Both images must install the package, or record the reason in APT_PARITY_EXEMPT.")
+        return 1
+
+    for f in apt_findings:
+        print(f"NOTE: deliberate apt asymmetry -- {f}")
+
     for name in DOCKERFILES:
-        print(f"OK: all {len(members)} workspace members are represented in {name}'s cache stage.")
+        pkgs = apt_packages(texts[name])
+        print(
+            f"OK: all {len(members)} workspace members are represented in {name}'s cache "
+            f"stage; apt packages agree ({len(pkgs)} installed by all files)."
+        )
+    return 0
+
+
+def self_test() -> int:
+    """Pin the apt-divergence rule with fixtures it must both fail and pass."""
+    nl = chr(10)
+    shared = [
+        "apt-get install -y --no-install-recommends \\",
+        "    libssl-dev \\",
+        "    pkg-config \\",
+    ]
+    # A comment naming a package must not be read as an install (this repo's
+    # Dockerfiles carry long prose blocks that name real packages).
+    prose = [
+        "# libudev-dev is REQUIRED, not optional, for the desktop build.",
+        *shared,
+    ]
+    divergent = [*shared, "        libudev-dev \\"]
+
+    failures: list[str] = []
+
+    if apt_packages(nl.join(prose)) != {"libssl-dev", "pkg-config"}:
+        failures.append("comment prose leaked into the package set")
+    if apt_packages(nl.join(divergent)) != {"libssl-dev", "pkg-config", "libudev-dev"}:
+        failures.append("wrapped continuation package was not collected")
+    if "rm" in apt_packages(nl.join(shared)):
+        failures.append("trailing shell operator `rm` was collected as a package")
+
+    same = apt_divergence({"a": nl.join(shared), "b": nl.join(prose)})
+    if same:
+        failures.append(f"identical package sets reported as divergent: {same}")
+
+    found = apt_divergence({"a": nl.join(divergent), "b": nl.join(shared)})
+    if len(found) != 1 or "libudev-dev" not in found[0]:
+        failures.append(f"divergent package not reported: {found}")
+    elif "NOT by b" not in found[0]:
+        failures.append(f"divergence does not name the missing file: {found[0]}")
+
+    for f in failures:
+        print(f"SELFTEST FAIL: {f}")
+    if failures:
+        return 1
+    print("OK: apt-divergence self-test passed.")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(self_test() if "--self-test" in sys.argv[1:] else main())
