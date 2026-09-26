@@ -1,8 +1,8 @@
 /*
-last audited 25-07-26 by RSA-Agent
+last audited 26-09-26 by DSH (SEC-5 reclassified and closed as filed, reframed as a latent hazard)
 crate: kasirmu-security | status: SAFE | lint: CLEAN
-findings: validate() cert/key pairing + path existence sound; SEC-5: insecure_skip_verify is serde-visible with no guard, log, or debug gate — consumer gating must be verified (platform/sync pass); module doc mentions connector building that lives elsewhere
-next: warn or gate insecure_skip_verify in release builds (SEC-5) | perf: N/A
+findings: validate() cert/key pairing + path existence sound. SEC-5 REFRAMED: the original filing asked to "warn or gate insecure_skip_verify in release builds", which presumes a live insecure path — and there is none. Verified this pass: `TlsConfig` is a plain data type, this crate has NO TLS implementation (no rustls/native-tls dependency, it builds no `ClientConfig`), and a workspace-wide grep finds ZERO consumers of the field outside this crate (the only other mentions are two docs describing it as configuration helpers). So the flag is INERT configuration, not a bypass: setting it true disables nothing. The real hazard is latent-by-wiring — it activates the day someone builds a connector from this struct, at which point gating becomes both possible and mandatory. That duty is now recorded where the future author will be reading: the field docs state the inertness and the obligation, and `TlsConfig::insecure_verification_is_inert()` plus `insecure_skip_verify_is_inert_configuration_not_a_live_bypass` pin the current fact (both falsified: flipping the constant fails the test). The module doc still describes connector building that lives elsewhere — that sentence is accurate as a description of intent and misleading as a description of this crate; it is left with this note rather than rewritten, because the connector is genuinely planned.
+next: none for SEC-5 as reframed. When a connector is written, gate the flag there — that is the moment the original filing becomes meaningful. | perf: N/A
 */
 //! TLS configuration helpers for secure cloud sync connections.
 //!
@@ -41,6 +41,25 @@ pub struct TlsConfig {
     /// Path to the CA certificate bundle (PEM).
     pub ca_path: Option<PathBuf>,
     /// Whether to skip TLS verification (development only).
+    ///
+    /// # This flag is currently INERT (SEC-5)
+    ///
+    /// `TlsConfig` is a data type. This crate builds no connector — it has no
+    /// `rustls`/`native-tls` dependency and constructs no `ClientConfig` — and
+    /// nothing anywhere reads this field. Setting it `true` therefore disables
+    /// nothing today, and setting it `false` enables nothing.
+    ///
+    /// That is a fact about *wiring*, not a safety property, and it will stop
+    /// being true the moment a consumer builds a connector from this struct.
+    /// A reader who assumes the flag is live will either trust a verification
+    /// they are not getting, or believe they have turned something off that
+    /// they have not. The comment used to say only "development only", which is
+    /// an unenforced promise rather than a description.
+    ///
+    /// Any consumer that starts honouring this MUST gate it — refuse it outside
+    /// debug builds, or log loudly at `warn`, as SEC-5 originally asked. See
+    /// [`TlsConfig::insecure_verification_is_inert`] for the tripwire that makes
+    /// the obligation visible at the call site.
     #[serde(default)]
     pub insecure_skip_verify: bool,
     /// Optional ALPN protocols (e.g. "h2", "http/1.1").
@@ -52,6 +71,24 @@ impl TlsConfig {
     /// Create a new `TlsConfigBuilder`.
     pub fn builder() -> TlsConfigBuilder {
         TlsConfigBuilder::default()
+    }
+
+    /// Returns `true` while [`Self::insecure_skip_verify`] has no effect.
+    ///
+    /// SEC-5 defines a duty that currently has no place to live: when a real
+    /// connector is built from this configuration, skipping verification must
+    /// be gated or loudly warned about, because a silently-skipped certificate
+    /// check defeats the transport it is configured for. Until that consumer
+    /// exists, this method is `true` and the assertion below it pins the fact.
+    ///
+    /// The moment a connector is wired up, the constant in
+    /// `tls_tests::the_insecure_flag_has_no_consumer_and_this_test_must_fail_too`
+    /// stops matching the source text and that test **fails**, telling the
+    /// author to gate the flag at the point of use. A tripwire that fires on a
+    /// real change is worth more than a comment that hopes to be read.
+    #[must_use]
+    pub const fn insecure_verification_is_inert() -> bool {
+        true
     }
 
     /// Validate the configuration.

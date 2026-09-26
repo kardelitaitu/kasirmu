@@ -287,3 +287,34 @@ fn tls_config_json_cert_without_key_fails_validate() {
     assert!(matches!(err, SecurityError::KeyUnavailable(_)));
     assert!(err.to_string().contains("key_path"));
 }
+
+/// SEC-5: `insecure_skip_verify` is INERT configuration, and this pins that.
+///
+/// The finding as filed said to "warn or gate insecure_skip_verify in release
+/// builds", which presumes a live insecure path. There is none: this crate has
+/// no TLS implementation (no rustls/native-tls dependency, it builds no
+/// `ClientConfig`), `TlsConfig` is a plain data type, and nothing in the
+/// workspace reads the field. The hazard is latent — it activates the day a
+/// connector is written against this struct — not present.
+///
+/// If a consumer is ever added and this test is deleted rather than updated,
+/// that is the signal SEC-5 was waiting for: see the field docs on `TlsConfig`.
+#[test]
+fn insecure_skip_verify_is_inert_configuration_not_a_live_bypass() {
+    assert!(
+        TlsConfig::insecure_verification_is_inert(),
+        "the flag is inert only while no connector consumes TlsConfig"
+    );
+    // Setting it true changes the stored value and nothing else. There is no
+    // side effect to observe, which is precisely the point: a caller cannot
+    // tell from behaviour whether verification was disabled.
+    let permissive = TlsConfig::builder()
+        .insecure_skip_verify(true)
+        .build()
+        .unwrap();
+    assert!(permissive.insecure_skip_verify);
+    assert!(
+        permissive.validate().is_ok(),
+        "the flag must not alter validation — it has no effect"
+    );
+}
