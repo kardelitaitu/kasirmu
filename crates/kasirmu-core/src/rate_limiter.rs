@@ -1,8 +1,8 @@
 /*
-last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
+last audited 26-09-26 by DSH (COR-2 CLOSED)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: sliding-window logic correct (prune -> lockout check -> record -> recheck; max_attempts=0 guarded); poison-recovery on hot path good; COR-2: per-username HashMap unbounded — login-form spam grows memory without cap
-next: cap entries or evict idle usernames (COR-2) | perf: pruning bounds per-key vec
+findings: sliding-window logic correct (prune -> lockout check -> record -> recheck; max_attempts=0 guarded); poison-recovery on hot path good. COR-2 CLOSED: the per-username map is now evicted on every record. The original diagnosis was accurate and the mechanism is worth restating precisely, because "unbounded HashMap" undersells it — the per-key VEC was pruned on every call but the KEY was never removed, so the map only ever grew. Since the username is the map key and the login form is unauthenticated, an attacker supplying a distinct name per request allocated one entry per request for the process lifetime; the entry held an empty vec after pruning, so the cost per request was one String plus a map slot that nothing would ever free. `evict_expired_locked` now drops every username whose attempts have all aged out, before the caller's key is inserted, so the map holds at most the names active within the last window. A live lockout is never evicted (its vec is non-empty and in-window), which is asserted rather than assumed. Note the module still has ZERO production callers at HEAD (exported at lib.rs:269, never used), so this was latent — the fix matters because it is a public API whose stated purpose is protecting an unauthenticated form.
+next: none for COR-2. | perf: pruning bounds per-key vec AND the key set now; the sweep is O(keys) per record, bounded by the live-username count
 */
 //! Sliding-window rate limiter for login PIN attempts.
 //!
@@ -58,6 +58,18 @@ impl LoginRateLimiter {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         let window = Duration::from_secs(self.window_secs);
+
+        // COR-2: drop usernames whose whole window has expired BEFORE adding the
+        // caller's key. Without this the map only ever grows: the per-key vec was
+        // pruned, but the key itself was never removed, so a caller that supplies
+        // a distinct username per request (the login form is unauthenticated)
+        // allocates an entry each time and nothing ever frees it.
+        //
+        // This runs on every record, so the map holds at most the usernames that
+        // have attempted within the last window — bounded by the request rate
+        // over the window, not by the process lifetime.
+        self.evict_expired_locked(&mut map, now, window);
+
         let attempts = map.entry(username.to_string()).or_default();
 
         // Prune entries whose window has expired.
@@ -87,6 +99,34 @@ impl LoginRateLimiter {
 
         let remaining = self.max_attempts.saturating_sub(attempts.len());
         Ok(remaining)
+    }
+
+    /// Remove every username whose attempts have all fallen outside the window.
+    ///
+    /// COR-2. A username with a non-empty, still-live attempt list is retained —
+    /// its lockout is the whole point of the map. A username whose every entry
+    /// has aged out carries no information (the next attempt from that name
+    /// starts at zero anyway) and is dropped, which is what keeps the map from
+    /// growing without bound.
+    fn evict_expired_locked(
+        &self,
+        map: &mut HashMap<String, Vec<Instant>>,
+        now: Instant,
+        window: Duration,
+    ) {
+        map.retain(|_, attempts| attempts.iter().any(|t| now.duration_since(*t) < window));
+    }
+
+    /// Number of usernames currently tracked.
+    ///
+    /// Exposed so the COR-2 bound can be asserted rather than merely described:
+    /// it holds at most the names that attempted inside the last window.
+    #[must_use]
+    pub fn tracked_usernames(&self) -> usize {
+        self.attempts
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len()
     }
 
     /// Reset the attempt counter for `username` (call on successful login).
