@@ -58,6 +58,9 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { parseMinorUnits } from '@/types/domain';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { RoleAssignmentMatrix } from './RoleAssignmentMatrix';
+import { Badge } from '@/components/Badge';
+import { ProductThumb } from '@/components/ProductThumb';
+import { RoleIcon } from '@/components/RoleIcon';
 
 // ── Five-role taxonomy (ADR #35 D4 / spec 0048) ──────────────────────
 //
@@ -73,7 +76,7 @@ const PRESET_ROLE_ORDER = [
   'role-auditor',
 ] as const;
 
-// ── Icons for drawer footer actions ──────────────────────────────────
+// ── Icons for drawer footer actions & card headers ───────────────────
 const iconProps = {
   viewBox: '0 0 24 24',
   fill: 'none',
@@ -110,6 +113,57 @@ const ImpersonateIcon = () => (
     <path d="M3 21l8-8" />
   </svg>
 );
+
+const UserIcon = () => (
+  <svg {...iconProps}>
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+const ShieldIcon = () => (
+  <svg {...iconProps}>
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
+const ContactIcon = () => (
+  <svg {...iconProps}>
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <line x1="7" y1="8" x2="17" y2="8" />
+    <line x1="7" y1="12" x2="13" y2="12" />
+    <line x1="7" y1="16" x2="10" y2="16" />
+  </svg>
+);
+
+const BriefcaseIcon = () => (
+  <svg {...iconProps}>
+    <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+  </svg>
+);
+
+const HeartIcon = () => (
+  <svg {...iconProps}>
+    <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
+  </svg>
+);
+
+const roleVariant = (roleName: string): 'warning' | 'info' | 'default' | 'success' => {
+  switch (roleName.toLowerCase()) {
+    case 'owner':
+    case 'role-owner':
+    case 'admin':
+    case 'role-admin':   return 'warning';
+    case 'manager':
+    case 'role-manager': return 'info';
+    case 'staff':
+    case 'role-staff':  return 'default';
+    case 'auditor':
+    case 'role-auditor': return 'success';
+    default:             return 'default';
+  }
+};
 
 /**
  * The roles presented in the dropdown, filtered to the five-role taxonomy
@@ -715,6 +769,7 @@ export function StaffDetailDrawer({
       error={error}
       saving={saving}
       footer={drawerFooter}
+      className="staff-detail-popup"
     >
       {/* C1.1 staff-limit upgrade banner */}
       {quotaUpgrade && (
@@ -725,57 +780,113 @@ export function StaffDetailDrawer({
           </Button>
         </div>
       )}
-      {/* Username */}
-      <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-username" aria-label={l10n.getString('staff-field-username-aria')}>
-        <Localized id="staff-field-username-label">
-          <span className="staff-mgmt-label">Username *</span>
-        </Localized>
-        <Localized id="staff-username-placeholder" attrs={{ placeholder: true }}>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-username"
-            value={form.username}
-            onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
-            placeholder="e.g. jane"
-            disabled={isEditing}
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            data-gramm="false"
-          />
-        </Localized>
-      </label>
 
-      {/* Display name */}
-      <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-name" aria-label={l10n.getString('staff-field-name-aria')}>
-        <Localized id="staff-field-name-label">
-          <span className="staff-mgmt-label">Display Name *</span>
-        </Localized>
-        <Localized id="staff-name-placeholder" attrs={{ placeholder: true }}>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-name"
-            value={form.displayName}
-            onChange={(e) => setForm((prev) => ({ ...prev, displayName: e.target.value }))}
-            placeholder="e.g. Jane Smith"
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            data-gramm="false"
-          />
-        </Localized>
-      </label>
+      {/* Hero Profile Card in Edit Mode */}
+      {isEditing && member && (
+        <div className="staff-drawer-hero" data-testid="staff-drawer-hero">
+          <div className="staff-drawer-hero-avatar">
+            <ProductThumb
+              name={member.display_name}
+              hash={member.avatar ?? null}
+              className="staff-drawer-hero-thumb"
+            />
+          </div>
+          <div className="staff-drawer-hero-info">
+            <div className="staff-drawer-hero-name-row">
+              <h2 className="staff-drawer-hero-name">{member.display_name}</h2>
+              <span
+                className={`staff-mgmt-status-pill ${member.is_active ? 'staff-mgmt-status-pill--active' : 'staff-mgmt-status-pill--inactive'}`}
+                role="img"
+                aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+              >
+                <span
+                  className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
+                  aria-hidden="true"
+                />
+                <span className="staff-mgmt-status-text">
+                  {l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+                </span>
+              </span>
+            </div>
+            <div className="staff-drawer-hero-sub-row">
+              <span className="staff-drawer-hero-username">
+                <span className="staff-mgmt-card-at" aria-hidden="true">@</span>
+                <span>{member.username}</span>
+              </span>
+              <span className="staff-drawer-hero-sep" aria-hidden="true">·</span>
+              <Badge variant={roleVariant(member.role_name)}>
+                <span className="staff-mgmt-role-badge-content">
+                  <RoleIcon role={member.role_name} size={13} className="staff-mgmt-role-icon" />
+                  <span>{member.role_name}</span>
+                </span>
+              </Badge>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* PIN */}
-      <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-pin" aria-label={l10n.getString('staff-field-pin-aria')}>
-        <Localized id={isEditing ? 'staff-field-pin-edit-label' : 'staff-field-pin-label'}>
-          <span className="staff-mgmt-label">
-            {isEditing ? 'New PIN (leave blank to keep current)' : 'PIN * (4+ characters)'}
-          </span>
-        </Localized>
-        <Localized id={isEditing ? 'staff-pin-edit-placeholder' : 'staff-pin-placeholder'} attrs={{ placeholder: true }}>
+      {/* Smart 1-column (portrait) / 2-column (landscape) layout */}
+      <div className="staff-drawer-layout">
+        {/* Left Column: Account Credentials & Role */}
+        <div className="staff-drawer-col">
+          {/* Card 1: Account Credentials */}
+          <div className="staff-drawer-card">
+            <div className="staff-drawer-card-header">
+              <UserIcon />
+              <span className="staff-drawer-card-title">Account Credentials</span>
+            </div>
+            <div className="staff-drawer-card-body">
+              {/* Username */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-username" aria-label={l10n.getString('staff-field-username-aria')}>
+                <Localized id="staff-field-username-label">
+                  <span className="staff-mgmt-label">Username *</span>
+                </Localized>
+                <Localized id="staff-username-placeholder" attrs={{ placeholder: true }}>
+                  <input
+                    className="staff-mgmt-input"
+                    type="text"
+                    id="staff-field-username"
+                    value={form.username}
+                    onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+                    placeholder="e.g. jane"
+                    disabled={isEditing}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-gramm="false"
+                  />
+                </Localized>
+              </label>
+
+              {/* Display name */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-name" aria-label={l10n.getString('staff-field-name-aria')}>
+                <Localized id="staff-field-name-label">
+                  <span className="staff-mgmt-label">Display Name *</span>
+                </Localized>
+                <Localized id="staff-name-placeholder" attrs={{ placeholder: true }}>
+                  <input
+                    className="staff-mgmt-input"
+                    type="text"
+                    id="staff-field-name"
+                    value={form.displayName}
+                    onChange={(e) => setForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                    placeholder="e.g. Jane Smith"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    data-gramm="false"
+                  />
+                </Localized>
+              </label>
+
+              {/* PIN */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-pin" aria-label={l10n.getString('staff-field-pin-aria')}>
+                <Localized id={isEditing ? 'staff-field-pin-edit-label' : 'staff-field-pin-label'}>
+                  <span className="staff-mgmt-label">
+                    {isEditing ? 'New PIN (leave blank to keep current)' : 'PIN * (4+ characters)'}
+                  </span>
+                </Localized>
+                <Localized id={isEditing ? 'staff-pin-edit-placeholder' : 'staff-pin-placeholder'} attrs={{ placeholder: true }}>
                   <input
                     className="staff-mgmt-input"
                     type="password"
@@ -788,310 +899,347 @@ export function StaffDetailDrawer({
                     spellCheck={false}
                     data-gramm="false"
                   />
-        </Localized>
-      </label>
-
-            {/* Role selector — disabled for incomplete profiles (ADR #35
-                D6: management-role assignment requires a complete
-                profile) */}
-            {hasRoleSelected && (
-              <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-role">
-                <Localized id="staff-field-role-label">
-                  <span className="staff-mgmt-label">Role *</span>
                 </Localized>
-                <SettingsSelect
-                  id="staff-field-role"
-                  value={form.roleId}
-                  disabled={editingIncomplete}
-                  onChange={(value) => setForm((prev) => ({ ...prev, roleId: value }))}
-                  options={selectableRoles.map((r) => ({ value: r.id, label: `${r.name} — ${r.description}` }))}
-                  placeholder={l10n.getString('staff-role-select-default')}
-                  ariaLabel={l10n.getString('staff-field-role-label')}
+              </label>
+            </div>
+          </div>
+
+          {/* Card 2: Role & Permissions */}
+          <div className="staff-drawer-card">
+            <div className="staff-drawer-card-header">
+              <ShieldIcon />
+              <span className="staff-drawer-card-title">Role & Permissions</span>
+            </div>
+            <div className="staff-drawer-card-body">
+              {editingIncomplete && (
+                <p className="staff-mgmt-incomplete-hint" role="note">
+                  <Localized id="staff-profile-incomplete-edit-hint">
+                    <span>Complete this member&apos;s profile to unlock role and workspace assignment.</span>
+                  </Localized>
+                </p>
+              )}
+
+              {/* Role selector */}
+              {hasRoleSelected && (
+                <label className="staff-mgmt-field" htmlFor="staff-field-role">
+                  <Localized id="staff-field-role-label">
+                    <span className="staff-mgmt-label">Role *</span>
+                  </Localized>
+                  <SettingsSelect
+                    id="staff-field-role"
+                    value={form.roleId}
+                    disabled={editingIncomplete}
+                    onChange={(value) => setForm((prev) => ({ ...prev, roleId: value }))}
+                    options={selectableRoles.map((r) => ({ value: r.id, label: `${r.name} — ${r.description}` }))}
+                    placeholder={l10n.getString('staff-role-select-default')}
+                    ariaLabel={l10n.getString('staff-field-role-label')}
+                  />
+                </label>
+              )}
+
+              {/* Granted permission chips */}
+              {selectedRole && selectedRole.permissions.length > 0 && (
+                <div className="staff-mgmt-role-permissions">
+                  <Localized id="staff-role-permissions-label">
+                    <span className="staff-mgmt-role-permissions-label">Role permissions</span>
+                  </Localized>
+                  <div
+                    className="staff-mgmt-role-permissions-chips"
+                    role="list"
+                    aria-label={l10n.getString('staff-role-permissions-label')}
+                  >
+                    {selectedRole.permissions.map((p) => (
+                      <span key={p} className="staff-mgmt-role-permission-chip" role="listitem">{p}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Card 3: Assignment Access (Edit mode only) */}
+          {isEditing && (
+            <RoleAssignmentMatrix
+              form={form}
+              setForm={setForm}
+              branches={branches}
+              allWorkspaces={allWorkspaces}
+              entities={entities}
+              disabled={editingIncomplete}
+            />
+          )}
+        </div>
+
+        {/* Right Column: Personal Profile & Employment & Emergency */}
+        <div className="staff-drawer-col">
+          {/* Card 4: Personal Profile & Identity */}
+          <div className="staff-drawer-card">
+            <div className="staff-drawer-card-header">
+              <ContactIcon />
+              <Localized id="staff-profile-section-label">
+                <span className="staff-drawer-card-title">Personal Profile</span>
+              </Localized>
+            </div>
+            <div className="staff-drawer-card-body">
+              {/* Date of Birth */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-dob" aria-label={l10n.getString('staff-field-dob-aria')}>
+                <Localized id="staff-field-dob-label">
+                  <span className="staff-mgmt-label">Date of Birth *</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="date"
+                  id="staff-field-dob"
+                  value={form.dateOfBirth}
+                  onChange={(e) => setForm((prev) => ({ ...prev, dateOfBirth: e.target.value }))}
                 />
               </label>
-            )}
+              {fieldErrors['dateOfBirth'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['dateOfBirth']}</span>
+              )}
 
-            {/* Granted permission keys for the selected role (0046) —
-                read-only chips; the backend list_roles_scoped carries
-                them verbatim from the role's permissions JSON. */}
-            {selectedRole && selectedRole.permissions.length > 0 && (
-              <div className="staff-mgmt-role-permissions">
-                <Localized id="staff-role-permissions-label">
-                  <span className="staff-mgmt-role-permissions-label">Role permissions</span>
+              {/* Phone */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-phone" aria-label={l10n.getString('staff-field-phone-aria')}>
+                <Localized id="staff-field-phone-label">
+                  <span className="staff-mgmt-label">Phone *</span>
                 </Localized>
-                <div
-                  className="staff-mgmt-role-permissions-chips"
-                  role="list"
-                  aria-label={l10n.getString('staff-role-permissions-label')}
+                <input
+                  className="staff-mgmt-input"
+                  type="tel"
+                  id="staff-field-phone"
+                  value={form.phone}
+                  onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  placeholder="+62 812 3456 7890"
+                />
+              </label>
+              {fieldErrors['phone'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['phone']}</span>
+              )}
+
+              {/* Email */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-email" aria-label={l10n.getString('staff-field-email-aria')}>
+                <Localized id="staff-field-email-label">
+                  <span className="staff-mgmt-label">Email *</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="email"
+                  id="staff-field-email"
+                  value={form.email}
+                  onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="name@example.com"
+                  autoComplete="off"
+                />
+              </label>
+              {fieldErrors['email'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['email']}</span>
+              )}
+
+              {/* National ID Type */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-national-id-type" aria-label={l10n.getString('staff-field-national-id-type-aria')}>
+                <Localized id="staff-field-national-id-type-label">
+                  <span className="staff-mgmt-label">National ID Type *</span>
+                </Localized>
+                <select
+                  className="staff-mgmt-input"
+                  id="staff-field-national-id-type"
+                  value={form.nationalIdType}
+                  disabled={identityWithheld}
+                  onChange={(e) => setForm((prev) => ({ ...prev, nationalIdType: e.target.value }))}
                 >
-                  {selectedRole.permissions.map((p) => (
-                    <span key={p} className="staff-mgmt-role-permission-chip" role="listitem">{p}</span>
-                  ))}
-                </div>
-              </div>
-            )}
+                  <option value="">{l10n.getString('staff-national-id-type-select')}</option>
+                  <option value="ssn">{l10n.getString('staff-national-id-type-ssn')}</option>
+                  <option value="nik">{l10n.getString('staff-national-id-type-nik')}</option>
+                </select>
+              </label>
+              {fieldErrors['nationalIdType'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['nationalIdType']}</span>
+              )}
 
-      {/* ── Profile section (ADR #35 D6) ──────────────────────── */}
-      {editingIncomplete && (
-        <p className="staff-mgmt-incomplete-hint" role="note">
-          <Localized id="staff-profile-incomplete-edit-hint">
-            <span>Complete this member&apos;s profile to unlock role and workspace assignment.</span>
-          </Localized>
-        </p>
-      )}
-      <fieldset className="staff-mgmt-profile-section">
-        <Localized id="staff-profile-section-label">
-          <legend className="staff-mgmt-label">Profile</legend>
-        </Localized>
+              {/* National ID */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-national-id" aria-label={l10n.getString('staff-field-national-id-aria')}>
+                <Localized
+                  id={identityWithheld ? 'staff-field-national-id-label-hidden' : 'staff-field-national-id-label'}
+                >
+                  <span className="staff-mgmt-label">
+                    {identityWithheld ? 'National ID (hidden)' : 'National ID *'}
+                  </span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="text"
+                  id="staff-field-national-id"
+                  value={form.nationalId}
+                  disabled={identityWithheld}
+                  onChange={(e) => setForm((prev) => ({ ...prev, nationalId: e.target.value }))}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  aria-describedby={identityWithheld ? 'staff-identity-withheld-hint' : undefined}
+                />
+              </label>
+              {fieldErrors['nationalId'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['nationalId']}</span>
+              )}
+              {identityWithheld && (
+                <p className="staff-mgmt-field-hint" id="staff-identity-withheld-hint" role="note">
+                  <Localized id="staff-identity-withheld-hint">
+                    <span>
+                      You do not have permission to view this member&apos;s identity
+                      documents. They are left unchanged when you save.
+                    </span>
+                  </Localized>
+                </p>
+              )}
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-dob" aria-label={l10n.getString('staff-field-dob-aria')}>
-          <Localized id="staff-field-dob-label">
-            <span className="staff-mgmt-label">Date of Birth *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="date"
-            id="staff-field-dob"
-            value={form.dateOfBirth}
-            onChange={(e) => setForm((prev) => ({ ...prev, dateOfBirth: e.target.value }))}
-          />
-        </label>
-        {fieldErrors['dateOfBirth'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['dateOfBirth']}</span>
-        )}
+              {/* Tax ID */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-tax-id" aria-label={l10n.getString('staff-field-tax-id-aria')}>
+                <Localized id="staff-field-tax-id-label">
+                  <span className="staff-mgmt-label">Tax ID</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="text"
+                  id="staff-field-tax-id"
+                  value={form.taxId}
+                  disabled={identityWithheld}
+                  onChange={(e) => setForm((prev) => ({ ...prev, taxId: e.target.value }))}
+                />
+              </label>
+            </div>
+          </div>
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-phone" aria-label={l10n.getString('staff-field-phone-aria')}>
-          <Localized id="staff-field-phone-label">
-            <span className="staff-mgmt-label">Phone *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="tel"
-            id="staff-field-phone"
-            value={form.phone}
-            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-            placeholder="+62 812 3456 7890"
-          />
-        </label>
-        {fieldErrors['phone'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['phone']}</span>
-        )}
+          {/* Card 5: Employment & Role Details */}
+          <div className="staff-drawer-card">
+            <div className="staff-drawer-card-header">
+              <BriefcaseIcon />
+              <span className="staff-drawer-card-title">Employment & Details</span>
+            </div>
+            <div className="staff-drawer-card-body">
+              {/* Monthly Take-Home Pay (Create only) */}
+              {!isEditing && (
+                <>
+                  <label className="staff-mgmt-field" htmlFor="staff-field-pay" aria-label={l10n.getString('staff-field-pay-aria')}>
+                    <Localized id="staff-field-pay-label">
+                      <span className="staff-mgmt-label">Monthly Take-Home Pay *</span>
+                    </Localized>
+                    <input
+                      className="staff-mgmt-input"
+                      type="text"
+                      id="staff-field-pay"
+                      value={form.monthlyTakeHome}
+                      onChange={(e) => setForm((prev) => ({ ...prev, monthlyTakeHome: e.target.value }))}
+                      inputMode="decimal"
+                      placeholder="5000000"
+                    />
+                  </label>
+                  {fieldErrors['monthlyTakeHome'] && (
+                    <span className="staff-mgmt-field-error" role="alert">{fieldErrors['monthlyTakeHome']}</span>
+                  )}
+                </>
+              )}
 
-        {/* ADR #35 D6: the identity record is read-only to a caller who cannot
-            read it. The type labels the national id, so the pair is disabled
-            together — otherwise this editor could re-label a document they
-            cannot see, leaving the type and the stored id disagreeing. */}
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-national-id-type" aria-label={l10n.getString('staff-field-national-id-type-aria')}>
-          <Localized id="staff-field-national-id-type-label">
-            <span className="staff-mgmt-label">National ID Type *</span>
-          </Localized>
-          <select
-            className="staff-mgmt-input"
-            id="staff-field-national-id-type"
-            value={form.nationalIdType}
-            disabled={identityWithheld}
-            onChange={(e) => setForm((prev) => ({ ...prev, nationalIdType: e.target.value }))}
-          >
-            <option value="">{l10n.getString('staff-national-id-type-select')}</option>
-            <option value="ssn">{l10n.getString('staff-national-id-type-ssn')}</option>
-            <option value="nik">{l10n.getString('staff-national-id-type-nik')}</option>
-          </select>
-        </label>
-        {fieldErrors['nationalIdType'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['nationalIdType']}</span>
-        )}
+              {/* Job Title */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-job-title" aria-label={l10n.getString('staff-field-job-title-aria')}>
+                <Localized id="staff-field-job-title-label">
+                  <span className="staff-mgmt-label">Job Title</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="text"
+                  id="staff-field-job-title"
+                  value={form.jobTitle}
+                  onChange={(e) => setForm((prev) => ({ ...prev, jobTitle: e.target.value }))}
+                />
+              </label>
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-national-id" aria-label={l10n.getString('staff-field-national-id-aria')}>
-          <Localized
-            id={identityWithheld ? 'staff-field-national-id-label-hidden' : 'staff-field-national-id-label'}
-          >
-            <span className="staff-mgmt-label">
-              {identityWithheld ? 'National ID (hidden)' : 'National ID *'}
-            </span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-national-id"
-            value={form.nationalId}
-            disabled={identityWithheld}
-            onChange={(e) => setForm((prev) => ({ ...prev, nationalId: e.target.value }))}
-            inputMode="numeric"
-            autoComplete="off"
-            aria-describedby={identityWithheld ? 'staff-identity-withheld-hint' : undefined}
-          />
-        </label>
-        {fieldErrors['nationalId'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['nationalId']}</span>
-        )}
-        {identityWithheld && (
-          <p className="staff-mgmt-field-hint" id="staff-identity-withheld-hint" role="note">
-            <Localized id="staff-identity-withheld-hint">
-              <span>
-                You do not have permission to view this member&apos;s identity
-                documents. They are left unchanged when you save.
-              </span>
-            </Localized>
-          </p>
-        )}
+              {/* Hire Date */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-hire-date" aria-label={l10n.getString('staff-field-hire-date-aria')}>
+                <Localized id="staff-field-hire-date-label">
+                  <span className="staff-mgmt-label">Hire Date</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="date"
+                  id="staff-field-hire-date"
+                  value={form.hireDate}
+                  onChange={(e) => setForm((prev) => ({ ...prev, hireDate: e.target.value }))}
+                />
+              </label>
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-email" aria-label={l10n.getString('staff-field-email-aria')}>
-          <Localized id="staff-field-email-label">
-            <span className="staff-mgmt-label">Email *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="email"
-            id="staff-field-email"
-            value={form.email}
-            onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-            placeholder="name@example.com"
-            autoComplete="off"
-          />
-        </label>
-        {fieldErrors['email'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['email']}</span>
-        )}
+              {/* Address */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-address" aria-label={l10n.getString('staff-field-address-aria')}>
+                <Localized id="staff-field-address-label">
+                  <span className="staff-mgmt-label">Address</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="text"
+                  id="staff-field-address"
+                  value={form.address}
+                  onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
+                />
+              </label>
 
-        {/* Payroll is collected at CREATION only. Editing an amount belongs to
-            the payroll screen, which sees the stored value and can clear it
-            deliberately; this form neither shows nor sends the field, so an
-            edit cannot move a salary it never displayed. */}
-        {!isEditing && (
-          <>
-            <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-pay" aria-label={l10n.getString('staff-field-pay-aria')}>
-              <Localized id="staff-field-pay-label">
-                <span className="staff-mgmt-label">Monthly Take-Home Pay *</span>
-              </Localized>
-              <input
-                className="staff-mgmt-input"
-                type="text"
-                id="staff-field-pay"
-                value={form.monthlyTakeHome}
-                onChange={(e) => setForm((prev) => ({ ...prev, monthlyTakeHome: e.target.value }))}
-                inputMode="decimal"
-                placeholder="5000000"
-              />
-            </label>
-            {fieldErrors['monthlyTakeHome'] && (
-              <span className="staff-mgmt-field-error" role="alert">{fieldErrors['monthlyTakeHome']}</span>
-            )}
-          </>
-        )}
+              {/* Notes */}
+              <label className="staff-mgmt-field" htmlFor="staff-field-notes" aria-label={l10n.getString('staff-field-notes-aria')}>
+                <Localized id="staff-field-notes-label">
+                  <span className="staff-mgmt-label">Notes</span>
+                </Localized>
+                <textarea
+                  className="staff-mgmt-input"
+                  id="staff-field-notes"
+                  value={form.notes}
+                  onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                />
+              </label>
+            </div>
+          </div>
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-emergency-name" aria-label={l10n.getString('staff-field-emergency-name-aria')}>
-          <Localized id="staff-field-emergency-name-label">
-            <span className="staff-mgmt-label">Emergency Contact *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-emergency-name"
-            value={form.emergencyContactName}
-            onChange={(e) => setForm((prev) => ({ ...prev, emergencyContactName: e.target.value }))}
-            autoComplete="off"
-          />
-        </label>
-        {fieldErrors['emergencyContactName'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['emergencyContactName']}</span>
-        )}
+          {/* Card 6: Emergency Contact */}
+          <div className="staff-drawer-card">
+            <div className="staff-drawer-card-header">
+              <HeartIcon />
+              <span className="staff-drawer-card-title">Emergency Contact</span>
+            </div>
+            <div className="staff-drawer-card-body">
+              <label className="staff-mgmt-field" htmlFor="staff-field-emergency-name" aria-label={l10n.getString('staff-field-emergency-name-aria')}>
+                <Localized id="staff-field-emergency-name-label">
+                  <span className="staff-mgmt-label">Emergency Contact *</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="text"
+                  id="staff-field-emergency-name"
+                  value={form.emergencyContactName}
+                  onChange={(e) => setForm((prev) => ({ ...prev, emergencyContactName: e.target.value }))}
+                  autoComplete="off"
+                />
+              </label>
+              {fieldErrors['emergencyContactName'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['emergencyContactName']}</span>
+              )}
 
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-emergency-phone" aria-label={l10n.getString('staff-field-emergency-phone-aria')}>
-          <Localized id="staff-field-emergency-phone-label">
-            <span className="staff-mgmt-label">Emergency Contact Phone *</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="tel"
-            id="staff-field-emergency-phone"
-            value={form.emergencyContactPhone}
-            onChange={(e) => setForm((prev) => ({ ...prev, emergencyContactPhone: e.target.value }))}
-            placeholder="+62 812 3456 7890"
-          />
-        </label>
-        {fieldErrors['emergencyContactPhone'] && (
-          <span className="staff-mgmt-field-error" role="alert">{fieldErrors['emergencyContactPhone']}</span>
-        )}
-
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-job-title" aria-label={l10n.getString('staff-field-job-title-aria')}>
-          <Localized id="staff-field-job-title-label">
-            <span className="staff-mgmt-label">Job Title</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-job-title"
-            value={form.jobTitle}
-            onChange={(e) => setForm((prev) => ({ ...prev, jobTitle: e.target.value }))}
-          />
-        </label>
-
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-notes" aria-label={l10n.getString('staff-field-notes-aria')}>
-          <Localized id="staff-field-notes-label">
-            <span className="staff-mgmt-label">Notes</span>
-          </Localized>
-          <textarea
-            className="staff-mgmt-input"
-            id="staff-field-notes"
-            value={form.notes}
-            onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-          />
-        </label>
-
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-address" aria-label={l10n.getString('staff-field-address-aria')}>
-          <Localized id="staff-field-address-label">
-            <span className="staff-mgmt-label">Address</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-address"
-            value={form.address}
-            onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
-          />
-        </label>
-
-        {/* Withheld with the identity record: the backend preserves the stored
-            tax id for this caller, so the field must not invite a blank write. */}
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-tax-id" aria-label={l10n.getString('staff-field-tax-id-aria')}>
-          <Localized id="staff-field-tax-id-label">
-            <span className="staff-mgmt-label">Tax ID</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="text"
-            id="staff-field-tax-id"
-            value={form.taxId}
-            disabled={identityWithheld}
-            onChange={(e) => setForm((prev) => ({ ...prev, taxId: e.target.value }))}
-          />
-        </label>
-
-        <label className="staff-mgmt-field staff-mgmt-field--horizontal" htmlFor="staff-field-hire-date" aria-label={l10n.getString('staff-field-hire-date-aria')}>
-          <Localized id="staff-field-hire-date-label">
-            <span className="staff-mgmt-label">Hire Date</span>
-          </Localized>
-          <input
-            className="staff-mgmt-input"
-            type="date"
-            id="staff-field-hire-date"
-            value={form.hireDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, hireDate: e.target.value }))}
-          />
-        </label>
-      </fieldset>
-
-      {/* ── Assignment Access Section (edit only, ADR #35 D5) ── */}
-      {isEditing && (
-        <RoleAssignmentMatrix
-          form={form}
-          setForm={setForm}
-          branches={branches}
-          allWorkspaces={allWorkspaces}
-          entities={entities}
-          disabled={editingIncomplete}
-        />
-      )}
+              <label className="staff-mgmt-field" htmlFor="staff-field-emergency-phone" aria-label={l10n.getString('staff-field-emergency-phone-aria')}>
+                <Localized id="staff-field-emergency-phone-label">
+                  <span className="staff-mgmt-label">Emergency Contact Phone *</span>
+                </Localized>
+                <input
+                  className="staff-mgmt-input"
+                  type="tel"
+                  id="staff-field-emergency-phone"
+                  value={form.emergencyContactPhone}
+                  onChange={(e) => setForm((prev) => ({ ...prev, emergencyContactPhone: e.target.value }))}
+                  placeholder="+62 812 3456 7890"
+                />
+              </label>
+              {fieldErrors['emergencyContactPhone'] && (
+                <span className="staff-mgmt-field-error" role="alert">{fieldErrors['emergencyContactPhone']}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </SettingsPopup>
   );
 }
