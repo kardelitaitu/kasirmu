@@ -6296,6 +6296,58 @@ is checked rather than HEAD).
 tracked-but-unfixed for two months with its mechanism correctly described, which suggests the remaining
 `next:` items deserve the same treatment rather than being read as closed.
 
+## Pass 100 — MSL-79: COR-8 was already fixed; what was missing was a test
+
+Fourth pass of the stamp harvest, taking the other money-path item I deferred from MSL-78: **COR-8** on
+`void_sale`.
+
+**The stamp's `next:` line was stale, and its `findings:` text described code that no longer exists.** The
+full original complaint was: *"`void_sale` (`sales_lifecycle.rs:567`) increments version and guards
+`status='pending'`, but that is a state guard not the version CAS its comment claims, and the `execute()` row
+count is **discarded** so voiding an already-voided or completed sale returns `Ok`."* Measured against the
+current file:
+
+| Claim | Now |
+|---|---|
+| predicate is the useless `status='pending'` state guard | it is `WHERE id = ?2 AND status = 'active'` — the sale's own live state, matching the pre-check |
+| row count discarded | `rows == 0` rolls back and returns `Conflict { entity: "sale", field: "version" }` |
+| `sales_lifecycle.rs:567` | the function is at `:822`; the file was split (`F-011`) and the line moved |
+
+So both halves of the complaint are **fixed**, and the `status='pending'` guards the finding quoted belong to
+`void_pending_sale` and the stale-reap path, not to `void_sale`.
+
+**MSL-79 (LOW, fixed): the CAS branch was unreachable from every existing test.** Zero `CoreError::Conflict`
+assertions in `sales_lifecycle_tests.rs`, and the one refusal test (`refused_void_writes_no_outbox_row`) trips
+the **out-of-transaction pre-check**, which reports `Validation { field: "status" }` — a *different arm*. So
+the fix was real but undefended: deleting `AND status = 'active'` would have left the suite green while a
+completed (paid, points-awarded) sale could be overwritten to voided. That is exactly the MSL-78 shape, one
+pass later: a correct fix with nothing holding it in place.
+
+**The test is a real two-connection race**, following the `gift_cards_tests` precedent: a file-backed WAL DB
+(`fresh_file`), a rival thread that stages `status='completed'` and holds the write lock, and connection A
+running `void_sale` with a `busy_timeout` so it gets past its pre-check, then blocks on the UPDATE and loses.
+It asserts both halves — the `Conflict`, **and** that the rival's `completed` survived the column.
+
+**Falsified at the right place.** Dropping the `AND status = 'active'` predicate fails the test on the
+`Conflict` assertion, which proves it reaches the CAS arm rather than passing via the pre-check. Restored and
+re-run green.
+
+**Stamp corrected in both places.** `next:` now says `none`, and the `findings:` text carries the closing note
+with the correction inline — what the original claimed, what the code does now, and which missing guard
+actually belongs to `void_pending_sale`. Recording the correction matters more than the closure here: a
+future reader would otherwise look for a `status='pending'` guard in `void_sale` and conclude the fix had
+regressed.
+
+**Verified:** 3339 `kasirmu-core` lib tests (55 `sync_client` filtered for the concurrent lane), 0 failed;
+`clippy -D warnings` clean; both files `rustfmt`-clean. Commit `d5a0f0d8b` (verified by hash).
+
+**Tally:** 82 findings fixed (12 HIGH), 23 leads disproved, 29 clean censuses. Four passes of the stamp
+harvest have produced three fixes and **two items that were already repaired but never pinned**. So the
+harvest is yielding something other than un-repaired defects: code that is **correct and undefended**, where
+an audit recorded a right fix and left the branch untested. That is the target to carry forward rather than
+looking for new defects.
+
+
 
 
 
