@@ -9,7 +9,7 @@
 //! client, each copy free to drift from the others.
 //!
 //! Key types:
-//! - [`Entitlements`] — the read model, built from the signed
+//! - [`Entitlements`](crate::entitlements::Entitlements) — the read model, built from the signed
 //!   `TenantSubscription` row plus the usage counts the gates consult.
 //! - [`build_entitlements`] — the shared fail-closed row loader (missing /
 //!   tampered / unreadable yields `None`, which projects as Free +

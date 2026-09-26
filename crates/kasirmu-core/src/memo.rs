@@ -11,9 +11,9 @@
 //! transitions between.
 //!
 //! Two orthogonal state dimensions (conflating them is the classic memo bug):
-//! - A memo's own lifecycle: [`MemoStatus`] `draft → published → {expired |
+//! - A memo's own lifecycle: [`MemoStatus`](crate::memo::MemoStatus) `draft → published → {expired |
 //!   stopped} → archived`.
-//! - Each recipient's view of that memo: [`DeliveryStatus`] `pending →
+//! - Each recipient's view of that memo: [`DeliveryStatus`](crate::memo::DeliveryStatus) `pending →
 //!   delivered → acknowledged`.
 //!
 //! Invariants: a published memo is immutable-by-revision (an edit bumps

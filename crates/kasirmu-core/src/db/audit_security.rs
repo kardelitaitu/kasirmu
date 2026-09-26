@@ -9,7 +9,7 @@
 //! 20260813_init.sql apply unchanged and no trigger carve-out is needed —
 //! the 20260920 exemption exists only for DELETE.
 //!
-//! Key type: [`SecurityEvent`]. Key constants: `SECURITY_ACTION_*`,
+//! Key type: [`SecurityEvent`](crate::db::audit_security::SecurityEvent). Key constants: `SECURITY_ACTION_*`,
 //! `SECURITY_REASON_*`, `SYSTEM_ACTOR`.
 //!
 //! Invariants:

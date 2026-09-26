@@ -4,21 +4,21 @@
 //! explain itself: `caps.supportsAnalytics === false` tells support nothing
 //! about whether the cause is the plan, the expiry, the location count, or
 //! the caller's role. This module is the single place that turns the raw
-//! facts behind those gates into a ranked [`FeatureVerdict`].
+//! facts behind those gates into a ranked [`FeatureVerdict`](crate::availability::FeatureVerdict).
 //!
-//! Key types: [`AvailabilityFeature`] (the v1 key set — exactly the surface
-//! the existing gates consume, no new flags), [`AvailabilityFacts`] (the
-//! inputs, gathered by the caller), and [`FeatureVerdict`] / [`VerdictDetail`]
+//! Key types: [`AvailabilityFeature`](crate::availability::AvailabilityFeature) (the v1 key set — exactly the surface
+//! the existing gates consume, no new flags), [`AvailabilityFacts`](crate::availability::AvailabilityFacts) (the
+//! inputs, gathered by the caller), and [`FeatureVerdict`](crate::availability::FeatureVerdict) / [`VerdictDetail`](crate::availability::VerdictDetail)
 //! (the output). Entry point: [`explain_availability`].
 //!
 //! Invariants:
 //!
 //! - **Pure.** No database, no clock, no network. Every input arrives in
-//!   [`AvailabilityFacts`], so the precedence table is exhaustively testable
+//!   [`AvailabilityFacts`](crate::availability::AvailabilityFacts), so the precedence table is exhaustively testable
 //!   without fixtures, and a verdict can never disagree with a live gate
 //!   because of a read that happened twice.
 //! - **One winner.** Only the highest-precedence denial is named. Lower
-//!   causes are still computed into [`VerdictDetail`] but never reported.
+//!   causes are still computed into [`VerdictDetail`](crate::availability::VerdictDetail) but never reported.
 //! - **Fixed precedence:** server_policy > lifecycle > tier > quota > role >
 //!   scope (todo-global-saas-3.md, Feature-flag observability design).
 //! - **Fail closed on unknown keys.** [`AvailabilityFeature::parse`] returns

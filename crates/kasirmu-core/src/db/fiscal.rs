@@ -2,11 +2,11 @@
 //!
 //! Owns the two legal-entity-scoped tables from `20260923_fiscal_numbering.sql`:
 //!
-//! * [`FiscalScheme`] — `fiscal_schemes`, the entity's statutory-configuration
+//! * [`FiscalScheme`](crate::db::fiscal::FiscalScheme) — `fiscal_schemes`, the entity's statutory-configuration
 //!   anchor (multi-row-per-entity; one row per market/document regime). The
 //!   `parameters` JSON is a bag: statutory parameters land with the consumer
 //!   slices that read them, and no tax math lives here (the tax box owns it).
-//! * [`DocumentNumberSequence`] — `document_number_sequences`, the statutory
+//! * [`DocumentNumberSequence`](crate::db::fiscal::DocumentNumberSequence) — `document_number_sequences`, the statutory
 //!   series (ONE per entity per document kind, UNIQUE-guarded): prefix +
 //!   counter + optional period reset + zero-padding.
 //!

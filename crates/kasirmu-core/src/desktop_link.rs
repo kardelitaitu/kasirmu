@@ -6,7 +6,7 @@
 //! that can be tested without a window lives here.
 //!
 //! Key items: [`generate_pkce`], [`pkce_challenge`], [`start_desktop_link`],
-//! [`consume_desktop_link`] and [`LinkedAccount`].
+//! [`consume_desktop_link`](crate::desktop_link::consume_desktop_link) and [`LinkedAccount`](crate::desktop_link::LinkedAccount).
 //!
 //! Invariants: the verifier leaves this process only in the `/start` request (the
 //! challenge is what travels to Google), and the server refuses a code presented by a

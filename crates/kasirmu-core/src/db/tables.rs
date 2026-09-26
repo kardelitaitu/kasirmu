@@ -7,7 +7,7 @@ next: none | perf: N/A
 //! Table (floor plan) persistence — CRUD on dining tables per section.
 //!
 //! [`Store`] methods list/get/create/update/delete tables, with
-//! [`validate_table_geometry`] enforcing TBL-08 bounds (finite,
+//! [`validate_table_geometry`](crate::db::tables::validate_table_geometry) enforcing TBL-08 bounds (finite,
 //! `0..=100` percentage positions/sizes, non-zero usable size) at the
 //! database boundary so persisted geometry always renders.
 
