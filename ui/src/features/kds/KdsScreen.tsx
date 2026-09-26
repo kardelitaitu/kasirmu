@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef, Profiler } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
+import { DevProfiler } from '@/components/DevProfiler';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useSwipe } from '@/hooks/useSwipe';
 import { useKdsOffline } from '@/hooks/useKdsOffline';
@@ -387,11 +388,7 @@ export default function KdsScreen() {
 
   return (
     <KdsCardColorsProvider>
-    <Profiler id="KdsScreen" onRender={(...args) => {
-      if (typeof args[2] === 'number' && args[2] > 1) {
-        console.debug('[Profiler] KdsScreen', args[1] === 'mount' ? '⚡mount' : '♻update', `${args[2].toFixed(1)}ms`);
-      }
-    }}>
+    <DevProfiler id="KdsScreen">
     <div ref={kdsRef} className="kds" tabIndex={-1} role="region" aria-label={requiredLocalized(l10n, 'kds-screen-aria')}>
       {/* A11Y: non-visual announcement of arriving tickets — the chime and
           the 3s visual highlight are both invisible to screen reader users.
@@ -628,7 +625,7 @@ export default function KdsScreen() {
         </div>
       )}
     </div>
-    </Profiler>
+    </DevProfiler>
     </KdsCardColorsProvider>
   );
 }
