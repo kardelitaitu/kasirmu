@@ -469,6 +469,84 @@ async fn create_backup_direct(
     })
 }
 
+/// Queue the just-made pre-update backup as a boot restore request (C8 / S6).
+///
+/// # Why this exists
+///
+/// The updater takes a backup before it installs (`UpdateBanner` ->`create_backup`)
+/// and recorded the path in the `updater.last_backup_path` setting -- which NOTHING
+/// reads. So the "safety net" review 14.1 calls decorative was exactly that: a backup
+/// on disk that no restore path would ever offer, and a setting no code consults.
+/// This writes the SAME request file the boot consumer already understands, so the
+/// backup becomes a recovery the operator can actually reach.
+///
+/// # Why it does not reuse `restore_prepare`
+///
+/// That function requires a session and `SETTINGS_EDIT`, and the pre-update path runs
+/// before login -- the same reason `create_backup` is its own ungated entry point. The
+/// difference in authority is deliberate and narrow: `restore_prepare` lets an operator
+/// choose ANY candidate, so it demands a typed store-name confirmation; this may only
+/// queue the backup the update just wrote, so there is no choice to confirm. It is not
+/// exposed over IPC -- nothing in the renderer can reach it.
+///
+/// # Fails closed on a candidate that is not restorable
+///
+/// The backup is validated before the request is written. A candidate the boot path
+/// would refuse leaves NO request on disk, so a failed update cannot queue a restore
+/// that would refuse at the next boot and confuse the operator.
+#[allow(dead_code)] // wired by the updater lane; the boot consumer is the reader
+pub async fn queue_pre_update_restore_candidate(
+    db_path: &Path,
+) -> Result<QueueRestoreCandidateResult, BridgeError> {
+    let candidate_path = default_backup_path(db_path);
+    let candidate = Path::new(&candidate_path);
+    if !candidate.is_file() {
+        return Err(BridgeError::Invalid(format!(
+            "no pre-update backup at '{candidate_path}' to queue"
+        )));
+    }
+
+    // Validate BEFORE writing, exactly as `restore_prepare` does: a request file
+    // must not exist for a candidate the boot path would refuse anyway.
+    let report = validate_candidate(candidate).into_result(candidate)?;
+    let store_name = candidate_store_name(candidate)?.unwrap_or_default();
+
+    let requested_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let request = RestoreRequest {
+        candidate_path: candidate_path.clone(),
+        requested_at: requested_at.clone(),
+        verdict: verdict_name(report.verdict).to_string(),
+        candidate_schema: report.candidate_schema.clone(),
+        confirmed_store_name: store_name,
+    };
+    let request_path = restore_request_path(db_path);
+    let bytes = serde_json::to_vec_pretty(&request)
+        .map_err(|e| BridgeError::Internal(format!("encoding the restore request: {e}")))?;
+    std::fs::write(&request_path, bytes).map_err(|e| {
+        BridgeError::Internal(format!(
+            "writing the restore request '{}': {e}",
+            request_path.display()
+        ))
+    })?;
+    Ok(QueueRestoreCandidateResult {
+        candidate_path,
+        request_path: request_path.display().to_string(),
+        requested_at,
+    })
+}
+
+/// Result of [`queue_pre_update_restore_candidate`].
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueRestoreCandidateResult {
+    /// The backup that was queued.
+    pub candidate_path: String,
+    /// The request file the boot path will consume.
+    pub request_path: String,
+    /// ISO-8601 timestamp the request was written at.
+    pub requested_at: String,
+}
+
 /// Export data, session-gated.
 pub async fn export_data(
     ctx: &BridgeCtx<'_>,

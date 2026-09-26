@@ -850,6 +850,84 @@ async fn settings_editor() -> (crate::testing::TestBridge, String) {
     (bridge, token)
 }
 
+/// C8 / S6: the pre-update backup becomes a restore the boot path can consume.
+///
+/// Review 14.1 called the updater's safety net decorative: it takes a backup and
+/// records the path in a setting NOBODY reads, so nothing would ever offer that
+/// backup for restore. `queue_pre_update_restore_candidate` writes the SAME
+/// request file `restore_prepare` writes, so the boot consumer picks it up.
+///
+/// This asserts the two halves that make it real: a request file appears, and it
+/// names the backup in the field the boot reader requires.
+#[tokio::test]
+async fn queue_pre_update_restore_candidate_writes_a_consumable_request() {
+    let scratch = RestoreScratch::new("queue-pre-update");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // The pre-update backup the updater would have taken.
+    scratch.write_db(&scratch.generation0(), "Kopi Senja");
+
+    let result = super::queue_pre_update_restore_candidate(&live)
+        .await
+        .expect("a valid backup must be queueable");
+
+    // The request file the boot consumer looks for.
+    let request_path = std::path::Path::new(&result.request_path);
+    assert!(
+        request_path.is_file(),
+        "the boot path only acts on a request file: {}",
+        request_path.display()
+    );
+    assert_eq!(
+        request_path.file_name().and_then(|n| n.to_str()),
+        Some("store.db.restore-request.json"),
+        "the suffix must be the one the shell's reader derives"
+    );
+
+    // The field the shell deserializes (`recovery.rs` `RestoreRequest`).
+    let raw = std::fs::read_to_string(request_path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        parsed["candidate_path"].as_str(),
+        Some(result.candidate_path.as_str()),
+        "the request must name the backup as the candidate"
+    );
+    assert_eq!(
+        parsed["confirmed_store_name"].as_str(),
+        Some("Kopi Senja"),
+        "the store name is read from the candidate, as restore_prepare does"
+    );
+}
+
+/// The refusal half: a candidate the boot path would reject must leave NO request.
+///
+/// A failed update that queued an unrestorable restore would refuse at the next boot
+/// and look to the operator like a broken recovery rather than a bad backup.
+#[tokio::test]
+async fn queue_pre_update_restore_candidate_writes_nothing_for_a_corrupt_backup() {
+    let scratch = RestoreScratch::new("queue-corrupt");
+    let live = scratch.live();
+    scratch.write_db(&live, "Kopi Senja");
+    // A "backup" that is present and is NOT a database.
+    std::fs::write(scratch.generation0(), b"not a database").unwrap();
+
+    let err = super::queue_pre_update_restore_candidate(&live)
+        .await
+        .expect_err("a corrupt candidate must be refused");
+    let message = err.to_string();
+    assert!(
+        !message.is_empty(),
+        "the refusal must name a cause, never fail silently"
+    );
+
+    let mut request = live.clone();
+    request.set_file_name("store.db.restore-request.json");
+    assert!(
+        !request.exists(),
+        "a refused candidate must leave no request for the next boot"
+    );
+}
+
 #[tokio::test]
 async fn restore_prepare_refuses_a_corrupt_candidate_even_with_the_right_name() {
     let scratch = RestoreScratch::new("corrupt");
