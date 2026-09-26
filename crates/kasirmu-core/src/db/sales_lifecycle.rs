@@ -765,18 +765,16 @@ impl Store<'_> {
     ///
     /// ADR-20 §6: uses the partial index `idx_sales_pending_expires` (created
     /// by migration 096) for efficient lookups. A sale is considered "stale"
-    /// when `pending_expires_at < datetime('now')` — the 30-min expiry window
-    /// was set at creation time in `complete_sale_deduction`.
-    /// Find all pending sales whose `pending_expires_at` is in the past.
+    /// when `pending_expires_at < <now>`, where the 30-min expiry window was set
+    /// at creation time in `complete_sale_deduction`.
     ///
-    /// ADR-20 §6: uses the partial index `idx_sales_pending_expires` (created
-    /// by migration 096) for efficient lookups. A sale is considered "stale"
-    /// when `pending_expires_at < NOW` — the 30-min expiry window was set at
-    /// creation time in `complete_sale_deduction`.
-    ///
-    /// The threshold is computed in Rust using the exact same format
-    /// (`chrono::SecondsFormat::Millis`) as the stored `pending_expires_at`
-    /// values, avoiding format mismatches with SQLite's `strftime`.
+    /// The threshold is computed in Rust with `chrono::SecondsFormat::Millis` —
+    /// the same shape the column stores — and passed as a bound, so the
+    /// comparison is text-to-text in one format. An earlier form compared against
+    /// SQL-side `datetime('now')`, whose output is `YYYY-MM-DD HH:MM:SS` (a space
+    /// at index 10) while the column is `…T…Z`; `' '` sorts below `'T'`, so the
+    /// two shapes did not compare like for like. The Rust threshold is what keeps
+    /// that from coming back.
     pub fn find_stale_pending_sales(&self) -> Result<Vec<String>, CoreError> {
         let now_rfc = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let mut stmt = self.conn.prepare(
