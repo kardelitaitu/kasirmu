@@ -690,6 +690,85 @@ fn deactivate(conn: &rusqlite::Connection, id: &str) {
         .unwrap();
 }
 
+/// C65: a failure AFTER the trash UPDATE must leave nothing committed.
+///
+/// **This test exists because the obvious one does not discriminate.** A
+/// `joins_a_caller_transaction` case was written first and it PASSED WITH THE WRAP
+/// REMOVED — because rusqlite's `Connection::execute` writes into whatever
+/// transaction the connection already holds, so on the caller-owned path the
+/// wrapper's `is_autocommit()` branch is false and a bare write behaves identically.
+/// That is exactly the "no-op wrap a future reader treats as a guarantee" C65 warns
+/// about, and it is why the assertion below targets the AUTOCOMMIT path instead:
+/// that is the only path where the wrapper changes the observable outcome.
+///
+/// The forcing function is the markers table: `persist_over_quota_markers` DELETEs
+/// and re-INSERTs it after the UPDATE, so dropping that table makes step 2 fail with
+/// step 1 already done. Discriminating because the assertion is on the row that the
+/// FIRST statement wrote: with the wrap it is rolled back; without it, the
+/// autocommitted UPDATE survives and the member is left in a half-deleted state.
+#[test]
+fn soft_delete_user_rolls_back_the_update_when_the_marker_refresh_fails() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+
+    // Force step 2 to fail after step 1 has written.
+    conn.execute_batch("DROP TABLE over_quota_markers").unwrap();
+
+    let result = store(&conn).soft_delete_user("user-3");
+    assert!(
+        result.is_err(),
+        "the marker refresh cannot succeed without its table"
+    );
+
+    let deleted_at: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        deleted_at.is_none(),
+        "a failed delete must leave the member out of the trash -- with no wrap the \
+         autocommitted UPDATE survives and the row is half-deleted"
+    );
+}
+
+#[test]
+fn soft_delete_user_accepts_an_open_transaction_without_nesting() {
+    let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+
+    let tx = conn.unchecked_transaction().unwrap();
+    Store::new(&tx).soft_delete_user("user-3").unwrap();
+    let inside: Option<String> = tx
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        inside.is_some(),
+        "the delete must be visible inside the caller's transaction"
+    );
+    tx.rollback().unwrap();
+
+    let after: Option<String> = conn
+        .query_row(
+            "SELECT deleted_at FROM users WHERE id = 'user-3'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        after.is_none(),
+        "a rolled-back caller must leave the member out of the trash"
+    );
+}
+
 #[test]
 fn soft_delete_refuses_an_active_member() {
     let conn = fresh();
