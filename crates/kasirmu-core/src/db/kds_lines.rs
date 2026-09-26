@@ -144,23 +144,35 @@ impl Store<'_> {
                         .flatten()
                         .unwrap_or_else(|| l.sku.clone());
 
-                    // Parse modifiers_json from the sale line.
-                    let modifiers: Vec<KdsModifier> = l
-                        .modifiers_json
-                        .as_deref()
-                        .filter(|j| !j.is_empty())
-                        .and_then(|j| serde_json::from_str(j).ok())
-                        .unwrap_or_default();
+                    // Parse modifiers_json from the sale line. An unreadable
+                    // blob is NOT "no modifiers": silently defaulting it to
+                    // `[]` wrote a plain item into the ticket — the loss happens
+                    // HERE, before any ticket row is read, so the read-side
+                    // guard in `row_to_kds_line_item` (db/kds.rs) cannot see it.
+                    // Surface the decode failure and let this fanout's single
+                    // transaction roll every zone back.
+                    let modifiers: Vec<KdsModifier> = match l.modifiers_json.as_deref() {
+                        Some(json) if !json.is_empty() => {
+                            serde_json::from_str(json).map_err(|e| CoreError::Validation {
+                                field: "modifiers",
+                                message: format!(
+                                    "sale line {} has unreadable modifiers_json: {e}",
+                                    l.id
+                                ),
+                            })?
+                        }
+                        _ => vec![],
+                    };
 
-                    CreateKdsLineItemInput {
+                    Ok(CreateKdsLineItemInput {
                         sku: l.sku.clone(),
                         display_name,
                         qty: l.qty,
                         course: l.course.clone(),
                         modifiers,
-                    }
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, CoreError>>()?;
 
             let (items_summary, item_count) = Store::derive_kds_summary(&structured_items);
 

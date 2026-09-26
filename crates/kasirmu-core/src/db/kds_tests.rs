@@ -3873,3 +3873,52 @@ fn a_corrupt_modifiers_blob_is_refused_not_read_as_no_modifiers() {
         "the refusal must surface the decode failure, got: {err:?}"
     );
 }
+
+// ── A corrupt sale-line modifiers blob must not reach the ticket as [] ──
+//
+// The WRITE side of the same defect. `complete_sale_to_kds_fanout` copied each
+// sale line's modifiers into the ticket with
+// `.and_then(|j| serde_json::from_str(j).ok())`, so an unreadable
+// `sale_lines.modifiers_json` (nullable TEXT, no `json_valid` CHECK in
+// 20260813_init.sql) silently became `[]` BEFORE any row was written. The read
+// mapper fixed in `db/kds.rs` cannot catch this: the ticket it later reads
+// holds a perfectly valid empty array, so the kitchen sees a plain item. The
+// loss has to be refused where it happens.
+
+#[test]
+fn fanout_refuses_a_corrupt_sale_line_modifiers_blob() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // The only way a sale line's modifiers blob is ever unreadable.
+    conn.execute(
+        "UPDATE sale_lines SET modifiers_json = 'not-a-json-array' WHERE sale_id = ?1",
+        rusqlite::params![sale.id],
+    )
+    .unwrap();
+
+    let result = s.complete_sale_to_kds(&sale.id, None);
+    assert!(
+        result.is_err(),
+        "a corrupt sale-line modifiers blob must fail the fanout rather than \
+         write a plain item, got: {result:?}"
+    );
+
+    // The fanout is one transaction: a refused build must leave no ticket
+    // behind (not a ticket whose line quietly lost its modifiers).
+    let tickets: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM kds_orders WHERE sale_id = ?1",
+            rusqlite::params![sale.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tickets, 0, "a refused fanout must not leave a partial ticket");
+}
