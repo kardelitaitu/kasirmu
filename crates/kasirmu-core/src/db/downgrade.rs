@@ -219,11 +219,21 @@ impl Store<'_> {
 
     /// Count all products in the catalog.
     ///
-    /// Mirrors the inline count in [`Store::enforce_product_quota`] so
-    /// the assessment and the creation gate agree on what consumes the
-    /// product quota. (Extracting the shared count out of
-    /// `enforce_product_quota` is a possible follow-up; kept local here
-    /// to avoid editing the concurrent-agent hot file.)
+    /// THE shared products count, not a mirror. The over-quota assessment
+    /// ([`Store::assess_downgrade`]) and the creation gate
+    /// (`quota_gate::quota_count`, whose `Products` arm calls this) both read it,
+    /// so the two cannot disagree about what consumes the product quota.
+    ///
+    /// This doc used to say the count was inline in
+    /// [`Store::enforce_product_quota`] and that extracting it was a follow-up.
+    /// That extraction has since happened: `enforce_product_quota` now delegates
+    /// to `enforce_creation_quota`, which counts through `count_products`.
+    ///
+    /// One other products count exists on purpose and is NOT a duplicate:
+    /// `create_product_with_attributes` counts inside its own transaction, after
+    /// the insert, because under WAL a pre-transaction count reads only its
+    /// snapshot — the doc there explains that this is what closes the TOCTOU the
+    /// pre-transaction gate cannot.
     pub fn count_products(&self) -> Result<i64, CoreError> {
         let count: i64 = self
             .conn
