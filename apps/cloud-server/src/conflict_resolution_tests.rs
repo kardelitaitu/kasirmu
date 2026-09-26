@@ -118,6 +118,48 @@ fn every_money_flavour_refuses_to_auto_merge() {
     }
 }
 
+/// C19: a COMPLETED SALE is the money entity the list above was missing.
+///
+/// This is not a spelling test. The offline queue records a completed sale
+/// under the action `complete_sale` (`kasirmu-core/src/db/offline.rs:388`),
+/// and `sync_store.rs:184` passes that action straight in as the classifier's
+/// `entity_type`. The needles in `is_money_entity` did not include it, so a
+/// sale classified `Severity::Low` / `LastWriterWins` -- meaning two offline
+/// sales of the same entity (the same gift card, the same terminal, the same
+/// cash) auto-resolved by last-writer-wins and were never flagged for review.
+/// The module's own doc says why that is the worst class: "Money is the one
+/// class where an automatic merge can create value that did not exist before".
+///
+/// RED: `severity_for("complete_sale")` is `Low` and the policy is
+/// `LastWriterWins` before the fix.
+#[test]
+fn a_completed_sale_is_a_money_entity_and_is_never_auto_merged() {
+    // The literal the queue actually writes, not a synonym.
+    assert_eq!(
+        policy_for("complete_sale"),
+        MergePolicy::NeverAutoMerge,
+        "a completed sale must never be auto-merged"
+    );
+    assert_eq!(
+        severity_for("complete_sale"),
+        Severity::High,
+        "a completed sale must classify as high severity, not catalog metadata"
+    );
+
+    // The other action the SAME queue writes for money must also be covered,
+    // so the fix is a classification rule and not one more special case.
+    // (Only actions verified present in `offline.rs` are listed: `complete_sale`
+    // at `:388`, `void_sale` at `:486`. `create_refund` appears there only in
+    // comments, so it is NOT asserted here.)
+    for action in ["complete_sale", "void_sale"] {
+        assert_eq!(
+            policy_for(action),
+            MergePolicy::NeverAutoMerge,
+            "{action} is a money movement and must never auto-merge"
+        );
+    }
+}
+
 #[test]
 fn concurrent_stock_movements_merge_because_deltas_are_additive() {
     let stored = vector(&[("a", 2), ("b", 1)]);
