@@ -290,10 +290,46 @@ impl SyncStore {
             _ => {}
         }
 
+        // C19: the payload that persists is the one the DECISION chose, not
+        // always the incoming one. `LastWriterWins { winner_is_remote: false }`
+        // means the STORED side won this tie-break, and writing
+        // `incoming_payload` anyway discarded the winner's body while reporting
+        // a successful resolution -- the silent one-side loss the policy table
+        // exists to prevent. The vector still observes the incoming event (both
+        // sides have now been seen, which is what makes the merge convergent),
+        // but the BODY follows the winner.
         if !matches!(decision, Decision::Stale) {
             let mut merged = stored_vector.clone();
             merged.observe(incoming);
-            self.save_entity_vector(tenant_id, entity_type, entity_id, &merged, incoming_payload)
+            // Every arm is named, including the ones that keep the stored body,
+            // so this table is the whole contract rather than a default with
+            // exceptions. `AutoMerge` is the one arm whose NAME is not matched
+            // yet -- the merge itself is not implemented anywhere, and
+            // `last_payload` has no reader outside this module, so keeping the
+            // stored body is the conservative choice that cannot invent a value.
+            // It is called out here rather than left to a `_` arm precisely so
+            // that closing C19(a) -- implementing the merge -- lands HERE.
+            let payload_to_store: Option<&str> = match decision {
+                Decision::LastWriterWins {
+                    winner_is_remote: true,
+                    ..
+                } => Some(incoming_payload),
+                // The stored side won, or the pair is unresolved:
+                //   * `LastWriterWins { winner_is_remote: false }` -- the
+                //     winner's body must survive; writing the incoming one
+                //     silently discards the side the tie-break chose.
+                //   * `Flag` / `AutoMerge` -- unresolved or unimplemented, and
+                //     the review row already carries BOTH payloads
+                //     (`local_payload` / `remote_payload`), so overwriting here
+                //     would destroy the local side a reviewer compares against.
+                _ => stored_payload.as_deref(),
+            };
+            // A `None` stored body cannot occur for `LastWriterWins` (the policy
+            // needs no payload) or `Flag` (which requires one), but CAN for a
+            // first-seen entity where there is no stored side at all: the
+            // incoming body is then the only side there is.
+            let payload_to_store = payload_to_store.unwrap_or(incoming_payload);
+            self.save_entity_vector(tenant_id, entity_type, entity_id, &merged, payload_to_store)
                 .await?;
         }
 

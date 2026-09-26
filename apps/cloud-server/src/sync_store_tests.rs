@@ -815,6 +815,78 @@ async fn sqlite_concurrent_gift_card_redemption_is_flagged_end_to_end() {
     );
 }
 
+/// C19: when `LastWriterWins` picks the STORED side, the incoming payload
+/// must NOT be persisted.
+///
+/// `classify` returns `Decision::LastWriterWins { winner_is_remote }`
+/// (`conflict_resolution.rs:246-249`), so the decision NAMES which side won.
+/// `detect_conflict` ignored that field and always saved `incoming_payload`,
+/// so a lost tie-break still overwrote the winner's body -- the silent
+/// one-side-discarded merge the policy table exists to prevent. A
+/// `catalog.updated` action classifies `LastWriterWins` (it matches neither
+/// the money, stock nor customer needles), and `{t1:2}` beats `{t2:1}` on
+/// event count, so the STORED side is this pair's winner.
+#[tokio::test]
+async fn sqlite_last_writer_wins_keeps_the_winner_and_never_clobbers_it() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // Stored side saw two events, incoming one. `tie_break` compares the
+    // total event count first, so the stored side is the winner.
+    let stored_body = serde_json::json!({ "entity_id": "cat-1", "name": "winner" }).to_string();
+    let incoming_body = serde_json::json!({ "entity_id": "cat-1", "name": "loser" }).to_string();
+    let stored = platform_sync::crdt::stamp_payload(&stored_body, "t1", 2);
+    let incoming = platform_sync::crdt::stamp_payload(&incoming_body, "t2", 1);
+
+    store
+        .push_batch(
+            &[detection_item("cat-a", "catalog.updated", &stored)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+    store
+        .push_batch(
+            &[detection_item("cat-b", "catalog.updated", &incoming)],
+            "tenant-a",
+        )
+        .await
+        .unwrap();
+
+    // Precondition: this pair resolves rather than flagging, so the
+    // assertion below is about the LastWriterWins path and not the flag one.
+    assert!(
+        store
+            .list_conflicts("tenant-a", None, None)
+            .await
+            .unwrap()
+            .is_empty(),
+        "last-writer-wins must not raise a review row"
+    );
+
+    // The winner's body must still be what is stored. Read the column the
+    // resolver writes, exactly as the neighbouring tests do.
+    let live: String = {
+        let db = conn.lock().await;
+        db.query_row(
+            "SELECT last_payload FROM sync_entity_vectors \
+             WHERE tenant_id = 'tenant-a' AND entity_type = 'catalog.updated' \
+               AND entity_id = 'cat-1'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("the entity row must exist after a resolving push")
+    };
+    assert!(
+        live.contains("winner"),
+        "the stored side won the tie-break, so its body must survive: {live}"
+    );
+    assert!(
+        !live.contains("loser"),
+        "the LOSING payload must not be persisted over the winner: {live}"
+    );
+}
+
 /// Causally ordered writes are not conflicts, however many terminals take
 /// part: each writer here has observed everything before it.
 #[tokio::test]
