@@ -6076,6 +6076,49 @@ by hash).
 the inversion have now produced findings after the absence-based sweeps on guards, quotas and links had all
 gone quiet.
 
+## Pass 96 — MSL-74: the liveness-claim census — 23 checked, all true
+
+Deliberate extension of the inversion. MSL-73's finding was a **liveness** claim ("nothing calls this yet")
+that rotted because the code moved forward, so this pass swept comments asserting what code does *not* do — a
+class that can only rot in one direction. 661 raw hits for `never`/`not yet`/`no caller`, narrowed to **23**
+genuine existential claims by keeping only comment lines that assert code existence or reachability (a design
+statement like "must never resolve to available" is a rule, not a claim about the tree).
+
+**All 23 are accurate. The verifications, since "clean" is only worth recording with the evidence:**
+
+| Claim | Checked |
+|---|---|
+| `media.rs:12`, `payment_gateways.rs:11`, `payment_settlements.rs:11` "methods below are not yet functional" | each file is 3 `pub fn`, all returning `PLANNED, not implemented yet`, zero SQL — stubs stay stubs |
+| `cache.rs:487` "dead code in a default build" | `Cargo.toml:47` `default = ['sync-http']`, so `cache-redis` is off; the `cfg_attr` at `:495` carries the allow |
+| `workspaces.rs:277` "nothing writes it anymore" | only writer of `user_workspaces` is a test fixture (`workspaces_tests.rs:130`) |
+| `sync_client.rs:416` "nothing writes `status = 'pending'` again" | every `status = 'pending'` in `offline.rs` is a `WHERE`, never a `SET`, across all 12 sites; and `sync_client_tests.rs:1203` already records verifying this exact claim |
+| `subscription.rs:161` "the last caller is gone" | zero code callers of the deprecated `.max_stores()` — the only two textual hits are archived planning docs quoting it historically |
+
+**One recommendation, not a repair.** `SubscriptionTier::max_stores` is now *provably* dead: no code caller
+anywhere in the tree, and the migration that renamed the concept (`20260906`) landed long ago. But it is a
+`pub fn` on a `pub` type, so removing it changes the crate's public surface — that is a decision about API
+compatibility, not a defect, and the rule here is to record such a thing rather than act on it unilaterally.
+Filed as a follow-up: the deprecation note could be upgraded from *"the last caller is gone"* to a deletion
+when the crate's next breaking release is cut.
+
+**What this pass does and does not establish.** It does **not** say liveness claims are reliable in general —
+MSL-73 found one wrong on all three counts, one pass ago. It says this particular 23-claim set, in this crate,
+is currently true, and that the class is worth a periodic re-run precisely because every one of these claims
+authorises a change (deleting a function, assuming a code path is dead) and none of them fails a test when it
+rots. Two of the twenty-three were checked *because* they looked most likely to have rotted (the "not yet
+functional" stubs and the "last caller is gone" alias) and both were correct.
+
+**Verified:** no files changed. The census rests on reading the four stub files end to end, the `Cargo.toml`
+feature list, all 12 `pending` predicates in `offline.rs`, and grepping the deprecated method across the whole
+tree.
+
+**Tally:** 78 findings fixed (11 HIGH), 23 leads disproved, 29 clean censuses. One recommendation recorded
+(delete the dead alias at a breaking release). Worth noting for the next pass: **four of the five inversion
+passes found something and this one did not**, so the doc-accuracy axis is approaching the point where the
+absence-based sweeps landed — the sensible next move is back to code behaviour rather than more comment
+sweeping.
+
+
 
 
 
