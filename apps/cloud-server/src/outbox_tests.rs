@@ -265,3 +265,71 @@ fn backoff_deadline_grows_and_caps() {
     assert!(parse(&a10) <= now + chrono::Duration::hours(1));
     assert!(parse(&a10) >= now + chrono::Duration::minutes(59));
 }
+
+// ── C19: the claim is exclusive and uses the `delivering` state ─────
+
+/// A claimed row is marked `delivering` for the whole delivery, which is the
+/// state the module doc has always promised (`pending -> delivering ->
+/// delivered`) and which the CHECK constraint already allowed. Before C19 the
+/// SQLite drainer left the row `pending` across `deliver_fn`, so a second
+/// drainer overlapping that window selected and delivered the SAME row.
+///
+/// This asserts the observable half of that: while a delivery is in flight the
+/// row is NOT `pending`, so a concurrent drainer's `WHERE status = 'pending'`
+/// cannot see it.
+#[tokio::test]
+async fn a_row_is_delivering_while_its_delivery_is_in_flight() {
+    let conn = shared_conn();
+    let id = {
+        let db = conn.lock().await;
+        enqueue_sqlite(&db, "email_report", r#"{"to":"a@b.c"}"#, 5, 0).unwrap()
+    };
+
+    // A deliver_fn that blocks until released, so the drain is still in
+    // flight when we inspect the row.
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let rx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(rx)));
+    let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
+    let entered_tx = std::sync::Arc::new(tokio::sync::Mutex::new(Some(entered_tx)));
+
+    let deliver = {
+        let rx = rx.clone();
+        let entered_tx = entered_tx.clone();
+        move |_c: SharedSqliteConn, _t: &str, _p: &str| {
+            let rx = rx.clone();
+            let entered_tx = entered_tx.clone();
+            Box::pin(async move {
+                if let Some(tx) = entered_tx.lock().await.take() {
+                    let _ = tx.send(());
+                }
+                if let Some(rx) = rx.lock().await.take() {
+                    let _ = rx.await;
+                }
+                Ok(())
+            }) as DeliverFuture
+        }
+    };
+
+    let conn_for_drain = conn.clone();
+    let drain = tokio::spawn(async move { drain_sqlite(&conn_for_drain, &deliver).await });
+
+    // Wait until the handler is running, i.e. the row has been claimed.
+    let _ = entered_rx.await;
+    {
+        let db = conn.lock().await;
+        assert_eq!(
+            get_entry(&db, &id).status,
+            "delivering",
+            "a claimed row must not still read as pending while its delivery runs"
+        );
+    }
+
+    // Release and let it settle.
+    let _ = tx.send(());
+    let processed = drain.await.expect("drain task").expect("drain ok");
+    assert_eq!(processed, 1);
+    {
+        let db = conn.lock().await;
+        assert_eq!(get_entry(&db, &id).status, "delivered");
+    }
+}

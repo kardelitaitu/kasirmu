@@ -127,36 +127,85 @@ pub async fn drain_sqlite(
     conn: &SharedSqliteConn,
     deliver_fn: &(dyn Fn(SharedSqliteConn, &str, &str) -> DeliverFuture + Send + Sync),
 ) -> Result<usize, String> {
+    // ── CLAIM, atomically, as `delivering` (C19) ─────────────────────────
+    // The SELECT and the claim are ONE transaction so a concurrent drainer
+    // cannot see a row this cycle has taken. Before this, the read left the
+    // row `pending` and the connection was released across `deliver_fn`, so
+    // two drains overlapping in that window both selected the SAME row and
+    // both delivered it -- the duplicate send the `delivering` state exists
+    // to prevent. `drain_pg` has always been safe here via `FOR UPDATE SKIP
+    // LOCKED`; this arms the SQLite backend with the state the module doc
+    // already promised (`pending -> delivering -> delivered`).
+    //
+    // The UPDATE is driven by the same predicate as the SELECT and its
+    // `rows_affected` bounds the batch: a row another drainer claimed between
+    // the two statements is simply not ours, so it is not counted and not
+    // delivered. `changes()` after the loop is the honest batch size.
     let entries = {
-        let db = conn.lock().await;
+        let mut db = conn.lock().await;
         let now = now_rfc3339();
-        let mut stmt = db
-            .prepare(
-                "SELECT id, topic, payload, status, max_attempts, attempts, \
-                 next_attempt_at, created_at, last_error \
-                 FROM outbox WHERE status = 'pending' AND next_attempt_at <= ?1 \
-                 ORDER BY priority DESC, next_attempt_at ASC LIMIT ?2",
-            )
-            .map_err(|e| format!("outbox drain prepare failed: {e}"))?;
-        let rows = stmt
-            .query_map(params![now, DRAIN_BATCH_SIZE], |row| {
-                Ok(OutboxEntry {
-                    id: row.get(0)?,
-                    topic: row.get(1)?,
-                    payload: row.get(2)?,
-                    status: row.get(3)?,
-                    max_attempts: row.get(4)?,
-                    attempts: row.get(5)?,
-                    next_attempt_at: row.get(6)?,
-                    created_at: row.get(7)?,
-                    last_error: row.get(8)?,
+        let tx = db
+            .transaction()
+            .map_err(|e| format!("outbox drain claim tx failed: {e}"))?;
+        let ids: Vec<String> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id FROM outbox WHERE status = 'pending' \
+                     AND next_attempt_at <= ?1 \
+                     ORDER BY priority DESC, next_attempt_at ASC LIMIT ?2",
+                )
+                .map_err(|e| format!("outbox drain prepare failed: {e}"))?;
+            let rows = stmt
+                .query_map(params![now, DRAIN_BATCH_SIZE], |row| {
+                    row.get::<_, String>(0)
                 })
-            })
-            .map_err(|e| format!("outbox drain query failed: {e}"))?;
+                .map_err(|e| format!("outbox drain query failed: {e}"))?;
+            let mut ids = Vec::new();
+            for row in rows {
+                ids.push(row.map_err(|e| format!("outbox drain row decode: {e}"))?);
+            }
+            ids
+        };
+
+        // Claim each id by a compare-and-set on `pending`, so only the drainer
+        // that actually flipped the row proceeds to deliver it.
         let mut entries = Vec::new();
-        for row in rows {
-            entries.push(row.map_err(|e| format!("outbox drain row decode: {e}"))?);
+        for id in &ids {
+            let claimed = tx
+                .execute(
+                    "UPDATE outbox SET status = 'delivering' \
+                     WHERE id = ?1 AND status = 'pending'",
+                    params![id],
+                )
+                .map_err(|e| format!("outbox drain claim failed: {e}"))?;
+            if claimed == 0 {
+                continue;
+            }
+            let entry = tx
+                .query_row(
+                    "SELECT id, topic, payload, status, max_attempts, attempts, \
+                     next_attempt_at, created_at, last_error \
+                     FROM outbox WHERE id = ?1",
+                    params![id],
+                    |row| {
+                        Ok(OutboxEntry {
+                            id: row.get(0)?,
+                            topic: row.get(1)?,
+                            payload: row.get(2)?,
+                            status: row.get(3)?,
+                            max_attempts: row.get(4)?,
+                            attempts: row.get(5)?,
+                            next_attempt_at: row.get(6)?,
+                            created_at: row.get(7)?,
+                            last_error: row.get(8)?,
+                        })
+                    },
+                )
+                .map_err(|e| format!("outbox drain claim read failed: {e}"))?;
+            entries.push(entry);
         }
+        tx.commit()
+            .map_err(|e| format!("outbox drain claim commit failed: {e}"))?;
         entries
     };
 
