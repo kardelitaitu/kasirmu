@@ -6673,3 +6673,108 @@ not in `lib.rs` at all — the `Diff in ...` lines must be read for their *path*
 **Tally:** 85 findings fixed (13 HIGH, 72 others), 24 leads disproved, 29 clean censuses. The `next:`-line backlog
 is now enumerated (231 lines, ~60 non-`none`); this pass closed 2 of them and the enumeration itself is recorded so
 the next pass can work the remainder without re-scanning.
+
+---
+
+## Pass 105 — SEC-1: the string-matched status code that turned failures into `Ok(None)` (MSL-84)
+
+This one came out of the enumerated `next:` backlog rather than from reading a module, and it is a **live
+correctness bug in shipped code**, not a stale stamp.
+
+### The defect, measured
+
+`crates/kasirmu-security/src/macos.rs` decided whether the keychain was reporting "no such item" by searching
+the **debug string** of the error:
+
+```
+Err(e) if e.code() < 0 => {
+    // errSecItemNotFound = -25300, errSecUnimplemented = -128.
+    if format!("{e:?}").contains("item not found")
+        || format!("{e:?}").contains("-25300")
+        || format!("{e:?}").contains("-128")
+    {
+        return Ok(None);
+    }
+```
+
+Three independent things are wrong with those five lines, and I measured each rather than inferring it:
+
+1. **The numeric code was in hand and was discarded.** The guard already evaluates `e.code()`, and
+   `security_framework::base::Error::code()` returns the `OSStatus` (`base.rs:62`, `pub const fn code(self)
+   -> OSStatus`). The correct value was one comparison away the whole time.
+2. **`"-128"` is a prefix of the entire `-128xx` range.** Enumerated: `-12800`, `-12801`, `-12899`, `-1280`
+   all contain it, as does `-128` itself. Each is a genuine failure, and each was reported as an absent item —
+   a storage error silently downgraded to `Ok(None)` in `get_secret` and to `Ok(false)` ("already deleted") in
+   `delete_secret`. The `get_secret` direction is the dangerous one: a caller that reads `None` will provision a
+   fresh secret over one that exists.
+3. **The comment's own constant is wrong.** It states `errSecUnimplemented = -128`.
+   `security-framework-sys::base` defines `errSecUnimplemented = -4` (`base.rs:54`). `-128` is not an errSec
+   not-found code at all, so even the intended second code was fictitious.
+
+The authoritative values are available in a crate we already depend on — `errSecItemNotFound = -25300`,
+`errSecUnimplemented = -4`, `errSecDuplicateItem = -25299` (`security-framework-sys-2.17.0/src/base.rs:53-61`)
+— so nothing here needed to be recalled or guessed.
+
+### Why it had survived every previous pass
+
+`macos.rs` is `#[cfg(target_os = "macos")]`, and its test file `macos_tests.rs` is behind the same gate.
+There is **no macOS target installed on this machine** (`rustup target list --installed` shows only
+android/windows/linux), so the module is neither compiled nor tested in this environment — and the same is true
+of every Windows-hosted review the crate has had. The stamp is honest about this: `lint: N/A (platform-gated,
+source-reviewed on Windows host)`. "Source-reviewed" is exactly the reviewing mode that does not catch a
+predicate error, because the behaviour only exists at runtime.
+
+### Fix — and the part that matters more than the fix
+
+The predicate now lives in a **new, deliberately non-gated module**, `crate::keychain_status`:
+
+```
+pub const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+
+pub const fn status_means_item_not_found(code: i32) -> bool {
+    code == ERR_SEC_ITEM_NOT_FOUND
+}
+```
+
+`macos.rs` consumes it (`Err(e) if status_means_item_not_found(e.code()) => Ok(None)`), which **deletes** the
+malformed branch rather than patching it. Placing the predicate outside the platform gate is the substantive
+part: a fix that stays inside `#[cfg(target_os = "macos")]` would be just as unverifiable as the bug was, and
+would ship on the same "source-reviewed" basis. Now it compiles and runs on every host and in CI.
+
+The constants are duplicated as literals with the source named in a doc comment, rather than referenced from
+`security-framework-sys`, because `security-framework` is itself `[target.'cfg(target_os = "macos")'.dependencies]`
+in this crate's manifest — importing the constant would drag the gate back in and defeat the point.
+
+### Tests, all runnable on this host
+
+`keychain_status_tests.rs` pins: the exact code means absence; each `-128xx` code is a failure (the SEC-1
+regression, named as such); `-4`/`-128` are not absence; the neighbouring real statuses (`-25299`, `-25293`,
+`-25263`, `-25318`, and the values immediately either side of `-25300`) are not absence; and a sweep of
+`-25400..=-25200` finds **exactly one** code meaning absence.
+
+**Falsified.** Restoring the original predicate verbatim fails on cue:
+
+```
+status -12800 is a failure, not an absent item        (a_code_merely_containing_the_needle_is_not_absence)
+assertion failed: !status_means_item_not_found(-128)  (unimplemented_is_not_absence_either)
+```
+
+then the fix was restored and all five passed. Worth recording that the *first* falsification attempt did not
+compile (`contains` is not `const fn`), so I made the falsified predicate non-`const` and re-ran — a
+falsification that fails to build proves nothing, and it would have been easy to record it as a pass.
+
+**Verified:** `kasirmu-security` **93 lib passed** (up from 88 — the five new tests), 0 failed;
+`clippy -p kasirmu-security --all-targets -- -D warnings` clean; `rustfmt` clean on all four edited files;
+`macos.rs` confirmed to still **parse** (`rustfmt --emit stdout` exits 0) since no macOS target can compile it
+here. Committed as `66240faaf` via the §3 new-file chain, verified by hash — two `create mode` entries, exactly
+my files.
+
+**Note on the limits of this verification, stated plainly:** the fix is verified *logically* — the predicate is
+tested and the call sites use it correctly — but `macos.rs` itself still cannot be *compiled* on this host, so
+the wiring is source-reviewed, not machine-checked. That is a real gap and it is the same gap that hid SEC-1.
+Closing it needs a macOS runner or the `x86_64-apple-darwin` target added to CI; recorded as a lead rather than
+claimed as done.
+
+**Tally:** 86 findings fixed (14 HIGH — this is the 14th, and a live silent-failure rather than a doc defect;
+72 others), 24 leads disproved, 29 clean censuses. The `next:` backlog enumeration paid for itself here: this
+was filed as "replace string matching with numeric code compare" and read, on a skim, like a tidiness item.
