@@ -49,6 +49,18 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 > "authentication credential" should not be read as describing a working control. The
 > product question — is gift-card PIN protection intended at all? — is open and tracked as
 > review item C69.
+>
+> **One correction to the paragraph above, measured 2026-09-26 (review C69 pass).** It says
+> nothing checks the PIN, which is TRUE, but it does not say what the code already does with
+> it — and it is more than nothing. MSL-10 (`modules/loyalty/src/models.rs:88-125`, `:127`)
+> makes it a secret at the SERIALIZATION boundary: the field is `skip_serializing` with
+> `default` (so older clients still deserialize), and a manual `Debug` impl renders it as
+> `<redacted>`. The struct's own doc calls it "PIN for balance checks", i.e. a control that
+> was intended. So the accurate statement is not "a credential nothing treats as one" but
+> **a credential that is protected in transit and at rest-in-memory, stored recoverably at
+> rest-on-disk, and never verified by any code path** — the last of which is why C69 remains
+> an open product question rather than a settled defect. Pinned by
+> `gift_card_pin_is_never_serialized_or_debugged` in the same file.
 
 ## Maintain a Vulnerability Management Program
 
