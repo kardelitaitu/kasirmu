@@ -798,10 +798,18 @@ body:has(.memo-stack) .staff-mgmt-main {
 
 .staff-mgmt-avatar-wrap {
   position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
   flex-shrink: 0;
 }
 
 .staff-mgmt-avatar {
+  width: 42px;
+  height: 42px;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
   flex-shrink: 0;
   border-radius: var(--radius-full);
   background-color: var(--color-bg-hover);

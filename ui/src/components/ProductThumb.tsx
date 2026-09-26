@@ -115,7 +115,12 @@ export function ProductThumb({
         loading={lazy ? 'lazy' : undefined}
         decoding="async"
         onError={() => setLoadError(true)}
-        style={{ objectFit: 'cover', borderRadius: radius }}
+        style={{
+          width: size,
+          height: size,
+          objectFit: 'cover',
+          borderRadius: radius,
+        }}
       />
     );
   }
