@@ -737,6 +737,21 @@ def self_test():
                            "[t](./target.md#no-such-heading)")) == 0))
     cases.append(("dated record stays historical",
                   is_historical_doc("docs/records/2026-01-01-x.md", "t") is True))
+    # C62: the exemption is a DIRECTORY PREFIX, so it also covers a page filed there
+    # that is NOT a dated record -- `sqlite-pg-roles.md` is cited by AGENTS.md as the
+    # reference for the schema source of truth, i.e. a live policy page, and it is
+    # exempt by prefix alone. Measured rather than asserted so the gap is visible:
+    # a dead reference inside it is detected by `scan_text` but routed to the
+    # non-counting bucket, so the gate cannot go red on it.
+    #
+    # This is a DELIBERATE trade-off, argued at HIST_DIR_PREFIXES above ("over-exempting
+    # a live doc can only hide findings, while under-exempting a historical one invents
+    # them") -- and inverting it is an owner decision, not a bug fix, because narrowing
+    # the rule would newly grade 7 of the 14 files in `docs/records/`, including the
+    # register whose stale paths are the deleted reports it consolidated by design.
+    # Pinned here so that decision has to be made ON PURPOSE rather than by drift.
+    cases.append(("a NON-dated policy page under docs/records/ is exempt too (the C62 gap)",
+                  is_historical_doc("docs/records/sqlite-pg-roles.md", "# Roles") is True))
     # C70: the rename rescue inside an exempt directory. `exists` is injected so the
     # rule is exercised without a tree, matching every other case here.
     PRE = "crates/oz-core/src/db/offline.rs"
