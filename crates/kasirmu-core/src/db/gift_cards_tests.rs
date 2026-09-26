@@ -907,3 +907,130 @@ fn unfreeze_gift_card_race_cannot_overwrite_a_competing_transition() {
     drop(conn_a);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The idempotency read must tell "no prior redemption" apart from a read that
+/// FAILED. `redeem_gift_card` used `if let Ok(txn) = existing`, so an
+/// undecodable prior row was read as "no prior redemption" and the function
+/// redeemed a SECOND time — a fail-open on the money path. Every loyalty
+/// idempotency lookup (`db/loyalty.rs` `fetch_earn_txn` and its siblings)
+/// matches `QueryReturnedNoRows` and propagates every other error; this was
+/// the one that disagreed.
+///
+/// The partial unique index `uq_gift_card_redeem_sale` (migration
+/// 20260901) normally catches the second INSERT and rolls the transaction
+/// back — which is why the defect is invisible today. This test drops that
+/// index so the APPLICATION-layer guard is the only thing standing: with the
+/// guard broken, the card is debited twice and a second ledger row is
+/// written. It pins that the application guard, not the index added later,
+/// is what makes a redemption replay safe.
+#[test]
+fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming() {
+    let conn = fresh();
+    seed_user(&conn, "staff-1");
+    store(&conn)
+        .issue_gift_card(IssueGiftCardInput {
+            card_number: "GC-ERR-1".into(),
+            pin: None,
+            initial_amount_minor: 50000,
+            currency: "IDR".into(),
+            issued_to: None,
+            created_by: "staff-1".into(),
+            expiry_date: None,
+        })
+        .unwrap();
+
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-err-1', 10000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 10000, 0)",
+        [],
+    )
+    .unwrap();
+
+    // A prior redemption exists for this card and sale, but its `amount_minor`
+    // cannot decode as an integer, so the idempotency mapper errors.
+    let card_id: String = conn
+        .query_row(
+            "SELECT id FROM gift_cards WHERE card_number = 'GC-ERR-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    conn.execute(
+        "INSERT INTO gift_card_transactions
+             (id, gift_card_id, sale_id, txn_type, amount_minor, balance_after_minor, created_at)
+         VALUES ('red-corrupt', ?1, 'sale-err-1', 'redeem', x'deadbeef', 40000, '2025-01-01T00:00:00.000Z')",
+        params![card_id],
+    )
+    .unwrap();
+
+    // Remove the DB-level backstop so the application guard is the only
+    // protection against a second debit.
+    conn.execute_batch("DROP INDEX IF EXISTS uq_gift_card_redeem_sale;")
+        .unwrap();
+
+    match store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
+        // RED: the failed read was taken for "no prior redemption", so the
+        // redemption ran a second time.
+        Ok(r) => panic!(
+            "unreadable idempotency row was read as absence and re-redeemed: {}",
+            r.transaction.id
+        ),
+        // GREEN: the read failure propagates.
+        Err(_) => {}
+    }
+
+    let balance: i64 = conn
+        .query_row(
+            "SELECT current_balance_minor FROM gift_cards WHERE card_number = 'GC-ERR-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        balance, 50000,
+        "a failed idempotency read must not debit the card"
+    );
+
+    let redeems: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM gift_card_transactions
+             WHERE sale_id = 'sale-err-1' AND txn_type = 'redeem'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(redeems, 1, "no second redemption row may be written");
+}
+
+/// The documented absence path survives the fix: a genuinely absent prior
+/// redemption is not an error, so the first redemption still succeeds and
+/// debits exactly once.
+#[test]
+fn redeem_still_proceeds_when_no_prior_redemption_exists() {
+    let conn = fresh();
+    seed_user(&conn, "staff-1");
+    store(&conn)
+        .issue_gift_card(IssueGiftCardInput {
+            card_number: "GC-OK-1".into(),
+            pin: None,
+            initial_amount_minor: 50000,
+            currency: "IDR".into(),
+            issued_to: None,
+            created_by: "staff-1".into(),
+            expiry_date: None,
+        })
+        .unwrap();
+
+    conn.execute(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
+         VALUES ('sale-ok-1', 10000, 'IDR', 0, 'completed', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 10000, 0)",
+        [],
+    )
+    .unwrap();
+
+    let result = store(&conn)
+        .redeem_gift_card("GC-OK-1", 10000, "sale-ok-1")
+        .expect("a genuinely absent prior redemption must not be an error");
+    assert_eq!(result.card.current_balance_minor, 40000);
+    assert_eq!(result.transaction.txn_type, "redeem");
+}

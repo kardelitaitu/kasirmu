@@ -407,7 +407,18 @@ impl Store<'_> {
             },
         );
 
-        if let Ok(txn) = existing {
+        // A decode/read failure is NOT "no prior redemption": reading it as
+        // absence let the function redeem a second time, a fail-open on the
+        // money path. Only `QueryReturnedNoRows` means absence; every other
+        // error propagates. `db/loyalty.rs` `fetch_earn_txn` (the sibling
+        // idempotency lookup) already draws exactly this line.
+        let existing = match existing {
+            Ok(txn) => Some(txn),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => return Err(e.into()),
+        };
+
+        if let Some(txn) = existing {
             let updated = self.get_gift_card_by_raw_id(&card.id)?;
             return Ok(RedeemGiftCardResult {
                 card: updated.unwrap_or(card),
