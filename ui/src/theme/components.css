@@ -1596,6 +1596,67 @@
   min-height: calc(100dvh - var(--tablet-bottom-nav-height, 64px));
 }
 
+/* ── Shared list pager ──────────────────────────────────────────────
+   R3: the bounded list data path's page controls, for the four screens
+   that page a table through `usePagedList`. Deliberately NEUTRAL names:
+   the two pagers that predate this block are feature-scoped
+   (.sales-history-page-btn, .retail-page-btn), so reusing either name on
+   products / customers / void orders / thresholds would have said "sales
+   history" about four screens that are not sales history — and would have
+   failed screenExtraction case 1, which resolves a screen's used names
+   against its own sheet plus an explicit parentCss cite, and neither of
+   those sheets is a legal cite for those entries. This block is the
+   shared one, cited via parentCss by the four entries that use it.
+   The existing pagers are NOT retrofitted onto it — that is a separate
+   refactor. Visual intent mirrors SalesHistoryScreen.css:504-546 and
+   RetailPosScreen.css:1478-1502, re-expressed in the tokens this sheet
+   already uses; interactive sizing reads --touch-target-min (44px), so
+   no page control can drift below the touch floor. */
+.pager-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  margin-top: var(--space-2);
+}
+.pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: var(--space-1_5) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-100) var(--ease-out);
+}
+.pager-btn:hover:not(:disabled) {
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent);
+}
+.pager-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pager-btn:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--color-border-focus);
+}
+.pager-info,
+.pager-indicator {
+  font-size: var(--text-sm);
+  color: var(--color-fg-tertiary);
+  margin-left: var(--space-2);
+  text-align: center;
+}
+
 /* Screen reader only utility (globally accessible) */
 .sr-only {
   position: absolute;

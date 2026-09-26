@@ -258,6 +258,12 @@ const SCREENS: ScreenEntry[] = [
     ],
     // Classes used by child StockAlertPanel component rendered inside drawer
     externalClasses: ['stock-alert-panel'],
+    // R3: cites the shared pager block (.pager-nav/.pager-btn/.pager-info) this
+    // screen's page controls use. The cite is the mechanism this suite offers
+    // for a globally imported sheet — case 1 resolves against css UNION
+    // parentCss, and cases 2 and 3 still walk `css` alone, so the shared sheet
+    // is never graded for duplicate or dead rules through this entry.
+    parentCss: ['../theme/components.css'],
   },
   {
     name: 'BundleManagementScreen',
@@ -327,6 +333,8 @@ const SCREENS: ScreenEntry[] = [
     name: 'CustomerManagementScreen',
     tsx: 'customers/CustomerManagementScreen.tsx',
     css: ['customers/CustomerManagementScreen.css'],
+    // R3: cites the shared pager block — see the ProductManagementScreen note.
+    parentCss: ['../theme/components.css'],
   },
 
   // ── Inventory ─────────────────────────────────────────
@@ -914,6 +922,8 @@ const SCREENS: ScreenEntry[] = [
     name: 'VoidOrdersScreen',
     tsx: 'sales/VoidOrdersScreen.tsx',
     css: ['sales/VoidOrdersScreen.css'],
+    // R3: cites the shared pager block — see the ProductManagementScreen note.
+    parentCss: ['../theme/components.css'],
   },
   {
     name: 'EodReportScreen',

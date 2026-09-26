@@ -11,6 +11,7 @@ import {
   type SaleDetail,
 } from '@/api/sales';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { usePagedList } from '@/hooks/usePagedList';
 import { formatMoney } from '@/types/domain';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
@@ -179,6 +180,13 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
 
     return items;
   }, [sales, statusFilter, searchQuery]);
+
+  // R3: bounded list data path — the table below renders one page of the
+  // filtered set through the shared policy, not every fetched sale.
+  const { page, total, pageItems, setPage, resetPage } = usePagedList(filteredSales);
+
+  // A new filter or query is a new result set, so the pager returns to page 1.
+  useEffect(() => { resetPage(); }, [statusFilter, searchQuery, resetPage]);
 
   // ── Void handler ────────────────────────────────────────────────
 
@@ -411,7 +419,7 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
                     </Localized>
                   </tr>
                 </thead>
-                <tbody>{filteredSales.map((sale) => (
+                <tbody>{pageItems.map((sale) => (
                     <tr key={sale.id} className={sale.status === 'Active' ? 'void-orders-row--active' : ''}>
                       <td className="void-orders-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
                       <td>{formatDate(sale.createdAt)}</td>
@@ -460,6 +468,30 @@ export default function VoidOrdersScreen({ initialSaleId }: VoidOrdersScreenProp
               </table>
             </Localized>
           </div>
+        )}
+        {/* R3: page navigation for the bounded table above. */}
+        {total > 1 && (
+          <nav className="pager-nav" aria-label={l10n.getString('pagination-aria')}>
+            <Button
+              unstyled
+              className="pager-btn"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+              aria-label={l10n.getString('previous-page-aria')}
+            >
+              &lsaquo;
+            </Button>
+            <span className="pager-info" aria-current="true">{page + 1} / {total}</span>
+            <Button
+              unstyled
+              className="pager-btn"
+              disabled={page >= total - 1}
+              onClick={() => setPage((p) => p + 1)}
+              aria-label={l10n.getString('next-page-aria')}
+            >
+              &rsaquo;
+            </Button>
+          </nav>
         )}
       </div>
     );

@@ -5,6 +5,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { requiredLocalized, LoadingStatus } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { usePagedList } from '@/hooks/usePagedList';
 import { listProductsScoped, type ProductDto } from '@/api/products';
 import {
   listInventoryLocations,
@@ -124,6 +125,14 @@ export default function ThresholdConfigScreen() {
     return t.location_id === selectedLocationFilter;
   });
 
+  // R3: bounded list data path — the table renders one page of the filtered
+  // set through the shared policy, not every threshold. The <select> option
+  // list at the foot of the dialog is a different surface and stays whole.
+  const { page, total, pageItems, setPage, resetPage } = usePagedList(filteredThresholds);
+
+  // A new location filter is a new result set, so the pager returns to page 1.
+  useEffect(() => { resetPage(); }, [selectedLocationFilter, resetPage]);
+
   return (
     <div className="threshold-container">
       <div className="threshold-header">
@@ -191,7 +200,7 @@ export default function ThresholdConfigScreen() {
               </Localized>
             </tr>
           </thead>
-          <tbody>{filteredThresholds.map(t => {
+          <tbody>{pageItems.map(t => {
               // The backend stored product_id is actually the product's SKU or DB ID.
               // Let's resolve the product name by matching product_id with product.sku.
               const prod = products.find(p => p.sku === t.product_id);
@@ -226,6 +235,31 @@ export default function ThresholdConfigScreen() {
             })}
 </tbody>
         </table>
+      )}
+
+      {/* R3: page navigation for the bounded table above. */}
+      {total > 1 && (
+        <nav className="pager-nav" aria-label={requiredLocalized(l10n, 'pagination-aria')}>
+          <Button
+            unstyled
+            className="pager-btn"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+            aria-label={requiredLocalized(l10n, 'previous-page-aria')}
+          >
+            &lsaquo;
+          </Button>
+          <span className="pager-info" aria-current="true">{page + 1} / {total}</span>
+          <Button
+            unstyled
+            className="pager-btn"
+            disabled={page >= total - 1}
+            onClick={() => setPage((p) => p + 1)}
+            aria-label={requiredLocalized(l10n, 'next-page-aria')}
+          >
+            &rsaquo;
+          </Button>
+        </nav>
       )}
 
       <ConfirmDialog

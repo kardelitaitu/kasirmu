@@ -62,6 +62,35 @@ describe('list-policy (PERF-07)', () => {
     expect(paginate(huge, 199).length).toBeLessThanOrEqual(LIST_PAGE_SIZE);
   });
 
+  it('page 2 offsets correctly — a page is a window, not a copy of page 1', () => {
+    // R3 acceptance: the bounded list path must move by `page * pageSize`,
+    // not re-render the first page. Every assertion below fails if `offset`
+    // (the `start` in `paginate`) is ignored.
+    const rows = Array.from({ length: 250 }, (_, i) => i);
+
+    const page0 = paginate(rows, 0);
+    const page1 = paginate(rows, 1);
+    const page2 = paginate(rows, 2);
+
+    // The window actually advances.
+    expect(page0[0]).toBe(0);
+    expect(page1[0]).toBe(LIST_PAGE_SIZE);
+    expect(page2[0]).toBe(2 * LIST_PAGE_SIZE);
+    expect(page2).toHaveLength(LIST_PAGE_SIZE);
+
+    // Disjoint windows: an ignored offset makes these two identical.
+    expect(page1).not.toEqual(page0);
+    const overlap = page2.filter((row) => page1.includes(row));
+    expect(overlap).toEqual([]);
+
+    // Concatenating every page reproduces the dataset exactly once — no row
+    // dropped by the offset arithmetic and none rendered twice.
+    const reassembled = Array.from({ length: totalPages(rows.length) }, (_, p) =>
+      paginate(rows, p),
+    ).flat();
+    expect(reassembled).toEqual(rows);
+  });
+
   it('documents the virtualization threshold constant', () => {
     // The audit's contract: datasets beyond this many pages should be
     // evaluated for virtualization; below it bounded paging suffices.

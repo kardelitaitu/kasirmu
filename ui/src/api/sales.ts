@@ -509,9 +509,19 @@ export interface SaleListResponse {
 export const listSales = (): Promise<SaleListResponse> =>
   loggedInvoke<SaleListResponse>('list_sales');
 
-/** ADR #7: List sales scoped to the store resolved from a session token. */
-export const listSalesScoped = (sessionToken: string): Promise<SaleListResponse> =>
-  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken });
+/**
+ * ADR #7: List sales scoped to the store resolved from a session token.
+ *
+ * R3: `limit` and `offset` bound the page returned in `sales`. Both are
+ * optional and additive — omitted, the whole tier-capped list comes back
+ * exactly as before, which is what every existing caller relies on.
+ */
+export const listSalesScoped = (
+  sessionToken: string,
+  limit?: number,
+  offset?: number,
+): Promise<SaleListResponse> =>
+  loggedInvoke<SaleListResponse>('list_sales_scoped', { sessionToken, limit, offset });
 
 /** Fetch a single sale by its identifier. */
 export const getSale = (id: string): Promise<SaleDetail | null> =>
