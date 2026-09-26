@@ -38,6 +38,10 @@ use tokio::sync::{Mutex, MutexGuard, oneshot};
 use crate::error::BridgeError;
 
 #[cfg(test)]
+#[path = "gate_error_mapping_tests.rs"]
+mod gate_error_mapping_tests;
+
+#[cfg(test)]
 #[path = "session_revalidation_tests.rs"]
 mod session_revalidation_tests;
 
