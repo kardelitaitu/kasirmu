@@ -5201,6 +5201,82 @@ audit pass.
 
 **Tally:** 62 findings fixed (10 HIGH), 17 leads disproved. Two are preventive pins.
 
+## Pass 79 — MSL-56/57: the Rust-vs-SQLite timestamp shape census
+
+New axis, taken from MSL-55's own lesson. A Rust-produced timestamp string that is later compared
+AGAINST a column SQLite wrote is a silent failure when the two shapes disagree: no error, no type check,
+just a lexical comparison that answers wrong. So I enumerated every `.format("…")` in production code and
+adjudicated each against the column it meets. Nine distinct formats; three verdicts.
+
+| Rust format | Sites | Compared to | Verdict |
+|---|---|---|---|
+| `%Y-%m-%dT%H:%M:%S%.3fZ` | 9 | `strftime('%Y-%m-%dT%H:%M:%fZ')` columns | **correct** — `%.3f` renders `SS.SSS` |
+| `%Y-%m-%dT%H:%M:%S%.6fZ` | 1 | same | **MSL-56, fixed** |
+| `%Y-%m-%d %H:%M:%S` | 2 | filesystem mtime, display only | sound — lead disproved |
+| `%Y-%m-%d` | 12 | one is a SQL day bound | **MSL-57, fixed** |
+
+**MSL-56 (MEDIUM, fixed): `terminal_overrides.rs` wrote microseconds where the column writes
+milliseconds.** The helper's comment claimed *"Same format used by the SQL `strftime` default in
+migrations"* — and it was false. Measured against a real DB:
+
+```text
+sqlite = 2026-09-25T23:46:15.606Z     (len 24)   -- the column DEFAULT
+rust   = 2026-09-25T23:46:15.606805Z  (len 27)   -- format_now()
+```
+
+Both are lexically comparable but not *interchangeably*: for two rows in the same whole second they differ
+at index 24, where SQLite has `Z` (0x5A) and the Rust stamp a digit — so the coarser, older row sorts
+AFTER. Nothing compares these columns today, which is why it was never visible; it is fixed so the first
+caller that orders by `updated_at` does not inherit the inversion. The comment now states the contract,
+the measured divergence, and which SQLite default it has to match. Pinned by
+`override_timestamps_match_the_sqlite_column_shape`, which reads the expected shape **out of SQLite**
+rather than restating it in Rust, so the test cannot pass by agreeing with its own copy of the format.
+
+**MSL-57 (HIGH, fixed): the custom-report END DATE silently dropped its own day's rows.**
+`build_custom_report` built its upper bound as `format!("{end_date} 23:59:59")` — a SPACE at index 10 —
+while all three filterable columns (`sales.created_at`, `customers.created_at`, `shifts.opened_at`)
+default to `strftime('%Y-%m-%dT%H:%M:%fZ')`, i.e. a `T` at index 10. `' '` (0x20) sorts BELOW `'T'`
+(0x54), so every row stamped on the end date itself compared GREATER than the bound. Measured on the
+module's own fixtures, with a raw-SQL control:
+
+```text
+end=2026-06-30  ->  1 row
+end=2026-06-15  ->  0 rows   (the sale is stamped 2026-06-15T10:00:00.000Z)
+raw SQL, same bound  ->  0 rows
+```
+
+A single-day custom report came back **empty while the rows plainly existed** — the worst shape of report
+bug, because nothing errors and the numbers just read zero. Reachable: `build_custom_report_scoped`
+(`kasirmu-bridge/src/reports.rs:609`) is the IPC door.
+
+**Why this survived the memo sweep's identical fix.** The memo module fixed precisely this class —
+`archived_at <= datetime(...)` against an RFC3339 column — and wrote it up at length. The audit
+security-trail filter fixed it too, as D84 ruling 3, with a reusable `normalize_day_bound`. Neither
+generalised: the export built its own bound inline, in a different shape, and no census existed over
+"Rust stamps that meet SQLite stamps". That census is this pass.
+
+**The fix was aligned to the house idiom on a second look.** My first version used
+`T23:59:59.999Z` with `<=`; the audit precedent (`audit.rs:526-537`, `created_at < ?`) uses an
+EXCLUSIVE next-day midnight, `{day+1}T00:00:00.000Z` with `<`. Both are correct for millisecond data,
+but `.999Z` silently assumes millisecond precision whereas the exclusive form stays correct under finer
+stamps. Re-done the house way, so there is one idiom and not two. A second assertion pins the semantic the
+exclusive form introduces — a row at midnight of the day AFTER the end date is correctly EXCLUDED.
+
+Falsified both ways: the original bound fails `left: 0, right: 1` on the same-day case, and the realigned
+version fails identically when reverted.
+
+**Leads disproved, and worth recording so they are not re-checked:** the two `%Y-%m-%d %H:%M:%S` sites
+(`kasirmu-bridge/src/data.rs:420,1106`) format a filesystem mtime for a backup-status DTO — never
+compared, never parsed, a legitimate display format. The `%.3fZ` family's other eight sites all write to
+or compare against `%fZ` columns and agree.
+
+**Verified:** 141 `export` (was 119), 18 `terminal_overrides`, 1976 `db::`, `clippy -D warnings` clean,
+both files `rustfmt`-clean (one pre-existing long line in `terminal_overrides_tests.rs:41` left
+untouched). Commits `faaa9a256` (MSL-56), `1869f2309` + `a630f00c9` (MSL-57).
+
+**Tally:** 64 findings fixed (11 HIGH), 19 leads disproved. Two are preventive pins.
+
+
 
 
 
