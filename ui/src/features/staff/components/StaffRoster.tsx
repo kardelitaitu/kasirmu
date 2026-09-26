@@ -113,6 +113,13 @@ const SearchIcon = () => (
   </svg>
 );
 
+const ClearIcon = () => (
+  <svg {...iconProps} width={12} height={12}>
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
 const EditIcon = () => (
   <svg {...iconProps}>
     <path d="M12 20h9" />
@@ -215,6 +222,8 @@ export function StaffRoster({
     },
   ];
 
+  const filterIndex = Math.max(0, filters.findIndex((f) => f.id === status));
+
   return (
     <div className="staff-mgmt-roster">
       {workspacesUnavailable && (
@@ -231,27 +240,38 @@ export function StaffRoster({
       {/* Unified Toolbar: Integrated Counter Badges + Filter Tabs + Search & Sort */}
       <div className="staff-mgmt-toolbar" data-testid="staff-mgmt-toolbar">
         <div className="staff-mgmt-toolbar-left">
-          <div className="staff-mgmt-filters" role="group">
+          <div
+            className="staff-mgmt-filters"
+            role="tablist"
+            style={{
+              '--segmented-tab-count': filters.length,
+              '--segmented-tab-index': filterIndex,
+            } as React.CSSProperties}
+          >
+            <span className="staff-mgmt-filter-indicator" aria-hidden="true" />
             {filters.map((filter) => (
-              <Button
+              <button
                 key={filter.id}
-                unstyled
-                className={`staff-mgmt-chip${status === filter.id ? ' staff-mgmt-chip--on' : ''}`}
+                type="button"
+                role="tab"
+                aria-selected={status === filter.id}
                 aria-pressed={status === filter.id}
+                className={`staff-mgmt-chip${status === filter.id ? ' staff-mgmt-chip--on' : ''}`}
                 onClick={() => setStatus(filter.id)}
                 data-testid={`staff-filter-${filter.id}`}
               >
-                <span>{filter.label}</span>
+                <span className="staff-mgmt-chip-label">{filter.label}</span>
                 <span className="staff-mgmt-chip-count" data-testid={filter.statTestId}>
                   {filter.count}
                 </span>
-              </Button>
+              </button>
             ))}
           </div>
 
-          <span className="staff-mgmt-toolbar-sep" aria-hidden="true">|</span>
+          <span className="staff-mgmt-toolbar-sep" aria-hidden="true" />
 
           <div className="staff-mgmt-role-stat" data-testid="staff-role-stat">
+            <RoleIcon role="admin" size={14} className="staff-mgmt-role-stat-icon" />
             <span className="staff-mgmt-role-stat-label">
               <Localized id="nav-roles"><span>Roles</span></Localized>
             </span>
@@ -275,6 +295,16 @@ export function StaffRoster({
                 data-testid="staff-search"
               />
             </Localized>
+            {query && (
+              <button
+                type="button"
+                className="staff-mgmt-search-clear"
+                onClick={() => setQuery('')}
+                aria-label={l10n.getString('clear-aria')}
+              >
+                <ClearIcon />
+              </button>
+            )}
           </div>
 
           <Localized id="staff-sort" attrs={{ 'aria-label': true }}>
