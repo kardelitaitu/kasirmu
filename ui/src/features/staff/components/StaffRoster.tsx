@@ -145,23 +145,6 @@ const ImpersonateIcon = () => (
   </svg>
 );
 
-/** One stat tile: the number is the hero, the label names it. */
-function Stat({ value, label, testId, className }: {
-  value: number;
-  label: React.ReactNode;
-  testId: string;
-  /** The tone modifier, spelled out at the call site — screenExtraction's
-   *  dead-class walk reads literals, and `--${tone}` is invisible to it. */
-  className: string;
-}) {
-  return (
-    <div className={`staff-mgmt-stat ${className}`} data-testid={testId}>
-      <span className="staff-mgmt-stat-value">{value}</span>
-      <span className="staff-mgmt-stat-label">{label}</span>
-    </div>
-  );
-}
-
 /** The Staff tab's main content. */
 export function StaffRoster({
   staff,
@@ -206,10 +189,30 @@ export function StaffRoster({
     );
   }, [staff, query, status, sort]);
 
-  const filters: { id: StatusFilter; label: React.ReactNode }[] = [
-    { id: 'all', label: <Localized id="staff-filter-all"><span>All</span></Localized> },
-    { id: 'active', label: <Localized id="staff-status-active"><span>Active</span></Localized> },
-    { id: 'inactive', label: <Localized id="staff-status-inactive"><span>Inactive</span></Localized> },
+  const filters: {
+    id: StatusFilter;
+    label: React.ReactNode;
+    count: number;
+    statTestId: string;
+  }[] = [
+    {
+      id: 'all',
+      label: <Localized id="staff-filter-all"><span>All</span></Localized>,
+      count: staff.length,
+      statTestId: 'staff-stat-total',
+    },
+    {
+      id: 'active',
+      label: <Localized id="staff-status-active"><span>Active</span></Localized>,
+      count: activeCount,
+      statTestId: 'staff-stat-active',
+    },
+    {
+      id: 'inactive',
+      label: <Localized id="staff-status-inactive"><span>Inactive</span></Localized>,
+      count: staff.length - activeCount,
+      statTestId: 'staff-stat-inactive',
+    },
   ];
 
   return (
@@ -225,59 +228,68 @@ export function StaffRoster({
         </div>
       )}
 
-      <div className="staff-mgmt-stats">
-        <Stat className="staff-mgmt-stat--neutral" value={staff.length} testId="staff-stat-total"
-          label={<Localized id="staff-stat-total"><span>Total</span></Localized>} />
-        <Stat className="staff-mgmt-stat--success" value={activeCount} testId="staff-stat-active"
-          label={<Localized id="staff-status-active"><span>Active</span></Localized>} />
-        <Stat className="staff-mgmt-stat--muted" value={staff.length - activeCount} testId="staff-stat-inactive"
-          label={<Localized id="staff-status-inactive"><span>Inactive</span></Localized>} />
-        <Stat className="staff-mgmt-stat--accent" value={roleCount} testId="staff-stat-roles"
-          label={<Localized id="nav-roles"><span>Roles</span></Localized>} />
-      </div>
+      {/* Unified Toolbar: Integrated Counter Badges + Filter Tabs + Search & Sort */}
+      <div className="staff-mgmt-toolbar" data-testid="staff-mgmt-toolbar">
+        <div className="staff-mgmt-toolbar-left">
+          <div className="staff-mgmt-filters" role="group">
+            {filters.map((filter) => (
+              <Button
+                key={filter.id}
+                unstyled
+                className={`staff-mgmt-chip${status === filter.id ? ' staff-mgmt-chip--on' : ''}`}
+                aria-pressed={status === filter.id}
+                onClick={() => setStatus(filter.id)}
+                data-testid={`staff-filter-${filter.id}`}
+              >
+                <span>{filter.label}</span>
+                <span className="staff-mgmt-chip-count" data-testid={filter.statTestId}>
+                  {filter.count}
+                </span>
+              </Button>
+            ))}
+          </div>
 
-      <div className="staff-mgmt-toolbar">
-        <div className="staff-mgmt-search-field">
-          <SearchIcon />
-          <Localized id="staff-search" attrs={{ 'aria-label': true, placeholder: true }}>
-            <input
-              type="search"
-              className="staff-mgmt-search-input"
-              aria-label="Search staff"
-              placeholder="Search name, username or ID"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              data-testid="staff-search"
-            />
+          <span className="staff-mgmt-toolbar-sep" aria-hidden="true">|</span>
+
+          <div className="staff-mgmt-role-stat" data-testid="staff-role-stat">
+            <span className="staff-mgmt-role-stat-label">
+              <Localized id="nav-roles"><span>Roles</span></Localized>
+            </span>
+            <span className="staff-mgmt-chip-count" data-testid="staff-stat-roles">
+              {roleCount}
+            </span>
+          </div>
+        </div>
+
+        <div className="staff-mgmt-toolbar-right">
+          <div className="staff-mgmt-search-field">
+            <SearchIcon />
+            <Localized id="staff-search" attrs={{ 'aria-label': true, placeholder: true }}>
+              <input
+                type="search"
+                className="staff-mgmt-search-input"
+                aria-label="Search staff"
+                placeholder="Search name, username or ID"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                data-testid="staff-search"
+              />
+            </Localized>
+          </div>
+
+          <Localized id="staff-sort" attrs={{ 'aria-label': true }}>
+            <select
+              className="staff-mgmt-sort"
+              aria-label="Sort staff by"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as SortKey)}
+              data-testid="staff-sort"
+            >
+              <option value="role">{l10n.getString('staff-col-role')}</option>
+              <option value="name">{l10n.getString('staff-col-name')}</option>
+            </select>
           </Localized>
         </div>
-        <div className="staff-mgmt-filters">
-          {filters.map((filter) => (
-            <Button
-              key={filter.id}
-              unstyled
-              className={`staff-mgmt-chip${status === filter.id ? ' staff-mgmt-chip--on' : ''}`}
-              aria-pressed={status === filter.id}
-              onClick={() => setStatus(filter.id)}
-              data-testid={`staff-filter-${filter.id}`}
-            >
-              {filter.label}
-            </Button>
-          ))}
-        </div>
-        {/* Attribute-only message: delivered by <Localized>, never getString. */}
-        <Localized id="staff-sort" attrs={{ 'aria-label': true }}>
-          <select
-            className="staff-mgmt-sort"
-            aria-label="Sort staff by"
-            value={sort}
-            onChange={(event) => setSort(event.target.value as SortKey)}
-            data-testid="staff-sort"
-          >
-            <option value="role">{l10n.getString('staff-col-role')}</option>
-            <option value="name">{l10n.getString('staff-col-name')}</option>
-          </select>
-        </Localized>
       </div>
 
       {visible.length === 0 ? (

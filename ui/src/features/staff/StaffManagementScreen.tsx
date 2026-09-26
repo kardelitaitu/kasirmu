@@ -600,15 +600,15 @@ export default function StaffManagementScreen() {
               {/* No header mimic here: the real header is rendered above for
                   every branch, so a second one would duplicate the tab strip
                   and the actions while the list loads. */}
-              {/* The shapes mirror the roster it stands in for — stat tiles, the
-                  toolbar, then the cards — so the swap from skeleton to data
-                  does not jump. */}
-              <div className="staff-mgmt-stats">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} variant="block" width="100%" height="4.5rem" style={{ borderRadius: 'var(--radius-lg)' }} />
-                ))}
+              {/* The shapes mirror the roster it stands in for — unified toolbar,
+                  then the cards — so the swap from skeleton to data does not jump. */}
+              <div className="staff-mgmt-toolbar-skeleton" aria-hidden="true">
+                <Skeleton variant="block" width="18rem" height="2.25rem" style={{ borderRadius: 'var(--radius-lg)' }} />
+                <div className="staff-mgmt-toolbar-skeleton-right">
+                  <Skeleton variant="block" width="14rem" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                  <Skeleton variant="block" width="7rem" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
+                </div>
               </div>
-              <Skeleton variant="block" width="100%" height="2.25rem" style={{ borderRadius: 'var(--radius-md)' }} />
               <div className="staff-mgmt-grid">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <Skeleton key={i} variant="block" width="100%" height="11rem" style={{ borderRadius: 'var(--radius-xl)' }} />
