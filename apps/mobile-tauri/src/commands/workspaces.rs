@@ -219,16 +219,21 @@ fn resolve_boot_store_core(
 
     let binding_info: Option<(String, String, String, String)> = {
         let store = Store::new(conn);
-        store
-            .get_terminal_by_device_id(device_id)?
-            .and_then(|terminal| {
+        match store.get_terminal_by_device_id(device_id)? {
+            None => None,
+            Some(terminal) => {
                 let tid = terminal.id;
-                store
-                    .get_terminal_binding(&tid)
-                    .ok()
-                    .flatten()
-                    .map(|(s, i, sig)| (tid, s, i, sig))
-            })
+                // An errored binding read is NOT "unbound": reading it as
+                // absence silently unpinned a bound terminal and booted it
+                // into the primary store. Only `Ok(None)` means no binding;
+                // every error propagates, matching the `?` on the sibling
+                // read directly above.
+                match store.get_terminal_binding(&tid) {
+                    Ok(binding) => binding.map(|(s, i, sig)| (tid, s, i, sig)),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
     };
 
     if let Some((terminal_id, bound_store_id, bound_instance_id, signature)) = binding_info {

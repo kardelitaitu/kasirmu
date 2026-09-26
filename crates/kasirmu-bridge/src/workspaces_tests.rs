@@ -683,3 +683,71 @@ fn remediation_target_trims_so_padding_cannot_mint_a_second_store() {
     let got = remediation_target(&conn, "store-9", Some("  store-1  ".into())).unwrap();
     assert_eq!(got, "store-1");
 }
+
+// ── Device-binding read failure on the boot path ───────────────────────
+
+/// Seed one terminal bound to `store-a`/`ws-a-1`, then force ONLY the binding
+/// read to fail. The baseline already seeds the primary store `default`.
+///
+/// `get_terminal_binding` selects `bound_location_id, bound_instance_id,
+/// binding_signature`; `get_terminal_by_device_id` does not read
+/// `binding_signature`, so dropping that column makes exactly the inner
+/// read error while the outer read still succeeds.
+fn binding_read_is_corrupt() -> TestBridge {
+    picker_state(|conn| {
+        conn.execute_batch(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0,
+                     '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z');",
+        )
+        .unwrap();
+        let store = Store::new(conn);
+        let terminal = kasirmu_core::Terminal::new("Tablet-1", "tablet-1");
+        store.create_terminal(&terminal).unwrap();
+        store
+            .update_terminal_binding(&terminal.id, "store-a", "ws-a-1", "deadbeef")
+            .unwrap();
+        conn.execute_batch("ALTER TABLE terminals DROP COLUMN binding_signature;")
+            .unwrap();
+    })
+}
+
+/// A device-binding read error must NOT be read as "this terminal is
+/// unbound". `resolve_boot_store` used `.ok().flatten()` on
+/// `get_terminal_binding`, so an errored read collapsed into the same `None`
+/// as a genuinely unbound terminal and the device silently booted into the
+/// PRIMARY store — unpinning a bound terminal from its assigned store and
+/// instance. The sibling read in the same expression,
+/// `get_terminal_by_device_id`, propagates with `?`; only `Ok(None)` means
+/// "unbound".
+#[tokio::test]
+async fn resolve_boot_store_refuses_when_the_binding_read_errors() {
+    let tb = binding_read_is_corrupt();
+
+    let result = resolve_boot_store(&tb.ctx(), Some("tablet-1".into())).await;
+
+    // RED: the errored read read as "unbound" → Ok(is_bound=false, primary
+    // store). GREEN: the read failure refuses the boot.
+    assert!(
+        result.is_err(),
+        "a binding read failure must refuse, not silently unpin the terminal: {result:?}"
+    );
+}
+
+/// The documented unbound path survives: a terminal whose binding row exists
+/// but carries no binding at all is genuinely unbound, so it still resolves
+/// to the primary store rather than erroring.
+#[tokio::test]
+async fn resolve_boot_store_falls_back_to_primary_when_no_binding_exists() {
+    let tb = picker_state(|conn| {
+        Store::new(conn)
+            .create_terminal(&kasirmu_core::Terminal::new("Tablet-2", "tablet-2"))
+            .unwrap();
+    });
+
+    let resolution = resolve_boot_store(&tb.ctx(), Some("tablet-2".into()))
+        .await
+        .expect("an unbound terminal is not an error");
+    assert!(!resolution.is_bound);
+    assert_eq!(resolution.store_id, "default");
+}
