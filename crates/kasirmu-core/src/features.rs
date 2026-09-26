@@ -611,13 +611,17 @@ impl FeatureGuard for KdsFeatureGuard {
             return Ok(());
         }
 
+        // COR-11 family: propagate the read error instead of `unwrap_or(0)`.
+        // A veto must fail CLOSED — an unreadable count is not "no tickets",
+        // and defaulting it to 0 let an admin disable Kitchen Display over
+        // live tickets. Same fix `db/inventory.rs` applied to its guards.
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM kds_orders WHERE status IN ('pending', 'preparing')",
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| format!("cannot verify active kitchen tickets: {e}"))?;
 
         if count > 0 {
             Err(format!(
@@ -644,13 +648,14 @@ impl FeatureGuard for ShiftFeatureGuard {
             return Ok(());
         }
 
+        // COR-11 family: fail CLOSED on an unreadable count (see KdsFeatureGuard).
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM shifts WHERE closed_at IS NULL",
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or(0);
+            .map_err(|e| format!("cannot verify open shifts: {e}"))?;
 
         if count > 0 {
             Err(format!(
