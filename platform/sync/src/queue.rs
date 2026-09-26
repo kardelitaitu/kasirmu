@@ -1157,8 +1157,15 @@ impl SyncQueue {
                             CoreError::Internal(format!("invalid currency in sync payload: {e}"))
                         })?;
                 let initial_stock = payload["initial_stock"].as_i64().unwrap_or(0);
-                let product_type = payload["product_type"].as_str().unwrap_or("retail");
-                Store::new(tx).create_product_if_absent_in_tx(
+                // The `ProductCreated` domain event has no `product_type` field
+                // (`foundation/src/events.rs`), so the enqueuer cannot send one
+                // and the key is legitimately absent on every payload this arm
+                // sees. Defaulting it to `"retail"` here made the store's
+                // identity comparison reject a faithful replay of any non-retail
+                // product as a same-SKU-different-payload conflict, dead-lettering
+                // the item. Absent is passed through as absent.
+                let product_type = payload["product_type"].as_str();
+                Store::new(tx).create_product_if_absent_with_tx(
                     tx,
                     sku,
                     name,

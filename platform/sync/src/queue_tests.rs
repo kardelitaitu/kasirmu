@@ -522,6 +522,70 @@ fn apply_remote_atomic_rejects_conflicting_existing_product() {
     );
 }
 
+/// A `product.created` replay must be recognized as idempotent for a product
+/// that is NOT `retail`, even though the producer's event carries no
+/// `product_type` at all.
+///
+/// `InventorySyncEnqueuer::handle` builds the queue payload from the
+/// `ProductCreated` domain event (`platform/startup/src/event_handlers.rs`),
+/// and that event has no `product_type` field (`foundation/src/events.rs`).
+/// The consumer defaulted the absent key to `"retail"` and then compared it
+/// against the stored row, so every pull replay of a `service` (or any
+/// non-retail) product looked like a same-SKU-different-payload conflict and
+/// was dead-lettered on `product:<sku>:create` after burning its retry budget.
+#[test]
+fn a_non_retail_product_replay_is_idempotent_despite_the_producers_missing_type() {
+    let store = setup_store();
+    let queue = SyncQueue::new();
+    // The local row a `service` product create leaves behind.
+    store
+        .conn()
+        .execute(
+            "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at,
+                                      product_type, version)
+                 VALUES ('prod-svc', 'INSTALL', 'On-site install', 5000, 'USD',
+                         '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z', 'service', 1)",
+            [],
+        )
+        .unwrap();
+    // Byte-for-byte the shape `InventorySyncEnqueuer` enqueues: every key it
+    // sets, and no `product_type` key.
+    let payload = serde_json::json!({
+        "sku": "INSTALL",
+        "name": "On-site install",
+        "price_minor": 5000,
+        "currency": "USD",
+        "category_id": serde_json::Value::Null,
+        "barcode": serde_json::Value::Null,
+        "initial_stock": 0,
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("product.created", &payload);
+
+    assert!(
+        queue.apply_remote_atomic(&store, &remote).unwrap(),
+        "an identical replay must be recognized as already applied"
+    );
+    assert!(
+        store.is_remote_item_applied(&remote.id).unwrap(),
+        "the replay must be receipted, not dead-lettered"
+    );
+    assert!(
+        store.list_remote_failures().unwrap().is_empty(),
+        "a valid replay must not consume the dead-letter retry budget"
+    );
+    assert_eq!(
+        store
+            .get_product("INSTALL")
+            .unwrap()
+            .unwrap()
+            .product
+            .product_type,
+        kasirmu_core::ProductType::Service,
+        "the stored row must keep its real type"
+    );
+}
+
 #[test]
 fn apply_remote_stock_adjustment() {
     let store = setup_store();
