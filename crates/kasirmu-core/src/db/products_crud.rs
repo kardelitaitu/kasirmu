@@ -567,6 +567,24 @@ impl Store<'_> {
                 message: "name must not be empty".into(),
             });
         }
+        // COR-12: the SAME 255-char ceiling `create_product_with_attributes`
+        // applies, and the one every sibling module already applies on both
+        // doors (customers, suppliers, staff, promotions). Without it the
+        // create path refused a long name that the update path then accepted,
+        // so the rule held only on the way in. The column is plain TEXT with no
+        // CHECK, so this guard is the whole rule.
+        // COR-12: the SAME 255-char ceiling `create_product_with_attributes`
+        // applies, and the one every sibling module already applies on both
+        // doors (customers, suppliers, staff, promotions). Without it the
+        // create path refused a long name that the update path then accepted,
+        // so the rule held only on the way in. The column is plain TEXT with no
+        // CHECK, so this guard is the whole rule.
+        if name.len() > 255 {
+            return Err(CoreError::Validation {
+                field: "name",
+                message: format!("name must not exceed 255 characters, got {}", name.len()),
+            });
+        }
         if price.minor_units < 0 {
             return Err(CoreError::Validation {
                 field: "price",

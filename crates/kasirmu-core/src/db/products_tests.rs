@@ -389,6 +389,48 @@ fn update_product_negative_price() {
         .unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "price"));
 }
+/// COR-12: the 255-char ceiling must hold on BOTH doors.
+///
+/// `create_product_with_attributes` always refused a long name;
+/// `update_product` only refused an empty one, so an over-long name could enter
+/// by an edit that the create path would have rejected. The column is plain
+/// TEXT with no CHECK, so the guard is the whole rule rather than a backstop —
+/// which is why this asserts the two doors agree instead of only asserting one
+/// refusal. Every sibling module already applies its limit on both doors
+/// (customers, suppliers, staff, promotions); products was the outlier.
+#[test]
+fn update_product_refuses_the_name_length_the_create_path_already_did() {
+    let conn = fresh();
+    seed_everything(&conn);
+    let s = store(&conn);
+    let long = "x".repeat(256);
+
+    // The create door refuses it (pre-existing behaviour, pinned here so the
+    // two assertions cannot drift apart).
+    let create_err = s
+        .create_product("SKU-LONG", &long, price(1), None, None, 0, None)
+        .unwrap_err();
+    assert!(
+        matches!(create_err, CoreError::Validation { field, .. } if field == "name"),
+        "create must refuse the over-long name: {create_err:?}"
+    );
+
+    // And so does the update door, which is the COR-12 half.
+    let update_err = s
+        .update_product("DRINK-001", &long, price(1), None, None, None, Some(1))
+        .unwrap_err();
+    assert!(
+        matches!(update_err, CoreError::Validation { field, .. } if field == "name"),
+        "update must refuse the same name the create path refuses: {update_err:?}"
+    );
+
+    // Exactly 255 is still allowed — the ceiling is >255, not >=255, matching
+    // the create path and every sibling. A guard that refused the boundary
+    // would be a different rule than the one being restored.
+    let boundary = "y".repeat(255);
+    s.update_product("DRINK-001", &boundary, price(1), None, None, None, Some(1))
+        .expect("255 characters is exactly at the ceiling and must be accepted");
+}
 
 #[test]
 fn update_product_with_category() {
@@ -2012,7 +2054,14 @@ fn a_failing_threshold_check_does_not_block_the_stock_adjustment() {
 
     let tx = conn.unchecked_transaction().unwrap();
     let result = s.adjust_stock_at_location_with_reason(
-        &tx, "FOOD-001", -3, &loc, Some("sale"), None, None, None,
+        &tx,
+        "FOOD-001",
+        -3,
+        &loc,
+        Some("sale"),
+        None,
+        None,
+        None,
     );
     assert!(
         result.is_ok(),

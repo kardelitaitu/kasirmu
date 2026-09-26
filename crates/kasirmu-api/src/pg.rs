@@ -1404,6 +1404,17 @@ pub async fn create_product(
     if name.trim().is_empty() {
         return Err(PgError::Validation("name must not be empty".into()));
     }
+    // COR-12, cloud half: the same 255-char ceiling the SQLite branch of this
+    // route enforces via `Store::create_product`. Both branches serve
+    // `POST /api/v1/products`, so without this the cloud accepted a name the
+    // embedded/local branch refused. The PG column is plain TEXT (no length
+    // constraint), so this check is the whole rule on both sides.
+    if name.len() > 255 {
+        return Err(PgError::Validation(format!(
+            "name must not exceed 255 characters, got {}",
+            name.len()
+        )));
+    }
     if price.minor_units < 0 {
         return Err(PgError::Validation("price must be ≥ 0".into()));
     }
