@@ -134,6 +134,9 @@ pub struct StaffMemberDto {
     pub is_profile_complete: bool,
     /// The user single effective assignment (ADR #35 D5 / spec 0048).
     pub assignment: AssignmentDto,
+    /// When the staff account was created, or None when unknown/unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
 }
 
 /// The 17 profile fields carried by the staff create/edit IPC args (ADR #35
@@ -626,6 +629,11 @@ pub fn to_staff_dto(
             .unwrap_or_else(|| "****".to_string()),
         is_profile_complete: profile.map(|p| p.is_complete()).unwrap_or(false),
         assignment: assignment_dto(assignment),
+        created_at: if user.created_at.is_empty() {
+            None
+        } else {
+            Some(user.created_at.clone())
+        },
     }
 }
 

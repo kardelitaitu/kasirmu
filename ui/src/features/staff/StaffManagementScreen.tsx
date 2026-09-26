@@ -631,11 +631,7 @@ export default function StaffManagementScreen() {
               roleCount={roles.length}
               workspaceNameMap={workspaceNameMap}
               workspacesUnavailable={workspacesUnavailable}
-              canImpersonate={canImpersonate}
               onEdit={openEdit}
-              onToggleActive={toggleActive}
-              onDelete={canDeleteStaff ? setDeleteTarget : undefined}
-              onImpersonate={handleImpersonate}
             />
           )}
         </div>
@@ -700,6 +696,9 @@ export default function StaffManagementScreen() {
         roles={roles}
         onClose={closeModal}
         onSaved={refreshLiveLists}
+        onToggleActive={toggleActive}
+        onDelete={canDeleteStaff ? setDeleteTarget : undefined}
+        onImpersonate={canImpersonate ? handleImpersonate : undefined}
       />
 
       {/* ── Deactivate Confirmation (STAFF-10) ─────────────────── */}

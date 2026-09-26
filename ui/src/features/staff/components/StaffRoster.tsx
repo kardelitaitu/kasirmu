@@ -36,6 +36,7 @@ import { Button } from '@/components/Button';
 import { ProductThumb } from '@/components/ProductThumb';
 import { RoleIcon } from '@/components/RoleIcon';
 import { hueFromName } from '@/utils/color';
+import { ROLE_HIERARCHY } from '@/utils/role';
 
 interface StaffRosterProps {
   /** Staff rows from `list_staff_scoped`. */
@@ -46,21 +47,8 @@ interface StaffRosterProps {
   workspaceNameMap: Map<string, string>;
   /** STAFF-08: workspace data failed to load — cards still render. */
   workspacesUnavailable: boolean;
-  /** `operator:impersonate` grant gates the Impersonate action. */
-  canImpersonate: boolean;
   /** Open the add/edit drawer for this member. */
   onEdit: (member: StaffMemberDto) => void;
-  /** STAFF-10: deactivate (via confirm) or restore this member. */
-  onToggleActive: (member: StaffMemberDto) => void;
-  /**
-   * Move an INACTIVE member to the trash (via confirm in the parent), or
-   * undefined for a caller without `staff:delete`. Absent means the action is
-   * not rendered at all — the backend also refuses an active member, so the
-   * button only ever appears where it can succeed.
-   */
-  onDelete?: ((member: StaffMemberDto) => void) | undefined;
-  /** Start an impersonation session for this member. */
-  onImpersonate: (member: StaffMemberDto) => void;
 }
 
 /** Which slice of the roster is on screen. */
@@ -86,6 +74,43 @@ const roleVariant = (roleName: string): 'warning' | 'info' | 'default' | 'succes
     case 'role-custom': return 'default';
     default:             return 'default';
   }
+};
+
+const ADMIN_ROLE = 'admin';
+
+/**
+ * Resolves numerical rank for a role name or role ID based on ROLE_HIERARCHY.
+ * Higher rank means higher in the hierarchy (owner: 5, admin: 4, manager: 3, staff: 2, auditor: 1).
+ */
+const getRoleRank = (roleName: string, roleId?: string): number => {
+  const normName = roleName.trim().toLowerCase();
+  const rankByName = ROLE_HIERARCHY[normName];
+  if (rankByName !== undefined) return rankByName;
+  if (roleId) {
+    const normId = roleId.trim().toLowerCase();
+    const rankById = ROLE_HIERARCHY[normId];
+    if (rankById !== undefined) return rankById;
+  }
+  return 0;
+};
+
+/**
+ * Compares two staff members by creation timestamp ascending (oldest first).
+ * Falls back stably to display name and ID if timestamps are equal or absent.
+ */
+const compareOldestFirst = (a: StaffMemberDto, b: StaffMemberDto): number => {
+  const timeA = a.created_at ? new Date(a.created_at).getTime() : NaN;
+  const timeB = b.created_at ? new Date(b.created_at).getTime() : NaN;
+  const hasA = !isNaN(timeA);
+  const hasB = !isNaN(timeB);
+
+  if (hasA && hasB && timeA !== timeB) {
+    return timeA - timeB; // oldest first (smaller timestamp = earlier created)
+  }
+  if (hasA && !hasB) return -1;
+  if (!hasA && hasB) return 1;
+
+  return a.display_name.localeCompare(b.display_name) || a.id.localeCompare(b.id);
 };
 
 // ── Icons ───────────────────────────────────────────────────────────
@@ -127,31 +152,6 @@ const EditIcon = () => (
   </svg>
 );
 
-const PowerIcon = () => (
-  <svg {...iconProps}>
-    <path d="M12 3v9" />
-    <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg {...iconProps}>
-    <path d="M3 6h18" />
-    <path d="M8 6V4h8v2" />
-    <path d="M19 6l-1 14H6L5 6" />
-    <path d="M10 11v6M14 11v6" />
-  </svg>
-);
-
-const ImpersonateIcon = () => (
-  <svg {...iconProps}>
-    <path d="M16 3h5v5" />
-    <path d="M21 3 13 11" />
-    <path d="M8 21H3v-5" />
-    <path d="M3 21l8-8" />
-  </svg>
-);
-
 const WorkspaceIcon = () => (
   <svg {...iconProps} width={13} height={13}>
     <path d="M3 21h18" />
@@ -172,11 +172,7 @@ export function StaffRoster({
   roleCount,
   workspaceNameMap,
   workspacesUnavailable,
-  canImpersonate,
   onEdit,
-  onToggleActive,
-  onDelete,
-  onImpersonate,
 }: StaffRosterProps) {
   const { l10n } = useLocalization();
   const [query, setQuery] = useState('');
@@ -201,14 +197,50 @@ export function StaffRoster({
         member.national_id_masked.toLowerCase().includes(needle)
       );
     });
-    // Name is the tiebreak inside the role order, so the roster is stable
-    // rather than depending on the backend's row order.
-    return [...matches].sort((a, b) =>
-      sort === 'name'
-        ? a.display_name.localeCompare(b.display_name)
-        : a.role_name.localeCompare(b.role_name) || a.display_name.localeCompare(b.display_name),
-    );
+    return [...matches].sort((a, b) => {
+      if (sort === 'name') {
+        return a.display_name.localeCompare(b.display_name);
+      }
+      // Hierarchy rank descending (owner > admin > manager > staff > auditor > custom)
+      const rankA = getRoleRank(a.role_name, a.role_id);
+      const rankB = getRoleRank(b.role_name, b.role_id);
+      if (rankA !== rankB) {
+        return rankB - rankA;
+      }
+      // Same rank: if role names differ (e.g. custom roles), alphabetical
+      const roleDiff = a.role_name.localeCompare(b.role_name);
+      if (roleDiff !== 0) {
+        return roleDiff;
+      }
+      // Within the same role, sort by oldest one
+      return compareOldestFirst(a, b);
+    });
   }, [staff, query, status, sort]);
+
+  /**
+   * When sorted by role, partition the visible roster into groups ordered by
+   * role hierarchy with members ordered oldest first.
+   */
+  const roleGroups = useMemo(() => {
+    if (sort !== 'role') return [];
+
+    const map = new Map<string, { roleName: string; members: StaffMemberDto[] }>();
+    for (const member of visible) {
+      const key = member.role_name.trim().toLowerCase();
+      let group = map.get(key);
+      if (!group) {
+        group = { roleName: member.role_name, members: [] };
+        map.set(key, group);
+      }
+      group.members.push(member);
+    }
+
+    return Array.from(map.entries()).map(([roleKey, g]) => ({
+      roleKey,
+      roleName: g.roleName,
+      members: g.members,
+    }));
+  }, [visible, sort]);
 
   const filters: {
     id: StatusFilter;
@@ -237,6 +269,114 @@ export function StaffRoster({
   ];
 
   const filterIndex = Math.max(0, filters.findIndex((f) => f.id === status));
+
+  const renderCard = (member: StaffMemberDto) => {
+    const assignedAll =
+      member.assignment.scope_mode === 'global' || member.assignment.workspaces_all;
+    const workspaceLabel = assignedAll
+      ? l10n.getString('staff-assignment-all-workspaces-short')
+      : member.assignment.workspace_keys
+          .map((key) => workspaceNameMap.get(key) ?? key)
+          .join(', ') || '—';
+    return (
+      <div
+        key={member.id}
+        role="listitem"
+        className="staff-mgmt-card-item"
+        data-testid={`staff-card-${member.id}`}
+      >
+        <Localized id="staff-edit-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+          <Button
+            unstyled
+            className={`staff-mgmt-card${member.is_active ? '' : ' staff-mgmt-card--inactive'}`}
+            onClick={() => onEdit(member)}
+            data-testid={`staff-edit-${member.id}`}
+          >
+            {/* 1. Header: Avatar + Identity + Status */}
+            <div className="staff-mgmt-card-header">
+              <div className="staff-mgmt-card-identity">
+                <div className="staff-mgmt-avatar-wrap">
+                  <ProductThumb
+                    className="staff-mgmt-avatar"
+                    hash={member.avatar ?? null}
+                    name={member.display_name}
+                    size={42}
+                    shape="circle"
+                    lazy={false}
+                    hue={hueFromName(member.display_name)}
+                  />
+                </div>
+                <div className="staff-mgmt-card-who">
+                  <span className="staff-mgmt-card-name">{member.display_name}</span>
+                  <div className="staff-mgmt-card-sub-row">
+                    <span className="staff-mgmt-card-username">
+                      <span className="staff-mgmt-card-at" aria-hidden="true">@</span>
+                      <span className="staff-mgmt-card-username-val">{member.username}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <span
+                className={`staff-mgmt-status-pill ${member.is_active ? 'staff-mgmt-status-pill--active' : 'staff-mgmt-status-pill--inactive'}`}
+                role="img"
+                aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+              >
+                <span
+                  className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
+                  aria-hidden="true"
+                />
+                <span className="staff-mgmt-status-text">
+                  {l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
+                </span>
+              </span>
+            </div>
+
+            {/* 2. Metadata: Workspace & Phone */}
+            <div className="staff-mgmt-card-meta">
+              <div className={`staff-mgmt-meta-item${assignedAll ? '' : ' staff-mgmt-meta-item--wide'}`}>
+                <div className="staff-mgmt-meta-header">
+                  <WorkspaceIcon />
+                  <span className="staff-mgmt-meta-label">
+                    <Localized id="staff-col-workspace"><span>Workspace</span></Localized>
+                  </span>
+                </div>
+                <span className="staff-mgmt-meta-val">{workspaceLabel}</span>
+              </div>
+              <div className="staff-mgmt-meta-item">
+                <div className="staff-mgmt-meta-header">
+                  <PhoneIcon />
+                  <span className="staff-mgmt-meta-label">
+                    <Localized id="staff-col-phone"><span>Phone</span></Localized>
+                  </span>
+                </div>
+                <span className={`staff-mgmt-meta-val${member.phone ? ' staff-mgmt-mono' : ' staff-mgmt-meta-val--empty'}`}>
+                  {member.phone ?? '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* 3. Footer: Role Badge on Left, Action Hint on Right */}
+            <div className="staff-mgmt-card-footer">
+              <div className="staff-mgmt-card-footer-left">
+                <Badge variant={roleVariant(member.role_name)}>
+                  <span className="staff-mgmt-role-badge-content">
+                    <RoleIcon role={member.role_name} size={14} className="staff-mgmt-role-icon" />
+                    <span>{member.role_name}</span>
+                  </span>
+                </Badge>
+              </div>
+
+              <div className="staff-mgmt-card-hint" aria-hidden="true">
+                <Localized id="staff-btn-update"><span>Edit</span></Localized>
+                <EditIcon />
+              </div>
+            </div>
+          </Button>
+        </Localized>
+      </div>
+    );
+  };
 
   return (
     <div className="staff-mgmt-roster">
@@ -269,7 +409,6 @@ export function StaffRoster({
                 type="button"
                 role="tab"
                 aria-selected={status === filter.id}
-                aria-pressed={status === filter.id}
                 className={`staff-mgmt-chip${status === filter.id ? ' staff-mgmt-chip--on' : ''}`}
                 onClick={() => setStatus(filter.id)}
                 data-testid={`staff-filter-${filter.id}`}
@@ -285,7 +424,7 @@ export function StaffRoster({
           <span className="staff-mgmt-toolbar-sep" aria-hidden="true" />
 
           <div className="staff-mgmt-role-stat" data-testid="staff-role-stat">
-            <RoleIcon role="admin" size={16} className="staff-mgmt-role-stat-icon" />
+            <RoleIcon role={ADMIN_ROLE} size={16} className="staff-mgmt-role-stat-icon" />
             <span className="staff-mgmt-role-stat-label">
               <Localized id="nav-roles"><span>Roles</span></Localized>
             </span>
@@ -342,148 +481,24 @@ export function StaffRoster({
             <span>No staff match your search</span>
           </Localized>
         </p>
+      ) : sort === 'role' ? (
+        <div className="staff-mgmt-role-groups" role="list" aria-label={l10n.getString('staff-table-aria')}>
+          {roleGroups.map((group) => (
+            <div key={group.roleKey} className="staff-mgmt-role-group">
+              <div className="staff-mgmt-role-group-header">
+                <h3 className="staff-mgmt-role-group-title">{group.roleName.toLowerCase()}</h3>
+                <div className="staff-mgmt-role-group-line" aria-hidden="true" />
+              </div>
+              <div className="staff-mgmt-grid">
+                {group.members.map((member) => renderCard(member))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
-        <ul className="staff-mgmt-grid" aria-label={l10n.getString('staff-table-aria')}>
-          {visible.map((member) => {
-            const assignedAll =
-              member.assignment.scope_mode === 'global' || member.assignment.workspaces_all;
-            const workspaceLabel = assignedAll
-              ? l10n.getString('staff-assignment-all-workspaces-short')
-              : member.assignment.workspace_keys
-                  .map((key) => workspaceNameMap.get(key) ?? key)
-                  .join(', ') || '—';
-            return (
-              <li
-                key={member.id}
-                className={`staff-mgmt-card${member.is_active ? '' : ' staff-mgmt-card--inactive'}`}
-                data-testid={`staff-card-${member.id}`}
-              >
-                {/* 1. Header: Avatar + Identity + Status */}
-                <div className="staff-mgmt-card-header">
-                  <div className="staff-mgmt-card-identity">
-                    <div className="staff-mgmt-avatar-wrap">
-                      <ProductThumb
-                        className="staff-mgmt-avatar"
-                        hash={member.avatar ?? null}
-                        name={member.display_name}
-                        size={42}
-                        shape="circle"
-                        lazy={false}
-                        hue={hueFromName(member.display_name)}
-                      />
-                    </div>
-                    <div className="staff-mgmt-card-who">
-                      <span className="staff-mgmt-card-name">{member.display_name}</span>
-                      <div className="staff-mgmt-card-sub-row">
-                        <span className="staff-mgmt-card-username">
-                          <span className="staff-mgmt-card-at" aria-hidden="true">@</span>
-                          <span className="staff-mgmt-card-username-val">{member.username}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`staff-mgmt-status-pill ${member.is_active ? 'staff-mgmt-status-pill--active' : 'staff-mgmt-status-pill--inactive'}`}
-                    role="img"
-                    aria-label={l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
-                  >
-                    <span
-                      className={`staff-mgmt-status-dot ${member.is_active ? 'staff-mgmt-status-dot--on' : 'staff-mgmt-status-dot--off'}`}
-                      aria-hidden="true"
-                    />
-                    <span className="staff-mgmt-status-text">
-                      {l10n.getString(member.is_active ? 'staff-status-active' : 'staff-status-inactive')}
-                    </span>
-                  </span>
-                </div>
-
-                {/* 2. Metadata: Workspace & Phone */}
-                <div className="staff-mgmt-card-meta">
-                  <div className={`staff-mgmt-meta-item${assignedAll ? '' : ' staff-mgmt-meta-item--wide'}`}>
-                    <div className="staff-mgmt-meta-header">
-                      <WorkspaceIcon />
-                      <span className="staff-mgmt-meta-label">
-                        <Localized id="staff-col-workspace"><span>Workspace</span></Localized>
-                      </span>
-                    </div>
-                    <span className="staff-mgmt-meta-val">{workspaceLabel}</span>
-                  </div>
-                  <div className="staff-mgmt-meta-item">
-                    <div className="staff-mgmt-meta-header">
-                      <PhoneIcon />
-                      <span className="staff-mgmt-meta-label">
-                        <Localized id="staff-col-phone"><span>Phone</span></Localized>
-                      </span>
-                    </div>
-                    <span className={`staff-mgmt-meta-val${member.phone ? ' staff-mgmt-mono' : ' staff-mgmt-meta-val--empty'}`}>
-                      {member.phone ?? '—'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* 3. Footer: Role Badge on Left, Action Group on Right */}
-                <div className="staff-mgmt-card-footer">
-                  <div className="staff-mgmt-card-footer-left">
-                    <Badge variant={roleVariant(member.role_name)}>
-                      <span className="staff-mgmt-role-badge-content">
-                        <RoleIcon role={member.role_name} size={14} className="staff-mgmt-role-icon" />
-                        <span>{member.role_name}</span>
-                      </span>
-                    </Badge>
-                  </div>
-
-                  <div className="staff-mgmt-card-actions">
-                    <Localized id="staff-edit-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                      <Button
-                        unstyled
-                        className="staff-mgmt-icon-btn"
-                        onClick={() => onEdit(member)}
-                        data-testid={`staff-edit-${member.id}`}
-                      >
-                        <EditIcon />
-                      </Button>
-                    </Localized>
-                    <Localized id={member.is_active ? 'staff-deactivate-aria' : 'staff-restore-aria'} attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                      <Button
-                        unstyled
-                        className={`staff-mgmt-icon-btn ${member.is_active ? 'staff-mgmt-icon-btn--warn' : 'staff-mgmt-icon-btn--restore'}`}
-                        onClick={() => onToggleActive(member)}
-                        data-testid={`staff-toggle-active-${member.id}`}
-                      >
-                        <PowerIcon />
-                      </Button>
-                    </Localized>
-                    {onDelete && !member.is_active && (
-                      <Localized id="staff-delete-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                        <Button
-                          unstyled
-                          className="staff-mgmt-icon-btn staff-mgmt-icon-btn--warn"
-                          onClick={() => onDelete(member)}
-                          data-testid={`staff-delete-${member.id}`}
-                        >
-                          <TrashIcon />
-                        </Button>
-                      </Localized>
-                    )}
-                    {canImpersonate && (
-                      <Localized id="staff-impersonate-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
-                        <Button
-                          unstyled
-                          className="staff-mgmt-icon-btn"
-                          onClick={() => onImpersonate(member)}
-                          data-testid={`staff-impersonate-${member.id}`}
-                        >
-                          <ImpersonateIcon />
-                        </Button>
-                      </Localized>
-                    )}
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="staff-mgmt-grid" role="list" aria-label={l10n.getString('staff-table-aria')}>
+          {visible.map((member) => renderCard(member))}
+        </div>
       )}
     </div>
   );

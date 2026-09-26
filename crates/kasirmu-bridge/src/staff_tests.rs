@@ -153,6 +153,7 @@ fn staff_member_dto_debug() {
         national_id_masked: "*****6789".into(),
         is_profile_complete: true,
         assignment: assignment_dto(None),
+        created_at: None,
     };
     let d = format!("{dto:?}");
     assert!(d.contains("jdoe"));
@@ -174,6 +175,7 @@ fn staff_member_dto_serialize() {
         national_id_masked: "****".into(),
         is_profile_complete: false,
         assignment: assignment_dto(None),
+        created_at: None,
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["username"], "asmith");

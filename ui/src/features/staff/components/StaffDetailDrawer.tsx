@@ -73,6 +73,44 @@ const PRESET_ROLE_ORDER = [
   'role-auditor',
 ] as const;
 
+// ── Icons for drawer footer actions ──────────────────────────────────
+const iconProps = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  width: 16,
+  height: 16,
+  'aria-hidden': true,
+};
+
+const PowerIcon = () => (
+  <svg {...iconProps}>
+    <path d="M12 3v9" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.8 0" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg {...iconProps}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
+const ImpersonateIcon = () => (
+  <svg {...iconProps}>
+    <path d="M16 3h5v5" />
+    <path d="M21 3 13 11" />
+    <path d="M8 21H3v-5" />
+    <path d="M3 21l8-8" />
+  </svg>
+);
+
 /**
  * The roles presented in the dropdown, filtered to the five-role taxonomy
  * and ordered Owner → Admin → Manager → Staff → Auditor.
@@ -317,10 +355,28 @@ interface StaffDetailDrawerProps {
   onClose: () => void;
   /** Reload the staff list — called after a successful create/update. */
   onSaved: () => Promise<void> | void;
+  /** STAFF-10: deactivate (via confirm) or restore this member. */
+  onToggleActive?: ((member: StaffMemberDto) => void | Promise<void>) | undefined;
+  /**
+   * Move an INACTIVE member to the trash (via confirm in parent), or
+   * undefined for a caller without `staff:delete`.
+   */
+  onDelete?: ((member: StaffMemberDto) => void | Promise<void>) | undefined;
+  /** Start an impersonation session for this member. */
+  onImpersonate?: ((member: StaffMemberDto) => void | Promise<void>) | undefined;
 }
 
 /** Add/edit drawer for a staff member. */
-export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: StaffDetailDrawerProps) {
+export function StaffDetailDrawer({
+  open,
+  member,
+  roles,
+  onClose,
+  onSaved,
+  onToggleActive,
+  onDelete,
+  onImpersonate,
+}: StaffDetailDrawerProps) {
   const { l10n } = useLocalization();
   // C1.1 upgrade link needs the active locale for the pricing URL; tests
   // render without LocaleContext, so default to English there.
@@ -559,6 +615,98 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
   // read-only chips so an admin sees exactly what the role can do (0046).
   const selectedRole = selectableRoles.find((r) => r.id === form.roleId) ?? null;
 
+  const saveDisabled =
+    !form.username.trim() ||
+    !form.displayName.trim() ||
+    !form.roleId ||
+    (!isEditing && (!form.pin || form.pin.length < 4)) ||
+    // ADR #35 D5: a scoped assignment must not save with an empty
+    // list dimension — `list` with no ids is a deny, never an
+    // implicit "all" (the all/list toggle is the explicit marker).
+    (isEditing &&
+      form.scopeMode === 'scoped' &&
+      ((!form.branchesAll && branches.length > 0 && form.branchIds.length === 0) ||
+        (!form.workspacesAll && allWorkspaces.length > 0 && form.workspaceKeys.length === 0))) ||
+    // ADR #47: a narrowed resource scope without its id is an
+    // invalid pair — the backend would reject it; disable save and
+    // let the inline hint explain.
+    (isEditing && form.resourceScope !== 'organization' && !form.resourceId.trim());
+
+  const drawerFooter = (
+    <div className="staff-drawer-footer">
+      <div className="staff-drawer-footer-actions">
+        {isEditing && member && (
+          <>
+            {onToggleActive && (
+              <Localized
+                id={member.is_active ? 'staff-deactivate-aria' : 'staff-restore-aria'}
+                attrs={{ 'aria-label': true }}
+                vars={{ name: member.display_name }}
+              >
+                <Button
+                  unstyled
+                  className={`staff-drawer-action-btn ${member.is_active ? 'staff-drawer-action-btn--warn' : 'staff-drawer-action-btn--restore'}`}
+                  onClick={() => {
+                    onClose();
+                    onToggleActive(member);
+                  }}
+                  data-testid={`staff-toggle-active-${member.id}`}
+                >
+                  <PowerIcon />
+                </Button>
+              </Localized>
+            )}
+            {onDelete && !member.is_active && (
+              <Localized id="staff-delete-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                <Button
+                  unstyled
+                  className="staff-drawer-action-btn staff-drawer-action-btn--warn"
+                  onClick={() => {
+                    onClose();
+                    onDelete(member);
+                  }}
+                  data-testid={`staff-delete-${member.id}`}
+                >
+                  <TrashIcon />
+                </Button>
+              </Localized>
+            )}
+            {onImpersonate && (
+              <Localized id="staff-impersonate-aria" attrs={{ 'aria-label': true }} vars={{ name: member.display_name }}>
+                <Button
+                  unstyled
+                  className="staff-drawer-action-btn"
+                  onClick={() => {
+                    onClose();
+                    onImpersonate(member);
+                  }}
+                  data-testid={`staff-impersonate-${member.id}`}
+                >
+                  <ImpersonateIcon />
+                </Button>
+              </Localized>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="staff-drawer-footer-primary">
+        <Button variant="ghost" onClick={onClose} disabled={saving} data-testid="settings-popup-cancel">
+          {l10n.getString('staff-btn-cancel')}
+        </Button>
+        <Button
+          variant="primary"
+          {...(saving ? { loading: true } : {})}
+          disabled={saveDisabled}
+          onClick={handleSave}
+          data-testid="settings-popup-save"
+        >
+          {l10n.getString(isEditing ? 'staff-btn-update' : 'staff-btn-create')}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <SettingsPopup
       open={open}
@@ -566,26 +714,7 @@ export function StaffDetailDrawer({ open, member, roles, onClose, onSaved }: Sta
       title={l10n.getString(isEditing ? 'staff-modal-edit-title' : 'staff-modal-add-title')}
       error={error}
       saving={saving}
-      onSave={handleSave}
-      saveLabel={l10n.getString(isEditing ? 'staff-btn-update' : 'staff-btn-create')}
-      saveDisabled={
-        !form.username.trim() ||
-        !form.displayName.trim() ||
-        !form.roleId ||
-        (!isEditing && (!form.pin || form.pin.length < 4)) ||
-        // ADR #35 D5: a scoped assignment must not save with an empty
-        // list dimension — `list` with no ids is a deny, never an
-        // implicit "all" (the all/list toggle is the explicit marker).
-        (isEditing &&
-          form.scopeMode === 'scoped' &&
-          ((!form.branchesAll && branches.length > 0 && form.branchIds.length === 0) ||
-            (!form.workspacesAll && allWorkspaces.length > 0 && form.workspaceKeys.length === 0))) ||
-        // ADR #47: a narrowed resource scope without its id is an
-        // invalid pair — the backend would reject it; disable save and
-        // let the inline hint explain.
-        (isEditing && form.resourceScope !== 'organization' && !form.resourceId.trim())
-      }
-      cancelLabel={l10n.getString('staff-btn-cancel')}
+      footer={drawerFooter}
     >
       {/* C1.1 staff-limit upgrade banner */}
       {quotaUpgrade && (

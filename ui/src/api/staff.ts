@@ -179,6 +179,8 @@ export interface StaffMemberDto {
   is_profile_complete: boolean;
   /** The user's single effective assignment (ADR #35 D5 / spec 0048). */
   assignment: AssignmentDto;
+  /** ISO-8601 creation timestamp from users table, if available. */
+  created_at?: string | null;
 }
 
 /**

@@ -297,8 +297,8 @@ describe('StaffManagementScreen', () => {
     expect(screen.getAllByText('John Doe').length).toBeGreaterThan(0);
     expect(screen.getByText('jane')).toBeInTheDocument();
     expect(screen.getByText('john')).toBeInTheDocument();
-    expect(screen.getByText('owner')).toBeInTheDocument();
-    expect(screen.getByText('staff')).toBeInTheDocument();
+    expect(screen.getAllByText('owner').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('staff').length).toBeGreaterThan(0);
     // Active/Inactive appear three times each now — the stat tile, the filter
     // chip and the card's status pill — so this asserts presence, not uniqueness.
     expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
@@ -387,9 +387,12 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // The row action, located by testid; the accessible name still carries the
+    // Click card to open edit drawer
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+
+    // The drawer action, located by testid; the accessible name still carries the
     // member, which is what a screen reader announces.
-    const deactivateBtn = screen.getByTestId('staff-toggle-active-staff-1');
+    const deactivateBtn = await screen.findByTestId('staff-toggle-active-staff-1');
     expect(deactivateBtn).toHaveAccessibleName(/deactivate.*jane smith/i);
     fireEvent.click(deactivateBtn);
 
@@ -419,10 +422,11 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // The Restore control is the same toggle in its other state, so it is
-    // located by testid now that the action is icon-only — its name is the
-    // aria-label ("Reactivate {name}"), which is not a visible text node.
-    const restoreBtn = screen.getByTestId('staff-toggle-active-staff-2');
+    // Click card to open edit drawer
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+
+    // The Restore control is the same toggle in its other state, located in drawer footer
+    const restoreBtn = await screen.findByTestId('staff-toggle-active-staff-2');
     fireEvent.click(restoreBtn);
 
     // update_staff_scoped wraps args in { args } — assert the inner payload
@@ -624,7 +628,8 @@ describe('StaffManagementScreen', () => {
     await waitForTable();
 
     // staff-2 is the inactive member, so this click is the reactivation half.
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-2'));
 
     // The same message and the same escape route the drawer shows for a refused
     // CREATE, because it is the same fact. The two branches are if/else, so
@@ -1014,11 +1019,22 @@ describe('StaffManagementScreen', () => {
     expectSharedButton(screen.getByTestId('staff-back-btn'));
     expectSharedButton(screen.getByTestId('staff-add-btn'));
     expectSharedButton(screen.getByTestId('staff-edit-staff-1'));
+
+    // Open staff-1 in edit drawer to verify drawer action buttons
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    await screen.findByRole('dialog');
     expectSharedButton(screen.getByTestId('staff-toggle-active-staff-1'));
+    expectSharedButton(screen.getByTestId('staff-impersonate-staff-1'));
+    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
     // Restore is the SAME control in its other state, so its testid must not
     // move with the label — that is the whole point of tagging it here.
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    await screen.findByRole('dialog');
     expectSharedButton(screen.getByTestId('staff-toggle-active-staff-2'));
-    expectSharedButton(screen.getByTestId('staff-impersonate-staff-1'));
+    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     // The tab strip is a shared control too, tagged per section.
     expect(screen.getByTestId('staff-tab-account')).toHaveAttribute('aria-selected', 'true');
@@ -1059,7 +1075,8 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-1'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-1'));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByTestId('confirm-dialog-cancel'));
 
@@ -1099,7 +1116,8 @@ describe('StaffManagementScreen', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    fireEvent.click(await screen.findByTestId('staff-impersonate-staff-1'));
 
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('impersonate_user_scoped', {
@@ -1284,6 +1302,43 @@ describe('StaffManagementScreen', () => {
     fireEvent.change(screen.getByTestId('staff-sort'), { target: { value: 'name' } });
     expect(order()).toEqual(['staff-card-anna', 'staff-card-zoe']);
   });
+
+  it('sorts by role hierarchy and oldest one first with group dividers', async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'list_staff_scoped') {
+        return Promise.resolve([
+          { id: 'mgr-young', username: 'mgr2', display_name: 'Bob Manager', role_id: 'role-manager', role_name: 'manager', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT, created_at: '2026-03-01T10:00:00Z' },
+          { id: 'admin-1', username: 'admin1', display_name: 'Alice Admin', role_id: 'role-admin', role_name: 'admin', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT, created_at: '2026-01-01T10:00:00Z' },
+          { id: 'owner-1', username: 'owner1', display_name: 'Zack Owner', role_id: 'role-owner', role_name: 'owner', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT, created_at: '2026-05-01T10:00:00Z' },
+          { id: 'mgr-old', username: 'mgr1', display_name: 'Charlie Manager', role_id: 'role-manager', role_name: 'manager', is_active: true, national_id_masked: '****', is_profile_complete: true, assignment: GLOBAL_ASSIGNMENT, created_at: '2026-02-01T10:00:00Z' },
+        ]);
+      }
+      if (cmd === 'list_roles_scoped') return Promise.resolve(SAMPLE_ROLES);
+      if (cmd === 'list_all_workspaces_scoped') return Promise.resolve([]);
+      if (cmd === 'list_locations_scoped') return Promise.resolve([]);
+      if (cmd === 'get_store_appearance') {
+        return Promise.resolve({ primary_colour: '#4f46e5', logo_path: null, store_name: '' });
+      }
+      return Promise.resolve([]);
+    });
+
+    renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
+    await waitForTable();
+
+    const order = () => screen.getAllByTestId(/^staff-card-/).map((el) => el.getAttribute('data-testid'));
+    // Role hierarchy: owner (Zack) -> admin (Alice) -> manager (Charlie was created 2026-02-01 before Bob 2026-03-01)
+    expect(order()).toEqual([
+      'staff-card-owner-1',
+      'staff-card-admin-1',
+      'staff-card-mgr-old',
+      'staff-card-mgr-young',
+    ]);
+
+    // Role section headers exist
+    expect(screen.getByRole('heading', { level: 3, name: 'owner' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'admin' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'manager' })).toBeInTheDocument();
+  });
 });
 
 // ── Trash (staff:delete · 90-day retention) ──────────────────────────
@@ -1307,6 +1362,8 @@ describe('StaffManagementScreen trash', () => {
     // staff-2 is inactive, so the only reason its Delete action is absent is
     // the missing grant -- a filter that hid it for everyone would pass this
     // test and fail the one below.
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    await screen.findByRole('dialog');
     expect(screen.queryByTestId('staff-delete-staff-2')).not.toBeInTheDocument();
     expect(invokeMock).not.toHaveBeenCalledWith('list_staff_trash_scoped', expect.anything());
   });
@@ -1518,11 +1575,17 @@ describe('StaffManagementScreen trash', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    // An active member carries no Delete action at all: the backend refuses
-    // one, so the button states the rule instead of the dialog failing.
+    // Open active member in drawer: an active member carries no Delete action at all:
+    // the backend refuses one, so the button states the rule instead of the dialog failing.
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    await screen.findByRole('dialog');
     expect(screen.queryByTestId('staff-delete-staff-1')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    // Open inactive member in drawer and click Delete
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Delete staff member?');
     expect(dialog).toHaveTextContent('John Doe');
@@ -1532,7 +1595,8 @@ describe('StaffManagementScreen trash', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
     expect(invokeMock).not.toHaveBeenCalledWith('delete_staff_scoped', expect.anything());
 
-    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('delete_staff_scoped', { sessionToken: 'session-1', id: 'staff-2' });
@@ -1603,7 +1667,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     );
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    fireEvent.click(await screen.findByTestId('staff-impersonate-staff-1'));
 
     await waitFor(() => expect(probe.target).toBe('staff-1'), FAST_WAIT);
     // The banner names the target, so the name is part of the recorded
@@ -1615,7 +1680,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-impersonate-staff-1'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    fireEvent.click(await screen.findByTestId('staff-impersonate-staff-1'));
 
     // The failure copy and the success copy are both "impersonation"
     // messages, so a swapped key still renders a plausible sentence; the
@@ -1629,7 +1695,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-1'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-1'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
 
     // Both toasts name the member and differ only in the verb, which is
@@ -1644,7 +1711,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
 
     await waitFor(() => {
@@ -1670,10 +1738,12 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-2'));
     await screen.findByTestId('staff-quota-blocked-banner', undefined, FAST_WAIT);
 
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-2'));
     await waitFor(() => {
       expect(screen.queryByTestId('staff-quota-blocked-banner')).not.toBeInTheDocument();
     }, FAST_WAIT);
@@ -1693,7 +1763,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
       renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
       await waitForTable();
 
-      fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+      fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+      fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-2'));
       const cta = await screen.findByTestId('staff-quota-blocked-upgrade-btn', undefined, FAST_WAIT);
       fireEvent.click(cta);
 
@@ -1822,7 +1893,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-toggle-active-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-toggle-active-staff-2'));
 
     await waitFor(() => {
       expect(document.querySelector('.toast--error')?.textContent).toContain('Failed to save staff member');
@@ -1839,7 +1911,8 @@ describe('StaffManagementScreen feedback and route entry', () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
 
-    fireEvent.click(screen.getByTestId('staff-delete-staff-2'));
+    fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
+    fireEvent.click(await screen.findByTestId('staff-delete-staff-2'));
     fireEvent.click(within(await screen.findByRole('dialog')).getByTestId('confirm-dialog-confirm'));
 
     await waitFor(() => {
