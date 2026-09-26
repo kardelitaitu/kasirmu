@@ -5326,6 +5326,61 @@ read, which is exactly why the policy is to check the hash and never HEAD).
 
 **Tally:** 65 findings fixed (11 HIGH), 21 leads disproved. Two are preventive pins.
 
+## Pass 81 — MSL-59: the day-range idiom census, and a stale doc closed
+
+Took the deeper lesson from MSL-58 — **a fixture that agrees with the code's own mistake makes the test
+invisible** — and asked the mirror question: how many *other* day-range predicates were written in a shape
+nobody could see was wrong?
+
+**The census is closed, and it is uniform.** Every date-range predicate in `db/reports/` — 37 of them
+across `sales_summary.rs`, `revenue.rs`, `product_sales.rs` — uses the same shape:
+
+```sql
+WHERE status = 'completed' AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
+```
+
+Not one uses a raw string comparison against a timestamp column. `DATE(col, tz)` normalises the column to
+a bare day, so **the shape of both the fixture and the bound becomes irrelevant** — this idiom is
+structurally immune to the MSL-57 bug. Enumerating every day-bound construction in production code found
+exactly two: my `export` fix and the `audit.rs:537` precedent. Everything else was a test fixture or a
+fixed-offset constant.
+
+| Day-range idiom | Where | Verdict |
+|---|---|---|
+| `DATE(col, tz) BETWEEN date AND date` | `db/reports/` (37 sites) | shape-immune — the safest |
+| `col >= day AND col < (day+1)T00:00:00.000Z` | `audit.rs` (D84 ruling 3) | correct |
+| `col <= "{day} 23:59:59"` | `export/mod.rs` | **was MSL-57** |
+
+Three idioms and one bug. I cross-checked the two surviving ones on the boundary that mattered — a sale
+stamped `2026-07-31T23:00:00.000Z` against an end date of `2026-07-31` — and both include it, so the export
+fix now agrees with the reports module rather than merely being defensible on its own.
+
+**The 54 `Secs`-shaped test fixtures are not a defect, and I checked rather than assumed.** 54 test
+literals use the 20-character `…T00:00:00Z` shape while the schema writes 24-character `%fZ`. That is only
+a hazard where a fixture is **compared**; where it is merely stored and summed it cannot matter. The
+`reports_tests.rs` and `analytics_tests.rs` fixtures feed the `DATE()`-wrapped aggregations above, and
+`analytics` wraps even its open-ended bounds the same way. Lead disproved, recorded so it is not re-run.
+
+**MSL-59 (LOW, fixed): a duplicated doc block, the first half of it stale.** `find_stale_pending_sales`
+carried **two** adjacent doc comments on one function (`:764-769` and `:770-775`), near-identical
+restatements of the ADR-20 §6 paragraph — and the first described `pending_expires_at < datetime('now')`,
+the SQL-side form the code **abandoned**. A reader hitting the first block learned the mechanism that was
+specifically replaced, and the second block's only distinct value was the correction. Collapsed to one
+block that states the Rust-side threshold, names the column shape it matches, and records why the SQL-side
+form was wrong (its `YYYY-MM-DD HH:MM:SS` output has a space at index 10 where the column has `T`).
+This was already on the ledger as an open LOW; it is now closed.
+
+**Verified:** 7 `sales_lifecycle`, `clippy -D warnings` clean, `rustfmt` clean. Commit `fa48b175d`
+(verified by hash).
+
+**Tally:** 66 findings fixed (11 HIGH), 22 leads disproved. Two are preventive pins.
+
+**Leads carried forward, not actioned:** `export`'s date filter compares in raw UTC while `db/reports/`
+applies a store-local tz modifier (`REP-03`). That is a pre-existing semantic difference my fix did not
+introduce and did not silently change — the two surfaces can disagree about which day a late-evening sale
+belongs to. Worth its own pass; recorded so it is not lost.
+
+
 
 
 
