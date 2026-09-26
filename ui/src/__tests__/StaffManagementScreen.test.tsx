@@ -516,11 +516,11 @@ describe('StaffManagementScreen', () => {
     expect(screen.queryByText('123456789')).not.toBeInTheDocument();
   });
 
-  it('flags incomplete-profile users with a badge', async () => {
+  it('does not clutter the staff card with a profile incomplete badge', async () => {
     renderWithProvidersSync(<ImpersonationProvider><StaffManagementScreen /></ImpersonationProvider>, staffFtl);
     await waitForTable();
-    // John (staff-2) has is_profile_complete: false.
-    expect(screen.getAllByText(/profile incomplete/i).length).toBeGreaterThan(0);
+    // The card keeps identity clean without rendering the incomplete badge.
+    expect(screen.queryByText(/profile incomplete/i)).not.toBeInTheDocument();
   });
 
   it('disables role and workspace assignment while the profile is incomplete', async () => {

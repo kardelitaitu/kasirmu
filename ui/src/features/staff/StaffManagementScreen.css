@@ -861,11 +861,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   color: var(--color-fg-secondary);
 }
 
-.staff-mgmt-incomplete-badge {
-  font-size: var(--text-2xs);
-  padding: 1px 6px;
-}
-
 /* ── Status Pill ──────────────────────────────────────────────────── */
 
 .staff-mgmt-status-pill {

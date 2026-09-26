@@ -379,13 +379,6 @@ export function StaffRoster({
                           <span className="staff-mgmt-card-at" aria-hidden="true">@</span>
                           <span className="staff-mgmt-card-username-val">{member.username}</span>
                         </span>
-                        {!member.is_profile_complete && (
-                          <Badge variant="warning" className="staff-mgmt-incomplete-badge">
-                            <Localized id="staff-profile-incomplete">
-                              <span>Profile incomplete</span>
-                            </Localized>
-                          </Badge>
-                        )}
                       </div>
                     </div>
                   </div>
