@@ -5534,6 +5534,63 @@ clean; both files `rustfmt`-clean. Commit `81d1557bf` (verified by hash; new fil
 **Tally:** 69 findings fixed (11 HIGH), 23 leads disproved. Two are preventive pins. One new pin: a
 checked agreement standing in for a retired tracking artifact.
 
+## Pass 85 — MSL-63: the KDS visibility mirror holds; a stale quota note closed
+
+Continued the named-partner census from MSL-62, taking the two remaining entries that promised a
+**behavioural** mirror rather than a type or wording one — where drift would be a wrong answer rather than a
+stale sentence.
+
+**`kds_orders` visibility: the "Mirrors exactly" claim holds, and it is not obvious.** Two encodings of one
+rule: `instance_visibility_condition_sql` (`kds_orders.rs:91`, a SQL fragment pushed into the WHERE for
+one indexed pass) and `order_visible_to_instance` (`:185`, a Rust predicate used by the single-order
+lookups). The shapes are genuinely different — the SQL says
+
+```text
+(no targets AND (tii IS NULL OR tii = :iid)) OR EXISTS(target = :iid)
+```
+
+while the Rust branches early: *if any target exists, visibility is exactly "does a matching target
+exist"*, ignoring `target_instance_id` entirely. I enumerated the truth table over the reachable input
+shapes rather than reading them side by side, because the interesting case is one neither text names: a row
+with BOTH a targeting row AND a non-null `target_instance_id`. The SQL's trailing `OR EXISTS` and the
+Rust's early return **coincide** there, and on all seven reachable shapes the two agree. No drift, and now
+a stated result rather than an assumption.
+
+**MSL-63 (LOW, fixed): a mirror note describing a refactor that had already happened.**
+`Store::count_products` (`downgrade.rs:220`) said it *"Mirrors the inline count in
+`Store::enforce_product_quota`"*, and that *"extracting the shared count out of `enforce_product_quota` is a
+possible follow-up"*. Both halves were stale in the **safe** direction, which is why nothing failed:
+
+- `enforce_product_quota` (`products_crud.rs:239`) no longer counts anything — it delegates to
+  `enforce_creation_quota`, whose own comment says "same products count (`count_products`)".
+- The extraction the note proposed **has been done**. Both readers now call `count_products`: the
+  assessment through `assess_downgrade` (`:43`) and the creation gate through `quota_gate::quota_count`
+  (`quota_gate.rs:89`). The rule is shared, not mirrored.
+
+So the doc under-claimed a better design. Corrected to state the sharing, name the two readers, and record
+that the note is superseded. Verified the intra-doc links resolve by name rather than assuming:
+`assess_downgrade`, `enforce_product_quota` and `count_products` are all `pub` methods on `Store`.
+
+**One thing I checked before calling the other count a duplicate.** `create_product_with_attributes`
+(`products_crud.rs:392`) also runs `COUNT(*) FROM products`, but it is **deliberate and not a copy**: it
+counts inside its own transaction, after the insert, because under WAL a pre-transaction count reads only
+its snapshot — the comment there explains this is what closes the TOCTOU the pre-transaction gate cannot.
+Same table, same predicate, different moment, for a reason that is recorded. Left alone, and the doc now
+says so.
+
+**On the crate's 52 pre-existing broken intra-doc links:** `cargo doc -D warnings` fails on this crate, and
+I checked my own contribution rather than either ignoring it or claiming the crate is clean — filtering the
+error list for `assess_downgrade`, `enforce_product_quota`, `count_products` and `downgrade.rs` returns
+zero hits, so none of the 52 is mine. Recorded as an open crate-wide item, not repaired here: it is 52
+links across modules I would be editing blind, and it is its own pass.
+
+**Verified:** 22 `downgrade`, 0 failed; `clippy -p kasirmu-core --lib -D warnings` clean; `rustfmt` clean.
+Commit `bb8ed4ca8` (verified by hash).
+
+**Tally:** 70 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins plus the MSL-62 agreement
+pin. One crate-wide item recorded: 52 broken intra-doc links in `kasirmu-core`, none of them mine.
+
+
 
 
 **Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
