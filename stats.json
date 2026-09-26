@@ -1,39 +1,39 @@
 {
   "schemaVersion": 1,
   "label": "code size",
-  "message": "1,123.4k lines",
+  "message": "1,250.5k lines",
   "color": "blue",
   "stats": {
-    "totalLines": 1123432,
-    "totalFiles": 3713,
+    "totalLines": 1250487,
+    "totalFiles": 5730,
     "languages": {
       "astro": {
         "files": 51,
         "lines": 2828
       },
       "css": {
-        "files": 145,
-        "lines": 59406
+        "files": 148,
+        "lines": 60215
       },
       "fluent": {
         "files": 54,
-        "lines": 12153
+        "lines": 12167
       },
       "go": {
         "files": 106,
         "lines": 44831
       },
       "html": {
-        "files": 7,
-        "lines": 5372
+        "files": 1207,
+        "lines": 102183
       },
       "javascript": {
-        "files": 55,
-        "lines": 14644
+        "files": 831,
+        "lines": 15732
       },
       "markdown": {
-        "files": 378,
-        "lines": 112323
+        "files": 384,
+        "lines": 115016
       },
       "powershell": {
         "files": 25,
@@ -41,23 +41,23 @@
       },
       "python": {
         "files": 56,
-        "lines": 30294
+        "lines": 30519
       },
       "rust": {
-        "files": 1235,
-        "lines": 455869
+        "files": 1260,
+        "lines": 478816
       },
       "shell": {
         "files": 49,
-        "lines": 6990
+        "lines": 7049
       },
       "sql": {
         "files": 70,
         "lines": 8564
       },
       "typescript": {
-        "files": 1482,
-        "lines": 365415
+        "files": 1489,
+        "lines": 367824
       }
     }
   }
