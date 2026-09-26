@@ -131,8 +131,8 @@ pub const SMTP_CONFIG_SETTINGS_KEY: &str = "smtp_config";
 /// file has been chasing all week.
 ///
 /// Per field the rule is the one the sync credentials already use
-/// (`crates/kasirmu-bridge/src/sync.rs:72-74` for the API key, `:157-159` for the PG
-/// password): ABSENT or `null` means "the masked field was not modified", so
+/// (`crates/kasirmu-bridge/src/sync.rs:137-142` for the API key, `:172-178` for the PG
+/// settings): ABSENT or `null` means "the masked field was not modified", so
 /// the stored value is carried over verbatim; a genuinely supplied value
 /// replaces it; an explicit empty string clears it — keep-on-blank is not
 /// keep-forever. Exactly one field carries a different policy, and it is not a
@@ -330,8 +330,8 @@ impl Store<'_> {
     /// `smtp_config` is deny-listed against the raw `get_setting` IPC surface,
     /// so the read refuses the whole blob. This is the read-back such a surface
     /// may expose instead, the same shape `gateway_status` uses for
-    /// `stripe.api_key` (`crates/kasirmu-bridge/src/settings.rs:731-738`) and
-    /// `SyncSettingsDto` uses for `has_api_key` (`crates/kasirmu-bridge/src/sync.rs:36`).
+    /// `stripe.api_key` (`crates/kasirmu-bridge/src/settings.rs:987-992`) and
+    /// `SyncSettingsDto` uses for `has_api_key` (`crates/kasirmu-bridge/src/sync.rs:96`).
     pub fn smtp_password_configured(&self) -> Result<bool, CoreError> {
         Ok(self
             .get_setting(SMTP_CONFIG_SETTINGS_KEY)?

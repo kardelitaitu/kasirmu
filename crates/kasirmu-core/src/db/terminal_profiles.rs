@@ -72,8 +72,9 @@ impl Store<'_> {
 
         // MSL-52: the vocabulary is the schema's CHECK, and until this guard it was
         // the ONLY thing enforcing it — the bridge checks non-emptiness only
-        // (`terminals.rs:703`) and the UI types the field as a bare `string`, so an
-        // unknown value surfaced as a raw `CHECK constraint failed` naming no field.
+        // (`crates/kasirmu-bridge/src/terminals.rs:703`) and the UI types the field as
+        // a bare `string`, so an unknown value surfaced as a raw
+        // `CHECK constraint failed` naming no field.
         // The front-end branches on `profileType === 'kds_kiosk'`
         // (`useTerminalProfile.ts:79`), so the vocabulary is a real contract, and
         // one lookup names the reject instead of leaking a storage fault.

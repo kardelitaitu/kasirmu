@@ -312,7 +312,7 @@ impl Store<'_> {
             // downstream number alone: loyalty reversal, customer
             // lifetime-spend reversal, is_full_refund KDS cancellation, shift
             // cash reconciliation (db/shifts.rs:158, :170) and report netting
-            // (db/reports.rs:467, :534) all read refunds.total_minor, never
+            // (db/reports/revenue.rs:148, :215, :277) all read refunds.total_minor, never
             // refund_lines.line_minor - which only list_refunds_for_sale and
             // the printed line consume.
             //
