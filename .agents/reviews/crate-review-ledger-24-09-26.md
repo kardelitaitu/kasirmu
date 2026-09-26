@@ -5426,6 +5426,57 @@ user reads beside it. Falsified by dropping the `DATE(col, tz)` conversion — t
 
 **Tally:** 67 findings fixed (11 HIGH), 22 leads disproved. Two are preventive pins.
 
+## Pass 83 — MSL-61: re-checked my own carried items, then a doc that contradicts itself
+
+Started by auditing my own backlog rather than the code: the ledger has accumulated carried-forward items
+over ~10 passes, and a note is only trustworthy until someone else's lane moves under it.
+
+**Two carried items re-checked, both still accurate.**
+- *"The UI still cannot set a supplier status"* (recorded as a product decision, not a repair): still
+  display-only. `SuppliersScreen.tsx` renders the badge (`:282`) and the CSS styles both states, but the
+  only two `status` mentions in the file are the column header and the badge — no control. The note held,
+  and it stays a decision rather than a defect.
+- The `export` raw-UTC lead was closed by me last pass (MSL-60), so it needed no re-check beyond deleting
+  it from the carried list.
+
+**Then the tax validity window, because it is the same boundary shape as MSL-57/60.** `effective_from`
+inclusive / `effective_to` EXCLUSIVE, with a documented "a boundary day must have exactly one answer".
+Four things checked, three clean:
+
+1. `window_covers` (`db/tax/scopes.rs:854`) is correct and stated **once** for both readers: `from <= as_of`
+   and `as_of < to`, with an unparseable stored date returning false so the row is skipped rather than
+   trusted. Good.
+2. **The SQLite/PG duplication is deliberate and still in agreement.** `pg.rs:545-546` says outright it
+   mirrors core's `TaxRateWindow::validate` because the latter is private. I compared both clause by
+   clause — same field order, same `is_none`/`is_err` check, same `from >= to` refusal, same unreachable
+   defaults. The only difference is the message rendering (`{to:?}` vs `{to}`), and no test asserts either
+   string, so it is cosmetic and inert. This is the MSL-54 shape (a duplicated rule) and here the
+   duplication is *justified and held*, which is worth stating explicitly since MSL-54 was a defect.
+3. **Only one resolver exists.** PG validates on write but never resolves a window; resolution is
+   `Store::resolve_tax_rate_for_location` alone, so there is no second answer to diverge.
+4. `business_date_in_zone` resolves IANA names properly, so `as_of` can be a real local day.
+
+**MSL-61 (LOW, fixed): a doc block that contradicted the function directly beneath it.** `tax_scope_now`
+(`kasirmu-bridge/src/pos.rs`) carried a doc saying *"`as_of` is the UTC calendar date, and that is a
+recorded compromise"*, citing `locations.timezone` being *"read as a fixed offset"* and an open question
+in the regional-config doc. The body does the exact opposite — it falls back to UTC only when the zone is
+missing, and otherwise calls `business_date_in_zone(Utc::now(), &timezone)` — and the inline comment at
+`:50` says *"not raw UTC"*, refuting the doc three lines above it. Both of the doc's premises were also
+stale: the IANA-name read path was fixed, and the open question it cites was **closed by C6** (the same
+lane whose fence I checked last pass). Corrected to state the store-local business date, why the boundary
+day matters, and where the UTC fallback actually lives.
+
+This is MSL-59's shape (a doc describing the abandoned mechanism) with an extra twist: the two halves were
+**adjacent**, so a reader could see them disagree. Left uncorrected, the next change to this function
+would plausibly restore UTC on the authority of the doc.
+
+**Verified:** 1404 `kasirmu-bridge` tests, 0 failed; `clippy -p kasirmu-bridge --all-targets -D warnings`
+clean. `rustfmt` reports three hunks in `pos.rs`/`pos_tests.rs`, all pre-existing and untouched — my diff
+is comment lines only, confirmed with `git diff`. Commit `246a535fa` (verified by hash).
+
+**Tally:** 68 findings fixed (11 HIGH), 23 leads disproved. Two are preventive pins.
+
+
 **Note on scope, so this is not over-read:** the remaining UTC/local questions in this area — the
 analytics UI's deliberate UTC anchoring (`analytics-data.ts`) and the tax path's separate resolver — belong
 to C6/C6b's owners and are recorded there. This pass claims only the export custom-report filter.
