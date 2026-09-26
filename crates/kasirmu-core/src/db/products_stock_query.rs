@@ -488,12 +488,7 @@ impl Store<'_> {
         // read regardless of what the transaction did.
         if let Some(cache) = &self.cache {
             cache.invalidate_inventory(&product_id);
-            cache.publish_inventory_change(
-                &product_id,
-                sku,
-                new_qty,
-                self.terminal_id.as_deref(),
-            );
+            cache.publish_inventory_change(&product_id, sku, new_qty, self.terminal_id.as_deref());
         }
 
         Ok(new_qty)

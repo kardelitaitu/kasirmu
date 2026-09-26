@@ -1,9 +1,9 @@
 //! Shift management — open/close shifts, cash reconciliation.
 /*
-last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 5)
+last audited 26-09-26 by DSH (COR-27 fully CLOSED; the previous claim was wrong and came from a scoped check)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: close_shift exemplary — all aggregation reads + final write in one tx, cash refunds subtracted from expected cash (documented false-positive fix), safe-drop payouts included, gross profit matches reporting-layer cost semantics; COR-27 LOW: FIXED (C18, slice P1.3) — open_shift's COUNT-then-INSERT duplicate guard now runs with the INSERT inside one `BEGIN IMMEDIATE` transaction, so two opens for the same user serialize on the write lock instead of both reading an empty count (the old shape was autocommit, where a WAL reader did not even block on the rival writer); still NO partial unique index behind it (verified init.sql:1259-1263 — only plain indexes; inventory_shifts HAS idx_inv_shifts_active_per_user_location), so a direct SQL writer remains unguarded; hour labels in get_shift_report are UTC (COR-21 family, totals unaffected)
-next: partial unique index on shifts(user_id) WHERE status='open' (COR-27) | perf: N/A
+findings: close_shift exemplary — all aggregation reads + final write in one tx, cash refunds subtracted from expected cash (documented false-positive fix), safe-drop payouts included, gross profit matches reporting-layer cost semantics; COR-27 LOW: FULLY FIXED. Both halves now hold. (1) `open_shift`'s COUNT-then-INSERT guard runs with the INSERT inside one `BEGIN IMMEDIATE` transaction, so two opens for the same user serialize on the write lock (C18, slice P1.3). (2) The partial unique index DOES exist — `CREATE UNIQUE INDEX idx_shifts_open_per_user ON shifts(user_id) WHERE status = 'open'`, added by `migrations/20261011_open_shift_uniqueness.sql:92-94`, and that migration first re-opens nothing: it closes the older of any pre-existing duplicate open shifts (`:74-88`) before creating the guard. THIS STAMP PREVIOUSLY SAID THE OPPOSITE — "still NO partial unique index behind it (verified init.sql:1259-1263 — only plain indexes)" — and the error is instructive rather than careless: the check was real, but `init.sql` holds only the BASELINE schema, while this index arrives in a later migration file, so the referent set was incomplete and the conclusion inverted. Measured this pass against a migrated database (not a file): the index exists, is UNIQUE, is partial on status='open', and a direct INSERT that bypasses `open_shift` is REFUSED by it — pinned by `a_partial_unique_index_guards_open_shifts`, which also asserts a CLOSED shift still inserts freely. Hour labels in get_shift_report are UTC (COR-21 family, totals unaffected).
+next: none for COR-27. | perf: N/A
 */
 
 use rusqlite::{Transaction, TransactionBehavior, params};
@@ -452,10 +452,19 @@ impl Store<'_> {
 
         // ── Gross profit (HPP) ────────────────────────────────────────
         // Revenue is the completed-sale totals (same source as the hourly
-        // breakdown and the shift's stored total). COGS is the sum of
-        // current product cost × qty over the completed-sale lines, matching
-        // the reporting layer's cost semantics (costs are not snapshotted
-        // per line). Lines whose product is unknown fall back to a zero cost.
+        // breakdown and the shift's stored total). COGS sums the per-line
+        // cost SNAPSHOT taken at checkout (`sale_lines.cost_minor`, written by
+        // `insert_sale_line`), falling back to the product's current cost only
+        // for legacy rows and lines whose product is missing -- the fallback is
+        // not the primary source, and the earlier comment here claiming costs
+        // "are not snapshotted per line" was stale.
+        //
+        // REP-08: both terms are refund-adjusted for THIS user's shift. Goods
+        // returned to stock are no longer a cost of the units that stayed sold,
+        // so their snapshot cost is subtracted from COGS, and profit is measured
+        // against revenue net of the refunds. Using gross revenue with a
+        // refund-netted COGS would add the refund back once and overstate profit
+        // on any shift containing a refund.
         let gross_revenue_minor: i64 = self.conn.query_row(
             "SELECT COALESCE(SUM(total_minor), 0) FROM sales
              WHERE user_id = ?1 AND created_at >= ?2 AND created_at <= ?3
@@ -473,9 +482,31 @@ impl Store<'_> {
             params![user, start, end],
             |r| r.get(0),
         )?;
-        let gross_profit_minor = gross_revenue_minor - cogs_minor;
-        let gross_margin_percent = if gross_revenue_minor > 0 {
-            gross_profit_minor as f64 / gross_revenue_minor as f64 * 100.0
+        // Cost of the goods refunded within this shift, recovered from the
+        // sale line the refund names. A refund line with no matching sale line
+        // (a pre-guard row, or one written by the sync applier without
+        // validation) contributes 0 rather than an invented cost.
+        let refunded_cost_minor: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(COALESCE(sl.cost_minor, p.cost_minor, 0) * rl.qty), 0)
+             FROM refund_lines rl
+             JOIN refunds r ON r.id = rl.refund_id
+             LEFT JOIN sale_lines sl ON sl.id = rl.sale_line_id
+             LEFT JOIN products p ON sl.sku = p.sku
+             WHERE r.processed_by = ?1 AND r.created_at >= ?2 AND r.created_at <= ?3",
+            params![user, start, end],
+            |r| r.get(0),
+        )?;
+        let refunded_revenue_minor: i64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(total_minor), 0) FROM refunds
+             WHERE processed_by = ?1 AND created_at >= ?2 AND created_at <= ?3",
+            params![user, start, end],
+            |r| r.get(0),
+        )?;
+        let cogs_minor = cogs_minor - refunded_cost_minor;
+        let net_revenue_minor = gross_revenue_minor - refunded_revenue_minor;
+        let gross_profit_minor = net_revenue_minor - cogs_minor;
+        let gross_margin_percent = if net_revenue_minor > 0 {
+            gross_profit_minor as f64 / net_revenue_minor as f64 * 100.0
         } else {
             0.0
         };

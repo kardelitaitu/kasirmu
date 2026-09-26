@@ -63,6 +63,38 @@ fn seed_completed_sale(conn: &Connection, sku: &str, qty: i64, unit_minor: i64) 
     sale.id
 }
 
+/// Refund `qty` units of `sku` from `sale_id` (REP-08).
+///
+/// Partial refunds are the interesting case: the returned units go back into
+/// stock, so their cost must leave COGS while the units that stayed sold keep
+/// theirs. The helper refunds a quantity ON A NAMED LINE so the join back to
+/// `sale_lines.cost_minor` is exercised the way production does it.
+fn refund_units(conn: &Connection, sale_id: &str, sku: &str, qty: i64, unit_minor: i64) {
+    let s = store(conn);
+    let sale_line_id: String = conn
+        .query_row(
+            "SELECT id FROM sale_lines WHERE sale_id = ?1 AND sku = ?2",
+            params![sale_id, sku],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let line = crate::RefundLine::new(
+        sale_line_id,
+        sku,
+        qty,
+        price(unit_minor),
+        price(unit_minor * qty),
+    );
+    let refund = crate::Refund::new(
+        sale_id,
+        price(unit_minor * qty),
+        "test",
+        "",
+        "u1",
+        vec![line],
+    );
+    s.create_refund(&refund).unwrap();
+}
 // ── Daily revenue ──────────────────────────────────────────────
 
 #[test]
@@ -120,6 +152,79 @@ fn daily_revenue_gross_profit_from_product_costs() {
     );
 }
 
+// ── REP-08: refunded cost must leave COGS ──────────────────────
+
+#[test]
+fn daily_revenue_nets_refunded_cost_out_of_gross_profit() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 4, 1000);
+    conn.execute(
+        "UPDATE products SET cost_minor = 400 WHERE sku = 'SHIRT'",
+        [],
+    )
+    .unwrap();
+    // Snapshot the cost the way checkout does, so the join back is meaningful.
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+
+    // Refund 1 of the 4 units.
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].total_minor, 4000);
+    assert_eq!(rows[0].refund_minor, 1000);
+    assert_eq!(rows[0].net_revenue_minor, 3000);
+    // 3 units remain sold at 400 each; the refunded unit's cost is gone.
+    assert_eq!(
+        rows[0].cogs_minor, 1200,
+        "refunded units must not stay in COGS - got {}",
+        rows[0].cogs_minor
+    );
+    assert_eq!(rows[0].gross_profit_minor, 1800);
+}
+
+#[test]
+fn daily_revenue_full_refund_removes_all_cost() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 2, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 300 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+    refund_units(&conn, &sale_id, "SHIRT", 2, 1000);
+    let rows = store(&conn)
+        .daily_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows[0].cogs_minor, 0, "a fully refunded sale has no COGS");
+    assert_eq!(rows[0].gross_profit_minor, 0);
+}
+
+#[test]
+fn weekly_revenue_nets_refunded_cost_out_of_gross_profit() {
+    let conn = fresh();
+    insert_user(&conn, "u1");
+    let sale_id = seed_completed_sale(&conn, "SHIRT", 4, 1000);
+    conn.execute(
+        "UPDATE sale_lines SET cost_minor = 400 WHERE sale_id = ?1",
+        params![sale_id],
+    )
+    .unwrap();
+    refund_units(&conn, &sale_id, "SHIRT", 1, 1000);
+    let rows = store(&conn)
+        .weekly_revenue("2000-01-01", "2099-12-31")
+        .unwrap();
+    assert_eq!(rows[0].cogs_minor, 1200);
+    assert_eq!(rows[0].gross_profit_minor, 1800);
+}
 // ── Weekly revenue ─────────────────────────────────────────────
 
 #[test]

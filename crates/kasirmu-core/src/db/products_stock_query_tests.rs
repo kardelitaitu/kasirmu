@@ -11,20 +11,29 @@ fn fresh() -> Connection {
     migrations::fresh_db()
 }
 
-
 // ── PROBE: does a sync-replay adjustment leave a stale cached qty? ──
 #[derive(Default)]
 struct ProbeCache {
     inv: std::sync::Mutex<std::collections::HashMap<String, i64>>,
 }
 impl crate::cache::Cache for ProbeCache {
-    fn get_product(&self, _s: &str) -> Option<crate::ProductWithDetails> { None }
+    fn get_product(&self, _s: &str) -> Option<crate::ProductWithDetails> {
+        None
+    }
     fn set_product(&self, _s: &str, _p: &crate::ProductWithDetails) {}
     fn invalidate_product(&self, _s: &str) {}
-    fn get_inventory(&self, id: &str) -> Option<i64> { self.inv.lock().unwrap().get(id).copied() }
-    fn set_inventory(&self, id: &str, q: i64) { self.inv.lock().unwrap().insert(id.to_string(), q); }
-    fn invalidate_inventory(&self, id: &str) { self.inv.lock().unwrap().remove(id); }
-    fn is_healthy(&self) -> bool { true }
+    fn get_inventory(&self, id: &str) -> Option<i64> {
+        self.inv.lock().unwrap().get(id).copied()
+    }
+    fn set_inventory(&self, id: &str, q: i64) {
+        self.inv.lock().unwrap().insert(id.to_string(), q);
+    }
+    fn invalidate_inventory(&self, id: &str) {
+        self.inv.lock().unwrap().remove(id);
+    }
+    fn is_healthy(&self) -> bool {
+        true
+    }
 }
 
 /// A sync-replay adjustment must not leave a stale cached quantity.
@@ -70,7 +79,11 @@ fn sync_replay_adjustment_invalidates_the_cached_quantity() {
     tx.commit().unwrap();
 
     let raw: i64 = conn
-        .query_row("SELECT qty FROM inventory WHERE product_id = 'p1'", [], |r| r.get(0))
+        .query_row(
+            "SELECT qty FROM inventory WHERE product_id = 'p1'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let via_get_stock = s.get_stock("p1").unwrap();
     assert_eq!(raw, 6, "the adjustment itself must land");

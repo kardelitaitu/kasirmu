@@ -54,6 +54,67 @@ fn open_shift_duplicate_rejected() {
     );
 }
 
+// ── COR-27: the partial unique index behind the invariant ────────────
+
+/// COR-27's second half. The `open_shift` guard (COUNT-then-INSERT in one
+/// `BEGIN IMMEDIATE`) serialises the FUNCTION's writers, but it cannot constrain
+/// a writer that bypasses it. `20261011_open_shift_uniqueness.sql` backs it with
+/// a partial unique index — `idx_shifts_open_per_user ON shifts(user_id) WHERE
+/// status = 'open'` (`:92-94`) — which is what makes the invariant structural.
+///
+/// The stamp in `shifts.rs` asserted the opposite in as many words: *"still NO
+/// partial unique index behind it (verified init.sql:1259-1263 — only plain
+/// indexes)"*. The check was real but its SCOPE was wrong: `init.sql` only holds
+/// the baseline schema, while this index is added by a later migration file. The
+/// conclusion was drawn from an incomplete referent set, which is the same error
+/// the ledger has recorded for absence claims five times. This test measures the
+/// fact against a migrated database instead of reading one file.
+#[test]
+fn a_partial_unique_index_guards_open_shifts() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    // The index exists, and it is partial on status = 'open'.
+    let ddl: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_shifts_open_per_user'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("the partial unique index must exist after migrations");
+    assert!(ddl.contains("UNIQUE"), "it must be UNIQUE: {ddl}");
+    assert!(ddl.contains("status = 'open'"), "and partial: {ddl}");
+
+    // The real property: a DIRECT write that skips `open_shift` is refused.
+    s.open_shift("user-1", None, 100).unwrap();
+    let direct = conn.execute(
+        "INSERT INTO shifts (id, user_id, opening_balance_minor, status, opened_at, created_at, updated_at)
+         VALUES ('shift-bypass', 'user-1', 500, 'open', '2025-01-01T00:00:00.000Z',
+                 '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        [],
+    );
+    assert!(
+        direct.is_err(),
+        "a second OPEN shift for the same user must be refused by the index, \
+         not merely by the function's guard"
+    );
+
+    // And the index is PARTIAL: a closed shift for the same user still inserts,
+    // so a user accumulates as many closed shifts as they like.
+    let closed = conn.execute(
+        "INSERT INTO shifts (id, user_id, opening_balance_minor, status, opened_at, closed_at, created_at, updated_at)
+         VALUES ('shift-old', 'user-1', 400, 'closed', '2024-12-31T00:00:00.000Z',
+                 '2024-12-31T08:00:00.000Z', '2024-12-31T00:00:00.000Z', '2024-12-31T08:00:00.000Z')",
+        [],
+    );
+    assert!(
+        closed.is_ok(),
+        "the index is partial — CLOSED shifts are outside it: {:?}",
+        closed.err()
+    );
+}
+
 #[test]
 fn open_shift_succeeds_after_previous_closed() {
     let conn = fresh();
@@ -444,6 +505,49 @@ fn get_shift_report_gross_profit_from_product_costs() {
     );
 }
 
+#[test]
+fn get_shift_report_nets_refunded_cost_and_revenue_out_of_profit() {
+    let conn = fresh();
+    seed_user(&conn);
+    let s = store(&conn);
+
+    let shift = s.open_shift("user-1", None, 200).unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    conn.execute_batch(&format!(
+        "INSERT INTO products (id, sku, name, price_minor, currency, cost_minor, created_at, updated_at) VALUES
+         ('p-1', 'HAT', 'Hat', 1000, 'USD', 400, '{now}', '{now}');
+         INSERT INTO sales (id, user_id, status, total_minor, payment_method, currency, line_count, created_at, updated_at) VALUES
+         ('sale-r1', 'user-1', 'completed', 4000, 'cash', 'USD', 1, '{now}', '{now}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position, cost_minor) VALUES
+         ('sl-r1', 'sale-r1', 'HAT', 4, 1000, 4000, 'USD', 1, 400);"
+    ))
+    .unwrap();
+    // One of the four units comes back. Total stays 0 so the refund is the
+    // only variable: profit must drop by the unit's REVENUE + COST.
+    conn.execute_batch(&format!(
+        "INSERT INTO refunds (id, sale_id, total_minor, currency, reason, note, processed_by, created_at)
+         VALUES ('rf-1', 'sale-r1', 1000, 'USD', '', '', 'user-1', '{now}');
+         INSERT INTO refund_lines (id, refund_id, sale_line_id, sku, qty, unit_minor, line_minor, currency, created_at)
+         VALUES ('rfl-1', 'rf-1', 'sl-r1', 'HAT', 1, 1000, 1000, 'USD', '{now}');"
+    ))
+    .unwrap();
+
+    s.close_shift(&shift.id, 800, None).unwrap();
+    let report = s.get_shift_report(&shift.id).unwrap();
+
+    // Revenue 4000 - refund 1000 = 3000 net. COGS 1600 - 400 = 1200.
+    // Profit = 3000 - 1200 = 1800. Gross revenue minus un-netted COGS
+    // would have said 2400.
+    assert_eq!(report.cogs_minor, 1200);
+    assert_eq!(report.gross_profit_minor, 1800);
+    let expected = 1800.0 / 3000.0 * 100.0;
+    assert!(
+        (report.gross_margin_percent - expected).abs() < 1e-9,
+        "margin was {}",
+        report.gross_margin_percent
+    );
+}
 #[test]
 fn get_shift_report_open_shift() {
     let conn = fresh();
