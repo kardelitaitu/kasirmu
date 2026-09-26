@@ -3,7 +3,7 @@
 <!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · version lock: 0.0.40
      change: roundtrip-economy rewrite — quick card (§0), economy protocol (§1),
      task playbook folded into §1; chunk-read rule replaced by whole-file reads (E4);
-     "ten-gate" naming retired (seven steps, §2); discovery directive gains fallback order. -->
+     seven-step gate count named explicitly (§2); discovery directive gains fallback order. -->
 
 ## 0. Quick card — read this first
 
@@ -64,7 +64,7 @@ and re-plans instead of grinding):
 | UI change | Read → edit → `npm run lint && npm run typecheck` (from `ui/`) → commit | 4–6 |
 | Migration change | Edit `*.sql` + registry in `migrations.rs` → `python3 scripts/generate-pg-migration.py` → commit both paths | 5–8 |
 
-## 2. Pre-commit gates — seven steps (the retired name "ten-gate hook" is obsolete)
+## 2. Pre-commit gates — seven steps
 
 Opt in per clone: `git config core.hooksPath .githooks`. Each step fires only on the
 paths it cares about:
@@ -207,8 +207,9 @@ $env:KASIRMU_LICENSE_PRIVATE_KEY         # RSA license signing key (PEM, multili
   `python3 scripts/generate-pg-migration.py` and re-stage
   `crates/kasirmu-core/migrations/20260813_init.pg.sql`. Pre-commit step 5 and
   `dev-ci.yml#static-gates` fail on drift.
-- **Postgres drift:** when modifying PG schemas, run `bash scripts/reset-dev-pg.sh`
-  to re-sync the shared dev container.
+- **Postgres drift:** when modifying PG schemas, re-sync the shared dev container with
+  `scripts/reset-dev-pg.sh` — run through Git's bash by full path (§5); bare `bash`
+  resolves to WSL here and hangs.
 
 ## 7. Git & Commit Policy
 
@@ -265,8 +266,9 @@ imperative, present tense ("add gift card tender").
 - **`done-todo-*` is earned ONLY when that file's own acceptance command was RUN and
   PASSED.** Anything else stays `todo-`. Parked/superseded states belong in a dated
   header line, never the filename. Renames happen in place at the repo root.
-- **A tool reads the name:** `check-dead-refs.py` exempts any doc whose name contains
-  `todo-`, `plan-`, or `prd-` — keep the token wherever the file lives.
+- **A tool reads the name:**
+  `.agents/skills/docs-auditor/scripts/check-dead-refs.py` exempts any doc whose name
+  contains `todo-`, `plan-`, or `prd-` — keep the token wherever the file lives.
 - **Never rename or move another session's uncommitted plan file** — the name is shared
   state, like the index.
 
