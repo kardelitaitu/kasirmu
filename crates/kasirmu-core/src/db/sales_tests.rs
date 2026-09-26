@@ -1164,6 +1164,90 @@ fn compute_tax_exclusive_adds_tax_to_sale_total() {
     assert_eq!(sale.tax_total.minor_units, 70);
 }
 
+// C15: the SAME correction TAX-06 made for exclusive tax is owed to tip and
+// service charge. Migration 20260822_sale_charges.sql added the columns with
+// the stated purpose that "the recorded sale.total understated collected
+// revenue" -- but the term was never added, so the defect the migration names
+// is still live: `sale.total` excludes tip + service while the UI total
+// (usePosState.ts:234-244) and therefore the payment splits include them.
+//
+// The customer pays 700 + 100 tip + 50 service = 850. `total` must say 850, or
+// revenue, loyalty and the drawer keep disagreeing with the payments table.
+#[test]
+fn compute_tax_adds_tip_and_service_to_the_sale_total() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350); // total = 700 (pre-tax)
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    assert_eq!(
+        sale.total.minor_units, 700,
+        "cart total starts charges-free"
+    );
+
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+
+    assert_eq!(
+        sale.total.minor_units, 850,
+        "total must include tip + service: it is what the customer paid"
+    );
+    // The tax basis is unchanged -- tip and service are not taxable here and
+    // must not be folded into subtotal or tax_total.
+    assert_eq!(sale.subtotal.minor_units, 700);
+    assert_eq!(sale.tax_total.minor_units, 0);
+}
+
+#[test]
+fn compute_tax_adds_tip_and_service_on_top_of_exclusive_tax() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_tax_rate(&conn, "VAT 10%", 1000, true, false);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350); // 700 + 70 tax
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+
+    assert_eq!(
+        sale.total.minor_units, 920,
+        "700 subtotal + 70 exclusive tax + 150 charges = 920"
+    );
+    assert_eq!(sale.subtotal.minor_units, 700);
+    assert_eq!(sale.tax_total.minor_units, 70);
+}
+
+/// The C15 charge adjustment must apply ONCE. `compute_sale_tax` and its
+/// scoped twin are also reached from preview paths, so this pins what a second
+/// call does: it RE-ADDS the charges, because each call is documented to run on
+/// a sale whose `total` still excludes them. The test states that contract
+/// rather than leaving it implicit -- if a caller ever feeds back an
+/// already-adjusted sale, this is the assertion that goes red.
+#[test]
+fn compute_tax_reads_charges_from_the_sale_not_from_its_own_output() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(sale.total.minor_units, 850);
+
+    // A second call on the SAME sale re-adds: the charges are read from
+    // `tip_minor`/`service_charge_minor`, never from the running total.
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(
+        sale.total.minor_units, 1000,
+        "a second call adds the charges again -- callers must not feed back an \
+         already-adjusted sale"
+    );
+}
+
 #[test]
 fn compute_tax_inclusive_does_not_inflate_sale_total() {
     let conn = fresh();
@@ -2270,6 +2354,66 @@ fn complete_sale_deduction_rejects_underpaid_payment_splits() {
         )
         .unwrap();
     assert_eq!(payment_count, 0, "no payment rows may exist");
+}
+
+/// C15, the like-with-like half, measured end to end rather than asserted.
+///
+/// The UI's payable total includes tip + service (`usePosState.ts` `total`),
+/// and it is that number which drives the splits, so the splits legitimately
+/// sum to MORE than the bare cart total. Before C15 the validator compared
+/// the two different bases and only rejected a SHORTFALL, so a tip-bearing
+/// tender passed for the wrong reason and an UNDERPAID one that covered only
+/// the tip-exclusive part was accepted. Now `sale.total` carries the charges,
+/// so the comparison is between like and like -- this test pins that: a
+/// tender covering cart total + tip + service completes; one covering only the
+/// cart total is refused.
+#[test]
+fn complete_sale_deduction_compares_charged_total_like_with_like() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product_with_stock(&conn, "COFFEE", 10);
+
+    // Cart total 700, tip 100, service 50 -> payable 850.
+    let mut sale = make_single_line_sale("COFFEE", 2, 350);
+    sale.tip_minor = 100;
+    sale.service_charge_minor = 50;
+    s.compute_sale_tax(&mut sale, &[], RoundingMode::Truncate)
+        .unwrap();
+    assert_eq!(
+        sale.total.minor_units, 850,
+        "payable total carries the charges"
+    );
+
+    // Underpaid against the PAYABLE total: 700 covers the cart but not the
+    // charges, and must now be rejected.
+    let underpaid = s.complete_sale_deduction(&sale, None, &tender(700), "cashier-1", None);
+    match underpaid {
+        Err(CoreError::Validation { field, message }) => {
+            assert_eq!(
+                field, "payments",
+                "expected field 'payments', got '{field}'"
+            );
+            assert!(
+                message.contains("do not cover"),
+                "expected an under-payment message, got: {message}"
+            );
+        }
+        other => panic!("700 must not cover an 850 payable total, got: {other:?}"),
+    }
+    assert!(
+        s.get_sale(&sale.id).unwrap().is_none(),
+        "the refused sale must not be persisted"
+    );
+
+    // The full payable tender completes, and the persisted total is the
+    // charged one -- so the sale row and the payments table agree.
+    s.complete_sale_deduction(&sale, None, &tender(850), "cashier-1", None)
+        .expect("850 covers the payable total");
+    let stored = s.get_sale(&sale.id).unwrap().expect("sale persisted");
+    assert_eq!(
+        stored.total.minor_units, 850,
+        "the stored total is what the customer paid, charges included"
+    );
 }
 
 /// The worst case: `payment_splits: Some([])` bypasses the command layer's
