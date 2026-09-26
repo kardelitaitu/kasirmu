@@ -1,7 +1,7 @@
 /*
-last audited 25-07-26 by RSA-Agent
+last audited 26-09-26 by DSH (findings corrected: the claim was a stale universal)
 crate: kasirmu-payment | status: SAFE | lint: CLEAN
-findings: Money (i64 minor units) throughout per house policy; idempotency_key contract ("processor generates fallback if None") ignored by all live drivers — PAY-2
+findings: Money (i64 minor units) throughout per house policy. The idempotency_key contract ("processor generates fallback if None") was described here as "ignored by all live drivers — PAY-2"; that was true when written on 25-07-26 and is FALSE now. PAY-2 is closed: all three IMPLEMENTED drivers honour a caller-supplied key — qris.rs:689, stripe.rs:465 (via idempotency_key_for at :242), square.rs:439 (via :341) — each pinned by a test (qris_tests.rs:105, stripe_tests.rs:21/:293, square_tests.rs:186). The single driver that ignores it is Paddle (paddle.rs:115, `_idempotency_key`), and it ignores it because it is a PLANNED stub returning Unsupported for every method (paddle.rs:111-120), so the contract is unhonoured by a driver that performs no operation at all. Note the shape: a universal ("all live drivers") was written from a non-universal observation (the state of the majority at the time), and nothing re-checks a universal when its referent set changes — three of the four drivers were fixed underneath it and the sentence kept reading as current.
 next: none in this file | perf: N/A
 */
 //! Data types used by the [`PaymentProcessor`](crate::PaymentProcessor) trait.

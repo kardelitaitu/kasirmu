@@ -1,8 +1,8 @@
 /*
-last audited DD-MM-YY by DSH-Agent (re-review)
+last audited 26-09-26 by DSH (stamp corrected: findings + next were stale in the DANGEROUS direction)
 crate: kasirmu-payment | status: SAFE | lint: CLEAN
-findings: 0 unsafe blocks (#![deny(unsafe_code)] at crate root). mock.rs lock().unwrap() calls are documented test-double pattern (same as kasirmu-hal). Re-review confirms the 31-08-26 stamp's findings: PAY-2 refund idempotency open, PAY-3 partial refund, PAY-4 stripe decline classification — all pre-existing, unchanged. No new findings.
-next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe decline classification (PAY-4) | perf: HTTP async/tokio; mock in-memory atomics
+findings: 0 unsafe blocks (#![deny(unsafe_code)] at crate root). mock.rs lock().unwrap() calls are documented test-double pattern (same as kasirmu-hal). PAY-2/PAY-3/PAY-4 are CLOSED, not open — the previous text here (and in the 31-08-26 re-review before it) called all three "open, unchanged", which was true when first written and false by 2026-09-26. Evidence, each verified this pass: PAY-2 refund idempotency — `RefundRequest.idempotency_key` (types.rs:52) is threaded through the trait (processor.rs:102-107) and honoured by all three IMPLEMENTED drivers (qris.rs:689, stripe.rs:465 via idempotency_key_for at :242, square.rs:439 via :341), each pinned by a test (qris_tests.rs:105, stripe_tests.rs:21/:293, square_tests.rs:186); the only driver ignoring it is Paddle, which is a PLANNED stub that returns Unsupported for every method (paddle.rs:111-120). PAY-3 partial refund — `refund` takes `amount: Option<Money>`, documented "If `amount` is `None` the full amount is refunded" (processor.rs:93). PAY-4 Stripe decline classification — the code-based mapping was fixed and documented in stripe.rs:300-324. This is the SAME defect PAY-C recorded for the `next:` field of drivers/qris.rs, corrected there on 2026-09-25 and left standing one file up.
+next: none for PAY-2/PAY-3/PAY-4 (all closed above; see PAY-C). Genuinely open in this crate: webhook.rs verifiers are a fail-closed stub (PAY-11) and registry.rs build_from_config is a PLANNED stub (PAY-12) — both are deliberate, both fail closed, neither is a correctness hole. | perf: HTTP async/tokio; mock in-memory atomics
 */
 #![deny(unsafe_code)]
 
