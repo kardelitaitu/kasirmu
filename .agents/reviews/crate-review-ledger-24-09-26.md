@@ -6847,3 +6847,80 @@ const tripwire; everything else is documentation and one test.
 disproved column, which is where it belongs — 29 clean censuses. SEC-5 is closed in its reframed form; the
 original instruction is retained verbatim inside the stamp so the next reader can see why it was changed rather
 than finding it silently gone.
+
+---
+
+## Pass 107 — COR-2: the map that only ever grew (MSL-86)
+
+Filed as *"per-username HashMap unbounded — login-form spam grows memory without cap"*. That is accurate, and
+it undersells the mechanism, which I got precisely by reading the code rather than the summary.
+
+### What was actually wrong
+
+`record_failure` did this:
+
+```
+let attempts = map.entry(username.to_string()).or_default();
+attempts.retain(|t| now.duration_since(*t) < window);   // prunes the VEC
+```
+
+The **vector** was pruned on every call. The **key** was never removed. So the map did not hold "attempts" — it
+held one permanent entry per username ever seen, each with an empty vec after its window elapsed. The cost per
+sprayed request was a `String` (the key) plus a map slot, retained for the life of the process, and nothing
+would ever free it. "Unbounded HashMap" describes the shape; the fact that matters is that the **pruning
+visible in the code was the reason the leak looked handled**.
+
+`username` is the map key and it comes from the login form, so the caller controls the key space directly. A
+loop sending a distinct name per request grows the map by one entry per request, forever.
+
+### Fix
+
+One sweep before inserting the caller's key:
+
+```
+map.retain(|_, attempts| attempts.iter().any(|t| now.duration_since(*t) < window));
+```
+
+A username with any still-live attempt is kept — that is the lockout, and dropping it would hand an attacker a
+free reset. A username whose every entry has aged out carries **no information**: the next attempt from that
+name starts from zero either way, so the entry is pure residue. The map therefore holds at most the names
+active within the last window, which is bounded by request rate over the window rather than by process
+lifetime.
+
+`tracked_usernames()` was added so the bound is **assertable** rather than merely described in a comment.
+
+### Tests, and the falsification
+
+Three tests, all of which fail without the sweep:
+
+- `distinct_usernames_do_not_accumulate_without_bound` — 10,000 distinct names through a zero-length window
+  (where every attempt expires immediately, so any surviving key can only be the bug). Asserts the count is
+  exactly 1.
+- `expired_usernames_are_evicted_and_live_ones_are_kept` — two live names, a real 1.1 s wait, then a third
+  name arrives; asserts only the third remains and that its lockout still functions.
+- `eviction_never_clears_a_live_lockout` — a live lockout must survive 500 sweeps. This one asserts the
+  **opposite** direction, guarding the fix from over-evicting.
+
+Falsified by replacing the sweep with a no-op:
+
+```
+assertion `left == right` failed: only the key added by the current call may remain;
+  10000 entries would be the leak
+assertion `left == right` failed: alice and bob expired and must be gone; only carol remains
+```
+
+10,000 entries — the leak measured exactly. The third test correctly still passed under falsification, which
+is the right behaviour for a guard on the opposite direction. Then the sweep was restored and all 33 passed.
+
+**Latent, not live.** At HEAD this module has **zero production callers** — it is exported at `lib.rs:269` and
+used by nothing. I verified that rather than assuming it from the stamp. So no user was exposed; the fix
+matters because this is a public API whose entire stated purpose is protecting an unauthenticated form, and
+the first person to wire it up would have inherited the leak invisibly.
+
+**Verified:** `rate_limiter` family **33 passed** (30 existing + 3 new), 0 failed; `kasirmu-core` lib full run
+**3398 passed, 0 failed** (up from 3395); `clippy -p kasirmu-core --lib -- -D warnings` clean; `rustfmt` clean
+on both files. Committed as `4584e125c`, verified by hash to contain exactly the two paths.
+
+**Tally:** 88 findings fixed (14 HIGH, 74 others), 25 leads disproved, 29 clean censuses. This is the third
+`next:` item closed from the enumerated backlog (SEC-1, SEC-5, COR-2), and the second one in a row where the
+filing's framing was accurate but the mechanism was worse than the summary implied.
