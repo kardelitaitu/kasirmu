@@ -79,8 +79,6 @@ pub mod offline;
 pub mod payables;
 /// Pre-session picker-ticket signing / verification.
 pub mod picker_ticket;
-/// Plugin management commands.
-pub mod plugins;
 /// Point-of-sale flow commands.
 pub mod pos;
 /// Product-variant commands.

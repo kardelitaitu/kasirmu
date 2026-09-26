@@ -129,12 +129,6 @@ impl DriverRegistry {
         sorted_keys(&*self.displays.read().await)
     }
 
-    /// Register a weight scale under `id`. Overwrites any previous
-    /// entry with the same id.
-    pub async fn register_scale(&self, id: &str, driver: Arc<dyn WeightScale>) {
-        self.scales.write().await.insert(id.to_owned(), driver);
-    }
-
     /// Look up a weight scale by id. Returns `None` if no scale is registered.
     pub async fn scale(&self, id: &str) -> Option<Arc<dyn WeightScale>> {
         self.scales.read().await.get(id).cloned()
