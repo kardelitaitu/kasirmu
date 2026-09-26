@@ -28,8 +28,11 @@
 >
 > ⚠️ **CODE FINDING, recorded and not patched.** Of those post-audit additions,
 > `local_api.secret` — the per-install **signing secret** for the LAN/local HTTP API — is
-> written with a plain `Settings::set` (`apps/desktop-tauri/src/local_api.rs:197` on create,
-> `:210` in `rotate_secret`), and that file imports no encryption helper at all. The contrast
+> written with a plain `Settings::set`. **Citations corrected 2026-09-26 (review C14):** the
+> original refs (`apps/desktop-tauri/src/local_api.rs:197` / `:210`) now point at a 10-line
+> re-export shim; the real write sites are `crates/kasirmu-local-api/src/lib.rs:340`
+> (`load_or_create_secret`) and `:353` (`rotate_secret`), and that crate imports no encryption
+> helper at all. The contrast
 > is not theoretical: `apps/desktop-tauri/src/commands/license.rs:9` imports
 > `encrypt_api_key`/`decrypt_api_key` and wraps its stored key at `:135`. So a secret added
 > *after* this audit meets a **weaker standard than the six it certifies** — deny-listed from
