@@ -295,16 +295,16 @@ export function StaffRoster({
                 data-testid="staff-search"
               />
             </Localized>
-            {query && (
-              <button
-                type="button"
-                className="staff-mgmt-search-clear"
-                onClick={() => setQuery('')}
-                aria-label={l10n.getString('clear-aria')}
-              >
-                <ClearIcon />
-              </button>
-            )}
+            <button
+              type="button"
+              className={`staff-mgmt-search-clear${query ? ' staff-mgmt-search-clear--visible' : ''}`}
+              onClick={() => setQuery('')}
+              aria-label={l10n.getString('clear-aria')}
+              tabIndex={query ? 0 : -1}
+              aria-hidden={!query}
+            >
+              <ClearIcon />
+            </button>
           </div>
 
           <Localized id="staff-sort" attrs={{ 'aria-label': true }}>
