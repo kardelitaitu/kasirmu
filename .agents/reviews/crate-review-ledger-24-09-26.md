@@ -6118,6 +6118,66 @@ passes found something and this one did not**, so the doc-accuracy axis is appro
 absence-based sweeps landed — the sensible next move is back to code behaviour rather than more comment
 sweeping.
 
+## Pass 97 — MSL-75: back to code — COR-12 closed on all three doors
+
+Acted on last pass's steering note and returned to **code behaviour**, to the axis that has produced the most
+findings: two layers that must implement one rule. This time the pair was the **SQLite and PostgreSQL halves
+of the same HTTP route** — `POST /api/v1/products` dispatches to `pg::create_product` when a pool exists
+(`routes/products.rs:251`) and to `store.create_product` otherwise (`:301`).
+
+**MSL-75 (LOW, fixed): the 255-char name ceiling existed on one door of three.**
+
+| Door | Before | After |
+|---|---|---|
+| create (SQLite) | refuses >255 — `products_crud.rs:305` | unchanged |
+| **update (SQLite)** | **only checked non-empty**; an over-long name entered by edit | now refuses >255 |
+| **create (PG / cloud)** | **no length check at all**; the same route accepted what the local branch refused | now refuses >255 |
+
+The column is plain `TEXT` on both schemas with **no length constraint** (`20260813_init.pg.sql:865` declares
+`('products', 'name', 'TEXT', NULL::text, true)`), so the guard is the whole rule on both sides — not a
+backstop behind a CHECK.
+
+**This was already known, and I found that before acting.** `docs/archived/2026-08-31-glm-5.3f-crates-audit.md:669`
+records **COR-12 (LOW)**: "Name-length asymmetry. `create_product` rejects names >255 chars; `update_product`
+only checks non-empty". It was still open — and still **tracked**, in the module's own audit stamp
+(`db/products.rs:18`), with `next: add 255-char check to update_product (COR-12)`. So this pass is closing a
+known item rather than discovering one, which is the honest description.
+
+**Three things I checked that the original finding did not name.**
+
+1. **The PG door.** COR-12 named only the core pair. The cloud branch of the same route had no check either,
+   which makes the rule absent on 2 of 3 doors rather than 1 of 2.
+2. **`update_product_attributes` was named in the original remedy** — *"and `update_product_attributes`"*. I
+   read it: `UpdateProductAttributes` (`db/products.rs:184`) has **no `name` field** (cost, brand,
+   rack_location, notes, unit, is_active, default_supplier_id), so there was nothing to guard. The remedy's
+   parenthetical was imprecise, and applying it blindly would have meant inventing a check for a field that
+   does not exist.
+3. **Every sibling module already does it on both doors** — `customers.rs:219/278`, `suppliers.rs:99/186`,
+   `staff.rs:533`, `promotions.rs` (fixed earlier as the same COR-12 class), and `pg.rs:833` for display
+   names. `products` was the lone outlier, so the fix restores an established convention rather than
+   inventing one.
+
+**The test asserts agreement, not just a refusal.**
+`update_product_refuses_the_name_length_the_create_path_already_did` drives BOTH doors with the same 256-char
+name and asserts both refuse, then asserts exactly 255 is **accepted** — so the guard cannot pass by being
+stricter than the rule it restores. Falsified by deleting the update-door guard: the test fails at `:421`, the
+update assertion, with the create half still green. Restored and re-run.
+
+**Stamp updated, because leaving it would have been a lie.** `db/products.rs` now records `COR-12 CLOSED
+26-09-26` and moves `next:` to **COR-14**, which I verified is still open before naming it
+(`products.rs:412`, `barcode_raw.and_then(|s| foundation::Barcode::new(&s).ok())` — the silent drop the audit
+described).
+
+**Verified:** 3321 `kasirmu-core` lib tests (55 `sync_client` filtered for the concurrent lane), 0 failed; 14
+`update_product` tests including the new one; `clippy -D warnings` clean on **both** `kasirmu-core` and
+`kasirmu-api`; all four files `rustfmt`-clean. Commit `39717ea2d` (verified by hash).
+
+**Tally:** 79 findings fixed (11 HIGH), 23 leads disproved, 29 clean censuses. Note the shape of this one:
+the productive move was not a new sweep but **taking a tracked-but-unfixed item and checking the two
+adjacencies its original author had not** — the PG twin and the second named function. Both checks changed
+the remedy.
+
+
 
 
 
