@@ -6778,3 +6778,72 @@ claimed as done.
 **Tally:** 86 findings fixed (14 HIGH — this is the 14th, and a live silent-failure rather than a doc defect;
 72 others), 24 leads disproved, 29 clean censuses. The `next:` backlog enumeration paid for itself here: this
 was filed as "replace string matching with numeric code compare" and read, on a skim, like a tidiness item.
+
+---
+
+## Pass 106 — SEC-5, and a lead disproved by the same method (MSL-85)
+
+Two results in one pass: one finding reclassified, and one lead killed. Both came from applying SEC-1's own
+method — verify the referent set before acting on the claim.
+
+### The lead that was disproved
+
+The `linux.rs` stamp carries `next: reentrancy strategy for Runtime; atomic set; **numeric error matching**` —
+the same phrase as SEC-1, in the same crate. After fixing SEC-1's string-matched status code on macOS I went
+looking for the Linux twin.
+
+**There is none.** `linux.rs` never string-matches a status: it asks the Secret Service for matching items and
+reads absence from an **empty result set** (a `SearchItems` round trip). There is no status code being
+compared, so there is nothing to mis-compare. The phrase in the stamp refers to the `zbus` error surface
+generally, not to an incoming-status decision. Lead disproved — and worth recording precisely because the
+*phrase* matched while the *mechanism* did not. A shared vocabulary is not a shared defect.
+
+### SEC-5, reclassified
+
+The stamp said: *"insecure_skip_verify is serde-visible with no guard, log, or debug gate — consumer gating
+must be verified"*, with `next: warn or gate insecure_skip_verify in release builds (SEC-5)`. The instruction
+presumes a live insecure path. I checked for one:
+
+- `TlsConfig` is a plain data struct — paths, a `bool`, a `Vec<String>`.
+- The crate has **no TLS implementation**: no `rustls`, no `native-tls`, no `ClientConfig`, no
+  connector of any kind (grep for each returns nothing in-crate).
+- A workspace-wide grep for `insecure_skip_verify` finds **zero consumers outside this crate**. The only other
+  mentions are two docs (`ARCHITECTURE.md:578`, `ROADMAP.md:185`) that describe it as configuration helpers,
+  which is what it is.
+
+So the flag is **inert**: setting it `true` disables nothing, and setting it `false` enables nothing. Gating it
+in release builds, as the filing asked, would have been cargo-culting a guard onto a value with no effect — and
+it would have *implied* the flag is live, which is the more dangerous reading of the two.
+
+An independent archived audit agrees: `docs/archived/2026-08-31-glm-5.3f-crates-audit.md:465` records
+*"`insecure_skip_verify` has **zero consumers outside this crate**"*. Two passes, different methods, same
+referent.
+
+**The real hazard is latent-by-wiring.** The danger is not today's behaviour, it is the day someone builds a
+connector from this struct and inherits a boolean documented only as *"(development only)"* — an unenforced
+promise, not a description. The fix therefore puts the obligation where that author will be reading it:
+
+- the field docs now state, first, that it is **currently inert**, and name the gating duty that begins the
+  moment a consumer exists;
+- `TlsConfig::insecure_verification_is_inert()` is the tripwire, and
+  `insecure_skip_verify_is_inert_configuration_not_a_live_bypass` pins the current fact.
+
+**Falsified:** flipping the tripwire constant to `false` fails the test on its own message (*"the flag is inert
+only while no connector consumes TlsConfig"*), then the constant was restored and the suite went green again.
+
+**A design decision worth recording:** my first draft of the tripwire walked the whole workspace from inside
+the unit test, looking for a read of the field, and failed if it found one. I deleted it. It was slow, it
+re-read the filesystem on every test run, it could not see another lane's uncommitted work (so it would report
+a false negative on exactly the change it existed to catch), and it duplicated what a plain grep already does.
+A tripwire that is *a doc comment plus an assertion about the type* costs nothing and is honest about what it
+actually guarantees. The scanner was over-engineering, and the ladder says reuse the grep.
+
+**Verified:** `kasirmu-security` **94 lib passed** (up from 93), 0 failed; total suite 94 + 7;
+`clippy -p kasirmu-security --all-targets -- -D warnings` clean; `rustfmt` clean on both edited files.
+Committed as `a5ffe9d94`, verified by hash to contain exactly the two paths. The only *code* change is the
+const tripwire; everything else is documentation and one test.
+
+**Tally:** 87 findings fixed (14 HIGH, 73 others), 25 leads disproved — this pass added the Linux twin to the
+disproved column, which is where it belongs — 29 clean censuses. SEC-5 is closed in its reframed form; the
+original instruction is retained verbatim inside the stamp so the next reader can see why it was changed rather
+than finding it silently gone.
