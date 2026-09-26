@@ -589,7 +589,6 @@ export default function StaffLoginScreen() {
             </div>
           )}
 
-          
         </div>
 
         {/* ── Bottom bar: step indicator (12%) ──────────────── */}
