@@ -5739,6 +5739,62 @@ after every step, including the two regression checks above. Commit `8e20f40fb` 
 **52 → 23 links, 20 → 15 locations**, and the self-inflicted regression I introduced and cleaned sits
 inside this pass rather than in a later one.
 
+## Pass 89 — MSL-67: unresolved links reach ZERO, and a diagnostic I had been missing
+
+Finished the link census. **`cargo doc` now reports 0 unresolved links and 0 redundant targets in
+`kasirmu-core`, down from 46.** 14 files, 25 insertions / 21 deletions, every changed line a doc comment
+(verified by filtering `git diff -U0` for non-doc additions across exactly the files named in the commit).
+
+**MSL-67 (LOW, fixed) — four families closed this pass, each decided by reading the definition:**
+
+| Family | Sites | Remedy |
+|---|---|---|
+| stale name (the item no longer exists) | `merge_smtp_password_with_stored` → `merge_smtp_password_json`; `Store::claim_document_number_in_tx` → `claim_statutory_number_for_sale` | correct the NAME; for the fiscal one I re-read the target and confirmed its doc's description of the one-statement concurrency contract is still true — only the name had rotted |
+| `pub` item, same file | `explain_availability`, `generate_pkce`, `pkce_challenge`, `start_desktop_link`, `new`/`new_with_restaurant_pos` (`SessionContext`), `build_entitlements`, `list_warehouse_products` (`Self::`) | qualify the path |
+| `pub mod` sibling | `super::staff`, `super::roles` | qualify as `crate::db::X` — a `super::` in a **module** doc resolves from the crate root, not from `db`, which is why the `pub mod` alone did not help |
+| private `mod` | `datetime`, `revenue`, `sales_summary`, `product_sales` (`db/reports`), `rates`, `scopes` (`db/tax`) | plain backticks — these children are `mod`, not `pub mod`, so no path can link them |
+
+**A correction to my own earlier fix.** Last pass I qualified `validate_table_geometry` as
+`[`...`](crate::db::tables::validate_table_geometry)`. It is a bare `fn` — private — so qualifying it could
+never work, and it was still failing this round. Reverted to plain backticks. That was my error, caught by
+re-measuring rather than by re-reading my own diff.
+
+**THE THING I HAD BEEN MISSING, and it changes how the debt should be reported.** Zeroing the `unresolved
+link` count is not zero doc warnings. `cargo doc` emits a **second, distinct diagnostic** — *"public
+documentation for X links to private item Y"* — which my census never counted because I grepped a different
+phrase. There are **12** of them, and they are **pre-existing**: I verified `earn_points_with_conn` is
+`pub(crate)` with the link present at HEAD. So the honest end state is:
+
+```text
+unresolved links     46 -> 0
+redundant targets     3 -> 0   (2 were self-inflicted and cleaned here)
+links to private     12       (pre-existing, never in my counts, own remedy)
+```
+
+Recording this because the previous five passes each reported a falling *unresolved* number as though it were
+the whole of the doc debt. It was not, and the second class has the same established remedy (a private item
+gets plain backticks), so it is the obvious next increment rather than a new census.
+
+**Two self-inflicted regressions, found by measuring, not reading.** Both times the qualification of an
+already-resolving link produced a `redundant explicit link target` warning — once at `entitlements.rs:302`
+and `export/email_report.rs:56` this round. Both reverted to bare. Same lesson as MSL-66: a bulk doc edit
+looks clean in the diff and only the consuming tool shows its mistakes, so `cargo doc` is re-run after every
+step and its count re-read rather than assumed.
+
+**A foreign hunk, refused again.** `roles.rs` came back carrying another lane's uncommitted rustfmt
+reformat of the 105-character `EXISTS` line alongside my one doc line. Reverted that hunk, so the commit is
+1 insertion / 1 deletion for that file and every line mine.
+
+**Verified:** 3313 `kasirmu-core` lib tests, 0 failed (55 `sync_client` filtered for the concurrent lane);
+`clippy -p kasirmu-core --lib -D warnings` clean; all 14 files `rustfmt`-clean; `cargo doc` re-measured after
+every step, with the final state read from the tool rather than inferred. Commit `8b197d07d` (verified by
+hash).
+
+**Tally:** 74 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Doc debt: **46 → 0 unresolved
+links**, and **12 pre-existing private-item links** newly counted and recorded — the honest denominator I had
+been quoting the wrong half of.
+
+
 
 
 
