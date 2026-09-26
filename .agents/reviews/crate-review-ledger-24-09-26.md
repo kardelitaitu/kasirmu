@@ -7004,3 +7004,73 @@ exactly the two paths.
 closed (SEC-1, SEC-5, COR-2, COR-14). The adjacent-arm harvest is now the productive part of these passes:
 three of the last four findings came from checking the neighbourhood of a named defect rather than the defect
 itself.
+
+---
+
+## Pass 109 — the `.ok()` census: 14 sites, all disproved, and the residue that is real (MSL-88)
+
+Following MSL-87's adjacent-arm method I enumerated **every** silent-parse drop in `kasirmu-core/src/db`
+(`\.ok\(\)` on a `row.get`/`and_then`/`parse`) and adjudicated all 14 that touch a **persisted** value. The
+headline is that all 14 are **unreachable through the Rust API** — and the reason is that the bug was already
+found and fixed twice, under different names, before this pass looked.
+
+### The census
+
+| Site | Verdict |
+|---|---|
+| `customers.rs` × 10 (`Email`/`Phone`) | **Disproved** — MSL-44 fixed the write path |
+| `products.rs:412`, `products_crud.rs:450`, `mod.rs:614` (`Barcode`) | **Disproved** — MSL-45 fixed the write path |
+| `profile.rs:369` (`decrypt_profile_field`) | **Disproved** — already correct by design |
+
+**`customers.rs`.** Ten sites across five mappers, all `Email::new(..).ok()` / `Phone::new(..).ok()`. But
+`create_customer` and `update_customer` route both fields through `normalise_contact_field` before binding
+(`:225-226`, `:285-286`), so what is stored is exactly what the read path accepts. The file's own doc comment
+records that this was MSL-44: the write used to bind the caller's raw string, so the column held
+`Some("not-an-email")` while every API surface reported `None`. **The `.ok()` sites are not the defect; they
+are the other half of a contract that now agrees.**
+
+**`Barcode`.** `normalise_barcode` (`products_crud.rs:35`) makes the column `NULL` or a non-blank trimmed
+string, and `Barcode::new` rejects only blank — so `.ok()` cannot fail on anything the API wrote. The variant
+path (`products.rs:282`, `:361`) binds a `Barcode` directly, which is non-blank by construction.
+
+**`profile.rs:369`.** `decrypt_sensitive` collapses absent / empty / undecryptable into `None` **for display**,
+and the write path re-derives the distinction from the raw bytes via the `StoredCipher` enum
+(`Absent`/`Readable`/`Unreadable`), documented at `:358-388`. A round trip therefore cannot NULL out ciphertext
+a later key restore could read. This is a deliberate, documented design, not a silent drop.
+
+This is the fifth time the ledger has recorded an **absence-shaped pattern as a hypothesis rather than a
+measurement**, and the first where the verdict was *"already fixed, twice, under names I had in the same
+file."* `customers.rs`'s header cites MSL-44 by number; I read that line and still grepped the sites. The grep
+was worth running — it is what produced the residue below — but the census result is negative.
+
+### The residue that IS real: pre-fix rows
+
+Both MSL-44 and MSL-45 changed the **write path only**. Neither migrated existing data, and the table rebuild
+`20260831_per_tenant_unique_rebuild.sql:167` copies `barcode` verbatim into a bare `TEXT` column with no CHECK.
+So a database written **before** MSL-45 can still hold a whitespace-only barcode — exactly the value the old
+code bound raw while every surface reported `None`.
+
+MSL-87's warning is therefore **not dead code**; it is the signal for that legacy data. This pass adds
+`a_legacy_whitespace_barcode_row_reads_as_absent`, which reproduces a pre-MSL-45 row by direct SQL and asserts
+the two properties that matter: the read reports **absence** (never invents a barcode from unusable bytes), and
+the read **does not mutate** the value it cannot represent, so a later repair can still find it.
+
+**Falsified:** making the products mapper substitute a placeholder for an unrepresentable barcode fails the
+test on its own message; restored, `mod.rs` is byte-identical to HEAD.
+
+### Verification and one honesty note
+
+The full `kasirmu-core` lib run reported **3 failures** on its first attempt and **3405 passed, 0 failed** on
+the immediate re-run. The failures were in files this pass did not touch, and the same run logged
+`a_failed_restore... has been running for over 60 seconds` — a load-dependent filesystem test under heavy
+concurrent agent activity. I am recording this as **transient, not proven fixed**: a green second run is
+evidence of flakiness, not proof, and I did not isolate a cause. My diff this pass is **test-only** (one file,
++46 lines, no production code), so it cannot be the source.
+
+**Verified:** the new test passes; `kasirmu-core` lib **3405 passed, 0 failed** (re-run); `clippy -p
+kasirmu-core --lib -- -D warnings` clean; `rustfmt` clean on the edited file. Committed as `877697a54`,
+verified by hash to contain exactly that one path.
+
+**Tally:** 89 findings fixed (14 HIGH, 75 others), **26 leads disproved**, 29 clean censuses. The census is a
+negative result and is recorded as one: 14 sites examined, 0 defects, 3 prior fixes identified as the reason
+(MSL-44, MSL-45, and the `StoredCipher` design), plus one genuine test gap closed for legacy data.
