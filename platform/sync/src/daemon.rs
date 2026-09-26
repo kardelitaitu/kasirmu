@@ -311,10 +311,34 @@ async fn refresh_persisted_api_key(db: &DbConnection, server_url: &str) -> bool 
         tokio::task::spawn_blocking(move || {
             let conn = db_clone.blocking_lock();
             let store = Store::new(&conn);
-            (
-                Settings::get_sync_terminal_id(store.conn()).unwrap_or(None),
-                Settings::get_sync_terminal_secret(store.conn()).unwrap_or(None),
-            )
+            // A decrypt failure is NOT "unpaired". `get_sync_terminal_secret`
+            // fails closed on a value with ciphertext shape that decrypts
+            // under no derivation; collapsing that into `None` silently
+            // demotes this call to the admin-key fallback below, which is a
+            // WEAKER auth path chosen by an integrity failure rather than by
+            // configuration. Logged at error so the operator can tell the two
+            // apart; the `None` still routes to the fallback deliberately.
+            let terminal_id = match Settings::get_sync_terminal_id(store.conn()) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "sync terminal id could not be decrypted; falling back to admin-key auth"
+                    );
+                    None
+                }
+            };
+            let terminal_secret = match Settings::get_sync_terminal_secret(store.conn()) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        "sync terminal secret could not be decrypted; falling back to admin-key auth"
+                    );
+                    None
+                }
+            };
+            (terminal_id, terminal_secret)
         })
         .await
         .unwrap_or((None, None))

@@ -274,9 +274,24 @@ impl PgSyncDaemon {
                     let user = Settings::get_pg_sync_user(&conn)
                         .unwrap_or_default()
                         .unwrap_or_default();
-                    let password = Settings::get_pg_sync_password(&conn)
-                        .unwrap_or_default()
-                        .unwrap_or_default();
+                    // A decrypt failure is NOT "no password set". The typed
+                    // getter fails closed on a value with ciphertext shape that
+                    // decrypts under no derivation; `.unwrap_or_default()`
+                    // collapsed that into an EMPTY password, so an integrity
+                    // failure was presented to PostgreSQL as a blank
+                    // credential -- the same silent degradation the fail-closed
+                    // getter exists to prevent, one layer up.
+                    let password = match Settings::get_pg_sync_password(&conn) {
+                        Ok(Some(p)) => p,
+                        Ok(None) => String::new(),
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "pg_sync.password could not be decrypted; connecting with an empty password will fail"
+                            );
+                            String::new()
+                        }
+                    };
                     // TLS enforcement: when pg_sync.require_tls is set, the
                     // transport refuses plaintext connections (fail-closed
                     // for cloud PostgreSQL). Defaults to plaintext to match

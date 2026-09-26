@@ -771,9 +771,25 @@ pub fn run() {
                 // encrypted. A plaintext credential stays readable as
                 // plaintext here, indefinitely and silently; do not read this
                 // call as an at-rest guarantee for this key.
-                let psk = platform_core::settings::Settings::get_lan_server_psk(&db)
-                    .unwrap_or(None)
-                    .filter(|s| !s.is_empty());
+                // A decrypt failure is NOT the same as "no PSK set": the first
+                // means the stored value is corrupt or written by another
+                // install, and `decrypt_or_fail_closed` refuses to hand it back
+                // as a credential. Swallowing that Err into `None` would degrade
+                // an integrity failure into "unconfigured", which is the silent
+                // path the fail-closed getter exists to prevent. Treated the same
+                // way as an absent PSK -- external bind refused -- but LOUDLY,
+                // because the operator must know the value is unreadable rather
+                // than simply unset.
+                let psk = match platform_core::settings::Settings::get_lan_server_psk(&db) {
+                    Ok(v) => v.filter(|s| !s.is_empty()),
+                    Err(e) => {
+                        tracing::error!(
+                            error = %e,
+                            "lan_server.psk could not be decrypted; treating it as unset and refusing any external bind"
+                        );
+                        None
+                    }
+                };
                 // Reject external bind without a PSK.
                 let bind = if bind == "0.0.0.0" && psk.is_none() {
                     tracing::warn!(
