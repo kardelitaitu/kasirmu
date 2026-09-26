@@ -6598,3 +6598,78 @@ red until someone owns it.
 **Tally:** 84 findings fixed (13 HIGH, 71 others), 24 leads disproved, 29 clean censuses. The branch census
 from pass 101 is now closed: every production `Conflict` return in `kasirmu-core` has a variant-pinning
 assertion except the two recorded as belonging to other lanes (`kds_orders.rs`, MSL-80's withdrawal).
+
+---
+
+## Pass 104 — two stamps stale in the DANGEROUS direction (MSL-83)
+
+Every prior stamp pass found stale items that were **safe**: a `next:` line naming work already done, or a claim
+that turned out conservative. This pass found the opposite, and the direction is what makes it a finding.
+
+### The pattern, named precisely
+
+`drivers/qris.rs` had already been corrected once for this exact defect — its stamp records it in as many words:
+*"A reader who skims only `next:` was being sent to redo three closed items"* (PAY-C, corrected 2026-09-25).
+That correction was applied to **one file**. I enumerated the remaining `next:` lines across the workspace and
+found the same defect standing **one file up**, in the crate root:
+
+```
+crates/kasirmu-payment/src/lib.rs:5
+next: give refund an idempotency key (PAY-2), partial refund (PAY-3), Stripe decline classification (PAY-4)
+```
+
+and again in a second file:
+
+```
+crates/kasirmu-payment/src/types.rs:4
+findings: ... idempotency_key contract ("processor generates fallback if None") ignored by all live drivers — PAY-2
+```
+
+**A correction applied to one instance of a defect is not a correction of the defect.** PAY-C fixed the file where
+it was noticed; the same sentence survived in two others because nothing enumerated the class. That is the
+general lesson, and it is the same shape as the census failures recorded at MSL-59/63/72 — the referent set has
+to be enumerated, not the one site that happened to be read.
+
+### Verification of each claim, not assertion
+
+I checked all three items individually against the code before touching the stamp:
+
+| Item | Claim in the stamp | Evidence found |
+|---|---|---|
+| PAY-2 refund idempotency | "open, unchanged" | **CLOSED** — `RefundRequest.idempotency_key` (`types.rs:52`) threaded through the trait (`processor.rs:102-107`), honoured by `qris.rs:689`, `stripe.rs:465` (via `idempotency_key_for` at `:242`), `square.rs:439` (via `:341`) |
+| PAY-3 partial refund | "open" | **CLOSED** — `refund` takes `amount: Option<Money>`, doc at `processor.rs:93`: *"If `amount` is `None` the full amount is refunded"* |
+| PAY-4 Stripe decline classification | "open" | **CLOSED** — code-based mapping fixed and documented at `stripe.rs:300-324` |
+
+Each closed item is also **pinned by a test** — `qris_tests.rs:105`, `stripe_tests.rs:21` and `:293`,
+`square_tests.rs:186` — so this is not a case of code without coverage.
+
+### The stale universal (`types.rs`) — the sharpest part
+
+`types.rs:4` said the contract was *"ignored by **all** live drivers"*. That is a universal claim, and it was
+false in a specific and checkable way: **three of the four drivers honour it**. The only driver that ignores it is
+Paddle, and it ignores it because it is a `PLANNED` stub returning `Unsupported` for every method
+(`paddle.rs:111-120`) — it performs no operation at all, refund included.
+
+So a universal was written from a non-universal observation (the state of the majority in July), and **nothing
+re-checks a universal when its referent set changes**. Three drivers were fixed underneath the sentence and it kept
+reading as current. This is worth separating from ordinary staleness: an absolute claim degrades *silently*, because
+each individual change looks like it is only touching one driver, and no diff ever touches the sentence that
+quantified over all of them.
+
+### Fix
+
+Comment-only, 5 insertions / 5 deletions across two files — no code changed. Both stamps now name what is actually
+open in the crate (`webhook.rs` verifiers are a fail-closed stub, PAY-11; `registry.rs` `build_from_config` is a
+PLANNED stub, PAY-12 — both deliberate, both fail closed, neither a correctness hole), give the per-item evidence
+with line anchors, and record the shape of the error so the next reader does not repeat it.
+
+**Verified:** `kasirmu-payment` **182 lib + 4 + 3 + 21 + 13 + 16 + 22 + 13 + 5 doctests passed, 0 failed**;
+`clippy -p kasirmu-payment --all-targets -- -D warnings` clean on the crate; `rustfmt` clean on both edited files.
+Committed as `f7bb70469`, verified by hash to contain exactly those two paths. Note for anyone re-running rustfmt
+here: `--check` on `lib.rs` **recurses into sibling modules**, so it reports diffs in `stripe_tests.rs`,
+`registry_tests.rs`, `resilience.rs` and `resilience_tests.rs` that are **another lane's** unformatted work and are
+not in `lib.rs` at all — the `Diff in ...` lines must be read for their *path*, not just their exit code.
+
+**Tally:** 85 findings fixed (13 HIGH, 72 others), 24 leads disproved, 29 clean censuses. The `next:`-line backlog
+is now enumerated (231 lines, ~60 non-`none`); this pass closed 2 of them and the enumeration itself is recorded so
+the next pass can work the remainder without re-scanning.
