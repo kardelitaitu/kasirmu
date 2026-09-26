@@ -5686,6 +5686,60 @@ Commit `c6965cbb1` (verified by hash).
 **Tally:** 72 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Crate-wide doc debt:
 **52 → 41 links, 20 → 15 locations**, both counted directly.
 
+## Pass 88 — MSL-66: the out-of-scope family, and a bulk edit that needed cleaning up
+
+Continued the link census with the plan MSL-65 set: the remaining links were *mostly* the two known
+families with remedies established, so this pass could be mechanical. **Verified that premise before acting
+on it** — and it held for most names, with exceptions that mattered.
+
+**The premise, checked by reading definitions rather than inferring.** I resolved the visibility of every
+unresolved name: `FiscalScheme`, `DocumentNumberSequence`, `Payable`, `PayableStatus`, `MemoStatus`,
+`DeliveryStatus`, `Entitlements`, `SecurityEvent`, `QuotaUsage`, `LinkedAccount`, `RegionalConfig`,
+`FeatureVerdict`, `VerdictDetail`, `AvailabilityFeature`, `AvailabilityFacts`, `BuildFingerprintVerdict`,
+`list_warehouse_products`, `new_with_restaurant_pos`, `explain_availability`, `build_entitlements` — **every
+one is `pub`**. So they are the "public but out of scope" family, and the fix is to qualify the path, the
+convention this crate already uses (`export/mod.rs:13`, `migrations.rs:11`, and my own
+`stock_variance.rs:10`).
+
+**Two exceptions the census caught, which a blanket sweep would have got wrong.**
+- `validate_table_geometry` (`db/tables.rs:34`) is a bare `fn` — private, so qualifying it does not help;
+  that one takes the plain-backtick treatment.
+- `list_warehouse_products` (`products_crud.rs:130`) is `pub` **and in the same file**, failing only because
+  the doc names it unqualified; it needed `Self::`, not a crate path.
+
+**MSL-66 (LOW, fixed): 23 links resolved, 41 → 23.** Ten files, 23 insertions / 23 deletions, and every
+changed line a doc comment — verified with a filter over `git diff -U0` for added lines that are not
+`///`/`//!`, which returns nothing.
+
+**A bulk edit I had to clean up, recorded because it is the kind of damage a sweep does.** Applying the
+qualification file-by-file with `replace_all`, one iteration threw on `regional.rs` (`RegionalConfig::method`
+forms did not match my bare-name pattern) and aborted mid-loop — leaving files already edited. Re-running the
+loop over the remaining names then hit those same files **a second time**, and `[`X`](p)` became
+`[`X`](p)(p)`. Six sites across `memo.rs`, `payable.rs` and `db/fiscal.rs` were left double-applied.
+
+I found them by *measuring*, not by re-reading: `cargo doc` reported **3 `redundant explicit link target`
+warnings that did not exist before my edit**, and grepping for the literal `)(crate::` found all six
+double-applications. Both classes are now zero, and the count is back to 15 locations / 23 links with
+**zero redundant**. The lesson is worth keeping: an idempotency bug in a bulk edit is invisible in the diff
+(the diff looks like a clean substitution) and only shows up in the tool that consumes it.
+
+**Still open: 23 links / 15 locations.** Mostly the families already characterised — the stale-name pair
+(`merge_smtp_password_with_stored` should be `merge_smtp_password_json`; `Store::claim_document_number_in_tx`
+no longer exists, the real fn is `claim_statutory_number_for_sale` at `db/fiscal.rs:407`, and I verified its
+doc's *description* of the one-statement concurrency contract is still accurate — only the name is stale),
+the private-module links (`super::roles`, `super::staff`, `rates`, `revenue`, `scopes`, `datetime`,
+`product_sales`), and the `pkce`/`desktop_link`/`availability` re-export names. Each now has its remedy
+decided; the next pass is substitution.
+
+**Verified:** 3311 `kasirmu-core` lib tests (0 failed, 55 `sync_client` filtered for the concurrent lane);
+`clippy -p kasirmu-core --lib -D warnings` clean; all ten files `rustfmt`-clean; `cargo doc` re-measured
+after every step, including the two regression checks above. Commit `8e20f40fb` (verified by hash).
+
+**Tally:** 73 findings fixed (11 HIGH), 23 leads disproved. Two preventive pins. Crate-wide doc debt:
+**52 → 23 links, 20 → 15 locations**, and the self-inflicted regression I introduced and cleaned sits
+inside this pass rather than in a later one.
+
+
 
 
 
