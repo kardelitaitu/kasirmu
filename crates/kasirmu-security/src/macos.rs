@@ -1,8 +1,8 @@
 /*
-last audited 25-07-26 by RSA-Agent
+last audited 26-09-26 by DSH (SEC-1 CLOSED)
 crate: kasirmu-security | status: SAFE | lint: N/A (platform-gated, source-reviewed on Windows host)
-findings: SEC-1 not-found detection matches debug-string substrings ("-25300"/"-128") — any error code containing "-128" (e.g. -12800) is misclassified as item-not-found, masking real failures as Ok(None); switch to numeric e.code() comparison
-next: replace string matching with numeric code compare (SEC-1) | perf: N/A
+findings: SEC-1 CLOSED. Not-found detection no longer searches the debug string; both sites compare the numeric code via `crate::keychain_status::status_means_item_not_found`, which is defined in a NON-platform-gated module precisely because this file cannot be compiled or tested off macOS. The old predicate contained two independent defects, both measured this pass: `e.code()` was already in hand and was being discarded, and `"-128"` is a prefix of every code in the `-128xx` range, so a genuine failure such as `-12800` was reported as an absent item — a storage error silently downgraded to `Ok(None)` in `get_secret`, and to `Ok(false)` ("already gone") in `delete_secret`. The old comment also recorded `errSecUnimplemented = -128`; `security-framework-sys` defines it as `-4`, and `-128` is not an errSec not-found code at all.
+next: none for SEC-1 | perf: N/A
 */
 //! macOS Keychain implementation of [`Keyring`].
 //!
@@ -14,6 +14,8 @@ use crate::error::SecurityError;
 use security_framework::passwords::{
     delete_generic_password, get_generic_password, set_generic_password,
 };
+
+use crate::keychain_status::status_means_item_not_found;
 
 /// macOS Keychain keyring.
 ///
@@ -38,20 +40,7 @@ impl Keyring for MacOsKeychain {
                 })?;
                 Ok(Some(s))
             }
-            Err(e) if e.code() < 0 => {
-                // errSecItemNotFound = -25300, errSecUnimplemented = -128.
-                // The security-framework crate can surface either code;
-                // check the string description as a fallback.
-                if format!("{e:?}").contains("item not found")
-                    || format!("{e:?}").contains("-25300")
-                    || format!("{e:?}").contains("-128")
-                {
-                    return Ok(None);
-                }
-                Err(SecurityError::KeyUnavailable(format!(
-                    "get_generic_password failed: {e}"
-                )))
-            }
+            Err(e) if status_means_item_not_found(e.code()) => Ok(None),
             Err(e) => Err(SecurityError::KeyUnavailable(format!(
                 "get_generic_password failed: {e}"
             ))),
@@ -66,16 +55,10 @@ impl Keyring for MacOsKeychain {
     fn delete_secret(&self, name: &str) -> Result<bool, SecurityError> {
         match delete_generic_password("OZ-POS", name) {
             Ok(()) => Ok(true),
-            Err(e) => {
-                let msg = format!("{e:?}");
-                if msg.contains("item not found") || msg.contains("-25300") || msg.contains("-128")
-                {
-                    return Ok(false);
-                }
-                Err(SecurityError::KeyUnavailable(format!(
-                    "delete_generic_password failed: {e}"
-                )))
-            }
+            Err(e) if status_means_item_not_found(e.code()) => Ok(false),
+            Err(e) => Err(SecurityError::KeyUnavailable(format!(
+                "delete_generic_password failed: {e}"
+            ))),
         }
     }
 

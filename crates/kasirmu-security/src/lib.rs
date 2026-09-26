@@ -38,6 +38,10 @@ next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/
 #![deny(unsafe_code)]
 
 pub mod error;
+// Deliberately NOT platform-gated: the macOS backend that consumes this is
+// compiled only on macOS, so a predicate living beside it would be untested on
+// every other host — which is how SEC-1 shipped. See the module docs.
+pub mod keychain_status;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "macos")]
