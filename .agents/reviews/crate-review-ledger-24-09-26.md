@@ -6243,6 +6243,60 @@ shape have produced two fixes and two tracking-note corrections — it is yieldi
 sweeps did, because each item already names a location and a suspected defect, so the work is verification
 rather than search.
 
+## Pass 99 — MSL-78: COR-29 closed, and the wrap measured rather than argued
+
+Third pass of the stamp harvest, this time ranking the 19 remaining `next:` items by whether they name a
+**concrete code location and a checkable claim** rather than a design preference. COR-8 (a `void_sale` CAS)
+and COR-29 (an unchecked `received + damaged`) were the two money-path candidates; I took COR-29 first
+because its remedy was a single expression.
+
+**MSL-78 (HIGH, fixed): an over-receipt could wrap past its own cap.**
+
+`receive_purchase_order_with_lines` guards with `if received + damaged > line.qty`. Every input is
+**unbounded**: `purchase_order_lines.qty` is `INTEGER NOT NULL DEFAULT 0` with no CHECK or ceiling
+(`20260813_init.sql:504`), creation only refuses a *negative* qty, and `received_qty`/`damaged_qty` arrive
+as raw `i64` from the bridge DTO. Measured:
+
+```text
+qty      = i64::MAX                (9223372036854775807)
+received = i64::MAX - 1
+damaged  = 10
+true sum = 9223372036854775816     -- wraps to -9223372036854775800
+guard    = (wrapped > qty) = FALSE -- so the guard PASSES
+```
+
+A **negative** sum, so the comparison reads false: the over-receipt is persisted and stock-adjusted. Rated
+HIGH because it is wrong today on a live path *and* the failure is silent in release (a debug build panics on
+the same input, which is how it would surface in CI but not in the field).
+
+**What made this a finding rather than a nit: the file already had the rule, and this was the one place it
+was not applied.** `create_purchase_order` uses `checked_mul` (`:202`) and `checked_add` (`:208`) with an
+explicit MONEY-05 note — *"CreatePoLineInput arrives over IPC (untrusted) and dev/test builds disable
+overflow checks, so a bare `*` silently wraps"*. So the convention was stated, cited, and enforced two
+functions above the one bare `+` on the same class of input.
+
+**Falsified, and the failure output proved the mechanism.** Restoring the bare `+` fails the new test with
+`got: NotFound { entity: "product", id: "prod-po" }` — i.e. the wrapped guard **passes**, the receipt proceeds,
+and it only stops later for an unrelated reason (the stock adjust finding no product). That is stronger
+evidence than the assert alone: it shows the bad value reaching the next stage.
+
+**The stamp's own finding text already described it precisely** — *"i64 overflow wraps negative in release
+and bypasses the ordered-qty cap (stock itself still guarded by checked_add inside adjust)"*, including the
+correct observation that the stock write is separately guarded. So the audit had the mechanism right; what it
+lacked was the fix. My first stamp edit restated that analysis, duplicating it; I collapsed the duplication so
+COR-29 appears once, as closed.
+
+**Verified:** 3336 `kasirmu-core` lib tests (55 `sync_client` filtered for the concurrent lane), 0 failed; 52
+`purchase_order`; `clippy -D warnings` clean; both files `rustfmt`-clean. Commit `00e67b929` (verified by
+hash; HEAD had moved to another lane's commit between the commit and the read, which is exactly why the hash
+is checked rather than HEAD).
+
+**Tally:** 81 findings fixed (12 HIGH), 23 leads disproved, 29 clean censuses. The stamp harvest is now
+3-for-3 on producing fixes, and this is the highest-severity of the three — worth noting that COR-29 had sat
+tracked-but-unfixed for two months with its mechanism correctly described, which suggests the remaining
+`next:` items deserve the same treatment rather than being read as closed.
+
+
 
 
 
