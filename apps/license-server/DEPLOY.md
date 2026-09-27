@@ -424,6 +424,13 @@ Read from `apps/license-server/login_lockout.go`:
 > a code decision: gate it on a non-release build, or surface it in `/api/health` next to
 > `smtp`/`paddle`, which already report gate status.
 
+Read from `apps/license-server/helpers.go` (client-IP resolution for per-client rate-limit budgets):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `LICENSE_CLIENTIP_MODE` | `xff` | How `normalizeClientIP` resolves the real client IP, case-insensitive (`helpers.go:188`). `off` returns `remoteIP` unchanged (legacy pre-fix behaviour); `xff` (default) takes the hop-correct entry from the LAST `X-Forwarded-For` value; `cf` prefers the single-valued `CF-Connecting-IP` header when it parses as an IP, else falls back to `xff`. Unset or empty → `xff`; any unrecognized value also maps to `xff` (fail-safe, never `off`) so a typo cannot silently collapse every client onto the loopback budget. |
+| `LICENSE_TRUSTED_HOPS` | `2` | How many `X-Forwarded-For` hops to walk back from the right end to reach the real client (`helpers.go:206`). Unset or empty → `2`; a non-integer value → `2`; any value `< 1` is clamped to `1`, so a zero or negative value — which `normalizeClientIP` would otherwise treat as "return `remoteIP`" — still yields a usable hop count rather than silently disabling the fix. |
+
 Read from the admin surface:
 
 - **`OZ_ADMIN_EMAIL`** — the email of the admin tenant, falling back to
@@ -466,9 +473,7 @@ Read from the admin surface:
 > It exists now. `.agents/skills/docs-auditor/scripts/check-env-docs.py` reports every
 > variable the code reads that appears in none of `DEPLOY.md`,
 > `go-live-checklist.md`, `.env.example` or `verification-*.md`, and exits 1 when it finds
-> one. Baseline 09-09-26: **27 names scanned, 0 undocumented** — which was 5 undocumented
-> before section 7.7 was written, so the count is the proof the repair landed rather than a
-> claim about it.
+> one. Baseline 09-09-26: **27 names scanned, 0 undocumented** — which was 5 undocumented before section 7.7 was written. On 2026-09-28 this audit found `LICENSE_CLIENTIP_MODE` and `LICENSE_TRUSTED_HOPS` (added to `helpers.go` after the baseline) in no document; both are documented above, restoring 0 undocumented.
 >
 > Scope is **both apps on purpose**. The healthcheck variables live in `apps/unified/`, not
 > `apps/license-server/`, so scanning only the service directory reported four *false*
