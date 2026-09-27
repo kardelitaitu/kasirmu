@@ -268,7 +268,7 @@ pub async fn list_credit_sales_scoped(
 ///
 /// Read order:
 /// 1. DB (hardware_profiles table) - canonical store (TODO 4e)
-/// 2. JSON file (terminal_profiles/<id>.json) - fallback
+/// 2. JSON file (`terminal_profiles/<id>.json`) - fallback
 /// 3. Old SQLite settings - legacy fallback
 ///
 /// Returns defaults only when none of the above have saved values.

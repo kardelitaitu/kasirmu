@@ -600,7 +600,7 @@ pub async fn list_scanners_scoped(
 /// Takes over the shell's scanner lifecycle: any running scanner is cancelled
 /// first, the driver is resolved from the registry, and a poll task is spawned
 /// that broadcasts `barcode:scanned` / `barcode:error` through the injected
-/// [`EventSink`]. The cancel handle is stored in
+/// [`EventSink`](crate::ctx::EventSink). The cancel handle is stored in
 /// [`BridgeCtx::scanner_cancel`] for [`stop_scanner_scoped`].
 ///
 /// A connect failure is retried with backoff rather than ending the task,

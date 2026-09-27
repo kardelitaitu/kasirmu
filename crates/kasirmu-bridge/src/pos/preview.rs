@@ -60,7 +60,9 @@ pub struct PreviewPromotedTotalResult {
 /// PROMO-3 checkout integration: the client needs the promoted total
 /// BEFORE constructing payment splits (the checkout call validates splits
 /// against the reduced total). This runs the same cart → sale → tax →
-/// engine sequence as [`complete_sale_scoped`] — including plugin tax
+/// engine sequence as
+/// [`complete_sale_scoped`](crate::pos::checkout::complete_sale_scoped) —
+/// including plugin tax
 /// overrides — but consumes no cart and writes no rows; the authoritative
 /// computation still happens inside the checkout call, which re-validates
 /// the splits against the freshly computed total.

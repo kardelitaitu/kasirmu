@@ -449,7 +449,7 @@ pub async fn list_permission_keys_scoped(
 /// The id is generated here and never accepted from the wire. A row whose id
 /// the preset seeder owns is rewritten by the next seed_default_roles_scoped,
 /// so letting a caller choose ids would put them one typo away from authoring
-/// something they cannot keep; a generated 'role-<uuidv7>' is outside
+/// something they cannot keep; a generated `role-<uuidv7>` is outside
 /// ROLE_PRESETS by construction.
 ///
 /// `grants_json` is the caller-encoded JSON array of permission keys (see the

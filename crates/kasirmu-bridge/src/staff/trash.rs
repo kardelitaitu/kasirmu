@@ -47,8 +47,9 @@ use super::{
 ///
 /// [`BridgeError::InvalidSession`] for an unknown or expired token;
 /// [`BridgeError::PermissionDenied`] without `staff:delete`;
-/// [`BridgeError::NotFound`] for an unknown id; [`BridgeError::Core`] on store
-/// errors, including the active-account and already-trashed refusals.
+/// [`BridgeError::Core`] on an unknown id as well as on store errors,
+/// including the active-account and already-trashed refusals — there is no
+/// `BridgeError::NotFound` variant, so the core error surfaces as `Core`.
 pub async fn delete_staff_scoped(
     ctx: &BridgeCtx<'_>,
     id: &str,
@@ -91,8 +92,9 @@ pub async fn delete_staff_scoped(
 ///
 /// [`BridgeError::InvalidSession`] for an unknown or expired token;
 /// [`BridgeError::PermissionDenied`] without `staff:delete`;
-/// [`BridgeError::NotFound`] when no such member sits in the trash (a purged
-/// tombstone included); [`BridgeError::Core`] on store errors.
+/// [`BridgeError::Core`] when no such member sits in the trash (a purged
+/// tombstone included) and on other store errors — the core error surfaces as
+/// `Core`, since there is no `BridgeError::NotFound` variant.
 pub async fn restore_staff_scoped(
     ctx: &BridgeCtx<'_>,
     id: &str,
@@ -167,8 +169,8 @@ pub async fn list_staff_trash_scoped(
 ///
 /// [`BridgeError::InvalidSession`] for an unknown or expired token;
 /// [`BridgeError::PermissionDenied`] without `staff:manage_roles`;
-/// [`BridgeError::NotFound`] when no such role sits in the trash;
-/// [`BridgeError::Core`] on store errors.
+/// [`BridgeError::Core`] when no such role sits in the trash, and on other
+/// store errors — there is no `BridgeError::NotFound` variant.
 pub async fn restore_role_scoped(
     ctx: &BridgeCtx<'_>,
     id: &str,

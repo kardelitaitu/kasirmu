@@ -6,7 +6,8 @@
 //! than private.
 //!
 //! Invariant: a pre-pull backup is UNFILTERED CLEARTEXT, so exactly ONE is kept
-//! per store database ([`PRE_PULL_BACKUPS_KEPT`]) and each is disposed of after
+//! per store database (see `PRE_PULL_BACKUPS_KEPT`, a private const below) and
+//! each is disposed of after
 //! a successful pull. Recognition matches on the exact `%Y%m%d%H%M%S` width as
 //! well as the affixes, so a store id that happens to contain `sync-pull-`
 //! cannot widen a store family into another store.

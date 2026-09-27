@@ -192,7 +192,8 @@ impl<'a> BridgeCtx<'a> {
     /// scope (store, instance, type, user, role, terminal). Returns
     /// [`BridgeError::InvalidSession`] if the token is unknown, if the session
     /// has expired (TTL check), or if the account behind it is no longer on the
-    /// live roster (see [`ACCOUNT_REVALIDATION_WINDOW`]).
+    /// live roster (see `ACCOUNT_REVALIDATION_WINDOW`, a private const in this
+    /// module).
     ///
     /// Expired and revoked sessions are atomically removed from the store during
     /// resolution, so subsequent lookups also get `InvalidSession`.

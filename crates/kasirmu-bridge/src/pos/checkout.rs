@@ -189,7 +189,8 @@ pub struct CartLineData {
 }
 
 /// Resolve the unit price for a reconstructed shortfall line
-/// (FRONTEND-03 follow-up). Mirrors [`line_unit_price`]: the line's own
+/// (FRONTEND-03 follow-up). Mirrors
+/// [`line_unit_price`](crate::pos::cart::line_unit_price): the line's own
 /// currency crosses the IPC boundary so a mismatch is rejected instead of
 /// silently re-stamped to the sale currency.
 pub fn shortfall_line_unit_price(

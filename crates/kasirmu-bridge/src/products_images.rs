@@ -98,7 +98,8 @@ pub struct IngestedImage {
 /// # Errors
 ///
 /// Returns [`BridgeError::Invalid`] for an empty path, an unreadable file, an
-/// input over [`MAX_INPUT_BYTES`], an unsupported or corrupt format, or a
+/// input over `MAX_INPUT_BYTES` (5 MiB, a private const in this module), an
+/// unsupported or corrupt format, or a
 /// transcode that cannot reach the size cap; and [`BridgeError::Internal`] for
 /// filesystem failures.
 pub async fn ingest_to_store(
