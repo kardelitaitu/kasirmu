@@ -26,11 +26,6 @@ next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reu
 //! `stock_summary` + `inventory` ledger writes on product/stock changes, and
 //! the sale header + line insert inside one transaction.
 
-use axum::{
-    Json,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use deadpool_postgres::Pool;
 
 use kasirmu_core::{Category, Currency, Money, Sale, SaleLine, SaleStatus, TenantPlan};
@@ -128,63 +123,9 @@ pub fn scoped_setting_key(base: &str, tenant: &str) -> String {
     format!("{base}:{tenant}")
 }
 
-/// Error from the Postgres REST data layer, mapped to HTTP statuses the same
-/// way the SQLite `Store` errors were.
-#[derive(Debug)]
-pub enum PgError {
-    /// Unique-constraint violation → 409.
-    Conflict,
-    /// Missing row → 404.
-    NotFound,
-    /// Input validation failed → 400.
-    Validation(String),
-    /// Backend / connection failure → 500.
-    Db(String),
-}
-
-impl std::fmt::Display for PgError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PgError::Conflict => write!(f, "resource already exists"),
-            PgError::NotFound => write!(f, "not found"),
-            PgError::Validation(m) => write!(f, "{m}"),
-            PgError::Db(e) => write!(f, "{e}"),
-        }
-    }
-}
-
-impl std::error::Error for PgError {}
-
-impl PgError {
-    /// Convert into an axum [`Response`] with the matching status code.
-    pub fn into_response(self) -> Response {
-        match self {
-            PgError::Conflict => (
-                StatusCode::CONFLICT,
-                Json(serde_json::json!({"error": "resource already exists"})),
-            )
-                .into_response(),
-            PgError::NotFound => (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "not found"})),
-            )
-                .into_response(),
-            PgError::Validation(message) => (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": message})),
-            )
-                .into_response(),
-            PgError::Db(e) => {
-                tracing::error!("postgres REST data layer error: {e}");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": "internal error"})),
-                )
-                    .into_response()
-            }
-        }
-    }
-}
+#[path = "pg/error.rs"]
+mod error;
+pub use error::PgError;
 
 // RLS contract: every tenant-scoped REST function below opens a transaction
 // and sets `oz.tenant_id` as a LOCAL setting (`set_config(..., is_local :=
