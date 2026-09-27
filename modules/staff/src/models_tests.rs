@@ -158,6 +158,36 @@ fn user_serde_roundtrip() {
     assert!(back.is_active);
 }
 
+/// `User::pin_hash` carries NO `#[serde(default)]`, so a JSON user row that
+/// omits the field does NOT deserialize. This is the coupling that stops the
+/// `.kasirpkg` export arms from simply dropping `pin_hash`: both import lanes
+/// (and `gate_import_user_batch`) go through
+/// `serde_json::from_value::<User>` inside an `if let Ok(..)`, so a missing
+/// field is a SILENT per-row skip, not an error — every user would vanish from
+/// the import while the command still reported success.
+///
+/// Pinned deliberately: if someone adds `#[serde(default)]` to make the strip
+/// safe, this test fails and points them at the two arms that can then be
+/// tightened. It is a contract test, not a preference.
+#[test]
+fn user_deserialization_requires_pin_hash() {
+    let without_pin = r#"{
+        "id": "u-1",
+        "username": "alice",
+        "display_name": "Alice",
+        "role_id": "role-staff",
+        "is_active": true,
+        "created_at": "",
+        "updated_at": ""
+    }"#;
+    assert!(
+        serde_json::from_str::<User>(without_pin).is_err(),
+        "a user row omitting pin_hash must NOT deserialize; if this now succeeds, \
+         `#[serde(default)]` was added to User::pin_hash and the .kasirpkg export \
+         arms in kasirmu-cli and kasirmu-bridge can safely omit the hash"
+    );
+}
+
 // ── UserId ──────────────────────────────────────────────────────────
 
 #[test]

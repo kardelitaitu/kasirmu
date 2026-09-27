@@ -110,7 +110,16 @@ pub struct KasirpkgPayload {
     /// Customer records.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub customers: Option<Vec<serde_json::Value>>,
-    /// User records (no PIN hashes).
+    /// User records, exactly as the caller serialized them.
+    ///
+    /// This field is an opaque pass-through — `kasirmu-core` neither projects nor
+    /// strips it. Both callers serialize `Store::list_users()` wholesale, whose
+    /// SELECT includes `pin_hash` (`db/staff.rs:219`), so a package written by
+    /// either lane DOES carry the staff PIN hashes. A previous comment here read
+    /// "User records (no PIN hashes)"; that was false. Only the columns added by
+    /// migration 130 (`national_id`, `national_id_hash`, `monthly_take_home_minor`,
+    /// `tax_id`) are absent, because `list_users` never selects them — the pin is
+    /// NOT in that group. Both import arms ignore the field and write `''`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub users: Option<Vec<serde_json::Value>>,
     /// Settings rows.

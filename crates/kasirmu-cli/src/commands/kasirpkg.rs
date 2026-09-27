@@ -444,7 +444,24 @@ pub(crate) fn run_import_kasirpkg(
                         rusqlite::params![user.username, user.display_name, user.role_id, now, user.id],
                     )?;
                 } else {
-                    // PIN hash not included in export; imported users are inactive
+                    // The export DOES carry `pin_hash` — the users arm above
+                    // serializes `Store::list_users()` wholesale, whose SELECT
+                    // includes the column, and the payload is a pass-through.
+                    // (A comment here previously claimed the hash was absent
+                    // from the export; it is not.)
+                    //
+                    // This path deliberately does NOT use the exported value: a
+                    // fresh install must not inherit another install's
+                    // credential verifier, so the column is written empty and
+                    // the account lands INACTIVE — a PIN reset is required
+                    // before the member can log in.
+                    //
+                    // Removing `pin_hash` from the export therefore needs
+                    // `#[serde(default)]` on `User::pin_hash` FIRST: the field
+                    // has no default, so `serde_json::from_value::<User>` below
+                    // fails on a row that omits it and every user is silently
+                    // skipped. Pinned by
+                    // `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`.
                     tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, '', ?3, ?4, 0, ?5, ?6)",

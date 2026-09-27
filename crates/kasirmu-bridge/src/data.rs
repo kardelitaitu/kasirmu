@@ -947,7 +947,16 @@ pub async fn import_data(
                         rusqlite::params![user.username, user.display_name, user.role_id, user.is_active, chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true), user.id],
                     )?;
                 } else {
-                    // Users from export have no PIN hash; mark as inactive so they must be re-invited
+                    // The package DOES carry `pin_hash` (the egress arm above
+                    // serializes `Store::list_users()` wholesale), but this path
+                    // deliberately does not use it — the column is written
+                    // empty and the account lands INACTIVE so the member must
+                    // be re-invited. (The previous comment claimed the export
+                    // had no PIN hash; it does.)
+                    //
+                    // Stripping it from the export requires `#[serde(default)]`
+                    // on `User::pin_hash` first — see the CLI twin of this arm
+                    // (`kasirmu-cli/src/commands/kasirpkg.rs`).
                     tx.execute(
                         "INSERT INTO users (id, username, pin_hash, display_name, role_id, is_active, created_at, updated_at)
                          VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",

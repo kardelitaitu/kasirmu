@@ -552,3 +552,59 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
 
     let _ = std::fs::remove_file(&path);
 }
+
+/// CHARACTERIZATION / DEFECT PIN — the users arm DOES carry `pin_hash`.
+///
+/// This is not an endorsement. Two source comments used to claim the opposite
+/// ("User records (no PIN hashes)", `kasirmu-core/src/kasirpkg.rs`, and "PIN hash
+/// not included in export", `kasirmu-cli/src/commands/kasirpkg.rs`) and both were
+/// false: the arm serializes `Store::list_users()` wholesale, whose SELECT
+/// includes the column.
+///
+/// The sibling test above does NOT catch this — its `USER_PII_KEYS` list covers
+/// only the migration-130 profile columns, never `pin_hash`, which is exactly how
+/// the false comments survived a test named "users_arm_never_carries...". This
+/// test exists so the leak is visible in the suite instead of resting on a
+/// comment, and so that deliberately stripping the hash (which requires
+/// `#[serde(default)]` on `User::pin_hash` first — see
+/// `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`)
+/// turns this red and forces the change to be a decision rather than an accident.
+#[test]
+fn kasirpkg_users_arm_currently_carries_pin_hash_characterization() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO roles (id, name, permissions) VALUES ('role-staff', 'staff', '[\"sales:view\"]')",
+        [],
+    )
+    .unwrap();
+    let store = Store::new(&conn);
+    // A real PHC Argon2id string, the same format `hash_pin` produces and the
+    // same one staff login verifies against — not a bare hash.
+    let phc = kasirmu_core::auth::hash_pin("1234").expect("hash_pin");
+    assert!(
+        phc.starts_with("$argon2id$"),
+        "precondition: the stored pin_hash is a PHC Argon2id string, got {phc}"
+    );
+    store
+        .create_user("alice", &phc, "Alice", "role-staff")
+        .unwrap();
+
+    let path = temp_path("users-pin");
+    run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
+
+    let bytes = std::fs::read(&path).expect("export file must exist");
+    let (_header, payload) = import_kasirpkg(&bytes, PWD).expect("package must decrypt");
+    let users = payload.users.expect("users arm present when --types users");
+    let row = users[0].as_object().expect("a user row is a JSON object");
+
+    assert_eq!(
+        row.get("pin_hash").and_then(|v| v.as_str()),
+        Some(phc.as_str()),
+        "the exported user JSON carries the live Argon2id PIN hash verbatim; \
+         if this now fails, the hash was stripped — re-check that \
+         #[serde(default)] was added to User::pin_hash first, or the import \
+         arms will silently skip every user"
+    );
+
+    let _ = std::fs::remove_file(&path);
+}
