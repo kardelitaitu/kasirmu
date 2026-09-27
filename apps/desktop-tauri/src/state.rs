@@ -655,13 +655,32 @@ impl AppState {
     /// `bound_store_id`. Used by [`resolve_scope`] when a session
     /// carries a `restaurant_pos_id`.
     ///
-    /// Uses `blocking_lock()` on the tokio Mutex — safe here because
-    /// the lock is held for a single indexed SELECT (microseconds).
+    /// # Why this uses `try_lock`, not `blocking_lock`
     ///
-    /// Returns `AppError::Invalid` if the terminal is not found or
-    /// has no binding.
+    /// This is a sync `fn` reached from async command bodies via
+    /// [`resolve_scope`], so the calling thread is driving async tasks. In
+    /// tokio 1.49 `blocking_lock` is `future::block_on(self.lock())`, whose
+    /// first act is `try_enter_blocking_region().expect(..)` — there is no
+    /// uncontended fast path, so this was a guaranteed panic on first use,
+    /// not a parked worker. The critical-section duration is irrelevant;
+    /// the panic fires on entry.
+    ///
+    /// `try_lock` cannot panic. A busy global DB yields `AppError::Invalid`,
+    /// which [`resolve_scope`] already handles by logging and falling back
+    /// to `session.store_id`.
+    ///
+    /// Returns `AppError::Invalid` if the terminal is not found, has no
+    /// binding, or the global DB is momentarily busy.
     fn resolve_restaurant_pos_store(&self, restaurant_pos_id: &str) -> Result<String, AppError> {
-        let db = self.db.blocking_lock();
+        let db = match self.db.try_lock() {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(AppError::Invalid(format!(
+                    "global DB busy while resolving restaurant POS \
+                     '{restaurant_pos_id}' binding: {e}"
+                )));
+            }
+        };
         let binding: Option<String> = db
             .query_row(
                 "SELECT bound_location_id FROM terminals WHERE id = ?1",

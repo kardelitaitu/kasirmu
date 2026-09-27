@@ -408,13 +408,37 @@ impl<'a> BridgeCtx<'a> {
     /// `bound_location_id`. Used by [`BridgeCtx::resolve_scope`] when a
     /// session carries a `restaurant_pos_id`.
     ///
-    /// Uses `blocking_lock()` on the tokio Mutex — safe here because the lock
-    /// is held for a single indexed SELECT (microseconds).
+    /// # Why this uses `try_lock`, not `blocking_lock`
     ///
-    /// Returns [`BridgeError::Invalid`] if the terminal is not found or has
-    /// no binding.
+    /// This is a sync `fn` reached from the async command bodies via
+    /// [`BridgeCtx::resolve_scope`], so the thread calling it is driving
+    /// async tasks. In tokio 1.49 `blocking_lock` is
+    /// `future::block_on(self.lock())`, whose first act is
+    /// `try_enter_blocking_region().expect(..)` — there is **no**
+    /// uncontended fast path, so calling it here was a guaranteed panic on
+    /// first use, not a parked worker. `audit.rs` documents the same bug
+    /// fixed on `require_audit_tier`; the previous comment ("safe here
+    /// because the lock is held for a single indexed SELECT") was the exact
+    /// reasoning that note rebuts — the critical-section duration is
+    /// irrelevant, the panic fires on entry.
+    ///
+    /// `try_lock` cannot panic. A busy identity DB yields
+    /// [`BridgeError::Invalid`], which `resolve_scope` already handles by
+    /// logging and falling back to `session.store_id`, so a contended lock
+    /// degrades to the documented default instead of aborting the till.
+    ///
+    /// Returns [`BridgeError::Invalid`] if the terminal is not found, has
+    /// no binding, or the global DB is momentarily busy.
     fn resolve_restaurant_pos_store(&self, restaurant_pos_id: &str) -> Result<String, BridgeError> {
-        let db = self.db.blocking_lock();
+        let db = match self.db.try_lock() {
+            Ok(db) => db,
+            Err(e) => {
+                return Err(BridgeError::Invalid(format!(
+                    "global DB busy while resolving restaurant POS \
+                     '{restaurant_pos_id}' binding: {e}"
+                )));
+            }
+        };
         let binding: Option<String> = db
             .query_row(
                 "SELECT bound_location_id FROM terminals WHERE id = ?1",
