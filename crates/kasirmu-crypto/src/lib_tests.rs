@@ -263,6 +263,28 @@ fn selection_reports_only_usable_master_values() {
     );
 }
 
+/// The preferred name wins over the legacy alias, and the alias keeps working on
+/// its own. Split from the environment read so the precedence is testable without
+/// a `set_var`, which would race every other case in this binary.
+#[test]
+fn master_key_prefers_the_new_name_and_still_reads_the_legacy_alias() {
+    assert_eq!(
+        master_key_raw_from(Some("new".into()), Some("legacy".into())),
+        Some("new".to_string()),
+        "the documented name must win when both are set"
+    );
+    assert_eq!(
+        master_key_raw_from(None, Some("legacy".into())),
+        Some("legacy".to_string()),
+        "the legacy alias keeps working: retiring it outright would orphan stored rows"
+    );
+    assert_eq!(
+        master_key_raw_from(Some("new".into()), None),
+        Some("new".to_string())
+    );
+    assert_eq!(master_key_raw_from(None, None), None);
+}
+
 /// The report and the derivation must never disagree: the accessor calls the
 /// very reader `portable_key` branches on, so drift is a test failure rather
 /// than an operator misdiagnosis.
@@ -275,7 +297,10 @@ fn accessor_agrees_with_the_reader_the_derivation_uses() {
     );
     assert_eq!(
         master_key_derivation_active(),
-        selection_from_raw(std::env::var("OZ_MASTER_KEY").ok()),
+        selection_from_raw(master_key_raw_from(
+            std::env::var(MASTER_KEY_ENV).ok(),
+            std::env::var(MASTER_KEY_ENV_LEGACY).ok(),
+        )),
         "the selection report must match the value it describes"
     );
 }

@@ -94,8 +94,9 @@ fn derive_key(domain: &[u8], machine_id: &str) -> [u8; 32] {
 /// and decrypt every portable at-rest value in any deployment's
 /// database. It protects against opportunistic database inspection
 /// only — it is obfuscation, NOT confidentiality. Deployments that
-/// need real at-rest confidentiality set `OZ_MASTER_KEY` (see
-/// [`derive_portable_key`]); a keyring-backed master key was
+/// need real at-rest confidentiality set [`MASTER_KEY_ENV`] (`KASIRMU_MASTER_KEY`;
+/// the legacy `OZ_MASTER_KEY` is still read) — see [`derive_portable_key`];
+/// a keyring-backed master key was
 /// deliberately NOT adopted because it would break the documented
 /// cross-machine portability of these fields.
 fn derive_static_key(domain: &[u8]) -> [u8; 32] {
@@ -107,9 +108,36 @@ fn derive_static_key(domain: &[u8]) -> [u8; 32] {
     key
 }
 
-/// Read the optional `OZ_MASTER_KEY` override (64 hex chars = 32 bytes).
+/// The preferred environment variable holding the at-rest master key.
+///
+/// `OZ_MASTER_KEY` ([`MASTER_KEY_ENV_LEGACY`]) is the pre-rebrand name and is
+/// still read, because renaming it outright would orphan every credential
+/// family derived from it; this name is preferred so a deployment can move over
+/// before the alias is retired.
+const MASTER_KEY_ENV: &str = "KASIRMU_MASTER_KEY";
+
+/// The pre-rebrand alias of [`MASTER_KEY_ENV`], honoured while it is set.
+const MASTER_KEY_ENV_LEGACY: &str = "OZ_MASTER_KEY";
+
+/// Pick the master-key value, preferring the new name over the legacy alias.
+///
+/// Split out of [`master_key_from_env`] so the precedence is testable without
+/// mutating the process environment, where a `set_var` would race every other
+/// case in this binary that reads the key.
+fn master_key_raw_from(preferred: Option<String>, legacy: Option<String>) -> Option<String> {
+    preferred.or(legacy)
+}
+
+/// Read the optional at-rest master key (64 hex chars = 32 bytes).
+///
+/// Prefers [`MASTER_KEY_ENV`] and falls back to [`MASTER_KEY_ENV_LEGACY`], so an
+/// install configured before the rename keeps decrypting. A malformed value is
+/// treated as unset, exactly as before.
 fn master_key_from_env() -> Option<[u8; 32]> {
-    let raw = std::env::var("OZ_MASTER_KEY").ok()?;
+    let raw = master_key_raw_from(
+        std::env::var(MASTER_KEY_ENV).ok(),
+        std::env::var(MASTER_KEY_ENV_LEGACY).ok(),
+    )?;
     let decoded = hex::decode(raw.trim()).ok()?;
     decoded.try_into().ok()
 }
@@ -126,7 +154,7 @@ fn hmac_key(master: &[u8; 32], domain: &[u8]) -> [u8; 32] {
 
 /// Derive a portable at-rest key for `domain`.
 ///
-/// With `OZ_MASTER_KEY` set (64 hex chars), the key is [`hmac_key`]
+/// With a master key set (64 hex chars), the key is [`hmac_key`]
 /// derived — real at-rest confidentiality, at the cost of pinning the
 /// deployment to that master key. Without it, the family's `legacy`
 /// derivation runs so that values written before this mechanism
@@ -142,7 +170,7 @@ fn portable_key(domain: &[u8], legacy: impl FnOnce(&[u8]) -> [u8; 32]) -> [u8; 3
 /// Whether [`portable_key`] is currently selecting the master-key HMAC
 /// derivation, as a plain bool.
 ///
-/// Returns `true` when `OZ_MASTER_KEY` is set to a usable 32-byte value -
+/// Returns `true` when a master key is set to a usable 32-byte value -
 /// i.e. when the five portable credential families derive through [`hmac_key`]
 /// instead of their byte-identical `legacy` fallback - and `false` when they
 /// derive `legacy`. It reports **which derivation this process selected** and
