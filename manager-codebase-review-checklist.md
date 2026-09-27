@@ -1,5 +1,12 @@
 # Remediation Checklist - kasir.mu
 
+<!-- RESTRUCTURED 2026-09-27: the eight owner decisions and the ten "do not do these"
+     entries were checkboxes and are now prose. A decision is ANSWERED, not completed,
+     and a prohibition can never be ticked, so eighteen boxes that no agent could ever
+     close sat beside real work and inflated the open count from 9 to 27. Both lists are
+     unchanged in content and still tracked; only their presentation moved. The open count
+     now means "items an agent can actually close". -->
+
 **Progress at 2026-09-23.** **10 checklist items fully ticked** (C5, C5b, C6, C6b, C7 detection half, C9, C11 code half, C12, C13, C27) **plus 29 further slices landed inside items whose checkbox stays open until the whole item is done** (C1 S1 and S1.5, C2 step 1, C3 S1, C8 S1 and S2, C10a, C17 slices 1-2, C18 P1.1, P1.2, P1.3, P1.5). Every one names its commit SHA, and the verification log at the end carries the command and its result. Do not read a ticked line as 'this area is finished' - read the annotation beside it for the remainder.
 
 Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing here is new evidence: every item traces to a numbered section of that review, and the acceptance check is the one stated there.
@@ -325,29 +332,33 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
 
 Full analysis - deciding facts, options with pros and cons, what would change the answer, and a recommendation - is in manager-codebase-review-decisions.md (D1-D8). The lines below are the index.
 
-- [ ] **D1 Is OZ_MASTER_KEY set on any deployment?** Decides whether 6.2 is a live confidentiality break or a latent one.
-- [ ] **D2 Has any PostgreSQL deployment run scripts/rls-cutover.sql?** Decides whether tenant isolation exists there at all.
-- [ ] **D3 Architecture rule or tier order?** (10.2) Re-tier the checker with an ADR, or move ~5k lines of models back down. Forced by 2026-11-06.
-- [ ] **D4 Is qris-core meant to be publishable?** (14.4) If not, it is a one-line manifest fix away from harmless.
-- [ ] **D5 Is in-app restore a product feature or an ops procedure?** (14.1) Today the only restore is a CLI command.
-- [ ] **D6 Is LAN KDS a product feature?** (6.7) It works and is safely defaulted, but nothing in the product can configure it.
-- [ ] **D7 How much plugin trust is acceptable?** (6.4) Signed-and-verified and unsigned-hot-reload are the two ends; there is no documented middle.
-- [ ] **D8 Does the unified container ship?** (12.1) If production runs the two-service compose, the five 404s are dev-only - and that should be written down.
+**These were checkboxes until 2026-09-27 and are now prose, deliberately.** An owner decision cannot be ticked by any agent — it is answered, not completed — so leaving eight `[ ]` boxes beside "split 22 files" inflated the open count by 8 and implied the same kind of work. They are still tracked, still blocking, and still indexed; they simply no longer masquerade as tasks. **Eight decisions remain open.**
+
+- **D1 — Is OZ_MASTER_KEY set on any deployment?** Decides whether 6.2 is a live confidentiality break or a latent one. Gates C1 stage 2.
+- **D2 — Has any PostgreSQL deployment run scripts/rls-cutover.sql?** Decides whether tenant isolation exists there at all. Gates C7's role cutover.
+- **D3 — Architecture rule or tier order?** (10.2) Re-tier the checker with a named non-expiring rule for the seven type-only re-export edges, or move ~5k lines of models back down. **Forced by 2026-11-06.** Now costed in C26.
+- **D4 — Is qris-core meant to be publishable?** (14.4) If not, it is a one-line manifest fix away from harmless. (C9 already landed the proprietary answer.)
+- **D5 — Is in-app restore a product feature or an ops procedure?** (14.1) Gates the Safe Mode screen; the engine, boot consumer and IPC all shipped.
+- **D6 — Is LAN KDS a product feature?** (6.7) It works and is safely defaulted, but nothing in the product can configure it.
+- **D7 — How much plugin trust is acceptable?** (6.4) Signed-and-verified and unsigned-hot-reload are the two ends; there is no documented middle.
+- **D8 — Does the unified container ship?** (12.1) If production runs the two-service compose, the five 404s are dev-only - and that should be written down.
 
 ---
 
 ## Do not do these
 
-- [ ] Flip RLS from ENABLE to FORCE while the app connects as the table owner.
-- [ ] Hand-edit the generated PG init instead of running scripts/generate-pg-migration.py.
-- [ ] Backfill stock by setting qty to the sum of movement deltas.
-- [ ] Raise the registration-gate debt ceilings - the ceiling is the finding.
-- [ ] Delete the conflict Decision computation instead of consuming it.
-- [ ] Weaken the concurrency test to success_count <= 1.
-- [ ] Mark clippy or e2e advisory to make the gate registry self-consistent.
-- [ ] Add busy_timeout to that test while leaving fresh_db() pragma-free.
-- [ ] Add CHECK (qty >= 0) before the backfill migration has run.
-- [ ] Retry the same fix a fourth time after three red gates - diagnose the root cause instead.
+**These were checkboxes until 2026-09-27 and are now prose, deliberately: a prohibition can never be ticked, so ten of them permanently inflated the open count.** They are instructions, not backlog. Each one exists because a recorded attempt or a plausible-looking fix would have caused it.
+
+- **Do not flip RLS from ENABLE to FORCE while the app connects as the table owner.** Every query would return zero rows on deploy; the shipped PostgreSQL profile connects as a superuser, which bypasses RLS even with FORCE on (C7).
+- **Do not hand-edit the generated PG init** instead of running `scripts/generate-pg-migration.py` — pre-commit step 5 and `dev-ci.yml` fail on drift (C33/C38/C43/C46 all exist because of this rule).
+- **Do not backfill stock by setting qty to the sum of movement deltas.** It destroys legitimate manual adjustments; the C12 variance report exists so an operator can adjudicate each difference.
+- **Do not raise the registration-gate debt ceilings.** The ceiling is the finding; `drift_pin_debt_ceilings_only_shrink` enforces the direction (C17, C67).
+- **Do not delete the conflict Decision computation** instead of consuming it — that was the temptation C19 resisted, and both decisions are now consumed.
+- **Do not weaken the concurrency test to `success_count <= 1`.** The test must discriminate the transaction mode, or it cannot detect the defect it is named for (C10/C18).
+- **Do not mark clippy or e2e advisory** merely to make the gate registry self-consistent; fix the runner or retire the gate honestly (C25, P4-1/P4-2).
+- **Do not add `busy_timeout` to that test while leaving `fresh_db()` pragma-free** — the test database must carry production's pragmas or it tests the wrong regime (C10).
+- **Do not add `CHECK (qty >= 0)` before a backfill has run.** It bricks startup on existing negatives, and it contradicts the shipped `allow_negative_stock` feature (C10b/D11).
+- **Do not retry the same fix a fourth time after three red gates** - diagnose the root cause instead.
 
 ---
 
