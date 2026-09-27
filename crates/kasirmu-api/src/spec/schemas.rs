@@ -366,14 +366,16 @@ pub(super) fn build_base_schemas() -> Value {
         },
         "UserResponse": {
             "type": "object",
-            "required": ["id", "username", "display_name", "role_id"],
+            "required": ["id", "username", "display_name", "role_id", "is_active", "created_at", "updated_at"],
+            "description": "The created user, as returned by `POST /api/v1/users`. Deliberately NOT the domain `kasirmu_core::User`: the credential verifier (`pin_hash`) is withheld — a response DTO is the boundary, exactly as `StaffMemberDto` does for the staff IPC surface.",
             "properties": {
                 "id": { "type": "string", "description": "Unique user ID" },
-                "username": { "type": "string", "description": "Login username" },
+                "username": { "type": "string", "description": "Login username (trimmed + lowercased by the store)" },
                 "display_name": { "type": "string", "description": "Display name in UI" },
                 "role_id": { "type": "string", "description": "Assigned role ID", "example": "role-staff" },
-                "tenant_id": { "type": "string", "description": "Owning tenant (from JWT)" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "is_active": { "type": "boolean", "description": "Whether the account may log in (always true at creation)" },
+                "created_at": { "type": "string", "format": "date-time", "description": "ISO-8601 creation timestamp" },
+                "updated_at": { "type": "string", "format": "date-time", "description": "ISO-8601 last-update timestamp" }
             }
         },
         "SaleDetail": {
