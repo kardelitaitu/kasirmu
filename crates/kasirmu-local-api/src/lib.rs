@@ -35,6 +35,8 @@
 //! `kasirmu_api::spec::local_spec()` — the shared contract with every
 //! operation tagged `x-oz-scope: "both"`.
 
+#![deny(unsafe_code)]
+
 use std::path::PathBuf;
 use std::sync::Arc;
 

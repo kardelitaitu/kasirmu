@@ -28,6 +28,8 @@ next: none (migrate rule engine when built) | perf: N/A
 //! 3. Evaluate against the cart before tax, matching `foundation::Cart`
 //!    ordering rules.
 
+#![deny(unsafe_code)]
+
 pub mod error;
 
 pub use error::PromotionsError;

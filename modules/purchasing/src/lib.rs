@@ -26,6 +26,8 @@ next: none (migrate supplier/PO logic when built) | perf: N/A
 //! 2. Move receipt orchestration into `service.rs` behind a transaction.
 //! 3. Subscribe to `stock.adjusted` / emit `purchase.received` in `on_load`.
 
+#![deny(unsafe_code)]
+
 pub mod error;
 
 pub use error::PurchasingError;

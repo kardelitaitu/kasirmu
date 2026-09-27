@@ -44,6 +44,8 @@ next: none | perf: N/A
 //! # use modules_tax::{TaxModule, TaxRate};
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod models;
 pub mod repository;

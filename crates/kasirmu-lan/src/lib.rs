@@ -83,6 +83,8 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! let forwarder = LanEventForwarder::default();
 //! ```
 
+#![deny(unsafe_code)]
+
 use std::collections::VecDeque;
 use std::sync::Arc;
 

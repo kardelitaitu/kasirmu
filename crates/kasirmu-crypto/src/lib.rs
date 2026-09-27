@@ -40,6 +40,8 @@ next: none — crate is stable and well-tested | perf: N/A
 // pointing at an item that does NOT exist — still fails the build. Only
 // "private but present" is tolerated, which is exactly the case that is
 // correct here.
+#![deny(unsafe_code)]
+
 #![allow(rustdoc::private_intra_doc_links)]
 
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, aead::generic_array::GenericArray};

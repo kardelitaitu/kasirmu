@@ -11,6 +11,8 @@ next: none — crate stable | perf: SQL validation uses compiled regexes — neg
 //! They are loaded from the `plugins/` directory at startup and
 //! given access to a sandboxed Lua environment.
 
+#![deny(unsafe_code)]
+
 /// Database types for plugin persistence.
 pub mod db;
 /// Plugin error types.

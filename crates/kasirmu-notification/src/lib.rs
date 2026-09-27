@@ -33,6 +33,13 @@ next: none | perf: N/A
 //! assert_eq!(mock.sent_count(), 1);
 //! ```
 
+// P2-6: zero production `unsafe`. The only occurrences are
+// `std::env::set_var`/`remove_var` in `whatsapp_tests.rs`, which are unsafe
+// since Rust 2024 and are TEST-ONLY; that file carries its own
+// `#![allow(unsafe_code)]`, the file-scoped precedent at
+// `kasirmu-security/src/windows.rs:13`.
+#![deny(unsafe_code)]
+
 pub mod email_scheduler;
 pub mod handlers;
 pub mod mock;

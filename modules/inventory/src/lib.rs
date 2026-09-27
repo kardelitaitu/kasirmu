@@ -39,6 +39,8 @@ next: none | perf: N/A
 //! # use modules_inventory::{InventoryModule, Product, Category, Inventory};
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod handlers;
 pub mod models;

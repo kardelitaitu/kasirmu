@@ -36,6 +36,8 @@ fixed 2026-07-25 (glm-5.3 review P2 pass): F-022 — repository write paths (cre
 //!
 //! See `modules/currency/manifest.json` for the module metadata.
 
+#![deny(unsafe_code)]
+
 pub mod commands;
 pub mod error;
 pub mod models;

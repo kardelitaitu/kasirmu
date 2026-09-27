@@ -37,6 +37,8 @@
 // Windows command-line limits / get mangled by shell quoting; the integration
 // driver writes them to temp files instead.
 
+#![deny(unsafe_code)]
+
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use minisign_verify::{PublicKey, Signature};

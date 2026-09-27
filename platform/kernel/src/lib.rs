@@ -32,6 +32,8 @@ next: none | perf: N/A
 //! kernel.stop_all()?;
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod event_bus;
 pub mod kernel;

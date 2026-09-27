@@ -37,6 +37,8 @@ next: none | perf: N/A
 
 // The shared OpenAPI document (`spec.rs`) is one deeply-nested `json!`
 // literal — same requirement as `apps/cloud-server` (main.rs).
+#![deny(unsafe_code)]
+
 #![recursion_limit = "512"]
 
 /// JWT auth middleware and token generation.

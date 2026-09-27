@@ -43,6 +43,8 @@ next: none | perf: N/A
 //! # use modules_staff::{StaffModule, User, Role, builtin_roles};
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod models;
 pub mod repository;

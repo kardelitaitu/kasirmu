@@ -21,6 +21,8 @@ next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot
 //! - [`contracts`] — [`Module`], [`Service`], [`EventHandler`] traits
 //! - [`errors`] — shared error types
 
+#![deny(unsafe_code)]
+
 pub mod barcode;
 pub mod cart;
 pub mod constants;

@@ -31,6 +31,8 @@ next: none (promote GiftCard types when built; remember MSL-10 pin redaction at 
 //!    transaction so a partial redeem can never leave a card debited
 //!    without a matching sale line.
 
+#![deny(unsafe_code)]
+
 pub mod error;
 
 pub use error::GiftCardsError;

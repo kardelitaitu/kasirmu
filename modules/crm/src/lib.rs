@@ -4,6 +4,8 @@ crate: modules-crm | status: SAFE | lint: CLEAN
 findings: clean Module registration layer
 next: none | perf: N/A
 *//*
+#![deny(unsafe_code)]
+
 last audited 19-07-26 by RSA-Agent
 crate: modules-crm | status: SAFE | lint: CLEAN
 findings: Transitional module implementing Module trait. No unsafe code. Re-exports Customer from

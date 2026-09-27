@@ -34,6 +34,8 @@ next: none (promote KDS ticket state when built) | perf: N/A
 //! 3. Move the overdue/SLA escalation timer into `on_start`, and cancel it
 //!    in `on_stop` so a stopped module leaves no live timer behind.
 
+#![deny(unsafe_code)]
+
 pub mod error;
 
 pub use error::KitchenError;

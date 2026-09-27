@@ -40,6 +40,8 @@ next: none | perf: N/A
 //! # }
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod console;
 pub mod daemon_health;
 pub mod event_handlers;

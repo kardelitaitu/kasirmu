@@ -31,6 +31,8 @@ next: none | perf: 64KB priority-sorted batches
 //! # }
 //! ```
 
+#![deny(unsafe_code)]
+
 #![allow(clippy::items_after_test_module)]
 
 pub mod conflict;

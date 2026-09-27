@@ -27,6 +27,8 @@ next: none | perf: N/A
 //!
 //! See `modules/reporting/manifest.json` for the module metadata.
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod handlers;
 pub mod models;

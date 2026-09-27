@@ -40,6 +40,8 @@ next: none | perf: N/A
 //! # use modules_settings::{SettingsModule, SettingsService, SettingItem};
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod models;
 pub mod repository;

@@ -1,3 +1,11 @@
+// P2-6: `std::env::set_var` / `remove_var` are `unsafe` as of Rust 2024
+// because mutating the environment is unsound against concurrent readers.
+// These calls are TEST-ONLY and serialised by `serial_test::serial`, so the
+// crate-level `#![deny(unsafe_code)]` in `main.rs` holds for every shipping
+// path — the same file-scoped opt-out the repo uses at
+// `kasirmu-security/src/windows.rs:13`.
+#![allow(unsafe_code)]
+
 use super::*;
 use serial_test::serial;
 

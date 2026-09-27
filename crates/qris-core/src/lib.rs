@@ -76,6 +76,8 @@
 //! # Ok::<(), qris_core::QrisError>(())
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod amount;
 pub mod builder;
 pub mod error;

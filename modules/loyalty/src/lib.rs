@@ -42,6 +42,8 @@ next: none | perf: N/A
 //! # use modules_loyalty::{LoyaltyModule, LoyaltyTier, LoyaltyAccount, LoyaltyTransaction, LoyaltyAccountWithDetails};
 //! ```
 
+#![deny(unsafe_code)]
+
 pub mod error;
 pub mod models;
 pub mod repository;

@@ -30,6 +30,8 @@ next: none — files carry current stamps from 25-07-26 / 31-08-26 audits | perf
 //
 // Scoped to this lint alone: a link to an item that does not exist at all
 // still fails the build, and `rustdoc::broken_intra_doc_links` is untouched.
+#![deny(unsafe_code)]
+
 #![allow(rustdoc::private_intra_doc_links)]
 
 pub mod auth;
