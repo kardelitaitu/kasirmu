@@ -52,6 +52,11 @@ Two guards, because the ambient `JAVA_HOME` is the unreliable part:
    `aarch64-linux-android` rust target, `cargo-ndk`, a `CARGO_BUILD_JOBS` cap at
    process *or* user scope, and the shared-`%TEMP%` advisory — and exits 1 with the
    remediation on any fatal miss. Run it before `cargo tauri android build|dev`.
+   Related: `bash scripts/android-soak.sh` (added 2026-09-28) samples the app's
+   resident set over adb across a forced doze cycle and reports min/mean/max. It
+   takes **no threshold by default** — that run is a baseline and always exits 0;
+   pass `--max-rss-mb N` to make it a gate. Deliberately not a CI leg yet: see the
+   script header. Needs a device attached and the app running (exit 2 otherwise).
 1. The **user-scope** `JAVA_HOME` in `HKCU\Environment` points at the JDK 21 above.
    A terminal opened *before* that change keeps the stale value — open a new one, or set
    `$env:JAVA_HOME='C:\Users\Dika\AppData\Local\Programs\Java\jdk-21.0.12.1+1'` for the current shell.
