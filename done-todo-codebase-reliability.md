@@ -408,6 +408,64 @@ covered, because no coverage instrument is enforced. Close that in this order.
       `dev-ci.yml` env block beside `RUSTFLAGS`.
       Acceptance: `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
       exits 0 locally, then the env line lands in the workflow.
+      **ATTEMPTED 2026-09-28, PARTIALLY DONE, BOX STAYS OPEN — and the reason is
+      the interesting part. The acceptance has TWO halves in a fixed order
+      ("exits 0 locally, THEN the env line lands"), and the first half does not
+      yet pass, so the second half was deliberately NOT done. Measured: the
+      command fails with ~295 errors across 20 crates.**
+      **What landed (commit `ddfefedf8`, 4 crates now clean and verified):**
+      `kasirmu-crypto` (10 errors → 0), `platform-core` (5 → 0 after its own
+      round), `qris-core` (5 → 0), `platform-kernel` (1 → 0). Two of the fixes
+      are worth naming because they are NOT the obvious edit:
+      - `rbac.rs` had `[`Self::STAFF_UPDATE`]` and `[`Self::MEMO_STOP`]` inside
+        `pub mod permissions`. `Self` is not a valid intra-doc target in a
+        module (there is no implicit self type), and the parent-relative
+        `permissions::STAFF_UPDATE` also fails from inside that module. The
+        bare `[`STAFF_UPDATE`]` resolves; the explicit form then trips
+        `rustdoc::redundant_explicit_link_target`. The constants themselves were
+        NEVER missing — this was a link-syntax bug, not a stale reference.
+      - `raw.rs` had `[`keys::is_non_exportable_setting_key`]` twice. `keys` is
+        not imported there (only `use super::Settings`), so the link cannot
+        resolve; the surrounding prose used `crate::settings::keys::...` in code
+        spans that never needed resolution. Fixed by giving the link an explicit
+        full path.
+      Where a crate's failures were all `private_intra_doc_links` — public docs
+      intentionally naming the private helper that enforces the claim
+      (`portable_key`, `decrypt_or_fail_closed`) — the fix is a crate-level
+      `#![allow(rustdoc::private_intra_doc_links)]` with a comment explaining
+      why the link is more useful than a prose restatement. That allow is
+      scoped to that ONE lint: `broken_intra_doc_links` is untouched, so a link
+      to an item that does not exist still fails.
+      **What remains, with the exact shape, so the next attempt starts at the
+      list rather than the search.** `cargo doc` stops at the first failing
+      crate, so the 32 errors visible at the start were only the tip; fixing a
+      crate reveals the next. The full inventory is
+      **295 errors / 20 crates**, broken down as **220 unresolved links,
+      18 private-item links, 3 unclosed HTML tags, 1 bare URL**. The unresolved
+      links are heavily REPEATED rather than 220 distinct problems — the top
+      targets are `BridgeCtx` (14), `BridgeError` (8), `BridgeCtx::registry`
+      (4), the `*_scoped` command family (`list_scoped`/`create_scoped`/
+      `update_scoped`/`delete_scoped`, 3 each), `DriverRegistry::apply_config`
+      (2), `SyncStore::push_batch` (2) — across 172 distinct targets. Most are
+      simply not in scope at the doc site and need an import or a full path.
+      Three concrete non-link defects are worth fixing whenever that work
+      happens, since they are content errors rather than link noise:
+      `kasirmu-lan/src/kds_sync.rs:67` names a variant
+      `KdsSyncEvent::OrderRecalled` that does not exist;
+      `kasirmu-hal/src/drivers/edc/protocol/mod.rs:17-19` links three codec
+      types (`IngenicoCodec`, `VerifoneCodec`, `PaxCodec`) that are not in
+      scope; and `kasirmu-hal/src/bootstrap.rs:56` writes `Host[:port]`, which
+      rustdoc parses as a link named `:port`.
+      **Do NOT land the env line before the local run passes.** Adding
+      `RUSTDOCFLAGS: -D warnings` beside `RUSTFLAGS` today turns every Rust PR
+      red for reasons unrelated to the change — the failure mode this file has
+      already named twice (`fuzz`, `coverage`): a gate that is red on day one
+      stops being read. The ordered acceptance in this box is exactly the right
+      guard, and it held.
+      **Scale, stated plainly:** ~295 edits across 20 crates, including
+      `kasirmu-bridge` and `kasirmu-api`, which other sessions are actively
+      editing. This is a campaign, not the "one env line" the box's title
+      suggests, and it should be scheduled as one.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
