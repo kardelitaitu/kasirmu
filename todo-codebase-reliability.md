@@ -29,7 +29,7 @@ When all P0 and P1 boxes are ticked, this file may be renamed
 | `warn(clippy::pedantic, clippy::nursery)` | 0 hits outside this file. CI runs `cargo clippy --workspace --all-targets -- -D warnings` (`dev-ci.yml:325`) — default groups only. `grep -rn 'clippy::(pedantic\|nursery)'` | **FALSE** |
 | Clippy warnings as errors in CI | True twice over: `dev-ci.yml:325` and workflow-wide `RUSTFLAGS: -D warnings` (`dev-ci.yml:12`, `android.yml:49`) | **TRUE** |
 | `RUSTDOCFLAGS="-D warnings"` | Not set anywhere. `grep -rn 'RUSTDOCFLAGS' .github .cargo scripts` → no hits | **FALSE** |
-| Never `unwrap()`/`expect()` in production | Policy exists and is enforced: `dev-ci.yml:754` runs `python3 scripts/scan-unwrap-panic.py` inside `static-gates`; `gates.json` marks `panic-inventory` **required**. Measured now: **exit 1**, 1 recoverable call. See P0-1 | **TRUE as policy, RED at HEAD** |
+| Never `unwrap()`/`expect()` in production | Policy exists and is enforced: `dev-ci.yml:754` runs `python3 scripts/scan-unwrap-panic.py` inside `static-gates`; `gates.json` marks `panic-inventory` **required**. Measured 2026-09-27: **exit 0 — GREEN**. See P0-1 | **TRUE and now GREEN** |
 | Newtypes for money / enums for state | `Money { minor_units: i64, currency: Currency }` (`foundation/src/money.rs:19`); zero `f32`/`f64` in that file; `foundation/src/enums.rs` carries `SaleStatus`/`PaymentMethod` | **TRUE** |
 | "Use proptest heavily" for inventory math, sync, concurrency | proptest is a dev-dependency of exactly **2** crates (`kasirmu-core`, `foundation`); **6** `proptest! {}` invocations; **4** files. `platform/sync` and `modules/inventory`: **0** | **FALSE** — absent precisely where it matters |
 | Fuzzing is "critical" and running | 7 `cargo-fuzz` targets exist under `tools/fuzz/fuzz_targets/`, excluded from the workspace. `gates.json` → `fuzz` status **retired**; no workflow and no script invokes `cargo fuzz` | **FALSE** — targets written, nothing runs them |
@@ -51,13 +51,7 @@ having one.
 
 ## 2. P0 — fix before anything else
 
-- [ ] **P0-1 — Make the panic inventory green.** `scripts/scan-unwrap-panic.py`
-      exits **1** at `6c9e4328a`:
-      `crates/kasirmu-hal/src/drivers/edc/loopback.rs:131` —
-      `self.script.lock().expect("loopback script poisoned")` has no
-      `// SAFETY:` / `// INVARIANT:` comment on the same or preceding line. This
-      fails `dev-ci.yml#static-gates` for every PR touching Rust.
-      Acceptance: `python3 scripts/scan-unwrap-panic.py; echo $?` → `0`.
+- [x] **P0-1 — Make the panic inventory green.** **CLOSED 2026-09-27: the gate exits 0.** `scripts/scan-unwrap-panic.py` exited **1** at `6c9e4328a` on `crates/kasirmu-hal/src/drivers/edc/loopback.rs:131` (`self.script.lock().expect("loopback script poisoned")`, no `// SAFETY:`/`// INVARIANT:` marker), which failed `dev-ci.yml#static-gates` for every PR touching Rust. The fix was the first of the two options this item named — **document the invariant**, not convert to a `Result` path — and the marker it added is substantive rather than boilerplate: *"the mutex guards a `Vec` push/remove only; no code path can panic while holding it, so poisoning is impossible in practice."* Two further sites acquired markers in the same pass, both on the WAL diagnostics added this session (`examples/wal_tail_diagnosis.rs`, `examples/wal_sync_attribution.rs`), each stating a real precondition of the measurement (a failed open, migration or PRAGMA read voids the run) rather than a filler phrase. **Acceptance re-run this session: `python3 scripts/scan-unwrap-panic.py` -> exit 0.** The gate's own report now lists the remaining recoverable `expect()` sites as `[INVARIANT]`-marked, which is the state the inventory exists to describe.
       Fix either way: add the invariant comment, or convert to a `Result` path.
 
 - [ ] **P0-2 — Decide the flake policy in writing.** Retries hide real
@@ -226,7 +220,7 @@ Recorded so the question does not get re-litigated every few weeks.
 
 ## 8. Order of work
 
-1. P0-1 (panic inventory red — blocks every Rust PR today).
+1. ~~P0-1 (panic inventory red — blocks every Rust PR today).~~ **DONE 2026-09-27 — gate exits 0.**
 2. P0-2 (flake policy) and P0-3 (fuzz targets) — both are "decide and wire".
 3. P1-1 then P1-3 — property tests first; the replay harness is what makes
    multi-location claims testable at all.
