@@ -23,6 +23,50 @@ fn setup_db() -> DbConnection {
     Arc::new(Mutex::new(migrations::fresh_db()))
 }
 
+/// Wait for a daemon condition by polling `status()`, not by sleeping a
+/// multiple of the tick.
+///
+/// O-T05 (`todo-optimize-crates.md:1158`). Every daemon test slept a fixed
+/// 500 ms after `start()` and 200 ms after `stop()` against a daemon whose
+/// tick is 100 ms — a 5x floor paid on each of the seven start/stop pairs,
+/// ~5.0 s of the 16.6 s stated sleep floor `platform/sync` contributes to the
+/// workspace's 28.6 s (§10B). It was also the wrong shape: a fixed sleep buys
+/// the same margin on a fast machine and a loaded one, so it is either wasteful
+/// or flaky and never tells you which.
+///
+/// This polls every 10 ms with a 1 s ceiling. A healthy daemon finishes in one
+/// tick (100 ms or better), so the typical case gets faster, and the ceiling is
+/// still 2x the old start allowance. `what` is named in the panic because a
+/// timeout that only says "timed out" is the least useful failure a test can
+/// produce — the status snapshot is printed so the condition is visible.
+async fn wait_for_daemon<F>(daemon: &SyncDaemon, what: &str, mut ok: F)
+where
+    F: FnMut(&DaemonStatus) -> bool,
+{
+    for _ in 0..100 {
+        if ok(&daemon.status().await) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let status = daemon.status().await;
+    panic!(
+        "daemon never reached `{what}` within 1s — running={}, last_sync_at={:?}, last_error={:?}",
+        status.running, status.last_sync_at, status.last_error
+    );
+}
+
+/// Wait for the daemon to have completed at least one cycle.
+async fn wait_for_first_cycle(daemon: &SyncDaemon) {
+    wait_for_daemon(daemon, "a completed first cycle", |s| s.last_sync_at.is_some()).await;
+}
+
+/// Wait for the daemon to be fully stopped, rather than assuming `stop()`
+/// returning means the run loop has exited.
+async fn wait_for_stopped(daemon: &SyncDaemon) {
+    wait_for_daemon(daemon, "stopped", |s| !s.running).await;
+}
+
 /// Spawn a minimal mock sync server on port 0 and return its URL.
 /// Handles POST /api/sync/push (returns all accepted) and
 /// POST /api/sync/pull (returns empty items list).
@@ -173,11 +217,11 @@ async fn daemon_runs_when_sync_configured() {
     .unwrap();
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
     let status = daemon.status().await;
     assert!(status.last_sync_at.is_some());
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -185,12 +229,12 @@ async fn daemon_skips_when_sync_not_configured() {
     let db = setup_db();
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db).await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    wait_for_first_cycle(&daemon).await;
     let status = daemon.status().await;
     assert!(status.last_error.is_none());
     assert!(status.last_sync_at.is_some());
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -268,7 +312,7 @@ async fn daemon_auto_updates_url_on_server_migration() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     // The daemon should have detected the redirect and updated the URL.
     let updated_url = tokio::task::spawn_blocking(move || {
@@ -285,7 +329,7 @@ async fn daemon_auto_updates_url_on_server_migration() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 #[tokio::test]
@@ -310,7 +354,7 @@ async fn daemon_pull_phase_detects_server_migration() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -326,7 +370,7 @@ async fn daemon_pull_phase_detects_server_migration() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 // ── TDD: daemon anchor-expiry recovery ─────────────────────────
@@ -1620,7 +1664,7 @@ async fn daemon_migration_redirect_is_obeyed_on_server_error_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1636,7 +1680,7 @@ async fn daemon_migration_redirect_is_obeyed_on_server_error_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 /// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
@@ -1671,7 +1715,7 @@ async fn daemon_migration_redirect_accepts_plain_http_target_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let updated_url = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1687,7 +1731,7 @@ async fn daemon_migration_redirect_accepts_plain_http_target_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 /// PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT. FLIP THIS ASSERTION, DO NOT DELETE IT.
@@ -1722,7 +1766,7 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
 
     let daemon = SyncDaemon::with_interval(Duration::from_millis(100));
     daemon.start(db.clone()).await;
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    wait_for_first_cycle(&daemon).await;
 
     let (updated_url, still_enabled) = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
@@ -1748,7 +1792,7 @@ async fn daemon_migration_redirect_persists_an_unshaped_target_pin() {
     );
 
     daemon.stop().await;
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    wait_for_stopped(&daemon).await;
 }
 
 // ── SYNC-EW: the two promises `nudge` makes ───────────────────────
