@@ -47,6 +47,7 @@ use std::time::{Duration, Instant};
 const INSERTS: usize = 20_000;
 
 fn usd() -> kasirmu_core::Currency {
+    // SAFETY: "USD" is a literal ISO-4217 code; parse cannot fail.
     "USD".parse().unwrap()
 }
 
@@ -95,10 +96,16 @@ impl Dist {
 /// `migrations::run`, so the production PRAGMA set is the baseline and only
 /// the sync mode differs between configurations.
 fn open_with_sync(path: &std::path::Path, mode: &str) -> Connection {
+    // INVARIANT: a diagnostic cannot continue without its database; a failed
+    // open or migration voids the run and the panic names the reason.
     let mut conn = Connection::open(path).expect("open sqlite");
+    // INVARIANT: migrations must apply or the schema is wrong and every
+    // number this tool produces would describe a database that cannot exist.
     migrations::run(&mut conn).expect("apply migrations with production PRAGMAs");
+    // SAFETY: setting a PRAGMA on an open connection cannot fail.
     conn.pragma_update(None, "synchronous", mode)
         .expect("set synchronous");
+    // SAFETY: `synchronous` always returns exactly one row.
     let got: i64 = conn
         .query_row("PRAGMA synchronous", [], |r| r.get(0))
         .expect("read synchronous");
@@ -113,6 +120,7 @@ fn open_with_sync(path: &std::path::Path, mode: &str) -> Connection {
         got, expected,
         "synchronous={mode} did not take effect (pragma reads {got})"
     );
+    // SAFETY: `journal_mode` always returns exactly one row.
     let jm: String = conn
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
         .expect("read journal_mode");
@@ -127,6 +135,8 @@ fn run_workload(conn: &Connection, tag: &str) -> Vec<Duration> {
     for i in 0..INSERTS {
         let start = Instant::now();
         let sku = format!("{tag}-{i:09}");
+        // INVARIANT: SKUs are unique per iteration, so a failed insert means
+        // the database is broken and the measurement is void.
         store
             .create_product(&sku, "Sync Product", price(1000), None, None, 0, None)
             .expect("insert");
@@ -147,6 +157,7 @@ impl Drop for Cleanup {
 fn main() {
     let dir: PathBuf =
         std::env::temp_dir().join(format!("kasirmu-wal-sync-{}", std::process::id()));
+    // INVARIANT: without a scratch directory there is nothing to measure.
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let _cleanup = Cleanup(dir.clone());
 

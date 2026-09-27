@@ -35,6 +35,14 @@
 //! ```
 //!
 //! Writes real files to a temp directory; takes tens of seconds.
+//!
+//! # Panic policy
+//!
+//! INVARIANT: this is a diagnostic tool, not shipped code. Every `expect`
+//! below cannot fail in a way the operator would want to continue past — a
+//! failed DB open, migration, PRAGMA read or create-dir means the run is
+//! void, and a panic with the named reason is the correct outcome. Each
+//! call site carries its own `INVARIANT`/`SAFETY` marker for the gate.
 
 #![allow(clippy::print_stdout)]
 
@@ -49,6 +57,7 @@ use std::time::{Duration, Instant};
 const INSERTS: usize = 20_000;
 
 fn usd() -> kasirmu_core::Currency {
+    // SAFETY: "USD" is a literal ISO-4217 code; parse cannot fail.
     "USD".parse().unwrap()
 }
 
@@ -113,8 +122,13 @@ impl Drop for Cleanup {
 
 /// Open a file-backed DB with the production PRAGMA set.
 fn open_wal(path: &Path) -> Connection {
+    // INVARIANT: a diagnostic cannot continue without its database; a failed
+    // open or migration voids the run and the panic names the reason.
     let mut conn = Connection::open(path).expect("open sqlite");
+    // INVARIANT: migrations must apply or the schema is wrong and every
+    // number this tool produces would describe a database that cannot exist.
     migrations::run(&mut conn).expect("apply migrations");
+    // SAFETY: reading a PRAGMA on a just-migrated connection cannot fail.
     let mode: String = conn
         .query_row("PRAGMA journal_mode", [], |r| r.get(0))
         .expect("read journal_mode");
@@ -124,12 +138,14 @@ fn open_wal(path: &Path) -> Connection {
 
 /// Read the auto-checkpoint page threshold (default 1000).
 fn autocheckpoint(conn: &Connection) -> i64 {
+    // SAFETY: `wal_autocheckpoint` always returns exactly one row.
     conn.query_row("PRAGMA wal_autocheckpoint", [], |r| r.get(0))
         .expect("read wal_autocheckpoint")
 }
 
 /// Read the page size in bytes, needed to convert pages to file bytes.
 fn page_size(conn: &Connection) -> u64 {
+    // SAFETY: `page_size` always returns exactly one row.
     conn.query_row("PRAGMA page_size", [], |r| r.get(0))
         .expect("read page_size")
 }
@@ -139,6 +155,7 @@ fn main() {
     // A process-unique subdirectory of the OS temp dir is equivalent here:
     // the directory must merely be writable and not shared with other runs.
     let dir: PathBuf = std::env::temp_dir().join(format!("kasirmu-wal-tail-{}", std::process::id()));
+    // INVARIANT: without a scratch directory there is nothing to measure.
     std::fs::create_dir_all(&dir).expect("create temp dir for diagnosis");
     let db_path: PathBuf = dir.join("tail.db");
     let conn = open_wal(&db_path);
@@ -166,6 +183,8 @@ fn main() {
 
         let start = Instant::now();
         let sku = format!("T-{:09}", samples.len());
+        // INVARIANT: SKUs are unique per iteration, so a failed insert means
+        // the database is broken and the measurement is void.
         store
             .create_product(&sku, "Tail Product", price(1000), None, None, 0, None)
             .expect("insert");

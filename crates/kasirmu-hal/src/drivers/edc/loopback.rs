@@ -128,6 +128,8 @@ impl LoopbackEdcTerminal {
 
     fn next_behaviour(&self) -> EdcBehaviour {
         self.attempts.fetch_add(1, Ordering::SeqCst);
+        // INVARIANT: the mutex guards a `Vec` push/remove only; no code path
+        // can panic while holding it, so poisoning is impossible in practice.
         let mut script = self.script.lock().expect("loopback script poisoned");
         if script.is_empty() {
             self.default_behaviour.clone()
