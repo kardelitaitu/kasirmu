@@ -4,6 +4,7 @@
 **Date:** 2026-09-23
 **Branch:** 0.0.40 (version locked at 0.0.40)
 **supersedes: todo-android-checklist.md (left byte-identical; do not edit)**
+**Status 2026-09-28 — R1, R2 and R3 have LANDED since this audit was written; R4, R5 and R6 remain.** Evidence, read this pass: R1 is in the tree (`ui/index.mobile.html:9` carries `interactive-widget=resizes-content`); R2 is in the tree (`apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt:109-111` sets `FLAG_KEEP_SCREEN_ON`, called from `onCreate` at `:46`); R3 shipped as `usePagedList`/`LIST_PAGE_SIZE` (`ui/src/features/products/ProductManagementScreen.tsx:12,113`) plus optional additive `limit`/`offset` with `page_window` (`apps/mobile-tauri/src/commands/products.rs:119-121,396-406`). The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys window` reporting `KEEP_SCREEN_ON`) are still unrun, and R4/R5/R6 are untouched.
 **Scope:** Tauri v2 Android POS terminals assumed at 4GB RAM minimum. Covers the UI/WebView layer, the Tauri IPC command surface, the native Android scaffold, and the pre-release verification gate. Excludes cloud-server and desktop-tauri behaviour except where a shared command contract is at risk.
 **Evidence provenance:** three independent investigation passes over the working tree.
 - **Pass A, dependency and policy census:** every third-party package the checklist names was grepped against the workspace manifests and the UI source, and every claimed policy was checked against the file that actually encodes it.
@@ -274,4 +275,4 @@ The gate is not considered wired until the soak leg runs in `.github/workflows/a
 
 ## Naming note
 
-The filename keeps the `todo-` prefix deliberately. `check-dead-refs.py` exempts plan files, and the file is renamed to `done-todo-*` only once its own acceptance commands have actually run and passed. R1 through R5 have not run yet.
+The filename keeps the `todo-` prefix deliberately. `check-dead-refs.py` exempts plan files, and the file is renamed to `done-todo-*` only once its own acceptance commands have actually run and passed. R1 and R2 have since landed in the tree and R3 shipped with them (see the status note at the top); R4, R5 and R6 have not run, and no acceptance step has been observed on a device, so the token stays `todo-`.
