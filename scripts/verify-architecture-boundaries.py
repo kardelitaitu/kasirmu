@@ -80,6 +80,7 @@ scope was empty; it does not mean the boundaries held.
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import os
 import re
@@ -802,6 +803,29 @@ def dedupe_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(unique.values(), key=lambda f: (f["rule"], f["path"], f["target"], f["line"] or 0))
 
 
+MAX_TERM_MONTHS = 3
+"""One calendar quarter: the term every entry in this baseline already uses.
+
+2026-08-06 -> 2026-11-06, which is what makes this a re-derivable rule rather than a
+magic number. A transitional exemption may run one quarter; a second quarter is a
+decision somebody has to make on the record, not an edit to a date.
+"""
+
+
+def add_months(start: date, months: int) -> date:
+    """Calendar-month arithmetic, clamped to the month's last valid day.
+
+    Deliberately not a 90-day timedelta: a quarter is a calendar term, so
+    2026-08-06 + 3 months is 2026-11-06 whatever the month lengths are, and this
+    baseline own dates are expressible in it.
+    """
+    index = start.month - 1 + months
+    year = start.year + index // 12
+    month = index % 12 + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(start.day, last_day))
+
+
 def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
     data = load_json(path, "architecture boundary baseline")
     entries = data.get("entries") if isinstance(data, dict) else None
@@ -825,6 +849,46 @@ def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
             raise ValueError(f"baseline entry introduced date is after expiry: {entry}")
         if introduced > date.today():
             raise ValueError(f"baseline entry introduced date is in the future: {entry}")
+        # A bumped expiry has to be a RECORDED DECISION. Nothing this checker
+        # receives can tell that a date was edited, so the rule is structural
+        # instead: one quarter from the introduction, and every further quarter
+        # must arrive as a 'renewals' entry carrying its own date and reason.
+        # Without this, extending a deadline was indistinguishable from renewing
+        # it, which is the whole of C26's second clause.
+        renewals = entry.get("renewals", [])
+        if not isinstance(renewals, list):
+            raise ValueError(f"baseline entry 'renewals' must be a list: {entry}")
+        anchor = introduced
+        for renewal in renewals:
+            if not isinstance(renewal, dict):
+                raise ValueError(f"baseline renewal must be an object: {entry}")
+            on, reason = renewal.get("on"), renewal.get("reason")
+            if not isinstance(on, str) or not on.strip():
+                raise ValueError(f"baseline renewal needs an 'on' date: {entry}")
+            if not isinstance(reason, str) or not reason.strip():
+                raise ValueError(
+                    f"baseline renewal needs a non-empty reason - that reason is the"
+                    f" difference between a decision and an edit: {entry}"
+                )
+            try:
+                renewed_on = date.fromisoformat(on)
+            except ValueError as exc:
+                raise ValueError(f"baseline renewal has an invalid date: {entry}") from exc
+            if renewed_on > date.today():
+                raise ValueError(f"baseline renewal date is in the future: {entry}")
+            if renewed_on > expires:
+                raise ValueError(f"baseline renewal is dated after the expiry it extends: {entry}")
+            anchor = max(anchor, renewed_on)
+        # Gated on a LIVE exemption: a past expiry is already an expired finding
+        # (exit 1), and refusing it as malformed input would report a governed
+        # history as a broken file. The rule exists to govern extensions.
+        if expires >= date.today() and expires > add_months(anchor, MAX_TERM_MONTHS):
+            where = "its last renewal" if renewals else "its introduction"
+            raise ValueError(
+                f"baseline entry runs past {MAX_TERM_MONTHS} months from {where} ({anchor}"
+                f" -> {expires}). Bring the expiry in, or extend it one quarter at a time by"
+                f" adding a renewals entry with a dated reason: {entry}"
+            )
         # Canonicalize FIRST, then key. The recorded entry and the freshly
         # computed finding must pass through the same function, or a suppression
         # spelled against one checkout stops matching a finding computed from
