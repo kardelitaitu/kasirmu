@@ -114,6 +114,7 @@ $env:KASIRMU_ADMIN_KEY                    # admin dashboard API key
 $env:KASIRMU_API_SECRET                  # JWT signing secret
 $env:KASIRMU_ENFORCE_PLANS               # plan gating flag
 $env:KASIRMU_LICENSE_PRIVATE_KEY         # RSA license signing key (PEM, multiline)
+$env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTER_KEY is the legacy alias, still read
 ```
 
 - Use them in commands instead of hardcoding secrets (example: website deploy sets
@@ -281,4 +282,4 @@ git config --get core.hooksPath      # gates enabled? (expect: .githooks)
 git rev-parse --show-toplevel        # repo root
 ```
 
-> last audited 27-09-26 · roundtrip-economy rewrite · prior stamp 08-09-26
+> last audited 27-09-26 by BK · roundtrip-economy rewrite · prior stamp 08-09-26
