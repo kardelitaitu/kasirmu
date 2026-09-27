@@ -14,14 +14,14 @@
 //! All four doors have twins in `crates/kasirmu-bridge/src/subscription.rs`, and
 //! none may be delegated. Three distinct grounds:
 //!
-//! 1. [`get_subscription_capabilities`] is on the registration-gate debt
+//! 1. [`get_subscription_capabilities`](kasirmu_bridge::subscription::get_subscription_capabilities) is on the registration-gate debt
 //!    ledger (`registration_gate_debt.generated.rs`): it resolves no session
 //!    and names no permission, so delegating would flip it to `Gated` and
 //!    erase ledger debt as a side effect of a port — §1 forbids it.
-//! 2. [`explain_feature_availability_scoped`]'s own body IS
+//! 2. [`explain_feature_availability_scoped`](kasirmu_bridge::subscription::explain_feature_availability_scoped)'s own body IS
 //!    statement-identical to its twin, and the census accordingly reports it
 //!    portable. It is still refused, because its last statement calls this
-//!    module's [`load_feature_verdict`], and *that* helper's twin diverges by
+//!    module's [`load_feature_verdict`](kasirmu_bridge::subscription::load_feature_verdict), and *that* helper's twin diverges by
 //!    one statement: the bridge applies `ent.apply_debug_upgrade()`
 //!    (`crates/kasirmu-bridge/src/subscription.rs:376`) where this file does not.
 //!    Delegating the door would silently swap the callee and make a tablet
@@ -29,7 +29,7 @@
 //!    `free` — the exact contradiction the helper's comment exists to
 //!    prevent. **A DIVERGENT helper pair disqualifies every door that calls
 //!    that helper, even when the door itself reads identical.**
-//! 3. [`get_over_quota_report`] and [`get_over_quota_report_scoped`] diverge
+//! 3. [`get_over_quota_report`](kasirmu_bridge::subscription::get_over_quota_report) and [`get_over_quota_report_scoped`](kasirmu_bridge::subscription::get_over_quota_report_scoped) diverge
 //!    in their own bodies: the shell locks `state.db` and then calls the
 //!    synchronous `load_over_quota_report(&db)`, while the twin calls the
 //!    async, ctx-taking `compute_over_quota_report(ctx)`. §4 pins lock order

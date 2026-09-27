@@ -26,7 +26,7 @@
 //! the scope, enforce the Premium+ audit tier, then `audit:view` /
 //! `audit:export` through the domain's own gate pair, and only then read or
 //! write. Each shim adds a **fourth move** in front of that - see
-//! [`require_audit_tier`] for why the tablet gates its own tier twice.
+//! `require_audit_tier` for why the tablet gates its own tier twice.
 
 use tauri::{State, command};
 

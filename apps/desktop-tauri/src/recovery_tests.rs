@@ -2,7 +2,7 @@
 //!
 //! Wired from `recovery.rs` as `#[cfg(test)] #[path = "recovery_tests.rs"] mod tests;`.
 //!
-//! Everything here drives [`consume_pending_restore`] through its two parameters — a live
+//! Everything here drives [`consume_pending_restore`](crate::recovery::consume_pending_restore) through its two parameters — a live
 //! database path and (derived from it) the request path — so no Tauri app, window or
 //! `AppState` is involved. The candidate databases are real migrated files built by
 //! `kasirmu_core::migrations::fresh_db`'s sibling, `migrations::run`.

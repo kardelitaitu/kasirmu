@@ -3,7 +3,7 @@
 //! The bridge's `restore_prepare` writes `<db>.restore-request.json` naming a validated
 //! backup, but performs no swap: the live connection is an `Arc<Mutex<Connection>>` cloned
 //! into daemons that spawn detached, so an in-process swap would fight every one of them.
-//! This module is the consumer. [`consume_pending_restore`] runs from the tablet setup
+//! This module is the consumer. [`consume_pending_restore`](crate::recovery::consume_pending_restore) runs from the tablet setup
 //! closure BEFORE `AppState::new` opens (and migrates) the database, when no connection and
 //! no daemon exists yet — the only moment the swap is safe.
 //!
@@ -15,7 +15,7 @@
 //! Invariants: the request is claimed exactly once (a `create_new` lock file, held for
 //! the duration of the boot and released when it ends); a candidate that no longer validates
 //! is never promoted;
-//! the request path is derived in one place ([`request_path_for`]) and must stay
+//! the request path is derived in one place (`request_path_for`) and must stay
 //! byte-identical to the writer's in `kasirmu-bridge`.
 //!
 //! This is the tablet twin of `apps/desktop-tauri/src/recovery.rs` (slice S4a). The two

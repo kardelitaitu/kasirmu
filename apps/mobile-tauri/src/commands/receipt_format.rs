@@ -2,13 +2,13 @@
 //!
 //! # ADR #49 status — measured 2026-09-16, `verify-body-parity.py` → **1 / 3**
 //!
-//! **One door is ported.** [`get_receipt_format_scoped`] delegates to
+//! **One door is ported.** [`get_receipt_format_scoped`](kasirmu_bridge::receipt_format::get_receipt_format_scoped) delegates to
 //! [`kasirmu_bridge::receipt_format::get_receipt_format_scoped`]: the bodies were
 //! statement-identical, and the door names a permission (`SETTINGS_READ`), so
 //! the move is ledger-neutral. The twin takes `session_token` **last**.
 //!
-//! **Two doors are REFUSED, on an added gate.** [`set_receipt_layout_scoped`] and
-//! [`set_receipt_content_scoped`] gate on the session alone here
+//! **Two doors are REFUSED, on an added gate.** [`set_receipt_layout_scoped`](kasirmu_bridge::receipt_format::set_receipt_layout_scoped) and
+//! [`set_receipt_content_scoped`](kasirmu_bridge::receipt_format::set_receipt_content_scoped) gate on the session alone here
 //! (`SETTINGS_EDIT`, `require_permission_for_session`), while the bridge twins
 //! layer an ADR #47 location-resource check on top —
 //! `require_permission_for_session_resource(&session, SETTINGS_EDIT,

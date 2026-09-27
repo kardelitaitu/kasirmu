@@ -14,7 +14,7 @@
 //! door flips it to `Gated` and **erases debt**, so those stay put even though
 //! their bodies already match the twin.
 //!
-//! **One door is ported.** [`list_all_offline_scoped`] is the only door that is
+//! **One door is ported.** [`list_all_offline_scoped`](kasirmu_bridge::offline::list_all_offline_scoped) is the only door that is
 //! both body-identical *and* gated — it enforces `SYNC_MANAGE`
 //! (`crates/kasirmu-bridge/src/offline.rs:266-268`), which is what makes the
 //! delegation ledger-neutral. `OfflineQueueItemDto` crossed the boundary with it.
@@ -22,17 +22,17 @@
 //! **Seven doors are REFUSED, on four separate grounds.** This module is the
 //! campaign's clearest evidence that §4's pinned surfaces are not only the SQL:
 //!
-//! - **Case 2, debt erasure** — [`enqueue_offline_scoped`],
-//!   [`list_pending_offline_scoped`], [`pending_offline_count_scoped`] and
-//!   [`list_remote_failures_scoped`]. Each resolves a session via
+//! - **Case 2, debt erasure** — [`enqueue_offline_scoped`](kasirmu_bridge::offline::enqueue_offline_scoped),
+//!   [`list_pending_offline_scoped`](kasirmu_bridge::offline::list_pending_offline_scoped), [`pending_offline_count_scoped`](kasirmu_bridge::offline::pending_offline_count_scoped) and
+//!   [`list_remote_failures_scoped`](kasirmu_bridge::offline::list_remote_failures_scoped). Each resolves a session via
 //!   `resolve_scope` and enforces nothing, so a delegation would silently
 //!   retire a real ledger row. Gating them is an owner ruling, not part of an
 //!   extraction.
-//! - **Added statements** — [`enqueue_offline_scoped`] on a second, independent
+//! - **Added statements** — [`enqueue_offline_scoped`](kasirmu_bridge::offline::enqueue_offline_scoped) on a second, independent
 //!   ground: the bridge runs three statements this shell never has,
 //!   `TenantSubscription::load` against the global db then `verify_signature()`
 //!   and `enforce_pos_writable()` (`crates/kasirmu-bridge/src/offline.rs:233-236`).
-//! - **Storage source** — [`retry_offline_sync_scoped`]. **FIXED under C59; this
+//! - **Storage source** — [`retry_offline_sync_scoped`](kasirmu_bridge::offline::retry_offline_sync_scoped). **FIXED under C59; this
 //!   entry described a live defect until 2026-09-25 and no longer does.** Phase 3
 //!   used to write the outcomes to `state.db`, which on this shell is the **global
 //!   identity** database (`<app_data_dir>/kasir.db`), while the bridge re-resolves
@@ -46,8 +46,8 @@
 //!   to the same store database Phase 1 read (`:363-381`). The `?` is still there
 //!   and is still correct: now that both phases address one file, a `NotFound` means
 //!   the row genuinely vanished and aborting is right.
-//! - **Log text** — [`delete_offline_item_scoped`] and
-//!   [`requeue_remote_failure_scoped`], and *nothing else* differs. The bridge
+//! - **Log text** — [`delete_offline_item_scoped`](kasirmu_bridge::offline::delete_offline_item_scoped) and
+//!   [`requeue_remote_failure_scoped`](kasirmu_bridge::offline::requeue_remote_failure_scoped), and *nothing else* differs. The bridge
 //!   appends `" (scoped)"` where this shell says `"offline queue item deleted"`
 //!   (`:446` vs bridge `:417`) and `"dead-lettered remote item requeued for sync
 //!   retry"` (`:479` vs bridge `:439`) — both re-measured 2026-09-25, because the

@@ -19,7 +19,7 @@ next: none | perf: N/A
 //!   (`registration_gate_debt.generated.rs:98`, `:102`) as
 //!   `resolves_session_names_no_permission`. Delegating would flip them to
 //!   `Gated` and erase two real ledger rows — §1 forbids it. The drift-pin
-//!   evidence is in the note above [`get_user_preferences_scoped`].
+//!   evidence is in the note above [`get_user_preferences_scoped`](kasirmu_bridge::settings::get_user_preferences_scoped).
 //! - `get_deployment_info` reads body-identical as well, and is refused on a
 //!   *provenance* fork rather than a gate: the desktop shell already delegates
 //!   (`apps/desktop-tauri/src/commands/settings.rs:341`), while this shell

@@ -4,7 +4,7 @@
 //!
 //! # ADR #49 status — 2 of 7 doors extracted, 5 refused
 //!
-//! [`list_customers_scoped`] and — since 2026-09-25 — [`get_customer_scoped`]
+//! [`list_customers_scoped`](crate::commands::customers::list_customers_scoped) and — since 2026-09-25 — [`get_customer_scoped`](crate::commands::customers::get_customer_scoped)
 //! delegate to `kasirmu-bridge`. The remaining five are **refused** under ADR #49 §4,
 //! not merely unported, and for one reason: their gate ORDER is fixed but their gate
 //! KIND still differs from no shell, because the bridge twins gate with the same

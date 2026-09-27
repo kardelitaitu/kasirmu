@@ -37,7 +37,7 @@
 //! the bridge's shape *is* the desktop's original body, and this shell is the
 //! divergent side of a two-shell fork.
 //!
-//! **One door is ported.** [`list_categories`] shares
+//! **One door is ported.** [`list_categories`](crate::commands::categories::list_categories) shares
 //! [`kasirmu_bridge::categories::run_list_categories`] — §1b.9's "port the query,
 //! keep the door": this door resolves no session, so it is ledger-neutral, and
 //! only the statement moves. The instrument still prints this pair as
@@ -45,7 +45,7 @@
 //! helper *receives* the connection, so it has no `CTX.db.lock()` statement
 //! where the door keeps one. That absent lock line is the shape §1b.9 asks for,
 //! so **no `run_*` port can ever read clean** — expect it and read the diff.
-//! [`CategoryDto`] crossed the boundary with it and is re-exported, so
+//! [`CategoryDto`](kasirmu_bridge::categories::CategoryDto) crossed the boundary with it and is re-exported, so
 //! `use super::*;` in `categories_tests.rs` keeps resolving it and no field
 //! list is duplicated across two crates.
 //!
@@ -56,7 +56,7 @@
 //! the deny-path store open and change the error a caller receives against an
 //! unopenable store, because `open_store` creates the directory, the database
 //! file and runs migrations on a cache miss. ADR #49 §4 pins gate and lock
-//! order, so those bodies stay tablet-native. [`list_categories_scoped`] is
+//! order, so those bodies stay tablet-native. [`list_categories_scoped`](crate::commands::categories::list_categories_scoped) is
 //! refused on two further grounds of its own — see its note.
 
 use serde::{Deserialize, Serialize};

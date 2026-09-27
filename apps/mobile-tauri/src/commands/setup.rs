@@ -3,13 +3,13 @@
 //! Three commands remain, and the retired ones are named below rather than
 //! silently dropped, because three separate decisions removed them:
 //!
-//! - [`get_enabled_features`] — unchanged. The feature read the shell makes on
+//! - [`get_enabled_features`](kasirmu_bridge::setup::get_enabled_features) — unchanged. The feature read the shell makes on
 //!   mount to decide which nav items to show.
-//! - [`get_first_run_state`] — replaces `get_setup_status` (ADR #56 §2.1). It
+//! - [`get_first_run_state`](kasirmu_bridge::setup::get_first_run_state) — replaces `get_setup_status` (ADR #56 §2.1). It
 //!   returns the provisioning ROW rather than a boolean derived from the
 //!   `show_setup_wizard` key, so an unreadable database yields
 //!   `unprovisioned` instead of forging a verdict.
-//! - [`provision_device`] — replaces `complete_setup` and `bootstrap_owner` on
+//! - [`provision_device`](kasirmu_bridge::setup::provision_device) — replaces `complete_setup` and `bootstrap_owner` on
 //!   the fresh-install path (ADR #56 §2.2). One idempotent transaction creates
 //!   the location, the workspaces, the owner, the features and the marker.
 //!

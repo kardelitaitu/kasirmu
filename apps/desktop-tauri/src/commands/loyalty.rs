@@ -3,7 +3,7 @@
 //! Wave B / B2: the bodies now live in the headless `kasirmu_bridge::loyalty`
 //! module. Each `#[tauri::command]` below keeps its exact name, parameter
 //! list, attributes and `Result<_, AppError>` wire contract; it builds a
-//! [`crate::state::AppState::bridge_ctx`] and delegates. The global-identity
+//! `crate::state::AppState::bridge_ctx` and delegates. The global-identity
 //! gate (`loyalty:view` / `loyalty:earn` / `loyalty:redeem` /
 //! `loyalty:manage`) runs inside the bridge, in the same order as before.
 

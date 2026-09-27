@@ -2,7 +2,7 @@
 //!
 //! Wired from `recovery.rs` as `#[cfg(test)] #[path = "recovery_tests.rs"] mod tests;`.
 //!
-//! Everything here drives [`consume_pending_restore`] through its single parameter — the
+//! Everything here drives [`consume_pending_restore`](crate::recovery::consume_pending_restore) through its single parameter — the
 //! live database path — so no Tauri app, window or `AppState` is involved. This matters on
 //! this shell in particular: the tablet's `run()` body sits under `#[cfg(not(test))]`, so a
 //! test that needed a real boot could not run at all. The candidates are real migrated
