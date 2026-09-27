@@ -474,7 +474,7 @@ covered, because no coverage instrument is enforced. Close that in this order.
       exits 0 with pedantic enabled. Do **not** enable `nursery` — it is
       explicitly unstable and will churn every release.
 
-- [ ] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
+- [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
       unexamined rather than genuinely unsafe. Audit them crate by crate and add
       the attribute where the crate has zero `unsafe`; where it has some, use
@@ -485,6 +485,49 @@ covered, because no coverage instrument is enforced. Close that in this order.
       `cargo check --workspace --all-targets`. Leave `kasirmu-logging`,
       `kasirmu-security`, `kasirmu-hal`, `kasirmu-lua` on file-scoped allows —
       their FFI is real.
+      **CLOSED 2026-09-28 (commit `fbb83d152`). Count went 7 → 38 of 43 crate
+      roots, a rise of 31.** Acceptance re-run: `cargo check --workspace
+      --all-targets` (excluding `kasirmu-bridge`, see the caveat below) →
+      `Finished`, exit 0, with zero `usage of an unsafe block` errors.
+      **The measurement that made this tractable.** Grepping `unsafe` returns
+      mostly AUDIT-STAMP PROSE — doc comments saying "no unsafe in production
+      paths" — so the naive count is misleading in both directions. Filtering
+      to real constructs (`unsafe {`, `unsafe fn/impl/trait/extern`,
+      `#[unsafe(...)]`, `unsafe impl`) leaves **7 directories**: `kasirmu-hal`,
+      `kasirmu-logging`, `kasirmu-security`, `kasirmu-lua` (all four on the
+      box's leave-list and already denying at root with file-scoped allows),
+      plus `apps/cloud-server` and `kasirmu-notification` (**test-only**
+      `env::set_var`), and the two Tauri shells (`#[unsafe(link_section)]`).
+      Everything else is genuinely zero-unsafe.
+      **A find worth stating, because it was NOT assumed:** a crate-level
+      `#![deny(unsafe_code)]` **does** fire on `#[cfg(test)]` code. Verified by
+      applying it to `kasirmu-notification` and watching `--all-targets` fail on
+      its test-only `env::set_var` calls. That is why this box prescribes the
+      file-scoped `#![allow(unsafe_code)]` precedent rather than a bare deny —
+      the crate denies, and the specific test file opts out. Applied at
+      `apps/cloud-server/src/{db_tests,config_tests}.rs` and
+      `kasirmu-notification/src/whatsapp_tests.rs`, each with the reason inline.
+      **Two mistakes made and corrected during the work, recorded so they are
+      not re-derived.** (1) The first insertion pass put the attribute after an
+      OUTER doc comment in `kasirmu-plugin`, which is illegal — "an inner
+      attribute is not permitted following an outer doc comment". The rule is
+      that `#![...]` must follow only the `//!` block, before the first
+      `///` or item. (2) My inventory missed `apps/cloud-server/src/config_tests.rs`
+      because it recorded only the FIRST hit per directory; the deny then failed
+      on four sites there. Grep per FILE, not per directory.
+      **Remaining 5, all deliberate:** `crates/kasirmu-logging` (real
+      syslog/eventlog FFI — box's leave-list) and the four Tauri shell roots
+      (`apps/{desktop,mobile}-tauri/src/{lib,main}.rs`, which carry
+      `#[unsafe(link_section = ".drectve")]` emitted by the Tauri/Windows build;
+      a deny there would fight the toolchain rather than harden the crate).
+      **Caveat on the acceptance run:** `kasirmu-bridge` was excluded because a
+      concurrent session's in-flight `pos/checkout/` module move has it failing
+      to compile for an unrelated reason (`cannot find function
+      validated_attempt_id`). Checked against HEAD-without-my-edit and the
+      failure is pre-existing and not caused by this change, but the FULL
+      workspace check therefore has not been observed green in this session and
+      should be re-run once that lane lands. `kasirmu-bridge` itself DOES carry
+      the new deny.
 
 ---
 
