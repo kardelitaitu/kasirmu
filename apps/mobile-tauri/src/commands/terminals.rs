@@ -15,6 +15,7 @@ use foundation::validate_not_empty;
 use crate::commands::authz::{require_permission_for_session, require_permission_for_user};
 use crate::error::AppError;
 use crate::state::AppState;
+use kasirmu_bridge::memo::DEFAULT_TENANT_ID;
 use kasirmu_core::availability::UsageCounts;
 use kasirmu_core::entitlements::Entitlements;
 use kasirmu_core::permissions;
@@ -184,6 +185,10 @@ pub async fn set_device_binding_scoped(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let session = state.resolve_session(&session_token)?;
+    // Read the store-registered terminal the UI named BEFORE taking the global
+    // lock (lock order), so its `device_id` can key the global row the boot
+    // resolver reads.
+    let source = store_registered_terminal(&state, &session.store_id, &args.terminal_id)?;
     let db = state.db.lock().await;
     // Acquire the (non-Send) keyring only after the lock so no `.await`
     // point holds it — Tauri requires command futures to be Send.
@@ -195,7 +200,7 @@ pub async fn set_device_binding_scoped(
         &session.user_id,
         kasirmu_core::permissions::TERMINALS_EDIT,
     )?;
-    run_set_device_binding(&db, keyring.as_ref(), &args)?;
+    run_set_device_binding(&db, keyring.as_ref(), &source, &args)?;
     drop(db);
 
     tracing::info!(
@@ -207,12 +212,41 @@ pub async fn set_device_binding_scoped(
     Ok(())
 }
 
+/// Read the store-registered terminal a binding command names.
+///
+/// The device binding is owned by the GLOBAL identity DB — where the tablet's
+/// `resolve_boot_store` reads it (it has no session, so it can only open the
+/// global db) — but the terminal the UI names is registered in the session's
+/// per-store DB. This reads that row so its `device_id` can key the global row
+/// the boot resolver will pick.
+fn store_registered_terminal(
+    state: &AppState,
+    session_store_id: &str,
+    terminal_id: &str,
+) -> Result<Terminal, AppError> {
+    let conn = state
+        .db_manager
+        .open_store(session_store_id)
+        .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+    let db = conn
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    Store::new(&db).get_terminal(terminal_id)?.ok_or_else(|| {
+        kasirmu_core::CoreError::NotFound {
+            entity: "terminal",
+            id: terminal_id.to_owned(),
+        }
+        .into()
+    })
+}
+
 /// Shared binding write behind `set_device_binding_scoped` (extracted for testing). The unscoped
 /// `set_device_binding` this used to serve was retired on 2026-09-16 (T7-4): it took a
 /// caller-named `user_id`, was registered in neither shell, and no production UI code named it.
 fn run_set_device_binding(
     conn: &rusqlite::Connection,
     keyring: &dyn kasirmu_security::Keyring,
+    source: &Terminal,
     args: &SetDeviceBindingArgs,
 ) -> Result<(), AppError> {
     validate_not_empty("terminal_id", &args.terminal_id)
@@ -222,16 +256,31 @@ fn run_set_device_binding(
     validate_not_empty("bound_instance_id", &args.bound_instance_id)
         .map_err(|e| AppError::Invalid(e.to_string()))?;
 
+    let store = Store::new(conn);
+    // The UI names a terminal from the session's STORE db, but the binding is
+    // owned by the GLOBAL identity DB where `resolve_boot_store` reads it.
+    // Mirror the store terminal into global (it has no global row until it is
+    // made addressable) and bind the row the boot resolver picks by
+    // `device_id` — signing over THAT id, which is what the boot verifier
+    // hashes. Binding `args.terminal_id` directly failed `NotFound` on a real
+    // tablet, because a store-registered terminal has no global row.
+    store.ensure_terminal_addressable(source, DEFAULT_TENANT_ID, Some(&args.bound_store_id))?;
+    let target = store.get_terminal_by_device_id(&source.device_id)?.ok_or_else(|| {
+        AppError::Internal(format!(
+            "terminal '{}' not found after mirroring into the global db",
+            source.id
+        ))
+    })?;
+
     let signature = sign_binding(
         keyring,
-        &args.terminal_id,
+        &target.id,
         &args.bound_store_id,
         &args.bound_instance_id,
     )?;
 
-    let store = Store::new(conn);
     store.update_terminal_binding(
-        &args.terminal_id,
+        &target.id,
         &args.bound_store_id,
         &args.bound_instance_id,
         &signature,

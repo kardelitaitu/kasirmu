@@ -460,6 +460,7 @@ fn run_set_device_binding_writes_verifiable_binding() {
     run_set_device_binding(
         &conn,
         &keyring,
+        &t,
         &SetDeviceBindingArgs {
             terminal_id: t.id.clone(),
             bound_store_id: "store-a".into(),
@@ -474,6 +475,77 @@ fn run_set_device_binding_writes_verifiable_binding() {
         sign_binding(&keyring, &t.id, &store_id, &instance_id).unwrap(),
         sig,
         "persisted binding must match the same keyring's signature"
+    );
+}
+
+/// A tablet binding a terminal registered through Settings → Terminals must
+/// succeed and land on the GLOBAL row its own `resolve_boot_store` reads.
+///
+/// `set_device_binding_scoped` opened the global identity DB (correct) but
+/// bound `args.terminal_id` directly. The UI passes a terminal from the STORE
+/// db, so on a real tablet that id has no global row and the write failed with
+/// `NotFound` — a device could never be bound. This drives the shared core the
+/// way the command does: the source terminal exists only in the store db.
+#[test]
+fn run_set_device_binding_binds_the_global_row_the_boot_path_resolves() {
+    let conn = fresh_conn();
+    conn.execute(
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+         VALUES ('default', 'Default', '', '', 'USD', 'UTC', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+
+    // As Settings → Terminals registers it: only in the store db, never global.
+    let source = Terminal::new("POS-1", "dev-001");
+
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    let result = run_set_device_binding(
+        &conn,
+        &keyring,
+        &source,
+        &SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "default".into(),
+            bound_instance_id: "inst-1".into(),
+        },
+    );
+    // RED (pre-fix): the global db has no row with the store terminal id, so the
+    // write failed `NotFound`. GREEN: the store terminal is mirrored and bound.
+    assert!(
+        result.is_ok(),
+        "binding a store-registered terminal must succeed, got {result:?}"
+    );
+
+    let store = Store::new(&conn);
+    let boot_row = store
+        .get_terminal_by_device_id("dev-001")
+        .unwrap()
+        .expect("the device's global terminal row must exist after binding");
+    assert_eq!(
+        store
+            .get_terminal_binding(&boot_row.id)
+            .unwrap()
+            .map(|(s, i, _)| (s, i)),
+        Some(("default".to_owned(), "inst-1".to_owned())),
+        "the binding must sit on the global row resolve_boot_store resolves"
+    );
+}
+
+/// An unknown store terminal must stay `NotFound` — the same refusal the write
+/// has always given — so the resolution fix cannot mask a genuinely absent
+/// terminal as a silent success.
+#[test]
+fn store_registered_terminal_is_not_found_for_an_unknown_id() {
+    let temp = tempfile::tempdir().unwrap();
+    let state = AppState::for_test_with_db_manager(platform_core::StoreDatabaseManager::new(
+        temp.path().to_path_buf(),
+        migrations::ALL,
+    ));
+    let err = store_registered_terminal(&state, "s1", "no-such-terminal").unwrap_err();
+    assert!(
+        matches!(err, AppError::Core { .. }),
+        "an unknown store terminal must stay NotFound, got {err:?}"
     );
 }
 
