@@ -956,6 +956,55 @@ covered, because no coverage instrument is enforced. Close that in this order.
       **`kasirmu-core`'s 215 remain untouched** — 8 of its files are dirty by a
       concurrent session, and the failure modes there are not the same shape as
       these two. Still no manifest edited, so the box stays open.
+      **ROUND 2 — 2026-09-28 (commit `cca0ac389`). The `cast_lossless` class is
+      now ZERO in `kasirmu-core` — 27 sites, all 27 verified behaviour-preserving
+      by the crate's own 3,407 tests.**
+      **Why this class and not the others, decided on measurement.** Splitting
+      the 215 by file ownership: **191 sit in files nobody had claimed**, only 24
+      in dirty ones — so the crate was NOT blocked, which the previous round's
+      note implied it was. Splitting again by LINT showed the classes are not
+      alike:
+      | lint | mine | shape |
+      |---|---|---|
+      | `cast_lossless` | 29 | **mechanical, genuinely fixable** — DONE |
+      | `cast_precision_loss` | 56 | deliberate float analytics |
+      | `cast_possible_truncation` | 46 | needs per-site judgment |
+      | `float_cmp` | 22 | test assertions on float literals |
+      | `cast_sign_loss` / `cast_possible_wrap` | 19 / 19 | mixed |
+      I did `cast_lossless` alone because it is the one class where the fix is
+      provably an identity: every site was `bool as i64`, `u32 as i64` or
+      `u32 as i32`, all of which `From` expresses exactly. The other four are
+      NOT sweeps — see the shape note below.
+      **What actually changed, 27 sites across 13 files:** `rule.is_active as i64`
+      → `i64::from(rule.is_active)` (×18 across `kds_rules`, `edc_terminals`,
+      `products_crud`, `products`, `promotions`, `terminal_overrides`,
+      `terminals`, `sync_pull`), `num_seconds_from_midnight() as i64` →
+      `i64::from(..)` (×2 in `email_sender`), `lookback_days as i64` ×2,
+      `i as i64` in `cart_bench`, and two test-only `i32` sites. The diff is
+      **28 insertions / 28 deletions** — a pure conversion swap with no line
+      added or removed.
+      **Verification, and the two things it caught:** `cargo test -p
+      kasirmu-core --lib` → **3407 passed, 0 failed** (286s). `cargo fmt -p
+      kasirmu-core -- --check` then flagged **two of my own files** — my
+      conversions lengthened lines and broke the alignment in
+      `email_sender.rs:147` and `sync_pull.rs:504`, which is exactly the kind of
+      thing that would have failed the `cargo fmt` gate on a PR. Fixed, and
+      checked afterwards that `cargo fmt -p kasirmu-core` had NOT silently
+      reformatted the 8 files another session owns: the whole crate reports 0
+      fmt diffs and their diffs are semantic (e.g. `license_verification.rs`
+      adding `fetch_license_crl` to a re-export), not whitespace.
+      **WHAT THE REMAINING 188 ARE, stated so the next pass does not treat them
+      as one task.** `cast_precision_loss` (56) is mostly `popularity.rs`'s
+      scoring formula — `units_sold as f64` in a recency-decayed float blend
+      (ADR #37 D1). The loss is **intentional and the arithmetic is float by
+      design**; converting it would be wrong. `float_cmp` (22) is
+      `popularity_tests.rs` asserting on float literals (`assert_eq!(x, 1.0)`).
+      `cast_possible_truncation` (46) needs a per-site read of whether the value
+      can exceed the target. **The honest fix for the first two is targeted
+      `#[allow]` with a reason, not conversion** — the repo already has that
+      precedent at `platform/startup/src/rate_sync.rs:51`. That is a review
+      task with a judgment per site, and the outcome may legitimately be
+      "deliberate, documented" rather than "changed".
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
