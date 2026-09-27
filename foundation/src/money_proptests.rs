@@ -275,7 +275,16 @@ proptest! {
             .and_then(|v| v.checked_add(parsed_frac))
             .unwrap_or(0);
         let signed = if sign == "-" { -reconstructed } else { reconstructed };
-        assert_eq!(signed as i64, minor, "round-trip recovers minor units for {minor} ({s})");
+        // `try_into` rather than `as i64`: the narrowing is infallible here
+        // (signed was reconstructed FROM an i64 `minor`), and saying so
+        // explicitly turns "this cannot overflow" from a comment into a checked
+        // assertion. `as` would silently wrap if a future change to the parser
+        // let the reconstruction grow, which is exactly the failure this
+        // round-trip property exists to catch.
+        let signed_i64: i64 = signed
+            .try_into()
+            .expect("reconstruction of an i64 must fit in i64");
+        assert_eq!(signed_i64, minor, "round-trip recovers minor units for {minor} ({s})");
     }
 
     /// `checked_div` is exact Rust integer division (truncation toward

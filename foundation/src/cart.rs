@@ -223,7 +223,7 @@ impl Cart {
     /// Return the discount percentage as an integer (0–100).
     #[must_use]
     pub fn discount_percent(&self) -> i64 {
-        self.discount_percent.get() as i64
+        i64::from(self.discount_percent.get())
     }
     /// Return an optional label for the current discount.
     #[must_use]
