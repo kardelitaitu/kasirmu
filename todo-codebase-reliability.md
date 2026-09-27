@@ -54,7 +54,7 @@ having one.
 - [x] **P0-1 — Make the panic inventory green.** **CLOSED 2026-09-27: the gate exits 0.** `scripts/scan-unwrap-panic.py` exited **1** at `6c9e4328a` on `crates/kasirmu-hal/src/drivers/edc/loopback.rs:131` (`self.script.lock().expect("loopback script poisoned")`, no `// SAFETY:`/`// INVARIANT:` marker), which failed `dev-ci.yml#static-gates` for every PR touching Rust. The fix was the first of the two options this item named — **document the invariant**, not convert to a `Result` path — and the marker it added is substantive rather than boilerplate: *"the mutex guards a `Vec` push/remove only; no code path can panic while holding it, so poisoning is impossible in practice."* Two further sites acquired markers in the same pass, both on the WAL diagnostics added this session (`examples/wal_tail_diagnosis.rs`, `examples/wal_sync_attribution.rs`), each stating a real precondition of the measurement (a failed open, migration or PRAGMA read voids the run) rather than a filler phrase. **Acceptance re-run this session: `python3 scripts/scan-unwrap-panic.py` -> exit 0.** The gate's own report now lists the remaining recoverable `expect()` sites as `[INVARIANT]`-marked, which is the state the inventory exists to describe.
       Fix either way: add the invariant comment, or convert to a `Result` path.
 
-- [ ] **P0-2 — Decide the flake policy in writing.** Retries hide real
+- [x] **P0-2 — Decide the flake policy in writing.** Retries hide real
       nondeterminism; a JUnit receipt that reports `1 flaky` and exits 0 still
       ships the bug. Choose one: (a) a no-retry CI leg
       (`cargo nextest run --workspace --all-features --profile quick`, which
@@ -62,6 +62,34 @@ having one.
       receipt fail the build on any `<flakyFailure>`.
       Acceptance: the chosen option runs in `dev-ci.yml` and a seeded flake
       turns the job red. Verify non-vacuously — do not ship a leg that cannot fail.
+      **CLOSED 2026-09-27: option (b) chosen, and it was already live —
+      `dev-ci.yml:373-374` runs
+      `verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`
+      after the workspace run, and `.config/nextest.toml:15` keeps
+      `retries = 2` for the default profile, so retries stay and the receipt
+      grades them. Non-vacuity is the checker's own planted fixture, re-run
+      this session: `--self-test` asserts *"a rescued flake is graded FAIL,
+      not pass"* and *"...and the rescued test is named"*, both `ok`.**
+      What this session actually found is narrower and worth recording: the
+      *verdict* ran, but the checker's **`--self-test` ran in neither
+      `dev-ci.yml` nor `scripts/check.sh`** — and when run for the first time
+      it was **RED**, on
+      `FAIL  tree census still equals the stated baseline (84)`. The tree had
+      grown to **88** arms across 16 test files in 3 crates; the growth is
+      legitimate and traceable to the `kasirmu-api` `pg.rs` split
+      (`pg_tests.rs` alone holds 15), not to any arm conversion.
+      `ARM_BASELINE` moved 84 -> 88 in the same commit, per the contract its
+      own comment states; **`ARM_FLOOR` deliberately stayed at 65**, because
+      raising a floor to track a larger census erodes the headroom that
+      absorbs a legitimate conversion. The self-test is now a `static-gates`
+      step beside the panic inventory, registered as gate
+      `pg-receipt-selftest` in `scripts/gates.json` and runnable from
+      `check.sh`, so the checker cannot silently go stale again — the same
+      reasoning as `auditor-selftests`: a checker that cannot run is
+      indistinguishable from a checker that found nothing.
+      **Acceptance re-run this session: `python3 scripts/verify-pg-tests-ran.py
+      --self-test` -> exit 0; `python3 scripts/verify-ci-docs-drift.py` -> 0
+      drift item(s).**
 
 - [ ] **P0-3 — Put the fuzz targets back under a runner, or delete them.**
       Seven targets (`cart_deser`, `kasirpkg_parse`, `lua_parse`,

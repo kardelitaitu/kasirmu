@@ -80,11 +80,16 @@ ARM_RE = re.compile(r'eprintln!\s*\(\s*"[^"]*skip', re.IGNORECASE)
 # ARM_CRATES bounds the membership, and a partition that sums correctly can still
 # be walking a silently narrowed population.
 #
-# Measured baseline: 84 arms across 16 test files in 3 crates. Moved 64 -> 66 -> 68 -> 84:
+# Measured baseline: 88 arms across 16 test files in 3 crates. Moved 64 -> 66 -> 68 -> 84 -> 88:
 # +16 across cloud-server (quota detector, reconciliation, stock guard, trigger ports)
-# and platform-sync.
-ARM_FLOOR = 65  # headroom below 84: absorbs a legitimate conversion, fires on drift
-ARM_BASELINE = 84
+# and platform-sync; then +4 measured 2026-09-27, driven by the kasirmu-api `pg.rs`
+# split (`crates/kasirmu-api/src/pg_tests.rs` alone holds 15) rather than by any
+# conversion of an arm. The floor is NOT moved with it: 88 received arms push the
+# census further above the floor, which is the direction this guard is meant to
+# tolerate, and re-raising the floor would erode the headroom that absorbs a
+# legitimate conversion.
+ARM_FLOOR = 65  # headroom below 88: absorbs a legitimate conversion, fires on drift
+ARM_BASELINE = 88
 # Per-crate membership: each crate that owns arms today must keep at least one.
 # Renaming a file survives this; a whole crate's arms going uncounted does not,
 # which is the "fix landed in one crate, 17 left behind" failure in another form.

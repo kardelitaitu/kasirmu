@@ -151,6 +151,13 @@ if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2
     # own dir, not the workspace root, which is why the old config value wrote a
     # doubled path nobody read.
     step "test workspace flake receipt (junit)" "python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml" python3 scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml
+    # P0-2. The receipt above is only as trustworthy as the checker producing it:
+    # a regression inside verify-pg-tests-ran.py grades every future flake wrongly
+    # while still printing an authoritative-looking verdict. This self-test runs
+    # the checker's own census and grading rules against planted fixtures, so it
+    # is the one thing that can catch the checker going stale. Gate:
+    # scripts/gates.json -> "pg-receipt-selftest".
+    step "pg receipt self-test" "python3 scripts/verify-pg-tests-ran.py --self-test" python3 scripts/verify-pg-tests-ran.py --self-test
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"

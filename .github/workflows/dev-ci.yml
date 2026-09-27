@@ -752,6 +752,21 @@ jobs:
       # at zero and its contract stable under `cargo fmt`.
       - name: "Panic inventory (ADR #33)"
         run: python3 scripts/scan-unwrap-panic.py
+      # P0-2. `verify-pg-tests-ran.py` is the only thing that reads nextest's
+      # <flakyFailure> -- the shape in which a retry-rescued failure is recorded
+      # while the report's own totals say failures="0". Its VERDICT runs in
+      # cargo-nextest (:374) against each run's JUnit file; its SELF-TEST ran
+      # nowhere, so a regression in the checker itself would have been invisible
+      # while every downstream grade still looked authoritative.
+      #
+      # That is not hypothetical: this step was added because the self-test was
+      # found RED -- the tree had grown to 88 skip arms while ARM_BASELINE still
+      # read 84, so the census guard had been firing on stale numbers. The
+      # checker grades a flake correctly only while its own census rules work,
+      # and a checker that cannot fail is the same decoration this whole
+      # checklist exists to remove.
+      - name: PG receipt checker self-test
+        run: python3 scripts/verify-pg-tests-ran.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the

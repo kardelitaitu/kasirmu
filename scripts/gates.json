@@ -254,6 +254,18 @@
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
+      "id": "pg-receipt-selftest",
+      "label": "PG receipt checker self-test",
+      "status": "required",
+      "runners": { "check.sh": ["pg receipt self-test"] },
+      "_note": "Added 2026-09-27 with P0-2. verify-pg-tests-ran.py is the only reader of nextest's <flakyFailure> -- the shape in which a retry-rescued failure is recorded while the report's own totals still say failures=\"0\", which is why a rerun-until-green suite can look clean. Its VERDICT has run per JUnit file in cargo-nextest since that step landed; its SELF-TEST ran in neither dev-ci.yml nor check.sh, so a regression inside the checker would have stayed invisible while every grade it produced still looked authoritative. That is not hypothetical: adding this step found the self-test RED -- the tree had grown to 88 skip arms across 16 files in 3 crates while ARM_BASELINE still read 84, so the census guard's own expectation had been firing on stale numbers (growth came from the kasirmu-api pg.rs split, whose pg_tests.rs alone holds 15). ARM_BASELINE moved 84 -> 88 in the same commit, per the contract at its own comment; ARM_FLOOR stayed at 65 deliberately, because raising a floor to track a bigger census erodes the headroom that absorbs a legitimate arm conversion. Same principle as auditor-selftests: a checker that cannot run is indistinguishable from a checker that found nothing.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": ["PG receipt checker self-test"]
+      }
+    },
+    {
       "id": "a11y-advisory",
       "label": "A11y regression (advisory)",
       "status": "advisory",
