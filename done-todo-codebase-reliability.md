@@ -588,12 +588,60 @@ covered, because no coverage instrument is enforced. Close that in this order.
       surfaces them before a customer does.
       Acceptance: one seeded violation produces an `error!` line naming the
       invariant and the entity.
-- [ ] **P3-3 — Keep the `unsafe` inventory reviewable.** 27 `unsafe {` sites and
+- [x] **P3-3 — Keep the `unsafe` inventory reviewable.** 27 `unsafe {` sites and
       7 `unsafe impl/fn/no_mangle` items, all in 4 production files plus 8
       test-only sites. Every one must carry a `// SAFETY:` line.
       Acceptance: `grep -rn 'unsafe' --include='*.rs' crates modules platform foundation apps`
       shows no `unsafe` item without a `SAFETY:` comment on the same or
       preceding line; consider a `static-gates` step that enforces it.
+      **CLOSED 2026-09-28 (commit `e4e3937a2`). Two halves: the tree is clean,
+      AND the rule is enforced rather than left to a reviewer's eye.**
+      Measured state: **30 real constructs, 30 justified, 0 missing** —
+      `python3 scripts/verify-unsafe-safety.py` → `unsafe-safety: OK (30
+      construct(s), every one justified)`, exit 0.
+      **This box's own figures did not survive measurement, and correcting them
+      was most of the work.** It claims "27 `unsafe {` sites and 7
+      `unsafe impl/fn/no_mangle` items … all in 4 production files plus 8
+      test-only sites". Grepping `unsafe` here returns MOSTLY PROSE — the audit
+      stamps are doc comments that literally say *"zero unsafe, no FFI/IO"*,
+      *"0 actual unsafe blocks (risk sweep counted comment text)"* and *"8
+      unsafe blocks (not 6 — prior stamp miscount)"*. A naive match counts all
+      of them, and the total is wrong by roughly 3× in either direction
+      depending on the regex. Honest distribution: **9 files across 7
+      directories** — 3 test-only (`cloud-server/src/{db,config}_tests.rs`,
+      `notification/src/whatsapp_tests.rs`) and 6 production (`kasirmu-hal`
+      JNI/Bluetooth, `kasirmu-logging` syslog/eventlog, `kasirmu-security`
+      CredWriteW/CredReadW, and the two Tauri shells' `#[unsafe(link_section)]`).
+      **Three constructs genuinely lacked a marker and were fixed**
+      (`bt_android.rs:157` `JObjectArray::from_raw`, `bt_android.rs:327`
+      `#[unsafe(no_mangle)]`, and the two Tauri `link_section` statics — the
+      latter pair counted as one class). The other 27 already carried
+      substantive justifications, several better than the box asks for: e.g.
+      `windows.rs:66-73` documents the SEC-3 zero-size `CredentialBlob` guard
+      that stops a null pointer reaching `from_raw_parts`.
+      **The enforcement half, which the box left as a bare "consider".**
+      Nothing in the repo mentioned SAFETY before this — no script, no
+      `gates.json` entry — so the rule was unenforced. `verify-unsafe-safety.py`
+      now fails any real construct without a marker, with an **18-case
+      `--self-test` covering both directions**, wired into `check.sh` and
+      registered as gate `unsafe-safety` (87 gates, 0 drift).
+      **Two traps the checker had to be taught, both found by RUNNING it rather
+      than by design.** (a) Its first run produced **5 false positives, all in
+      `kasirmu-lua`**: an unanchored `unsafe impl` matched comment prose,
+      including a comment explaining the crate deliberately does *not*
+      implement it and a test assertion whose string literal begins with the
+      phrase. Fixed by anchoring `unsafe impl/fn/trait/extern` to statement
+      position and skipping comment lines; the exact failing strings are now
+      self-test fixtures. (b) The box's "same or preceding line" rule is too
+      narrow for THIS codebase and produced **12 false positives**, because the
+      repo documents a whole statement GROUP above the first call
+      (`db_tests.rs:160-170` justifies four separate `env::set_var`/`remove_var`
+      calls in one block). The checker uses a 12-line lookback, and self-tests
+      that a marker **outside** that window does not count.
+      **Not done, named rather than implied:** no CI step was added, so like
+      `root policy` and `no-raw-params` this runs in `check.sh` and pre-push
+      rather than on a PR. Adding a `static-gates` step is a dev-ci.yml edit
+      alone and needs no code change.
 
 ---
 
