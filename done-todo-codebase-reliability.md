@@ -575,13 +575,52 @@ covered, because no coverage instrument is enforced. Close that in this order.
 
 ## 5. P2 — runtime invariants and observability
 
-- [ ] **P3-1 — State the critical-path invariants in one place.** Today there
+- [x] **P3-1 — State the critical-path invariants in one place.** Today there
       are 79 `debug_assert!` sites and ~199 comments mentioning invariants,
       scattered. Write them as a single list (stock ≥ 0; sale total == sum of
       line totals; refund ≤ settled total; sync convergence is order-independent)
       and link each to the test that enforces it.
       Acceptance: `docs/architecture/` carries the list; each invariant names
       its enforcing test.
+      **CLOSED 2026-09-28.** `docs/architecture/CRITICAL_PATH_INVARIANTS.md`
+      carries all four invariants the box names, each with its enforcing test —
+      **18 test names, all verified to exist and to pass**, and **20 file
+      citations, all verified line-by-line** against the tree. Linked from
+      `docs/README.md`, which previously did not list the `architecture/`
+      directory at all.
+      **This box's own figures were stale, as with P3-3.** It claims "79
+      `debug_assert!` sites and ~199 comments mentioning invariants". Measured:
+      **12 `debug_assert!` sites**, and 290 lines mentioning "invariant" —
+      most of them prose inside audit stamps rather than executable assertions.
+      Both numbers are recorded in the doc's closing section rather than
+      silently corrected, because the gap is itself the useful finding: an
+      inventory built from grep counts prose, not checks.
+      **Two of the four invariants required correcting the box's statement of
+      them, since asserting them as written would be false:**
+      1. **"stock ≥ 0" is conditional.** `allow_negative_stock` is a documented
+         per-location policy flag (`models.rs:368`) and `adjust_stock_tx`
+         (`repository.rs:130`) applies a raw `qty = qty + ?1` — a location that
+         opts in MAY oversell. The doc states the conditional form and links
+         `negative_stock_event_fires_when_allow_negative_enabled`, which pins
+         the opt-in path, so both halves are tested rather than one asserted.
+      2. **"refund ≤ settled" is enforced on the ORIGINATOR, not the sync
+         applier.** `platform/sync/src/queue.rs:475-479` deliberately does NOT
+         re-derive the bounds, because a partially-replicated history would
+         reject legitimate items. That is a real design decision with a
+         consequence worth writing down: the sync side can only be checked for
+         not COMPOUNDING the bound, which is what the adversarial test asserts.
+      **Measured and recorded rather than glossed:** stock non-negativity has
+      **two independent enforcement layers** (Rust guard + a database CHECK
+      constraint), proven by relaxing the Rust guard and watching the DB refuse
+      with `CHECK constraint failed: qty >= 0`. The sale-total invariant is
+      enforced **by construction** (`Sale::from_cart` derives the header) with
+      no single property test asserting header == Σ lines over arbitrary carts
+      — named in the doc as the weakest of the four rather than presented as
+      equally strong.
+      **Not done, and said so in the doc itself:** nothing checks that these
+      named tests still exist, so a rename makes the list silently stale. That
+      is exactly the gap P3-3 solved for SAFETY with a checker; the same
+      treatment here is the obvious follow-up and is not claimed.
 - [ ] **P3-2 — Log invariant violations in debug/staging builds.** Where an
       invariant is checked at runtime today it panics or is silently repaired.
       Route violations to `tracing::error!` with the entity id so a staging run

@@ -17,6 +17,7 @@
 | [`security/`](./security/) | Security audits, checklists, hardening guides, incident response, data-governance policy | [`PCI-DSS_CHECKLIST.md`](./security/PCI-DSS_CHECKLIST.md), [`data-residency-and-retention.md`](./security/data-residency-and-retention.md) |
 | [`legal/`](./legal/) | Corporate and compliance documents, scoped by jurisdiction | [`README.md`](./legal/README.md) — jurisdiction index; [`id/`](./legal/id/) — PT Perorangan (Indonesia) |
 | [`guides/`](./guides/) | Reference documentation — architecture, user/admin guides, whitepapers, roadmaps | [`ARCHITECTURE.md`](../ARCHITECTURE.md) — at repo root, canonical since 2026-09-23 |
+| [`architecture/`](./architecture/) | Cross-cutting design docs — the critical-path invariants and their enforcing tests, plus modular-app and workspace plans | [`CRITICAL_PATH_INVARIANTS.md`](./architecture/CRITICAL_PATH_INVARIANTS.md) — stock ≥ 0, sale total, refund ≤ settled, sync convergence |
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
