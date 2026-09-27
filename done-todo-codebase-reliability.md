@@ -779,6 +779,44 @@ covered, because no coverage instrument is enforced. Close that in this order.
       **Every crate in the workspace except `kasirmu-bridge` now documents
       cleanly under `RUSTDOCFLAGS="-D warnings"`.** The env line still must NOT
       land.
+      **ROUND 7 — 2026-09-28 (commit `8c081745e`). THE FIRST HALF OF THE
+      ACCEPTANCE IS MET: `RUSTDOCFLAGS="-D warnings" cargo doc --workspace
+      --no-deps` now EXITS 0, with zero errors and zero warnings.**
+      Verified, not inferred: `Finished` + `Generated ... index.html and 42
+      other files`, exit code 0, and a separate count of the captured output
+      confirming 0 `error:` and 0 `warning:` lines. The campaign total: from
+      **295 errors across 20 crates** to **0**, over five working rounds plus a
+      large assist from a concurrent session that cleared the bulk in rounds
+      1–3.
+      **The last two sites were `remote_sync_admits` in
+      `kasirmu-bridge/src/settings/core.rs`** — a file another session had
+      claimed, which is why they survived the previous round. Fixed as two
+      doc-only edits (the function is `pub(in crate::settings)`, so the fix is
+      a code span, not a link), verified as doc-comments only by filtering the
+      diff. Also fixed this round: `StockAdjusted` ×2 in `products.rs`
+      (`kasirmu_core::events::StockAdjusted`) and `BridgeError::Hardware` in
+      `edc.rs`. **In `edc.rs` only line 7 — the `//!` module doc — failed,
+      while the four `///` item docs on the SAME variant name resolved fine**,
+      which is the `//!` vs `///` rule confirming itself on a new file.
+      **A FINDING THAT CHANGES WHAT "DONE" MEANS, and it means the second half
+      of the acceptance cannot be taken literally.** The box says to add
+      `RUSTDOCFLAGS: -D warnings` to the `dev-ci.yml` env block beside
+      `RUSTFLAGS`, and that block is exactly where it says (`dev-ci.yml:10-13`).
+      But **no `cargo doc` step exists anywhere in `dev-ci.yml`** — grepping the
+      file for `cargo doc|rustdoc` returns nothing — and `gates.json` records
+      `nightly-rust-doc` as **`retired`**. `RUSTDOCFLAGS` is read by rustdoc
+      only, so with no `cargo doc` invocation in CI the variable would be a
+      **dead setting**: it would change nothing, enforce nothing, and look like
+      a gate in review. That is the exact failure this checklist has now caught
+      three times (`fuzz` uncompiled, `verify-pg-tests-ran` unwired,
+      coverage floors unenforced) — a declaration standing in for a check.
+      **So the env line alone is NOT completion.** Landing it with no consumer
+      would repeat the pattern rather than close it. The honest completion is
+      **env line + a `rust-doc` step that runs the command**, and that step is
+      deliberately NOT added here: it belongs with the job wiring (cache setup,
+      runner deps, the ~8s doc build) and should land as one reviewed change
+      with the `gates.json` row, not bolted on at the end of a doc campaign.
+      Recorded so the next pass does not mistake the env line for the finish.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
