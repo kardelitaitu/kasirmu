@@ -52,7 +52,7 @@ Derived from manager-codebase-review.md (commit 954d4b094), 2026-09-23. Nothing 
   Done when: a refund made on terminal A is visible on terminal B after a pull, with stock and shift figures consistent on both. Copy the idempotence pattern already used by finalize_sale (queue.rs:553-557) rather than inventing one.
 
 - [x] **C5 [P0] Stop counting voided and pending sales as revenue** (8.2, P0-4) - **DONE 2026-09-23**, desktop 743f222f + tablet 1eee8e0f (C5b)
-  Fence: crates/kasirmu-core/src/db/sales.rs:266-269 (export_daily_summary, no status predicate); crates/kasirmu-bridge/src/history.rs:319 versus :326, :347, :358 (two day definitions on one sheet).
+  Fence (as written, now STALE): crates/kasirmu-core/src/db/sales.rs:266-269 (export_daily_summary, no status predicate) - **corrected 2026-09-28 by a review lane: the anchor moved AND the predicate this item added is present. `export_daily_summary` is now at `sales.rs:303` and its query filters `WHERE status = 'completed'` (`:303-309`), so the parenthetical describes the pre-fix code**; crates/kasirmu-bridge/src/history.rs:319 versus :326, :347, :358 (two day definitions on one sheet).
   Done when: a voided sale does not change total_revenue, and the EOD header reconciles with its own payment breakdown on a refund-and-void fixture - a fixture that does not exist today and has to be written.
 
 - [x] **C6 [P0] Make the report timezone contract match the write contract** (8.1, P0-5) - **DONE 2026-09-23, commit 7559a3f6b** (the provisioning-validation half is split out as C6b)
