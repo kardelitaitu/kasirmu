@@ -13,7 +13,8 @@
 //! membership — same pattern as `lookup_sale_by_gateway_reference`), while
 //! every write sets `oz.tenant_id` first so RLS scopes it to one tenant.
 //!
-//! Idempotency: [`mark_status`] refuses to move a row OUT of any TERMINAL
+//! Idempotency: [`mark_status`](crate::midtrans_ledger::LedgerDb::mark_status)
+//! refuses to move a row OUT of any TERMINAL
 //! status, and the webhook handler treats the row's status as the
 //! already-processed gate. Fully concurrent duplicates (both handlers read
 //! before either writes) may double-enqueue — a benign no-op on the device —

@@ -55,9 +55,10 @@ impl DbPool {
         Self::from_config_with_retries(config, 5).await
     }
 
-    /// Like [`from_config`] but with a caller-chosen PG retry budget.
-    /// Production uses the default (5) via [`from_config`]; tests asserting a
-    /// connection failure on a dead port pass `1` to skip the backoff sleeps.
+    /// Like [`Self::from_config`] but with a caller-chosen PG retry budget.
+    /// Production uses the default (5) via [`Self::from_config`]; tests
+    /// asserting a connection failure on a dead port pass `1` to skip the
+    /// backoff sleeps.
     pub(crate) async fn from_config_with_retries(
         config: &CloudServerConfig,
         max_attempts: u32,
