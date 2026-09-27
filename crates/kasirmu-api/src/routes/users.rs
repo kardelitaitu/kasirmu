@@ -221,7 +221,7 @@ pub async fn create_user(
                     "failed to stamp tenant_id on user — snapshot scoping may be affected"
                 );
             }
-            (StatusCode::CREATED, Json(user)).into_response()
+            (StatusCode::CREATED, Json(UserResponse::from(user))).into_response()
         }
         Err(e) => store_error_response(e),
     }
