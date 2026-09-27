@@ -218,54 +218,56 @@ covered, because no coverage instrument is enforced. Close that in this order.
       `modules/inventory` fall below the agreed line figure. Record the figure
       in this file when chosen — an unrecorded threshold is not a threshold.
 
-- [ ] **P1-3 — Build the deterministic multi-device replay harness.** One
+- [x] **P1-3 — Build the deterministic multi-device replay harness.** One
       binary that takes a seeded script of offline operations from N locations,
       replays them in a chosen order, and asserts the converged state. This is
       the only instrument that can answer "did multi-location sync actually
       converge" without a fleet of tablets.
       Acceptance: `cargo test -p platform-sync --test <name>` replays ≥3 seeded
       interleavings and asserts identical converged state; CI runs it.
-
-      **ATTEMPTED 2026-09-27 AND NOT CLOSED. A working harness was built, it
-      was left OUT of the tree on purpose, and what it established is recorded
-      here so the next attempt does not repeat the search.** An untracked
-      `platform/sync/tests/replay_harness.rs` was written, run, and deleted
-      rather than committed, because its central assertion was one I could not
-      justify. The box therefore stays `[ ]`.
-      **What the attempt DID establish, and is worth keeping:**
-      - The shape works. Three devices as `migrations::fresh_db()` + `Store`,
-        exchanging items through the real `apply_remote_atomic` path, needs no
-        tokio runtime, no relay, and no HTTP. All three seeded orders
-        (`A,B,C` / `C,B,A` / `C,A,B`) produced **byte-identical** device state
-        on every run — so **order-independence holds at the level this harness
-        measures**, which is the property the box is really about.
-      - `apply_remote_atomic` returns `Ok(false)` for an item it declines, and
-        **records a failure rather than returning `Err`**. A harness that only
-        checks for `Err` (as this one first did) reads a silently-dropped item
-        as a successful delivery. Any future harness must sum the `bool`.
-      - A device must not be handed its own items. Its local state already
-        reflects them — that is what "already applied" means for an
-        originator — and the origin gate cannot catch it, because
-        `origin_terminal_id` is `None` on anything this harness produces and
-        the gate's own comment says a NULL means UNKNOWN, never "self".
-      **What blocked it, stated precisely so it is the next step rather than a
-      mystery.** The converged COFFEE level did not match the script's
-      arithmetic (`50 + 10 − 2 − 1 − 3 = 54`); two devices read **57** and one
-      read **44**, while every delivery reported `applied=true`. Worse, the two
-      stock readings disagreed ON THE SAME DEVICE — `Store::get_stock`
-      (reading `inventory.qty`) said **57** where
-      `Store::get_stock_from_ledger` (reading `stock_summary`) said **7**. That
-      is three numbers for one product, and until that reconciliation is
-      understood, any "converged state" assertion picks one of them arbitrarily.
-      **The next attempt should therefore start by settling which of
-      `inventory.qty` / `stock_summary` / `get_stock_from_ledger` is the
-      authoritative converged observable** (`rebuild_stock_summary` exists and
-      several tests call it; `queue_tests.rs:926-943` is the closest worked
-      example), and only then assert arithmetic. Pinning the arithmetic first
-      is what made this attempt unfinishable.
-      Not a defect claim: nothing here shows the sync layer is wrong. It shows
-      the harness was measuring the wrong quantity and had no right to assert a
-      number.
+      **CLOSED 2026-09-27.** `platform/sync/tests/convergence_replay.rs` — three
+      devices as `migrations::fresh_db()` + `Store`, a five-operation script,
+      replayed in three arrival orders (`A,B,C` / `C,B,A` / `C,A,B`). No relay,
+      no tokio runtime, no HTTP: items move through the production
+      `SyncQueue::apply_remote_atomic` path, so what converges here is what
+      converges on a till. Three tests, `convergence_replay` +
+      `stock_readings` both green.
+      **Acceptance re-run: `cargo test -p platform-sync` -> 446 lib + 3 + 3
+      passed, 0 failed.**
+      **Asserts TWO things, because the box's own wording is satisfiable
+      vacuously.** "Identical converged state" alone would pass for three
+      equally-broken devices, so the test asserts agreement across orders AND
+      correctness against the script's arithmetic (COFFEE 54, BAGEL 29).
+      **Took two attempts, and the first failure was the instrument's fault,
+      not the code's — recorded because the search was expensive.** The
+      abandoned attempt mixed two different readings of "stock":
+      `Store::get_stock` (`inventory.qty` = **deltas + the opening balance**)
+      against `Store::get_stock_from_ledger` (`SUM(stock_movements.delta)` =
+      **deltas only**). They differ by exactly the un-backed opening balance
+      and neither is stale — an earlier revision of this note called
+      `inventory.qty` a "stale cache" and that was wrong, refuted by its own
+      test (a `-20` delta moves it 50 -> 30). `stock_readings.rs` now pins
+      that distinction as three tests, so the next person does not re-derive
+      it. **No defect is claimed anywhere in this item.**
+      **The bug that actually defeated the first attempt, now understood:**
+      `enqueue_offline` writes a queue row and **does not apply the mutation**
+      (`offline.rs:137-143`). Production applies at checkout and enqueues
+      separately, so the harness must do both. Enqueueing only left each
+      device's ledger holding a different SUBSET of the script's deltas — which
+      is why "three numbers for one product" appeared, and why the second
+      delivery "fixed" it: the deltas were merely arriving late. With the local
+      application added at production time, every device converges on the first
+      exchange.
+      Two further traps recorded for the next instrument: `apply_remote_atomic`
+      returns **`Ok(false)`, not `Err`**, for an item it declines, so a harness
+      checking only for `Err` reads a dropped item as delivered; and a device
+      must be handed only FOREIGN items, since its own are already local and
+      the origin gate cannot catch them (`origin_terminal_id` is `None` on
+      harness-produced items, and NULL means UNKNOWN, never "self").
+      **Mutation-verified:** removing the local application fails all three
+      tests; removing the `rebuild_stock_summary` call fails the readings test.
+      CI: covered by `cargo-nextest`, which runs the workspace suite; no
+      separate job is needed and none was added.
 
 - [ ] **P1-4 — Adversarial tests for the critical path.** Deliberate attempts
       to double-spend stock, replay a settled sale, and apply a refund larger
