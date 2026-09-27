@@ -79,11 +79,44 @@ impl PaymentProcessorRegistry {
 
     /// Execute a payment operation across the configured fallback chain for `method`.
     ///
-    /// Tries each processor in order. If a processor encounters a transient error
-    /// or failure, moves to the next processor in the chain.
+    /// Tries each processor in order. On a failure the chain advances to the
+    /// next processor **only when that is safe for the operation being run**.
+    ///
+    /// # The fall-through rule (O-H24)
+    ///
+    /// `gateway_key` is the caller-supplied gateway idempotency key for this
+    /// operation, and it decides whether a `Transient` failure may advance
+    /// the chain. The reasoning is the one the crate already applies to
+    /// retries in [`crate::resilience::ResilientProcessor`]
+    /// (`payment-resilience-design.md:99`):
+    ///
+    /// > `ResilientProcessor` may retry a money-moving operation **only when
+    /// > that operation carries a caller-supplied gateway key**.
+    ///
+    /// | Failure class | `gateway_key` | Behaviour |
+    /// |---|---|---|
+    /// | `Terminal` | any | **Stop.** Never re-present a declined card or an invalid request to a second acquirer. |
+    /// | `Transient` | `Some(non-blank)` | **Advance.** The key makes the second attempt a replay of the first, not a second charge. |
+    /// | `Transient` | `None` / blank | **Stop.** A timeout may mean gateway #1 already committed; without a key gateway #2 would mint a fresh one and charge again. |
+    /// | `Deferred` | any | **Advance.** Nothing was committed. |
+    ///
+    /// Without that key gate a keyless `Timeout` after gateway #1 committed
+    /// would re-send the money-moving call to gateway #2, and the two share
+    /// no idempotency key — double-billing with a fallback's reputation.
+    ///
+    /// **Why this is not "never fall through on `Transient`".** An OPEN
+    /// circuit breaker surfaces as `PaymentError::Network`, which classifies
+    /// `Transient`. Blocking every `Transient` would make one unhealthy
+    /// gateway fatal to its whole chain and the second processor — the
+    /// reason the chain exists — would never be reached. That escalation is
+    /// pinned by
+    /// `registry_tests::chain_escalates_past_a_processor_whose_breaker_is_open`,
+    /// which supplies a key precisely so the escalation is safe. The
+    /// discriminator is therefore the key, not the error class.
     pub async fn execute_with_fallback<T, F, Fut>(
         &self,
         method: &str,
+        gateway_key: Option<&str>,
         operation: F,
     ) -> Result<T, PaymentError>
     where
@@ -97,6 +130,11 @@ impl PaymentProcessorRegistry {
             )));
         }
 
+        // Blank is treated as absent, matching `resilience::policy_for_key`:
+        // the driver sanitises `Some("")` to an empty id and mints a fresh
+        // one, which is the same keyless hazard as `None`.
+        let has_key = gateway_key.is_some_and(|k| !k.trim().is_empty());
+
         let mut last_error = None;
         for processor in chain {
             match operation(processor).await {
@@ -106,6 +144,12 @@ impl PaymentProcessorRegistry {
                     // On terminal decline or bad card, do not silently switch processor
                     if class == ErrorClass::Terminal && !matches!(err, PaymentError::Unsupported(_))
                     {
+                        return Err(err);
+                    }
+                    // O-H24: a Transient failure may have reached the gateway.
+                    // Only a caller-supplied key makes advancing the chain a
+                    // replay rather than a second charge.
+                    if class == ErrorClass::Transient && !has_key {
                         return Err(err);
                     }
                     last_error = Some(err);

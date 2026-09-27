@@ -60,11 +60,15 @@ async fn method_fallback_chain_registration_and_execution() {
         amount: foundation::Money::from_major(50, currency).unwrap(),
         reference: None,
         description: None,
-        idempotency_key: None,
+        // O-H24: a key is REQUIRED for the chain to advance past the
+        // timeout. Without it the fall-through would be a second charge
+        // rather than a replay, and the chain stops — see
+        // `keyless_transient_does_not_advance_the_chain`.
+        idempotency_key: Some("fallback-key".into()),
     };
 
     let res = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -94,7 +98,7 @@ async fn method_fallback_chain_stops_on_terminal_error() {
     };
 
     let res = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -146,7 +150,7 @@ async fn fallback_chain_continues_past_an_unimplemented_processor() {
     };
 
     let res = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -193,7 +197,7 @@ async fn fallback_chain_does_not_reach_the_second_processor_after_a_decline() {
     };
 
     let res = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -260,7 +264,7 @@ async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
 
     // First call: the decorator's inner times out, its breaker trips at threshold 1.
     let first = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -273,7 +277,7 @@ async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
     // The breaker is now OPEN, so the decorator fails fast WITHOUT calling its
     // inner. The chain must still escalate — this is the row's actual subject.
     let second = reg
-        .execute_with_fallback("qris", |proc| {
+        .execute_with_fallback("qris", req.idempotency_key.as_deref(), |proc| {
             let req_clone = req.clone();
             async move { proc.authorize(&req_clone).await }
         })
@@ -281,5 +285,111 @@ async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
     assert!(
         second.is_ok(),
         "an OPEN breaker must not take the whole chain down: {second:?}"
+    );
+}
+
+// ── O-H24: the fall-through is gated on the caller's gateway key ───────
+
+/// A KEYLESS transient failure must NOT advance the chain.
+///
+/// **The double-charge class.** A `Transient` error — a timeout, a dropped
+/// connection, a 502 — is precisely the class where the request *may have
+/// reached the gateway*. Without a caller-supplied gateway key the driver
+/// mints a fresh one per call, so advancing the chain does not repeat the
+/// first attempt; it makes a **second charge** against a different acquirer,
+/// with no key tying the two together.
+///
+/// The crate already states this rule for retries
+/// (`resilience.rs:293-298`, `payment-resilience-design.md:99`); this test
+/// pins the same rule for *fall-through*, which is a different path to the
+/// same hazard.
+///
+/// The assertion that matters is `secondary.authorize_calls() == 0`: not
+/// merely that the call failed, but that the second gateway was **never
+/// reached**. A test that only checked `is_err()` would pass even if the
+/// money had already moved.
+#[tokio::test]
+async fn keyless_transient_does_not_advance_the_chain() {
+    let reg = PaymentProcessorRegistry::new();
+
+    let timing_out: Arc<dyn crate::PaymentProcessor> = Arc::new(
+        MockPaymentProcessor::builder()
+            .simulate_timeout(true)
+            .build(),
+    );
+    let second_mock = Arc::new(MockPaymentProcessor::new());
+    let second: Arc<dyn crate::PaymentProcessor> = second_mock.clone();
+
+    reg.register_method_fallback("qris", vec![timing_out, second])
+        .await;
+
+    let currency = "USD".parse().unwrap();
+    let req = crate::PaymentRequest {
+        amount: foundation::Money::from_major(50, currency).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: None,
+    };
+
+    let res = reg
+        .execute_with_fallback("qris", None, |proc| {
+            let req_clone = req.clone();
+            async move { proc.authorize(&req_clone).await }
+        })
+        .await;
+
+    assert!(
+        matches!(res, Err(crate::PaymentError::Timeout(_))),
+        "the original error must surface unchanged: {res:?}"
+    );
+    assert_eq!(
+        second_mock.authorize_calls(),
+        0,
+        "a keyless timeout must NOT be re-sent to a second gateway — \
+         gateway #1 may already have committed, and the two attempts share no key"
+    );
+}
+
+/// A BLANK key is treated as absent, matching `resilience::policy_for_key`.
+///
+/// The driver sanitises `Some("")` to an empty gateway id and mints a fresh
+/// one, so a blank key carries the same double-charge hazard as `None`. If
+/// this ever regressed to `is_some()`, a caller passing `Some("")` would
+/// silently regain the double-charge path the test above closes.
+#[tokio::test]
+async fn blank_key_is_treated_as_keyless_and_does_not_advance_the_chain() {
+    let reg = PaymentProcessorRegistry::new();
+
+    let timing_out: Arc<dyn crate::PaymentProcessor> = Arc::new(
+        MockPaymentProcessor::builder()
+            .simulate_timeout(true)
+            .build(),
+    );
+    let second_mock = Arc::new(MockPaymentProcessor::new());
+    let second: Arc<dyn crate::PaymentProcessor> = second_mock.clone();
+
+    reg.register_method_fallback("qris", vec![timing_out, second])
+        .await;
+
+    let currency = "USD".parse().unwrap();
+    let req = crate::PaymentRequest {
+        amount: foundation::Money::from_major(50, currency).unwrap(),
+        reference: None,
+        description: None,
+        idempotency_key: Some("   ".into()),
+    };
+
+    let res = reg
+        .execute_with_fallback("qris", Some("   "), |proc| {
+            let req_clone = req.clone();
+            async move { proc.authorize(&req_clone).await }
+        })
+        .await;
+
+    assert!(matches!(res, Err(crate::PaymentError::Timeout(_))));
+    assert_eq!(
+        second_mock.authorize_calls(),
+        0,
+        "a whitespace-only key must be treated as keyless"
     );
 }
