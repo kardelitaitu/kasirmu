@@ -269,11 +269,58 @@ covered, because no coverage instrument is enforced. Close that in this order.
       CI: covered by `cargo-nextest`, which runs the workspace suite; no
       separate job is needed and none was added.
 
-- [ ] **P1-4 — Adversarial tests for the critical path.** Deliberate attempts
+- [x] **P1-4 — Adversarial tests for the critical path.** Deliberate attempts
       to double-spend stock, replay a settled sale, and apply a refund larger
       than the sale total across two locations.
       Acceptance: named tests under `platform/sync` and `modules/inventory`
       whose failure message names the invariant violated.
+      **CLOSED 2026-09-27.** `platform/sync/tests/adversarial_paths.rs` — four
+      named attacks, each asserting an invariant and naming it in the failure
+      message: `two_locations_overselling_the_same_stock_contain_the_overspend`,
+      `a_settled_sale_survives_a_stale_earlier_state_arriving_from_another_location`,
+      `two_locations_cannot_refund_more_than_was_sold`,
+      `re_delivering_the_whole_adversarial_exchange_changes_nothing`.
+      **Acceptance re-run: `cargo test -p platform-sync` -> 446 lib + 4 + 3
+      passed, 0 failed.**
+      **Scoped deliberately, and the scope is the interesting part.** The
+      guards these attacks target already exist and are already well tested:
+      `refunds.rs` bounds refund money (`:132`), refund quantity (`:160+`) and
+      fails closed on an unreadable SUM (COR-25), with `refunds_tests.rs`
+      covering all three; `queue_tests.rs` covers single-device replay for
+      sales, voids, refunds and payments. Re-testing those would add nothing.
+      What NOTHING covered is the **multi-location** dimension the box names —
+      the existing two-terminal tests (`integration_test.rs`) are *cooperative*
+      (A creates, B receives) and gated behind `slow-tests`. An adversarial
+      pair is a different object: two devices that independently attempt the
+      same over-spend and then exchange, where the invariant is a property of
+      the converged pair.
+      **A real defence found by measurement, which the first version of the
+      test got wrong.** The oversell attack was written expecting the pair to
+      converge at `-10` (50 − 30 − 30), on the assumption that
+      `allow_negative_stock` meant the aggregate admitted the overspend. It
+      converges at **20**, because the sync applier enforces a LOCAL FLOOR and
+      refuses the other side's deduction:
+      `adjustment would cause negative stock (previous: 20, delta: -30)`.
+      The oversell is **contained rather than merely counted once** — a
+      stronger property than the test credited, and the test now asserts it,
+      including that the refusal was a *refusal* rather than a silent no-op
+      (same total, different meaning).
+      **Mutation-verified, and the mutation found a SECOND layer.** Relaxing
+      the Rust floor (`products_stock_query.rs:453`, `.filter(|&v| v >= 0)`)
+      makes the test fail as intended — with
+      `CHECK constraint failed: qty >= 0`, i.e. the database refuses the
+      negative write even when the Rust guard is removed. The floor is
+      defended at both layers, which no single-layer test would have shown.
+      Also of note for a future reader: **`receive` must not `.expect()`** on
+      a `stock.adjusted`/`complete_sale` item. A guard refusing an adversarial
+      item is the system working, and panicking on it reads a defence as a
+      defect — which is exactly how this file first failed.
+      The refund attack asserts the pair agrees on the refunded total and that
+      it does not exceed the sale; `queue.rs:475-479` documents that the sync
+      applier deliberately does NOT re-derive those bounds, since
+      re-deriving from partially-replicated history would reject legitimate
+      items, so the bound is the originator's and the exchange must not
+      compound it.
 
 ---
 
