@@ -1,9 +1,5 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
 
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
 ## Phase 3 — Gate on the permission vocabulary, not on a role rank
 
 **Fence:** `ui/src/utils/role.ts`, `ui/src/features/workspaces/WorkspaceHome.tsx`, `ui/src/features/settings/SettingsPage.tsx`, and — for the scope axes — `crates/kasirmu-core/src/db/staff.rs`, `crates/kasirmu-bridge/src/subscription.rs`, plus a new migration if the design requires one.

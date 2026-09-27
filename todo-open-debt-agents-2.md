@@ -1,9 +1,5 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
 
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
 ## Phase 2 — Tablet ↔ desktop wire parity
 
 **Fence:** `apps/mobile-tauri/src/**`, shared DTOs under `crates/kasirmu-bridge/src/**` (additions only — never change a desktop-side wire shape without a back-compat alias).

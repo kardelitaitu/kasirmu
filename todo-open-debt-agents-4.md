@@ -1,9 +1,5 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
 
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
-**Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
-
 ## Phase 4 — Payment: the remainder is smaller than the master doc suggests, and mostly blocked
 
 **Fence:** `crates/kasirmu-payment/src/**`, `crates/kasirmu-hal/src/drivers/edc/**`, `apps/cloud-server/src/payment_api.rs`, `apps/cloud-server/src/webhooks.rs`, `ui/src/features/sales/**`.
