@@ -48,7 +48,8 @@ use crate::state::AppState;
 ///
 /// `RefundLineArg` comes along because the bridge's `ProcessRefundArgs.lines`
 /// is a `Vec` of the bridge's own line type while one business path
-/// ([`run_process_refund`]) serves both commands; the two copies were
+/// `run_process_refund` (a private fn in this module) serves both commands;
+/// the two copies were
 /// field-for-field identical, so nothing on the wire moves. The scoped and
 /// result structs WERE local copies too; they are re-exported on the same line now, so
 /// the tablet shell has exactly one declaration of every refund wire contract it serves.

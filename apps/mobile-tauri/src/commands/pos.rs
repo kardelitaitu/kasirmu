@@ -980,7 +980,8 @@ fn run_complete_sale_scoped(
 /// Returns `PartialStockResult` as an error when stock is insufficient.
 ///
 /// COR-7: `args.attempt_id` makes the call idempotent — see
-/// [`run_complete_sale_scoped`] for the guard and its ordering rules.
+/// `run_complete_sale_scoped` (a private fn in this module) for the guard and
+/// its ordering rules.
 #[command]
 pub async fn complete_sale_scoped(
     session_token: String,

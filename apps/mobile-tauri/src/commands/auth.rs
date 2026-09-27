@@ -805,7 +805,8 @@ pub(crate) const IMPERSONATION_SESSION_TTL_SECONDS: i64 = 1800;
 ///
 /// The target must belong to the operator's authorized tenant scope (the same
 /// store/instance); otherwise the request is denied fail-closed. The session is
-/// short-lived ([`IMPERSONATION_SESSION_TTL_SECONDS`]) and an `impersonate.start`
+/// short-lived (`IMPERSONATION_SESSION_TTL_SECONDS`, a private const in this
+/// module) and an `impersonate.start`
 /// security event is recorded naming the operator (actor) and the impersonated
 /// user (subject).
 #[command]

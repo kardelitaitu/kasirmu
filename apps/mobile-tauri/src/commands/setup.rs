@@ -125,7 +125,9 @@ pub async fn get_preset_features(
 
 /// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// Replaces [`get_setup_status`]'s boolean. The shell calls this on mount and
+/// Replaces the retired `get_setup_status` boolean (removed with
+/// `dismiss_setup_wizard` when the first-run path moved to
+/// `provision_device`). The shell calls this on mount and
 /// renders the provisioning flow when `state` is `unprovisioned`.
 #[command]
 pub async fn get_first_run_state(

@@ -67,7 +67,8 @@ pub async fn get_preset_features(
 
 /// The first-run state for one terminal (ADR #56 §2.1).
 ///
-/// Replaces [`get_setup_status`]'s boolean: a provisioning row cannot be forged
+/// Replaces the retired `get_setup_status` boolean (see the REMOVED note
+/// above): a provisioning row cannot be forged
 /// by a failed read, because an unreadable database yields no row.
 #[tauri::command]
 pub async fn get_first_run_state(
