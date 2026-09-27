@@ -89,7 +89,15 @@ impl Role {
 }
 
 /// A staff member who can log in to the POS.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` is implemented by hand below, NOT derived: `pin_hash` is the
+/// Argon2id credential verifier and a derived impl prints it on any `{:?}`
+/// line or panic dump. `Serialize` stays derived because the store, the sync
+/// snapshot and the two `.kasirpkg` import arms all need the field in full —
+/// the credential is withheld at the SURFACES that carry the row outward
+/// (`UserResponse`, `StaffMemberDto`, the blanking export arms), never by
+/// removing it from the domain type.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     /// Internal row id (UUID v4).
     pub id: String,
@@ -107,6 +115,34 @@ pub struct User {
     pub created_at: String,
     /// ISO-8601 last-update timestamp.
     pub updated_at: String,
+}
+
+/// Hand-written `std::fmt::Debug` that redacts `pin_hash`.
+///
+/// The derived impl printed the credential verifier. Nothing formats a `User`
+/// with `{:?}` today, so this PREVENTS rather than repairs — exactly the
+/// posture `TenantSubscription`'s manual impl records for its own three
+/// secrets (`crates/kasirmu-core/src/subscription.rs:401-425`): the idiomatic
+/// future log line is `tracing::debug!(?user)`, and once the verifier is in a
+/// log file no front-end redaction can scrub it. The shape follows the
+/// tree's first such repair, `GiftCard`
+/// (`modules/loyalty/src/models.rs:127-144`), which redacts its PIN the same
+/// way. Every other field stays printed so the row remains debuggable, and
+/// `TrashedUser` — which embeds this type and derives `Debug` — inherits the
+/// redaction rather than printing the hash through its own derive.
+impl std::fmt::Debug for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("User")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("pin_hash", &"<redacted>")
+            .field("display_name", &self.display_name)
+            .field("role_id", &self.role_id)
+            .field("is_active", &self.is_active)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 impl User {

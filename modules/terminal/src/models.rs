@@ -1,15 +1,21 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-terminal slice A: models deep read)
 crate: modules-terminal | status: SAFE | lint: CLEAN
-findings: MSL-9 INFO — Terminal derives Debug WITHOUT redacting terminal_secret (contrast pg_transport's redacted Debug); a logged or panic-dumped Terminal leaks the device secret; shell module (terminal logic lives in kasirmu-core) so exposure is limited. TerminalId UUID v7 clean
-next: redact terminal_secret in Debug or drop the derive | perf: N/A
+findings: MSL-9 CLOSED 2026-09-27 (DSH credential-Debug pass) — Terminal no longer derives Debug; the manual impl below redacts `terminal_secret`, the fix MSL-9 named. The derive printed the device secret on any `{:?}` / panic dump, and the tree's own precedent for the repair is the manual redacting Debug on GiftCard (modules/loyalty/src/models.rs:127-144). Pinned executably by models_tests::terminal_debug_redacts_the_device_secret. Serialization is NOT the exposure here: `TerminalDto::from` drops the secret in both shells and every read path maps to a DTO, so `Serialize` stays derived. TerminalId UUID v7 clean
+next: none | perf: N/A
 */
 //! Terminal domain models.
 
 use serde::{Deserialize, Serialize};
 
 /// A registered POS terminal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Debug` is implemented by hand below, not derived: `terminal_secret` is
+/// credential material (MSL-9) and a derived impl would print it in any
+/// `{:?}` line or panic dump. `Serialize` stays derived because no
+/// serialization surface exposes the secret — both shells convert through
+/// `TerminalDto::from`, which omits the field.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Terminal {
     /// Internal row id (UUID v4).
     pub id: String,
@@ -29,6 +35,34 @@ pub struct Terminal {
     pub created_at: String,
     /// ISO-8601 last-update timestamp.
     pub updated_at: String,
+}
+
+/// Hand-written `std::fmt::Debug` that redacts `terminal_secret` (MSL-9).
+///
+/// The derive printed the device secret. The shape mirrors the tree's
+/// existing precedent, `GiftCard`'s manual impl (`modules/loyalty/src/
+/// models.rs:127-144`), with one difference forced by the field being an
+/// `Option`: the redaction is applied through `map`, so `None` still renders
+/// as `None` and a reader keeps the present/absent distinction the credential
+/// itself is not needed for. Every other field stays printed so the row
+/// remains debuggable.
+impl std::fmt::Debug for Terminal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Terminal")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("device_id", &self.device_id)
+            .field(
+                "terminal_secret",
+                &self.terminal_secret.as_ref().map(|_| "<redacted>"),
+            )
+            .field("is_active", &self.is_active)
+            .field("last_seen_at", &self.last_seen_at)
+            .field("metadata", &self.metadata)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 impl Terminal {

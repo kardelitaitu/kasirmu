@@ -61,6 +61,62 @@ fn terminal_serde_roundtrip() {
     assert!(back.is_active);
 }
 
+// ── Debug redaction (MSL-9) ─────────────────────────────────────
+
+/// MSL-9: `Terminal` carries credential material (`terminal_secret`, the
+/// device secret used for client-credentials minting), so its `Debug` must
+/// never print the value. The struct used to derive `Debug`, which printed it
+/// on any `{:?}` line or panic dump — the exact leak the tree already fixed
+/// for `GiftCard` with a manual redacting impl.
+///
+/// Asserts the secret is ABSENT (the property that matters) and that the
+/// non-secret fields are still PRESENT, so an impl that printed nothing at
+/// all could not satisfy this.
+#[test]
+fn terminal_debug_redacts_the_device_secret() {
+    let t = Terminal::new("POS-1", "dev-1").with_secret("super-secret-device-key");
+
+    let out = format!("{t:?}");
+    assert!(
+        !out.contains("super-secret-device-key"),
+        "Debug must not print the terminal secret: {out}"
+    );
+    assert!(
+        out.contains("<redacted>"),
+        "the redaction marker must appear in place of the secret: {out}"
+    );
+    // Readable fields survive, so the row stays debuggable.
+    assert!(out.contains("POS-1"), "name must still print: {out}");
+    assert!(out.contains("dev-1"), "device_id must still print: {out}");
+    assert!(out.contains("Terminal"), "type name must print: {out}");
+}
+
+/// The `Option` shape is preserved through the redaction: an absent secret
+/// still reads as `None` rather than as a redaction marker, so a reader can
+/// tell "no secret configured" from "a secret is configured".
+///
+/// Scoped to the `terminal_secret` field on purpose — `last_seen_at` and
+/// `metadata` are legitimately `None` on a fresh row, so a whole-line
+/// `contains("None")` would be testing the wrong thing.
+#[test]
+fn terminal_debug_keeps_none_distinguishable_from_a_redacted_secret() {
+    let absent = format!("{:?}", Terminal::new("POS-1", "dev-1"));
+    assert!(
+        absent.contains("terminal_secret: None"),
+        "an unset secret must render as None: {absent}"
+    );
+
+    let present = format!("{:?}", Terminal::new("POS-1", "dev-1").with_secret("s3cret"));
+    assert!(
+        present.contains("terminal_secret: Some(\"<redacted>\")"),
+        "a set secret must render redacted, not as None: {present}"
+    );
+    assert!(
+        !present.contains("s3cret"),
+        "the secret value must not survive redaction: {present}"
+    );
+}
+
 // ── TerminalId ──────────────────────────────────────────────────
 
 #[test]

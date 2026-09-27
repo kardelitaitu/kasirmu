@@ -1009,9 +1009,40 @@ fn restore_returns_the_member_inactive() {
     assert!(store(&conn).list_trashed_users().unwrap().is_empty());
 }
 
+/// `TrashedUser` derives `Debug` around a `User` field, so it inherits the
+/// redaction `User`'s manual impl applies to `pin_hash` — it must NOT print
+/// the credential verifier through its own derive. This is the one place the
+/// embedding path can be exercised: `modules-staff` cannot name `TrashedUser`
+/// without depending on this layer.
 #[test]
-fn purge_anonymises_only_past_the_window() {
+fn trashed_user_debug_inherits_the_pin_hash_redaction() {
     let conn = fresh();
+    seed_users(&conn);
+    deactivate(&conn, "user-3");
+    store(&conn).soft_delete_user("user-3").unwrap();
+
+    let trash = store(&conn).list_trashed_users().unwrap();
+    assert_eq!(trash.len(), 1, "precondition: one trashed member");
+
+    let out = format!("{:?}", trash[0]);
+    assert!(
+        out.contains("<redacted>"),
+        "TrashedUser's derived Debug must reach User's redacting impl: {out}"
+    );
+    assert!(
+        !out.contains(&trash[0].user.pin_hash),
+        "the embedded verifier must not be printed: {out}"
+    );
+    // The row stays readable, and the trash-specific field survives.
+    assert!(out.contains("TrashedUser"), "type name must print: {out}");
+    assert!(
+        out.contains("deleted_at"),
+        "the trash field must still print: {out}"
+    );
+}
+
+#[test]
+fn purge_anonymises_only_past_the_window() {    let conn = fresh();
     seed_users(&conn);
     deactivate(&conn, "user-3");
     conn.execute(

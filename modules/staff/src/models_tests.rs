@@ -190,6 +190,38 @@ fn user_deserialization_requires_pin_hash() {
 
 // ── UserId ──────────────────────────────────────────────────────────
 
+/// The credential verifier must never print. `User` used to derive `Debug`,
+/// which printed `pin_hash` on any `{:?}` line or panic dump — the same leak
+/// `GiftCard` (modules/loyalty/src/models.rs:127) and `TenantSubscription`
+/// (crates/kasirmu-core/src/subscription.rs:401) already fixed with a manual
+/// redacting impl, which is the shape adopted here.
+///
+/// The non-secret fields are asserted PRESENT too, so an impl that printed
+/// nothing at all could not satisfy this, and the type name is checked so the
+/// output is recognisably a `User`.
+///
+/// The embedded case — `TrashedUser`, which derives `Debug` around a `User`
+/// field — is pinned where that type lives, in
+/// `kasirmu-core/src/db/staff_tests.rs`; this module cannot name it without
+/// depending on the layer above.
+#[test]
+fn user_debug_redacts_the_pin_hash() {
+    let user = User::new("admin", "$argon2id$v=19$m=19456,t=2,p=1$SALT$HASH", "Admin", "r");
+
+    let out = format!("{user:?}");
+    assert!(
+        !out.contains("$argon2id$v=19$m=19456,t=2,p=1$SALT$HASH"),
+        "Debug must not print the credential verifier: {out}"
+    );
+    assert!(
+        out.contains("<redacted>"),
+        "the redaction marker must appear in place of pin_hash: {out}"
+    );
+    assert!(out.contains("User"), "type name must print: {out}");
+    assert!(out.contains("admin"), "username must still print: {out}");
+    assert!(out.contains("Admin"), "display_name must still print: {out}");
+}
+
 #[test]
 fn user_id_new_generates_uuid_v7() {
     let id = UserId::new();
