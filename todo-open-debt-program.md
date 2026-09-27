@@ -16,11 +16,13 @@ Phase 1 (release red)  ──┬─→ must classify BEFORE Phase 2 registers mo
 Phase 2 (tablet wire)  ──→ independent of Phase 3; keep fences disjoint from Phase 1
 Phase 3 (authz)        ──→ 3a executable now; 3b needs a design doc, then a ruling
 Phase 4 (payment)      ──→ docs first; R5 design doc is the only code-adjacent deliverable
+Phase 5 (PG honesty)   ──→ funded 2026-09-28; the `pg-tests` idiom is adopted, nothing waits on code
 ```
 
 - **Phase 1 and Phase 3a can run concurrently** — disjoint fences, no shared file.
 - **Phase 2 should follow Phase 1's classification**, not run alongside it: both touch the tablet surface that Phase 1's release failure is live on.
 - **Phase 4 is last and mostly blocked.** Dispatch it only for documentation.
+- **Phase 5 was added to this list on 2026-09-28** — it was in the file but missing from the diagram, so a new reader could not see it. Its fence (test files in three crates plus the runner) is disjoint from every other phase, so it can run alongside any of them.
 - **Nothing here authorises a push.** `dev-ci.yml:695` gates the deploy on `push` to `main` **or** to a `0.0.*` branch, and the `0.0.*` arm is currently inert only because `on.push.branches` lists `main` alone. Widening that list would make every release-branch push deploy to production.
 
 ---
