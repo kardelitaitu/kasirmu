@@ -77,7 +77,17 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // cast restored - verified by doing exactly that and watching it go green.
     // Collapsing all whitespace first makes the scan independent of how rustfmt
     // chooses to wrap the expression.
-    let src = include_str!("pos.rs");
+    //
+    // BOTH HALVES ARE SCANNED, and the 2026-09-27 `pos.rs` split is why. The
+    // clamp's definition and the preview door moved into `pos/preview.rs` while
+    // the shortfall door stayed in `pos.rs`, so a scan of `pos.rs` alone would
+    // see two occurrences and its own floor would (correctly) fail. The
+    // invariant is "both doors route through the one clamp" - a property of the
+    // `pos` module, not of one file - so the subject is every file that can
+    // spell a door. Adding a door in a third file means adding it here too;
+    // that is the intended cost, and the floor below is what makes forgetting
+    // impossible rather than merely unlikely.
+    let src = concat!(include_str!("pos.rs"), "\n", include_str!("pos/preview.rs"));
     let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
 
     // A FLOOR, so this cannot pass by finding nothing. A source scan whose
@@ -85,11 +95,13 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // mode `license_writer_literals_are_swept_from_license_rs_not_from_a_transcription`
     // guards against with its own `>= 5` assertion, and the same discipline is
     // owed here. The shared clamp is defined once and called at two doors, so
-    // three occurrences is the floor a healthy tree must show.
+    // three occurrences is the floor a healthy tree must show. The re-export
+    // line in `pos.rs` is the fourth, which is why the floor stays comfortable
+    // across the split.
     let call_sites = flat.matches("checkout_discount_percent").count();
     assert!(
         call_sites >= 3,
-        "expected the shared clamp to appear at least 3 times (definition + two doors) in pos.rs, found {call_sites} - the scan is reading a file that no longer spells it, so this test would pass vacuously"
+        "expected the shared clamp to appear at least 3 times (definition + two doors) across pos.rs + pos/preview.rs, found {call_sites} - the scan is reading files that no longer spell it, so this test would pass vacuously"
     );
 
     // Every narrowing of the i64 wire field, in any formatting.
