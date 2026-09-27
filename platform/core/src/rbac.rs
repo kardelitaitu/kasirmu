@@ -418,8 +418,8 @@ pub mod permissions {
     /// who were removed.
     ///
     /// NOT what deactivation rides: deactivating or reactivating an account is
-    /// [`Self::STAFF_UPDATE`], and the backend refuses to trash an account that
-    /// is still active. A future hard delete (purging rather than anonymising a
+    /// [`STAFF_UPDATE`], and the backend refuses to trash an account that is
+    /// still active. A future hard delete (purging rather than anonymising a
     /// tombstone) must gate on this key too.
     pub const STAFF_DELETE: &str = "staff:delete";
     /// Create, edit, or delete roles and their permission sets.
@@ -598,7 +598,7 @@ pub mod permissions {
     /// Author or publish a Memo (Organization or Location). Phase 1 §F /
     /// Phase 2 Memo lifecycle: Location Memo is manager+, Organization Memo
     /// owner/admin — the role split is enforced by the memo surface itself;
-    /// this key is the write gate. Early-stop lives on [`Self::MEMO_STOP`].
+    /// this key is the write gate. Early-stop lives on [`MEMO_STOP`].
     pub const MEMO_WRITE: &str = "memo:write";
 
     /// Early-stop (end before `expiresAt`) a published Memo — the author may

@@ -63,8 +63,8 @@ impl Settings {
     /// [`IngestPolicy::PortablePackage`].
     ///
     /// `load_all` filtered through the ONE shared predicate,
-    /// [`keys::is_non_exportable_setting_key`], plus the lifecycle-manager
-    /// prefix rule ([`is_manager_owned_key`]). Nothing is restated here: the
+    /// [`is_non_exportable_setting_key`](crate::settings::keys::is_non_exportable_setting_key),
+    /// plus the lifecycle-manager prefix rule ([`is_manager_owned_key`]). Nothing is restated here: the
     /// credential/device list lives in `keys.rs` and is built from the key
     /// constants themselves.
     ///
@@ -761,9 +761,10 @@ impl IngestPolicyKind for IngestPolicy {
 /// own these keys write them locally, and filtering that would break them.
 ///
 /// The candidate is folded exactly as the credential half of the same ingest
-/// boolean folds it — [`keys::is_non_exportable_setting_key`] trims and
-/// ASCII-case-folds through `keys::normalised_candidate`, and so does this,
-/// against the SAME shared fold (it is `pub` in `keys.rs` because the two
+/// boolean folds it —
+/// [`is_non_exportable_setting_key`](crate::settings::keys::is_non_exportable_setting_key)
+/// trims and ASCII-case-folds through `keys::normalised_candidate`, and so does
+/// this, against the SAME shared fold (it is `pub` in `keys.rs` because the two
 /// callers of the fold sit on opposite sides of the crate boundary — this gate
 /// inside platform-core, the owner label in `crates/kasirmu-bridge/src/settings.rs`
 /// — and no second normalisation is written here). Before that, one

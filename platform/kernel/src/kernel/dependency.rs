@@ -2,9 +2,15 @@
 //!
 //! Dependencies are declared on the [`Module`] trait itself via
 //! `Module::dependencies()`, which mirrors the `dependencies` array in a
-//! module's `manifest.json`. [`collect_dependencies`] is the kernel-side
+//! module's `manifest.json`. `collect_dependencies` is the kernel-side
 //! accessor used by the topological sort in
 //! [`Kernel::resolve_dependencies`](crate::Kernel).
+//!
+//! `collect_dependencies` is named as a code span rather than an intra-doc
+//! link because it is a PRIVATE item, and a public doc comment that links to
+//! one is `rustdoc::private_intra_doc_links` — a warning that becomes an
+//! error under `RUSTDOCFLAGS="-D warnings"`. The link was never navigable for
+//! a reader of the public docs anyway.
 //!
 //! [`HasDependencies`] predates that trait method and is retained as a
 //! standalone opt-in for non-`Module` types; new modules should implement

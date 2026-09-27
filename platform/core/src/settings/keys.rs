@@ -346,10 +346,11 @@ pub const NON_EXPORTABLE_DEVICE_KEYS: &[&str] =
 /// daemon_tick.rs:292). Nothing signs or MACs an item (queue.rs:10-12: the
 /// sender is not an authority), so any peer in the tenant, or the server
 /// operator, can name these six today. The sharpest is not spelled like a
-/// secret at all: crates/kasirmu-core/src/sync_auth.rs:72 sends Authorization:
-/// Bearer <sync api key> to whatever `sync_server_url` currently holds, so
-/// planting that one name exfiltrates a credential without ever naming a
-/// credential key. The rest switch or repoint the transport tenant-wide.
+/// secret at all: crates/kasirmu-core/src/sync_auth.rs:72 sends
+/// `Authorization: Bearer <sync api key>` to whatever `sync_server_url`
+/// currently holds, so planting that one name exfiltrates a credential
+/// without ever naming a credential key. The rest switch or repoint the
+/// transport tenant-wide.
 ///
 /// WHY A SEPARATE LIST, the part a reader must not miss. The two lists above
 /// are shared by BOTH untrusted directions and they stay shared. This one is

@@ -20,6 +20,28 @@ next: none — crate is stable and well-tested | perf: N/A
 //! `OZ_MASTER_KEY` HMAC derivation. Writes still use exactly one derivation,
 //! so bytes written today are unchanged.
 
+// rustdoc::private_intra_doc_links is allowed crate-wide, deliberately.
+//
+// The crate's public API is small (`encrypt`, `decrypt`, `install_key`,
+// `master_key_derivation_active`) but its correctness argument lives in the
+// PRIVATE derivation helpers: `portable_key`, `candidate_keys`, `hmac_key`
+// and `master_key_from_env`. The public doc comments reference those helpers
+// by intra-doc link because naming the actual function is more precise than a
+// prose description — "falls back in `portable_key`" says something a reader
+// can verify, "falls back to the legacy derivation" does not.
+//
+// Rustdoc cannot resolve a link to a private item from a public doc, so
+// `RUSTDOCFLAGS="-D warnings"` turns each one into an error (measured
+// 2026-09-27: 10 sites across this file). Rendering them as plain code spans
+// instead would keep the build green and lose the navigability that makes
+// them worth writing.
+//
+// The allow is scoped to this lint only, so a genuinely broken link — one
+// pointing at an item that does NOT exist — still fails the build. Only
+// "private but present" is tolerated, which is exactly the case that is
+// correct here.
+#![allow(rustdoc::private_intra_doc_links)]
+
 use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, aead::generic_array::GenericArray};
 use hmac::{Hmac, Mac};
 use rand::RngCore;

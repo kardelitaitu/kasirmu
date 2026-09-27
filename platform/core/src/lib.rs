@@ -18,6 +18,20 @@ next: none — files carry current stamps from 25-07-26 / 31-08-26 audits | perf
 //! - [`settings`] — generic key-value settings store with typed helpers
 //! - [`error`] — shared error type ([`PlatformError`])
 
+// rustdoc::private_intra_doc_links is allowed crate-wide, deliberately.
+//
+// The settings module documents why a reader is safe against a specific
+// failure by naming the PRIVATE helper that enforces it — `decrypt_or_fail_closed`,
+// `portable_key`, `sealed::Sealed`. Those names are the argument: a doc
+// comment saying "fails closed on ciphertext-shaped input" is a claim, while
+// "see `decrypt_or_fail_closed`" is a pointer a reviewer can follow in the
+// source. Rustdoc cannot resolve them from public docs, so
+// `RUSTDOCFLAGS="-D warnings"` turns each into an error (measured 2026-09-27).
+//
+// Scoped to this lint alone: a link to an item that does not exist at all
+// still fails the build, and `rustdoc::broken_intra_doc_links` is untouched.
+#![allow(rustdoc::private_intra_doc_links)]
+
 pub mod auth;
 pub mod database;
 pub mod error;
