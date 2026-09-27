@@ -10,7 +10,8 @@
 //! [`run_lookup_product_by_sku`](crate::products::run_lookup_product_by_sku), [`run_get_product_track_serial_batch`](crate::products::run_get_product_track_serial_batch)).
 //! S9b landed the write half: [`create_scoped`](crate::products::create_scoped), [`update_scoped`](crate::products::update_scoped),
 //! [`delete_scoped`](crate::products::delete_scoped), [`adjust_stock_scoped`](crate::products::adjust_stock_scoped) (one `unchecked_transaction`
-//! + the [`StockAdjusted`] event published via `ctx.publish_event` only
+//! + the [`StockAdjusted`](kasirmu_core::events::StockAdjusted) event published
+//! via `ctx.publish_event` only
 //! AFTER `tx.commit`) and [`record_product_search`](crate::products::record_product_search).
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell

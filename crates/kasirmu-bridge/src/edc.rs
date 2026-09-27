@@ -4,7 +4,8 @@
 //! resolved from the HAL driver registry ([`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry)) rather
 //! than held on shell state, so a card tender can only reach hardware that
 //! exists. With no terminal registered every command fails closed with
-//! [`BridgeError::Hardware`] (`HalErrorKind::NotFound`) — the drivers
+//! [`BridgeError::Hardware`](crate::error::BridgeError::Hardware)
+//! (`HalErrorKind::NotFound`) — the drivers
 //! behind this surface are stubs until a vendor protocol ships, and a
 //! payment result that looks approved is worse than one that fails.
 
