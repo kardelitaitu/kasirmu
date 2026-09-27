@@ -6,10 +6,10 @@ next: implement HID POS reads (rusb is already a dependency; a HID interrupt-end
 */
 //! USB HID weight scale driver — currently a stub.
 //!
-//! Declares [`HidWeightScale`] so the [`WeightScale`] trait has a named
+//! Declares [`HidWeightScale`](crate::drivers::scale::HidWeightScale) so the [`WeightScale`](crate::traits::weight_scale::WeightScale) trait has a named
 //! production type and the registry, mocks and setup wizard all have
-//! something concrete to hold. No device is opened: [`WeightScale::read_weight`]
-//! always fails with [`HalError::Unsupported`], which is why the startup
+//! something concrete to hold. No device is opened: [`WeightScale::read_weight`](crate::traits::weight_scale::WeightScale::read_weight)
+//! always fails with [`HalError::Unsupported`](crate::error::HalError::Unsupported), which is why the startup
 //! bootstrap registers no scales and why wiring one would be a regression
 //! rather than a feature.
 

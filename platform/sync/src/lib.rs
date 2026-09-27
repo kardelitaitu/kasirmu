@@ -32,8 +32,16 @@ next: none | perf: 64KB priority-sorted batches
 //! ```
 
 #![deny(unsafe_code)]
-
 #![allow(clippy::items_after_test_module)]
+
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
+// that lint. Several public items in this crate document their behaviour by
+// naming the private helper that enforces it — which is more useful to a
+// reader than a prose restatement, and is the reason rustdoc has a lint for
+// it rather than an error. `rustdoc::broken_intra_doc_links` is deliberately
+// NOT allowed, so a link to an item that does not exist still fails the
+// build. Precedent: `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
 
 pub mod conflict;
 pub mod crdt;

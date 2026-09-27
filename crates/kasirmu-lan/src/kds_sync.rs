@@ -64,7 +64,7 @@ pub const EVENT_ORDER_PLACED: &str = "kds.order_placed";
 pub const EVENT_LINE_ITEM_BUMPED: &str = "kds.line_item_bumped";
 /// Tag value for [`KdsSyncEvent::OrderReady`] on the wire.
 pub const EVENT_ORDER_READY: &str = "kds.order_ready";
-/// Tag value for [`KdsSyncEvent::OrderRecalled`] on the wire.
+/// Tag value for [`KdsSyncEvent::Recalled`] on the wire.
 pub const EVENT_ORDER_RECALLED: &str = "kds.order_recalled";
 
 // ── Event payloads ───────────────────────────────────────────────────

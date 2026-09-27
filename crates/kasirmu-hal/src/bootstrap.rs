@@ -11,8 +11,9 @@ next: implement HID POS reads in drivers/scale.rs, then add vid/pid to TerminalP
 //! `platform_core::terminal_profile::TerminalProfile`) and maps it here;
 //! the HAL never reaches into a settings table.
 //!
-//! [`DriverRegistry::apply_config`] then registers each entry and returns a
-//! [`BootstrapReport`] naming what was registered, skipped, or rejected.
+//! [`apply_config`] then registers each entry into the
+//! [`DriverRegistry`] and returns a [`BootstrapReport`] naming what was
+//! registered, skipped, or rejected.
 //! Addressed transports are constructed without touching the device; only a
 //! `"usb"` printer enumerates the bus, because it names no address to bind.
 
@@ -53,7 +54,8 @@ pub enum Connection {
         /// The COM/port name the stack bound the device to.
         port: String,
     },
-    /// Host[:port] socket.
+    /// `Host[:port]` socket. Escaped so rustdoc does not read `[:port]` as a
+    /// link named `:port`.
     Network {
         /// Address, e.g. `192.168.1.50:9100`.
         addr: String,
@@ -224,7 +226,7 @@ impl HardwareConfig {
     }
 }
 
-/// What happened during [`DriverRegistry::apply_config`].
+/// What happened during [`apply_config`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BootstrapReport {
     /// `"<category>:<id>"` for each driver registered.

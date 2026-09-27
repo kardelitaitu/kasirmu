@@ -1,11 +1,13 @@
 //! API write-audit hook (desktop local API; the cloud surface keeps its
 //! own logging).
 //!
-//! A thin axum middleware ([`audit_middleware`]) observes every
-//! mutating request on the `/api/v1/*` surface AFTER authentication
-//! (it is layered inside the auth middleware, so the validated
-//! [`ApiTokenClaims`] are already in request extensions) and hands a
-//! lossless [`ApiWriteEvent`] to an embedder-provided [`AuditSink`].
+//! A thin axum middleware ([`audit_middleware`](crate::api_audit::audit_middleware))
+//! observes every mutating request on the `/api/v1/*` surface AFTER
+//! authentication (it is layered inside the auth middleware, so the validated
+//! [`ApiTokenClaims`](crate::auth::ApiTokenClaims) are already in request
+//! extensions) and hands a lossless
+//! [`ApiWriteEvent`](crate::api_audit::ApiWriteEvent) to an embedder-provided
+//! [`AuditSink`](crate::api_audit::AuditSink).
 //!
 //! The crate deliberately knows nothing about WHERE events go: the
 //! desktop app implements the sink against the served store's

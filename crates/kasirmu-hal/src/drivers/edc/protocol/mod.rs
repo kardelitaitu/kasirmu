@@ -14,9 +14,9 @@ next: real vendor framing | perf: N/A — all codecs are stubs
 //!
 //! Vendors:
 //!
-//! * [`IngenicoCodec`] — Telium / Telium 2 (iPP320, iPP350, Desk 3500).
-//! * [`VerifoneCodec`] — Verifone SSL / Verix (VX520, VX680, P400).
-//! * [`PaxCodec`] — PAX DCC (S80, S300, S920, A920).
+//! * [`IngenicoCodec`](ingenico::IngenicoCodec) — Telium / Telium 2 (iPP320, iPP350, Desk 3500).
+//! * [`VerifoneCodec`](verifone::VerifoneCodec) — Verifone SSL / Verix (VX520, VX680, P400).
+//! * [`PaxCodec`](pax::PaxCodec) — PAX DCC (S80, S300, S920, A920).
 
 pub mod ingenico;
 pub mod pax;

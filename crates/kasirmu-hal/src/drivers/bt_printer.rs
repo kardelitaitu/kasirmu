@@ -9,12 +9,13 @@ next: none | perf: N/A
 //! The Serial Port Profile presents a paired printer as an ordinary COM or
 //! rfcomm port, so the application cannot tell a Bluetooth printer from a
 //! wired one and there is nothing for a separate driver to do. The
-//! implementation is [`SerialReceiptPrinter`]; this name exists because
+//! implementation is [`SerialReceiptPrinter`](crate::drivers::serial_printer::SerialReceiptPrinter);
+//! this name exists because
 //! [`crate::registry::DriverRegistry::discover`] finds ports over Bluetooth
 //! and the setup wizard should report the transport the operator chose.
 //!
-//! Prefer [`SerialReceiptPrinter`] in new code. The alias is a compatibility
-//! name, not a distinct device class.
+//! Prefer [`SerialReceiptPrinter`](crate::drivers::serial_printer::SerialReceiptPrinter)
+//! in new code. The alias is a compatibility name, not a distinct device class.
 
 pub use super::serial_printer::SerialReceiptPrinter;
 

@@ -15,7 +15,7 @@
 //! therefore calls **our** `JNI_OnLoad` below, and we stash the VM. The
 //! desktop build never compiles any of this (`cfg(target_os = "android")`),
 //! so the host paths are untouched. If `JNI_OnLoad` somehow did not run, the
-//! transport fails with [`HalError::Bluetooth`] â€” it never panics.
+//! transport fails with [`HalError::Bluetooth`](crate::error::HalError::Bluetooth) â€” it never panics.
 //!
 //! # Threading
 //!

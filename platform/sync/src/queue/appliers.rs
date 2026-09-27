@@ -778,8 +778,9 @@ pub(super) fn credit_refund_effect_without_sale(
 
 /// Outcome of applying a remote item atomically (SYNC-10).
 ///
-/// [`SyncQueue::apply_remote_atomic`] returns only `applied` for legacy
-/// callers; the reporting variant [`SyncQueue::apply_remote_atomic_full`]
+/// [`SyncQueue::apply_remote_atomic`](super::SyncQueue::apply_remote_atomic)
+/// returns only `applied` for legacy callers; the reporting variant
+/// [`SyncQueue::apply_remote_atomic_full`](super::SyncQueue::apply_remote_atomic_full)
 /// additionally surfaces a settings change (changed key + originating
 /// terminal) so the sync daemon can publish `SettingsUpdated` after the
 /// transaction commits.

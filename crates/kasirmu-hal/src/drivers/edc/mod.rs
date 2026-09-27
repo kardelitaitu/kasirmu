@@ -7,12 +7,12 @@ next: real vendor protocol handlers, then registry-driven registration from the 
 //! EDC card-payment terminal drivers.
 //!
 //! Concrete drivers for the [`EdcTerminal`](crate::traits::edc::EdcTerminal)
-//! trait: [`WiredEdcTerminal`] for serial/USB-linked terminals and
-//! [`WirelessEdcTerminal`] for Bluetooth or network ones.
+//! trait: [`WiredEdcTerminal`](crate::drivers::edc::wired::WiredEdcTerminal) for serial/USB-linked terminals and
+//! [`WirelessEdcTerminal`](crate::drivers::edc::wireless::WirelessEdcTerminal) for Bluetooth or network ones.
 //!
-//! [`protocol`] isolates the vendor wire format (Ingenico Telium, Verifone
+//! [`protocol`](crate::drivers::edc::protocol) isolates the vendor wire format (Ingenico Telium, Verifone
 //! Verix, PAX DCC) from the transport, so a driver only ever deals with
-//! encoded bytes in and decoded [`ProtocolMessage`]s out.
+//! encoded bytes in and decoded [`ProtocolMessage`](crate::drivers::edc::protocol::ProtocolMessage)s out.
 //!
 //! **All drivers in this module are stubs.** They construct, report their
 //! configured identity, and return [`HalError::Unsupported`](crate::error::HalError::Unsupported)
