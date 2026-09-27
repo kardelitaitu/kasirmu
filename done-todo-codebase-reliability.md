@@ -495,7 +495,7 @@ covered, because no coverage instrument is enforced. Close that in this order.
 - [x] **P2-2 — Clippy as an error.** `dev-ci.yml:325`,
       `cargo clippy --workspace --all-targets -- -D warnings`.
 - [x] **P2-3 — `cargo fmt --all -- --check`.** `dev-ci.yml:252` (`rust-fmt` job).
-- [ ] **P2-4 — `RUSTDOCFLAGS="-D warnings"`.** Not set anywhere. Add to the
+- [x] **P2-4 — `RUSTDOCFLAGS="-D warnings"`.** Not set anywhere. Add to the
       `dev-ci.yml` env block beside `RUSTFLAGS`.
       Acceptance: `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
       exits 0 locally, then the env line lands in the workflow.
@@ -817,6 +817,53 @@ covered, because no coverage instrument is enforced. Close that in this order.
       runner deps, the ~8s doc build) and should land as one reviewed change
       with the `gates.json` row, not bolted on at the end of a doc campaign.
       Recorded so the next pass does not mistake the env line for the finish.
+      **ROUND 8 — 2026-09-28 (commit `b2bf2c69d`). BOX CLOSED. Both halves of
+      the acceptance are met, and they landed together on purpose.**
+      What shipped, in ONE commit:
+      - **`RUSTDOCFLAGS: -D warnings`** in the `dev-ci.yml` env block
+        (`dev-ci.yml:10-16`), beside `RUSTFLAGS` exactly as the box specifies.
+      - **A `rust-doc` job** that consumes it — mirrors `cargo-clippy`'s shape
+        (same path gate `needs.changes.outputs.rust`, same system deps, same
+        frontend-dist stubs, same rust-cache) and runs
+        `cargo doc --workspace --no-deps`.
+      - **A local runner** in `scripts/check.sh` — `cargo doc` had NO runner
+        anywhere before this, not even locally.
+      - **A `gates.json` row** (`rust-doc`, `required`, with the `ci` block),
+        taking the registry to **88 gates**.
+      - **`docs/releases/checklist.md`** entry — which the drift checker
+        DEMANDED: it reported `checklist.md omits live dev-ci.yml job(s):
+        rust-doc` before I added it. That is the third time this session a
+        docs-drift gate caught an omission I would otherwise have shipped.
+      **Two traps the local runner had to avoid, both measured:**
+      1. **It must pass `RUSTDOCFLAGS` inline.** Without it `cargo doc` reports
+         warnings and **still exits 0**, so the step would be decoration that
+         can never fail. Verified by mutation: injecting `[`NoSuchTypeXYZZY`]`
+         into `paddle.rs` made the step fail, and the file was restored clean.
+      2. **`--no-deps` is required.** Without it a dependency's own doc warnings
+         would fail this gate for a crate this repo does not own.
+      **Why the two halves are inseparable, restated because it is the whole
+      lesson:** the env var is read by rustdoc and nothing else. Set alone, with
+      no `cargo doc` invocation, it would have changed nothing while reading
+      like a gate in review — the identical failure this checklist caught in
+      `fuzz` (compiled by nothing), `verify-pg-tests-ran` (unwired), and the
+      coverage floors (unenforced). **Six dead-API defects were found and fixed
+      along the way**, listed in the round-3/4/6 entries: a doc referencing an
+      API that does not exist is worse than a missing doc, because it is read as
+      authoritative.
+      **CAVEAT, stated because it is real and unresolved:** the final full
+      `cargo doc --workspace` could not be re-run to confirm after this commit,
+      because a concurrent session is mid-refactor of
+      `kasirmu_core::license_verification::fetch_license_crl` and
+      `platform-sync` does not compile as a result (`cannot find function
+      fetch_license_crl`, `unresolved import ... fetch_license_crl`). That is
+      NOT from this work — verified: I touched no file in `kasirmu-core` or
+      `kasirmu-bridge` this round — and the acceptance DID pass with exit 0 and
+      zero errors/warnings in round 7, on the tree this commit builds on. Every
+      crate reachable around the breakage was re-verified clean after these
+      edits (`kasirmu-payment`, `kasirmu-hal`, `kasirmu-lan`, `kasirmu-api`,
+      `platform-startup`, `foundation`, `platform-core`). **The next session
+      should re-run the acceptance once that refactor lands**; if it passes, the
+      gate is live and green; if it fails, the failure will name the link.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
