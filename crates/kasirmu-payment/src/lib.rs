@@ -6,6 +6,16 @@ next: none for PAY-2/PAY-3/PAY-4 (all closed above; see PAY-C). Genuinely open i
 */
 #![deny(unsafe_code)]
 
+// `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY that
+// lint. `QrisProcessor::capture` documents its per-call poll budget by naming
+// the private constants that define it (`MAX_POLL_ATTEMPTS`,
+// `POLL_INTERVAL_MS`, `QRIS_EXPIRY_SECS`) — a reader checking "how long can
+// this call block" is better served by the number than by a prose restatement.
+// `rustdoc::broken_intra_doc_links` is deliberately NOT allowed, so a link to
+// an item that does not exist still fails the build. Precedent:
+// `kasirmu-crypto/src/lib.rs`, `platform/core/src/lib.rs`.
+#![allow(rustdoc::private_intra_doc_links)]
+
 //! Payment processor abstraction for kasir.mu.
 //!
 //! `kasirmu-payment` provides a single trait, [`PaymentProcessor`], with

@@ -6,18 +6,21 @@ next: implement HID POS reads in drivers/scale.rs before wiring any scale; baud_
 */
 //! Startup hardware registration — the missing write side of the HAL registry.
 //!
-//! The UI already lets an operator save a [`TerminalProfile`] describing
-//! their printer, kitchen printer, scanner and scale, and an `edc_terminals`
-//! table holds their card terminals. Until now nothing read either back into
-//! drivers, so `AppState` held an empty [`DriverRegistry`] and every hardware
-//! command resolved `None`.
+//! The UI already lets an operator save a
+//! [`TerminalProfile`](platform_core::terminal_profile::TerminalProfile)
+//! describing their printer, kitchen printer, scanner and scale, and an
+//! `edc_terminals` table holds their card terminals. Until now nothing read
+//! either back into drivers, so `AppState` held an empty
+//! [`DriverRegistry`](kasirmu_hal::DriverRegistry) and every hardware command
+//! resolved `None`.
 //!
-//! [`load_profile`] reads the profile the same way the settings command
-//! does — database first, JSON file as fallback — and
-//! [`register_hardware`] maps it onto [`HardwareConfig`] and applies it.
-//! [`register_card_terminals`] does the same for terminal rows. Both
-//! mappings are pure where they can be, so they are testable without a
-//! device.
+//! [`load_profile`](crate::hardware::load_profile) reads the profile the same
+//! way the settings command does — database first, JSON file as fallback — and
+//! [`register_hardware`](crate::hardware::register_hardware) maps it onto
+//! [`HardwareConfig`](kasirmu_hal::bootstrap::HardwareConfig) and applies it.
+//! [`register_card_terminals`](crate::hardware::register_card_terminals) does
+//! the same for terminal rows. Both mappings are pure where they can be, so
+//! they are testable without a device.
 
 use std::path::Path;
 
