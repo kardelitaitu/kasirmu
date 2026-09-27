@@ -656,6 +656,57 @@ covered, because no coverage instrument is enforced. Close that in this order.
       clean. **The next round must re-run `cargo doc --workspace --no-deps`
       once that split lands**, both to confirm the `cloud-server` edits and to
       see what the newly-reachable crates report.
+      **ROUND 4 — 2026-09-28 (commits `d59de568b`, `68b0426c9`). The core split
+      landed mid-round and unblocked everything.**
+      **Verified clean this round, each by its own `cargo doc -p <crate>`:**
+      - The **14 crates that do not depend on `kasirmu-core`** — `kasirmu-crypto`,
+        `kasirmu-logging`, `kasirmu-lua`, `kasirmu-media`, `kasirmu-plugin`,
+        `kasirmu-security`, `qris-core`, `foundation`, `modules-{giftcards,
+        kitchen,promotions,purchasing}`, `platform-core`, `platform-kernel` —
+        ALL already clean. That is the round-1..3 crate-level allows still
+        holding, and it is the first time this has been measured as a set.
+      - **`kasirmu-cloud`**, which also VERIFIES round 3's unverified edits: the
+        `from_config` / `mark_status` / `ARGV[1..4]` / `KEYS[1]` fixes were
+        confirmed good by the re-run. Six more links fixed to get there.
+      **THREE MORE DEAD-API DEFECTS FOUND — the pattern is now unmistakable.**
+      This is the fourth time a broken rustdoc link has turned out to be a doc
+      describing something that does not exist, so the campaign is producing
+      corrections, not just cosmetics:
+      1. **`BridgeError::NotFound` does not exist.** `kasirmu-bridge/src/staff/
+         trash.rs` linked it at **three** sites, in the `# Errors` sections of
+         `delete_staff_scoped`, `restore_staff_scoped` and
+         `restore_role_scoped` — a file about deleting things, documenting a
+         not-found variant the enum does not have. Real variants: `Core`,
+         `Hardware`, `Invalid`, `PermissionDenied`, `InvalidSession`,
+         `TopologyValidation`, `Internal`. The unknown-id path goes through
+         `store.soft_delete_user(id)?`, which surfaces as `Core`. All three now
+         say so.
+      2. **`WebhookEndpoint::redacted` does not exist**
+         (`apps/cloud-server/src/outbound_webhooks.rs:57`). The struct has no
+         such method; listings simply do not select the secret column. The doc
+         now states the real mechanism.
+      3. **`TokenBucket` is private** (`apps/cloud-server/src/rate_limit.rs:100`
+         — `struct`, not `pub struct`), so the link in `redis_backend.rs` could
+         never resolve; it is now a code span naming the file.
+      **Also fixed:** `KEYS[1]` / `ARGV[1..4]` in `redis_backend.rs` were parsed
+      as links named `1`, `2`, `3`, `4` — Lua indexing colliding with link
+      syntax. Same class as the `Host[:port]` and `role-<uuidv7>` cases.
+      **Where this stops, and why — a real collision, not a lack of effort.**
+      `cargo doc --workspace` is down to **ONE failing crate: `kasirmu-bridge`**,
+      which still reports **170 unresolved links across 132 distinct names**.
+      They are overwhelmingly ONE pattern — `BridgeCtx` (×14), `BridgeError`
+      (×8), `BridgeCtx::registry` (×4), the `*_scoped` family (×3 each) — i.e.
+      core bridge types referenced from files that do not import them. **That
+      wave sits in ~20 `kasirmu-bridge` files, and by the end of this round a
+      concurrent session had all 20 of them dirty** (their C28 extraction
+      programme: `data/dto.rs`, `pos.rs`, `products/dto.rs`, `staff/dto.rs`,
+      `settings/core.rs`, …). I fixed the 9 sites in files that were still clean,
+      verified every one of my diffs touches **doc comments only** (no code
+      line — checked, not assumed), and committed. The remaining ~170 should be
+      done once their extraction lands: a mass doc-link edit across files being
+      rewritten produces conflicts that cost more than the edits save.
+      **Standing status: ONE crate from green.** Every other crate in the
+      workspace is rustdoc-clean. The env line still must NOT land.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
