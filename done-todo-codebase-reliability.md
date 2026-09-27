@@ -627,6 +627,57 @@ covered, because no coverage instrument is enforced. Close that in this order.
       surfaces them before a customer does.
       Acceptance: one seeded violation produces an `error!` line naming the
       invariant and the entity.
+      **AUDITED 2026-09-28, BOX STAYS OPEN, AND THE PREMISE DID NOT SURVIVE —
+      no site qualified for the change, so none was made.** Chosen scope:
+      "only the sites that are both silent AND reachable". Audited result:
+      **all 8 production `debug_assert!` sites are unreachable from any public
+      API**, so there is nothing to log. The premise ("it panics or is silently
+      repaired") describes a class that does not exist here in the form the box
+      assumes.
+      **The 8 sites, and why each cannot be reached by bad data:**
+      | site | why unreachable |
+      |---|---|
+      | `kasirmu-core/src/db/mod.rs:449` `generation < BACKUP_GENERATIONS` | `generation` comes from a loop bounded by that same const; a caller bug, not data |
+      | `kasirmu-core/src/db/popularity.rs:240` `parse_utc_offset(&tz).is_some()` | `tz_modifier()` (`reports/datetime.rs:131`) ALWAYS returns `±HH:MM` — both match arms yield either an offset already parsed by `parse_utc_offset` or the literal `+00:00`. The data-driven case (an unresolvable `locations.timezone`) is already handled AND already logged with `tracing::warn!` at `:143-146`, naming the offending value. This assert re-checks a guaranteed postcondition. |
+      | `kasirmu-core/src/db/regional.rs:234` `n <= 1` | an `UPDATE … WHERE id = ?3` on a primary key; more than one row is impossible |
+      | `foundation/src/cart.rs:120` overridden/unit price currency match | `set_overridden_price` validates (`cart.rs:131`), and `add_line` rejects a mismatched line outright (`cart.rs:267-273`). The only bypass is DIRECT field mutation — the fields are `pub`. |
+      | `foundation/src/cart.rs:304` line/cart currency match | same guard: unreachable via `add_line` |
+      | `foundation/src/cart.rs:343` same, on the discount path | same guard |
+      | `modules/tax/src/models.rs:54` `divisor > 0` | a caller passing 0 hits `checked_div`'s `None` regardless; the assert adds no coverage |
+      **The one site I initially believed qualified, and the check that refuted
+      it.** `foundation/src/cart.rs` looked like the real case: in DEBUG the
+      mismatch panics, in RELEASE the assert vanishes and `checked_add` returns
+      `None` — indistinguishable from an overflow, which is exactly the
+      "silently repaired" shape the box describes. But reading `add_line`
+      (`cart.rs:267-273`) showed it returns `Err(CartError::CurrencyMismatch)`
+      and never admits a mismatched line. The existing test
+      `cartline_total_debug_assert_currency_mismatch_on_direct_mutation`
+      (`cart_tests.rs:532`) states the real rationale in its own comment: *"the
+      fields are pub so a caller could bypass it with direct mutation"*. That is
+      an anti-tamper guard on a `pub` field, not an invariant an operator can
+      violate.
+      **The architectural finding, recorded because it is the real answer.**
+      `foundation` has **no `tracing` dependency** (5 deps total: anyhow, regex,
+      serde, uuid, thiserror) and **27 crates depend on it**. Adding `tracing`
+      there to serve three unreachable debug asserts would put a logging stack
+      into the workspace's most-depended-on leaf crate for no observable
+      benefit. `kasirmu-core` already has `tracing` and already uses the pattern
+      the box asks for — see `products_stock_adjust/adjust.rs:133` (`tracing::info!`
+      with `sku`/`location_id`/`qty`) and `:328` (`tracing::warn!`), and
+      `reports/datetime.rs:143` — so the house pattern exists and is followed;
+      it simply has nothing to report at these sites.
+      **What WOULD close this box**, if it is wanted: the acceptance is "one
+      seeded violation produces an `error!` line naming the invariant and the
+      entity", and the honest way to meet it is to pick an invariant whose
+      violation IS reachable and add the log where the violation is actually
+      detected — the stock guards are the obvious candidate, since they already
+      return structured errors (`CoreError::Validation`,
+      `InsufficientStockAtLocation`) at genuine data-driven boundaries. That is
+      a behaviour change at a money path and needs a decision, not an audit,
+      which is why it was not taken here.
+      **Not a defect claim:** nothing above shows a missing log is hiding a bug.
+      It shows the box was written from a premise about this tree that the tree
+      does not match.
 - [x] **P3-3 — Keep the `unsafe` inventory reviewable.** 27 `unsafe {` sites and
       7 `unsafe impl/fn/no_mangle` items, all in 4 production files plus 8
       test-only sites. Every one must carry a `// SAFETY:` line.
