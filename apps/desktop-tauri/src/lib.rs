@@ -80,6 +80,11 @@ mod sync_bootstrap;
 /// **NOTE:** If you modify the byte string below, update the array size
 /// (currently 168).  The compiler error message will report the exact
 /// expected size if there's a mismatch.
+// SAFETY: `link_section = ".drectve"` is a Windows-MSVC linker directive
+// section. `unsafe` is required only because the attribute names a raw
+// section; nothing here dereferences a pointer or crosses an FFI boundary.
+// The static is `#[used]`, `#[cfg(test)]`-gated and never read by Rust code —
+// it exists so the test binary links the Common-Controls v6 manifest.
 #[cfg(all(test, windows, target_env = "msvc"))]
 #[used]
 #[unsafe(link_section = ".drectve")]

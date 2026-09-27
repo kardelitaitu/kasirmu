@@ -91,6 +91,16 @@ step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3
 # call not sitting behind a token test.
 step "scoped ambient reads" "python3 scripts/verify-scoped-reads.py --self-test" python3 scripts/verify-scoped-reads.py --self-test
 step "unguarded ambient ipc calls" "python3 scripts/verify-scoped-reads.py" python3 scripts/verify-scoped-reads.py
+# P3-3. P2-6 put `#![deny(unsafe_code)]` at 38 of 43 crate roots, so the crates
+# that carry NO unsafe cannot grow any. The five that legitimately keep it
+# (kasirmu-logging syslog/eventlog FFI, kasirmu-security CredWriteW,
+# kasirmu-hal JNI/Bluetooth, kasirmu-lua Send/Sync impls, the Tauri shells'
+# link_section) cannot be protected by a deny, and nothing checked their SAFETY
+# comments -- measured 2026-09-27: no script and no gates.json entry mentioned
+# SAFETY at all. This makes the justification mechanical instead of a
+# reviewer's-eye exercise. Gate: scripts/gates.json -> "unsafe-safety".
+step "unsafe safety comments" "python3 scripts/verify-unsafe-safety.py --self-test" python3 scripts/verify-unsafe-safety.py --self-test
+step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" python3 scripts/verify-unsafe-safety.py
 # Ratchet on react-hooks/exhaustive-deps. `npm run lint` is `eslint .` with no --max-warnings 0, so
 # it exits 0 while reporting 58 warnings -- and that rule is the ONLY automated check for a stale
 # closure. Item 69 found five callbacks listing `userId`, which no component body ever read, while
