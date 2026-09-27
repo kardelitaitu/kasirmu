@@ -49,6 +49,14 @@
       the workspace with all targets and denies warnings; added 2026-09-25 by
       C25 — the old text here said clippy was local-only and not a CI step,
       which stopped being true when the job landed),
+      `rust-doc` (runs `cargo doc --workspace --no-deps` under the
+      `RUSTDOCFLAGS: -D warnings` env line; added 2026-09-28 by P2-4. Rustdoc
+      does not read `RUSTFLAGS`, so a broken intra-doc link had never been a CI
+      failure even though `RUSTFLAGS: -D warnings` had been set since P2-1 —
+      measured 2026-09-28, the command failed with 295 errors across 20 crates.
+      The job and the env var landed in ONE commit on purpose: setting the
+      variable with no `cargo doc` invocation would have been a dead setting
+      that reads like a gate),
       `fuzz-typecheck` (compiles the seven targets under `tools/fuzz` with
       `--all-features`; added 2026-09-27 by P0-3. It does NOT run the fuzzers —
       libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain,

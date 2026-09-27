@@ -58,6 +58,22 @@ step "cargo fmt" "cargo fmt --all -- --check" cargo fmt --all -- --check
 # that don't need linting, and clippy doesn't benefit from compiling them.
 step "clippy workspace" "cargo clippy --workspace --all-targets -- -D warnings" cargo clippy --workspace --all-targets -- -D warnings
 
+# Rustdoc, mirroring the CI `rust-doc` job added with P2-4. `cargo doc` had NO
+# runner anywhere -- not here, not in CI, not in release.sh -- so a broken
+# intra-doc link was never a failure in any context. Measured 2026-09-28 the
+# undeclared check was hiding 295 errors across 20 crates, six of which were
+# docs describing APIs that do not exist. `--no-deps` keeps a dependency's own
+# doc warnings from failing this step for a crate we do not own.
+# Gate: scripts/gates.json -> "rust-doc".
+# Notes that matter for this step specifically:
+#  * `RUSTDOCFLAGS` is set INLINE here, not exported, for the same reason the
+#    clippy step passes `-- -D warnings` inline: an exported variable would leak
+#    into every later step in this script.
+#  * Passing it at all is load-bearing. Without it `cargo doc` reports warnings
+#    and still exits 0, so the step would be decoration -- it would look like it
+#    checked something and could never fail.
+step "rustdoc (deny warnings)" "RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps" RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
+
 # ── ADR #7 Phase 4: no raw store_id/user_id in command signatures ───────
 step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bash scripts/verify-no-raw-params.sh
 
