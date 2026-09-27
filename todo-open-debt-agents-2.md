@@ -5,6 +5,7 @@
 **Fence:** `apps/mobile-tauri/src/**`, shared DTOs under `crates/kasirmu-bridge/src/**` (additions only — never change a desktop-side wire shape without a back-compat alias).
 **Commit prefix:** `refactor(tablet):` · `test(tablet):` · `refactor(bridge):`
 **Acceptance:** `cargo check -p kasirmu-mobile` clean · `cargo test -p kasirmu-mobile` green · `python scripts/verify-ipc-parity.py` → `IPC parity: OK`.
+**Re-measured 2026-09-28 by a review lane — one of the three is green, and the other two cannot be run against a stable tree.** `python scripts/verify-ipc-parity.py` → `IPC parity: OK`, exit 0. The two cargo commands were attempted and blocked: `apps/mobile-tauri/src/commands/pos/checkout.rs` is an **untracked** file from another lane's in-flight `pos.rs` split (C28), `apps/mobile-tauri/src/commands/pos.rs` is modified, and the pair does not compile (`ReplayVerdict` not accessible, `checkout.rs:79`). This file therefore **keeps its `todo-` token**: §7.4 asks for the acceptance to be RUN and PASSED, and two thirds of it cannot be run until that lane lands.
 
 ### The debt
 
