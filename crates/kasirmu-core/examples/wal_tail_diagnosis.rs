@@ -154,7 +154,8 @@ fn main() {
     // `tempfile` is a dev-dependency and so is not visible to examples.
     // A process-unique subdirectory of the OS temp dir is equivalent here:
     // the directory must merely be writable and not shared with other runs.
-    let dir: PathBuf = std::env::temp_dir().join(format!("kasirmu-wal-tail-{}", std::process::id()));
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("kasirmu-wal-tail-{}", std::process::id()));
     // INVARIANT: without a scratch directory there is nothing to measure.
     std::fs::create_dir_all(&dir).expect("create temp dir for diagnosis");
     let db_path: PathBuf = dir.join("tail.db");
@@ -172,7 +173,10 @@ fn main() {
     println!("WAL tail diagnosis");
     println!("  database          : {}", db_path.display());
     println!("  journal_mode      : WAL, synchronous=NORMAL (via migrations::run)");
-    println!("  wal_autocheckpoint: {} pages ({} bytes at {} B/page)", threshold_pages, threshold_bytes, page_sz);
+    println!(
+        "  wal_autocheckpoint: {} pages ({} bytes at {} B/page)",
+        threshold_pages, threshold_bytes, page_sz
+    );
     println!("  inserts           : {INSERTS}");
     println!();
 
@@ -252,7 +256,10 @@ fn main() {
         "  of the {top_n} slowest, {top_shrank} involved a checkpoint ({:.0}%)",
         top_shrank as f64 * 100.0 / top_n as f64
     );
-    println!("  base rate of checkpoint inserts: {:.2}%", shrunk as f64 * 100.0 / samples.len() as f64);
+    println!(
+        "  base rate of checkpoint inserts: {:.2}%",
+        shrunk as f64 * 100.0 / samples.len() as f64
+    );
     println!();
 
     // Verdict, stated as the data supports it — not as a hope.

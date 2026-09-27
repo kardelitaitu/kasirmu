@@ -173,10 +173,7 @@ fn main() {
         let db = dir.join(format!("sync-{mode}.db"));
         let conn = open_with_sync(&db, mode);
         let lat = run_workload(&conn, mode);
-        results.push(Dist {
-            label: mode,
-            lat,
-        });
+        results.push(Dist { label: mode, lat });
     }
 
     println!(
