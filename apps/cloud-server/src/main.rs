@@ -20,7 +20,7 @@
 //! | `OZ_REDIRECT_ONLY` | — | Run in redirect-only mode (ADR #11). Requires `OZ_SYNC_REDIRECT_URL`. Skips DB, prune, metrics, API — only serves the migration redirect. |
 //! | `OZ_SYNC_REDIRECT_URL` | — | New server URL for migration redirect. When set, all `/api/sync/*` requests return `{"error":"server_migrated","new_url":"<url>"}` with HTTP 421. |
 //! | `OZ_WORKER_THREADS` | `2` | Tokio runtime worker threads (0 = logical CPU count). Tune higher for multi-tenant deployments under sustained sync load. |
-//! | `RUST_LOG` | `info` | Log level filter (e.g. `debug`, `oz_cloud_server=debug`) |
+//! | `RUST_LOG` | `info` | Log level filter (e.g. `debug`, `kasirmu_cloud=debug`) |
 
 // serde_json's `json!` recurses once per key/value pair, and the OpenAPI
 // spec's `paths` object is one long literal (exchange-rates endpoints,

@@ -165,7 +165,7 @@ pub async fn register_hardware(
 
 /// The registry id the EDC commands resolve when no terminal is named.
 ///
-/// Mirrors `oz_pos_app::commands::edc::DEFAULT_TERMINAL_ID`; duplicated
+/// Mirrors `kasirmu_bridge::edc::DEFAULT_TERMINAL_ID`; duplicated
 /// because platform-startup must not depend on an app crate. A desktop test
 /// asserts the two stay equal.
 pub const DEFAULT_TERMINAL_ID: &str = "default";

@@ -22,11 +22,11 @@ use serde_json::Value;
 use super::lamport::Counter;
 
 /// Payload field carrying the sender's version vector. Must match
-/// `oz_cloud_server::conflict_resolution::VECTOR_FIELD`.
+/// `kasirmu_cloud::conflict_resolution::VECTOR_FIELD`.
 pub const VECTOR_FIELD: &str = "_vector";
 
 /// Payload field carrying the sending terminal's id. Must match
-/// `oz_cloud_server::conflict_resolution::TERMINAL_FIELD`.
+/// `kasirmu_cloud::conflict_resolution::TERMINAL_FIELD`.
 pub const TERMINAL_FIELD: &str = "_terminal";
 
 /// Whether a payload already carries a vector.
