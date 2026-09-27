@@ -3,7 +3,7 @@ name: figma-bridge
 description: Connect to live Figma design files via figma-mcp-bridge (Figma desktop plugin + MCP server). Inspect layout trees, extract nodes and variables/tokens, inspect component selections, export screenshots, and map Figma designs to kasir.mu React components and tokens.css without hitting Figma REST API rate limits.
 ---
 
-<!-- Audit stamp: 2026-09-24 · DSH · status: ACCURATE · initial version -->
+<!-- Audit stamp: 2026-09-24 · DSH · status: ACCURATE · initial version · REV 2 (28-09-26, DSH docs-auditor, shallow pass): the enforced footer was MISSING and is now added — this was the only one of 22 skills without it, which is exactly what skill-drift-guard check 9 reports as "missing audit date". Re-verified in this pass: the three repo paths this file names all resolve (prototypes/design-language.html, ui/src/theme/tokens.css, shared-ui/locales). The fluent finding in skill-drift-report.md is a FALSE POSITIVE on the feature.ftl / feature.id.ftl PLACEHOLDERS this file documents as patterns, not as ids that should exist. -->
 
 # Figma MCP Bridge — kasir.mu Design Synchronization
 
@@ -149,3 +149,5 @@ For every text node in the Figma tree:
    - The plugin UI must be open in the target Figma file tab. Run `list_files` to verify the bridge detected the window.
 3. **Empty selection**:
    - Call `list_files` to ensure correct `fileKey`, or instruct the user to click on the desired frame/component in Figma before re-calling `get_selection`.
+
+> last audited 28-09-26 by DSH
