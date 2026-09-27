@@ -36,3 +36,15 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+
+# Declared explicitly (rather than auto-discovered) so the example's inline
+# `#[cfg(test)] mod tests` block stays inside the example target. The AGENTS.md
+# rule against inline tests exists so production library code does not carry its
+# tests; an `examples/*.rs` file is a standalone demonstration with its own local
+# struct, so a sibling `*_tests.rs` cannot be used here — Cargo auto-discovers
+# every `.rs` under `examples/` as its own target, and the sibling would then
+# fail to compile with `too many leading super keywords` and no `main`.
+[[example]]
+name = "custom_barcode_scanner"
+test = true
+
