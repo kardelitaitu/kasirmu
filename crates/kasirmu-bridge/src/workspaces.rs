@@ -882,8 +882,11 @@ pub async fn resolve_boot_store(
 
     if let Some((terminal_id, bound_store_id, bound_instance_id, signature)) = binding_info {
         let signature_valid = {
-            let keyring = kasirmu_security::default_keyring()
-                .map_err(|e| BridgeError::Internal(format!("keyring unavailable: {e}")))?;
+            // Shared with the binding-write side (`crate::terminals`): one
+            // helper means a test can inject a single in-memory keyring into
+            // both halves of a write→boot round-trip. Production is still
+            // exactly `kasirmu_security::default_keyring()`.
+            let keyring = crate::terminals::binding_keyring()?;
             let secret = keyring
                 .get_secret(DEVICE_BINDING_KEYRING_NAME)
                 .map_err(|e| BridgeError::Internal(format!("keyring read failed: {e}")))?;

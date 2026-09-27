@@ -787,7 +787,7 @@ pub(crate) fn set_test_binding_keyring(keyring: Box<dyn kasirmu_security::Keyrin
 /// platform credential store would make an end-to-end binding test depend on
 /// machine state. The override is compiled out of production, so behaviour
 /// there is unchanged.
-fn binding_keyring() -> Result<Box<dyn kasirmu_security::Keyring>, BridgeError> {
+pub(crate) fn binding_keyring() -> Result<Box<dyn kasirmu_security::Keyring>, BridgeError> {
     #[cfg(test)]
     if let Some(keyring) = TEST_BINDING_KEYRING.with(|c| c.borrow_mut().take()) {
         return Ok(keyring);

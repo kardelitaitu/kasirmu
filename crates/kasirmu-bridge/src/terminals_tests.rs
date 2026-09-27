@@ -673,3 +673,113 @@ async fn device_binding_round_trips_and_clears_on_the_global_row() {
         .expect("read-back after clear");
     assert!(!cleared.bounded, "a cleared binding must read as unbound");
 }
+
+// ── Bridge write → bridge boot round-trip ─────────────────────────────
+
+use crate::workspaces::resolve_boot_store;
+
+/// A bridge whose GLOBAL db has the owner plus the `s1` location the mirrored
+/// terminal's FK needs, and whose store db `s1` holds a device terminal and the
+/// workspace instance a binding points at. Returns the bridge and that terminal.
+fn bindable_device() -> (TestBridge, Terminal) {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    conn.execute(
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+         VALUES ('s1', 'Store 1', '', '', 'USD', 'UTC', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+        [],
+    )
+    .unwrap();
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let terminal = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('s1', 'Store 1', '', '', 'USD', 'UTC', 0, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let store = Store::new(&db);
+        let terminal = Terminal::new("POS-1", "dev-001");
+        store.create_terminal(&terminal).unwrap();
+        store
+            .create_workspace_instance("ws-a-1", "store-pos", "s1", "POS", "", None)
+            .unwrap();
+        drop(db);
+        terminal
+    };
+    (tb, terminal)
+}
+
+/// End to end on the desktop path: the row `set_device_binding_scoped` writes
+/// is the row `resolve_boot_store` reads. The two ownership fixes (bridge
+/// 9993d57c3, mobile 7533b58f7) each only proved one half; this drives BOTH real
+/// bridge surfaces with one in-memory keyring and asserts the device actually
+/// boots into the bound store/instance instead of falling back to primary.
+#[tokio::test]
+async fn bridge_device_binding_round_trips_through_boot_resolution() {
+    let (tb, source) = bindable_device();
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "s1".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    let resolution = resolve_boot_store(&ctx, Some("dev-001".into()))
+        .await
+        .expect("a valid binding must resolve");
+    assert!(
+        resolution.is_bound,
+        "the binding written must be the binding honored: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "s1");
+    assert_eq!(resolution.instance_id.as_deref(), Some("ws-a-1"));
+}
+
+/// A binding signed with one secret must NOT boot bound under another — the
+/// tamper/wrong-key refusal is what makes the round-trip meaningful. It falls
+/// back to the primary store instead.
+#[tokio::test]
+async fn bridge_device_binding_with_another_keyring_falls_back_to_primary() {
+    let (tb, source) = bindable_device();
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "s1".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    let other = kasirmu_security::InMemoryKeyring::new();
+    other
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "another-secret")
+        .unwrap();
+    set_test_binding_keyring(Box::new(other));
+
+    let resolution = resolve_boot_store(&ctx, Some("dev-001".into()))
+        .await
+        .expect("resolution must not error on a wrong-key binding");
+    assert!(
+        !resolution.is_bound,
+        "a wrong-key signature must not boot bound: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "default");
+}
