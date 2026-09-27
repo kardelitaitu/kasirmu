@@ -617,3 +617,30 @@ pub async fn compute_cart_tax_scoped(
     drop(db);
     Ok(tax)
 }
+
+// ── Scoped variants (ADR #7) ────────────────────────────────────
+
+// ── Scoped variants (ADR #7) ────────────────────────────────────
+
+/// Scoped variant of `get_cart_deduction_location` (ADR #7).
+pub async fn get_cart_deduction_location_scoped(
+    ctx: &BridgeCtx<'_>,
+    cart_id: CartId,
+    session_token: &str,
+) -> Result<Option<DeductionLocationInfo>, BridgeError> {
+    // ungated-ok: a read of the caller's own active cart's deduction location
+    let (_session, _conn) = ctx.resolve_scope(session_token)?;
+    let db = _conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    let result = store.get_active_cart_deduction_location_info(&cart_id)?;
+    drop(db);
+    Ok(
+        result.map(|(loc_id, loc_name, overridden_at)| DeductionLocationInfo {
+            location_id: loc_id,
+            location_name: loc_name,
+            overridden_at,
+        }),
+    )
+}

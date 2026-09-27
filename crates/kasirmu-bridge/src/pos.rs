@@ -141,8 +141,8 @@ pub use cart::{
     AddLineArgs, AddLineResult, DeductionLocationInfo, OverrideLinePriceArgs,
     OverrideLinePriceScopedArgs, PublishCourseFiredArgs, PublishCourseFiredItem,
     SetCartDiscountArgs, SetCartDiscountScopedArgs, SetLineCourseArgs, StartSaleArgs,
-    StartSaleResult, add_line_scoped, compute_cart_tax_scoped, line_unit_price,
-    override_cart_deduction_location_scoped, override_line_price_scoped,
+    StartSaleResult, add_line_scoped, compute_cart_tax_scoped, get_cart_deduction_location_scoped,
+    line_unit_price, override_cart_deduction_location_scoped, override_line_price_scoped,
     publish_course_fired_scoped, run_override_line_price_unchecked, run_set_line_course_unchecked,
     set_cart_discount_scoped, set_line_course_scoped, start_sale_scoped,
 };
@@ -157,31 +157,6 @@ pub use hold_orders::{
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────
-
-// ── Scoped variants (ADR #7) ────────────────────────────────────
-
-/// Scoped variant of `get_cart_deduction_location` (ADR #7).
-pub async fn get_cart_deduction_location_scoped(
-    ctx: &BridgeCtx<'_>,
-    cart_id: CartId,
-    session_token: &str,
-) -> Result<Option<DeductionLocationInfo>, BridgeError> {
-    // ungated-ok: a read of the caller's own active cart's deduction location
-    let (_session, _conn) = ctx.resolve_scope(session_token)?;
-    let db = _conn
-        .lock()
-        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-    let store = Store::new(&db);
-    let result = store.get_active_cart_deduction_location_info(&cart_id)?;
-    drop(db);
-    Ok(
-        result.map(|(loc_id, loc_name, overridden_at)| DeductionLocationInfo {
-            location_id: loc_id,
-            location_name: loc_name,
-            overridden_at,
-        }),
-    )
-}
 
 // ── Checkout & preview commands (Wave D / D1b) ──────────────────────────
 
