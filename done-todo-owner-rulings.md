@@ -398,3 +398,5 @@ Permission-gating the grid therefore makes the card **exactly equal** to the rou
 **R10** (which shell's gate set is authoritative) — it unblocks ~16 doors, it is the only item with a security consequence either way, and it is the reason five modules have been stuck for a week. **R3** (default-role seeding) — it is the only item here with a *live symptom* rather than a divergence: the mobile shell has zero production callers of the seeder and does not register the command that would seed on demand. **R5** (the organisation axis) — one binary question, *does any customer need a role that spans stores?*, and the answer decides whether Phase 3b is a design doc or a closure.
 
 **A cheap fourth — R20** (the home Tools grid's vocabulary). It blocks all of Phase 3a.2, and unlike the three above it needs no design and no migration: the code is *already* consistent (0 of 17 violations, test-enforced), so the ruling is only about which vocabulary the front door should speak. It is answerable in one sentence and it is the difference between a two-line citation fix and a deliberate authorisation widening.
+
+> last audited 24-09-26 by docs-auditor
