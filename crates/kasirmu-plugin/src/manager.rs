@@ -115,6 +115,23 @@ impl PluginManager {
         // changed on-disk set is detected, never authenticated.
         let content_hash = hash_plugin_set(&registry);
 
+        // Surface the fingerprint. This is the only production consumer of the
+        // value, and it is what makes the record-only fingerprint observable:
+        // the shell never swaps the live set, so without this line a changed
+        // plugin set is indistinguishable in the log from an unchanged one.
+        // An operator comparing the fingerprint across restarts can see that
+        // the set moved — the detection half of C2, with no trust model chosen.
+        tracing::info!(
+            fingerprint = format!("{content_hash:016x}"),
+            plugins = registry.plugins.len(),
+            ids = ?registry
+                .plugins
+                .iter()
+                .map(|p| p.manifest.plugin.name.as_str())
+                .collect::<Vec<_>>(),
+            "plugin set fingerprint recorded — a changed set is refused until restart"
+        );
+
         // ── Enforce plugin permissions ──────────────────────────────
         for plugin in &registry.plugins {
             // Check that all declared permissions are in the whitelist.
