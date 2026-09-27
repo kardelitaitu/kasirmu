@@ -913,6 +913,49 @@ covered, because no coverage instrument is enforced. Close that in this order.
       this box has no enforcement behind it yet. `nursery` was not considered —
       the box forbids it, and the measurement above is the default pedantic set
       only.
+      **PARTIAL PROGRESS 2026-09-28 (commit `047c7e30b`). `foundation` is now
+      free of all six correctness-adjacent lints; `kasirmu-core` is not, and
+      the split is the reason.**
+      Re-measured per crate rather than trusting the earlier aggregate, which
+      had reported 195 for the two crates together:
+      | crate | correctness-adjacent | state |
+      |---|---|---|
+      | `foundation` | **5** → **0** | clean, unclaimed, DONE |
+      | `kasirmu-core` | **215** | 8 files dirty by another session, untouched |
+      That the aggregate was 195 and the per-crate sum is 220 is itself a small
+      lesson: clippy reports some findings once per macro expansion, so a total
+      counted from the grouped summary is not the same number as one counted
+      from located sites. The per-crate figures are the trustworthy ones.
+      **The two real fixes, both in production money code:**
+      1. `foundation/src/cart.rs:226` — `Cart::discount_percent()` returned
+         `self.discount_percent.get() as i64`. `Percentage::get()` returns
+         `u8`, so the cast is infallible and `i64::from(..)` says so. `as`
+         would silently start truncating if the accessor's type ever widened.
+      2. `foundation/src/money_proptests.rs:278` — the `format_minor`
+         round-trip property narrowed an `i128` reconstruction to `i64` with
+         `as`. The test's own doc comment CLAIMED `i128` was used "so `i64::MIN`'s
+         absolute value does not overflow", and then the narrowing threw that
+         safety away one line later. Now `try_into().expect(..)`, which turns
+         "this cannot overflow" from a comment into a checked assertion.
+      **Mutation-verified, and the verification produced a false alarm I have
+      to correct rather than bury.** I corrupted the reconstruction
+      (`.checked_mul(..).map(|v| v + i64::MAX)`) and the property test failed
+      with `TryFromIntError(PosOverflow)` — the guard bites, so the change is
+      not cosmetic. I then ran the suite believing the probe restored, saw one
+      failure, and briefly concluded the stricter cast had "exposed a real
+      latent bug". It had not: **the failure was my own mutation still on
+      disk.** After the restore completed, all **478 foundation tests pass**,
+      stably over three consecutive runs, and the tracked
+      `foundation/proptest-regressions/money_proptests.txt` seed (a
+      `checked_add` associativity case, from commit `2fbd3d45a`) replays
+      cleanly against `format_minor_round_trips`. I checked the seed's actual
+      values against the round-trip arithmetic to be sure, rather than assuming
+      the test name was the whole story. Recording this because "I found a bug"
+      is a claim that must survive the obvious alternative explanation, and
+      mine did not.
+      **`kasirmu-core`'s 215 remain untouched** — 8 of its files are dirty by a
+      concurrent session, and the failure modes there are not the same shape as
+      these two. Still no manifest edited, so the box stays open.
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
