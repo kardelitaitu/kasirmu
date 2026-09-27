@@ -424,3 +424,65 @@ fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
          deliberately in the same change"
     );
 }
+
+// ── C1 slice S2a: the dormant per-install key seam ───────────────────
+
+/// The install-key derivation is HMAC-SHA256(install_secret, domain) --
+/// domain separation identical in shape to the master-key derivation, so a
+/// row written under a per-install key is a DIFFERENT ciphertext from one
+/// written under the master key for the same domain.
+#[test]
+fn install_key_is_domain_separated_and_deterministic() {
+    let secret = [7u8; 32];
+    let a = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let b = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let other_domain = install_key(PROFILE_AT_REST_DOMAIN, &secret);
+    let other_secret = install_key(SMTP_AT_REST_DOMAIN, &[8u8; 32]);
+
+    assert_eq!(a, b, "same secret + same domain must derive the same key");
+    assert_ne!(a, other_domain, "domains must not share a key");
+    assert_ne!(a, other_secret, "different secrets must not share a key");
+}
+
+/// The seam must NOT be reachable through the reader's candidate list, or
+/// every existing row would silently gain a derivation its writer never used.
+#[test]
+fn install_key_is_absent_from_the_reader_candidate_list() {
+    let secret = [7u8; 32];
+    let candidates = candidate_keys(SMTP_AT_REST_DOMAIN, derive_static_key);
+    assert!(
+        !candidates.contains(&install_key(SMTP_AT_REST_DOMAIN, &secret)),
+        "the per-install derivation must stay out of candidate_keys -- adding it \
+         would widen READ acceptance for every family without any writer using it"
+    );
+}
+
+/// A row written under the install key round-trips through it, and fails
+/// under the legacy and master derivations -- the property S2c will rely on.
+#[test]
+fn install_key_round_trips_and_is_not_interchangeable() {
+    let secret = [7u8; 32];
+    let key = install_key(SMTP_AT_REST_DOMAIN, &secret);
+    let ciphertext = encrypt("sk-install-secret", &key).expect("encrypt under install key");
+
+    assert_eq!(
+        decrypt(&ciphertext, &key).expect("decrypt under the same key"),
+        "sk-install-secret"
+    );
+    assert!(
+        decrypt(&ciphertext, &derive_static_key(SMTP_AT_REST_DOMAIN)).is_err(),
+        "the public-constant derivation must not open an install-key row"
+    );
+}
+
+/// S2a is DORMANT. If this fails, a source was wired without the D1 decision
+/// -- which is the one thing the slice was scoped to avoid.
+#[test]
+fn install_key_derivation_is_currently_inactive() {
+    assert!(
+        !install_key_derivation_active(),
+        "no per-install key source exists yet (S2b); if this now returns true, \
+         a keychain-backed source was wired and C1's D1 decision must have been \
+         taken deliberately in the same change"
+    );
+}

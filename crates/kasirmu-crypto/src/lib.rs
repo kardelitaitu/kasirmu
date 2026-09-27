@@ -167,6 +167,65 @@ fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8;
     keys
 }
 
+/// Derive a portable at-rest key from a **per-install** secret rather than
+/// from the environment or the public static constant.
+///
+/// # Status: DORMANT (C1 slice S2a)
+///
+/// Nothing in production calls this yet, and no call path changed when it
+/// landed — [`portable_key`] and [`candidate_keys`] remain the only
+/// derivations any shipping code reaches. It exists so that the later slices
+/// have one seam to plug into instead of three call sites to retrofit:
+/// **S2b** holds the secret in the OS keychain (entry `oz-pos/at-rest-key.v1`)
+/// and calls this with what it reads back, and **S2c** (`oz rekey`) re-writes
+/// rows under a newly rotated secret. Until S2b lands there is no source for
+/// `install_secret`, which is exactly why this is dormant rather than wired.
+///
+/// # Why it is a separate function and not a change to [`portable_key`]
+///
+/// [`portable_key`] is load-bearing for READING and its `legacy` arm must stay
+/// byte-identical forever — existing rows decrypt through it. This function is
+/// a third, additive derivation (public-constant legacy, `OZ_MASTER_KEY`,
+/// per-install); it intentionally does **not** participate in
+/// [`candidate_keys`], so no reader acquires a new branch and no existing
+/// ciphertext changes meaning.
+///
+/// # Threat model
+///
+/// This is the first derivation in the crate that is **not** a public
+/// constant. Confidentiality therefore rests entirely on `install_secret`
+/// being high-entropy and stored outside the repository — it is the
+/// installer's job to guarantee that, and this function does not verify it.
+/// The derivation is plain HMAC-SHA256 domain separation, matching
+/// [`hmac_key`], so a row written under a per-install key is a different
+/// ciphertext from one written under the master key even for the same domain.
+///
+/// # Wiring an install onto this derivation is NOT a one-line change
+///
+/// Switching a live deployment to a per-install key orphans every row written
+/// under the previous derivation unless the reader is branch-tolerant for the
+/// new candidate too — the same prerequisite (D1) that gates S2b. Do not call
+/// this from a boot path until that decision is made.
+#[must_use]
+pub fn install_key(domain: &[u8], install_secret: &[u8; 32]) -> [u8; 32] {
+    hmac_key(install_secret, domain)
+}
+
+/// Whether a per-install key derivation is available, as a plain bool.
+///
+/// Always `false` while S2a is dormant: no keychain-backed source exists yet
+/// (that is S2b). It is defined now so the earlier fail-closed callers and any
+/// future diagnostics can ask the question without a second change, and so the
+/// answer cannot drift from the code path it will eventually describe — the
+/// same reasoning [`master_key_derivation_active`] records for itself.
+///
+/// It reports **whether an install-key source exists**, never any key
+/// material, and never whether a deployment is correctly configured.
+#[must_use]
+pub fn install_key_derivation_active() -> bool {
+    false
+}
+
 /// Internal: decrypt with the first candidate key that authenticates.
 ///
 /// AES-GCM tag verification is the only oracle: a key that did not write the
