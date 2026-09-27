@@ -56,7 +56,14 @@
       does not claim. It exists because all four of the fuzz crate's path
       dependencies had been pointing at a directory that does not exist, which
       killed `cargo fuzz build` at manifest load and left every target
-      uncompiled with nothing to report it), `cargo-nextest`,
+      uncompiled with nothing to report it),
+      `coverage-floors` (grades a `cargo llvm-cov` report against
+      `scripts/coverage-floors.json`; added 2026-09-27 by P1-2. Coverage
+      instrumentation had existed for a long time while enforcement did not —
+      `scripts/coverage.sh` printed a percentage and exited 0 whatever it was.
+      The floors are a ratchet two points below the 2026-09-27 measurement, and
+      they are PER-CRATE because a workspace average hides the risky crate),
+      `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
       `release-bridge-test` (push-only; runs `cargo nextest run -p
       kasirmu-bridge --release`. Since the 19-09-26 ruling the release profile

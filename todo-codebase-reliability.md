@@ -208,7 +208,7 @@ covered, because no coverage instrument is enforced. Close that in this order.
       passed; `cargo test -p modules-inventory` -> 90 passed; grep > 0 for all
       three crates.**
 
-- [ ] **P1-2 — Wire `cargo-llvm-cov` into CI with a floor, or retire the tool
+- [x] **P1-2 — Wire `cargo-llvm-cov` into CI with a floor, or retire the tool
       explicitly.** `scripts/coverage.sh` works locally; nothing enforces a
       number. Pick a floor per crate rather than workspace-wide (a global
       average hides the crates that matter).
@@ -217,6 +217,56 @@ covered, because no coverage instrument is enforced. Close that in this order.
       fails when `kasirmu-core`, `foundation`, `platform/sync`,
       `modules/inventory` fall below the agreed line figure. Record the figure
       in this file when chosen — an unrecorded threshold is not a threshold.
+      **CLOSED 2026-09-27 — floors CHOSEN and RECORDED, per this box's own rule.**
+      The figure lives in `scripts/coverage-floors.json`, not in this prose,
+      because a number in a checklist cannot fail a build. Graded by
+      `scripts/verify-coverage-floors.py` (13-case `--self-test`, both
+      directions); wired as a `check.sh` step and a `coverage-floors` CI job
+      registered in `scripts/gates.json`, and added to the deploy `needs` chain.
+      **The chosen floors, and the measurement behind them.** Measured
+      2026-09-27 with
+      `cargo llvm-cov --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile --exclude kasirmu-bridge --json`:
+
+      | crate | measured line % | **floor** |
+      |---|---|---|
+      | `foundation` | 99.4% | **97.0%** |
+      | `kasirmu-core` | 83.8% | **81.0%** |
+      | `modules-inventory` | 78.4% | **76.0%** |
+      | `platform-sync` | 68.7% | **66.0%** |
+      | (workspace, informational) | 73.9% | not gated |
+
+      Each floor sits **two points below** its measured value: a RATCHET that
+      freezes the level reached and fires on regression, rather than a target
+      that goes red on day one and teaches people to ignore it. **Per-crate,
+      as this box required** — and the measurement shows why: a single 70%
+      floor would have PASSED with `platform-sync` (the crate this file calls
+      the highest-risk surface) dropping a full point, because `foundation`'s
+      99.4% would have carried the average. The checker's self-test plants
+      exactly that case (a 95% workspace average still fails a 60% crate).
+      **Verified against the real report, not only synthetic ones:** the gate
+      passes at the recorded floors (99.4/83.8/78.4/68.7 vs 97/81/76/66), and
+      raising `platform-sync`'s floor to 80 fails it with
+      `68.7% < floor 80.0% (2571/3745 lines, short by 11.3 points)`.
+      **Two constraints found by measuring rather than assuming.**
+      (a) `cargo llvm-cov` **runs the whole suite and aborts on any failing
+      test** — measured: an unrelated in-flight test failure in
+      `kasirmu-bridge` aborted a full workspace run. So in `check.sh` a
+      measurement failure is reported as *"could not measure"* rather than
+      *"coverage regressed"*: those are different problems and conflating them
+      sends a reader hunting for missing tests when the suite is simply red.
+      (b) The job needs the same system dependencies and Postgres service as
+      `cargo-nextest`, because the PG-gated cases that return early without a
+      database still PASS — they would silently *depress* the numbers instead
+      of failing them.
+      `kasirmu-bridge` is excluded from the recorded measurement above for
+      reason (a); it is **not** excluded from the CI job, which runs the full
+      workspace and needs no exclusion because CI requires a green suite first.
+      **Acceptance re-run: `python3 scripts/verify-coverage-floors.py` -> exit 0;
+      `--self-test` -> 13/13; `verify-ci-docs-drift.py` -> 0 drift.**
+      Not done, and named rather than implied: no floor was set for
+      `kasirmu-bridge` or the app crates, so a regression there is not gated.
+      Adding one is a two-line change to the floors manifest once the in-flight
+      bridge work lands and its coverage can be measured cleanly.
 
 - [x] **P1-3 — Build the deterministic multi-device replay harness.** One
       binary that takes a seeded script of offline operations from N locations,

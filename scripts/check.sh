@@ -181,6 +181,33 @@ else
     echo -e "${YELLOW}⚠ cargo not found — skipping fuzz typecheck${NC}"
 fi
 
+# ── Coverage floors (P1-2) ───────────────────────────────────────────────
+#
+# Ratchet, not target: each floor sits 2 points below the value measured
+# 2026-09-27 (foundation 99.4, core 83.8, inventory 78.4, sync 68.7), so the
+# gate freezes the level reached without demanding unfunded work.
+#
+# Two-stage on purpose. `cargo llvm-cov` is expensive and ABORTS on any
+# failing test, so it is guarded by a capability check and its failure is
+# reported as "could not measure" rather than "coverage regressed" — those
+# are different problems and conflating them would send a reader hunting for
+# missing tests when the suite is simply red. The GRADING step is the cheap,
+# offline, unit-tested part.
+#
+# Gate: scripts/gates.json -> "coverage-floors".
+if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2>&1; then
+    if cargo llvm-cov \
+        --workspace --all-features \
+        --exclude kasirmu-app --exclude kasirmu-mobile \
+        --json --output-path coverage-probe.json >/dev/null 2>&1; then
+        step "coverage floors" "scripts/coverage-floors.json (ratchet)" python3 scripts/verify-coverage-floors.py
+    else
+        echo -e "${YELLOW}⚠ cargo llvm-cov could not complete (a failing test aborts it) — floors NOT checked${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ cargo-llvm-cov or llvm-cov not installed — coverage floors NOT checked${NC}"
+fi
+
 # ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
 # This comment used to read "mirrors CI `migration` job". There is no such job:
 # dev-ci.yml's fifteen jobs are changes, website, rust-fmt, cargo-check, cargo-clippy, cargo-nextest, ui-test,

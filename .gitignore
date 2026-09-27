@@ -107,6 +107,11 @@ nul
 
 # Coverage
 /coverage/
+# The llvm-cov JSON report the coverage-floor gate grades (P1-2). Generated
+# by `cargo llvm-cov ... --json --output-path coverage-probe.json` locally and
+# in the coverage-floors CI job; the committed artifact is
+# scripts/coverage-floors.json, which holds the FLOORS, not a measurement.
+/coverage-probe.json
 /ui/coverage/
 /ui/*coverage*.txt
 /ui/new_*.txt

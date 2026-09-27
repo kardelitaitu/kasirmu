@@ -425,6 +425,18 @@
       "_note": "Added 2026-09-27 with P0-3. This is deliberately NOT a restoration of the retired `fuzz` gate above, and the distinction is the point: the fuzzers do not RUN here. Seven targets sat in tools/fuzz compiled by nothing, and the rot was invisible because nothing could get far enough to report it — all four path dependencies read `../foundation`, `../crates/kasirmu-lua`, `../crates/kasirmu-core`, `../crates/kasirmu-plugin`, which resolve against tools/fuzz/Cargo.toml to tools/foundation et al. and do not exist. `cargo fuzz build` died at MANIFEST LOAD, before rustc ran, so there was no compile error to notice and no job to run one; the targets had been unreachable since the directory acquired its extra level. Fixed to `../../` and verified: `cargo check --bins --all-features` in tools/fuzz now finishes with zero errors across all seven (measured 2026-09-27), and `--all-features` is load-bearing because cart_deser, kasirpkg_parse and manifest_parse live behind kasirmu-core-fuzz / kasirmu-plugin-fuzz — a default-feature check would silently typecheck four of seven. A fuzz RUN stays out of reach for a different reason, recorded rather than papered over: libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain (`*asan*` under the Windows rustlib is empty), which makes the linked build Linux-only. Same shape as the `panic-inventory` entry: a target nothing compiles is indistinguishable from a target that compiles fine."
     },
     {
+      "id": "coverage-floors",
+      "label": "Per-crate coverage floors",
+      "status": "required",
+      "runners": { "check.sh": ["coverage floors"] },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "coverage-floors",
+        "steps": ["Generate coverage report", "Grade against the floors"]
+      },
+      "_note": "Added 2026-09-27 with P1-2. Coverage INSTRUMENTATION has existed for a long time (scripts/coverage.sh, cargo-llvm-cov, HTML + lcov output) and coverage ENFORCEMENT did not: the script prints a percentage and exits 0 whatever the number is, and the `coverage` gate above has been `retired` since ci.yml was renamed to .bak. A report nobody reads cannot fire. This closes that, on the rule the checklist states for itself -- 'an unrecorded threshold is not a threshold' -- so the figure lives in scripts/coverage-floors.json rather than in prose. PER-CRATE, not a workspace average, because P1-2 says a global average 'hides the crates that matter' and the measurement bears it out: measured 2026-09-27, foundation 99.4%, kasirmu-core 83.8%, modules-inventory 78.4%, platform-sync 68.7%, workspace 73.9%. A single 70% floor would have passed with platform-sync -- the crate this checklist calls the highest-risk surface -- dropping a full point, because foundation's 99.4% carried it. Each floor sits 2 points BELOW its measured value: a ratchet that freezes the level reached and fires on regression, not a target that goes red on day one and teaches people to ignore it. The checker is unit-tested in both directions (`--self-test`, 13 cases, including that a 95% workspace average still fails a 60% crate and that summing cannot become averaging). Two constraints worth naming: cargo llvm-cov RUNS THE SUITE and aborts on any failing test (measured: an unrelated in-flight failure in kasirmu-bridge aborted a workspace run), so in check.sh a measurement failure is reported as 'could not measure' rather than 'coverage regressed' -- those are different problems; and the job needs the same system dependencies as cargo-nextest because it links the workspace."
+    },
+    {
       "id": "flaky-quarantine",
       "label": "Flaky quarantine registry",
       "status": "retired",
