@@ -1737,7 +1737,19 @@ fn license_writer_literals_are_swept_from_license_rs_not_from_a_transcription() 
 /// actually broke tonight: a lane paraphrasing platform-core, or wrapping its
 /// refusal in another variant.
 const RAW_RS: &str = include_str!("../../../platform/core/src/settings/raw.rs");
-const BRIDGE_SETTINGS_RS: &str = include_str!("settings.rs");
+/// The bridge's settings lane, as EVERY file that can spell a refusal door.
+///
+/// The 2026-09-27 `settings.rs` split moved the two `cleartext_credential_refusal`
+/// doors into `settings/core.rs`, leaving `settings.rs` with none — so a scan of
+/// `settings.rs` alone finds zero doors and its own count assertion fails. The
+/// invariant is "the bridge asks the shared producer at both of its doors", a
+/// property of the `settings` MODULE rather than of one file, so both files are
+/// concatenated here. Adding a door in a third file means adding it here too.
+const BRIDGE_SETTINGS_RS: &str = concat!(
+    include_str!("settings.rs"),
+    "\n",
+    include_str!("settings/core.rs"),
+);
 const TABLET_SETTINGS_RS: &str =
     include_str!("../../../apps/mobile-tauri/src/commands/settings.rs");
 
@@ -1872,7 +1884,10 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
     let mut carriers: Vec<String> = Vec::new();
     for (label, source) in [
         ("platform/core/src/settings/raw.rs", RAW_RS),
-        ("crates/kasirmu-bridge/src/settings.rs", BRIDGE_SETTINGS_RS),
+        (
+            "crates/kasirmu-bridge/src/settings.rs + settings/core.rs",
+            BRIDGE_SETTINGS_RS,
+        ),
         (
             "apps/mobile-tauri/src/commands/settings.rs",
             TABLET_SETTINGS_RS,
@@ -1911,10 +1926,11 @@ fn both_shell_lanes_take_the_credential_refusal_from_its_one_producer() {
 
     // (C) Each lane asks the producer and wraps the answer in its own Invalid.
     // The expected counts are what the two files contain: the bridge asks at both
-    // of its doors, the tablet at its one door.
+    // of its doors (now in `settings/core.rs` after the 2026-09-27 split), the
+    // tablet at its one door.
     for (label, source, wrap, asks) in [
         (
-            "crates/kasirmu-bridge/src/settings.rs",
+            "crates/kasirmu-bridge/src/settings.rs + settings/core.rs",
             BRIDGE_SETTINGS_RS,
             "BridgeError::Invalid(refusal)",
             2usize,
