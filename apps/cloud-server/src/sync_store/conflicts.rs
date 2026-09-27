@@ -1,6 +1,7 @@
 //! Conflict rows for the cloud sync store: the `sync_conflicts` surface.
 //!
-//! Moved verbatim out of [`super::sync_store`] by the 2026-09-15 split; the
+//! Moved verbatim out of [`super::sync_store`](crate::sync_store) by the
+//! 2026-09-15 split; the
 //! parent keeps the dispatch enum, the push/pull/snapshot statement families
 //! and the multi-row fast path, while everything that reads, lists, resolves
 //! or detects a conflict lives here. Two `impl SyncStore` blocks (the public

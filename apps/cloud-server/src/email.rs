@@ -246,8 +246,9 @@ async fn deliver_email_report(conn: SharedSqliteConn, payload: &str) -> Result<(
 /// Top-level outbox dispatch: route a delivery entry to the correct
 /// topic handler (ADR #43 D7).
 ///
-/// The signature matches [`outbox::start_drainer_sqlite`]'s `deliver_fn`
-/// so it can be passed directly as a static function pointer.
+/// The signature matches
+/// [`outbox::start_drainer_sqlite`](crate::outbox::start_drainer_sqlite)'s
+/// `deliver_fn` so it can be passed directly as a static function pointer.
 pub fn deliver_outbox_entry(conn: SharedSqliteConn, topic: &str, payload: &str) -> DeliverFuture {
     let topic = topic.to_owned();
     let payload = payload.to_owned();

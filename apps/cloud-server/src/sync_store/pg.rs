@@ -1,8 +1,8 @@
 //! The Postgres half of [`crate::sync_store`] — the `tokio_postgres` arms of the
 //! sync data layer, moved out of `sync_store.rs` with their bodies unchanged.
-//! The SQLite mirrors of these functions, [`SyncStore`] itself and the public API
-//! stay in `sync_store.rs`, which still owns the [`MULTIROW_CHUNK`] constant this
-//! module batches with.
+//! The SQLite mirrors of these functions, [`SyncStore`](super::SyncStore) itself
+//! and the public API stay in `sync_store.rs`, which still owns the
+//! [`super::MULTIROW_CHUNK`] constant this module batches with.
 //!
 //! Covers the Postgres surface the sync handlers touch: `offline_queue`
 //! push/pull, the `products` / `tax_rates` / `users` snapshot queries, and the
@@ -26,7 +26,8 @@ use platform_sync::transport::PushOutcome;
 
 use super::MULTIROW_CHUNK;
 
-/// PostgreSQL multi-row fast path for [`SyncStore::push_batch`].
+/// PostgreSQL multi-row fast path for
+/// [`SyncStore::push_batch`](super::SyncStore::push_batch).
 ///
 /// Same shape as the SQLite fast path but with `$n` numbered placeholders
 /// (Postgres has no `?`). Opens and commits its own transaction; a

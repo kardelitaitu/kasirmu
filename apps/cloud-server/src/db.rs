@@ -176,7 +176,7 @@ impl DbPool {
         Self::connect_postgres_with_retries(url, require_tls, pool_size, apply_schema, 5).await
     }
 
-    /// Like [`connect_postgres`] but with a caller-chosen retry budget.
+    /// Like [`Self::connect_postgres`] but with a caller-chosen retry budget.
     /// Tests that assert a connection failure should pass `max_attempts: 1`
     /// to avoid the 30+ seconds of backoff sleeps the production retry loop
     /// burns on a dead port.
