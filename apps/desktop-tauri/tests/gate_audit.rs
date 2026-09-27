@@ -174,7 +174,14 @@ static PINNED_DESKTOP: &[(&str, usize, &[&str])] = &[
     ),
     ("picker", 0, &[]),
     ("picker_ticket", 0, &[]),
-    ("plugins", 0, &[]),
+    // No `plugins` row: `44e7be9cd` deleted
+    // `apps/desktop-tauri/src/commands/plugins.rs` — a two-line placeholder
+    // carrying no `#[tauri::command]` and no gate call — together with its
+    // `pub mod plugins;` declaration. `assert_pin` fails a pinned row with no
+    // module on disk ("absent"), so the row outlived its module and this test
+    // was red until it was retired here. The census walks `src/commands`, so
+    // a future plugin module reappears as an unpinned row and must be re-pinned
+    // deliberately rather than silently inherited.
     // Re-pinned 2026-09-23 (was 17): 1b7bd2466 added the plugin-discount
     // gate require_session_permission(..., SALES_DISCOUNT) in
     // kasirmu-bridge/src/pos.rs and did not bump this row. The key was

@@ -65,7 +65,6 @@ apps/desktop-tauri/
         ├── offline.rs      # offline mode commands
         ├── payables.rs       # accounts payable (hutang / beli)
         ├── picker_ticket.rs # picker ticket
-        ├── plugins.rs      # plugin management
         ├── pos.rs          # core POS pipeline
         ├── product_variants.rs # variant CRUD
         ├── products.rs     # CRUD, barcode lookup, stock adjustment
