@@ -125,7 +125,7 @@ interface MockDocSequence {
   resetPeriod: string;
   periodKey: string;
   padding: number;
-  createdAt: string;
+  created_at: string;
   updatedAt: string;
 }
 
@@ -184,7 +184,7 @@ function upsertMockDocumentNumberSequence(args: unknown): null {
     resetPeriod,
     periodKey: resetPeriod === "never" ? "" : now.slice(0, 7),
     padding: a.padding ?? 0,
-    createdAt: now,
+    created_at: now,
     updatedAt: now,
   });
   return null;
@@ -199,7 +199,7 @@ interface MockFiscalScheme {
   name: string;
   parameters: string;
   isActive: boolean;
-  createdAt: string;
+  created_at: string;
   updatedAt: string;
 }
 
@@ -211,7 +211,7 @@ const mockFiscalSchemes: MockFiscalScheme[] = [
     name: "Faktur Pajak",
     parameters: "{}",
     isActive: true,
-    createdAt: "2026-09-09T00:00:00.000Z",
+    created_at: "2026-09-09T00:00:00.000Z",
     updatedAt: "2026-09-09T00:00:00.000Z",
   },
 ];
@@ -799,11 +799,11 @@ export const systemHandlers: Record<string, MockHandler> = {
   // DATA MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
 
-  'get_backup_status': () => ({ lastBackup: null, lastBackupSize: null }),
-  'create_backup': () => ({ path: '/backups/backup.db', sizeBytes: 1024 }),
-  'export_data': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
-  'export_data_without_session': () => ({ path: '/exports/data.kasirpkg', sizeBytes: 512, types: ['products'] }),
-  'import_preview': () => ({ storeName: 'Test Store', appVersion: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], productCount: 10, categoryCount: 2, saleCount: null, customerCount: null, userCount: null, settingCount: null }),
+  'get_backup_status': () => ({ last_backup: null, last_backup_size: null }),
+  'create_backup': () => ({ path: '/backups/backup.db', size_bytes: 1024 }),
+  'export_data': () => ({ path: '/exports/data.kasirpkg', size_bytes: 512, types: ['products'] }),
+  'export_data_without_session': () => ({ path: '/exports/data.kasirpkg', size_bytes: 512, types: ['products'] }),
+  'import_preview': () => ({ store_name: 'Test Store', app_version: pkg.version, exportedAt: new Date().toISOString(), types: ['products'], product_count: 10, category_count: 2, sale_count: null, customer_count: null, user_count: null, setting_count: null }),
   'import_data': () => ({ productsImported: 10, categoriesImported: 2, salesImported: 0, customersImported: 0, usersImported: 0, settingsImported: 0 }),
 
   // ═══════════════════════════════════════════════════════════════
@@ -959,7 +959,7 @@ export const systemHandlers: Record<string, MockHandler> = {
     // at runtime, so it mirrors ui/package.json (the single source the real
     // build is bumped from, per the `version` command contract in this file's
     // header) to stay in lockstep with the shipped app.
-    return { appVersion: pkg.version };
+    return { app_version: pkg.version };
   },
 };
 

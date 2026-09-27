@@ -97,8 +97,8 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
       .then((status) => {
         setBackup((prev) => ({
           ...prev,
-          lastBackup: status.lastBackup,
-          lastBackupSize: status.lastBackupSize ?? undefined,
+          lastBackup: status.last_backup,
+          lastBackupSize: status.last_backup_size ?? undefined,
         }));
       })
       .catch(() => {
@@ -147,7 +147,7 @@ export function useBackupStatus({ sessionToken, triggerFlash }: {
       }
       setBackup({
         lastBackup: new Date().toLocaleString(),
-        lastBackupSize: `${(result.sizeBytes / 1024 / 1024).toFixed(1)} MB`,
+        lastBackupSize: `${(result.size_bytes / 1024 / 1024).toFixed(1)} MB`,
         backingUp: false,
       });
       triggerFlash('backup');

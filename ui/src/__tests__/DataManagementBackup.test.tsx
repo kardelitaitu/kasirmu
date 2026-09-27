@@ -103,23 +103,23 @@ vi.mock('@/components/Spinner', () => ({
 
 // ── Default API responses ────────────────────────────────────────
 
-const defaultBackupStatus = { lastBackup: null, lastBackupSize: null };
+const defaultBackupStatus = { last_backup: null, last_backup_size: null };
 
 beforeEach(() => {
   mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
-  mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+  mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
   // Configured in parallel rather than by delegating the scoped mock to the unscoped one: a
   // mirror (`mockImplementation(() => mockGetBackupStatus())`) registers a call on the unscoped
   // spy, which makes `expect(mockGetBackupStatus).not.toHaveBeenCalled()` unprovable and would
   // have quietly defeated the point of asserting which command ran.
   mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
-  mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-  mockExportData.mockResolvedValue({ path: '/exports/export_2026.kasirpkg', sizeBytes: 524_288, types: [] });
+  mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
+  mockExportData.mockResolvedValue({ path: '/exports/export_2026.kasirpkg', size_bytes: 524_288, types: [] });
   mockImportPreview.mockResolvedValue({
-    storeName: 'Test Store', appVersion: '0.0.4',
-    createdAt: new Date('2026-01-15').toISOString(),
-    types: [], productCount: 0, categoryCount: 0, saleCount: 0,
-    customerCount: 0, userCount: 0, settingCount: 0,
+    store_name: 'Test Store', app_version: '0.0.4',
+    created_at: new Date('2026-01-15').toISOString(),
+    types: [], product_count: 0, category_count: 0, sale_count: 0,
+    customer_count: 0, user_count: 0, setting_count: 0,
   });
   mockImportData.mockResolvedValue({
     productsImported: 0, categoriesImported: 0, salesImported: 0,
@@ -128,7 +128,7 @@ beforeEach(() => {
   mockPickExportPath.mockResolvedValue('/exports/test.kasirpkg');
   mockPickImportFile.mockResolvedValue('/imports/test.kasirpkg');
   mockPickBackupPath.mockResolvedValue('/cache/backup-1.db');
-  mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', sizeBytes: 12_582_912 });
+  mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', size_bytes: 12_582_912 });
   mockAddToast.mockReturnValue(undefined);
   // Default the shell to desktop: clearAllMocks does not reset a mockReturnValue, so a
   // tablet case below would otherwise leak its shell into every later test.
@@ -157,10 +157,10 @@ describe('DataManagement — Backup', () => {
 
   it('shows last backup time when a backup exists', async () => {
     mockGetBackupStatus.mockResolvedValue({
-      lastBackup: '2026-07-13 14:30:00', lastBackupSize: '12.0 MB',
+      last_backup: '2026-07-13 14:30:00', last_backup_size: '12.0 MB',
     });
     mockGetBackupStatusScoped.mockResolvedValue({
-      lastBackup: '2026-07-13 14:30:00', lastBackupSize: '12.0 MB',
+      last_backup: '2026-07-13 14:30:00', last_backup_size: '12.0 MB',
     });
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
@@ -172,10 +172,10 @@ describe('DataManagement — Backup', () => {
 
   it('shows backup size when available', async () => {
     mockGetBackupStatus.mockResolvedValue({
-      lastBackup: '2026-07-13 14:30:00', lastBackupSize: '15.7 MB',
+      last_backup: '2026-07-13 14:30:00', last_backup_size: '15.7 MB',
     });
     mockGetBackupStatusScoped.mockResolvedValue({
-      lastBackup: '2026-07-13 14:30:00', lastBackupSize: '15.7 MB',
+      last_backup: '2026-07-13 14:30:00', last_backup_size: '15.7 MB',
     });
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
@@ -223,8 +223,8 @@ describe('DataManagement — Backup', () => {
 
   it('updates last backup time on backup success', async () => {
     const user = userEvent.setup();
-    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_now.db', sizeBytes: 5_000_000 });
-    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_now.db', sizeBytes: 5_000_000 });
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_now.db', size_bytes: 5_000_000 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_now.db', size_bytes: 5_000_000 });
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
     await clickTab('Backup');
@@ -238,8 +238,8 @@ describe('DataManagement — Backup', () => {
 
   it('shows success toast on backup success', async () => {
     const user = userEvent.setup();
-    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_now.db', sizeBytes: 5_000_000 });
-    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_now.db', sizeBytes: 5_000_000 });
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_now.db', size_bytes: 5_000_000 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_now.db', size_bytes: 5_000_000 });
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
     await clickTab('Backup');
@@ -287,7 +287,7 @@ describe('DataManagement — Backup', () => {
   });
 
   it('still renders "never" when the read ANSWERS that no backup exists', async () => {
-    // The beforeEach default already resolves { lastBackup: null } -- an answered-empty
+    // The beforeEach default already resolves { last_backup: null } -- an answered-empty
     // read, which is a real state and must keep looking exactly the way it does today.
     render(<DataManagementScreen />);
     await waitFor(() => expect(screen.getByText('Backup')).toBeInTheDocument());
@@ -350,8 +350,8 @@ describe('DataManagement — Backup with NO session token (known hazard, not a g
     vi.clearAllMocks();
     mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
     mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
-    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
     const harnessWorkspace = useWorkspace();
     vi.mocked(useWorkspace).mockReturnValue({ ...harnessWorkspace, sessionToken: null });
     try {
@@ -469,9 +469,9 @@ describe('DataManagement — Backup on the TABLET shell', () => {
     mockGetBackupStatus.mockResolvedValue(defaultBackupStatus);
     mockGetBackupStatusScoped.mockResolvedValue(defaultBackupStatus);
     mockPickBackupPath.mockResolvedValue('/cache/backup-1.db');
-    mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', sizeBytes: 12_582_912 });
-    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
-    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', sizeBytes: 12_582_912 });
+    mockCreateBackupTo.mockResolvedValue({ path: '/sdcard/chosen.db', size_bytes: 12_582_912 });
+    mockCreateBackup.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
+    mockCreateBackupScoped.mockResolvedValue({ path: '/backups/backup_2026.db', size_bytes: 12_582_912 });
     const harnessWorkspace = useTabletHarness(HARNESS_SESSION_TOKEN);
     try {
       render(<DataManagementScreen />);

@@ -81,19 +81,19 @@ export function useImportWizard({ sessionToken, triggerFlash }: UseImportWizardP
         step: 'preview',
         progress: 30,
         metadata: {
-          name: preview.storeName,
-          version: preview.appVersion,
+          name: preview.store_name,
+          version: preview.app_version,
           types: preview.types,
-          created: preview.createdAt,
+          created: preview.created_at,
         },
         dryRun: {
           added:
-            preview.categoryCount +
-            preview.productCount +
-            (preview.saleCount ?? 0) +
-            (preview.customerCount ?? 0) +
-            (preview.userCount ?? 0) +
-            (preview.settingCount ?? 0),
+            preview.category_count +
+            preview.product_count +
+            (preview.sale_count ?? 0) +
+            (preview.customer_count ?? 0) +
+            (preview.user_count ?? 0) +
+            (preview.setting_count ?? 0),
           updated: 0,
           skipped: 0,
         },
@@ -137,12 +137,12 @@ export function useImportWizard({ sessionToken, triggerFlash }: UseImportWizardP
         progress: 100,
         dryRun: {
           added:
-            result.productsImported +
-            result.categoriesImported +
-            result.salesImported +
-            result.customersImported +
-            result.usersImported +
-            result.settingsImported,
+            result.products_imported +
+            result.categories_imported +
+            result.sales_imported +
+            result.customers_imported +
+            result.users_imported +
+            result.settings_imported,
           updated: 0,
           skipped: 0,
         },

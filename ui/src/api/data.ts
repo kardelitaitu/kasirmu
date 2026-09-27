@@ -11,17 +11,26 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────
 
-/** Current backup status information. */
+/**
+ * Current backup status information.
+ *
+ * FIELD NAMES ARE THE WIRE'S, NOT THE UI'S CONVENTION: the Rust `BackupStatus`
+ * derives `Serialize` with no `rename_all`, so the IPC keys are snake_case.
+ * Reading `lastBackup` here silently yielded `undefined` — which
+ * `BackupSection` renders as the load-FAILURE state, a wrong compliance claim.
+ * Every fixture and the dev-mock used to agree with the camelCase reading, so
+ * nothing could detect it; `api-data-contract.test.ts` now pins the real keys.
+ */
 export interface BackupStatus {
-  lastBackup: string | null;
-  lastBackupSize: string | null;
+  last_backup: string | null;
+  last_backup_size: string | null;
   // dbPath intentionally removed — M-7: never expose filesystem path in unauth'd DTO.
 }
 
-/** Result of a backup operation. */
+/** Result of a backup operation. Wire keys are snake_case — see [`BackupStatus`]. */
 export interface BackupResult {
   path: string;
-  sizeBytes: number;
+  size_bytes: number;
 }
 
 /** Arguments for exporting store data to an .kasirpkg file. */
@@ -33,35 +42,41 @@ export interface ExportDataArgs {
   dateTo?: string;
 }
 
-/** Result of a data export operation. */
+/** Result of a data export operation. Wire keys are snake_case — see [`BackupStatus`]. */
 export interface ExportDataResult {
   path: string;
-  sizeBytes: number;
+  size_bytes: number;
   types: string[];
 }
 
-/** Preview of an .kasirpkg import file before actually importing. */
+/**
+ * Preview of an .kasirpkg import file before actually importing.
+ * Wire keys are snake_case — see [`BackupStatus`].
+ */
 export interface ImportPreviewResult {
-  storeName: string;
-  appVersion: string;
-  createdAt: string;
+  store_name: string;
+  app_version: string;
+  created_at: string;
   types: string[];
-  productCount: number;
-  categoryCount: number;
-  saleCount: number | null;
-  customerCount: number | null;
-  userCount: number | null;
-  settingCount: number | null;
+  product_count: number;
+  category_count: number;
+  sale_count: number | null;
+  customer_count: number | null;
+  user_count: number | null;
+  setting_count: number | null;
 }
 
-/** Result of an import operation with per-type counts. */
+/**
+ * Result of an import operation with per-type counts.
+ * Wire keys are snake_case — see [`BackupStatus`].
+ */
 export interface ImportDataResult {
-  productsImported: number;
-  categoriesImported: number;
-  salesImported: number;
-  customersImported: number;
-  usersImported: number;
-  settingsImported: number;
+  products_imported: number;
+  categories_imported: number;
+  sales_imported: number;
+  customers_imported: number;
+  users_imported: number;
+  settings_imported: number;
 }
 
 // ── File dialog helpers ───────────────────────────────────────
