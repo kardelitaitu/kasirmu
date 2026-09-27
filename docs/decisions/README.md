@@ -6,9 +6,9 @@ an ADR in this directory (`docs/decisions/`). Each ADR follows the
 its header. Some ADRs have a companion `*.status.md` file with a fuller
 implementation-status walkthrough.
 
-- Numbered ADRs run **#1–#60** and are the primary record. Re-derive the ceiling rather than
+- Numbered ADRs run **#1–#61** and are the primary record. Re-derive the ceiling rather than
   trusting it: `ls docs/decisions/*adr*.md | sed 's/.*adr\([0-9]*\).*/\1/' | sort -n | tail -1`
-  → `60` (measured 2026-09-23; the ceiling was 52 when this line was written, which is exactly
+  → `61` (measured 2026-09-28; the ceiling was 52 when this line was written, which is exactly
   how a range claim rots — it grows by one per ADR and nothing re-derives it).
 - **Seven numbers are unused** — #16 and #24–#29 are claimed by no file. `ADR #16` and
   `ADR #24`–`#29` are cited by nothing anywhere in the repo
@@ -20,6 +20,12 @@ implementation-status walkthrough.
   2026-09-23; as of 2026-09-24 every numbered ADR file has exactly one row (re-derive:
   match frontmatter `num:` files against the `^| N |` rows below; measured 54/54).
   Find a missing row the same way. The generated index still wins where they disagree.
+  **Re-measured 2026-09-28 and this bullet's stated method does not reproduce its own number:**
+  `Select-String -Path 'docs/decisions/*adr*.md' -Pattern '^num:'` returns **28** files against the
+  **55** rows the table now holds, while `check-adr-status.py` reports **0 status drift across those
+  55 rows** — so every row resolves to a file and every verdict matches, but `num:`-matching is not
+  the method that produced "54/54". Recorded rather than swapped: a count whose stated method cannot
+  reproduce it is a finding for a docs-auditor pass, not a number to edit.
 - **`#43` is ambiguous and has been since 2026-09-02.** Two files claim it:
   `2026-07-24-react-only-decision.md` (ADR #43 – React-only UI decision) and
   `2026-09-02-adr43-cloud-sync-performance-scaleout-roadmap.md` (ADR #43: Cloud Sync
@@ -95,6 +101,7 @@ implementation-status walkthrough.
 | 58 | [Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](./2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; re-audited 2026-09-22) — Revoked state, session lock, export twin command, ride-along, per-device renewal refusal and the Rust-side pre-expiry re-auth shipped; the export twin has no UI caller, so §2.6 is unreachable |
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
+| 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier landed; the foundation type move is sequenced |
 
 ## Research notes
 
