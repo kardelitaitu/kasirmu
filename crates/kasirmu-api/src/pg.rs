@@ -28,7 +28,11 @@ next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reu
 
 use deadpool_postgres::Pool;
 
-use kasirmu_core::{Category, Currency, Money, Sale, SaleLine, SaleStatus, TenantPlan};
+use kasirmu_core::{Currency, Money, Sale, SaleLine, SaleStatus};
+// Only `pg_tests.rs` names `TenantPlan` through `use super::*` — the plan
+// functions themselves moved to `pg/plans.rs`, which imports it directly.
+#[cfg(test)]
+use kasirmu_core::TenantPlan;
 
 use crate::routes::terminals::RegisteredTerminal;
 
@@ -82,85 +86,15 @@ pub use error::PgError;
 
 // ── Tenant plans ──────────────────────────────────────────────────────
 
-/// Read a tenant's sync plan, or `None` when the tenant has no row.
-pub async fn get_tenant_plan(pool: &Pool, tenant_id: &str) -> Result<Option<TenantPlan>, PgError> {
-    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
-    let tx = client
-        .transaction()
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
-    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let row = tx
-        .query_opt(
-            "SELECT plan FROM tenant_plans WHERE tenant_id = $1",
-            &[&tenant_id],
-        )
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    let result = row
-        .map(|r| {
-            let plan: String = r.try_get(0).map_err(|e| PgError::Db(e.to_string()))?;
-            Ok(TenantPlan::from_db(&plan))
-        })
-        .transpose();
-    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
-    result
-}
-
-/// Assign or change a tenant's plan (upsert).
-pub async fn set_tenant_plan(
-    pool: &Pool,
-    tenant_id: &str,
-    plan: TenantPlan,
-) -> Result<(), PgError> {
-    let mut client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
-    let tx = client
-        .transaction()
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    // RLS: scope to the tenant (LOCAL setting — auto-resets on commit).
-    tx.execute("SELECT set_config('oz.tenant_id', $1, true)", &[&tenant_id])
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    tx.execute(
-        "INSERT INTO tenant_plans (tenant_id, plan, updated_at) VALUES ($1, $2, $3)
-         ON CONFLICT (tenant_id) DO UPDATE SET plan = excluded.plan, updated_at = excluded.updated_at",
-        &[&tenant_id, &plan.as_db_str(), &now_rfc3339()],
-    )
-    .await
-    .map_err(|e| PgError::Db(e.to_string()))?;
-    tx.commit().await.map_err(|e| PgError::Db(e.to_string()))?;
-    Ok(())
-}
+#[path = "pg/plans.rs"]
+mod plans;
+pub use plans::{get_tenant_plan, set_tenant_plan};
 
 // ── Categories ────────────────────────────────────────────────────────
 
-/// List all categories, ordered by name.
-pub async fn list_categories(pool: &Pool) -> Result<Vec<Category>, PgError> {
-    let client = pool.get().await.map_err(|e| PgError::Db(e.to_string()))?;
-    let rows = client
-        .query(
-            "SELECT id, name, colour, icon FROM categories ORDER BY name",
-            &[],
-        )
-        .await
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    rows.iter()
-        .map(|r| {
-            Ok(Category {
-                id: r.try_get("id").map_err(|e| PgError::Db(e.to_string()))?,
-                name: r.try_get("name").map_err(|e| PgError::Db(e.to_string()))?,
-                colour: r
-                    .try_get("colour")
-                    .map_err(|e| PgError::Db(e.to_string()))?,
-                icon: r.try_get("icon").map_err(|e| PgError::Db(e.to_string()))?,
-            })
-        })
-        .collect()
-}
+#[path = "pg/categories.rs"]
+mod categories;
+pub use categories::list_categories;
 
 // ── Tax rates ─────────────────────────────────────────────────────────
 
