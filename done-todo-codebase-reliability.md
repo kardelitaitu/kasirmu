@@ -473,6 +473,48 @@ covered, because no coverage instrument is enforced. Close that in this order.
       Acceptance: `cargo clippy -p foundation -p kasirmu-core --all-targets -- -D warnings`
       exits 0 with pedantic enabled. Do **not** enable `nursery` — it is
       explicitly unstable and will churn every release.
+      **MEASURED 2026-09-28, BOX STAYS OPEN, NO MANIFEST CHANGED.** Nothing was
+      enabled, so no red gate appears — the same discipline P2-4 was closed
+      under, and for the same reason: enabling pedantic today makes
+      `cargo clippy -p foundation -p kasirmu-core --all-targets -- -D warnings`
+      fail immediately, and `cargo-clippy` is `required` in `gates.json`, so it
+      would redden every Rust PR.
+      **The measurement, kept as data rather than prose:**
+      `scripts/pedantic-inventory.json` (59 lints, written from a real run of
+      `cargo clippy -p foundation -p kasirmu-core --all-targets -- -W clippy::pedantic`).
+      Headline figures:
+      - **2,677 violations** across the two crates.
+      - **1,795 (67%) are documentation lints** — `missing_errors_doc` alone is
+        **1,011**, `doc_markdown` 528, `must_use_candidate` 240. These are
+        prose, not behaviour: a `# Errors` section on every `Result`-returning
+        public fn, and backticks around identifiers in doc text.
+      - **818 are auto-fixable** by `clippy --fix` — counted from the run's own
+        `to apply N suggestions` totals, not estimated.
+      - **195 are correctness-adjacent** (`cast_precision_loss` 56,
+        `cast_possible_truncation` 35, `cast_lossless` 31, `cast_sign_loss` 24,
+        `cast_possible_wrap` 27, `float_cmp` 22). **This is the subset actually
+        worth reading**, and it is small enough to audit on its own.
+      **The decision this measurement supports, recorded so it is not re-made
+      blind.** The box's phrasing — "start with foundation and kasirmu-core" —
+      reads as a small scoped trial, but pedantic on these two crates is
+      **2,677 edits**, two thirds of them documentation. Three coherent scopes
+      exist and none was taken this pass:
+      1. **Everything** — 818 mechanical + 1,795 doc + ~195 real. The doc bulk
+         alone touches nearly every public function in `kasirmu-core`.
+      2. **Everything except the doc lints** — enables ~880 code-quality lints
+         (including the 195 cast/float ones) immediately, with
+         `missing_errors_doc` / `doc_markdown` / `must_use_candidate` named as
+         explicit `allow`s so the debt is visible rather than silently absent.
+         **This is the scope I would recommend**: it is the one the box's own
+         rationale ("workspace-wide pedantic is noise, scoped pedantic is
+         signal") actually describes, since the noise it names is the doc
+         category.
+      3. **Only the correctness-adjacent lints** — ~195 sites, smallest and
+         highest signal-per-edit.
+      **Not done, and named rather than implied:** no manifest was edited, so
+      this box has no enforcement behind it yet. `nursery` was not considered —
+      the box forbids it, and the measurement above is the default pedantic set
+      only.
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
