@@ -1385,3 +1385,76 @@ cargo bloat --release -p kasirmu-app         # binary size          → axis E
   and nothing in the journal previously said so.
 
 **No crate code has been changed.** §6's rules stand.
+
+---
+
+## 11. Round 6 (2026-09-28) — O-T05 executed, and the acceptance that could not be run
+
+§10E named O-T05 as "the largest single block in the workspace". It is now done
+(`dd2f929f7`). **This round is the first in this journal that changed crate code.**
+
+### 11A. What changed
+
+`platform/sync/src/daemon_tests.rs` slept a fixed **500 ms after every
+`daemon.start()`** and **200 ms after every `daemon.stop()`** — seven pairs,
+against a daemon whose tick is 100 ms, so a 5× floor paid on each. Those 14
+sleeps are replaced by two helpers that poll `daemon.status()` every 10 ms with
+a **1 s ceiling**:
+
+- `wait_for_first_cycle` — waits on `last_sync_at.is_some()`, the exact
+  condition the following assertion already checked. Strictly equivalent and
+  strictly safer: it returns as soon as the condition holds (one tick, ~100 ms)
+  and its ceiling is 2× the old allowance.
+- `wait_for_stopped` — waits on `!running`. **Not equivalent to what it
+  replaced**; called out in §11D.
+
+Deliberately left alone: the 300 ms + 100 ms pair in the stop/start race
+regression (they hold a DB lock to block the run loop — they *are* the test), the
+10 ms `axum` readiness sleeps, and the existing 10 ms poll loop at `:1858`.
+
+### 11B. The before/after number, on §10B's own instrument
+
+Re-run of the §10B scan (`Duration::from_millis|from_secs` literals on a line
+containing `sleep(`, `*_tests.rs` only) — same instrument, same crate:
+
+| | sleeps | stated ms |
+|---|---|---|
+| platform/sync BEFORE (§10B) | 44 | **16,600** |
+| platform/sync AFTER | 32 | **11,620** |
+
+−4,980 ms (−30%). The workspace floor §10B recorded as 28,560 ms → **23,580 ms**.
+
+### 11C. The acceptance that did NOT run — stated rather than buried
+
+§6 requires "a command that was run, with its output quoted". **That was not
+possible here**, and the reason is this checkout, not the change:
+
+`cargo test -p platform-sync --lib daemon` → **72 passed / 16 failed**, and
+every one of the 16 fails at `tokio::net::TcpListener::bind("localhost:0")` with
+`Os { code: 11003 }` — panic column 71, in the `spawn_*_server` helpers
+(`test_helpers.rs:18`, `daemon_tests.rs:942` and siblings). Classified rather
+than assumed: **0** of the 16 mention this change's `daemon never reached`
+panic, and **16 of 16** carry the bind error. The sandbox cannot bind a socket
+here; every daemon test that exercises start/stop also needs a mock server, so
+none of the seven converted tests can execute in this environment.
+
+**So §11B is a measurement of the stated-sleep floor — the instrument §10B
+already used — not of wall-clock.** Wall-clock stays unearned, exactly as §10C
+has it. Run on a quiet tree:
+
+```bash
+cargo nextest run -p platform-sync --lib daemon --report-time
+```
+
+### 11D. The one risk worth naming
+
+`wait_for_stopped` converts an **unasserted** 200 ms sleep into a **panicking**
+poll: previously a daemon that never stopped passed silently, now it fails. That
+is the file's own idiom (`:1864` panics on a wedged running flag) and it is what
+O-T05 asked for, but it is a real behaviour change and it is **unverified** — see
+§11C. If CI reddens on it, the bug it surfaces is genuine rather than a flaky
+poll; the ceiling (1 s) is 5× the old allowance.
+
+**Axis B is still unfunded as a phase.** This round did one finding, not the
+axis. Axis A (compile time) remains the largest unmeasured claim, and §5's
+"run `--timings` once to confirm the guess" is still outstanding.
