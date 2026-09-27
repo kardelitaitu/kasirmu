@@ -32,6 +32,9 @@ rustls-native-certs = { workspace = true }
 
 [features]
 slow-tests = []
+# No-op feature (R15, owner 2026-09-20) — the same idiom as `slow-tests`, for
+# the PG arms. See apps/cloud-server/Cargo.toml for what it buys.
+pg-tests = []
 
 [dev-dependencies]
 axum = { workspace = true }

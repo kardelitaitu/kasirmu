@@ -920,6 +920,7 @@ async fn snapshot_cache_tenant_isolation() {
 /// The raw-bytes snapshot cache must behave identically against live
 /// PostgreSQL: first request queries + caches, second request is a hit
 /// serving identical JSON with the same content-type.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_snapshot_cache_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1819,6 +1820,7 @@ async fn tenant_count_cache_refreshes_after_expiry() {
 /// global aggregate over the whole `offline_queue`, so sharing the dev DB
 /// with parallel PG tests (which write their own rows) makes the count
 /// non-deterministic. The temp DB is process-unique and dropped after.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_tenant_count_cache() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -2380,6 +2382,7 @@ async fn rate_limit_burst_allowance() {
     assert_eq!(codes3[0], StatusCode::TOO_MANY_REQUESTS);
 }
 
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn rate_limit_status_endpoint_within_burst_limit() {
     let state = shared_state();
@@ -2436,6 +2439,7 @@ async fn pg_router_with_pool_size(
 /// PG pool (max_size(1), connection held), a real push request must
 /// complete with a 500 within ~5s — NOT hang indefinitely. This is the
 /// doc §7.2 scenario through the full handler → store → pool stack.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_returns_500_when_pool_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -2472,6 +2476,7 @@ async fn pg_integration_push_returns_500_when_pool_exhausted() {
 /// After the held connection is dropped, the same router must serve
 /// requests again — the pool must not be permanently poisoned by the
 /// timeout path.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_pool_recovers_after_exhaustion() {
     let url = std::env::var("OZ_TEST_PG_URL")

@@ -101,6 +101,7 @@ async fn throwaway_pg_db(
 /// Uses a throwaway database so the 20-connection pool does not exhaust
 /// the shared dev DB's `max_connections` when run concurrently with other
 /// PG tests (the pre-existing "PG connection pool contention" flake).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_email_loop_reads_postgres() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -558,6 +559,7 @@ fn period_for_schedule_buckets_by_cadence() {
 /// wins, a second claim for the same period loses (that is the
 /// crash-recovery dedup), a different period is independent, and
 /// releasing a failed claim lets the period retry.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_sent_reports_claim_release() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -618,6 +620,7 @@ async fn pg_integration_sent_reports_claim_release() {
 /// due schedule (send_at_time = now) and the period pre-claimed, the
 /// inner cycle returns Ok without ever attempting SMTP — proving a
 /// crash after a successful send can never re-send the report.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_sent_reports_skips_claimed_period_before_smtp() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -712,6 +715,7 @@ async fn pg_integration_sent_reports_skips_claimed_period_before_smtp() {
 /// forever. The RAII guard must release on the normal path, and on the
 /// panic path must detach/close the connection so the lock dies with
 /// the session.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_advisory_lock_released_after_cycle() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -753,6 +757,7 @@ async fn pg_integration_advisory_lock_released_after_cycle() {
 /// The panic path: if the inner cycle panics while holding the advisory
 /// lock, the guard's Drop must close the connection so the session (and
 /// the lock) dies — the tenant must not be blocked forever.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_advisory_lock_guard_detaches_on_drop_without_release() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -798,6 +803,7 @@ async fn pg_integration_advisory_lock_guard_detaches_on_drop_without_release() {
 /// (conn already taken). Simulate: acquire the lock, kill the backend,
 /// then release() — the unlock fails, and the connection must be
 /// detached (pool size drops), not returned holding a lock.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_advisory_lock_release_detaches_on_unlock_failure() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -856,6 +862,7 @@ async fn pg_integration_advisory_lock_release_detaches_on_unlock_failure() {
 /// non-acquired guard takes the 2nd (size → 2). After it drops:
 ///   correct:   connection returned → size stays 2
 ///   buggy:     detached/destroyed → size drops to 1
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_advisory_lock_not_acquired_returns_connection() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -909,6 +916,7 @@ async fn pg_integration_advisory_lock_not_acquired_returns_connection() {
 /// As the restricted role, the seeded sale is invisible → the report is
 /// silently empty (bug), and the sent_reports INSERT violates WITH
 /// CHECK.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_email_analytics_visible_as_restricted_role() {
@@ -1057,6 +1065,7 @@ async fn pg_integration_email_analytics_visible_as_restricted_role() {
 /// 0 tenants and scheduled reports silently stop. The webhook path solved
 /// the identical read-before-tenant-known problem with a BYPASSRLS
 /// resolver role; the email discovery path needs the same treatment.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_active_tenants_survives_rls_cutover() {
@@ -1197,6 +1206,7 @@ async fn pg_integration_active_tenants_survives_rls_cutover() {
 /// `#[serial]`: like the other PG integration tests here, it shares the
 /// base database's catalog state (roles, grants, FORCE RLS) with the
 /// restricted-role tests, which mutate it mid-flight.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_daily_revenue_nets_refunds_per_date_and_currency() {

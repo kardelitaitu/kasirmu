@@ -289,6 +289,7 @@ async fn throwaway_test_pool(
 /// Integration test against a live Postgres (the same Docker service
 /// `db.rs` uses, port 15432). Skips when unreachable, so the suite stays
 /// green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_rest_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -628,6 +629,7 @@ async fn pg_integration_rest_roundtrip() {
 ///    (create_product → get_product → list_products → create_sale →
 ///    get_sale), which is only possible because every function scopes its
 ///    transaction with the tenant GUC before touching the DB.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_rest_rls_non_owner() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -879,6 +881,7 @@ async fn pg_integration_rest_rls_non_owner() {
 /// test's `FOR UPDATE` chain surfaces as a spurious deadlock abort — the
 /// throwaway DB removes that whole class of flake while keeping the
 /// concurrency semantics identical.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_concurrent_adjust_stock() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1049,6 +1052,7 @@ async fn pg_integration_concurrent_adjust_stock() {
 /// Two concurrent transitions of the same sale must not both validate
 /// against the same stale status: exactly one wins, the loser re-reads
 /// and reports the current state, and `version` bumps exactly once.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_concurrent_sale_status_transition() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1150,6 +1154,7 @@ async fn pg_integration_concurrent_sale_status_transition() {
 /// tenant only ever sees and mutates its own rows. This is the contract
 /// the per-tenant `UNIQUE (tenant_id, sku)` / `UNIQUE (tenant_id,
 /// username)` constraints (and the tenant-scoped REST lookups) guarantee.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_tenant_sku_isolation() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1335,6 +1340,7 @@ async fn pg_integration_tenant_sku_isolation() {
 /// terminal. The `oz_email_discovery` role already has SELECT on
 /// `sync_terminals` (from the round-6 cutover); the code must
 /// `SET LOCAL ROLE` into it before the read, mirroring `active_tenants_pg`.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_terminal_auth_survives_rls_cutover() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1554,6 +1560,7 @@ fn validate_rate_request_boundaries() {
 /// data with no locking, and every row is created with a unique
 /// `source` tag and deleted by id in cleanup, so parallel tests cannot
 /// collide.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_exchange_rates_roundtrip() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1637,6 +1644,7 @@ async fn pg_exchange_rates_roundtrip() {
 ///    INSERT is rejected by WITH CHECK.
 /// 2. With the GUC set to tenant A, only A's row is visible; switching the GUC
 ///    to tenant B hides A's row entirely — genuine cross-tenant isolation.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_isolates_locations_by_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1813,6 +1821,7 @@ async fn pg_isolates_locations_by_tenant() {
 /// design pins — delete-by-omission propagation (a dropped desktop row,
 /// including a retention delete, must vanish from the cloud) and RLS
 /// tenant isolation (another tenant's terminal must see nothing).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_memo_sync_and_active_read() {
     let url = std::env::var("OZ_TEST_PG_URL")

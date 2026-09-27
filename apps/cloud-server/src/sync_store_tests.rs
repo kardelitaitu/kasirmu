@@ -269,6 +269,7 @@ async fn store_push_batch_empty_returns_empty() {
 /// Integration test against a live Postgres instance (the same Docker
 /// service `db.rs` uses, port 15432). Skips when unreachable, so the
 /// suite stays green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -456,6 +457,7 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
 /// a naive plain `INSERT` would abort the whole batch on the first
 /// UNIQUE violation, and every subsequent item would fail with "current
 /// transaction is aborted".
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_duplicate_in_middle_survives() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -520,6 +522,7 @@ async fn pg_integration_push_batch_duplicate_in_middle_survives() {
 /// A committed batch must be durable and visible to a FRESH connection —
 /// a `drop(tx)` (rollback) regression would pass within the batch's own
 /// transaction but fail here.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_commit_visible_to_new_connection() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -581,6 +584,7 @@ async fn pg_integration_push_batch_commit_visible_to_new_connection() {
 /// that raises on one specific payload to simulate a CHECK/trigger/NOT
 /// NULL failure, exactly the class of error `ON CONFLICT DO NOTHING`
 /// does NOT suppress.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_push_batch_data_error_does_not_abort_batch() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -1229,6 +1233,7 @@ async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
 /// visible only to its own tenant (and an UPDATE from another tenant matches
 /// 0 rows). What this test proves is that the PG arms execute at all —
 /// before it, none of the six methods had ever run against Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_conflict_detection_end_to_end() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -1328,6 +1333,7 @@ async fn pg_integration_conflict_detection_end_to_end() {
 /// persisted and read back: if `sync_entity_vectors` were unreadable under
 /// RLS, every push would look like the first and nothing would ever be
 /// concurrent — which is the same "no conflicts" result, reached wrongly.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_causally_ordered_pushes_never_flag() {
     let Some((pool, db_name)) = throwaway_pool().await else {
@@ -1398,6 +1404,7 @@ async fn pg_integration_causally_ordered_pushes_never_flag() {
 /// scripts/rls-cutover.sql. Drift in either is completely silent — the
 /// tables just stop being protected, or stop being reachable by `oz_app`,
 /// with no compile error and no failing test anywhere else.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
     let Some((pool, db_name)) = throwaway_pool().await else {

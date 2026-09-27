@@ -538,6 +538,7 @@ fn test_locations_axis_is_structurally_inert() {
 /// crate), so it pins nothing in an environment without a database; the
 /// structural assertions in `test_locations_axis_is_structurally_inert` are what
 /// hold everywhere.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
     let url = std::env::var("OZ_TEST_PG_URL")

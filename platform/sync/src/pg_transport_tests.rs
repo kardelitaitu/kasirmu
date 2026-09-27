@@ -449,6 +449,7 @@ async fn pull_updates_both_with_and_without_since() {
 /// transport is a DIRECT connection (bypasses the HTTP server + auth),
 /// so without an explicit tenant scope a shared database leaks every
 /// tenant's offline_queue rows to any terminal.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pull_updates_scopes_to_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -524,6 +525,7 @@ async fn pull_updates_scopes_to_tenant() {
 ///
 /// Skips (does not fail) when the disposable PostgreSQL is unreachable, in
 /// the same style as the tenant-isolation test above.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pull_updates_excludes_self_origin_rows() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -636,6 +638,7 @@ async fn pull_updates_excludes_self_origin_rows() {
 
 /// RED: `fetch_snapshot` must scope products/tax_rates/users to the
 /// tenant. Same direct-connection leak as pull.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn fetch_snapshot_scopes_to_tenant() {
     let url = std::env::var("OZ_TEST_PG_URL")

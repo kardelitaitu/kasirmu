@@ -157,6 +157,7 @@ async fn seed_fixture(client: &tokio_postgres::Client) -> (String, String, Strin
 }
 
 /// The three cases, case for case against the tested SQLite predicate.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_stock_summary_negative_guard_matches_the_sqlite_predicate() {
     let Some((client, db_name)) = throwaway_db().await else {

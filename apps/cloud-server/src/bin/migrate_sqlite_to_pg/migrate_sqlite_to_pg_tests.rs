@@ -190,6 +190,7 @@ fn topo_sort_orders_fk_children_after_parents() {
 
 /// Integration test: migrate a SQLite DB into a live Postgres and verify
 /// row counts + checksums. Skips when Postgres is unreachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_migrate_and_verify() {
     let (db_url, db_name) = match throwaway_pg_db().await {
@@ -344,6 +345,7 @@ async fn pg_integration_migrate_and_verify() {
 /// assert every row made it with an identical checksum. Exercises the
 /// copy batching and the checksum path at the volume the cutover will
 /// actually see. Skips when Postgres is unreachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_migrate_large_db() {
     let (db_url, db_name) = match throwaway_pg_db().await {

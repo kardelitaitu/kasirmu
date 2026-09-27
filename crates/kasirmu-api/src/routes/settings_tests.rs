@@ -628,6 +628,7 @@ async fn test_pool() -> Option<deadpool_postgres::Pool> {
 /// PG round-trip: PUT writes `{base}:{tenant}` keys that the cloud
 /// report loop's scoped reads resolve, per tenant, with the SMTP
 /// password encrypted at rest.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_settings_provision_per_tenant() {
     let Some(pool) = test_pool().await else {

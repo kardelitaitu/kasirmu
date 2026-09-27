@@ -174,6 +174,7 @@ fn prune_records_deleted_rows_on_retention_counter() {
 /// retention — old rows (any status) are deleted, recent rows survive.
 /// Skips when no reachable Postgres is configured, so the suite stays
 /// green on machines without one.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_prune_ages_out_old_rows() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -241,6 +242,7 @@ async fn pg_integration_prune_ages_out_old_rows() {
 /// handles `offline_queue`. Seed an old claim plus fresh claims for two
 /// tenants and assert only the old one is swept (fresh claims survive
 /// regardless of tenant — the sweep must not over-delete).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_prune_ages_out_old_sent_reports() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -312,6 +314,7 @@ async fn pg_integration_prune_ages_out_old_sent_reports() {
 /// loop silently stops aging out old data — the cloud DB grows unbounded.
 /// The cycle must scope itself to the BYPASSRLS `oz_email_discovery` role
 /// (which the cutover grants) so retention still runs.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_prune_survives_rls_cutover() {

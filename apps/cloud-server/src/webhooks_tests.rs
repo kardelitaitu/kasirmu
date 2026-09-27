@@ -626,6 +626,7 @@ async fn square_webhook_valid_signature_happy_path() {
 /// Integration test against a live Postgres (the same Docker service
 /// `db.rs` uses, port 15432). Skips when unreachable, so the suite stays
 /// green on machines without a running Postgres.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_webhooks_read_write_postgres() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -826,6 +827,7 @@ async fn pg_integration_webhooks_read_write_postgres() {
 /// cluster-wide roles (oz_app, oz_webhook_resolver, oz_email_discovery)
 /// that the email tests also create/drop — concurrent CREATE/DROP ROLE
 /// on the shared cluster races.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_webhooks_restricted_role_after_cutover() {

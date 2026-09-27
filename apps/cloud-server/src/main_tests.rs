@@ -927,6 +927,7 @@ fn lifecycle_stripe_signature(payload: &[u8], secret: &str) -> String {
 /// container would be marked unhealthy and restarted during a burst.
 /// The health path bounds its wait to 2s and returns a degraded
 /// (db_connected: false) response instead.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_health_fails_fast_when_pool_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -997,6 +998,7 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
 /// constant O(n) cost on the free-tier CPU budget, exactly the class of
 /// waste the SOTA pass eliminated elsewhere. The index must exist in
 /// PG_INIT so the query is an index scan.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_health_last_sync_query_is_indexed() {
     let url = std::env::var("OZ_TEST_PG_URL")

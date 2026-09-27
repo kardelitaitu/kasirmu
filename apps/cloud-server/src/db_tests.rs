@@ -247,6 +247,7 @@ fn db_error_from_core_error() {
 /// Uses `OZ_TEST_PG_URL` (set by CI's Postgres service), falling back
 /// to the local dev container on port 15432. Skipped when Postgres is
 /// not reachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_connect_and_create_tables() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -318,6 +319,7 @@ async fn pg_integration_connect_and_create_tables() {
 /// second one must return `PoolError::Timeout` in ~5s (not block
 /// indefinitely). This is the SOTA guarantee behind Finding D: a stalled
 /// DB can no longer wedge every request.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_pool_get_fails_fast_when_exhausted() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -378,6 +380,7 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
 ///
 /// Skips when Postgres is unreachable or the URL role lacks `CREATE
 /// DATABASE` (matching the established skip-if-unreachable pattern).
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_apply_schema_can_be_skipped() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -493,6 +496,7 @@ async fn pg_integration_apply_schema_can_be_skipped() {
 /// runs on a dedicated connection (`SET ROLE` never touches the shared
 /// pool), rows are namespaced per process for shared dev databases, and
 /// the test skips when Postgres is unreachable.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_fails_closed() {
@@ -722,6 +726,7 @@ async fn pg_integration_rls_fails_closed() {
 ///    (the sync data layer's per-request `SET LOCAL`) the owner's rows
 ///    are visible again. This is exactly the mechanism the cutover
 ///    relies on for a non-superuser deployment role.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_force_blocks_owner() {
@@ -1079,6 +1084,7 @@ async fn pg_integration_rls_force_blocks_owner() {
 /// This is the behavior `RecyclingMethod::Fast`'s `is_closed()` probe
 /// relies on (SOTA finding F): deadpool 0.12 has no max_lifetime, so
 /// server-closed connections are detected reactively on checkout.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 async fn pg_integration_stale_connection_recycled() {
     let url = std::env::var("OZ_TEST_PG_URL")
@@ -1187,6 +1193,7 @@ fn test_cloud_config() -> crate::config::CloudServerConfig {
 /// Self-skips when Postgres is unreachable (the crate's established pattern),
 /// printing `PG integration test skipped: ...` so a skip is never mistaken for
 /// a pass.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_rls_posture_matches_the_live_server() {
@@ -1388,6 +1395,7 @@ async fn pg_integration_rls_posture_matches_the_live_server() {
 /// Built with the crate's own router (`build_router`) and the same
 /// `CloudServerState` shape the PG branch uses in `main.rs`: a real PG pool plus
 /// the in-memory SQLite fallback that the PG branch never reads.
+#[cfg_attr(not(feature = "pg-tests"), ignore)]
 #[tokio::test]
 #[serial(pg_rls_cutover)]
 async fn pg_integration_health_reports_the_live_rls_posture() {
