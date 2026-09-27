@@ -158,18 +158,25 @@ pub async fn resolve_boot_store(
     // which panics when called from inside a runtime (e.g. `#[tokio::test]`
     // on CI where HOSTNAME is set); eagerly building it for every boot
     // would also waste a D-Bus connection on the common no-binding path.
-    let binding_info = {
+    let binding_info: Option<(String, String, String, String)> = {
         let store = Store::new(&db);
-        store
-            .get_terminal_by_device_id(&device_id)?
-            .and_then(|terminal| {
+        match store.get_terminal_by_device_id(&device_id)? {
+            None => None,
+            Some(terminal) => {
                 let tid = terminal.id;
-                store
-                    .get_terminal_binding(&tid)
-                    .ok()
-                    .flatten()
-                    .map(|(s, i, sig)| (tid, s, i, sig))
-            })
+                // The pre-flight read only decides whether a binding is worth
+                // minting a keyring for, but an errored read is NOT "unbound":
+                // collapsing it to `None` skipped keyring construction and let
+                // the core return the PRIMARY store before it re-read the
+                // binding, silently re-pinning a bound tablet. Only `Ok(None)`
+                // means unbound; every error propagates, matching the sibling
+                // read above and the core's own binding read.
+                match store.get_terminal_binding(&tid) {
+                    Ok(binding) => binding.map(|(s, i, sig)| (tid, s, i, sig)),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+        }
     };
     let keyring = if binding_info.is_some() {
         kasirmu_security::default_keyring().ok()

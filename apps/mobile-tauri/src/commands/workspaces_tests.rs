@@ -473,6 +473,61 @@ async fn resolve_boot_store_unknown_device_falls_back_to_primary() {
     assert_eq!(resolution.store_id, "store-main");
 }
 
+/// The wrapper's PRE-FLIGHT binding read decides whether a binding is worth
+/// minting a keyring for. It used `.ok().flatten()`, so an errored read
+/// collapsed into the same `None` as a genuinely unbound terminal and the
+/// wrapper passed `keyring = None` to the core — which returns the PRIMARY
+/// store before it ever re-reads the binding. A bound tablet whose binding row
+/// could not be read was therefore silently re-pinned to the primary store,
+/// the same fail-open the core's own read already refuses.
+#[tokio::test]
+async fn resolve_boot_store_refuses_when_the_preflight_binding_read_errors() {
+    let (state, _dir, _keyring) = binding_state();
+    // Corrupt ONLY the binding read in the global identity DB: dropping
+    // `binding_signature` leaves `get_terminal_by_device_id` (which does not
+    // read that column) working, while the wrapper's `get_terminal_binding`
+    // pre-flight errors.
+    {
+        let db = state.db.lock().await;
+        db.execute_batch("ALTER TABLE terminals DROP COLUMN binding_signature;")
+            .unwrap();
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let result = resolve_boot_store(app.state(), Some("tablet-1".into())).await;
+    assert!(
+        result.is_err(),
+        "an errored pre-flight binding read must refuse, not silently boot to primary"
+    );
+}
+
+/// The documented unbound path still works through the wrapper: a terminal
+/// with no binding at all is a genuine absence, so no keyring is built and the
+/// boot resolves to the primary store rather than erroring.
+#[tokio::test]
+async fn resolve_boot_store_unbound_terminal_still_resolves_to_primary() {
+    let (state, _dir, _keyring) = binding_state();
+    {
+        let db = state.db.lock().await;
+        Store::new(&db)
+            .create_terminal(&Terminal::new("Tablet-9", "tablet-9"))
+            .unwrap();
+    }
+    let app = tauri::test::mock_builder()
+        .manage(state)
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    let resolution = resolve_boot_store(app.state(), Some("tablet-9".into()))
+        .await
+        .expect("a genuinely unbound terminal is not an error");
+    assert!(!resolution.is_bound);
+    assert_eq!(resolution.store_id, "store-main");
+}
+
 #[test]
 fn verify_binding_hmac_valid_signature_passes() {
     let sig = hmac_hex("secret", "term-1", "store-a", "ws-a-1");
