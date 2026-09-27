@@ -446,7 +446,18 @@ pub async fn sync_pull_scoped(
     let snapshot = sync_client::fetch_snapshot_from_server(&config).await;
 
     // Phase 3: Apply snapshot to DB (brief lock).
-    let db = state.db.lock().await;
+    //
+    // The STORE db, not the global `state.db`: Phase 1 read this command's
+    // config from the store, `sync_run_scoped` above writes its push outcomes
+    // to the store, and the scoped catalog the pull feeds (`list_products_scoped`
+    // / `create_product_scoped`) reads and writes the store. Applying to the
+    // global connection landed a pulled catalog in a file no scoped reader
+    // opens — the pull reported success while the product list never changed.
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
     let store = Store::new(&db);
     match snapshot {
         Ok(s) => Ok(sync_client::apply_snapshot(&store, &s)?),
