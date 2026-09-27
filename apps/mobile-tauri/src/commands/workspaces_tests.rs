@@ -433,6 +433,36 @@ async fn resolve_boot_store_bound_instance_missing_falls_back_to_primary() {
     assert_eq!(resolution.store_id, "store-main");
 }
 
+/// A READ FAILURE on the bound store's instance lookup is NOT "the bound
+/// instance no longer exists". The core used
+/// `get_workspace_instance(...).ok()`, which collapsed EVERY error — a store
+/// whose instance table could not be read included — into the same `false` as a
+/// genuinely archived/deleted instance, and the device booted silently into the
+/// PRIMARY store, re-pinning it away from the store+instance it was bound to.
+/// Only `QueryReturnedNoRows` means absence (pinned by
+/// `resolve_boot_store_bound_instance_missing_falls_back_to_primary`); every
+/// other read failure must refuse instead.
+#[tokio::test]
+async fn resolve_boot_store_refuses_when_the_bound_instance_read_errors() {
+    let (state, _dir, keyring) = binding_state();
+    {
+        let conn = state.db_manager.open_store("store-a").unwrap();
+        let db = conn.lock().unwrap();
+        // Make the instance SELECT fail with something OTHER than "no rows"
+        // (the genuine-absence signal): the query subselects this table, so
+        // dropping it turns prepare into a real error while the bound
+        // instance row itself still exists.
+        db.execute_batch("DROP TABLE user_workspace_instances;")
+            .unwrap();
+    }
+    let db = state.db.lock().await;
+    let result = resolve_boot_store_core(&db, &state.db_manager, "tablet-1", Some(&keyring));
+    assert!(
+        result.is_err(),
+        "an unreadable bound store must refuse the boot, not silently re-pin to primary"
+    );
+}
+
 #[tokio::test]
 async fn resolve_boot_store_unknown_device_falls_back_to_primary() {
     let (state, _dir, keyring) = binding_state();

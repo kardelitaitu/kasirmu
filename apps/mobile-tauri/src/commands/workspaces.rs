@@ -259,18 +259,24 @@ fn resolve_boot_store_core(
             );
         } else {
             let instance_exists = {
-                db_manager
+                let db_arc = db_manager
                     .open_store(&bound_store_id)
-                    .ok()
-                    .and_then(|db_arc| {
-                        let db = db_arc.lock().ok()?;
-                        let store = Store::new(&db);
-                        store
-                            .get_workspace_instance(&bound_instance_id, None)
-                            .ok()
-                            .map(|_| true)
-                    })
-                    .unwrap_or(false)
+                    .map_err(|e| AppError::Internal(format!("opening store db: {e}")))?;
+                let db = db_arc
+                    .lock()
+                    .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+                let store = Store::new(&db);
+                // Only `QueryReturnedNoRows` means the bound instance is
+                // genuinely gone (archived or absent) — that is the documented
+                // primary-store fallback. Any OTHER read failure means the
+                // bound store could not be read at all, and collapsing it into
+                // "not found" silently re-pinned the device to the primary
+                // store; it must refuse instead.
+                match store.get_workspace_instance(&bound_instance_id, None) {
+                    Ok(_) => true,
+                    Err(kasirmu_core::CoreError::Db(rusqlite::Error::QueryReturnedNoRows)) => false,
+                    Err(e) => return Err(e.into()),
+                }
             };
 
             if !instance_exists {
