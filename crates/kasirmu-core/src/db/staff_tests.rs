@@ -1042,7 +1042,8 @@ fn trashed_user_debug_inherits_the_pin_hash_redaction() {
 }
 
 #[test]
-fn purge_anonymises_only_past_the_window() {    let conn = fresh();
+fn purge_anonymises_only_past_the_window() {
+    let conn = fresh();
     seed_users(&conn);
     deactivate(&conn, "user-3");
     conn.execute(

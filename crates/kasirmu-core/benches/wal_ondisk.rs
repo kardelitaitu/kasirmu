@@ -113,7 +113,15 @@ fn seed(conn: &Connection, count: usize) {
     for i in 0..count {
         let sku = format!("SKU-{:05}", i);
         store
-            .create_product(&sku, &format!("Product {}", i), price(1000), None, None, 0, None)
+            .create_product(
+                &sku,
+                &format!("Product {}", i),
+                price(1000),
+                None,
+                None,
+                0,
+                None,
+            )
             .expect("seed product");
     }
 }
@@ -357,7 +365,8 @@ fn bench_contention(c: &mut Criterion) {
             }));
         }
         for h in handles {
-            lat.samples.extend(h.join().expect("latency thread panicked"));
+            lat.samples
+                .extend(h.join().expect("latency thread panicked"));
         }
     }
     eprintln!("  -- contention latency (lock wait + write) --");
