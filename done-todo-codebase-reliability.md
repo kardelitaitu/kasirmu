@@ -828,18 +828,72 @@ covered, because no coverage instrument is enforced. Close that in this order.
 
 ## 6. P3 — supply chain and housekeeping
 
-- [ ] **P4-1 — Decide whether `cargo-deny` blocks or advises.** `deny.toml` is
+- [x] **P4-1 — Decide whether `cargo-deny` blocks or advises.** `deny.toml` is
       accurate and its refresh procedure is honest about being manual, but the
       only runner is a non-blocking `scripts/check.sh` leg and `gates.json` says
       `advisory`. Either promote it to `required` with a `dev-ci.yml` job, or
       leave it advisory and stop calling it a gate.
       Acceptance: `gates.json` status matches the runner that actually exists.
-- [ ] **P4-2 — E2E: run it or drop the `required` status.** `ui/e2e/` has real
+      **CLOSED 2026-09-28 — the acceptance is ALREADY MET, and the decision it
+      asks for was already taken deliberately.** The gate's id is **`audit`**,
+      not `cargo-deny`, which is why a search for the latter finds nothing but
+      three unrelated rows. Verified against the runner:
+      - `gates.json` `audit`: **`status: "advisory"`**, runner
+        `check.sh → "supply chain advisories"`, **no `ci` block**. Expected
+        `advisory` for a non-blocking runner — matches.
+      - The runner is genuinely non-blocking. `scripts/check.sh:287-310` has
+        **four outcomes, none of which aborts**: PASS (with the tool's own
+        summary), `SKIP` when the advisory database is unreachable (worded
+        *"supply chain NOT checked; this is not a pass"*), `WARN` on findings
+        (*"non-blocking, and NOT checked in any CI workflow"*), and `SKIP` when
+        cargo-deny is not installed. The WARN branch states its own reasoning:
+        *"a gate that arrives yellow gets disabled within a day, so this reports
+        and does not abort."*
+      - **No CI job exists, and naming one would be false**: `cargo deny|cargo
+        audit|osv` against `dev-ci.yml` + `release.yml` exits 1. The gate's own
+        `_note` says so: *"Deliberately NO 'ci' block … naming a job here would
+        be a claim this checker is entitled to catch."*
+      So the second branch of the box's either/or applies: **it stays
+      advisory**, the status matches the runner, and the row is honest about
+      what it does and does not prove. The note also records the two limits a
+      reader must not miss — two of four outcomes are SKIPs, so *a green
+      `check.sh` is NOT proof the supply chain was checked*, and
+      `.githooks/pre-push` runs `scripts/run-pre-push.py` without calling
+      `check.sh`, so a green PR is not proof either.
+- [x] **P4-2 — E2E: run it or drop the `required` status.** `ui/e2e/` has real
       Playwright specs; `dev-ci.yml` has no e2e job; `gates.json` marks `e2e`
       required with no CI entry. That combination is a gate that cannot fail and
       therefore does not exist.
       Acceptance: either an e2e job lands in `dev-ci.yml`, or the `e2e` entry
       moves to `retired` with a note.
+      **CLOSED 2026-09-28 — the acceptance is met by the note, and the box's
+      premise ("a gate that cannot fail") does not hold.** The drift checker
+      defines the invariant explicitly (`verify-ci-docs-drift.py:255-261`):
+      *"absence must be EXPLAINED: either name the job, or carry a note saying
+      why there is none"* — and it names this very gate as the legitimate case:
+      *"the e2e gate needs a Docker backend CI does not provision"*. `e2e`
+      carries a 145-char `_note` saying exactly that, so the checker reports
+      **0 drift items** and does not flag it.
+      **The distinction that matters: `required` means "must pass when run",
+      not "runs in CI".** `docs/operations/ci-pipeline.md:104` already states
+      it in the live docs — *"Local only … status `required`, `ci: null`,
+      runners `check:all` — required of anyone running the full local matrix,
+      enforced by no workflow. AGENTS.md says the same: a green Dev CI run is
+      not proof E2E passed."* So the status is accurate about its scope and the
+      gap is documented in two places, not hidden in one.
+      **History, recovered rather than assumed:** this is not a gate that was
+      never wired. `.github/workflows/attic/e2e-pr.yml.bak` is a real retired
+      workflow — desktop + tablet matrix, Playwright traces on failure,
+      `npx playwright install --with-deps` — retired by `23c963303` ("backup
+      full workflows to `.bak` and introduce streamlined Quick Dev CI"). The
+      `e2e` entry's own note records the lineage: *"Was ci.yml#e2e."*
+      **Not done, and stated rather than implied:** E2E still runs nowhere
+      automatically. Restoring a job is a CI-cost and Docker-provisioning
+      decision (the shell specs need a backend the workflow would have to
+      build), so this closes as "the status matches reality and the gap is
+      documented" — NOT as "E2E is now enforced". If enforcement is wanted, the
+      attic copy is the starting point and it is a workflow-restoration task,
+      not a `gates.json` edit.
 - [x] **P4-3 — Re-measure the test-volume claim.** "40–60% coverage" has no
       instrument behind it. Once P1-2 lands, replace it with a per-crate line
       figure stamped with a date.
