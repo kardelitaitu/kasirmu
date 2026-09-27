@@ -75,19 +75,22 @@ fn preview_and_shortfall_doors_treat_a_high_discount_percent_identically() {
     // no single line contains both `Percentage::new(` and `discount_percent as
     // u8`, so every predicate missed and the test passed with the truncating
     // cast restored - verified by doing exactly that and watching it go green.
-    // Collapsing all whitespace first makes the scan independent of how rustfmt
-    // chooses to wrap the expression.
-    //
-    // BOTH HALVES ARE SCANNED, and the 2026-09-27 `pos.rs` split is why. The
-    // clamp's definition and the preview door moved into `pos/preview.rs` while
-    // the shortfall door stayed in `pos.rs`, so a scan of `pos.rs` alone would
-    // see two occurrences and its own floor would (correctly) fail. The
-    // invariant is "both doors route through the one clamp" - a property of the
-    // `pos` module, not of one file - so the subject is every file that can
-    // spell a door. Adding a door in a third file means adding it here too;
-    // that is the intended cost, and the floor below is what makes forgetting
-    // impossible rather than merely unlikely.
-    let src = concat!(include_str!("pos.rs"), "\n", include_str!("pos/preview.rs"));
+    // EVERY FILE THAT CAN SPELL A DOOR IS SCANNED, and the two 2026-09-27
+    // `pos.rs` splits are why. The first moved the clamp's definition and the
+    // preview door into `pos/preview.rs`; the second moved the checkout half -
+    // including the second door - into `pos/checkout.rs`. A scan of `pos.rs`
+    // alone saw two occurrences and its own floor failed correctly. The
+    // invariant is "both doors route through the one clamp", a property of the
+    // `pos` MODULE, so the subject is every file that can spell a door - and
+    // that set changed twice in one day, which is the argument for the floor
+    // below rather than against it.
+    let src = concat!(
+        include_str!("pos.rs"),
+        "\n",
+        include_str!("pos/preview.rs"),
+        "\n",
+        include_str!("pos/checkout.rs"),
+    );
     let flat: String = src.split_whitespace().collect::<Vec<_>>().join(" ");
 
     // A FLOOR, so this cannot pass by finding nothing. A source scan whose
