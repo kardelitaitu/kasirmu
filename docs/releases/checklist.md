@@ -48,7 +48,15 @@
       all targets and all features), `cargo-clippy` (runs cargo clippy across
       the workspace with all targets and denies warnings; added 2026-09-25 by
       C25 — the old text here said clippy was local-only and not a CI step,
-      which stopped being true when the job landed), `cargo-nextest`,
+      which stopped being true when the job landed),
+      `fuzz-typecheck` (compiles the seven targets under `tools/fuzz` with
+      `--all-features`; added 2026-09-27 by P0-3. It does NOT run the fuzzers —
+      libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain,
+      so the linked build is Linux-only and a fuzz run needs a budget this gate
+      does not claim. It exists because all four of the fuzz crate's path
+      dependencies had been pointing at a directory that does not exist, which
+      killed `cargo fuzz build` at manifest load and left every target
+      uncompiled with nothing to report it), `cargo-nextest`,
       `ui-test` (typecheck → lint → vitest → tz-invariance), `i18n`,
       `release-bridge-test` (push-only; runs `cargo nextest run -p
       kasirmu-bridge --release`. Since the 19-09-26 ruling the release profile

@@ -1,6 +1,33 @@
 # cargo-fuzz requires nightly-only `-Z` flags (e.g. `-Z sanitizer`), so the
 # fuzz crate is pinned to nightly independently of the root workspace's
 # stable toolchain. CI installs dtolnay/rust-toolchain@nightly for the fuzz job.
+#
+# ── Where these targets can actually RUN (P0-3, measured 2026-09-27) ──────────
+#
+# Linux only. `cargo fuzz build` on x86_64-pc-windows-msvc fails at LINK with
+#
+#   rust-lld: error: could not open
+#     '...\nightly-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\
+#      lib\librustc-nightly_rt.asan.a': no such file or directory
+#
+# because libFuzzer + AddressSanitizer has no MSVC runtime shipped in the
+# rustup nightly toolchain -- `Get-ChildItem ...\lib\*asan*` is empty, so this
+# is an upstream platform limit, not a local misconfiguration, and no amount of
+# dependency pinning fixes it. A fuzz RUN therefore needs the Linux CI runner.
+#
+# What CAN be checked on any platform, and is what proves the targets are not
+# rotted: they TYPECHECK.
+#
+#   cd tools/fuzz && cargo +nightly check --bins --all-features
+#
+# Note the two traps around that command, both measured here:
+#   * `cargo fuzz` shells out to `cargo build` WITHOUT inheriting this file's
+#     toolchain pin, so a bare `cargo fuzz build` picks the DEFAULT (stable)
+#     toolchain and dies with "the option `Z` is only accepted on the nightly
+#     compiler". Pass `+nightly` explicitly.
+#   * the runner image's sccache breaks `cargo fuzz build`'s rustc version
+#     probe; the retired fuzz job set `RUSTC_WRAPPER: ''` for exactly this
+#     reason. Do the same locally, or the probe fails before rustc runs.
 [toolchain]
 channel = "nightly"
 components = ["rustfmt", "clippy"]

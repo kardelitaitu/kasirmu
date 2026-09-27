@@ -91,7 +91,7 @@ having one.
       --self-test` -> exit 0; `python3 scripts/verify-ci-docs-drift.py` -> 0
       drift item(s).**
 
-- [ ] **P0-3 — Put the fuzz targets back under a runner, or delete them.**
+- [x] **P0-3 — Put the fuzz targets back under a runner, or delete them.**
       Seven targets (`cart_deser`, `kasirpkg_parse`, `lua_parse`,
       `manifest_parse`, `money_parse`, `percentage_parse`, `sku_parse`) exist and
       are compiled by nothing. Dead targets rot silently: they already reference
@@ -101,6 +101,44 @@ having one.
       removed and this box is closed with the removal commit. Note the recorded
       trap before restoring: the retired job set `RUSTC_WRAPPER: ''` because the
       runner image's sccache breaks `cargo fuzz build`'s rustc version probe.
+      **CLOSED 2026-09-27, by the second route's SPIRIT rather than its letter:
+      the targets are now compiled by something, but the fuzzers still do not
+      run — and that split is measured, not assumed.**
+      What was actually wrong: **all four path dependencies in
+      `tools/fuzz/Cargo.toml` pointed at a directory that does not exist.**
+      `foundation = { path = "../foundation" }` resolves against
+      `tools/fuzz/Cargo.toml` to `tools/foundation/`, as do the three
+      `../crates/...` siblings — every one is off by the level the directory
+      gained when it moved under `tools/`. So `cargo fuzz build` died at
+      **manifest load** (`failed to load manifest for dependency `foundation``),
+      before rustc was invoked: the targets were not rotted code, they were
+      **unreachable**, and no runner had ever failed because none could get far
+      enough to try. Corrected to `../../` and verified rather than reasoned:
+      `cargo check --bins --all-features` in `tools/fuzz` now finishes with
+      **zero errors across all seven**, including the three behind
+      `kasirmu-core-fuzz` / `kasirmu-plugin-fuzz`.
+      Why the *run* half is still open, measured: `cargo fuzz build` now
+      compiles and links every dependency, then fails at
+      `could not open '...\nightly-x86_64-pc-windows-msvc\lib\rustlib\
+      x86_64-pc-windows-msvc\lib\librustc-nightly_rt.asan.a'` — `Get-ChildItem
+      ...\lib\*asan*` is empty. libFuzzer + AddressSanitizer ships no MSVC
+      runtime, so the sanitizer-linked build is Linux-only. That is an upstream
+      platform limit, not a local misconfiguration, and the box's own
+      `RUSTC_WRAPPER=''` trap was confirmed live on the way: without it the
+      probe dies before rustc runs.
+      What landed instead: a `fuzz-typecheck` job in `dev-ci.yml` (rust-route
+      gated, `cargo check --bins --all-features`, `working-directory:
+      tools/fuzz`) — the half that catches the failure mode actually observed —
+      registered as gate `fuzz-typecheck` in `scripts/gates.json`, runnable from
+      `check.sh`, and added to the deploy `needs` chain. Both traps and the
+      Linux-only constraint are recorded in `tools/fuzz/rust-toolchain.toml`
+      so the next reader does not rediscover them.
+      **Acceptance re-run this session: `cargo check --bins --all-features`
+      (tools/fuzz) -> `Finished`, 0 errors; `verify-ci-docs-drift.py` -> 0 drift
+      items.**
+      Deliberately NOT done: restoring `cargo fuzz run`, which the box's first
+      route asks for. It cannot link on this platform, and a job that cannot run
+      is the exact decoration this checklist exists to remove.
 
 ---
 

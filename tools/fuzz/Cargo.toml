@@ -41,10 +41,20 @@ lua-fuzz            = []
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
-foundation = { path = "../foundation" }
-kasirmu-lua = { path = "../crates/kasirmu-lua" }
-kasirmu-core = { path = "../crates/kasirmu-core", optional = true }
-kasirmu-plugin = { path = "../crates/kasirmu-plugin", optional = true }
+# Path dependencies are relative to THIS manifest (tools/fuzz/Cargo.toml), so
+# each workspace crate is two levels up: ../../, not ../.
+#
+# P0-3. These read `../foundation` et al. until 2026-09-27, which resolved to
+# tools/foundation -- a directory that does not exist. The whole fuzz workspace
+# therefore failed at MANIFEST LOAD (`failed to load manifest for dependency
+# `foundation``), before rustc was ever invoked, which is precisely why seven
+# targets could sit uncompiled without anything reporting rot: no runner failed,
+# because no runner could get as far as running. Corrected to ../../ and
+# verified with `cargo fuzz build` rather than by reading the paths.
+foundation = { path = "../../foundation" }
+kasirmu-lua = { path = "../../crates/kasirmu-lua" }
+kasirmu-core = { path = "../../crates/kasirmu-core", optional = true }
+kasirmu-plugin = { path = "../../crates/kasirmu-plugin", optional = true }
 # kasirmu-lua migrated from rlua to mlua 0.9; the lua_sandbox target inspects
 # the sandbox via mlua types, so mlua must be a direct dep with the same
 # features kasirmu-lua enables (lua54, vendored, send).

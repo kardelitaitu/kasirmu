@@ -127,6 +127,8 @@
 | Migration smoke | — | Required | `check.sh` (migration) |
 | Skill drift guard | `static-gates` | Required | `check.sh` (skill-drift) |
 | Panic inventory | `static-gates` | Required | `check.sh` (panic-inventory) |
+| PG receipt checker self-test | `static-gates` | Required | `check.sh` (pg receipt self-test) — the checker's own census and grading rules against planted fixtures. Added 2026-09-27 (P0-2): its VERDICT had always run per JUnit file, but the self-test ran in neither CI nor check.sh, and when first run it was RED (tree at 88 skip arms, `ARM_BASELINE` still 84). A checker that cannot run is indistinguishable from one that found nothing |
+| Fuzz targets typecheck | `fuzz-typecheck` (dev-ci.yml) | Required | `check.sh` (fuzz typecheck) — compiles all seven targets under `tools/fuzz` with `--all-features`. Added 2026-09-27 (P0-3). Does NOT run the fuzzers: libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain, so the linked build is Linux-only. It exists because all four of the fuzz crate's path dependencies pointed at a non-existent `tools/foundation`, which killed `cargo fuzz build` at manifest load and left every target uncompiled with nothing to report it |
 | IPC parity | `ipc-parity` | Required | `check.sh` (ipc parity) |
 | IPC invoke token parity | `static-gates` | Required | `check.sh` (ipc invoke token parity) |
 | A11y regression | `ui-test` | Advisory | `check.sh` (a11y) |

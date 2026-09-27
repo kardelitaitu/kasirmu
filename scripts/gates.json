@@ -413,6 +413,18 @@
       "note": "The fuzz job deliberately sets RUSTC_WRAPPER: '' in its job env. The ubuntu runner image globally wraps rustc with sccache, which breaks cargo-fuzz's --target build (its rustc version probe execs the resolved nightly toolchain path directly and dies with 'could not execute process sccache .../bin/rustc -vV'). The fuzz job is the only job affected (nightly + --target), so sccache must stay disabled there — do NOT re-add it. Caching is instead handled by Swatinem/rust-cache@v2 with `workspaces: tools/fuzz` (cargo-fuzz builds into tools/fuzz/target/, which default workspace discovery misses)."
     },
     {
+      "id": "fuzz-typecheck",
+      "label": "Fuzz targets typecheck",
+      "status": "required",
+      "runners": { "check.sh": ["fuzz typecheck"] },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "fuzz-typecheck",
+        "steps": ["Typecheck fuzz targets (all features)"]
+      },
+      "_note": "Added 2026-09-27 with P0-3. This is deliberately NOT a restoration of the retired `fuzz` gate above, and the distinction is the point: the fuzzers do not RUN here. Seven targets sat in tools/fuzz compiled by nothing, and the rot was invisible because nothing could get far enough to report it — all four path dependencies read `../foundation`, `../crates/kasirmu-lua`, `../crates/kasirmu-core`, `../crates/kasirmu-plugin`, which resolve against tools/fuzz/Cargo.toml to tools/foundation et al. and do not exist. `cargo fuzz build` died at MANIFEST LOAD, before rustc ran, so there was no compile error to notice and no job to run one; the targets had been unreachable since the directory acquired its extra level. Fixed to `../../` and verified: `cargo check --bins --all-features` in tools/fuzz now finishes with zero errors across all seven (measured 2026-09-27), and `--all-features` is load-bearing because cart_deser, kasirpkg_parse and manifest_parse live behind kasirmu-core-fuzz / kasirmu-plugin-fuzz — a default-feature check would silently typecheck four of seven. A fuzz RUN stays out of reach for a different reason, recorded rather than papered over: libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain (`*asan*` under the Windows rustlib is empty), which makes the linked build Linux-only. Same shape as the `panic-inventory` entry: a target nothing compiles is indistinguishable from a target that compiles fine."
+    },
+    {
       "id": "flaky-quarantine",
       "label": "Flaky quarantine registry",
       "status": "retired",

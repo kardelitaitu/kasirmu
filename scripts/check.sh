@@ -163,6 +163,24 @@ else
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
 fi
 
+# ── Fuzz targets (P0-3) ──────────────────────────────────────────────────
+#
+# The seven fuzz targets are compiled by nothing at runtime on this platform:
+# libFuzzer + AddressSanitizer has no MSVC runtime in the nightly toolchain, so
+# `cargo fuzz build` cannot link here. What CAN run anywhere is the typecheck,
+# and that is the half which catches the failure mode that actually occurred --
+# four path dependencies pointing at a non-existent `tools/foundation`, which
+# killed `cargo fuzz build` at MANIFEST LOAD and left every target unreachable
+# with no compile error to notice. `--all-features` is load-bearing: three of
+# the seven (cart_deser, kasirpkg_parse, manifest_parse) sit behind
+# kasirmu-core-fuzz / kasirmu-plugin-fuzz. Gate: scripts/gates.json ->
+# "fuzz-typecheck".
+if command -v cargo >/dev/null 2>&1; then
+    step "fuzz typecheck" "cargo +nightly check --bins --all-features (in tools/fuzz)" bash -c 'cd tools/fuzz && cargo check --bins --all-features'
+else
+    echo -e "${YELLOW}⚠ cargo not found — skipping fuzz typecheck${NC}"
+fi
+
 # ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
 # This comment used to read "mirrors CI `migration` job". There is no such job:
 # dev-ci.yml's fifteen jobs are changes, website, rust-fmt, cargo-check, cargo-clippy, cargo-nextest, ui-test,
