@@ -81,7 +81,7 @@ impl Store<'_> {
              ON CONFLICT(terminal_id, feature) DO UPDATE SET
                  enabled = excluded.enabled,
                  updated_at = excluded.updated_at",
-            params![terminal_id, feature, enabled as i64, now],
+            params![terminal_id, feature, i64::from(enabled), now],
         )?;
         Ok(())
     }

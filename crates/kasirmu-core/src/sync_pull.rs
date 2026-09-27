@@ -339,13 +339,13 @@ fn upsert_products(
             p.updated_at,
             p.price_updated_at,
             now,
-            p.track_serial as i64,
+            i64::from(p.track_serial),
             p.store_id,
             p.brand,
             p.rack_location,
             p.notes,
             p.unit,
-            p.is_active as i64,
+            i64::from(p.is_active),
         ])?;
         count += 1;
     }
@@ -440,8 +440,8 @@ fn upsert_tax_rates(
             r.id,
             r.name,
             r.rate_bps,
-            r.is_default as i64,
-            r.is_inclusive as i64,
+            i64::from(r.is_default),
+            i64::from(r.is_inclusive),
             r.created_at,
             r.updated_at,
             now,
@@ -504,7 +504,7 @@ fn upsert_users(tx: &rusqlite::Transaction<'_>, rows: &[SnapshotUser]) -> Result
             SNAPSHOT_PIN_HASH_PLACEHOLDER, // ?3 — never a real verifier
             u.display_name,                // ?4
             u.role_id,                     // ?5
-            u.is_active as i64,            // ?6
+            i64::from(u.is_active),        // ?6
             u.created_at,                  // ?7
             u.updated_at,                  // ?8
             now,                           // ?9 — default for created_at / updated_at

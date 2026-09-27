@@ -358,7 +358,7 @@ impl Store<'_> {
                 attrs.rack_location,
                 attrs.notes,
                 attrs.unit,
-                attrs.is_active as i64,
+                i64::from(attrs.is_active),
                 attrs.default_supplier_id,
             ],
         );
@@ -504,7 +504,7 @@ impl Store<'_> {
         set_clearable!("default_supplier_id", attrs.default_supplier_id);
         if let Some(active) = attrs.is_active {
             sets.push("is_active = ?".into());
-            values.push(Box::new(active as i64));
+            values.push(Box::new(i64::from(active)));
         }
 
         if sets.is_empty() {
@@ -705,7 +705,7 @@ impl Store<'_> {
     pub fn set_product_track_serial(&self, sku: &str, track_serial: bool) -> Result<(), CoreError> {
         let rows = self.conn.execute(
             "UPDATE products SET track_serial = ?1 WHERE sku = ?2",
-            params![track_serial as i64, sku],
+            params![i64::from(track_serial), sku],
         )?;
         if rows == 0 {
             return Err(CoreError::NotFound {

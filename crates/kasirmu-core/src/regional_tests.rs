@@ -382,7 +382,7 @@ fn insert_rate(
     conn.execute(
         "INSERT INTO tax_rates (id, name, rate_bps, is_default, is_inclusive, tenant_id, is_active, legal_entity_id, location_id)
          VALUES (?1, ?2, 1100, ?3, 0, 'default', 1, ?4, ?5)",
-        rusqlite::params![id, format!("Rate {id}"), is_default as i32, entity, location],
+        rusqlite::params![id, format!("Rate {id}"), i32::from(is_default), entity, location],
     )
     .unwrap();
 }

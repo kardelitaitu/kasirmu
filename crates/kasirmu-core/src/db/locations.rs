@@ -190,7 +190,7 @@ impl Store<'_> {
                 profile.tax_id,
                 profile.currency,
                 profile.timezone,
-                profile.is_primary as i32,
+                i32::from(profile.is_primary),
                 profile.created_at,
                 profile.updated_at,
             ],

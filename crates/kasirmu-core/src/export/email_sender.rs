@@ -145,9 +145,9 @@ pub fn should_send_scheduled_with_last_sent(
 
     // Check if it's the right time of day (within a 2-minute window, since
     // the scheduler polls every 60s).
-    let diff_seconds = (current_time.num_seconds_from_midnight() as i64
-        - send_time.num_seconds_from_midnight() as i64)
-        .abs();
+    let diff_seconds = (i64::from(current_time.num_seconds_from_midnight())
+        - i64::from(send_time.num_seconds_from_midnight()))
+    .abs();
     if diff_seconds > 120 {
         return Ok(false);
     }
@@ -237,7 +237,7 @@ pub fn load_analytics_bundle(
     store_name: &str,
 ) -> Result<AnalyticsBundle, CoreError> {
     let lookback_start = Utc::now()
-        .checked_sub_signed(chrono::Duration::days(schedule.lookback_days as i64))
+        .checked_sub_signed(chrono::Duration::days(i64::from(schedule.lookback_days)))
         .unwrap_or(Utc::now())
         .format("%Y-%m-%d")
         .to_string();
@@ -273,7 +273,7 @@ pub fn render_report_email(
     filter_analytics_bundle(&mut bundle, &schedule.report_types);
 
     let lookback_start = Utc::now()
-        .checked_sub_signed(chrono::Duration::days(schedule.lookback_days as i64))
+        .checked_sub_signed(chrono::Duration::days(i64::from(schedule.lookback_days)))
         .unwrap_or(Utc::now())
         .format("%Y-%m-%d")
         .to_string();

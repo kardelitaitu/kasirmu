@@ -104,7 +104,7 @@ impl Store<'_> {
                     rule.matcher.as_str(),
                     rule.matcher_value,
                     rule.target_station,
-                    rule.is_active as i64,
+                    i64::from(rule.is_active),
                     now,
                     now,
                 ],

@@ -39,7 +39,7 @@ fn bench_cart_calculate_total(c: &mut Criterion) {
         cart.add_line(CartLine::new(
             Sku::new(format!("SKU-{:03}", i)),
             1,
-            m(500 + i as i64 * 100),
+            m(500 + i64::from(i) * 100),
         ))
         .unwrap();
     }

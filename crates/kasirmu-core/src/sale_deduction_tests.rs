@@ -579,7 +579,7 @@ fn resolved_shortfall_many_allocations() {
     let allocations: Vec<LocationAllocation> = (0..20)
         .map(|i| LocationAllocation {
             location_id: LocationId::from(format!("loc-{i}")),
-            qty: (i + 1) as i64,
+            qty: i64::from(i + 1),
         })
         .collect();
     let rs = ResolvedShortfall {

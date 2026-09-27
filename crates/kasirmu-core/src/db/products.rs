@@ -285,7 +285,7 @@ impl Store<'_> {
             params![
                 variant.id, variant.parent_sku, variant.name, variant.sku,
                 price_minor, currency_str, variant.barcode.as_ref().map(|b| b.as_str()),
-                variant.sort_order, variant.is_active as i64,
+                variant.sort_order, i64::from(variant.is_active),
                 variant.created_at, variant.updated_at,
             ],
         );
@@ -368,7 +368,7 @@ impl Store<'_> {
                 currency_str,
                 variant.barcode.as_ref().map(|b| b.as_str()),
                 variant.sort_order,
-                variant.is_active as i64,
+                i64::from(variant.is_active),
                 variant.sku
             ],
         )?)

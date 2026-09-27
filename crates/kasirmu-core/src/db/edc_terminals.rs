@@ -201,7 +201,7 @@ impl Store<'_> {
                 address,
                 vendor,
                 model,
-                is_active as i64
+                i64::from(is_active)
             ],
         )?;
         let stored = read_terminal(&tx, &id)?.ok_or_else(|| {
@@ -281,7 +281,7 @@ impl Store<'_> {
                 address,
                 vendor,
                 model,
-                is_active as i64
+                i64::from(is_active)
             ],
         )?;
         if changed == 0 {
