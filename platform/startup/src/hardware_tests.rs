@@ -347,10 +347,15 @@ async fn a_wired_row_is_reachable_under_its_own_id_and_under_default() {
 }
 
 #[tokio::test]
-async fn default_follows_row_order_not_hash_order() {
+async fn default_is_the_earliest_created_row() {
+    // RENAMED 2026-09-28: this used to be `default_follows_row_order_...`,
+    // which named a mechanism that no longer exists — the winner is derived
+    // from (created_at, id) inside register_card_terminals, not taken from
+    // the slice. The assertion is unchanged and still holds; only the name
+    // was describing the wrong thing.
     // Callers pass list_active_edc_terminals(), which is ORDER BY
-    // created_at, id. Whichever row arrives first owns the default id, so
-    // the binding is reproducible across restarts.
+    // created_at, id. That row owns the default id, so the binding is
+    // reproducible across restarts.
     let registry = DriverRegistry::default();
     let rows = [
         row("first", "wired", "serial", "COM3"),
@@ -367,6 +372,40 @@ async fn default_follows_row_order_not_hash_order() {
         "COM3",
         "default must be the earliest-created row"
     );
+}
+
+#[tokio::test]
+async fn default_does_not_move_when_the_caller_passes_rows_unordered() {
+    // The regression this closes: the alias used to be "first row in the
+    // slice", so a caller handing over rows in any other order — anything
+    // derived from DriverRegistry::terminal_ids(), which iterates a HashMap —
+    // bound a DIFFERENT terminal on every restart, and a cashier's card tender
+    // would intermittently fail closed with "no card terminal configured".
+    // Same set of rows, two orders, one answer.
+    let forward = [
+        row("t-1", "wired", "serial", "COM3"),
+        row("t-2", "wireless", "tcp", "10.0.0.9:9500"),
+    ];
+    let backward = [
+        row("t-2", "wireless", "tcp", "10.0.0.9:9500"),
+        row("t-1", "wired", "serial", "COM3"),
+    ];
+
+    let a = DriverRegistry::default();
+    register_card_terminals(&a, &forward).await;
+    let b = DriverRegistry::default();
+    register_card_terminals(&b, &backward).await;
+
+    let bound_a = a.terminal(DEFAULT_TERMINAL_ID).await.expect("default (forward)");
+    let bound_b = b.terminal(DEFAULT_TERMINAL_ID).await.expect("default (backward)");
+    assert_eq!(
+        bound_a.device_info().serial,
+        bound_b.device_info().serial,
+        "the same rows in two orders must bind the same terminal",
+    );
+    // The helper stamps every row with one created_at, so the id tiebreak
+    // decides — and "t-1" sorts first in both directions.
+    assert_eq!(bound_a.device_info().serial, "COM3");
 }
 
 #[tokio::test]
