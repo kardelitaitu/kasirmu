@@ -226,6 +226,47 @@ covered, because no coverage instrument is enforced. Close that in this order.
       Acceptance: `cargo test -p platform-sync --test <name>` replays ≥3 seeded
       interleavings and asserts identical converged state; CI runs it.
 
+      **ATTEMPTED 2026-09-27 AND NOT CLOSED. A working harness was built, it
+      was left OUT of the tree on purpose, and what it established is recorded
+      here so the next attempt does not repeat the search.** An untracked
+      `platform/sync/tests/replay_harness.rs` was written, run, and deleted
+      rather than committed, because its central assertion was one I could not
+      justify. The box therefore stays `[ ]`.
+      **What the attempt DID establish, and is worth keeping:**
+      - The shape works. Three devices as `migrations::fresh_db()` + `Store`,
+        exchanging items through the real `apply_remote_atomic` path, needs no
+        tokio runtime, no relay, and no HTTP. All three seeded orders
+        (`A,B,C` / `C,B,A` / `C,A,B`) produced **byte-identical** device state
+        on every run — so **order-independence holds at the level this harness
+        measures**, which is the property the box is really about.
+      - `apply_remote_atomic` returns `Ok(false)` for an item it declines, and
+        **records a failure rather than returning `Err`**. A harness that only
+        checks for `Err` (as this one first did) reads a silently-dropped item
+        as a successful delivery. Any future harness must sum the `bool`.
+      - A device must not be handed its own items. Its local state already
+        reflects them — that is what "already applied" means for an
+        originator — and the origin gate cannot catch it, because
+        `origin_terminal_id` is `None` on anything this harness produces and
+        the gate's own comment says a NULL means UNKNOWN, never "self".
+      **What blocked it, stated precisely so it is the next step rather than a
+      mystery.** The converged COFFEE level did not match the script's
+      arithmetic (`50 + 10 − 2 − 1 − 3 = 54`); two devices read **57** and one
+      read **44**, while every delivery reported `applied=true`. Worse, the two
+      stock readings disagreed ON THE SAME DEVICE — `Store::get_stock`
+      (reading `inventory.qty`) said **57** where
+      `Store::get_stock_from_ledger` (reading `stock_summary`) said **7**. That
+      is three numbers for one product, and until that reconciliation is
+      understood, any "converged state" assertion picks one of them arbitrarily.
+      **The next attempt should therefore start by settling which of
+      `inventory.qty` / `stock_summary` / `get_stock_from_ledger` is the
+      authoritative converged observable** (`rebuild_stock_summary` exists and
+      several tests call it; `queue_tests.rs:926-943` is the closest worked
+      example), and only then assert arithmetic. Pinning the arithmetic first
+      is what made this attempt unfinishable.
+      Not a defect claim: nothing here shows the sync layer is wrong. It shows
+      the harness was measuring the wrong quantity and had no right to assert a
+      number.
+
 - [ ] **P1-4 — Adversarial tests for the critical path.** Deliberate attempts
       to double-spend stock, replay a settled sale, and apply a refund larger
       than the sale total across two locations.
