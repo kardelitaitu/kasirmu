@@ -61,7 +61,98 @@ its acceptance command is run and exits 0 — not when the code "looks right".
 | `cargo-deny` / `cargo-audit` strict | `deny.toml` is real and current, but its only runner is one **non-blocking** leg in `scripts/check.sh`; `gates.json` → `audit` status **advisory** | **Partly** — configured, not enforced |
 | Model-based / deterministic multi-location replay | None found. `platform/sync` has `conflict.rs`, `crdt/`, and 12 test modules including `sync_client_divergence_tests.rs`, but no replay harness and no seeded multi-device simulator. `grep -rl 'simulat' --include='*.rs'` → hits are unrelated test names | **FALSE** |
 | End-to-end tests | `ui/e2e/*.spec.ts` (Playwright) exists; `dev-ci.yml` has **no** e2e job; `gates.json` → `e2e` required with `ci: null` | **Partly** |
-| "40–60% tests" / high volume | 10,514 `#[test]`/`#[tokio::test]` attributes across 1,236 `.rs` files, 485 `*_test(s).rs` files | **Volume high; percentage unverifiable** — no instrument measures it |
+| "40–60% tests" / high volume | 10,514 `#[test]`/`#[tokio::test]` attributes across 1,236 `.rs` files, 485 `*_test(s).rs` files | **Replaced by measurement — see §1.1.** Volume high; the old "40–60% coverage" figure had no instrument behind it and is withdrawn. |
+
+### 1.1 Coverage, measured — 2026-09-27, instrumented (P4-3)
+
+The "40–60% coverage" claim was withdrawn here because **nothing measured it**.
+It is replaced by per-crate line coverage from `cargo llvm-cov`, the same run
+`scripts/verify-coverage-floors.py` grades. Reproduce with:
+
+```
+cargo llvm-cov --workspace --all-features \
+  --exclude kasirmu-app --exclude kasirmu-mobile --exclude kasirmu-bridge \
+  --json --output-path coverage-probe.json
+python3 scripts/verify-coverage-floors.py        # grades the 4 floored crates
+```
+
+**Workspace total: 73.9% (48,737 / 65,959 lines) — informational, not gated.**
+That single number is the honest replacement for the withdrawn range, and it
+lands at the TOP of the old 40–60% band's upper edge, not inside it.
+
+Per-crate, all 36 crates the run instrumented (lines covered / instrumentable):
+
+| crate | line % | lines | files |
+|---|---|---|---|
+| `modules/giftcards` | 100.0% | 27 / 27 | 2 |
+| `modules/kitchen` | 100.0% | 27 / 27 | 2 |
+| `modules/promotions` | 100.0% | 27 / 27 | 2 |
+| `modules/purchasing` | 100.0% | 27 / 27 | 2 |
+| `foundation` | 99.4% | 813 / 818 | 12 |
+| `crates/kasirmu-crypto` | 99.1% | 214 / 216 | 1 |
+| `modules/staff` | 96.9% | 156 / 161 | 5 |
+| `crates/kasirmu-reporting` | 96.8% | 329 / 340 | 4 |
+| `modules/terminal` | 96.4% | 106 / 110 | 5 |
+| `modules/currency` | 96.4% | 397 / 412 | 5 |
+| `modules/sales` | 95.6% | 345 / 361 | 5 |
+| `modules/crm` | 95.5% | 105 / 110 | 5 |
+| `modules/loyalty` | 95.4% | 103 / 108 | 5 |
+| `modules/tax` | 94.9% | 111 / 117 | 5 |
+| `crates/kasirmu-local-api` | 93.7% | 283 / 302 | 1 |
+| `modules/reporting` | 92.2% | 59 / 64 | 4 |
+| `crates/kasirmu-security` | 87.8% | 309 / 352 | 6 |
+| `platform/kernel` | 87.3% | 488 / 559 | 4 |
+| `crates/kasirmu-payment` | 85.6% | 870 / 1016 | 11 |
+| `crates/kasirmu-plugin` | 84.8% | 963 / 1136 | 5 |
+| `platform/core` | 84.5% | 1914 / 2264 | 14 |
+| `crates/kasirmu-core` | 83.8% | 25882 / 30903 | 135 |
+| `modules/settings` | 82.5% | 52 / 63 | 5 |
+| `crates/kasirmu-lan` | 82.3% | 519 / 631 | 4 |
+| `crates/kasirmu-media` | 79.2% | 331 / 418 | 7 |
+| `modules/inventory` | 78.4% | 301 / 384 | 7 |
+| `crates/kasirmu-lua` | 76.7% | 306 / 399 | 2 |
+| `crates/qris-core` | 75.4% | 748 / 992 | 13 |
+| `platform/startup` | 73.0% | 641 / 878 | 6 |
+| `crates/kasirmu-hal` | 72.6% | 1527 / 2103 | 31 |
+| `crates/kasirmu-logging` | 68.8% | 150 / 218 | 3 |
+| `platform/sync` | 68.7% | 2571 / 3745 | 16 |
+| `crates/kasirmu-notification` | 59.3% | 227 / 383 | 5 |
+| `crates/kasirmu-api` | 50.4% | 2947 / 5843 | 33 |
+| `crates/kasirmu-cli` | 46.8% | 936 / 2000 | 13 |
+| `apps/cloud-server` | 46.5% | 3926 / 8445 | 35 |
+
+**Four crates have NO figure, and the reason matters more than the number:**
+`apps/desktop-tauri`, `apps/mobile-tauri` (excluded as GUI shells — their
+coverage is dominated by generated Tauri plumbing), `crates/kasirmu-bridge`
+(excluded because an unrelated uncommitted change in another session had a test
+failing, and `cargo llvm-cov` aborts on any failure), and
+`scripts/updater-compat-check` (a build script, not a crate under test).
+
+**Read the table with two caveats, both measured rather than assumed:**
+
+1. **The four 100.0% crates are 27 lines each.** A perfect score on two files is
+   not comparable to `kasirmu-core`'s 83.8% across 30,903 lines. Sorted by
+   percentage they top the table; sorted by exposure they are the smallest
+   entries in it. `crates/kasirmu-crypto` is a similar case at 99.1% of 216
+   lines across a single file.
+2. **The three biggest untested surfaces are also three of the largest crates.**
+   `apps/cloud-server` (46.5% of 8,445), `crates/kasirmu-cli` (46.8% of 2,000)
+   and `crates/kasirmu-api` (50.4% of 5,843) hold **16,288 lines between them —
+   24.7% of every instrumentable line in the workspace** — and all three sit
+   below every floored crate. That is why the workspace mean (73.9%) reads
+   worse than the median crate (**87.3%**): `kasirmu-core` alone is 30,903
+   lines at 83.8%, **46.9% of the total**, so the average is dominated by the
+   large mid-coverage middle and dragged down by the three large low-coverage
+   edges. Quote the median when the question is "is a typical crate tested",
+   and the line-weighted mean when the question is "how much code is tested".
+
+**Only 4 of these 36 have a floor** (`scripts/coverage-floors.json`:
+foundation 97.0, kasirmu-core 81.0, modules-inventory 76.0, platform-sync 66.0);
+the other 32 can regress silently. That is a stated consequence of P1-2's
+"ratchet, not a target" policy, not an oversight — recorded here so the gap is
+visible rather than implied by an absent row.
+
+---
 
 One risk the previous revision did not name: `.config/nextest.toml:15` sets
 `retries = { count = 2 }` for `[profile.default]`, which is the profile
@@ -749,9 +840,55 @@ covered, because no coverage instrument is enforced. Close that in this order.
       therefore does not exist.
       Acceptance: either an e2e job lands in `dev-ci.yml`, or the `e2e` entry
       moves to `retired` with a note.
-- [ ] **P4-3 — Re-measure the test-volume claim.** "40–60% coverage" has no
+- [x] **P4-3 — Re-measure the test-volume claim.** "40–60% coverage" has no
       instrument behind it. Once P1-2 lands, replace it with a per-crate line
       figure stamped with a date.
+      **CLOSED 2026-09-28.** P1-2 landed in commit `e44fed2b2` (the
+      coverage-floors gate), so the prerequisite this box names is met. The
+      withdrawn claim is replaced by **§1.1 "Coverage, measured — 2026-09-27,
+      instrumented"** above: all **36** crates the `cargo llvm-cov` run
+      instrumented, each with line coverage, covered/instrumentable lines, and
+      file count, plus the reproduce command and the date.
+      **The replacement number, stated plainly: workspace 73.9%
+      (48,737 / 65,959 lines).** That is the honest substitute for "40–60%",
+      and it lands at the TOP EDGE of the withdrawn band rather than inside it —
+      worth saying because the old figure was quoted as if reassuring.
+      **Every figure in §1.1 was machine-verified against
+      `coverage-probe.json`, and the first draft failed that check.** I typed
+      the numbers from a screen listing, and re-deriving them from the JSON
+      caught **5 transcription errors** (`platform/core` 1913→1914,
+      `kasirmu-core` 25901→25882, `platform/sync` 2573→2571, `kasirmu-api`
+      2945→2947, `cloud-server` 3927→3926) plus two wrong PROSE figures (the
+      three low-coverage crates hold **24.7%** of all lines, not the 15.8% I
+      first wrote; the median crate is **87.3%**, not "closer to 85%"). All 36
+      rows and every narrative percentage now match the probe exactly. The
+      lesson is not "be careful" — it is that a measurement section must be
+      VERIFIED against its source, because hand-copied numbers look exactly like
+      measured ones.
+      **Four crates have no figure, with the reason recorded rather than the
+      row silently omitted:** `apps/desktop-tauri` and `apps/mobile-tauri`
+      (excluded as GUI shells), `crates/kasirmu-bridge` (excluded because an
+      unrelated uncommitted change in another session had a test failing, and
+      `cargo llvm-cov` aborts on any failure — the same blocker P1-2 recorded),
+      and `scripts/updater-compat-check` (a build script).
+      **Two framing traps the section calls out, because the raw table invites
+      both:**
+      1. **The four 100.0% crates are 27 lines each** (`modules/giftcards`,
+         `kitchen`, `promotions`, `purchasing`). Sorted by percentage they top
+         the table; sorted by exposure they are its smallest entries.
+         `kasirmu-crypto` at 99.1% of 216 lines in ONE file is the same shape.
+      2. **Mean and median disagree by 13 points, and both are correct.**
+         The three largest low-coverage crates (`cloud-server` 46.5% of 8,445,
+         `cli` 46.8% of 2,000, `api` 50.4% of 5,843) hold **24.7% of every
+         instrumentable line in the workspace**. `kasirmu-core` alone is 46.9%
+         of the total at 83.8%. So 73.9% is the line-weighted answer to "how
+         much code is tested" and 87.3% is the answer to "is a typical crate
+         tested" — the section says which to quote for which question instead of
+         leaving a reader to pick.
+      **A limitation the section states rather than hides: only 4 of these 36
+      crates have a floor.** The other 32 can regress silently. That is the
+      deliberate consequence of P1-2's "ratchet, not a target" policy, recorded
+      so the gap is visible instead of implied by an absent row.
 
 ---
 
