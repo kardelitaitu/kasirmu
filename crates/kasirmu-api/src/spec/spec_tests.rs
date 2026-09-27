@@ -170,3 +170,99 @@ fn local_spec_has_no_dev_mode_affordance() {
         "desktop doc must not advertise open-in-dev minting"
     );
 }
+
+// ── Schema-vs-struct field correspondence ────────────────────────────
+//
+// This pins the class of drift that let `UserResponse` omit `pin_hash` while
+// the handler returned the full `User`, and that separately let `CategoryDto`
+// declare a `created_at` the struct does not have and `TaxRateResponse`
+// declare a `tenant_id` it does not have. Review cannot catch this reliably —
+// a schema and a struct live in different files and neither references the
+// other — so the correspondence is asserted here against the TYPES.
+
+/// Serialized field names of a value, sorted.
+fn field_names<T: serde::Serialize>(value: &T) -> Vec<String> {
+    let v = serde_json::to_value(value).expect("serialize");
+    let mut names: Vec<String> = v
+        .as_object()
+        .expect("struct serializes to an object")
+        .keys()
+        .cloned()
+        .collect();
+    names.sort();
+    names
+}
+
+/// Declared property names of a component schema, sorted.
+fn schema_field_names(schema: &str) -> Vec<String> {
+    let spec = base_spec();
+    let mut names: Vec<String> = spec["components"]["schemas"][schema]["properties"]
+        .as_object()
+        .unwrap_or_else(|| panic!("schema {schema} has no properties"))
+        .keys()
+        .cloned()
+        .collect();
+    names.sort();
+    names
+}
+
+/// A `Category` must serialize exactly the fields `CategoryDto` declares.
+/// The schema previously named a `created_at` the struct does not have while
+/// omitting the `icon` it does — drift in BOTH directions at once.
+#[test]
+fn category_dto_matches_the_struct() {
+    let category = kasirmu_core::Category {
+        id: "cat-1".into(),
+        name: "Drinks".into(),
+        colour: "#06b6d4".into(),
+        icon: "cup".into(),
+    };
+    assert_eq!(
+        schema_field_names("CategoryDto"),
+        field_names(&category),
+        "CategoryDto must declare exactly the fields Category serializes"
+    );
+}
+
+/// A `TaxRate` must serialize exactly the fields `TaxRateResponse` declares.
+/// The schema previously named a `tenant_id` the struct does not have while
+/// omitting the `updated_at` it does.
+#[test]
+fn tax_rate_response_matches_the_struct() {
+    let rate = kasirmu_core::tax_rate::TaxRate {
+        id: "tax-1".into(),
+        name: "VAT 10%".into(),
+        rate_bps: 1000,
+        is_default: true,
+        is_inclusive: false,
+        created_at: "2026-01-01T00:00:00Z".into(),
+        updated_at: "2026-01-02T00:00:00Z".into(),
+    };
+    assert_eq!(
+        schema_field_names("TaxRateResponse"),
+        field_names(&rate),
+        "TaxRateResponse must declare exactly the fields TaxRate serializes"
+    );
+}
+
+/// Every schema property must be declared required, for the components whose
+/// source struct has no optional members. A partial `required` list is how a
+/// schema silently stops describing its own response.
+#[test]
+fn fully_populated_schemas_declare_every_property_required() {
+    for schema in ["CategoryDto", "TaxRateResponse"] {
+        let spec = base_spec();
+        let props = schema_field_names(schema);
+        let mut required: Vec<String> = spec["components"]["schemas"][schema]["required"]
+            .as_array()
+            .unwrap_or_else(|| panic!("schema {schema} declares no required list"))
+            .iter()
+            .map(|v| v.as_str().expect("required entries are strings").to_owned())
+            .collect();
+        required.sort();
+        assert_eq!(
+            required, props,
+            "{schema}: every property must be required, since its source struct has no optional fields"
+        );
+    }
+}

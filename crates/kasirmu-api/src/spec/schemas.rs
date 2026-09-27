@@ -256,11 +256,13 @@ pub(super) fn build_base_schemas() -> Value {
         },
         "CategoryDto": {
             "type": "object",
+            "required": ["id", "name", "colour", "icon"],
+            "description": "A product category, exactly as `modules_inventory::Category` serializes. Every field is required because the struct has no optional members.",
             "properties": {
                 "id": { "type": "string" },
                 "name": { "type": "string", "example": "Drinks" },
                 "colour": { "type": "string", "description": "Hex colour code", "example": "#06b6d4" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "icon": { "type": "string", "description": "Display icon name", "example": "cup" }
             }
         },
         "CreateTaxRateRequest": {
@@ -353,15 +355,16 @@ pub(super) fn build_base_schemas() -> Value {
         },
         "TaxRateResponse": {
             "type": "object",
-            "required": ["id", "name", "rate_bps", "is_default", "is_inclusive"],
+            "required": ["id", "name", "rate_bps", "is_default", "is_inclusive", "created_at", "updated_at"],
+            "description": "A tax rate, exactly as `modules_tax::TaxRate` serializes. Every field is required because the struct has no optional members.",
             "properties": {
                 "id": { "type": "string", "description": "Unique tax rate ID" },
                 "name": { "type": "string", "description": "Display name", "example": "VAT 10%" },
                 "rate_bps": { "type": "integer", "format": "int64", "description": "Rate in basis points", "example": 1000 },
                 "is_default": { "type": "boolean", "description": "Whether this is the default rate" },
                 "is_inclusive": { "type": "boolean", "description": "Whether tax is inclusive of price" },
-                "tenant_id": { "type": "string", "description": "Owning tenant (from JWT)" },
-                "created_at": { "type": "string", "format": "date-time" }
+                "created_at": { "type": "string", "format": "date-time", "description": "ISO-8601 creation timestamp" },
+                "updated_at": { "type": "string", "format": "date-time", "description": "ISO-8601 last-update timestamp" }
             }
         },
         "UserResponse": {
