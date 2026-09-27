@@ -53,7 +53,8 @@ pub(crate) struct PushResponse {
 /// recovery. The data is safely on the server; the correct local state is
 /// `synced`, not a terminal `failed`. The server itself agrees: it labels
 /// duplicate-id outcomes `"conflict"` (not `"rejected"`) in its push metrics
-/// (`sync_api.rs`). Both the immediate [`apply_sync_outcomes`] and the daemon's
+/// (`sync_api.rs`). Both the immediate
+/// [`apply_sync_outcomes`](super::apply_sync_outcomes) and the daemon's
 /// `apply_push_results` route these to synced via this predicate.
 pub const DUPLICATE_ID_REJECTION_PREFIX: &str = "duplicate id:";
 
