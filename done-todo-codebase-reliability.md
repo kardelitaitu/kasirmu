@@ -749,6 +749,36 @@ covered, because no coverage instrument is enforced. Close that in this order.
       `kasirmu-mobile` and `kasirmu-app` follow behind, with
       `impersonate_user_scoped` / `IMPERSONATION_SESSION_TTL_SECONDS`,
       `require_audit_tier` and `list_categories` already visible.
+      **ROUND 6 — 2026-09-28 (commits `7ff02d94d`, `a9bbfab95`). Both Tauri
+      shells are now rustdoc-clean; the workspace is down to 5 errors in ONE
+      crate.**
+      **The rule held, which is the point.** Applying "qualify `//!` module docs
+      only, leave `///` alone" took `apps/desktop-tauri` from 8 sites to 0 and
+      `apps/mobile-tauri` from 35 to 0, with no oscillation — versus the five
+      flapping passes it cost to discover. The resolver was built from real
+      definitions (`git grep` for `fn`/`struct`/`const` per name) rather than
+      guesses: **69 names mapped, private ones converted to code spans instead
+      of links.** 21 files, 45 insertions / 45 deletions, doc-comments only.
+      **A SIXTH dead-API defect, and this one was already documented as
+      REMOVED.** `get_setup_status` was linked from BOTH shells'
+      `commands/setup.rs` as if it existed. It does not — and
+      `apps/desktop-tauri/src/commands/setup.rs:60` says so in a comment:
+      *"`get_setup_status` and `dismiss_setup_wizard` were REMOVED here."* The
+      doc on `get_first_run_state` was still naming it as its predecessor
+      without marking it retired, so a reader following the link finds nothing
+      and cannot tell whether the removal was intentional. Both sites now name
+      the retirement and the replacement. This is the fourth crate in which a
+      broken link turned out to be a doc asserting something false about the
+      code, which is why the campaign keeps paying for itself.
+      **Remaining: 5 errors, all in `kasirmu-bridge`, all in files a concurrent
+      session owns** — `StockAdjusted` (×2, in `products.rs` /
+      `products/stock.rs`; the true fix is
+      `kasirmu_core::events::StockAdjusted`, already imported at
+      `stock.rs:13`), `BridgeError::Hardware` (no source location emitted),
+      and the two `remote_sync_admits` private-item links in `settings/core.rs`.
+      **Every crate in the workspace except `kasirmu-bridge` now documents
+      cleanly under `RUSTDOCFLAGS="-D warnings"`.** The env line still must NOT
+      land.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
