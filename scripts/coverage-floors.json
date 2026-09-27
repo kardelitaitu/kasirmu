@@ -1,5 +1,5 @@
 {
-  "_comment": "Per-crate Rust line-coverage floors. Read by scripts/verify-coverage-floors.py. See todo-codebase-reliability.md P1-2 for why the figure is a ratchet rather than a target.",
+  "_comment": "Per-crate Rust line-coverage floors. Read by scripts/verify-coverage-floors.py. See done-todo-codebase-reliability.md P1-2 for why the figure is a ratchet rather than a target.",
   "_measured": {
     "date": "2026-09-27",
     "command": "cargo llvm-cov --workspace --all-features --exclude kasirmu-app --exclude kasirmu-mobile --exclude kasirmu-bridge --json --output-path coverage-probe.json",

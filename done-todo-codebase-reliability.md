@@ -1,4 +1,4 @@
-# todo — codebase reliability (Rust)
+# done — codebase reliability (Rust)
 
 <!-- Audit stamp: 2026-09-27 · BK · status: ACCURATE · HEAD 6c9e4328a · branch 0.0.40
      change: rewritten from a generic "how to make Rust bug-free" essay into a
@@ -9,6 +9,31 @@
      Re-audit trigger: any change to .github/workflows/dev-ci.yml, scripts/gates.json,
      .config/nextest.toml, or Cargo.toml [workspace.lints]. -->
 
+**RENAMED `todo-` → `done-` 2026-09-27**, on the condition this file set for
+itself: *"When all P0 and P1 boxes are ticked, this file may be renamed
+`done-todo-codebase-reliability.md`."* All 3 P0 and all 4 P1 boxes are ticked,
+and each was closed on its **acceptance command having been RUN and passed**,
+not on the code looking right. Re-verified together at the moment of the
+rename:
+
+| box | acceptance command | result |
+|---|---|---|
+| P0-1 | `python3 scripts/scan-unwrap-panic.py` | exit 0 |
+| P0-2 | `python3 scripts/verify-pg-tests-ran.py --self-test` | exit 0 |
+| P0-3 | `cargo check --bins --all-features` (tools/fuzz) | Finished, 0 errors |
+| P1-1 | `cargo test -p platform-sync -p modules-inventory -p foundation` | 0 failures; grep > 0 in all three crates |
+| P1-2 | `python3 scripts/verify-coverage-floors.py` | exit 0 (13/13 self-test) |
+| P1-3 | `cargo test -p platform-sync --test convergence_replay` | 3 passed |
+| P1-4 | `cargo test -p platform-sync --test adversarial_paths` | 4 passed |
+
+The `todo-` token is retained INSIDE the new name on purpose:
+`.agents/skills/docs-auditor/scripts/check-dead-refs.py` exempts any filename
+containing `todo-`, and `done-todo-…` still matches.
+
+**What renaming does NOT mean.** P2/P3/P4 remain open — the compiler and lint
+surface, the runtime-invariant list, and the supply-chain items. `done-` is
+earned for the P0/P1 tier only, which is what this file's own rule specified.
+
 Scope: the Rust workspace (`crates/`, `modules/`, `platform/`, `foundation/`,
 `apps/cloud-server`, `apps/desktop-tauri`, `apps/mobile-tauri`). Not the React
 renderer, not the Go licence server.
@@ -16,8 +41,6 @@ renderer, not the Go licence server.
 **How to use this file.** Every box is either ticked `[x]` with the measurement
 that closes it, or open `[ ]` with an acceptance command. An item is done when
 its acceptance command is run and exits 0 — not when the code "looks right".
-When all P0 and P1 boxes are ticked, this file may be renamed
-`done-todo-codebase-reliability.md`; until then it keeps the `todo-` prefix.
 
 ---
 
