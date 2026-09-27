@@ -147,7 +147,7 @@ having one.
 The workspace has volume (10,514 tests) but no evidence about *which* paths are
 covered, because no coverage instrument is enforced. Close that in this order.
 
-- [ ] **P1-1 — Property tests on money, inventory and sync.** Today proptest
+- [x] **P1-1 — Property tests on money, inventory and sync.** Today proptest
       reaches `foundation/src/money_proptests.rs` and
       `crates/kasirmu-core/src/features_proptests.rs` only. Add `proptest` as a
       dev-dependency and write properties for:
@@ -159,6 +159,54 @@ covered, because no coverage instrument is enforced. Close that in this order.
       Acceptance: `cargo test -p platform-sync -p modules-inventory -p foundation`
       with ≥1 `proptest!` block in each of the three crates, and
       `grep -rc 'proptest' platform/sync modules/inventory` > 0.
+      **CLOSED 2026-09-27. All three crates now carry property tests, and the
+      acceptance grep passes for every path: `platform/sync` has 8 hits across
+      `conflict.rs` / `conflict_proptests.rs` / `Cargo.toml` (was **0** — not
+      even the dev-dependency declared), `modules/inventory` has 4 (was **0**),
+      `foundation` already had its money proptests.**
+      `platform/sync` — `conflict_proptests.rs`, 10 properties, 446 tests green.
+      `modules/inventory` — `models_proptests.rs`, 12 properties, 90 tests green.
+      Both suites were **mutation-tested rather than assumed**, which is what
+      turned three weak or wrong assertions into good ones:
+      - Replacing the sale status-DAG with a timestamp comparison fails 3
+        properties, including `sale_prefix_routes_to_the_sale_resolver` — which
+        exists because a test calling `resolve_sale_lww` directly keeps passing
+        even if the DISPATCHER stops routing `sale.*` to it.
+      - The first CRDT property checked only that the `local`/`remote` keys
+        existed, and **survived** a mutation replacing the remote delta with
+        `Value::Null`. Strengthened to compare parsed values; it now fails on
+        that mutation.
+      - `is_low_stock`'s boundary property fails when `<=` becomes `<`.
+      **Two corrections to this box's own text, both because the requested
+      property is FALSE and asserting it would have graded correct code red:**
+      1. *"stock never goes negative under any interleaving"* is **not this
+         crate's contract.** `WorkspaceInventoryLocation.allow_negative_stock`
+         (`models.rs:368`) is a documented per-location policy flag, and
+         `Repository::adjust_stock_tx` (`repository.rs:130`) applies a raw
+         `UPDATE inventory SET qty = qty + ?1` with no floor — deliberately, so
+         a location that opts in can oversell. The only non-negativity guard is
+         `Inventory::new`'s constructor assertion, which cannot see a running
+         balance. The tests assert the contracts that hold (constructor
+         rejection, `is_low_stock` inclusivity, name/SKU normalisation,
+         `ProductType` fallback) and `models_proptests.rs` records this
+         correction in prose so the next reader does not re-derive it.
+      2. *"commutative and idempotent regardless of arrival order"* is also not
+         quite right. Ties are **remote-authoritative by design**, so
+         `f(a,b) != f(b,a)` as items; what IS order-independent is the surviving
+         **rank**, and that is what the symmetry properties assert. And
+         `resolve_stock_crdt` is **not idempotent** — it mints a fresh
+         `Uuid::now_v7()` per call — which is correct for a delta merge and
+         wrong to call idempotent, so
+         `crdt_merge_mints_a_fresh_winner_id_each_call` pins the real behaviour.
+      Also worth recording: writing these found that `Sku::new` **trims**
+      (`foundation/src/sku.rs:34`, documented). My first property asserted a
+      byte-exact round trip and correctly failed on `"0 "`. The trim is safe
+      only because the empty result is rejected, so both halves are now pinned.
+      Regression seeds are committed (`proptest-regressions/*.txt`), matching
+      the `foundation` precedent, so the shrunk cases re-run for everyone.
+      **Acceptance re-run this session: `cargo test -p platform-sync` -> 446
+      passed; `cargo test -p modules-inventory` -> 90 passed; grep > 0 for all
+      three crates.**
 
 - [ ] **P1-2 — Wire `cargo-llvm-cov` into CI with a floor, or retire the tool
       explicitly.** `scripts/coverage.sh` works locally; nothing enforces a

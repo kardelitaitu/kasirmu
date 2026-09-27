@@ -34,6 +34,7 @@ use foundation::money::{Currency, Money};
 use proptest::prelude::*;
 
 fn usd() -> Currency {
+    // SAFETY: "USD" is a literal ISO-4217 code; parse cannot fail.
     "USD".parse().expect("USD is a valid currency code")
 }
 
