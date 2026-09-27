@@ -2,27 +2,27 @@
 //! of `apps/desktop-tauri/src/commands/hardware.rs`.
 //!
 //! Key functions: the cash-drawer, receipt-printing, barcode-scanner and
-//! pole-display operations, each consuming a [`BridgeCtx`]. Device access
-//! goes through [`BridgeCtx::registry`] (`kasirmu_hal` mock drivers per the repo
+//! pole-display operations, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). Device access
+//! goes through [`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry) (`kasirmu_hal` mock drivers per the repo
 //! rule) — this module never constructs a concrete driver, exactly like the
 //! shell it was extracted from.
 //!
 //! Two shell behaviours are re-created without tauri types:
 //!
 //! * UI events (`receipt:printed`, `barcode:scanned`, `barcode:error`) go
-//!   through the injected [`EventSink`]. A `None` sink is a silent no-op,
+//!   through the injected [`EventSink`](crate::ctx::EventSink). A `None` sink is a silent no-op,
 //!   matching the shell's `if let Some(app) = state.app` pattern; a lost UI
 //!   event is never a command failure.
-//! * [`start_scanner_scoped`] spawns its own poll task (the shell spawned one
+//! * [`start_scanner_scoped`](crate::hardware::start_scanner_scoped) spawns its own poll task (the shell spawned one
 //!   over `state.app`). The sink Arc is cloned OUT of the context before the
 //!   spawn (it is `'static`), so the task holds no borrow of the per-call
-//!   context; cancellation rides [`BridgeCtx::scanner_cancel`], the same
+//!   context; cancellation rides [`BridgeCtx::scanner_cancel`](crate::ctx::BridgeCtx::scanner_cancel), the same
 //!   `oneshot` slot `state.scanner_cancel` exposes.
 //!
 //! Gate order, store construction, guard-drop placement (the
 //! `MutexGuard dropped here before any .await` blocks) and error paths are
 //! verbatim ports of the command bodies: a shim builds the context, calls one
-//! function here, and maps [`BridgeError`] back to `AppError` so the wire
+//! function here, and maps [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire
 //! shape never moves.
 
 use std::sync::Arc;
@@ -601,7 +601,7 @@ pub async fn list_scanners_scoped(
 /// first, the driver is resolved from the registry, and a poll task is spawned
 /// that broadcasts `barcode:scanned` / `barcode:error` through the injected
 /// [`EventSink`](crate::ctx::EventSink). The cancel handle is stored in
-/// [`BridgeCtx::scanner_cancel`] for [`stop_scanner_scoped`].
+/// [`BridgeCtx::scanner_cancel`](crate::ctx::BridgeCtx::scanner_cancel) for [`stop_scanner_scoped`].
 ///
 /// A connect failure is retried with backoff rather than ending the task,
 /// and a `NotFound` failure — no scanner reachable — is logged, not

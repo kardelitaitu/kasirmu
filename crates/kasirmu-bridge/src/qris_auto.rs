@@ -2,14 +2,14 @@
 //! Midtrans QRIS flow (agents-3 3.1b).
 //!
 //! Two scoped reads/writes over the stored sync credential:
-//! - [`qris_auto_charge_scoped`] issues a QR (`POST /api/payment/midtrans/qris`);
-//! - [`qris_auto_status_scoped`] polls its settlement (`GET …/status`).
+//! - [`qris_auto_charge_scoped`](crate::qris_auto::qris_auto_charge_scoped) issues a QR (`POST /api/payment/midtrans/qris`);
+//! - [`qris_auto_status_scoped`](crate::qris_auto::qris_auto_status_scoped) polls its settlement (`GET …/status`).
 //!
 //! The tenant authority is always the stored API key the sync daemon
 //! already uses — the device never names a tenant, and no body field is
 //! trusted for one. DTOs here re-declare the cloud shapes in the repo's
 //! camelCase IPC idiom (the `sync_client` structs carry the snake_case wire
-//! names); errors surface as [`BridgeError`] so the command layer keeps its
+//! names); errors surface as [`BridgeError`](crate::error::BridgeError) so the command layer keeps its
 //! single `map_err(Into::into)` contract.
 
 use kasirmu_core::db::Store;

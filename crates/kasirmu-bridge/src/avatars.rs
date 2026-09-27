@@ -7,7 +7,7 @@
 //! the renderer falls back to an initials tile, so clearing is a real state
 //! rather than a broken image.
 //!
-//! The ingest is NOT duplicated here. [`set_avatar_scoped`] calls
+//! The ingest is NOT duplicated here. [`set_avatar_scoped`](crate::avatars::set_avatar_scoped) calls
 //! [`crate::products_images::ingest_to_store`], the shared DB-free half of the
 //! product-image pipeline, so an avatar is transcoded, capped and hashed by
 //! exactly the same code path as a product photo. This module owns only the

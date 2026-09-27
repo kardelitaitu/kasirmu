@@ -9,7 +9,7 @@
 //! acquisition order and count, the subscription clock-rollback and tier-quota
 //! gate placement inside `register_terminal_scoped`, every `tracing!` message
 //! and every error variant (each `AppError` maps 1:1 onto its `BridgeError`
-//! twin). Global-DB reads go through [`BridgeCtx::lock_global`]; store-scoped
+//! twin). Global-DB reads go through [`BridgeCtx::lock_global`](crate::ctx::BridgeCtx::lock_global); store-scoped
 //! reads keep the ORIGINAL split between `resolve_store` and
 //! `db_manager.open_store` — the two are not interchangeable and each call site
 //! kept whichever it had. `DEVICE_BINDING_KEYRING_NAME` stays a terminals-module
@@ -92,7 +92,7 @@ fn sign_binding(
 ///
 /// # Errors
 ///
-/// [`BridgeError::Internal`] when the keyring cannot be read (a missing secret
+/// [`BridgeError::Internal`](crate::error::BridgeError::Internal) when the keyring cannot be read (a missing secret
 /// is created on first use, exactly as [`sign_binding`] does) or the submitted
 /// signature is not hex.
 fn verify_binding(

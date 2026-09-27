@@ -3,15 +3,15 @@
 //!
 //! Every operation talks to the [`kasirmu_core::Store`] facade over the session's
 //! store-scoped connection, exactly as the shell did: the store DB is opened
-//! through [`BridgeCtx::resolve_scope`] and wrapped with `Store::new`
+//! through [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope) and wrapped with `Store::new`
 //! (cache-free), so location-row cache invalidation and location-scoped store
-//! opening stay on the original code path. The unscoped [`get_primary_location`]
+//! opening stay on the original code path. The unscoped [`get_primary_location`](crate::locations::get_primary_location)
 //! still reads the GLOBAL database, unchanged.
 //!
 //! Gate order is verbatim: resolve the session scope, authorize
 //! `settings:read` / `settings:edit` against the GLOBAL identity DB (ADR #4/#7),
 //! and — on the four location-named writes — the ADR #47 hierarchical
-//! location-resource gate ([`BridgeCtx::require_permission_for_session_resource`],
+//! location-resource gate ([`BridgeCtx::require_permission_for_session_resource`](crate::ctx::BridgeCtx::require_permission_for_session_resource),
 //! the ctx port of `commands/authz.rs::require_permission_for_session_resource`)
 //! before the store connection is locked. The create path keeps its C1.2
 //! subscription-quota gate (including the debug Free -> Premium shim) and the

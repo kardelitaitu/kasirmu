@@ -3,14 +3,14 @@
 //!
 //! Key types: the rate/scope/window DTOs the TaxConfigurationScreen consumes.
 //! Key functions: the pure `&Connection` bodies (`run_list_tax_rates`,
-//! [`run_create_tax_rate`], [`run_update_tax_rate`],
-//! [`run_list_category_tax_rates`], [`run_list_tax_rate_rounding_modes`])
+//! [`run_create_tax_rate`](crate::tax::run_create_tax_rate), [`run_update_tax_rate`](crate::tax::run_update_tax_rate),
+//! [`run_list_category_tax_rates`](crate::tax::run_list_category_tax_rates), [`run_list_tax_rate_rounding_modes`](crate::tax::run_list_tax_rate_rounding_modes))
 //! and the eight session-scoped operations that wrap them, each consuming a
-//! [`BridgeCtx`].
+//! [`BridgeCtx`](crate::ctx::BridgeCtx).
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use std::collections::HashMap;

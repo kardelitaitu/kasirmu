@@ -1,18 +1,18 @@
 //! Accounts-payable command bodies (Wave C / C5) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/payables.rs`.
 //!
-//! Key functions: the session-scoped [`list_payables_scoped`],
-//! [`create_payable_scoped`], [`record_payable_payment_scoped`] and
-//! [`write_off_payable_scoped`] operations, each consuming a [`BridgeCtx`].
+//! Key functions: the session-scoped [`list_payables_scoped`](crate::payables::list_payables_scoped),
+//! [`create_payable_scoped`](crate::payables::create_payable_scoped), [`record_payable_payment_scoped`](crate::payables::record_payable_payment_scoped) and
+//! [`write_off_payable_scoped`](crate::payables::write_off_payable_scoped) operations, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx).
 //! There is no `run_*` `&Connection` helper here: the payable bodies were
 //! logic-inline in the shell, so the store work stays inside the scoped
 //! functions.
 //!
 //! Gate order, the global-DB access (`state.db` was the global identity
-//! connection, so these use [`BridgeCtx::lock_global`] with a cache-free
+//! connection, so these use [`BridgeCtx::lock_global`](crate::ctx::BridgeCtx::lock_global) with a cache-free
 //! `Store::new`) and every error string are verbatim ports of the command
 //! bodies: a shim builds the context, calls one function here, and maps
-//! [`BridgeError`] back to `AppError` so the wire shape never moves.
+//! [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire shape never moves.
 
 use chrono::Utc;
 use kasirmu_core::money::Currency;

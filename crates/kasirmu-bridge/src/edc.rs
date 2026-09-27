@@ -1,7 +1,7 @@
 //! EDC payment-terminal bridge module (Wave D).
 //!
 //! Card-present payment through whatever terminal the operator configured,
-//! resolved from the HAL driver registry ([`BridgeCtx::registry`]) rather
+//! resolved from the HAL driver registry ([`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry)) rather
 //! than held on shell state, so a card tender can only reach hardware that
 //! exists. With no terminal registered every command fails closed with
 //! [`BridgeError::Hardware`] (`HalErrorKind::NotFound`) — the drivers

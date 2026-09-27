@@ -35,7 +35,7 @@ const PRE_PULL_BACKUP_TIMESTAMP_LEN: usize = 14;
 /// One, not one-per-pull: a retained copy is worth exactly as much as the
 /// recovery it enables, and a second one is worth nothing — while a directory
 /// full of them is worth a great deal to anyone who finds them. See
-/// [`dispose_pre_pull_backup`] for why each one is unfiltered cleartext.
+/// `dispose_pre_pull_backup` for why each one is unfiltered cleartext.
 const PRE_PULL_BACKUPS_KEPT: usize = 1;
 
 /// The path the pre-pull backup of `store_db` takes at `timestamp`.

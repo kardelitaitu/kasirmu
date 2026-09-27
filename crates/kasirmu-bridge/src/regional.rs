@@ -1,9 +1,9 @@
 //! Regional-configuration command bodies (Wave A / S6) — the tauri-free half
 //! of `apps/desktop-tauri/src/commands/regional.rs`.
 //!
-//! Key functions: [`get_scoped`] (the slice-2 read model) and [`set_scoped`]
-//! (the slice-3 write counterpart), each consuming a [`BridgeCtx`], plus the
-//! [`SetRegionalConfig`] write payload.
+//! Key functions: [`get_scoped`](crate::regional::get_scoped) (the slice-2 read model) and [`set_scoped`](crate::regional::set_scoped)
+//! (the slice-3 write counterpart), each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx), plus the
+//! [`SetRegionalConfig`](crate::regional::SetRegionalConfig) write payload.
 //!
 //! Gate order and store construction (`Store::new`, cache-free — as the shell
 //! used) are verbatim ports of the command bodies: resolve the session scope,
@@ -68,7 +68,7 @@ fn map_gate_error(e: kasirmu_core::CoreError) -> BridgeError {
 /// identity DB.
 ///
 /// Port of `commands/authz.rs::require_permission_for_session_resource`:
-/// everything [`BridgeCtx::require_session_permission`] enforces, PLUS the
+/// everything [`BridgeCtx::require_session_permission`](crate::ctx::BridgeCtx::require_session_permission) enforces, PLUS the
 /// caller's assignment must COVER the named resource (downward-only
 /// inheritance; sibling and upward access deny, unknown locations deny
 /// fail-closed). Legacy users without an assignment row are not

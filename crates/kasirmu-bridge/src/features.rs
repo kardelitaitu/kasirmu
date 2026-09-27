@@ -11,7 +11,7 @@
 //! guard-before-kernel-before-DB order including `drop(kernel)` before the DB
 //! lock, and `device_hostname` still reads `COMPUTERNAME`/`HOSTNAME` from the
 //! environment unchanged. The terminal identity is taken through the borrowed
-//! [`BridgeCtx::terminal_id`] FIELD, never the async accessor, so no await point
+//! [`BridgeCtx::terminal_id`](crate::ctx::BridgeCtx::terminal_id) FIELD, never the async accessor, so no await point
 //! appears where the original had none.
 
 use serde::{Deserialize, Serialize};

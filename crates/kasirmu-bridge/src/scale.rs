@@ -1,7 +1,7 @@
 //! Weight-scale bridge module (Wave D).
 //!
 //! Scale reads resolve the session scope from the opaque token and then go
-//! straight to the HAL driver registry ([`BridgeCtx::registry`]); a register
+//! straight to the HAL driver registry ([`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry)); a register
 //! with no scale yields `None` rather than an error, exactly as the shell
 //! command bodies did.
 

@@ -2,12 +2,12 @@
 //! `apps/desktop-tauri/src/commands/inventory_counts.rs`.
 //!
 //! Key functions: the session-scoped stock-count operations
-//! ([`create_stock_count_scoped`] … [`list_stock_adjustments_scoped`]), each
+//! ([`create_stock_count_scoped`](crate::inventory_counts::create_stock_count_scoped) … [`list_stock_adjustments_scoped`](crate::inventory_counts::list_stock_adjustments_scoped)), each
 //! consuming a `BridgeCtx`, the non-scope-aware global-identity gate
-//! ([`require_inventory_count_permission`], same `Store::require_permission`
+//! ([`require_inventory_count_permission`](crate::inventory_counts::require_inventory_count_permission), same `Store::require_permission`
 //! form the shell used for this domain), and the pure helpers
-//! ([`editable_count`], [`validate_product`], [`validate_quantity`],
-//! [`create_count_in_store`]) that keep every validation error message
+//! (`editable_count`, `validate_product`, [`validate_quantity`](crate::inventory_counts::validate_quantity),
+//! `create_count_in_store`) that keep every validation error message
 //! byte-identical to the command bodies.
 //!
 //! Gate order is a verbatim port: resolve the session scope, enforce

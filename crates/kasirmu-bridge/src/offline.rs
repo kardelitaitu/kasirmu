@@ -7,7 +7,7 @@
 //!
 //! Ports are verbatim: gate kind and ORDER (`SYNC_MANAGE` on the four gated
 //! paths, still taken after `resolve_scope`), every store handle still comes
-//! from [`BridgeCtx::resolve_scope`] and never `resolve_store` (the effective
+//! from [`BridgeCtx::resolve_scope`](crate::ctx::BridgeCtx::resolve_scope) and never `resolve_store` (the effective
 //! store differs for restaurant-POS sessions), the single global-DB read keeps
 //! its inner scope so the lock drops before the store connection is taken, the
 //! sync round-trip and its plan-required early return are untouched, and every

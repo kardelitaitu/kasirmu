@@ -14,7 +14,7 @@
 //! one token-refresh retry on `AuthExpired`. The pull writes one pre-pull
 //! backup beside the live DB and then disposes of it: removed on success,
 //! retained (one per database, newest) on failure — see
-//! [`dispose_pre_pull_backup`].
+//! `dispose_pre_pull_backup`.
 
 use std::path::Path;
 

@@ -1,11 +1,11 @@
 //! Auth command bodies (Wave B / B4a) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/auth.rs`.
 //!
-//! Key items: [`record_security_event`] (the desktop's single security-event
-//! sink, shared with `commands/staff.rs`), [`insert_session`] (the session
+//! Key items: [`record_security_event`](crate::auth::record_security_event) (the desktop's single security-event
+//! sink, shared with `commands/staff.rs`), [[`insert_session`](crate::auth::insert_session)] (the session
 //! mint primitive — lazy prune, deterministic LRU eviction, location-cache
-//! invalidation) and the headless [`staff_login`], [`create_session`],
-//! [`verify_pin`] and [`refresh_picker_ticket`] operations.
+//! invalidation) and the headless [`staff_login`](crate::auth::staff_login), [`create_session`](crate::auth::create_session),
+//! [`verify_pin`](crate::auth::verify_pin) and [`refresh_picker_ticket`](crate::auth::refresh_picker_ticket) operations.
 //!
 //! Gate order is a verbatim port of the command bodies: rate limit → user
 //! lookup → active check → PIN verify → backoff clear → ticket mint → security
@@ -236,7 +236,7 @@ pub fn insert_session(
 
 /// The same mint primitive with the expiry supplied by the caller.
 ///
-/// [`insert_session`] is the TTL-aware form every ordinary login path uses;
+/// [[`insert_session`]] is the TTL-aware form every ordinary login path uses;
 /// this variant exists because the impersonation mint deliberately ignores
 /// the cached TTL and pins its own short lifetime. Everything else - token
 /// shape, lazy prune, collision warning, deterministic LRU eviction, the
@@ -514,7 +514,7 @@ pub async fn staff_login(
 /// Verbatim port of the `create_session` command body (ADR #4 / ADR #7): the
 /// picker ticket — not the caller-supplied `user_id` — authenticates the
 /// request, then instance access, then the tenant subscription's workspace-type
-/// entitlement (ADR #5), then the mint via [`insert_session`].
+/// entitlement (ADR #5), then the mint via [[`insert_session`]].
 ///
 /// # Errors
 ///

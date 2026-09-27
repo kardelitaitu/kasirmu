@@ -1,19 +1,19 @@
 //! Product-image ingest command bodies (Wave A / S8) — the tauri-free half
 //! of `apps/desktop-tauri/src/commands/products_images.rs`.
 //!
-//! [`set_image_scoped`] is the full ingest pipeline: read the source file,
+//! [`set_image_scoped`](crate::products_images::set_image_scoped) is the full ingest pipeline: read the source file,
 //! sniff magic bytes, validate size/dimension caps, decode, resize to 512 px
 //! longest edge, encode as lossy WebP (adaptive q40 → q30 → q24 when over
 //! the size cap), compute the SHA-256 content hash, atomically write
 //! `{hash16}.webp` under the INJECTED media root, and assign the hash to the
-//! product slot via `Store::set_product_image`. [`clear_image_scoped`] and
-//! [`list_images_scoped`] are the plain store writes/reads; the pure
-//! pipeline helpers ([`sniff_format`], [`transcode_to_webp`],
-//! [`sha256_hex16`]) are `pub` so the desktop shell's sibling test module
+//! product slot via `Store::set_product_image`. [`clear_image_scoped`](crate::products_images::clear_image_scoped) and
+//! [`list_images_scoped`](crate::products_images::list_images_scoped) are the plain store writes/reads; the pure
+//! pipeline helpers ([`sniff_format`](crate::products_images::sniff_format), [`transcode_to_webp`](crate::products_images::transcode_to_webp),
+//! [`sha256_hex16`](crate::products_images::sha256_hex16)) are `pub` so the desktop shell's sibling test module
 //! keeps its coverage.
 //!
 //! The read → sniff → transcode → hash → write half is factored out as
-//! [`ingest_to_store`], which performs no permission check and writes no
+//! [`ingest_to_store`](crate::products_images::ingest_to_store), which performs no permission check and writes no
 //! reference. `set_image_scoped` is the first consumer; `crate::avatars` is
 //! the second. Anything that needs bytes in the content-addressed store
 //! should call it rather than repeat the sequence.
@@ -23,7 +23,7 @@
 //! module appends `images/{hash16}.webp` — the exact layout the desktop
 //! `resolve_image_path` seam produces. Gate order, store construction
 //! (`Store::new`, cache-free — as the shell used) and every error message
-//! are verbatim ports of the command body; the shim maps [`BridgeError`]
+//! are verbatim ports of the command body; the shim maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` variant-for-variant so the wire shape never moves.
 
 use std::path::Path;

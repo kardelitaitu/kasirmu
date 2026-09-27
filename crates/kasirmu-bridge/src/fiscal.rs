@@ -1,13 +1,13 @@
 //! Fiscal command bodies (Wave A / S6) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/fiscal.rs`.
 //!
-//! Key functions: [`run_upsert`] (the pure `&Connection` body of the upsert)
+//! Key functions: [`run_upsert`](crate::fiscal::run_upsert) (the pure `&Connection` body of the upsert)
 //! and the five session-scoped operations
-//! [`get_document_number_sequence_scoped`],
-//! [`upsert_document_number_sequence_scoped`],
-//! [`list_document_number_sequences_scoped`],
-//! [`list_document_number_sequences_for_entity_scoped`] and
-//! [`list_fiscal_schemes_scoped`], each consuming a [`BridgeCtx`].
+//! [`get_document_number_sequence_scoped`](crate::fiscal::get_document_number_sequence_scoped),
+//! [`upsert_document_number_sequence_scoped`](crate::fiscal::upsert_document_number_sequence_scoped),
+//! [`list_document_number_sequences_scoped`](crate::fiscal::list_document_number_sequences_scoped),
+//! [`list_document_number_sequences_for_entity_scoped`](crate::fiscal::list_document_number_sequences_for_entity_scoped) and
+//! [`list_fiscal_schemes_scoped`](crate::fiscal::list_fiscal_schemes_scoped), each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx).
 //!
 //! Gate order and store construction (`Store::new`, cache-free — as the shell
 //! used) are verbatim ports of the command bodies: resolve the session,
@@ -15,7 +15,7 @@
 //! (ADR #4/#7), then open the store connection and act. Entity-scope
 //! resources, so no location-resource gate applies anywhere here.
 //!
-//! Time: the bridge owns the clock — [`run_upsert`] computes the core
+//! Time: the bridge owns the clock — [`run_upsert`](crate::fiscal::run_upsert) computes the core
 //! upsert's RFC-3339 millisecond stamp internally (`chrono::Utc::now()`
 //! formatted with `SecondsFormat::Millis`), byte-identical to the expression
 //! the command body used.

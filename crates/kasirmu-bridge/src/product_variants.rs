@@ -1,15 +1,15 @@
 //! Product-variant command bodies (Wave A / S7) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/product_variants.rs`.
 //!
-//! Key functions: the session-scoped [`list_scoped`], [`get_scoped`],
-//! [`create_scoped`], [`update_scoped`] and [`delete_scoped`] operations,
-//! each consuming a [`BridgeCtx`]. There is no `run_*` `&Connection`
+//! Key functions: the session-scoped [`list_scoped`](crate::product_variants::list_scoped), [`get_scoped`](crate::product_variants::get_scoped),
+//! [`create_scoped`](crate::product_variants::create_scoped), [`update_scoped`](crate::product_variants::update_scoped) and [`delete_scoped`](crate::product_variants::delete_scoped) operations,
+//! each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). There is no `run_*` `&Connection`
 //! helper here: the variant bodies were logic-inline in the shell, so the
 //! store work stays inside the scoped functions.
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};

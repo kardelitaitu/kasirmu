@@ -2,16 +2,16 @@
 //! `apps/desktop-tauri/src/commands/shifts.rs`.
 //!
 //! Open/close cashier shifts, active-shift lookup, shift listing, cash
-//! payouts, and shift reports, each consuming a [`BridgeCtx`]. There is no
+//! payouts, and shift reports, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). There is no
 //! `run_*` `&Connection` helper in the shell file — the store work lives
 //! inside the command functions, so the same shape is preserved here.
 //!
 //! Gate order, store resolution and error paths are verbatim ports of the
 //! command bodies: a shim builds the context, calls one function here, and
-//! maps [`BridgeError`] back to `AppError` so the wire shape never moves.
+//! maps [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire shape never moves.
 //! Note the deliberate asymmetry preserved from the shell: `open`/`close`
 //! authorize through the scope-aware global-identity gate, but
-//! [`get_active_shift_scoped`] does not gate at all (the session identity
+//! [`get_active_shift_scoped`](crate::shifts::get_active_shift_scoped) does not gate at all (the session identity
 //! itself scopes the row), and the `get_shift`/`list`/`payout`/`report`
 //! family carries the shell's F-017 comments verbatim.
 

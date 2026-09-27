@@ -2,18 +2,18 @@
 //! `apps/desktop-tauri/src/commands/purchasing.rs`.
 //!
 //! Key functions: the global-database supplier and purchase-order operations
-//! ([`list_suppliers`], [`get_supplier`], [`create_supplier`],
-//! [`update_supplier`], [`list_purchase_orders`],
-//! [`get_purchase_order`], [`create_purchase_order`],
-//! [`update_po_status`], [`receive_purchase_order`],
-//! [`receive_purchase_order_with_lines`]) and their session-scoped ADR #7
-//! variants (the `*_scoped` set), each consuming a [`BridgeCtx`]. There is
+//! ([`list_suppliers`](crate::purchasing::list_suppliers), [`get_supplier`](crate::purchasing::get_supplier), [`create_supplier`](crate::purchasing::create_supplier),
+//! [`update_supplier`](crate::purchasing::update_supplier), [`list_purchase_orders`](crate::purchasing::list_purchase_orders),
+//! [`get_purchase_order`](crate::purchasing::get_purchase_order), [`create_purchase_order`](crate::purchasing::create_purchase_order),
+//! [`update_po_status`](crate::purchasing::update_po_status), [`receive_purchase_order`](crate::purchasing::receive_purchase_order),
+//! [`receive_purchase_order_with_lines`](crate::purchasing::receive_purchase_order_with_lines)) and their session-scoped ADR #7
+//! variants (the `*_scoped` set), each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx). There is
 //! no `run_*` `&Connection` helper here: the bodies were logic-inline in
 //! the shell, so the store work stays inside the command functions.
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves. The scoped variants
 //! authorize through the scope-aware global-identity gate
 //! (`ctx.require_session_permission`, mirroring

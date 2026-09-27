@@ -7,7 +7,7 @@
 //! `db_manager.open_store` -> the store lock -> `Store::new` -> one store call,
 //! in that order. Nothing here re-sequences a gate.
 
-//! The gate goes through [`BridgeCtx::require_session_permission`], the
+//! The gate goes through [`BridgeCtx::require_session_permission`](crate::ctx::BridgeCtx::require_session_permission), the
 //! byte-for-byte mirror of `commands/authz.rs::require_permission_for_session`
 //! (global identity DB plus `require_permission_for_user_scoped` over the
 //! session store id and workspace type key), so authorization is unchanged.

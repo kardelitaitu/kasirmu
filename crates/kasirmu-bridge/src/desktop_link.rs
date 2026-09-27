@@ -5,7 +5,7 @@
 //! waits on a loopback port. This module owns that wait: bind, hand the shell a redirect
 //! URI, then accept until a request actually carries the code or the failure reason.
 //!
-//! Key items: [`LoopbackListener`] and [`LinkCallback`].
+//! Key items: [`LoopbackListener`](crate::desktop_link::LoopbackListener) and [`LinkCallback`](crate::desktop_link::LinkCallback).
 //!
 //! Invariants: the query is parsed and never reflected (the served page is static, so a
 //! crafted `link_error` cannot inject markup into the browser), and a request carrying

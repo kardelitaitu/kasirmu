@@ -394,7 +394,7 @@ pub struct UpdateStaffScopedArgs {
     pub assignment: Option<AssignmentArgs>,
 }
 
-/// Create-role args. Deliberately carries no id; see [`create_role_scoped`].
+/// Create-role args. Deliberately carries no id; see [`create_role_scoped`](crate::staff::create_role_scoped).
 #[derive(Debug, Deserialize)]
 pub struct CreateRoleArgs {
     /// Display name, unique across roles.

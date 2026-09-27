@@ -10,7 +10,7 @@
 //!
 //! The gate keeps the shell's NON-scope-aware form
 //! (`Store::require_permission` against the GLOBAL identity DB) through the
-//! module-private [`require_inventory_permission`]. That is deliberate parity,
+//! module-private [`require_inventory_permission`](crate::stock_transfers::require_inventory_permission). That is deliberate parity,
 //! not an oversight: users and roles live only in the identity DB, so
 //! authorizing against the store connection would deny every caller — see the
 //! note on the helper. Wave-A's categories/tax gates set the same precedent.

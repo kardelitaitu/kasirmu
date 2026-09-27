@@ -1,17 +1,17 @@
 //! Security command bodies (Wave B / B3) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/security.rs`.
 //!
-//! Key functions: the thread-isolated keyring pipeline ([`with_keyring`],
+//! Key functions: the thread-isolated keyring pipeline ([`with_keyring`](crate::security::with_keyring),
 //! kept on `std::thread::spawn` so the platform Secret Service backends'
 //! private runtimes are never nested inside an async runtime), the two
-//! context-free command bodies ([`get_key_rotation_info`],
-//! [`rotate_encryption_key`] — they take no state and no session, exactly as
+//! context-free command bodies ([`get_key_rotation_info`](crate::security::get_key_rotation_info),
+//! [`rotate_encryption_key`](crate::security::rotate_encryption_key) — they take no state and no session, exactly as
 //! the shell defined them), the pure status/rotation steps, and the
-//! session-scoped variants, each consuming a [`BridgeCtx`] for the F-017
+//! session-scoped variants, each consuming a [`BridgeCtx`](crate::ctx::BridgeCtx) for the F-017
 //! `security:manage` gate.
 //!
 //! Gate order and error paths are verbatim ports of the command bodies.
-//! Keyring failures land on [`BridgeError::Internal`] because the shell's
+//! Keyring failures land on [`BridgeError::Internal`](crate::error::BridgeError::Internal) because the shell's
 //! `From<SecurityError> for AppError` produces exactly that variant and text,
 //! so the shim's variant-for-variant remap keeps the wire shape unchanged.
 

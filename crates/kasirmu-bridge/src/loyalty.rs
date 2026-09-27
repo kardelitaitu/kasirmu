@@ -1,18 +1,18 @@
 //! Loyalty command bodies (Wave B / B2) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/loyalty.rs`.
 //!
-//! Key functions: the session-scoped [`get_loyalty_account_scoped`],
-//! [`list_loyalty_accounts_scoped`], [`earn_loyalty_points_scoped`],
-//! [`redeem_loyalty_points_scoped`], [`list_loyalty_tiers_scoped`],
-//! [`update_loyalty_tier_scoped`], [`get_points_value_scoped`] and
-//! [`get_or_create_loyalty_account_scoped`] operations, each consuming a
-//! [`BridgeCtx`]. There is no `run_*` `&Connection` helper here: the loyalty
+//! Key functions: the session-scoped [`get_loyalty_account_scoped`](crate::loyalty::get_loyalty_account_scoped),
+//! [`list_loyalty_accounts_scoped`](crate::loyalty::list_loyalty_accounts_scoped), [`earn_loyalty_points_scoped`](crate::loyalty::earn_loyalty_points_scoped),
+//! [`redeem_loyalty_points_scoped`](crate::loyalty::redeem_loyalty_points_scoped), [`list_loyalty_tiers_scoped`](crate::loyalty::list_loyalty_tiers_scoped),
+//! [`update_loyalty_tier_scoped`](crate::loyalty::update_loyalty_tier_scoped), [`get_points_value_scoped`](crate::loyalty::get_points_value_scoped) and
+//! [`get_or_create_loyalty_account_scoped`](crate::loyalty::get_or_create_loyalty_account_scoped) operations, each consuming a
+//! [`BridgeCtx`](crate::ctx::BridgeCtx). There is no `run_*` `&Connection` helper here: the loyalty
 //! bodies were logic-inline in the shell, so the store work stays inside the
 //! scoped functions.
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::Serialize;

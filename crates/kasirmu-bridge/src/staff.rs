@@ -1,21 +1,21 @@
 //! Staff command bodies (Wave B / B5) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/staff.rs`.
 //!
-//! Key functions: the session-scoped staff reads/writes ([`list_staff_scoped`],
-//! [`get_staff_profile_scoped`], [`create_staff_scoped`],
-//! [`update_staff_scoped`]), the role-authoring surface ([`list_roles_scoped`],
-//! [`list_permission_keys_scoped`], [`create_role_scoped`],
-//! [`update_role_scoped`], [`delete_role_scoped`], [`list_role_holders_scoped`])
-//! and the ungated first-run [`bootstrap_owner`] over its pure
-//! [`run_bootstrap_owner`] `&Connection` body. The three legacy unscoped
+//! Key functions: the session-scoped staff reads/writes ([`list_staff_scoped`](crate::staff::list_staff_scoped),
+//! [`get_staff_profile_scoped`](crate::staff::get_staff_profile_scoped), [`create_staff_scoped`](crate::staff::create_staff_scoped),
+//! [`update_staff_scoped`](crate::staff::update_staff_scoped)), the role-authoring surface ([`list_roles_scoped`](crate::staff::list_roles_scoped),
+//! [`list_permission_keys_scoped`](crate::staff::list_permission_keys_scoped), [`create_role_scoped`](crate::staff::create_role_scoped),
+//! [`update_role_scoped`](crate::staff::update_role_scoped), [`delete_role_scoped`](crate::staff::delete_role_scoped), [`list_role_holders_scoped`](crate::staff::list_role_holders_scoped))
+//! and the ungated first-run [`bootstrap_owner`](crate::staff::bootstrap_owner) over its pure
+//! [`run_bootstrap_owner`](crate::staff::run_bootstrap_owner) `&Connection` body. The three legacy unscoped
 //! commands are denial tombstones and stay in the shell — they carry no
 //! business logic to move.
 //!
 //! Users, roles and assignments are GLOBAL identity records (ADR #4 / #7), so
-//! every gate and every write here runs on [`BridgeCtx::lock_global`]. Gate
+//! every gate and every write here runs on [`BridgeCtx::lock_global`](crate::ctx::BridgeCtx::lock_global). Gate
 //! order, transaction boundaries, security-event placement and error paths are
 //! verbatim ports: a shim builds the context, calls one function here, and maps
-//! [`BridgeError`] back to `AppError` so the wire shape never moves. The one
+//! [`BridgeError`](crate::error::BridgeError) back to `AppError` so the wire shape never moves. The one
 //! exception is `grants_json`: roles.permissions is stored as a JSON array and
 //! `serde_json` is not an `kasirmu-bridge` dependency, so the shell still encodes it
 //! and passes the string in (the encoder cannot fail for a `Vec<String>`).

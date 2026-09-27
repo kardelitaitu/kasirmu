@@ -1,21 +1,21 @@
 //! Product catalog command bodies (Wave A / S9) — the tauri-free half of
 //! `apps/desktop-tauri/src/commands/products.rs`.
 //!
-//! S9a landed the read half: [`list_scoped`],
-//! [`list_warehouse_products_at_location`], [`lookup_by_barcode`],
-//! [`lookup_product_by_sku`], [`get_product_track_serial`],
-//! [`get_product_track_serial_batch`], plus the pure `&Connection` /
+//! S9a landed the read half: [`list_scoped`](crate::products::list_scoped),
+//! [`list_warehouse_products_at_location`](crate::products::list_warehouse_products_at_location), [`lookup_by_barcode`](crate::products::lookup_by_barcode),
+//! [`lookup_product_by_sku`](crate::products::lookup_product_by_sku), [`get_product_track_serial`](crate::products::get_product_track_serial),
+//! [`get_product_track_serial_batch`](crate::products::get_product_track_serial_batch), plus the pure `&Connection` /
 //! `&Store` bodies behind the command file's `run_*` test adapters
-//! ([`run_list_products`], [`run_lookup_by_barcode`],
-//! [`run_lookup_product_by_sku`], [`run_get_product_track_serial_batch`]).
-//! S9b landed the write half: [`create_scoped`], [`update_scoped`],
-//! [`delete_scoped`], [`adjust_stock_scoped`] (one `unchecked_transaction`
+//! ([`run_list_products`](crate::products::run_list_products), [`run_lookup_by_barcode`](crate::products::run_lookup_by_barcode),
+//! [`run_lookup_product_by_sku`](crate::products::run_lookup_product_by_sku), [`run_get_product_track_serial_batch`](crate::products::run_get_product_track_serial_batch)).
+//! S9b landed the write half: [`create_scoped`](crate::products::create_scoped), [`update_scoped`](crate::products::update_scoped),
+//! [`delete_scoped`](crate::products::delete_scoped), [`adjust_stock_scoped`](crate::products::adjust_stock_scoped) (one `unchecked_transaction`
 //! + the [`StockAdjusted`] event published via `ctx.publish_event` only
-//! AFTER `tx.commit`) and [`record_product_search`].
+//! AFTER `tx.commit`) and [`record_product_search`](crate::products::record_product_search).
 //!
 //! Gate order, store construction (`Store::new`, cache-free — as the shell
 //! used) and error paths are verbatim ports of the command bodies: a shim
-//! builds the context, calls one function here, and maps [`BridgeError`]
+//! builds the context, calls one function here, and maps [`BridgeError`](crate::error::BridgeError)
 //! back to `AppError` so the wire shape never moves.
 
 use serde::{Deserialize, Serialize};
