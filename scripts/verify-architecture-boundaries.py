@@ -93,12 +93,15 @@ from typing import Any
 RULES = {
     "module-to-module": {"category": "cargo", "severity": "P1", "hint": "Move composition to an application/platform boundary or depend on a shared contract."},
     "core-upward-dependency": {"category": "cargo", "severity": "P1", "hint": "Keep kasirmu-core below business modules; move shared contracts/models to a lower layer."},
+    "core-type-shim": {"category": "cargo", "severity": "P2", "hint": "Re-export-only edge (C26/D3): kasirmu-core re-exports modules-*/ types and mentions nothing else. Move the shared types to foundation, then delete the Cargo edge."},
     "platform-to-business": {"category": "cargo", "severity": "P1", "hint": "Use platform-startup or an application composition root for business-module wiring."},
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
     "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/, modules/, platform/ and foundation/ toolkit-free (ADR #49, ADR #53): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
     "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
 }
 BUSINESS_PREFIX = "modules-"
+CORE_CRATE = "kasirmu-core"
+CORE_SOURCE = ("crates", "kasirmu-core", "src")
 BRIDGE_TOOLKIT_SECTIONS = ("[dependencies]", "[dev-dependencies]", "[build-dependencies]")
 BRIDGE_TOOLKIT_PATTERN = re.compile(r"tauri|webkit|gtk", re.IGNORECASE)
 ALLOWED_PLATFORM_COMPOSER = "platform-startup"
@@ -306,6 +309,9 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             raise ValueError(f"Cargo metadata package {package['name']} has no manifest_path")
         package_by_path.update({key: package["name"] for key in package_path_keys(manifest, root)})
         package_manifest[package["name"]] = relative_path(Path(manifest), root)
+    # Classified once, from the source: see core_edge_kinds() below.
+    business_targets = {package["name"] for package in packages if package["name"].startswith(BUSINESS_PREFIX)}
+    core_kinds = core_edge_kinds(root, business_targets)
     findings: list[dict[str, Any]] = []
     for package in packages:
         owner = package["name"]
@@ -332,8 +338,8 @@ def cargo_findings(metadata: dict[str, Any], root: Path, scope: dict[str, int]) 
             # fallback -- see `metadata_from_cargo`). A second spelling that no input
             # can produce is a branch nothing exercises, i.e. a rule that would go
             # unfelt the day it silently stopped matching.
-            if owner == "kasirmu-core" and target_is_business:
-                rule = "core-upward-dependency"
+            if owner == CORE_CRATE and target_is_business:
+                rule = "core-type-shim" if core_kinds.get(target) == "shim" else "core-upward-dependency"
             elif owner_is_business and target_is_business:
                 rule = "module-to-module"
             elif owner.startswith("platform-") and target_is_business and owner != ALLOWED_PLATFORM_COMPOSER:
@@ -389,6 +395,58 @@ def mask_comments_and_strings(text: str) -> str:
             out.append(char)
             i += 1
     return "".join(out)
+
+
+
+def core_edge_kinds(root: Path, targets: set[str]) -> dict[str, str]:
+    """Split the kasirmu-core upward edges into re-export shims and real code (C26/D3).
+
+    The rule registry cannot tell the two apart from the Cargo graph, which is how
+    seven one-line `pub use modules_x::T` re-exports sat under the same rule as the
+    one genuine upward dependency. A named rule has to be EARNED from the source, so
+    this reads it: an edge is "shim" when kasirmu-core mentions `modules_<target>::`
+    at least once and EVERY mention sits on a `use` / `pub use` line; otherwise it
+    is "real".
+
+    Positive evidence only, deliberately. Zero mentions returns "real", never "shim":
+    a fixture repository with no crate source examines nothing, and reading that
+    absence as proof of a re-export would downgrade the rule for every tree this
+    checker cannot see -- the same failure as a walk that reports zero findings
+    because it walked nothing.
+
+    Comments and string contents are masked first, so a prose citation is not
+    evidence: `migrations_tests.rs` names `modules_tax::models::RoundingMode` in a
+    comment, and counting that would have made an eight-of-eight shim tree look like
+    seven.
+
+    Keyed by the Cargo *target* name (`modules-crm`), not the underscored module path.
+    """
+    kinds: dict[str, str] = {}
+    if not targets:
+        return kinds
+    source = root.joinpath(*CORE_SOURCE)
+    if not source.is_dir():
+        return kinds
+    texts: list[str] = []
+    for path in sorted(source.rglob("*.rs")):
+        try:
+            texts.append(mask_comments_and_strings(path.read_text(encoding="utf-8")))
+        except OSError as exc:
+            raise ValueError(f"cannot read kasirmu-core source: {path}: {exc}") from exc
+    for target in sorted(targets):
+        token = f"{target.replace('-', '_')}::"
+        mentions = 0
+        shim_only = True
+        for text in texts:
+            for line in text.splitlines():
+                if token not in line:
+                    continue
+                mentions += line.count(token)
+                stripped = line.strip()
+                if not (stripped.startswith("use ") or stripped.startswith("pub use ")):
+                    shim_only = False
+        kinds[target] = "shim" if mentions and shim_only else "real"
+    return kinds
 
 
 def strip_comments_preserving_strings(text: str) -> str:

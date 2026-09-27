@@ -3,11 +3,11 @@
   "description": "Explicit transitional debt for the architecture boundary checker. Do not add entries without reviewing the underlying boundary and setting an owner and expiry.",
   "entries": [
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-crm",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_crm:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
@@ -15,62 +15,62 @@
       "rule": "core-upward-dependency",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-currency",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "The one GENUINE upward edge left (C26/D3): db/settings.rs delegates eleven deprecated shims to modules_currency::CurrencyRepository. Close it by deleting the shims and then the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-inventory",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_inventory:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-loyalty",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_loyalty:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-sales",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_sales:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-staff",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_staff:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-tax",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_tax:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
+      "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-terminal",
-      "reason": "Existing kasirmu-core upward dependency documented in the Phase 1 architecture baseline.",
-      "owner": "OZ-POS maintainers",
+      "reason": "Re-export-only edge (C26/D3): every modules_terminal:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
+      "owner": "kasir.mu maintainers",
       "introduced": "2026-08-06",
       "expires": "2026-11-06"
     }

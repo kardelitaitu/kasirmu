@@ -26,14 +26,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CHECKER = resolve(ROOT, 'scripts', 'verify-architecture-boundaries.py');
 const fixtures = [];
 
-function fixture({ packages = [], uiFiles = {}, baseline = { entries: [] }, metadata = null } = {}) {
+function fixture({ packages = [], uiFiles = {}, files = {}, baseline = { entries: [] }, metadata = null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'oz-boundaries-'));
   fixtures.push(dir);
   mkdirSync(join(dir, 'scripts'), { recursive: true });
   mkdirSync(join(dir, 'ui', 'src'), { recursive: true });
   copyFileSync(CHECKER, join(dir, 'scripts', 'verify-architecture-boundaries.py'));
 
-  for (const [relative, content] of Object.entries(uiFiles)) {
+  for (const [relative, content] of Object.entries({ ...uiFiles, ...files })) {
     const path = join(dir, relative);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content);
@@ -144,6 +144,37 @@ describe('verify-architecture-boundaries.py', () => {
     const result = run(dir);
     assert.equal(result.code, 1, result.output);
     assert.match(result.output, /core-upward-dependency/);
+  });
+
+  it('names a re-export-only core edge a type shim, not an upward dependency (C26)', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+      files: { 'crates/kasirmu-core/src/shim.rs': 'pub use modules_sales::SaleRow;\n' },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /core-type-shim/);
+    assert.doesNotMatch(result.output, /core-upward-dependency/);
+  });
+
+  it('keeps a core edge that calls into the module as an upward dependency', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+      files: { 'crates/kasirmu-core/src/uses.rs': 'pub fn go() { modules_sales::finalize(); }\n' },
+    });
+    const result = run(dir);
+    assert.equal(result.code, 1, result.output);
+    assert.match(result.output, /core-upward-dependency/);
+    assert.doesNotMatch(result.output, /core-type-shim/);
+  });
+
+  it('does not read an unseen tree as a re-export: no core source stays an upward dependency', () => {
+    const dir = fixture({
+      packages: [{ name: 'kasirmu-core', dependencies: [{ name: 'modules-sales' }] }, { name: 'modules-sales' }],
+    });
+    const result = run(dir);
+    assert.match(result.output, /core-upward-dependency/);
+    assert.doesNotMatch(result.output, /core-type-shim/);
   });
 
   it('matches Cargo dependency paths reported as package directories', () => {
