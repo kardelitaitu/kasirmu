@@ -37,6 +37,23 @@ import './SalesHistoryScreen.css';
 
 const STATUS_OPTIONS = ['All', 'Completed', 'Pending', 'Voided'] as const;
 
+/**
+ * R3: the ceiling on how many sale rows this screen fetches in one call.
+ *
+ * Deliberately a COUNT ceiling, NOT an `(offset, limit)` page window. Every
+ * filter here — search, status, cashier, date range — and the column sort
+ * run client-side over the fetched array: `filteredSales` derives from the
+ * whole set, and only then does `paginatedSales` slice it. A server-side
+ * offset would hand those filters a single page to work on, so searching for
+ * a sale would only ever search the page the cashier is currently looking
+ * at. The ceiling bounds the IPC payload and the renderer's copy — which is
+ * what R3 asks for — without moving the filter/sort boundary.
+ *
+ * The tier's history window (`sales_history_days`, surfaced as
+ * `salesHistoryCapped`) still caps by date underneath this.
+ */
+const SALES_FETCH_LIMIT = 500;
+
 function statusBadgeVariant(status: string): 'success' | 'warning' | 'danger' | 'info' {
   switch (status) {
     case 'Completed': return 'success';
@@ -236,7 +253,14 @@ export default function SalesHistoryScreen() {
         // ADR #7, matching the listStaffScoped call immediately below -- which already had the
         // conditional. Reading the ambient list here meant the cashier's own sales history could
         // come from a different store than the staff list rendered beside it.
-        sessionToken ? listSalesScoped(sessionToken) : listSales(),
+        // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
+        // page window — see the constant for why an offset would break the
+        // filters above. The unscoped `listSales` fallback declares no bounds
+        // of its own (`history.rs:61`), so it is left exactly as it was; it
+        // is the no-session path.
+        sessionToken
+          ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
+          : listSales(),
         sessionToken
           ? listStaffScoped(sessionToken).catch(() => [] as StaffMemberDto[])
           : Promise.resolve([] as StaffMemberDto[]),
