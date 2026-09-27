@@ -556,3 +556,128 @@ fn verify_binding_hmac_garbage_hex_fails() {
         "secret", "term-1", "store-a", "ws-a-1", ""
     ));
 }
+
+// ── Tablet device binding: the write half and the boot half agree ─────
+
+/// Global identity DB with `store-a`/`store-main` locations, and a store db
+/// holding `store-a`'s profile plus instance `ws-a-1` — the shape a real tablet
+/// boots with. The `TempDir` must outlive the manager, so it is returned.
+fn bindable_device() -> (rusqlite::Connection, StoreDatabaseManager, tempfile::TempDir) {
+    let conn = migrations::fresh_db();
+    let now = "2026-07-31T00:00:00.000Z";
+    conn.execute(
+        "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+         VALUES ('store-a', 'Store A', '', '', 'USD', 'UTC', 0, ?1, ?1),
+                ('store-main', 'Main', '', '', 'USD', 'UTC', 1, ?1, ?1)",
+        [now],
+    )
+    .unwrap();
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let db_manager = StoreDatabaseManager::new(temp_dir.path().to_path_buf(), migrations::ALL);
+    {
+        let store_conn = db_manager.open_store("store-a").unwrap();
+        let db = store_conn.lock().unwrap();
+        let store = Store::new(&db);
+        store
+            .create_location_profile(&make_profile("store-a", "Store A"))
+            .unwrap();
+        store
+            .create_workspace_instance("ws-a-1", "store-pos", "store-a", "POS", "", None)
+            .unwrap();
+    }
+    (conn, db_manager, temp_dir)
+}
+
+/// End to end on the tablet path: the row `set_device_binding_scoped` writes is
+/// the row `resolve_boot_store` reads. A store-registered terminal is bound
+/// through the tablet's real write core, then the boot resolver must auto-boot
+/// into it — same row, same keyring, same signature. This is the durable pin
+/// for 7533b58f7, mirroring the bridge pin `ea45274b6`.
+#[test]
+fn bound_store_terminal_round_trips_through_boot_resolution() {
+    use crate::commands::terminals::{run_set_device_binding, SetDeviceBindingArgs};
+
+    let (conn, db_manager, _dir) = bindable_device();
+    // The terminal the UI names is registered in the STORE db, never the global
+    // identity db the boot resolver reads.
+    let source = Terminal::new("POS-1", "dev-001");
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    run_set_device_binding(
+        &conn,
+        &keyring,
+        &source,
+        &SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "store-a".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .expect("a store-registered terminal must bind");
+
+    let resolution = resolve_boot_store_core(&conn, &db_manager, "dev-001", Some(&keyring))
+        .expect("boot resolution must not error on a valid binding");
+    assert!(
+        resolution.is_bound,
+        "the binding written must be the binding honored: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "store-a");
+    assert_eq!(resolution.instance_id.as_deref(), Some("ws-a-1"));
+}
+
+/// A binding signed with one secret must NOT boot bound under another — the
+/// tamper/wrong-key refusal is what makes the round-trip meaningful.
+#[test]
+fn binding_signed_with_another_keyring_falls_back_to_primary() {
+    use crate::commands::terminals::{
+        DEVICE_BINDING_KEYRING_NAME, run_set_device_binding, SetDeviceBindingArgs,
+    };
+
+    let (conn, db_manager, _dir) = bindable_device();
+    let source = Terminal::new("POS-1", "dev-001");
+    let signer = kasirmu_security::InMemoryKeyring::new();
+    signer
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "signing-secret")
+        .unwrap();
+    run_set_device_binding(
+        &conn,
+        &signer,
+        &source,
+        &SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "store-a".into(),
+            bound_instance_id: "ws-a-1".into(),
+        },
+    )
+    .expect("a store-registered terminal must bind");
+
+    let verifier = kasirmu_security::InMemoryKeyring::new();
+    verifier
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "another-secret")
+        .unwrap();
+    let resolution = resolve_boot_store_core(&conn, &db_manager, "dev-001", Some(&verifier))
+        .expect("a wrong-key binding must not error the resolver");
+    assert!(
+        !resolution.is_bound,
+        "a wrong-key signature must not boot bound: {resolution:?}"
+    );
+    assert_eq!(resolution.store_id, "store-main");
+}
+
+/// A genuinely unbound terminal is not an error: it still resolves to the
+/// primary store rather than refusing the boot.
+#[test]
+fn unbound_terminal_falls_back_to_primary_at_the_core() {
+    let (conn, db_manager, _dir) = bindable_device();
+    {
+        let store = Store::new(&conn);
+        store
+            .create_terminal(&Terminal::new("POS-2", "dev-002"))
+            .unwrap();
+    }
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    let resolution = resolve_boot_store_core(&conn, &db_manager, "dev-002", Some(&keyring))
+        .expect("an unbound terminal is not an error");
+    assert!(!resolution.is_bound);
+    assert_eq!(resolution.store_id, "store-main");
+}

@@ -243,7 +243,7 @@ fn store_registered_terminal(
 /// Shared binding write behind `set_device_binding_scoped` (extracted for testing). The unscoped
 /// `set_device_binding` this used to serve was retired on 2026-09-16 (T7-4): it took a
 /// caller-named `user_id`, was registered in neither shell, and no production UI code named it.
-fn run_set_device_binding(
+pub(crate) fn run_set_device_binding(
     conn: &rusqlite::Connection,
     keyring: &dyn kasirmu_security::Keyring,
     source: &Terminal,
