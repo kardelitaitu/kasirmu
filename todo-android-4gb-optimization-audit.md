@@ -276,3 +276,93 @@ The gate is not considered wired until the soak leg runs in `.github/workflows/a
 ## Naming note
 
 The filename keeps the `todo-` prefix deliberately. `check-dead-refs.py` exempts plan files, and the file is renamed to `done-todo-*` only once its own acceptance commands have actually run and passed. R1 and R2 have since landed in the tree and R3 shipped with them (see the status note at the top); R4, R5 and R6 have not run, and no acceptance step has been observed on a device, so the token stays `todo-`.
+
+---
+
+## Status pass — 2026-09-28, second (BK)
+
+Adds to the header note above, which this pass confirms as far as R1/R2/R3 go.
+Two of its claims are corrected below. Corrections are appended forward rather
+than edited in, so the dated record keeps its own history.
+
+### Correction 1: R4 is NOT untouched
+
+The header says "R4, R5 and R6 are untouched". **R4 is already paid**, by a
+stronger instrument than §3 specifies.
+
+`ui/src/__tests__/touchTargetSizing.test.tsx` walks every stylesheet under
+`ui/src` (`:734` — derived from the filesystem, explicitly so a hand-kept list
+cannot drift), grades **width as well as height** including inside
+`@media (pointer: coarse)` (`:754`), resolves tokens and `calc()` so a quoted
+figure is the computed one (`:760`), holds an exact ratchet that fails on both a
+new violation and a stale exemption (`:770`), requires every exemption to carry
+a written reason (`:811`), and reports its debt as a count — **15** at `:808`.
+
+The three categories R4 names (checkout buttons, grid selectors, menu icons)
+are a subset of that sweep, so the `>=44px` half of R4's acceptance is met
+repo-wide, not just for those three.
+
+What is genuinely still open is §5.1 item 6: the floor is asserted in **px**,
+and its physical meaning on a 10-inch tablet is still unverified.
+
+### Correction 2: R3's sales clause cannot be done as written
+
+R3's acceptance says the `SalesHistoryScreen.tsx` fetch at `:239` must be
+bounded "even though its render was already paged". Taken literally — as
+`offset: (page - 1) * pageSize` — that is a **regression**, not a fix.
+
+That screen filters and sorts **client-side**. `filteredSales` derives from the
+whole fetched array (`:362`), and only then does `paginatedSales` slice it
+(`:365-370`). A server-side offset hands those filters a single page, so the
+search box, status filter, cashier filter, date range and column sort would each
+operate on only the page the cashier is currently looking at.
+
+This is the same failure class §5.2 predicted for `ProductLookupScreen`'s
+barcode flow, landing on a screen that was not in the fence.
+
+Shipped instead (`02653a441`): a count ceiling, `SALES_FETCH_LIMIT = 500`,
+passed as `limit` only with `offset` left unset. It bounds the IPC payload and
+the renderer's copy — which is what R3 asks for — without moving the
+filter/sort boundary. The unscoped `listSales()` fallback is untouched because
+plain `list_sales` (`history.rs:61`) declares no bounds, so passing them would
+be phantom arguments. True offset paging here needs filter and sort to move
+server-side; that is out of proportion to this slice and is not proposed.
+
+`974926b50` added five `page_window` tests (`products.rs:119`). Its doc comment
+claimed the Rust and UI halves of the paging arithmetic "cannot drift apart"
+with nothing enforcing it; the UI half was already proved at
+`list-policy.test.ts:65`.
+
+### R5: instrument shipped, CI leg not wired
+
+`scripts/android-soak.sh` samples the resident set over adb across a forced doze
+cycle, reports min/mean/max, prefers `TOTAL RSS` and prints whichever metric it
+actually parsed, and **fails loudly rather than recording a zero** when
+`dumpsys meminfo` cannot be parsed. Two deliberate choices, both from §5.2/§5.3:
+
+- **The threshold is opt-in.** With no `--max-rss-mb` the run is a baseline and
+  exits 0, because §5.3 requires "a recorded baseline before it can fail
+  meaningfully".
+- **It is not wired into `.github/workflows/android.yml`.** That workflow
+  compiles an APK and asserts one exists; it has **no device and no emulator
+  step**, and its own header (`:16-23`) records that it has never been run. A
+  30-60 minute leg needing a real device would add an unrunnable job to an
+  unrunnable workflow, and §5.2 warns such a gate "will be disabled by the
+  first person it blocks".
+
+So §6's condition — wired in CI "rather than by hand" — is **still unmet**, and
+this file still does not earn a `done-todo-*` rename. The 8-hour screen-on form
+is gone, which is half of R5's acceptance; the other half waits on a device
+runner plus a recorded baseline.
+
+### Still open
+
+- §5.1 item 1 (the 4GB fleet assumption) — no terminal model produced.
+- §5.1 item 2 (WebView GPU crashes) — still the sole justification for R6.
+- §5.1 item 5 (whether a persistent sync thread runs on mobile) — still untraced.
+- §5.1 item 6 (44px vs physical dp) — R4 asserts the number; its physical
+  meaning on the target hardware is still unverified.
+- §5.1 items 7-8 (scaffold regeneration) — argued by the `MainActivity.kt`
+  comment at `:53-63`, not yet confirmed by a scratch `tauri android init` run.
+- The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys
+  window` reporting `KEEP_SCREEN_ON`) are still unrun.
