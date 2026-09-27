@@ -3,7 +3,7 @@
 **Status:** AUDIT COMPLETE. Supersedes the unexecuted draft checklist; no item earned a clean CORRECT, the rest are corrected, merged, deferred or deleted below.
 **Date:** 2026-09-23
 **Branch:** 0.0.40 (version locked at 0.0.40)
-**supersedes: todo-android-checklist.md (left byte-identical; do not edit)**
+**supersedes: `.agents/archived/todo-android-checklist.md` (left byte-identical; do not edit)** — moved there from the repo root on 2026-09-28, bytes verified unchanged by hash.
 **Status 2026-09-28 — R1, R2 and R3 have LANDED since this audit was written; R4, R5 and R6 remain.** Evidence, read this pass: R1 is in the tree (`ui/index.mobile.html:9` carries `interactive-widget=resizes-content`); R2 is in the tree (`apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt:109-111` sets `FLAG_KEEP_SCREEN_ON`, called from `onCreate` at `:46`); R3 shipped as `usePagedList`/`LIST_PAGE_SIZE` (`ui/src/features/products/ProductManagementScreen.tsx:12,113`) plus optional additive `limit`/`offset` with `page_window` (`apps/mobile-tauri/src/commands/products.rs:119-121,396-406`). The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys window` reporting `KEEP_SCREEN_ON`) are still unrun, and R4/R5/R6 are untouched.
 **Scope:** Tauri v2 Android POS terminals assumed at 4GB RAM minimum. Covers the UI/WebView layer, the Tauri IPC command surface, the native Android scaffold, and the pre-release verification gate. Excludes cloud-server and desktop-tauri behaviour except where a shared command contract is at risk.
 **Evidence provenance:** three independent investigation passes over the working tree.
