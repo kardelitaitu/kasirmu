@@ -557,6 +557,61 @@ covered, because no coverage instrument is enforced. Close that in this order.
       `kasirmu-bridge` and `kasirmu-api`, which other sessions are actively
       editing. This is a campaign, not the "one env line" the box's title
       suggests, and it should be scheduled as one.
+      **ROUND 2 — 2026-09-28 (commit `34135db16`). The campaign is nearly done,
+      and most of the credit is another session's.** Re-measured at the start of
+      this round: the workspace had fallen from **295 errors across 20 crates to
+      34 error lines across 14 distinct sites in 4 crates**. A concurrent
+      session had worked the bulk of the list. What remained was `kasirmu-hal`,
+      `kasirmu-lan`, `platform-sync` and `kasirmu-api`, plus one site in
+      `kasirmu-core`.
+      **All four crates are now rustdoc-clean, verified individually**
+      (`cargo doc -p <crate> --no-deps` with `RUSTDOCFLAGS="-D warnings"` →
+      `Finished`, 0 unresolved/redundant findings). `kasirmu-core` is clean too.
+      **A real defect found, not just link noise.**
+      `crates/kasirmu-lan/src/kds_sync.rs:67` documented
+      `[`KdsSyncEvent::OrderRecalled`]`, and **that variant does not exist** —
+      the enum declares `Recalled(KdsOrderRecalled)`, and the three sibling
+      tags (`OrderPlaced`, `LineItemBumped`, `OrderReady`) are spelled
+      correctly. So the const's doc comment named a variant a reader would
+      search for and never find. Fixed to `[`KdsSyncEvent::Recalled`]`.
+      Likewise `crates/kasirmu-hal/src/bootstrap.rs` linked
+      `[`DriverRegistry::apply_config`]` twice, but `apply_config` is a **free
+      function** (`bootstrap.rs:281`), not a `DriverRegistry` method — the doc
+      had described the API wrongly since the function was written. Fixed to
+      `[`apply_config`]` and `[`DriverRegistry`]` separately.
+      **The private-item half, done the way P2-6 established.** `kasirmu-hal`,
+      `kasirmu-lan`, `platform-sync` and `kasirmu-api` each got a crate-level
+      `#![allow(rustdoc::private_intra_doc_links)]` with the justification
+      block, scoped to that ONE lint so a genuinely broken link still fails.
+      That cleared **all 6** private-item errors in those crates.
+      **Three traps this round cost real time, all worth recording:**
+      1. **I repeated the P2-6 placement bug.** My insert script put the inner
+         attribute after an OUTER doc comment in `kasirmu-hal/src/lib.rs:41` and
+         `kasirmu-api/src/lib.rs:52` — the identical "an inner attribute is not
+         permitted following an outer doc comment" error I had already fixed and
+         written up once. The rule: `#![...]` goes above the first `///`, not
+         below it. I had the note and still made the mistake, which says the
+         check belongs in a script, not in prose.
+      2. **Module docs (`//!`) cannot see items declared later in the same
+         file.** `api_audit.rs` fails to resolve `audit_middleware`,
+         `ApiWriteEvent` and `AuditSink` from its OWN `//!` block, while the
+         `///` doc on a struct 40 lines down resolves the same name fine. Same
+         in `bt_printer.rs`. Neither `self::` nor `super::` fixes it — the
+         working form is the fully-qualified `crate::<mod>::<item>`.
+      3. **Over-correcting trips `redundant_explicit_links`.** Giving an
+         explicit target to a label rustdoc CAN resolve is now an error under
+         `-D warnings`. Ten sites needed the target REMOVED after I added it.
+         The rule that emerged: add a target only when the bare label fails, and
+         expect to reverse some — the two lints are in tension and the fix is
+         per-site, not a pattern.
+      **Still to do, measured rather than guessed:** the workspace run now
+      reaches crates the earlier failures had hidden — `platform-startup`
+      (`TerminalProfile`, `DriverRegistry`, `load_profile`, `register_hardware`,
+      `HardwareConfig`, `register_card_terminals`) and `kasirmu-payment`
+      (private `MAX_POLL_ATTEMPTS` / `POLL_INTERVAL_MS` / `QRIS_EXPIRY_SECS`,
+      plus one bare URL). More will surface the same way as each is fixed. **The
+      env line still must NOT land** until `cargo doc --workspace --no-deps`
+      exits 0, which it does not yet.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
