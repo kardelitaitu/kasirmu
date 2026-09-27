@@ -247,7 +247,7 @@ Every PR must pass `cargo fmt`, Clippy, `tsc --noEmit`, and all tests before mer
 
 ## Status
 
-**Where we are: v0.0.39 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/product/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
+**Where we are: v0.0.40 — all six roadmap phases delivered, four follow-through gaps open.** The phase table in `docs/guides/product/ROADMAP.md` is the authority. (Note: the ROADMAP's phase *names* differ from the shorthand this section used until 2026-09-17 — "CRM, Restaurant, Accounting" and "Multi-store topology, Cloud Sync, Plugin system" were never ROADMAP phases. The real names are used below.)
 
 | Phase (ROADMAP) | State | What's real | What's still open |
 |---|---|---|---|

@@ -209,7 +209,7 @@ free plan does not outgrow the software.
 
 ## What is real today
 
-The platform is at **v0.0.39**. All six roadmap phases — foundation, hardening, transactions
+The platform is at **v0.0.40**. All six roadmap phases — foundation, hardening, transactions
 and staff, scaling (multi-store, cloud sync, card and QRIS payments, Android), intelligence
 (reporting and analytics), and ecosystem (loyalty, promotions, KDS, kiosk, table management,
 theming) — are delivered, with follow-through gaps recorded openly below.
