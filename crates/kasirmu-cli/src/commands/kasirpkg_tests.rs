@@ -412,3 +412,143 @@ fn kasirpkg_portable_gate_agrees_with_shared_predicate() {
         );
     }
 }
+
+// ── C1 / S3: the user arm never carries PII ───────────────────────────
+//
+// C1 slice S3: "a pin test that .ozpkg user JSON never carries national_id
+// or monthly pay." The user arm of every portable package is
+// `Store::list_users()` (`crates/kasirmu-core/src/db/staff.rs:217`), whose
+// SELECT is the eight ordinary `users` columns; both lanes use it —
+// `run_export_kasirpkg` below and `kasirmu-bridge/src/data.rs` for the GUI.
+// The PII columns added by migration 130 (`national_id`,
+// `monthly_take_home_minor`, plus the derived `national_id_hash` and the
+// `tax_id` in the same read-gated family) are NOT in that projection, so
+// they cannot reach the payload.
+//
+// This test is the pin, and it is deliberately NON-VACUOUS: it seeds a user
+// who genuinely HAS those columns populated, proves they are on the row the
+// export reads, then asserts the serialized user JSON carries none of them.
+// Widening `list_users`'s SELECT, adding the column to the export mapping,
+// or re-introducing a "full profile" user arm fails it. Falsified by
+// injecting `national_id` into the export arm — see the run log.
+
+/// `users` columns that are personal data and must never travel in a
+/// portable package: the national id and its uniqueness hash, the monthly
+/// take-home pay, and the tax id. All four are read-gated behind
+/// `staff:read_identity` / `staff:read_payroll` on the profile read path.
+const USER_PII_KEYS: &[&str] = &[
+    "national_id",
+    "national_id_hash",
+    "monthly_take_home_minor",
+    "tax_id",
+];
+
+/// The plaintext seeded for those columns, used to prove the VALUES are
+/// absent and not merely renamed.
+const PII_NATIONAL_ID: &str = "123456789";
+const PII_MONTHLY_PAY_MINOR: i64 = 5_000_000;
+
+/// A complete profile — every mandatory-at-creation field populated, so
+/// `write_user_profile` really encrypts a national id and a pay value into
+/// the row the export reads.
+fn profile_with_pii() -> kasirmu_core::db::profile::UserProfile {
+    kasirmu_core::db::profile::UserProfile {
+        date_of_birth: Some("1990-05-14".into()),
+        phone: Some("+14155550123".into()),
+        national_id_type: Some("ssn".into()),
+        national_id: Some(PII_NATIONAL_ID.into()),
+        email: Some("alice@example.com".into()),
+        monthly_take_home_minor: Some(PII_MONTHLY_PAY_MINOR),
+        emergency_contact_name: Some("Bob".into()),
+        emergency_contact_phone: Some("+14155550987".into()),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute(
+        "INSERT INTO roles (id, name, permissions) VALUES ('role-staff', 'staff', '[\"sales:view\"]')",
+        [],
+    )
+    .unwrap();
+    let store = Store::new(&conn);
+    let user = store
+        .create_user_with_profile(
+            "alice",
+            "pin-hash",
+            "Alice",
+            "role-staff",
+            &profile_with_pii(),
+            None,
+        )
+        .unwrap();
+
+    // Setup proof — without this the test could pass on an empty column and
+    // prove nothing. The PII is genuinely ON the row the export reads.
+    let (stored_id, stored_pay): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT national_id, monthly_take_home_minor FROM users WHERE id = ?1",
+            rusqlite::params![user.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(
+        stored_id.is_some() && stored_pay.is_some(),
+        "setup: the exported row must actually hold a national id and a pay value"
+    );
+    assert_ne!(
+        stored_id.as_deref(),
+        Some(PII_NATIONAL_ID),
+        "setup: the stored national id must be ciphertext, not plaintext"
+    );
+
+    let path = temp_path("users-pii");
+    run_export_kasirpkg(&conn, path.to_str().unwrap(), "users", PWD).unwrap();
+
+    // Assert on what actually landed in the FILE, not on the in-memory
+    // payload: this is the artefact that gets carried to another install.
+    let bytes = std::fs::read(&path).expect("export file must exist");
+    let (_header, payload) = import_kasirpkg(&bytes, PWD).expect("package must decrypt");
+    let users = payload.users.expect("users arm present when --types users");
+    assert_eq!(
+        users.len(),
+        1,
+        "the exported roster must be exactly the one seeded user"
+    );
+
+    let row = users[0].as_object().expect("a user row is a JSON object");
+
+    for forbidden in USER_PII_KEYS {
+        assert!(
+            !row.contains_key(*forbidden),
+            "a portable package must never carry users.{forbidden}; keys were: {:?}",
+            row.keys().collect::<Vec<_>>()
+        );
+    }
+
+    // The VALUES must be absent too: a rename (national_id -> id_number)
+    // would dodge a key-only check while leaking the same PII.
+    let values: Vec<&serde_json::Value> = row.values().collect();
+    assert!(
+        !values.iter().any(|v| v.as_str() == Some(PII_NATIONAL_ID)),
+        "the national id plaintext must not appear under ANY key: {row:?}"
+    );
+    assert!(
+        !values.iter().any(|v| v.as_i64() == Some(PII_MONTHLY_PAY_MINOR)),
+        "the monthly pay value must not appear under ANY key: {row:?}"
+    );
+
+    // And the pin is a filter, not a deleted arm: the ordinary roster fields
+    // the users arm exists to carry must still be present.
+    for wanted in ["id", "username", "display_name", "role_id", "is_active"] {
+        assert!(
+            row.contains_key(wanted),
+            "the users arm must still carry {wanted}; keys were: {:?}",
+            row.keys().collect::<Vec<_>>()
+        );
+    }
+
+    let _ = std::fs::remove_file(&path);
+}
