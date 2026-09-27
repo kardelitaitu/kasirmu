@@ -537,3 +537,139 @@ async fn staff_denied_register_terminal() {
     // Staff does NOT have TERMINALS_REGISTER — only Manager/Admin do.
     assert!(matches!(result, Err(BridgeError::PermissionDenied(_))));
 }
+
+// ── Device binding ownership: boot reads the GLOBAL identity DB ──────
+
+/// An in-memory keyring pre-seeded with a fixed secret, so a signature minted
+/// with one can be verified with another seeded the same way.
+fn seeded_keyring() -> kasirmu_security::InMemoryKeyring {
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    keyring
+        .set_secret(DEVICE_BINDING_KEYRING_NAME, "test-binding-secret")
+        .unwrap();
+    keyring
+}
+
+/// A saved device binding must land where `resolve_boot_store` reads it: the
+/// GLOBAL identity DB row chosen by `get_terminal_by_device_id`. The bridge
+/// binding commands used `ctx.resolve_store` (the per-store db), so a binding
+/// the operator saved was written where the boot resolver never looks — it
+/// silently booted into the primary store while Settings reported the binding
+/// as set. Mobile already wrote the global db, and boot (which has no session)
+/// can only read the global db, so the write side was the outlier.
+#[tokio::test]
+async fn device_binding_is_written_to_the_global_db_boot_reads() {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+
+    // A terminal as Settings → Terminals registers it: in the session's STORE db.
+    // The store db carries its own `locations` row (the FK target for any
+    // binding written there), matching a real store whose profile exists.
+    let source = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('default', 'Default', '', '', 'USD', 'UTC', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let terminal = Terminal::new("POS-1", "dev-001");
+        Store::new(&db).create_terminal(&terminal).unwrap();
+        drop(db);
+        terminal
+    };
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+
+    let ctx = tb.ctx();
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "default".into(),
+            bound_instance_id: "inst-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    // RED (pre-fix): the binding sat in the store db, so the global row the
+    // boot resolver picks did not even exist. GREEN: it carries the binding.
+    let global = ctx.lock_global().await;
+    let store = Store::new(&global);
+    let boot_row = store
+        .get_terminal_by_device_id("dev-001")
+        .unwrap()
+        .expect("the device's global terminal row must exist after binding");
+    let (bound_store, bound_instance, signature) = store
+        .get_terminal_binding(&boot_row.id)
+        .unwrap()
+        .expect("the global row must carry the binding boot reads");
+    assert_eq!(bound_store, "default");
+    assert_eq!(bound_instance, "inst-1");
+    assert!(
+        verify_binding(&seeded_keyring(), &boot_row.id, "default", "inst-1", &signature).unwrap(),
+        "the signature must be minted over the GLOBAL row id the boot verifier hashes"
+    );
+}
+
+/// The legitimate round-trip survives the ownership fix: binding, reading it
+/// back through `get_device_binding_scoped`, and clearing all agree on the one
+/// global row — and the read-back signature still verifies.
+#[tokio::test]
+async fn device_binding_round_trips_and_clears_on_the_global_row() {
+    let conn = temp_conn();
+    seed_owner(&conn);
+    let tb = scoped_bridge(conn, "tok", "user-owner", "role-owner", "s1");
+    let source = {
+        let store_conn = tb.db_manager().open_store("s1").unwrap();
+        let db = store_conn.lock().unwrap();
+        db.execute(
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
+             VALUES ('default', 'Default', '', '', 'USD', 'UTC', 1, '2026-07-31T00:00:00.000Z', '2026-07-31T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+        let terminal = Terminal::new("POS-2", "dev-002");
+        Store::new(&db).create_terminal(&terminal).unwrap();
+        drop(db);
+        terminal
+    };
+    let ctx = tb.ctx();
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    set_device_binding_scoped(
+        &ctx,
+        "tok",
+        SetDeviceBindingArgs {
+            terminal_id: source.id.clone(),
+            bound_store_id: "default".into(),
+            bound_instance_id: "inst-1".into(),
+        },
+    )
+    .await
+    .expect("owner may bind a terminal");
+
+    set_test_binding_keyring(Box::new(seeded_keyring()));
+    let bound = get_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("binding read-back");
+    assert!(bound.bounded);
+    assert_eq!(bound.bound_store_id.as_deref(), Some("default"));
+    assert_eq!(bound.bound_instance_id.as_deref(), Some("inst-1"));
+    assert!(
+        bound.signature_valid,
+        "the round-tripped binding must still verify against the same secret"
+    );
+
+    clear_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("owner may clear a binding");
+    let cleared = get_device_binding_scoped(&ctx, "tok", source.id.clone())
+        .await
+        .expect("read-back after clear");
+    assert!(!cleared.bounded, "a cleared binding must read as unbound");
+}
