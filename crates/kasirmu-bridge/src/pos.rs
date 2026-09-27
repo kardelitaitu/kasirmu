@@ -208,11 +208,11 @@ pub use checkout::{
     complete_sale_with_resolved_shortfalls_scoped, shortfall_line_unit_price,
     stamp_attempt_split_keys,
 };
-// The replay guard is private to `pos::checkout`, but `pos_tests.rs` reaches it
-// through `use super::*` to pin the re-key and validation rules directly. Gated
-// to the test build so the library keeps them internal.
+// The replay guard is private to `pos::checkout::replay`, but `pos_tests.rs`
+// reaches it through `use super::*` to pin the re-key and validation rules
+// directly. Gated to the test build so the library keeps them internal.
 #[cfg(test)]
-use checkout::{rekey_stem, validated_attempt_id};
+use checkout::replay::{rekey_stem, validated_attempt_id};
 
 mod preview;
 pub use preview::{
