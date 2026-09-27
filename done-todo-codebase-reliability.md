@@ -707,6 +707,48 @@ covered, because no coverage instrument is enforced. Close that in this order.
       rewritten produces conflicts that cost more than the edits save.
       **Standing status: ONE crate from green.** Every other crate in the
       workspace is rustdoc-clean. The env line still must NOT land.
+      **ROUND 5 — 2026-09-28 (commit `4f4bb0e90`). `kasirmu-bridge` went from
+      170 errors to 4, and the ROOT CAUSE was finally pinned down.**
+      **The rule, established by experiment after five wrong guesses.** The
+      complaint is *always* "no item named `X` in scope", and the deciding
+      factor is **which kind of doc comment** carries the link:
+      - **`//!` MODULE docs cannot see `use` statements, and cannot see items
+        declared BELOW them.** `//!` precedes the `use` block, so a bare
+        `[`BridgeCtx`]` there resolves against nothing. These NEED an explicit
+        target.
+      - **`///` ITEM docs on an item in the same module resolve fine**, and
+        giving them a target raises `redundant_explicit_link_target`, which is
+        ALSO an error under `-D warnings`.
+      I lost several passes to this because rustdoc shows a source line for only
+      the first few errors per crate, so I kept "fixing" both kinds together and
+      watching the error count flip between `unresolved` and `redundant` — 643
+      unnecessary qualifications in one pass (705 occurrences reverted), 42 in
+      another (22 reverted). The working method is: **qualify `//!` lines only,
+      leave `///` alone**, then re-measure. That single change took bridge from
+      170 → 4 with no oscillation.
+      **The bridge sweep: 39 files, 153 insertions / 153 deletions — a pure
+      1:1 doc rewrite with no code line touched** (verified by filtering the
+      diff, not assumed).
+      **A CORRECTION TO MY OWN ROUND-6 NOTE.** The P2-6 entry above says
+      `kasirmu-bridge` "carries the new deny". It does not: `git show` of
+      `fbb83d152` does not contain `kasirmu-bridge`, and
+      `git show HEAD:crates/kasirmu-bridge/src/lib.rs` has no
+      `deny(unsafe_code)`. I saw the attribute in the working tree and recorded
+      it as mine; it is an uncommitted addition by another session. The P2-6
+      count of "38 of 43" therefore counted a line that was not (and is not)
+      committed — the honest figure for what that commit delivered is **37**,
+      and the 38th is someone else's. Left uncorrected in the P2-6 entry itself
+      only because the number is a derived count, not a claim I can re-measure
+      without re-running the audit; the discrepancy is recorded here.
+      **Remaining, and all of it blocked on other sessions:** `kasirmu-bridge`
+      has 4 sites left — `StockAdjusted` (×2, in `products.rs` and
+      `products/stock.rs`, BOTH dirty; the real fix is
+      `kasirmu_core::events::StockAdjusted`, which `stock.rs:13` already
+      imports), `BridgeError::Hardware` (no location shown), and the two
+      `remote_sync_admits` private-item links in `settings/core.rs` (dirty).
+      `kasirmu-mobile` and `kasirmu-app` follow behind, with
+      `impersonate_user_scoped` / `IMPERSONATION_SESSION_TTL_SECONDS`,
+      `require_audit_tier` and `list_categories` already visible.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
