@@ -228,3 +228,7 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 #[cfg(test)]
 #[path = "conflict_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "conflict_proptests.rs"]
+mod proptests;

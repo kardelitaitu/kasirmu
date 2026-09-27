@@ -35,3 +35,8 @@ slow-tests = []
 
 [dev-dependencies]
 axum = { workspace = true }
+# P1-1: conflict resolution is the highest-risk surface in this crate — two
+# terminals editing one sale, arriving in either order — and it had no
+# property tests at all. `conflict_tests.rs` samples examples; these
+# strategies range over the space the examples sit in.
+proptest = { workspace = true }
