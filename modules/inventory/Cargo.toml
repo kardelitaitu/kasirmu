@@ -25,3 +25,9 @@ tracing = { workspace = true }
 [dev-dependencies]
 platform-kernel = { workspace = true }
 kasirmu-core = { workspace = true }
+# P1-1: `models.rs` parses values that arrive from outside the process — a
+# raw IPC string in `products.product_type`, a pasted product name — so the
+# interesting cases are the ones nobody writes down. See
+# `models_proptests.rs` for the contracts asserted and, importantly, for the
+# one the task file asked for that this crate does NOT hold.
+proptest = { workspace = true }

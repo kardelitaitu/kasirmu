@@ -413,3 +413,7 @@ pub struct StockThreshold {
 #[cfg(test)]
 #[path = "models_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "models_proptests.rs"]
+mod proptests;

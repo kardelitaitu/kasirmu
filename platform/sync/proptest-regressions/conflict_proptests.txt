@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 955d63d6b51e0f98cfd9219bfa6663593f3588269371530f3ea18da054b80b24 # shrinks to low = 0, high = 1, lt = "2026-09-01T00:00:00Z", rt = "2026-09-01T00:00:00Z"
+cc 0ee6d6651ec2e4d8b75a5454536da98e22d35ae14aa9cba8ed6d5a7e4674f2a0 # shrinks to low = 0, high = 1, lt = "2026-09-03T00:00:00Z", rt = "2026-09-01T00:00:00Z"
+cc ba39a82e0c7cc275743f035207b6a5248d46d8c97c9492bff37afd95a7d4ee38 # shrinks to (local, remote) = (OfflineQueueItem { id: "01a0e150-a6e6-76c1-ae09-ae1d9638f833", action: "sale.updated", payload: "{\"status\":\"completed\"}", status: Pending, retry_count: 0, last_error: None, tenant_id: "default", created_at: "2026-09-02T00:00:00Z", synced_at: None, priority: Normal, origin_terminal_id: None }, OfflineQueueItem { id: "01a0e150-a6e6-76c1-ae09-ae310085b3bf", action: "sale.updated", payload: "{\"status\":\"active\"}", status: Pending, retry_count: 0, last_error: None, tenant_id: "default", created_at: "2026-09-02T00:00:00Z", synced_at: None, priority: Normal, origin_terminal_id: None })

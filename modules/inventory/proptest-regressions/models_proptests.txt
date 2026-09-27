@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6312f953f476fc69a72b33e48e9456bc1c59c986cbacd2410d12a7a5719c6e5c # shrinks to idx = 0, stored = "restaurant"
+cc 2ea969c3cb62b9db94b0f725f7909827dd087cbde49d4aa337841f12c90ee8d9 # shrinks to sku = " "
+cc 21ace83f54b0856e43602e05136e4b20276eeadb84e396d2aae892930e598d05 # shrinks to sku = "0 "
+cc 9c58972e8dc11ca90bea8024a8b0d884507d5bfbb62c51f8b763272c94a73878 # shrinks to qty = 38, threshold = 38
