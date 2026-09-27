@@ -197,7 +197,10 @@ async fn pg_integration_migrate_and_verify() {
         Some(v) => v,
         None => {
             eprintln!("PG migration integration test skipped: cannot create throwaway DB");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = match connect_postgres(&db_url).await {
@@ -205,7 +208,10 @@ async fn pg_integration_migrate_and_verify() {
         Err(e) => {
             eprintln!("PG migration integration test skipped: {e}");
             drop_throwaway_pg_db(&db_name).await;
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -352,7 +358,10 @@ async fn pg_integration_migrate_large_db() {
         Some(v) => v,
         None => {
             eprintln!("PG migration volume test skipped: cannot create throwaway DB");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = match connect_postgres(&db_url).await {
@@ -360,7 +369,10 @@ async fn pg_integration_migrate_large_db() {
         Err(e) => {
             eprintln!("PG migration volume test skipped: {e}");
             drop_throwaway_pg_db(&db_name).await;
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

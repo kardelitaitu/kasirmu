@@ -256,7 +256,10 @@ async fn pg_integration_connect_and_create_tables() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     assert!(pool.is_postgres());
@@ -329,7 +332,10 @@ async fn pg_integration_pool_get_fails_fast_when_exhausted() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG pool-timeout integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -393,7 +399,10 @@ async fn pg_integration_apply_schema_can_be_skipped() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = pool.pg_client().await.expect("pg_client should succeed");
@@ -411,7 +420,10 @@ async fn pg_integration_apply_schema_can_be_skipped() {
         .await
     {
         eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     // Build the URL for the new database by swapping the path segment,
@@ -513,7 +525,10 @@ async fn pg_integration_rls_fails_closed() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool
@@ -530,7 +545,10 @@ async fn pg_integration_rls_fails_closed() {
         .await
     {
         eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
     let (base, query) = match url.split_once('?') {
@@ -548,7 +566,10 @@ async fn pg_integration_rls_fails_closed() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -756,7 +777,10 @@ async fn pg_integration_rls_force_blocks_owner() {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("PG integration test skipped: {e}");
+                #[cfg(not(feature = "pg-tests"))]
                 return;
+                #[cfg(feature = "pg-tests")]
+                panic!("PG test enabled but the resource is unreachable - see the skip message above");
             }
         };
         let admin = admin_pool
@@ -798,7 +822,10 @@ async fn pg_integration_rls_force_blocks_owner() {
             .await
         {
             eprintln!("PG integration test skipped: cannot CREATE DATABASE ({e})");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     }
     let (base, query) = match url.split_once('?') {
@@ -816,7 +843,10 @@ async fn pg_integration_rls_force_blocks_owner() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -1094,7 +1124,10 @@ async fn pg_integration_stale_connection_recycled() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG stale-connection integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -1203,7 +1236,10 @@ async fn pg_integration_rls_posture_matches_the_live_server() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = pool.pg_client().await.expect("pg_client should succeed");
@@ -1406,11 +1442,17 @@ async fn pg_integration_health_reports_the_live_rls_posture() {
         Ok(DbPool::Postgres(p)) => p,
         Ok(DbPool::Sqlite(_)) => {
             eprintln!("PG integration test skipped: URL resolved to SQLite");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

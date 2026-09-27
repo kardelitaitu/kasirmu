@@ -930,7 +930,10 @@ async fn pg_integration_snapshot_cache_roundtrip() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG snapshot-cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-snap-{}", uuid::Uuid::now_v7());
@@ -1831,7 +1834,10 @@ async fn pg_integration_tenant_count_cache() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG tenant-count cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -1845,7 +1851,10 @@ async fn pg_integration_tenant_count_cache() {
         .await
     {
         eprintln!("PG tenant-count cache test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -1866,7 +1875,10 @@ async fn pg_integration_tenant_count_cache() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG tenant-count cache integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-cache-{}", uuid::Uuid::now_v7());
@@ -2420,7 +2432,10 @@ async fn pg_router_with_pool_size(
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG pool-bound integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = SyncState {

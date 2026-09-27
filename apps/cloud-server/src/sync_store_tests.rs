@@ -274,7 +274,10 @@ async fn store_push_batch_empty_returns_empty() {
 async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG sync-store integration test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = format!("pg-sync-store-test-{}", uuid::Uuid::now_v7());
@@ -462,7 +465,10 @@ async fn pg_integration_push_pull_plan_snapshot_roundtrip() {
 async fn pg_integration_push_batch_duplicate_in_middle_survives() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch integration test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -527,7 +533,10 @@ async fn pg_integration_push_batch_duplicate_in_middle_survives() {
 async fn pg_integration_push_batch_commit_visible_to_new_connection() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch commit test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-commit-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -589,7 +598,10 @@ async fn pg_integration_push_batch_commit_visible_to_new_connection() {
 async fn pg_integration_push_batch_data_error_does_not_abort_batch() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG push-batch data-error test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-batch-err-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -1238,7 +1250,10 @@ async fn sqlite_unstamped_payload_is_skipped_not_flagged() {
 async fn pg_integration_conflict_detection_end_to_end() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG conflict detection test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-conflict-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -1338,7 +1353,10 @@ async fn pg_integration_conflict_detection_end_to_end() {
 async fn pg_integration_causally_ordered_pushes_never_flag() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG ordered-push test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let tenant = format!("pg-ordered-{}", uuid::Uuid::now_v7());
     let store = SyncStore::postgres(pool.clone());
@@ -1409,7 +1427,10 @@ async fn pg_integration_causally_ordered_pushes_never_flag() {
 async fn pg_integration_conflict_tables_enforce_tenant_isolation() {
     let Some((pool, db_name)) = throwaway_pool().await else {
         eprintln!("PG tenant-isolation test skipped: cannot create throwaway DB");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     // Roles are cluster-wide, not per-database, so the name must be unique

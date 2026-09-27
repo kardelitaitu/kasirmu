@@ -16,7 +16,10 @@ async fn throwaway_pg_db(
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -47,7 +50,10 @@ async fn throwaway_pg_db(
         .await
     {
         eprintln!("PG test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -185,7 +191,10 @@ async fn pg_integration_prune_ages_out_old_rows() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -253,7 +262,10 @@ async fn pg_integration_prune_ages_out_old_sent_reports() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune sent_reports integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -328,7 +340,10 @@ async fn pg_integration_prune_survives_rls_cutover() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG prune RLS integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let mut owner = pool.get().await.expect("owner client");

@@ -636,7 +636,10 @@ async fn pg_integration_webhooks_read_write_postgres() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG webhooks integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = CloudServerState {
@@ -842,7 +845,10 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG webhook RLS test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = pool.get().await.expect("admin client");
@@ -881,7 +887,10 @@ async fn pg_integration_webhooks_restricted_role_after_cutover() {
         .await
     {
         eprintln!("PG webhook RLS test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     // URL for the throwaway DB (swap the path segment, keep any query).

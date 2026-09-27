@@ -547,14 +547,20 @@ async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let client = match pool.pg_client().await {
         Ok(c) => c,
         Err(e) => {
             eprintln!("PG integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -579,7 +585,10 @@ async fn pg_integration_locations_axis_counts_zero_on_the_cloud() {
             // tenant GUC — in that case the structural assertions below still
             // carry the claim, and we say so rather than passing silently.
             eprintln!("PG locations probe insert skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     }
 

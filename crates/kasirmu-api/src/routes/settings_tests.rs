@@ -633,7 +633,10 @@ async fn test_pool() -> Option<deadpool_postgres::Pool> {
 async fn pg_integration_settings_provision_per_tenant() {
     let Some(pool) = test_pool().await else {
         eprintln!("PG settings integration test skipped: no Postgres");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     let ns = format!("pg-settings-test-{}", uuid::Uuid::now_v7());
     // Clean any leftovers from a crashed previous run (namespaced).

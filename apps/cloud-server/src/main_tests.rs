@@ -937,7 +937,10 @@ async fn pg_integration_health_fails_fast_when_pool_exhausted() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG health-under-saturation integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let state = CloudServerState {
@@ -1008,7 +1011,10 @@ async fn pg_integration_health_last_sync_query_is_indexed() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG health-index integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

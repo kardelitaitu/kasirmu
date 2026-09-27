@@ -78,7 +78,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .is_err()
     {
         eprintln!("SKIP: could not CREATE DATABASE {db_name} (insufficient privileges?)");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
 
@@ -94,7 +97,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .await
     {
         eprintln!("SKIP: could not apply PG_INIT to {db_name}: {e}");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     Some((client, db_name))
@@ -162,7 +168,10 @@ async fn seed_fixture(client: &tokio_postgres::Client) -> (String, String, Strin
 async fn pg_stock_summary_negative_guard_matches_the_sqlite_predicate() {
     let Some((client, db_name)) = throwaway_db().await else {
         eprintln!("SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run this");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     eprintln!("PROVEN: executing the plpgsql port against real PostgreSQL (db {db_name})");
 

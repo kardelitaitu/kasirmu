@@ -204,7 +204,10 @@ async fn throwaway_test_pool(
         Ok(c) => c,
         Err(e) => {
             eprintln!("PG integration skipped: admin connection from the pool failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -229,7 +232,10 @@ async fn throwaway_test_pool(
         Ok(rows) => rows,
         Err(e) => {
             eprintln!("PG integration skipped: stale-database sweep query failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let stale: Vec<String> = stale_rows.iter().map(|r| r.get::<_, String>(0)).collect();
@@ -239,7 +245,10 @@ async fn throwaway_test_pool(
             .await
         {
             eprintln!("PG integration skipped: dropping stale database {d} failed: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     }
     // PID + random suffix: unique even if the OS reuses a PID while a
@@ -259,7 +268,10 @@ async fn throwaway_test_pool(
     {
         eprintln!("PG integration skipped: cannot CREATE DATABASE");
         ddl.release().await;
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
     ddl.release().await;
@@ -281,7 +293,10 @@ async fn throwaway_test_pool(
     // caller to guess.
     let Some(pool) = test_pool(&db_url).await else {
         eprintln!("PG integration skipped: throwaway database {db_name} could not be opened");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     Some((pool, db_name, admin_pool))
 }
@@ -299,7 +314,10 @@ async fn pg_integration_rest_roundtrip() {
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest").await else {
         eprintln!("PG REST integration test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-rest");
@@ -640,7 +658,10 @@ async fn pg_integration_rest_rls_non_owner() {
     // test processes. The throwaway DB isolates both.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_rest_rls").await else {
         eprintln!("PG REST RLS test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-rls");
@@ -933,7 +954,10 @@ async fn pg_integration_concurrent_adjust_stock() {
         .is_err()
     {
         eprintln!("PG concurrent adjust test skipped: cannot CREATE DATABASE");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -955,7 +979,10 @@ async fn pg_integration_concurrent_adjust_stock() {
             .batch_execute(&format!("DROP DATABASE IF EXISTS {db_name} WITH (FORCE);"))
             .await
             .ok();
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-race");
@@ -1063,7 +1090,10 @@ async fn pg_integration_concurrent_sale_status_transition() {
     // spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sale_race").await else {
         eprintln!("PG concurrent status test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let currency: Currency = "USD".parse().unwrap();
@@ -1164,7 +1194,10 @@ async fn pg_integration_tenant_sku_isolation() {
     // parallel test process surfaces as a spurious `Db("db error")` abort.
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_sku_iso").await else {
         eprintln!("PG tenant-isolation test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant_a = unique_id("pg-iso-a");
@@ -1393,7 +1426,10 @@ async fn pg_integration_terminal_auth_survives_rls_cutover() {
         .await
     {
         eprintln!("PG terminal-auth test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     let (base, query) = match url.split_once('?') {
         Some((b, q)) => (b, Some(q)),
@@ -1567,7 +1603,10 @@ async fn pg_exchange_rates_roundtrip() {
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some(pool) = test_pool(&url).await else {
         eprintln!("pg_exchange_rates_roundtrip: skipped (no PG at {url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     // Unique dates per run so a crashed run's leftovers cannot collide
     // with the duplicate-detection assertion below.
@@ -1651,7 +1690,10 @@ async fn pg_isolates_locations_by_tenant() {
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_loc_rls").await else {
         eprintln!("PG location RLS test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant_a = unique_id("pg-loc-a");
@@ -1828,7 +1870,10 @@ async fn pg_integration_memo_sync_and_active_read() {
         .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:15432/postgres".into());
     let Some((pool, db_name, admin_pool)) = throwaway_test_pool(&url, "oz_memo").await else {
         eprintln!("PG memo integration test skipped: throwaway_test_pool returned None ({url})");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     let tenant = unique_id("pg-memo");

@@ -73,7 +73,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .is_err()
     {
         eprintln!("SKIP: could not CREATE DATABASE {db_name} (insufficient privileges?)");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
 
@@ -89,7 +92,10 @@ async fn throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .await
     {
         eprintln!("SKIP: could not apply PG_INIT to {db_name}: {e}");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     Some((client, db_name))
@@ -133,7 +139,10 @@ fn assert_refused(err: tokio_postgres::Error, needle: &str, what: &str) {
 async fn harness(port: &str) -> Option<(tokio_postgres::Client, String)> {
     let Some((client, db_name)) = throwaway_db().await else {
         eprintln!("SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run {port}");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
     Some((client, db_name))
 }

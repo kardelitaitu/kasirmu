@@ -84,7 +84,10 @@ async fn empty_throwaway_db() -> Option<(tokio_postgres::Client, String)> {
         .is_err()
     {
         eprintln!("SKIP: could not CREATE DATABASE {db_name} (insufficient privileges?)");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
     drop(admin);
 
@@ -124,7 +127,10 @@ async fn index_exists(client: &tokio_postgres::Client) -> bool {
 async fn pg_init_on_a_fresh_database_creates_the_open_shift_index() {
     let Some((client, db_name)) = empty_throwaway_db().await else {
         eprintln!("SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run the fresh-init case");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     client
@@ -152,7 +158,10 @@ async fn pg_init_on_a_fresh_database_creates_the_open_shift_index() {
 async fn pg_init_survives_and_reconciles_a_seeded_duplicate_open_shift() {
     let Some((client, db_name)) = empty_throwaway_db().await else {
         eprintln!("SKIP: PostgreSQL unreachable — set OZ_TEST_PG_URL to run the duplicate case");
+        #[cfg(not(feature = "pg-tests"))]
         return;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     };
 
     // Seed the PRE-C38 state by hand: just enough schema for two open shifts to

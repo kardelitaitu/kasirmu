@@ -23,7 +23,10 @@ async fn throwaway_pg_db(
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return None;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let admin = admin_pool.get().await.expect("admin client");
@@ -75,7 +78,10 @@ async fn throwaway_pg_db(
         .await
     {
         eprintln!("PG test skipped: cannot CREATE DATABASE ({e})");
+        #[cfg(not(feature = "pg-tests"))]
         return None;
+        #[cfg(feature = "pg-tests")]
+        panic!("PG test enabled but the resource is unreachable - see the skip message above");
     }
 
     // URL for the throwaway DB (swap the path segment, keep any query).
@@ -116,7 +122,10 @@ async fn pg_integration_email_loop_reads_postgres() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG email-loop integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -569,7 +578,10 @@ async fn pg_integration_sent_reports_claim_release() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG sent_reports integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-sr-test-{}", uuid::Uuid::now_v7());
@@ -630,7 +642,10 @@ async fn pg_integration_sent_reports_skips_claimed_period_before_smtp() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG sent_reports integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let ns = format!("pg-sr-skip-{}", uuid::Uuid::now_v7());
@@ -725,7 +740,10 @@ async fn pg_integration_advisory_lock_released_after_cycle() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG advisory-lock integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-adv-lock-{}", uuid::Uuid::now_v7());
@@ -767,7 +785,10 @@ async fn pg_integration_advisory_lock_guard_detaches_on_drop_without_release() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG advisory-lock guard integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-adv-lock-panic-{}", uuid::Uuid::now_v7());
@@ -813,7 +834,10 @@ async fn pg_integration_advisory_lock_release_detaches_on_unlock_failure() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG advisory-lock release integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-adv-release-{}", uuid::Uuid::now_v7());
@@ -872,7 +896,10 @@ async fn pg_integration_advisory_lock_not_acquired_returns_connection() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG advisory-lock contention integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let tenant = format!("pg-adv-contend-{}", uuid::Uuid::now_v7());
@@ -933,7 +960,10 @@ async fn pg_integration_email_analytics_visible_as_restricted_role() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG email-RLS integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let mut admin = pool.get().await.unwrap();
@@ -1082,7 +1112,10 @@ async fn pg_integration_active_tenants_survives_rls_cutover() {
         Ok(_) => unreachable!("connect_postgres with a postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG active-tenants integration test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let mut admin = pool.get().await.unwrap();
@@ -1232,7 +1265,10 @@ async fn pg_daily_revenue_nets_refunds_per_date_and_currency() {
         Ok(_) => unreachable!("postgres:// URL returns Postgres"),
         Err(e) => {
             eprintln!("PG refund-netting test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 

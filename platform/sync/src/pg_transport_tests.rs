@@ -462,7 +462,10 @@ async fn pull_updates_scopes_to_tenant() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("tenant isolation test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport.pool.clone();
@@ -470,7 +473,10 @@ async fn pull_updates_scopes_to_tenant() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("tenant isolation test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -536,7 +542,10 @@ async fn pull_updates_excludes_self_origin_rows() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("origin-filter test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport_a.pool.clone();
@@ -551,7 +560,10 @@ async fn pull_updates_excludes_self_origin_rows() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("origin-filter test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
@@ -650,7 +662,10 @@ async fn fetch_snapshot_scopes_to_tenant() {
         Ok(t) => t,
         Err(_) => {
             eprintln!("snapshot isolation test skipped: cannot create raw pool");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
     let pool = transport.pool.clone();
@@ -658,7 +673,10 @@ async fn fetch_snapshot_scopes_to_tenant() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("snapshot isolation test skipped: {e}");
+            #[cfg(not(feature = "pg-tests"))]
             return;
+            #[cfg(feature = "pg-tests")]
+            panic!("PG test enabled but the resource is unreachable - see the skip message above");
         }
     };
 
