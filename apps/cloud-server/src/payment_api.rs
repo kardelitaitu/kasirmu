@@ -44,7 +44,8 @@ use axum::{
 };
 use foundation::{Currency, Money};
 use kasirmu_api::auth::{ApiTokenClaims, auth_middleware};
-use kasirmu_payment::PaymentProcessor as _;
+use kasirmu_payment::PaymentProcessor;
+use kasirmu_payment::ResilientProcessor;
 use kasirmu_payment::drivers::qris::QrisPaymentProcessor;
 use kasirmu_payment::types::PaymentRequest;
 use serde::Deserialize;
@@ -76,7 +77,34 @@ pub struct PaymentState {
     /// Built once at startup from the server key + sandbox flag; `None` when
     /// `MIDTRANS_SERVER_KEY` is unset — the handler then fails closed with
     /// 503. Tests inject a wiremock-backed processor here directly.
-    pub processor: Option<QrisPaymentProcessor>,
+    ///
+    /// **This is the decorated processor, and that is the point (R9(b), owner
+    /// 2026-09-20).** The resilience decorator is applied HERE, at the single
+    /// construction site — not in `PaymentProcessorRegistry`, which is not on
+    /// the production path at all
+    /// (`docs/plans/_active/payment-resilience-design.md:124`). Wrapping at
+    /// registry lookup would build a breaker per request, so
+    /// `consecutive_failures` could never reach `failure_threshold` and the
+    /// breaker could never trip.
+    ///
+    /// Retrying on this path is safe **because of R9(a)**: the gateway
+    /// idempotency key is now always present (derived from `sale_id`, below),
+    /// which is the precondition §2 sets — a keyless money-moving call is
+    /// forwarded **once**, because the driver mints a fresh `order_id` per
+    /// attempt and a retry would be a second charge.
+    ///
+    /// **The breaker is per DEPLOYMENT today, and that is measured, not
+    /// assumed.** Both credentials are process-wide (`MIDTRANS_SERVER_KEY`
+    /// and `MIDTRANS_QRIS_ACQUIRER`, read into `CloudServerConfig` at
+    /// startup), and `payment_gateways` — the only per-tenant gateway
+    /// configuration — exists in the Postgres init alone, with no SQLite
+    /// counterpart (design doc §4 and §9.3). Every tenant on this process
+    /// therefore shares one merchant account, so one breaker is the correct
+    /// unit until per-tenant gateway config exists. When it does, the change
+    /// is this field and this construction site, via
+    /// `ResilientProcessor::with_shared_breaker`, which takes the breaker
+    /// from the caller for exactly that reason.
+    pub processor: Option<Arc<dyn PaymentProcessor>>,
 }
 
 impl From<CloudServerState> for PaymentState {
@@ -93,12 +121,16 @@ impl PaymentState {
         rate_limiter: RateLimiterState,
     ) -> Self {
         let processor = state.midtrans_server_key.as_deref().map(|key| {
-            build_qris_processor(
+            // R9(b): decorate at construction. `Arc<dyn …>` because what the
+            // handler needs is the trait, and what must NOT happen is a second
+            // decorator built per request (see the field's doc comment).
+            let qris = build_qris_processor(
                 key,
                 state.midtrans_sandbox,
                 state.midtrans_qris_acquirer.as_deref(),
                 None,
-            )
+            );
+            Arc::new(ResilientProcessor::new(Arc::new(qris))) as Arc<dyn PaymentProcessor>
         });
         Self {
             db: state.db.clone(),

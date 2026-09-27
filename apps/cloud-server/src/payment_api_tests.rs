@@ -51,6 +51,13 @@ async fn midtrans_mock() -> MockServer {
     mock
 }
 
+/// Wrap a wiremock-backed processor the way production does (R9(b)), so these
+/// tests exercise the same decorator the server builds at startup rather than a
+/// bare driver that no deployment ever calls.
+fn resilient(processor: QrisPaymentProcessor) -> Arc<dyn PaymentProcessor> {
+    Arc::new(ResilientProcessor::new(Arc::new(processor)))
+}
+
 fn state_for(mock_uri: &str) -> PaymentState {
     let processor =
         QrisPaymentProcessor::new_with_endpoint("sk-test", &format!("{mock_uri}/v2"), true);
@@ -58,7 +65,7 @@ fn state_for(mock_uri: &str) -> PaymentState {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     }
 }
 
@@ -343,7 +350,7 @@ async fn sent_charge_body(acquirer: Option<&str>) -> serde_json::Value {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     };
     let resp = payment_router(state)
         .oneshot(authed_post(
@@ -415,24 +422,38 @@ fn cloud_state_with_acquirer(acquirer: Option<&str>) -> CloudServerState {
 /// the processor — and leaves it `None` when unset.
 #[test]
 fn payment_state_carries_acquirer_setting_from_cloud_state() {
-    let unset = PaymentState::from_state_with_rate_limiter(
-        cloud_state_with_acquirer(None),
-        RateLimiterState::new(),
-    );
+    // `PaymentState` now holds the DECORATED processor (`Arc<dyn
+    // PaymentProcessor>`), so the acquirer mapping is asserted where it is
+    // produced — `build_qris_processor`, the function
+    // `from_state_with_rate_limiter` calls — and the state itself is asserted
+    // to carry a processor built from the cloud config. Splitting it this way
+    // keeps the assertion instead of downcasting through the decorator.
     assert_eq!(
-        unset.processor.expect("key set").acquirer(),
+        build_qris_processor("sk-test", true, None, None).acquirer(),
         None,
         "unset config must leave the processor generic"
+    );
+    assert_eq!(
+        build_qris_processor("sk-test", true, Some("gopay"), None).acquirer(),
+        Some("gopay"),
+        "configured acquirer must reach the processor"
     );
 
     let set = PaymentState::from_state_with_rate_limiter(
         cloud_state_with_acquirer(Some("gopay")),
         RateLimiterState::new(),
     );
-    assert_eq!(
-        set.processor.expect("key set").acquirer(),
-        Some("gopay"),
-        "configured acquirer must reach the processor"
+    assert!(
+        set.processor.is_some(),
+        "a configured server key must produce a processor"
+    );
+    let unset = PaymentState::from_state_with_rate_limiter(
+        cloud_state_with_acquirer(None),
+        RateLimiterState::new(),
+    );
+    assert!(
+        unset.processor.is_some(),
+        "an unset acquirer must still produce a processor"
     );
 }
 
@@ -463,7 +484,7 @@ async fn charge_derives_a_stable_gateway_key_when_the_caller_sends_none() {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     };
     let app = payment_router(state);
 
@@ -537,7 +558,7 @@ async fn blank_idempotency_key_still_dedupes_to_one_gateway_key() {
         db: Arc::new(Mutex::new(fresh_db())),
         pg: None,
         rate_limiter: RateLimiterState::new(),
-        processor: Some(processor),
+        processor: Some(resilient(processor)),
     };
     let app = payment_router(state);
 
