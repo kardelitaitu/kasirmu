@@ -12,7 +12,8 @@ use deadpool_postgres::Pool;
 
 use kasirmu_core::User;
 
-use super::{PgError, bump_snapshot_version, is_fk_violation, is_unique_violation, now_rfc3339};
+use super::PgError;
+use super::helpers::{bump_snapshot_version, is_fk_violation, is_unique_violation, now_rfc3339};
 
 /// Create a user, scoped to `tenant_id`, mirroring `Store::create_user`
 /// (validation, the role FK check, the default `assignments` row).

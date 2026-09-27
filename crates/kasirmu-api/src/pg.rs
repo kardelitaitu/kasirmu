@@ -32,7 +32,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use deadpool_postgres::Pool;
-use tokio_postgres::error::SqlState;
 
 use kasirmu_core::{Category, Currency, Money, Sale, SaleLine, SaleStatus, TenantPlan};
 
@@ -47,46 +46,19 @@ pub use memos::{
     list_active_memos_for_terminal, sync_memos,
 };
 
-/// Default inventory location UUID (must match the port schema's default).
-const CANONICAL_DEFAULT_LOCATION_UUID: &str = "01926b3a-0000-7000-8000-000000000001";
+// The shared prologue helpers (constants, `pg_bool`, the violation probes,
+// `now_rfc3339`, `bump_snapshot_version`, `currency_str`, the `IN (…)` chunking
+// arithmetic) live in `pg/helpers.rs` so a domain section can be lifted out of
+// this file without dragging them along. The domain submodules import them from
+// `super::helpers` directly; only what THIS file (and its sibling test module,
+// through `use super::*`) names is imported here.
+mod helpers;
+use helpers::{PG_IN_CHUNK, PG_LEAD_PARAMS, PG_MAX_PARAMS, currency_str, now_rfc3339};
 
-/// The PostgreSQL ceiling on parameters per statement: **65 535**.
-///
-/// Where it comes from: the extended query protocol carries the parameter count of
-/// both the `Parse` and the `Bind` message as an `Int16`, and the server rejects
-/// anything above `INT16_MAX` with `too many parameters specified in bind
-/// message`. It is a wire-format limit, NOT a GUC — no server setting raises it,
-/// so unlike SQLite's `SQLITE_MAX_VARIABLE_NUMBER` (32 766 on the bundled 3.4x,
-/// 999 on pre-3.32 builds) the ceiling is identical on every supported server.
-const PG_MAX_PARAMS: usize = 65_535;
-
-/// Parameters a chunked `IN` statement binds BESIDES the chunk itself — the
-/// leading `$1` tenant id in [`list_missing_hashes`]. Placeholder numbering
-/// starts at `1 + PG_LEAD_PARAMS`, so the ceiling check has to count them too.
-const PG_LEAD_PARAMS: usize = 1;
-
-/// How many values one data-driven `IN (…)` list in this module may bind at a
-/// time.
-///
-/// Both data-driven lists here — [`attach_product_images`]'s product ids and
-/// [`list_missing_hashes`]'s candidate hashes — bind ONE PARAMETER PER VALUE, and
-/// their length comes from DATA (a tenant's whole catalog on
-/// `GET /api/v1/products`, a caller-supplied `?hashes=a,b,c` on
-/// `GET /api/v1/images:missing`), not from a fixed schema. Above [`PG_MAX_PARAMS`]
-/// the statement stops executing: the handler answers 500, or — where the caller
-/// keeps an empty-set fallback (`unwrap_or_default()`) — answers the empty set
-/// after a `tracing::warn` naming the failed operation and the error. No caller
-/// here swallows the failure silently any more: an empty answer is ambiguous
-/// between "genuinely empty" and "lookup failed", and the warning is how the two
-/// are told apart (see the `list_missing_hashes` callers in routes/images.rs and
-/// routes/products.rs).
-/// 10 000 keeps a 6.5x margin under the ceiling and stays small enough that one
-/// chunk is a single round trip.
-///
-/// This is a CHUNK SIZE, never a threshold that switches the filter off: a long
-/// list is read in MORE chunks, not in an unscoped sweep that would return rows
-/// outside the tenant or the whole table.
-const PG_IN_CHUNK: usize = 10_000;
+// Reached only by `pg_tests.rs` via `use super::*`, so it is imported only in
+// test builds — an unconditional import would be unused in the library build.
+#[cfg(test)]
+use helpers::pg_placeholders;
 
 /// Pin the invariant at COMPILE time: a chunk plus the leading parameters it also
 /// binds must stay under the wire ceiling, or the chunking is itself the bug. A
@@ -95,18 +67,6 @@ const _: () = assert!(
     PG_IN_CHUNK + PG_LEAD_PARAMS < PG_MAX_PARAMS,
     "PG_IN_CHUNK must stay below PostgreSQL's 65535-parameters-per-statement ceiling"
 );
-
-/// Build the `$start .. $start+len-1` placeholder list for one `IN (…)` chunk.
-///
-/// Pure, so the chunk arithmetic — numbering, contiguity, no overlap between
-/// chunks — is testable without a live Postgres. See
-/// `pg_in_chunking_survives_a_list_longer_than_the_chunk`.
-fn pg_placeholders(start: usize, len: usize) -> String {
-    (start..start + len)
-        .map(|i| format!("${i}"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
 
 // ── Settings ────────────────────────────────────────────────────────────
 
@@ -224,61 +184,6 @@ impl PgError {
             }
         }
     }
-}
-
-/// Read a `BIGINT` boolean-ish column as `bool` (0 → false, else true).
-fn pg_bool(row: &tokio_postgres::Row, column: &str) -> Result<bool, PgError> {
-    let v: i64 = row
-        .try_get(column)
-        .map_err(|e| PgError::Db(e.to_string()))?;
-    Ok(v != 0)
-}
-
-/// Check whether a Postgres error is a unique-constraint violation.
-fn is_unique_violation(e: &tokio_postgres::Error) -> bool {
-    e.as_db_error()
-        .map(|d| d.code() == &SqlState::UNIQUE_VIOLATION)
-        .unwrap_or(false)
-}
-
-/// Check whether a Postgres error is a foreign-key violation.
-fn is_fk_violation(e: &tokio_postgres::Error) -> bool {
-    e.as_db_error()
-        .map(|d| d.code() == &SqlState::FOREIGN_KEY_VIOLATION)
-        .unwrap_or(false)
-}
-
-/// Current UTC timestamp in the same format the SQLite path uses.
-fn now_rfc3339() -> String {
-    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-
-/// Bump the per-tenant snapshot version counter (ADR #43 D2).
-///
-/// Call inside the SAME transaction as the reference-data write (product,
-/// tax rate, user). The snapshot handler reads this counter instead of
-/// running a 3-table COUNT + MAX(updated_at) stamp query on every cache
-/// miss, so a bump here makes the next snapshot revalidation see the
-/// change (near-instant propagation) at the cost of one PK upsert.
-async fn bump_snapshot_version(
-    tx: &tokio_postgres::Transaction<'_>,
-    tenant_id: &str,
-) -> Result<(), PgError> {
-    let now = now_rfc3339();
-    tx.execute(
-        "INSERT INTO snapshot_versions (tenant_id, version, updated_at) VALUES ($1, 1, $2)
-         ON CONFLICT (tenant_id) DO UPDATE SET version = snapshot_versions.version + 1, updated_at = EXCLUDED.updated_at",
-        &[&tenant_id, &now],
-    )
-    .await
-    .map_err(|e| PgError::Db(e.to_string()))?;
-    Ok(())
-}
-
-fn currency_str(currency: &Currency) -> Result<String, PgError> {
-    std::str::from_utf8(&currency.0)
-        .map(str::to_owned)
-        .map_err(|e| PgError::Validation(format!("invalid UTF-8 in currency bytes: {e}")))
 }
 
 // RLS contract: every tenant-scoped REST function below opens a transaction

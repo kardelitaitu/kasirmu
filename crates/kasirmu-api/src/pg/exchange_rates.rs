@@ -13,7 +13,8 @@ use tokio_postgres::error::SqlState;
 
 use kasirmu_core::Currency;
 
-use super::{PgError, is_unique_violation, now_rfc3339};
+use super::PgError;
+use super::helpers::{is_unique_violation, now_rfc3339};
 
 // ARCH-01-family repair (2026-08-31): the exchange-rate commands existed
 // only as Tauri IPC + dev-mock — the cloud had no REST counterpart, so

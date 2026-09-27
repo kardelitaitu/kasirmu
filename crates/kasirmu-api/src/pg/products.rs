@@ -16,8 +16,9 @@ use deadpool_postgres::Pool;
 
 use kasirmu_core::{Currency, Money, Product, ProductWithDetails, Sku};
 
-use super::{
-    CANONICAL_DEFAULT_LOCATION_UUID, PG_IN_CHUNK, PG_LEAD_PARAMS, PgError, bump_snapshot_version,
+use super::PgError;
+use super::helpers::{
+    CANONICAL_DEFAULT_LOCATION_UUID, PG_IN_CHUNK, PG_LEAD_PARAMS, bump_snapshot_version,
     currency_str, is_unique_violation, now_rfc3339, pg_bool, pg_placeholders,
 };
 

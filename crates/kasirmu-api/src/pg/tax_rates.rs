@@ -18,7 +18,8 @@ use deadpool_postgres::Pool;
 use kasirmu_core::db::tax::{TaxRateScope, TaxRateWindow};
 use kasirmu_core::tax_rate::TaxRate;
 
-use super::{PgError, bump_snapshot_version, is_fk_violation, is_unique_violation, now_rfc3339};
+use super::PgError;
+use super::helpers::{bump_snapshot_version, is_fk_violation, is_unique_violation, now_rfc3339};
 
 /// The tier and window a tax-rate write is authored into, as the resolver
 /// reads them: the tenant-global tier when neither scope column names a row,
