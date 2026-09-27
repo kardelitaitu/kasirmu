@@ -181,7 +181,7 @@ Reports land in `coverage/{rust,ui}/index.html`.
 > `& 'C:\Program Files\Git\bin\bash.exe' scripts/coverage.sh` rather than assuming a timeout
 > means the script is broken. The same applies to `scripts/reset-dev-pg.sh` and `detect.sh`
 > below; the `pwsh` line for `reset-dev-pg.ps1` is the Windows-native alternative and is
-> unaffected.s on every push to `main`. Use them to spot under-tested modules after refactors.
+> unaffected. Nothing uploads coverage on every push to `main` (see the note above). Use them to spot under-tested modules after refactors.
 
 If a PostgreSQL integration test skips with `Migration error` (the dev DB drifted from the committed `PG_INIT` schema), reset the dev container before running the suite:
 
