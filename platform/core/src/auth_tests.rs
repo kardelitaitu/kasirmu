@@ -75,7 +75,8 @@ fn login_session_serde_roundtrip() {
 fn login_session_missing_permissions_defaults_empty() {
     // Older payloads (and older clients) have no `permissions` field;
     // serde default keeps them parsing instead of failing the session.
-    let json = r##"{"user_id":"u1","display_name":"Alice","role_name":"staff","role_id":"role-staff"}"##;
+    let json =
+        r##"{"user_id":"u1","display_name":"Alice","role_name":"staff","role_id":"role-staff"}"##;
     let back: LoginSession = serde_json::from_str(json).unwrap();
     assert!(back.permissions.is_empty());
 }
