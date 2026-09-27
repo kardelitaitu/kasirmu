@@ -612,6 +612,50 @@ covered, because no coverage instrument is enforced. Close that in this order.
       plus one bare URL). More will surface the same way as each is fixed. **The
       env line still must NOT land** until `cargo doc --workspace --no-deps`
       exits 0, which it does not yet.
+      **ROUND 3 — 2026-09-28 (commits `b72874e5e`, `77fa67cea`).** Re-measured
+      at the start: **265 errors across 6 crates** (`platform-startup`,
+      `kasirmu-payment`, `kasirmu-cloud`, `kasirmu-bridge`, `kasirmu-mobile`,
+      `kasirmu-app`) — 242 unresolved links, 13 private-item, 3 unclosed HTML
+      tags, 1 bare URL. The count ROSE from round 2's 34 because fixing crates
+      lets `cargo doc` reach ones the earlier failures had hidden. That is the
+      shape of this task: the number goes up before it goes down.
+      **Cleared and verified this round: `kasirmu-payment` and
+      `platform-startup`** — both `Finished`, 0 findings, checked individually.
+      - `kasirmu-payment`: the crate-level `#![allow(rustdoc::private_intra_doc_links)]`
+        (with the justification block) cleared all 3 private-constant links;
+        `drivers/paddle.rs:9` had **two defects on one line** — an unresolvable
+        `[`PaymentProcessor`]` and a bare URL `(https://www.paddle.com)` that
+        rustdoc tried to read as a link target. Rewritten as
+        `[`PaymentProcessor`](crate::PaymentProcessor)` +
+        `[Paddle](https://www.paddle.com)`.
+      - `platform-startup`: all six sites were in `src/hardware.rs`, and FOUR
+        of them (`TerminalProfile`, `DriverRegistry`, `HardwareConfig`, plus
+        the three fn links) were names that ARE imported or declared in the
+        file — the `//!` block simply cannot see `use` statements or items
+        declared below it. Same trap as `api_audit.rs` in round 2.
+      **Also fixed but NOT verifiable this round: `apps/cloud-server` (3 files).**
+      `redis_backend.rs` had `KEYS[1]` / `ARGV[1..4]` parsed as links named `1`,
+      `2`, `3`, `4` — Lua indexing colliding with link syntax, now code spans;
+      and a link to `TokenBucket`, which is a **private** `struct`
+      (`rate_limit.rs:100`), so that link could never resolve and became a code
+      span naming the file. `db.rs` and `midtrans_ledger.rs` needed method
+      links in module docs. **These three files were committed WITHOUT a passing
+      `cargo doc` run**, and the commit message says so — see the blocker below.
+      **BLOCKER, not mine: `crates/kasirmu-core` does not compile.** A
+      concurrent session is mid-split of `db/profile.rs` into an untracked
+      `db/profile/` directory; `cargo check -p kasirmu-core` fails with
+      `cannot find value PROFILE_COLUMNS`, `cannot find function
+      decrypt_sensitive` (×2), `cannot find type QuotaDimension`. Every crate
+      that depends on `kasirmu-core` — including `kasirmu-payment`,
+      `platform-startup` and `kasirmu-cloud` — therefore cannot be documented
+      right now, which is why this round's `cloud-server` edits rest on
+      inspection alone. Verified separately that the break is NOT from this
+      work: `git status` shows the untracked `db/profile/` plus other-session
+      edits to `db/offline.rs` and `subscription/quota.rs`, and my only
+      `kasirmu-core` change (`subscription/tier.rs`) is already committed and
+      clean. **The next round must re-run `cargo doc --workspace --no-deps`
+      once that split lands**, both to confirm the `cloud-server` edits and to
+      see what the newly-reachable crates report.
 - [ ] **P2-5 — `clippy::pedantic` on the two crates that can take it.**
       Workspace-wide pedantic is noise; scoped pedantic is signal. Start with
       `foundation` and `kasirmu-core` via `[lints.clippy] pedantic = "warn"` in
