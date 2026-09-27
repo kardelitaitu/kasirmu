@@ -20,8 +20,6 @@
 //! Scope note: this pins agreement, not correctness of the canonical mapping. If the
 //! rule itself should change, change `ctx.rs` and this file's expectation together.
 
-use super::*;
-
 /// The canonical mapper's match body, verbatim from `ctx.rs`.
 ///
 /// Kept as a literal rather than derived from `ctx.rs` at test time: deriving it
