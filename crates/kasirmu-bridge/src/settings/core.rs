@@ -119,7 +119,8 @@ pub fn run_get_setting(
 /// input verbatim for every other key. The command enqueues exactly this for
 /// replication (SYNC-10): a row that is not what we would have written is
 /// never offered to the network, so the enqueue does not depend on
-/// [`remote_sync_admits`] refusing `smtp_config` to keep a passwordless
+/// `remote_sync_admits` (private to this module) refusing `smtp_config` to
+/// keep a passwordless
 /// re-post of the stored secret from shipping.
 ///
 /// The credential refusal is asked HERE, of platform-core, before the tracked
@@ -274,7 +275,8 @@ pub fn run_set_settings_batch(
 ///
 /// Egress gate: a key that the ingest side would refuse is not offered to the
 /// network either. Both directions ask the SAME sealed
-/// [`IngestPolicy::RemoteSync`] through [`remote_sync_admits`], so a locally
+/// [`IngestPolicy::RemoteSync`] through `remote_sync_admits` (private to this
+/// module), so a locally
 /// written credential (the write-side check at [ `run_set_setting` guards only
 /// the manager prefixes, and the read side at [`run_get_setting`] guards the
 /// deny list) can no longer replicate in cleartext to every peer in the tenant.
