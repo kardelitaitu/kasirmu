@@ -536,7 +536,9 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
         "the national id plaintext must not appear under ANY key: {row:?}"
     );
     assert!(
-        !values.iter().any(|v| v.as_i64() == Some(PII_MONTHLY_PAY_MINOR)),
+        !values
+            .iter()
+            .any(|v| v.as_i64() == Some(PII_MONTHLY_PAY_MINOR)),
         "the monthly pay value must not appear under ANY key: {row:?}"
     );
 
@@ -553,24 +555,27 @@ fn kasirpkg_users_arm_never_carries_national_id_or_monthly_pay() {
     let _ = std::fs::remove_file(&path);
 }
 
-/// CHARACTERIZATION / DEFECT PIN — the users arm DOES carry `pin_hash`.
+/// The users arm must NOT carry `pin_hash` — the secret is blanked on export.
 ///
-/// This is not an endorsement. Two source comments used to claim the opposite
-/// ("User records (no PIN hashes)", `kasirmu-core/src/kasirpkg.rs`, and "PIN hash
-/// not included in export", `kasirmu-cli/src/commands/kasirpkg.rs`) and both were
-/// false: the arm serializes `Store::list_users()` wholesale, whose SELECT
-/// includes the column.
+/// Both export lanes serialize `Store::list_users()` wholesale, whose SELECT
+/// includes the Argon2id PHC verifier, so this arm used to ship every staff
+/// account's offline-crackable credential into a file meant to travel between
+/// installs. Two source comments claimed the opposite and both were false
+/// ("User records (no PIN hashes)", `kasirmu-core/src/kasirpkg.rs`, and "PIN
+/// hash not included in export", `kasirmu-cli/src/commands/kasirpkg.rs`).
 ///
-/// The sibling test above does NOT catch this — its `USER_PII_KEYS` list covers
-/// only the migration-130 profile columns, never `pin_hash`, which is exactly how
-/// the false comments survived a test named "users_arm_never_carries...". This
-/// test exists so the leak is visible in the suite instead of resting on a
-/// comment, and so that deliberately stripping the hash (which requires
-/// `#[serde(default)]` on `User::pin_hash` first — see
-/// `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`)
-/// turns this red and forces the change to be a decision rather than an accident.
+/// The fix BLANKS the field rather than omitting it: `User::pin_hash` has no
+/// `#[serde(default)]`, and all three import arms swallow the resulting
+/// deserialization failure with `if let Ok(..)` — omitting the key would make
+/// an older install silently skip every user while reporting success. See
+/// `modules/staff/src/models_tests.rs::user_deserialization_requires_pin_hash`
+/// for the coupling this test depends on.
+///
+/// The sibling test above does NOT cover this — its `USER_PII_KEYS` list names
+/// only the migration-130 profile columns, never `pin_hash`, which is exactly
+/// how the false comments survived a test named "users_arm_never_carries...".
 #[test]
-fn kasirpkg_users_arm_currently_carries_pin_hash_characterization() {
+fn kasirpkg_users_arm_never_carries_pin_hash() {
     let conn = kasirmu_core::migrations::fresh_db();
     conn.execute(
         "INSERT INTO roles (id, name, permissions) VALUES ('role-staff', 'staff', '[\"sales:view\"]')",
@@ -597,13 +602,33 @@ fn kasirpkg_users_arm_currently_carries_pin_hash_characterization() {
     let users = payload.users.expect("users arm present when --types users");
     let row = users[0].as_object().expect("a user row is a JSON object");
 
+    // The key must still be PRESENT (blanking, not omission) so the import
+    // arms keep deserializing, but it must carry no verifier.
+    assert!(
+        row.contains_key("pin_hash"),
+        "the pin_hash key must remain present-but-blank; omitting it makes \
+         `from_value::<User>` fail and the import arms silently skip every user"
+    );
     assert_eq!(
         row.get("pin_hash").and_then(|v| v.as_str()),
-        Some(phc.as_str()),
-        "the exported user JSON carries the live Argon2id PIN hash verbatim; \
-         if this now fails, the hash was stripped — re-check that \
-         #[serde(default)] was added to User::pin_hash first, or the import \
-         arms will silently skip every user"
+        Some(""),
+        "a portable package must never carry a staff PIN verifier; if this \
+         fails, an export lane stopped blanking pin_hash"
+    );
+    // Belt-and-braces: the PHC string must not appear anywhere in the payload,
+    // so a future rename of the key cannot quietly reintroduce the leak.
+    let serialized = serde_json::to_string(&users).unwrap();
+    assert!(
+        !serialized.contains(&phc),
+        "the live PHC hash must not appear anywhere in the exported users arm, \
+         under any key name"
+    );
+    // And the ordinary roster fields still travel, so the pin cannot be
+    // satisfied by shipping an empty users arm.
+    assert_eq!(
+        row.get("username").and_then(|v| v.as_str()),
+        Some("alice"),
+        "the roster fields must still be exported"
     );
 
     let _ = std::fs::remove_file(&path);

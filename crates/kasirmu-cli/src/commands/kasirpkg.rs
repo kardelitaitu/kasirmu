@@ -162,7 +162,21 @@ pub(crate) fn run_export_kasirpkg(
     };
 
     let users = if wants("users") {
-        let usrs = store.list_users()?;
+        let mut usrs = store.list_users()?;
+        // The `pin_hash` column is selected by `Store::list_users` and the
+        // `User` struct serializes it, so a wholesale `to_value` would carry
+        // every staff account's Argon2 PHC verifier into a file designed to
+        // travel between installs. The value is DEAD WEIGHT on import — both
+        // import arms write `''` and land the user inactive — so it is blanked
+        // rather than omitted: omitting it fails
+        // `serde_json::from_value::<User>` (the field has no
+        // `#[serde(default)]`), and all three import sites swallow that with
+        // `if let Ok(..)`, which would silently skip every user while the
+        // command reported success. Blanking keeps the key present and the
+        // shape unchanged.
+        for u in &mut usrs {
+            u.pin_hash.clear();
+        }
         Some(
             serde_json::to_value(&usrs)
                 .ok()

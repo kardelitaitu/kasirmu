@@ -654,7 +654,17 @@ async fn export_data_direct(
     };
 
     let users = if wants("users") {
-        let usrs = store.list_users()?;
+        let mut usrs = store.list_users()?;
+        // GUI arm of the same rule the CLI lane applies (see
+        // `crates/kasirmu-cli/src/commands/kasirpkg.rs`): `pin_hash` is
+        // selected by `Store::list_users` and serialized by `User`, so it would
+        // otherwise ride into every portable package. It is blanked rather than
+        // omitted because `User::pin_hash` has no `#[serde(default)]` and all
+        // three import arms swallow the resulting deserialization failure with
+        // `if let Ok(..)` — omitting the key would silently skip every user.
+        for u in &mut usrs {
+            u.pin_hash.clear();
+        }
         Some(
             serde_json::to_value(&usrs)
                 .ok()
