@@ -1,5 +1,19 @@
 # Codebase Review - kasir.mu (C:/dev/ozpos)
 
+<!-- SNAPSHOT NOTICE · added 2026-09-28 · not a re-audit, and nothing below was rewritten.
+     This file records what was FOUND on 2026-09-23 against branch 0.0.39 (`:3`, `:42`).
+     The live status surface is manager-codebase-review-checklist.md — read it before
+     re-reporting any finding from here. Two of the twelve P0 findings have since been
+     re-verified as fixed, and their remediation items are ticked in that checklist:
+       · P0-1 (section 4, the DEFERRED transaction) -> checklist C10, `[x]` "DONE
+         2026-09-25, all three clauses re-verified this session", naming
+         sales_checkout.rs:215, refunds.rs:69 and gift_cards.rs:53 among the
+         TransactionBehavior::Immediate sites.
+       · P0-2 (section 5.1, the self-origin double deduct) -> checklist C3, `[x]`
+         "CLOSED 2026-09-25, acceptance re-verified this session".
+     The header path `C:/dev/ozpos` and "Version reviewed: 0.0.39" are the values measured
+     on that date; they are deliberately left as written. -->
+
 **Date:** 2026-09-23. **Version reviewed:** 0.0.39. **Scope:** the whole repository - the Rust workspace (foundation, platform, modules, crates, apps), the React frontend, the Go license server, the cloud server, migrations, ops and delivery tooling, and the documentation as a set of claims about all of it. **Method:** read-only. Nine workers running fifteen assignments across four waves; no code was modified, no build or test was run, no deploy was attempted. Every finding cites a file and line, except where the deciding fact is environmental - those are enumerated in section 17. Counts were measured on this working tree on the date above; other sessions are editing the tree concurrently, so a re-run will differ slightly.
 
 ---
