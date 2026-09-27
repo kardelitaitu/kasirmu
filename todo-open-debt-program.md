@@ -49,7 +49,23 @@ Recorded because each one is still live in some document a worker might read, an
 
 ## Out of scope for this program
 
-- `todo-font-system.md` (5 open) · `todo-refactor-kds-agents-merged.md` (18 open) · `todo-refactor-pos-screen-agents-3.md` (21 open) · `todo-refactor-settings-agents-3.md` (11 open) — any-depth box counts, measured this pass. Each is its own plan; none is covered here.
+- **SUPERSEDED 2026-09-28 — all four lines below were true when written and none is true now.** Every one has since been renamed to `done-todo-*`, so `todo-font-system.md` (5 open) · `todo-refactor-kds-agents-merged.md` (18 open) · `todo-refactor-pos-screen-agents-3.md` (21 open) · `todo-refactor-settings-agents-3.md` (11 open) names four paths that no longer exist and four counts that no longer reproduce. Re-measured with this file's own canonical pair (`:78-83`); the old figures are kept above as the dated record they are.
+
+  | Was | Now lives at | open / ticked |
+  |---|---|---|
+  | `todo-font-system.md` (5 open) | `.agents/archived/done-todo/done-todo-font-system.md` | **0 / 13** |
+  | `todo-refactor-kds-agents-merged.md` (18 open) | `.agents/reviews/done-todo-refactor-kds-agents-merged.md` | **0 / 23** |
+  | `todo-refactor-pos-screen-agents-3.md` (21 open) | `.agents/reviews/done-todo-refactor-pos-screen-agents-3.md` | **11 / 12** |
+  | `todo-refactor-settings-agents-3.md` (11 open) | `.agents/reviews/done-todo-refactor-settings-agents-3.md` | **0 / 11** |
+
+  None of the four is covered by this program either way, which is the point the
+  bullet was making. **One is worth flagging rather than fixing from here:**
+  `done-todo-refactor-pos-screen-agents-3.md` carries the `done-` prefix while
+  still holding **11 open boxes**, and `AGENTS.md` §4 makes the prefix earned by
+  that file's own acceptance command having run and passed — not by a rename. Its
+  acceptance may well have been met by a command rather than by the boxes; that
+  was not verified here, and the file is another lane's fence, so it is reported
+  rather than renamed back.
 - `todo-kds.md` is **superseded** by `todo-refactor-kds-agents-merged.md` and carries 0 boxes — do not treat its absence of boxes as completion.
 - `todo-tools.md` and `done-todo-tools-agents-3.md` each hold one open box that their own retirement notes assign elsewhere: the org/terminal scope is Phase 3b here; `check:all` is Phase 4's acceptance surface.
 - Anything requiring a push, a branch, or a version bump.
