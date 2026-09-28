@@ -1,4 +1,11 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
+**Siblings:** `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md`, `todo-open-debt-agents-4.md`, `done-todo-open-debt-agents-5.md`.
+
+**Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
+- `cd ui && npx vitest run src/__tests__/WorkspaceHome.test.tsx src/__tests__/WorkspaceHomeTools.test.tsx src/__tests__/WorkspaceHomeTools.navParity.test.tsx src/__tests__/role.test.ts src/__tests__/pageRegistry.test.ts` → **PASS** (`Test Files 5 passed (5)`, `Tests 117 passed (117)`).
+- `cargo test -p kasirmu-core --lib staff` → **PASS** (`95 passed; 0 failed; 0 ignored`).
+- `python scripts/verify-ipc-parity.py` → **PASS** (`IPC parity: OK`).
+All phase tasks are complete. Task 3a.1 (duplicate rank table folded) was paid in `c8efd4b2a`; 3a.2 was executed in narrowed R20 form (`canAddWorkspace` and `canSeeTools` unified onto `roleAtLeast`); 3a.3 was closed by decision keeping the rank vocabulary authoritative for the home grid; 3b was ruled OUT OF SCOPE by owner ruling R5; the keyboard shortcut label cap defect was fixed and tested in `e51fa247c`. AGENTS.md §7.4 earns the `done-` prefix.
 
 ## Phase 3 — Gate on the permission vocabulary, not on a role rank
 
