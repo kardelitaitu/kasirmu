@@ -159,7 +159,11 @@ pub fn open_api_store_connection(
     db_manager
         .open_store(store_id)
         .map_err(|e| format!("preparing store db {store_id}: {e}"))?;
-    let path = db_manager.store_db_path(store_id);
+    // PC-1: the id is validated where it is joined into a filename, so this door cannot open a
+    // path the store id talked it into.
+    let path = db_manager
+        .checked_store_db_path(store_id)
+        .map_err(|e| format!("preparing store db {store_id}: {e}"))?;
     let conn = Connection::open(&path).map_err(|e| format!("opening {}: {e}", path.display()))?;
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|e| format!("enabling FK on {}: {e}", path.display()))?;

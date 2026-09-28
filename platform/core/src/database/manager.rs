@@ -3,7 +3,7 @@
 last audited 25-07-26 by RSA-Agent (platform-core slice E: database manager deep read)
 crate: platform-core | status: SAFE | lint: CLEAN
 findings: clean — cache-guard-held check-then-insert (TOCTOU-safe, documented), idempotent migration recovery on open (partial-failure tested), FK/WAL pragmas, per-store isolation tests; PC-1 INFO: store_db_path interpolates store_id into the filename without sanitization (data_dir.join(format!()) line 161) — snapshot-imported ids could path-traverse file creation; ids are UUID-minted in normal flows
-next: sanitize/validate store ids before path join (PC-1) | perf: cached Arc connections
+next: none — PC-1 closed 2026-09-28: the id is validated at the join (is_safe_store_id / checked_store_db_path), and the open, exists and delete doors all go through it | perf: cached Arc connections
 */
 //!
 //! Manages per-store SQLite database files alongside the global
@@ -92,7 +92,9 @@ impl StoreDatabaseManager {
     /// Migrations are always run on open — this recovers from
     /// partially-failed previous creations (the runner is idempotent).
     fn open_or_create_connection(&self, store_id: &str) -> Result<Connection, PlatformError> {
-        let path = self.store_db_path(store_id);
+        // PC-1: this is the door that CREATES a file at the joined path, so the id is checked
+        // here and not only in `delete_store_db`, where it used to be the whole guard.
+        let path = self.checked_store_db_path(store_id)?;
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -162,14 +164,49 @@ impl StoreDatabaseManager {
         tracing::info!(count, "all store databases closed");
     }
 
+    /// Is this store id safe to interpolate into a database filename?
+    ///
+    /// PC-1: `store-<id>.sqlite` puts the id straight into a path. The predicate used to live
+    /// inline in [`Self::delete_store_db`], which was the only door that checked — the open path
+    /// and `store_db_exists` reached the same join unguarded. One definition, at the join, so a
+    /// new door cannot be added without it.
+    #[must_use]
+    pub fn is_safe_store_id(store_id: &str) -> bool {
+        !store_id.is_empty()
+            && store_id.len() <= 128
+            && !store_id.contains("..")
+            && store_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    }
+
     /// Get the filesystem path for a store's database file.
+    ///
+    /// The raw join, kept for tests and for callers that have already validated. Everything that
+    /// touches the filesystem goes through [`Self::checked_store_db_path`] instead.
     pub fn store_db_path(&self, store_id: &str) -> PathBuf {
         self.data_dir.join(format!("store-{store_id}.sqlite"))
     }
 
+    /// The path for a store, or an error naming an id that cannot be one.
+    pub fn checked_store_db_path(&self, store_id: &str) -> Result<PathBuf, PlatformError> {
+        if !Self::is_safe_store_id(store_id) {
+            return Err(PlatformError::Internal(format!(
+                "refused store id {store_id:?}: a store id is 1..=128 characters of alphanumeric, \
+                 '-', '_' or '.', and never contains '..', because it names a file inside the \
+                 data directory"
+            )));
+        }
+        Ok(self.store_db_path(store_id))
+    }
+
     /// Check if a store's database file exists on disk.
+    ///
+    /// An id that cannot name a store names no file, so `false` is the honest answer — and it
+    /// keeps the callers that use this as a guard from being where a bad id surfaces.
     pub fn store_db_exists(&self, store_id: &str) -> bool {
-        self.store_db_path(store_id).exists()
+        self.checked_store_db_path(store_id)
+            .is_ok_and(|path| path.exists())
     }
 
     /// Delete a store's database file and its WAL/SHM sidecars.
@@ -188,13 +225,9 @@ impl StoreDatabaseManager {
     /// an unsafe id is refused before any filesystem call. Policy — which stores
     /// may be deleted at all — stays with the caller.
     pub fn delete_store_db(&self, store_id: &str) -> Result<(), PlatformError> {
-        let safe_id = !store_id.is_empty()
-            && store_id.len() <= 128
-            && !store_id.contains("..")
-            && store_id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
-        if !safe_id {
+        // The predicate moved to `is_safe_store_id`; this door keeps its own wording because
+        // "refused to delete" is the sentence an operator needs when a delete does not happen.
+        if !Self::is_safe_store_id(store_id) {
             return Err(PlatformError::Internal(format!(
                 "refused to delete store database: unsafe store id {store_id:?}"
             )));

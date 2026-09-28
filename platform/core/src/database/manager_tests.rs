@@ -360,3 +360,50 @@ fn open_store_propagates_error_not_silent_in_memory_fallback() {
              not silently return an in-memory fallback"
     );
 }
+
+/// PC-1, the OPEN door: an id that would escape the data directory is refused before a file is
+/// created, not merely before one is deleted.
+///
+/// The delete door carried this check first and alone, so the same id could still create a file
+/// through `open_store`. Note the shape that actually escapes: the `store-` prefix absorbs a bare
+/// `..`, so the dangerous ids are the ones with a separator followed by enough `..` to climb back
+/// out — `x/../../escaped` lands in the data directory's PARENT, which is what this asserts is
+/// never created.
+#[test]
+fn open_refuses_a_store_id_that_would_escape_the_data_dir() {
+    let (manager, dir) = setup();
+    for bad in [
+        "",
+        "..",
+        "../escaped",
+        "a/b",
+        "x/../../escaped",
+        "a\\\\b",
+        "way..too..many",
+    ] {
+        assert!(
+            manager.open_store(bad).is_err(),
+            "open_store accepted the unsafe id {bad:?}"
+        );
+        assert!(
+            manager.checked_store_db_path(bad).is_err(),
+            "checked_store_db_path accepted {bad:?}"
+        );
+        assert!(
+            !manager.store_db_exists(bad),
+            "store_db_exists claimed {bad:?} exists"
+        );
+    }
+
+    let escaped = dir.path().parent().unwrap().join("escaped.sqlite");
+    assert!(!escaped.exists(), "a traversed id created {escaped:?}");
+    assert_eq!(
+        std::fs::read_dir(dir.path()).unwrap().count(),
+        0,
+        "a refused id still left a file in the data directory"
+    );
+
+    // The guard is not a wall in front of every id: the ordinary shape passes.
+    assert!(StoreDatabaseManager::is_safe_store_id("store-alpha"));
+    assert!(manager.checked_store_db_path("store-alpha").is_ok());
+}
