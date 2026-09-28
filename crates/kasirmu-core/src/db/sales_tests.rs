@@ -5166,3 +5166,33 @@ fn void_pending_sale_writes_an_audit_entry() {
         "voiding a pending sale reverses stock and flips the row; it must leave a trace, exactly as void_sale does",
     );
 }
+
+#[test]
+fn a_db_failure_in_lookup_sale_by_receipt_barcode_surfaces_the_error() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    seed_product_with_category(&conn, "ITEM-1", None);
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("ITEM-1"), 1, price(1000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+    s.save_receipt_barcode(&sale.id, "BC-123").unwrap();
+
+    // Verify healthy path
+    let found = s.lookup_sale_by_receipt_barcode("BC-123").unwrap();
+    assert_eq!(found.unwrap().id, sale.id);
+
+    // Fault the query by renaming the column
+    conn.execute_batch("ALTER TABLE receipt_barcodes RENAME COLUMN barcode TO barcode_hidden;")
+        .unwrap();
+
+    let err = s
+        .lookup_sale_by_receipt_barcode("BC-123")
+        .expect_err("a DB failure must not silently return Ok(None)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

@@ -12504,6 +12504,22 @@ score untouched.
 settings-read fault into a cache miss, falling back to global means — same drift, lower
 severity, different fault surface. Queued as its own slice.
 
+### 2026-09-28 — TDD round 6: receipt-barcode lookup stops swallowing DB errors (COR-9)
+
+**Problem:** `Store::lookup_sale_by_receipt_barcode` (`crates/kasirmu-core/src/db/sales.rs`)
+used `.ok()` on its query into the `receipt_barcodes` table. Any database failure (table/column
+corruption, lock error, schema drift) silently collapsed into `None`, causing the function to
+report `Ok(None)` ("sale not found") instead of propagating `CoreError::Db`. This could cause
+an active sale to be treated as non-existent during receipt verification or returns.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the query row result, returning
+`Result<Option<Sale>, CoreError>` where DB errors are properly propagated and missing barcodes
+cleanly resolve to `Ok(None)`. Updated the audit header to mark COR-9 CLOSED.
+
+**Verified:** Red first (`a_db_failure_in_lookup_sale_by_receipt_barcode_surfaces_the_error`
+panicked with `a DB failure must not silently return Ok(None): None`). After `.optional()?`
+the test passed, along with `cargo fmt`.
+
 **Commits:** this entry + the fix land in the pathspec commit below.
 
 
