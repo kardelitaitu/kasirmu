@@ -5,6 +5,40 @@ findings: zero unsafe, no IO in its own source, minimal deps (tracing + chrono a
 next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
 */
 
+// P2-5: `clippy::pedantic` is enabled HERE, at the crate root, rather than in
+// `Cargo.toml`. Both this crate and `kasirmu-core` carry `[lints] workspace = true`,
+// and Cargo refuses to combine that with a local `[lints.clippy]` table —
+// `cargo metadata` fails with "cannot override `workspace.lints` in `lints`, either
+// remove the overrides or `lints.workspace = true` and manually specify the lints".
+// A crate-root attribute *composes* with the workspace table instead of conflicting
+// with it, so `missing_docs` and any future workspace lint are still inherited and
+// no crate has to opt out of the shared table.
+#![warn(clippy::pedantic)]
+// Documentation lints — 107 findings, prose rather than behaviour (`# Errors`
+// sections, backticks, `#[must_use]`). Named explicitly rather than left off, so
+// the debt stays visible instead of silently absent.
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::missing_panics_doc)]
+// `dto.rs` uses `Option<Option<T>>` as the PATCH tri-state — key absent vs
+// explicitly null vs present. Collapsing it to `Option<T>` would delete a
+// distinction the wire contract depends on, so the lint is wrong here.
+#![allow(clippy::option_option)]
+// `validate_range` is generic over `T: PartialOrd + Display`. Taking `T` by value
+// is the right signature for a numeric range check; `&T` would force every caller
+// to borrow literals for no benefit.
+#![allow(clippy::needless_pass_by_value)]
+// TEMPORARY — remove when the gift-card `pin`-removal lane commits
+// `foundation/src/loyalty_tests.rs`. That file is held uncommitted by that lane
+// (2026-09-29) and still carries 17 `"".into()` sites. Enabling pedantic without
+// fixing them would redden `cargo clippy --workspace --all-targets -- -D warnings`
+// (`scripts/check.sh:74`) for every lane, so they are allowed for now rather than
+// fixed in someone else's working file. The allow is crate-wide only because the
+// `mod tests` declaration that scopes this file lives in `loyalty.rs`, which is
+// held by the same lane.
+#![allow(clippy::manual_string_new)]
+
 //! Foundation crate for kasir.mu.
 //!
 //! Contains the value objects, contracts, enums, and error types that
@@ -64,17 +98,18 @@ pub use constants::{
     MAX_SKU_LENGTH, PIN_MIN_LENGTH,
 };
 pub use contact::{Email, Phone};
-pub use customer::Customer;
 pub use contracts::{EventHandler, Module, Service};
+pub use customer::Customer;
 pub use enums::{InvalidTransition, PaymentMethod, SaleStatus};
 pub use errors::{ConflictError, NotFoundError, ValidationError};
-pub use loyalty::{
-    GiftCard, GiftCardFilter, GiftCardTransaction, GiftCardWithTransactions, IssueGiftCardInput,
-    LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction, RedeemGiftCardResult,
-};
 pub use inventory::{
     CANONICAL_DEFAULT_LOCATION_UUID, Category, Inventory, InventoryLocation, InventoryShift,
     LocationId, Product, ProductType, StockThreshold, WorkspaceInventoryLocation,
+};
+pub use loyalty::{
+    GiftCard, GiftCardFilter, GiftCardTransaction, GiftCardWithTransactions, IssueGiftCardInput,
+    LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction,
+    RedeemGiftCardResult,
 };
 pub use money::{Currency, InvalidCurrencyCode, Money, format_minor};
 pub use percentage::Percentage;

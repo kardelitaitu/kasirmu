@@ -393,7 +393,7 @@ pub fn validate_phone(field: &'static str, value: &str) -> Result<(), Validation
         });
     }
     // At least 7 actual digits
-    let digit_count = trimmed.chars().filter(|c| c.is_ascii_digit()).count();
+    let digit_count = trimmed.chars().filter(char::is_ascii_digit).count();
     if digit_count < 7 {
         return Err(ValidationError {
             field,

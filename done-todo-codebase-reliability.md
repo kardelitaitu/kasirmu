@@ -1788,6 +1788,82 @@ correctness-adjacent lints (a `window_secs as i64` wrap plus four
 `license_verification.rs:108` has `as_millis() as u64`. All three files are the
 concurrent session's.
 
+**2026-09-29 — the "cannot be expressed" finding was right about the mechanism and
+wrong about the goal. `foundation` is now DONE.**
+
+The ROUND 6 conclusion above is correct about the thing it tested: `[lints.clippy]` in a
+manifest genuinely cannot coexist with `[lints] workspace = true`. But the manifest was
+never the only way to set a lint level. **A crate-root attribute composes with the
+workspace table instead of conflicting with it.**
+
+Proven, not assumed: `#![warn(clippy::pedantic)]` added to `foundation/src/lib.rs` and
+clippy run with **no `-W` flag** still reported 88 warnings, each
+`implied by #[warn(clippy::pedantic)]`. No manifest was touched, `missing_docs` is still
+inherited, and no crate opts out of the shared table — so the trade-off costed above
+(duplicating `missing_docs`, silently exempting two crates from future workspace lints)
+was never required.
+
+Measured per crate from `--message-format=json`, not from the grouped summary (which
+undercounts — see the 195-vs-220 note above):
+
+| lint | count |
+|---|---|
+| `missing_errors_doc` | 46 |
+| `must_use_candidate` | 32 |
+| `doc_markdown` | 19 |
+| `manual_string_new` | 17 |
+| `missing_panics_doc` | 10 |
+| `needless_pass_by_value` | 6 |
+| `redundant_closure_for_method_calls` | 5 |
+| `unnested_or_patterns` | 4 |
+| `trivially_copy_pass_by_ref`, `option_option`, `single_match_else`, `assigning_clones` | 2 each |
+| `needless_raw_string_hashes`, `if_not_else` | 1 each |
+| **total** | **149** |
+
+107 are documentation prose. Of the 42 real ones, **three are clippy being wrong**, and each
+is allowed by name with its reason at the allow site:
+
+- `dto.rs:171` — `Option<Option<T>>` is the documented PATCH tri-state (key absent vs
+  explicitly null). Collapsing it deletes a distinction the wire contract depends on.
+- `validation.rs:66-68` — `validate_range<T: PartialOrd + Display>`; by-value `T` is the
+  right signature, and `&T` would force every caller to borrow literals.
+- `cart.rs:375` was a **genuine** finding (a private, 3-byte `Currency`) and was fixed.
+
+**149 → 0.** Six `#![allow(...)]` at the crate root, each carrying its reason; 26 sites
+fixed by `cargo clippy --fix`; `currency_summary`'s signature and one `clone_from` by hand.
+
+**Acceptance verified:** `cargo clippy -p foundation --all-targets -- -D warnings` → **exit
+0**; `cargo check -p foundation --all-targets` → exit 0 with **0** `unknown_lints` (rustc
+accepts `clippy::`-prefixed attributes without a clippy driver); `cargo test -p foundation`
+→ **599 + 23 passed, 0 failed**. The stray "generated 1 warning" in the clippy output is the
+foreign-`CARGO_TARGET_DIR` incremental lock (`os error 5`), **not** a denied lint surviving
+`-D` — do not misread it as one.
+
+**ONE TEMPORARY ALLOW, and it is not a hole left open.** 17 of the 149 are in
+`foundation/src/loyalty_tests.rs`, which a live lane holds uncommitted (the gift-card `pin`
+removal, `20261015_gift_cards_drop_pin.sql`). Since the gate is
+`cargo clippy --workspace --all-targets -- -D warnings` (`scripts/check.sh:74`), enabling
+pedantic without fixing those 17 would redden a **required** gate for every lane.
+`#![allow(clippy::manual_string_new)]` therefore carries a dated comment naming the 17 sites
+and the removal condition. It is crate-wide rather than module-scoped only because the
+`mod tests` declaration lives in `loyalty.rs`, held by the same lane. **Remove it when that
+lane commits; the change is 17 × `"".into()` → `String::new()`.**
+
+**METHOD NOTE — I violated ROUND 41's own rule and had to recover from it.** Round 41
+applied its fixes per file *by construction* so that dirty files stayed untouched, and
+recorded why. This round I ran `cargo clippy --fix` first and checked `git status`
+afterwards — by which point it had already written those 17 sites into the gift-card lane's
+working file. Recovered exactly, and verified rather than assumed: a byte-level reverse
+replace took `String::new()` back to 0 and every remaining hunk in that file is that lane's
+pin-removal. The correct order is `git status -- <crate>` **before** `--fix`. 49 files were
+dirty across the checkout from several lanes at the time — assume nothing is yours.
+
+**What is left, and it is the only thing left: `kasirmu-core`.** Not attempted this round,
+and not a small remainder — the earlier aggregate for the two crates was 2,494 with 998
+`missing_errors_doc`, and `foundation` alone accounts for 149 of it. Same recipe applies:
+crate-root attribute, doc lints allowed by name, correctness-adjacent lints fixed (that
+subset in `kasirmu-core` was measured at 215 sites, line 972).
+
 The original staging below is kept for the reasoning it records — why each item
 came where it did — with its outcome marked. Read it as history, not a plan.
 
@@ -1798,20 +1874,21 @@ came where it did — with its outcome marked. Read it as history, not a plan.
    `models_proptests.rs`, `convergence_replay.rs`).
 4. ~~P1-2 — coverage floor, once there is something worth measuring.~~ **DONE** —
    `coverage-floors.json` + `verify-coverage-floors.py`, 4 per-crate floors.
-5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **P2-4 and P2-6 DONE;
-   P2-5 is the one open item, and it is NOT a cheap win** — measured at 2,494
-   pedantic violations in the two named crates, and its stated mechanism
-   (`[lints.clippy]` locally) is not expressible under this workspace's
-   `[lints] workspace = true` arrangement. See the P2-5 entry for the three
-   measured scopes and the structural trade-off.
+5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **P2-4 and P2-6 DONE.
+   P2-5: `foundation` DONE 2026-09-29 (149 → 0, acceptance exit 0); `kasirmu-core`
+   still open.** The blocker recorded here earlier was a false one — the manifest
+   cannot hold `[lints.clippy]` beside `[lints] workspace = true`, but a crate-root
+   attribute can, and it composes with the workspace table instead of opting out of
+   it. No architecture decision was ever needed. See the P2-5 entry for the measured
+   per-lint counts and the recipe that carries over to `kasirmu-core`.
 6. ~~P3-\*, P4-\* — housekeeping.~~ **DONE except P3-2, which is REJECTED** (§7).
    P3-1 (invariants doc), P3-3 (SAFETY-comment gate) and all three P4 items
    closed with evidence.
 
-**The one open item needs an architecture decision, not more work:** either
-retire P2-5, or accept that enabling scoped pedantic means opting two crates out
-of the shared workspace lint table (duplicating `missing_docs` and exempting them
-from future workspace lints). Both options are costed in the P2-5 entry.
+**The remaining item needs work, not an architecture decision** — that framing was
+retired on 2026-09-29 when the crate-root attribute was proven to work under the
+existing workspace lint table. `kasirmu-core` is the last crate; the recipe is in the
+P2-5 entry.
 
 **Reality check, unchanged from the previous revision and still correct:** for
 an offline-first multi-location system, "bug-free" is not attainable. What is

@@ -89,7 +89,7 @@ fn update_product_dto_partial() {
 
 #[test]
 fn update_product_dto_empty() {
-    let json = r#"{}"#;
+    let json = r"{}";
     let dto: UpdateProductDto = serde_json::from_str(json).unwrap();
     assert!(dto.name.is_none());
     assert!(dto.price_minor.is_none());

@@ -118,7 +118,7 @@ impl FromStr for Currency {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
-        if bytes.len() != 3 || !bytes.iter().all(|b| b.is_ascii_alphabetic()) {
+        if bytes.len() != 3 || !bytes.iter().all(u8::is_ascii_alphabetic) {
             return Err(InvalidCurrencyCode);
         }
         let mut out = [0u8; 3];

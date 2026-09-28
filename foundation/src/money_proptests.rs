@@ -146,10 +146,10 @@ proptest! {
     fn checked_div_identity(a in any::<i64>(), c in currencies()) {
         let m = Money { minor_units: a, currency: c };
         assert_eq!(m.checked_div(1).map(|m| m.minor_units), Some(a), "div by 1 is identity");
-        if a != i64::MIN {
-            assert_eq!(m.checked_div(-1).map(|m| m.minor_units), Some(-a), "div by -1 negates");
-        } else {
+        if a == i64::MIN {
             assert!(m.checked_div(-1).is_none(), "i64::MIN / -1 overflows");
+        } else {
+            assert_eq!(m.checked_div(-1).map(|m| m.minor_units), Some(-a), "div by -1 negates");
         }
     }
 

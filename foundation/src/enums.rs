@@ -61,9 +61,7 @@ impl SaleStatus {
     pub fn can_transition_to(from: Self, to: Self) -> bool {
         matches!(
             (from, to),
-            (Self::Pending, Self::Active)
-                | (Self::Active, Self::Completed)
-                | (Self::Active, Self::Voided)
+            (Self::Pending, Self::Active) | (Self::Active, Self::Completed | Self::Voided)
         )
     }
 }

@@ -267,8 +267,8 @@ impl Cart {
     pub fn add_line(&mut self, line: CartLine) -> Result<LineId, CartError> {
         if line.unit_price.currency != self.currency {
             return Err(CartError::CurrencyMismatch {
-                cart: currency_summary(&self.currency),
-                line: currency_summary(&line.unit_price.currency),
+                cart: currency_summary(self.currency),
+                line: currency_summary(line.unit_price.currency),
             });
         }
         let id = line.id;
@@ -372,7 +372,7 @@ impl Cart {
     }
 }
 
-fn currency_summary(c: &Currency) -> String {
+fn currency_summary(c: Currency) -> String {
     std::str::from_utf8(&c.0).unwrap_or("???").to_owned()
 }
 

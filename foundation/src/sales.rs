@@ -238,9 +238,8 @@ impl Sale {
         let from = self.status;
         let valid = matches!(
             (from, to),
-            (SaleStatus::Pending, SaleStatus::Active)
-                | (SaleStatus::Active, SaleStatus::Completed)
-                | (SaleStatus::Active, SaleStatus::Voided)
+            (SaleStatus::Pending, SaleStatus::Active) |
+(SaleStatus::Active, SaleStatus::Completed | SaleStatus::Voided)
         );
 
         if valid {
@@ -336,7 +335,7 @@ impl Refund {
         let id = uuid::Uuid::now_v7().to_string();
         let mut lines = lines;
         for line in &mut lines {
-            line.refund_id = id.clone();
+            line.refund_id.clone_from(&id);
         }
         Self {
             id,

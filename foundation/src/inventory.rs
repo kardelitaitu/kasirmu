@@ -106,17 +106,14 @@ impl ProductType {
     /// three to `None`. `sku` and `operation` are the caller's own row identifier
     /// and call site, so one greppable message shape covers every reader.
     pub fn parse_stored_or_default(stored: Option<&str>, sku: &str, operation: &str) -> Self {
-        match stored.and_then(Self::parse_str) {
-            Some(ptype) => ptype,
-            None => {
-                tracing::warn!(
-                    sku = %sku,
-                    stored = ?stored,
-                    operation,
-                    "unmapped product_type; falling back to default (retail)"
-                );
-                Self::default()
-            }
+        if let Some(ptype) = stored.and_then(Self::parse_str) { ptype } else {
+            tracing::warn!(
+                sku = %sku,
+                stored = ?stored,
+                operation,
+                "unmapped product_type; falling back to default (retail)"
+            );
+            Self::default()
         }
     }
 
