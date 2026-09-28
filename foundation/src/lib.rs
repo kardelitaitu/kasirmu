@@ -37,6 +37,7 @@ pub mod enums;
 pub mod errors;
 pub mod events;
 pub mod inventory;
+pub mod loyalty;
 pub mod money;
 pub mod percentage;
 pub mod sku;
@@ -55,6 +56,10 @@ pub use customer::Customer;
 pub use contracts::{EventHandler, Module, Service};
 pub use enums::{InvalidTransition, PaymentMethod, SaleStatus};
 pub use errors::{ConflictError, NotFoundError, ValidationError};
+pub use loyalty::{
+    GiftCard, GiftCardFilter, GiftCardTransaction, GiftCardWithTransactions, IssueGiftCardInput,
+    LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction, RedeemGiftCardResult,
+};
 pub use inventory::{
     CANONICAL_DEFAULT_LOCATION_UUID, Category, Inventory, InventoryLocation, InventoryShift,
     LocationId, Product, ProductType, StockThreshold, WorkspaceInventoryLocation,
