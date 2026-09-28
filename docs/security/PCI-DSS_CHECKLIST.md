@@ -61,6 +61,22 @@ kasir.mu processes, transmits, and stores cardholder data when processing credit
 > rest-on-disk, and never verified by any code path** — the last of which is why C69 remains
 > an open product question rather than a settled defect. Pinned by
 > `gift_card_pin_is_never_serialized_or_debugged` in the same file.
+>
+> **RESOLVED 2026-09-29 (review C69). The PIN was REMOVED, not hashed or documented away.**
+> The three paragraphs above were right at every step and they converge on the answer: a
+> value that is protected in transit, stored recoverably on disk, and *never verified by any
+> code path* is not a control — it is a liability with a reassuring name. The deciding
+> observation came from the MSL-10 note above: because the field was `skip_serializing`, it
+> could not even be READ BACK through the API that returns the card, so it was a write-only
+> secret with no reader *and* no verifier. The issue modal nonetheless labelled it
+> "PIN (optional)" with the placeholder "For balance checks" — promising a capability the
+> code never had. Removed by `20261015_gift_cards_drop_pin.sql`, following the KDS
+> pairing-token removal of the day before verbatim: *"A displayed-but-unverified secret
+> invites the next reader to assume it is verified. Deleting it is the honest state."*
+> The field, the modal input, the two locale strings in each language, and the two tests
+> that pinned the round-trip are gone; the tests that replaced them assert the absence
+> instead. `card_number` is untouched and unaffected — it is a bearer identifier the till
+> reads, not a secret.
 
 ## Maintain a Vulnerability Management Program
 
