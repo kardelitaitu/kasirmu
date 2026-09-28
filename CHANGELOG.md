@@ -40,6 +40,24 @@ Release notes: see docs/releases/CHANGELOG-0.0.39.md (reviewed before tagging).
 
 ---
 
+## [0.0.38] — 2026-09-14
+
+Release notes: see docs/releases/CHANGELOG-0.0.38.md (reviewed before tagging).
+
+> **Restored 2026-09-29.** This entry was written by `debd40169` (`chore: bump version to
+> 0.0.38`) and then **silently dropped by a merge** — the string `[0.0.38]` appears in exactly
+> one commit in this file's history (the one that added it) and in none that removed it,
+> which is the signature of a conflict resolution taking the other side wholesale; the
+> candidate is `cb64cbff0` (merge PR #103, whose branch carried the next release). It survived
+> on `origin/0.0.38`, which is where this text was recovered from. It was a real release:
+> `platform/core/src/database/migrations.rs:400` documents a production incident in which a
+> build of that version panicked against a database a newer build had already migrated.
+> The pointer below is in the same dangling state as its neighbours — `docs/releases/` holds
+> only 0.0.25/31/33/34/36, so 9 of the 13 pointers in this file name a file that was never
+> written. That is a release-process question, not a changelog one.
+
+---
+
 ## [0.0.37] — 2026-09-04
 
 Release notes: see docs/releases/CHANGELOG-0.0.37.md (reviewed before tagging).
