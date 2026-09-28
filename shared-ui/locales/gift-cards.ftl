@@ -16,8 +16,6 @@ gift-cards-issue-amount-aria = Initial amount
 gift-cards-issue-invalid-amount = Amount must be positive
 gift-cards-issue-to-label = Issued To (optional)
 gift-cards-issue-to-aria = Issued to
-gift-cards-issue-pin-label = PIN (optional)
-gift-cards-issue-pin-aria = PIN
 gift-cards-issue-confirm = Issue Card
 
 gift-cards-topup-invalid = Top-up amount must be positive
@@ -49,7 +47,6 @@ gift-cards-error-issue = Failed to issue gift card
 gift-cards-topup-placeholder = Amount (minor units)
 gift-cards-topup-aria = Top-up amount
 gift-cards-issue-to-placeholder = Customer name
-gift-cards-issue-pin-placeholder = For balance checks
 
 # Transaction type labels (backend values: issue/redeem/topup/refund)
 gift-cards-txn-issue = Issued
