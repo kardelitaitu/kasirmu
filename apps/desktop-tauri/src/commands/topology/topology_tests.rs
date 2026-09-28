@@ -18,9 +18,17 @@ pub(crate) fn fresh_conn() -> Connection {
     // filesystem. An in-memory database keeps the connection self-contained
     // and avoids leaving SQLite's journal/WAL files in a TempDir that is
     // dropped when this helper returns.
-    let mut conn = Connection::open_in_memory().unwrap();
-    migrations::run(&mut conn).unwrap();
-    conn
+    //
+    // `fresh_db()` rather than `migrations::run(&mut conn)`: both hand back a
+    // migrated in-memory database with the same three per-connection PRAGMAs
+    // (`run` also asks for WAL, which an in-memory database silently refuses
+    // — SQLite pins it to `memory`). They differ only in how they get there:
+    // `run` replays all 68 migrations, measured at ~305 ms, while `fresh_db`
+    // clones a pre-migrated snapshot, measured at ~3 ms. This helper is
+    // called 35 times across the four topology test files, so replaying the
+    // chain was ~10.6 s per run spent re-deriving schema the snapshot
+    // already holds. (O-T01; measurements in todo-optimize-crates.md §11F.)
+    migrations::fresh_db()
 }
 
 #[test]

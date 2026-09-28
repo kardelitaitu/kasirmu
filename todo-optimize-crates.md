@@ -1561,6 +1561,64 @@ lock is not what caps throughput, so converting `run` sites to `fresh_db()`
 needs no prerequisite. Each conversion still trades ~305 ms for ~3 ms. **The
 live head is now O-T01 → O-T02.**
 
+### 11G. O-T01 funded and paid — and the "66 run sites" census was wrong (2026-09-28)
+
+With §9's sequencing caution void (§11F), O-T01 went first. `apps/desktop-tauri/
+src/commands/topology/topology_tests.rs` `fresh_conn()` now returns
+`migrations::fresh_db()` instead of opening an in-memory connection and calling
+`migrations::run(&mut conn)`.
+
+**Measured, A/B against HEAD** (`cargo test -p kasirmu-app --lib topology`,
+62 tests, same tree, immediate back-to-back runs):
+
+| Version | Passed | Failed | Wall |
+|---|---|---|---|
+| HEAD — `migrations::run(&mut conn)` | 45 | 17 | **53.24 s** |
+| `migrations::fresh_db()` | 45 | 17 | **9.77 s** (re-run 8.90 s) |
+
+**−43.5 s, −81.7%**, with an identical pass/fail split. The 17 failures are
+pre-existing and environmental, not a consequence of the change: every one dies
+in `AppState::for_test()` on `PermissionDenied` creating
+`C:\WINDOWS\TEMP\.tmpXXXXXX` — the same sandbox temp-path failure that already
+accounts for the platform-startup failures. They fail identically on HEAD. They
+could not be used to verify anything about class C below.
+
+**The census correction matters more than the fix.** §9 asserts *"O-T01 and
+O-T02 are the same mistake at two sizes"* against *"66 `run` call sites"* and
+calls them *"the only two findings here with a one-line fix."* Measured today
+with `git grep -n 'migrations::run(' -- '*.rs'`: **53 call sites** outside
+`migrations.rs`, of which **38 are in test files**. Those 38 split three ways,
+and only one third is a one-line fix:
+
+| Class | Count | What it is | Convertible? |
+|---|---|---|---|
+| **A** | **12** | `Connection::open_in_memory()` then `run` | **Yes — `fresh_db()` is a drop-in.** One of these was `fresh_conn()` (O-T01, now paid); **11 remain.** |
+| **C** | **9** | `run` on a connection the test does not own (`state.db.lock().await`) | **No.** `fresh_db()` *returns* a new connection; these tests need the one `AppState` already holds. |
+| **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** `crates/kasirmu-core/tests/backup_restore_integration.rs:45` already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
+
+Remaining class A, all with the same one-line fix:
+`crates/kasirmu-core/src/db/inventory_tests.rs:12`, `settings_tests.rs:7`,
+`sync_client_tests.rs:9`, `user_preferences_tests.rs:8`,
+`tests/gift_card_integration.rs:15`, `tests/loyalty_integration.rs:16`,
+`tests/purchase_order_integration.rs:17`, `tests/stock_count_integration.rs:17`,
+`tests/stock_transfer_integration.rs:27`, `tests/supplier_integration.rs:15`,
+`modules/inventory/src/handlers_tests.rs:17`,
+`platform/sync/src/crdt/clock_store_tests.rs:10`.
+
+**Class C is not merely a different shape — a naive snapshot copy is wrong
+there.** These nine sites (`apps/desktop-tauri/src/commands/topology/
+topology_command_tests.rs:71,106,148,198,231,254,330,369,410`) migrate a
+database that may be **on disk**, and `run` ends by setting
+`journal_mode = WAL` (`migrations.rs:455`). A `Backup` copy of the snapshot
+carries the *pages*, not the per-connection PRAGMAs, so copying the snapshot
+into a file-backed connection silently drops WAL — exactly the setting the
+recovery-adjacent tests depend on. Fixing class C means adding something like
+`migrations::apply_snapshot(conn)` that copies the snapshot *and* re-applies
+WAL. Worth ~2.7 s; **not funded here**, because the only tests that exercise it
+are the 17 that cannot run in this sandbox.
+
+**O-T02 is the remaining live entry** from §9's list.
+
 **The number that actually dominates axis B, and that nobody has scoped.** Under
 `cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds
 the snapshot from scratch and pays the **full 305 ms**, not the 3 ms clone. With
