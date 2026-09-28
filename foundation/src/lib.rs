@@ -28,6 +28,7 @@ pub mod cart;
 pub mod constants;
 pub mod contact;
 pub mod contracts;
+pub mod customer;
 pub mod dto;
 pub mod enums;
 pub mod errors;
@@ -44,6 +45,7 @@ pub use constants::{
     MAX_SKU_LENGTH, PIN_MIN_LENGTH,
 };
 pub use contact::{Email, Phone};
+pub use customer::Customer;
 pub use contracts::{EventHandler, Module, Service};
 pub use enums::{InvalidTransition, PaymentMethod, SaleStatus};
 pub use errors::{ConflictError, NotFoundError, ValidationError};
