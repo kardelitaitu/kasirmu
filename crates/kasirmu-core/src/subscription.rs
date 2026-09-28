@@ -150,8 +150,10 @@ pub struct TenantSubscription {
 /// row, which need it to panic WITH. A derived `Debug` would still satisfy
 /// them, which is exactly why this hand-written one exists.
 ///
-/// House precedent: `modules/loyalty/src/models.rs` (`impl Debug for
-/// GiftCard`, redacting `pin` the same way).
+/// House precedent: `foundation/src/loyalty.rs` (`impl Debug for
+/// GiftCard`, which redacted its `pin` until that field was removed on
+/// 2026-09-29; the hand-written `Debug` there is the pattern, minus the
+/// redaction arm the removal retired).
 impl std::fmt::Debug for TenantSubscription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TenantSubscription")

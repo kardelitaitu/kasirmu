@@ -2,7 +2,7 @@
 last audited 25-07-26 by RSA-Agent (modules-giftcards slice A: lib deep read)
 crate: modules-giftcards | status: SAFE | lint: CLEAN
 findings: clean documented STUB correcting misplaced ownership (GiftCard types currently re-exported from modules/loyalty; move here on promotion with one-release re-export); kernel registration + sales dependency; promotion path documents tx-scoped issuance/redemption so a partial redeem can never leave a card debited without a matching sale line; gift-cards feature flag gates capability; sibling tests per convention
-next: none (promote GiftCard types when built; remember MSL-10 pin redaction at the same time) | perf: N/A
+next: none (promote GiftCard types when built; the MSL-10 pin-redaction note is obsolete — the field was removed outright on 2026-09-29, see 20261015_gift_cards_drop_pin.sql) | perf: N/A
 */
 
 //! Gift Cards Module — issuance, balances, and redemption.

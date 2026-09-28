@@ -2,7 +2,7 @@
 /*
 last audited DD-MM-YY by DSH-Agent
 crate: kasirmu-core (gift_cards) | status: SAFE | lint: CLEAN
-findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED DD-MM-YY — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED DD-MM-YY — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 INFO: card PIN stored plaintext (acceptable local-POS threat model; revisit before cloud sync).
+findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED DD-MM-YY — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED DD-MM-YY — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 RESOLVED 2026-09-29 — the plaintext PIN was REMOVED, not hashed: it had no verifier anywhere and `skip_serializing` meant it could not even be read back, so the column carried a secret nothing could check (migration 20261015_gift_cards_drop_pin.sql).
 next: none | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
 */
 
@@ -46,7 +46,6 @@ impl Store<'_> {
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let pin = input.pin.unwrap_or_default();
         let issued_to = input.issued_to.unwrap_or_default();
         let amount = input.initial_amount_minor;
 
@@ -54,13 +53,12 @@ impl Store<'_> {
 
         // Create the gift card.
         tx.execute(
-            "INSERT INTO gift_cards (id, card_number, pin, initial_balance_minor, current_balance_minor,
+            "INSERT INTO gift_cards (id, card_number, initial_balance_minor, current_balance_minor,
              currency, status, issued_to, issue_date, expiry_date, created_by, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, ?8, ?9, ?10, ?11)",
+             VALUES (?1, ?2, ?3, ?4, ?5, 'active', ?6, ?7, ?8, ?9, ?10)",
             params![
                 id,
                 input.card_number.trim(),
-                pin,
                 amount,
                 amount,
                 input.currency,
@@ -122,7 +120,7 @@ impl Store<'_> {
     pub fn get_gift_card(&self, card_number_or_id: &str) -> Result<Option<GiftCard>, CoreError> {
         // Try id first, then card_number.
         let mut stmt = self.conn.prepare(
-            "SELECT id, card_number, pin, initial_balance_minor, current_balance_minor,
+            "SELECT id, card_number, initial_balance_minor, current_balance_minor,
              currency, status, issued_to, issue_date, expiry_date, created_by, updated_at
              FROM gift_cards WHERE id = ?1 OR card_number = ?1",
         )?;
@@ -131,7 +129,6 @@ impl Store<'_> {
             Ok(GiftCard {
                 id: row.get("id")?,
                 card_number: row.get("card_number")?,
-                pin: row.get("pin")?,
                 initial_balance_minor: row.get("initial_balance_minor")?,
                 current_balance_minor: row.get("current_balance_minor")?,
                 currency: row.get("currency")?,
@@ -153,7 +150,7 @@ impl Store<'_> {
 
     fn get_gift_card_by_raw_id(&self, id: &str) -> Result<Option<GiftCard>, CoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, card_number, pin, initial_balance_minor, current_balance_minor,
+            "SELECT id, card_number, initial_balance_minor, current_balance_minor,
              currency, status, issued_to, issue_date, expiry_date, created_by, updated_at
              FROM gift_cards WHERE id = ?1",
         )?;
@@ -162,7 +159,6 @@ impl Store<'_> {
             Ok(GiftCard {
                 id: row.get("id")?,
                 card_number: row.get("card_number")?,
-                pin: row.get("pin")?,
                 initial_balance_minor: row.get("initial_balance_minor")?,
                 current_balance_minor: row.get("current_balance_minor")?,
                 currency: row.get("currency")?,
@@ -236,7 +232,7 @@ impl Store<'_> {
         };
 
         let sql = format!(
-            "SELECT g.id, g.card_number, g.pin, g.initial_balance_minor, g.current_balance_minor,
+            "SELECT g.id, g.card_number, g.initial_balance_minor, g.current_balance_minor,
              g.currency, g.status, g.issued_to, g.issue_date, g.expiry_date, g.created_by, g.updated_at
              FROM gift_cards g {where_sql} ORDER BY g.updated_at DESC"
         );
@@ -250,7 +246,6 @@ impl Store<'_> {
                 Ok(GiftCard {
                     id: row.get("id")?,
                     card_number: row.get("card_number")?,
-                    pin: row.get("pin")?,
                     initial_balance_minor: row.get("initial_balance_minor")?,
                     current_balance_minor: row.get("current_balance_minor")?,
                     currency: row.get("currency")?,

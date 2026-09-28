@@ -51,7 +51,6 @@ fn issue_card(conn: &Connection, card_number: &str, amount: i64, issued_to: Opti
     store(conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: card_number.into(),
-            pin: None,
             initial_amount_minor: amount,
             currency: "IDR".into(),
             issued_to: issued_to.map(|s| s.into()),
@@ -73,7 +72,6 @@ fn full_lifecycle_issue_redeem_topup() {
     let result = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-LIFECYCLE".into(),
-            pin: Some("1234".into()),
             initial_amount_minor: 100000,
             currency: "IDR".into(),
             issued_to: Some("Alice".into()),
@@ -290,7 +288,6 @@ fn issue_with_zero_amount_fails() {
     let err = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-ZEROAMT".into(),
-            pin: None,
             initial_amount_minor: 0,
             currency: "IDR".into(),
             issued_to: None,
@@ -454,17 +451,23 @@ fn list_empty_when_no_cards() {
     assert!(results.is_empty());
 }
 
-// ── Pin handling ─────────────────────────────────────────────────────
+// ── Pin removal ──────────────────────────────────────────────────────
+//
+// Two tests lived here until 2026-09-29 (`issue_with_pin_includes_pin_in_card`
+// and `issue_without_pin_has_empty_pin`). They asserted a PIN round-trip for a
+// column that nothing verified and that `skip_serializing` made unreadable
+// through the API — so they pinned a value no caller could ever use. The field
+// is gone (migration 20261015_gift_cards_drop_pin.sql); these two replace them
+// with the property that actually matters: the wire type has no PIN at all.
 
 #[test]
-fn issue_with_pin_includes_pin_in_card() {
+fn issued_card_carries_no_pin_field() {
     let conn = setup();
     seed_user(&conn, "staff-1");
 
     let result = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-PIN".into(),
-            pin: Some("9876".into()),
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -472,26 +475,32 @@ fn issue_with_pin_includes_pin_in_card() {
             expiry_date: None,
         })
         .unwrap();
-    assert_eq!(result.card.pin, "9876");
+
+    // The card round-trips through JSON without a pin key, which is the
+    // guarantee the old MSL-10 redaction test was protecting by other means.
+    let json = serde_json::to_string(&result.card).unwrap();
+    assert!(
+        !json.contains("\"pin\""),
+        "an issued card must not serialize a pin field: {json}"
+    );
+    assert_eq!(result.card.card_number, "GC-PIN");
+    assert_eq!(result.card.current_balance_minor, 50000);
 }
 
 #[test]
-fn issue_without_pin_has_empty_pin() {
+fn legacy_issue_payload_with_pin_is_still_accepted() {
+    // A client built before the removal may still send `pin`. Unknown fields
+    // are ignored rather than rejected, so the wire stays compatible in the
+    // direction that matters — an older POS cannot be bricked by this change.
+    let legacy = r#"{"card_number":"GC-OLD","pin":"1234","initial_amount_minor":1000,
+                     "currency":"IDR","created_by":"staff-1"}"#;
+    let input: IssueGiftCardInput = serde_json::from_str(legacy).unwrap();
+    assert_eq!(input.card_number, "GC-OLD");
+
     let conn = setup();
     seed_user(&conn, "staff-1");
-
-    let result = store(&conn)
-        .issue_gift_card(IssueGiftCardInput {
-            card_number: "GC-NOPIN".into(),
-            pin: None,
-            initial_amount_minor: 30000,
-            currency: "IDR".into(),
-            issued_to: None,
-            created_by: "staff-1".into(),
-            expiry_date: None,
-        })
-        .unwrap();
-    assert_eq!(result.card.pin, "");
+    let result = store(&conn).issue_gift_card(input).unwrap();
+    assert_eq!(result.card.card_number, "GC-OLD");
 }
 
 // ── Lookup by id ─────────────────────────────────────────────────────
@@ -504,7 +513,6 @@ fn get_gift_card_by_uuid_id() {
     let issued = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-BYID".into(),
-            pin: None,
             initial_amount_minor: 25000,
             currency: "IDR".into(),
             issued_to: None,

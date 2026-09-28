@@ -87,23 +87,18 @@ pub struct LoyaltyAccountWithDetails {
 
 /// A gift card with current balance and status.
 ///
-/// MSL-10 fix: `pin` is a secret — it is excluded from serialization
-/// (`skip_serializing`, with `default` so payloads from older clients
-/// that still send it deserialize cleanly) and the manual `Debug` impl
-/// redacts it, so neither a Tauri command response nor a log dump of the
-/// struct can emit the plain PIN. Issuance takes the PIN through
-/// [`IssueGiftCardInput::pin`]; the repository persists and reads it
-/// directly.
+/// A `pin` field lived here until 2026-09-29. It was removed rather than
+/// hashed: nothing ever verified it, and `skip_serializing` meant the value
+/// could not even be read back through the API that returns the card, so it
+/// was a write-only secret with no reader and no verifier. See
+/// `20261015_gift_cards_drop_pin.sql` for the full reasoning, which follows the
+/// KDS pairing-token removal of the day before.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GiftCard {
     /// Unique identifier.
     pub id: String,
     /// Human-readable card number (scannable barcode).
     pub card_number: String,
-    /// PIN for balance checks (optional). Never serialized; see the
-    /// struct-level MSL-10 note.
-    #[serde(default, skip_serializing)]
-    pub pin: String,
     /// Initial loaded value in minor units.
     pub initial_balance_minor: i64,
     /// Current redeemable value in minor units.
@@ -129,7 +124,6 @@ impl std::fmt::Debug for GiftCard {
         f.debug_struct("GiftCard")
             .field("id", &self.id)
             .field("card_number", &self.card_number)
-            .field("pin", &"<redacted>")
             .field("initial_balance_minor", &self.initial_balance_minor)
             .field("current_balance_minor", &self.current_balance_minor)
             .field("currency", &self.currency)
@@ -178,8 +172,6 @@ pub struct GiftCardWithTransactions {
 pub struct IssueGiftCardInput {
     /// Card number.
     pub card_number: String,
-    /// Optional PIN.
-    pub pin: Option<String>,
     /// Initial amount minor.
     pub initial_amount_minor: i64,
     /// Currency.

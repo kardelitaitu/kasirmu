@@ -3,7 +3,6 @@
 //! Moved here with the types from `modules/loyalty/src/models_tests.rs`; the assertions are
 //! unchanged, including the one that pins the redacting `Debug`.
 
-
 use super::*;
 
 // ── LoyaltyTier ─────────────────────────────────────────────────
@@ -107,7 +106,6 @@ fn gift_card_serde_roundtrip() {
     let card = GiftCard {
         id: "gc-1".into(),
         card_number: "1234-5678-9012-3456".into(),
-        pin: "1234".into(),
         initial_balance_minor: 50000,
         current_balance_minor: 35000,
         currency: "IDR".into(),
@@ -132,7 +130,6 @@ fn gift_card_nullable_fields() {
     let card = GiftCard {
         id: "gc-2".into(),
         card_number: "0000".into(),
-        pin: "".into(),
         initial_balance_minor: 10000,
         current_balance_minor: 10000,
         currency: "USD".into(),
@@ -214,7 +211,6 @@ fn gift_card_with_transactions_serde_roundtrip() {
         card: GiftCard {
             id: "gc-1".into(),
             card_number: "1111".into(),
-            pin: "".into(),
             initial_balance_minor: 10000,
             current_balance_minor: 5000,
             currency: "USD".into(),
@@ -239,7 +235,6 @@ fn gift_card_with_transactions_serde_roundtrip() {
 fn issue_gift_card_input_serde_roundtrip() {
     let input = IssueGiftCardInput {
         card_number: "9999".into(),
-        pin: Some("1234".into()),
         initial_amount_minor: 25000,
         currency: "IDR".into(),
         issued_to: Some("Jane".into()),
@@ -250,7 +245,7 @@ fn issue_gift_card_input_serde_roundtrip() {
     let back: IssueGiftCardInput = serde_json::from_str(&json).unwrap();
     assert_eq!(back.card_number, "9999");
     assert_eq!(back.initial_amount_minor, 25000);
-    assert!(back.pin.is_some());
+    assert_eq!(back.created_by, "user-1");
 }
 
 // ── GiftCardFilter ──────────────────────────────────────────────
@@ -286,7 +281,6 @@ fn redeem_gift_card_result_serde_roundtrip() {
         card: GiftCard {
             id: "gc-1".into(),
             card_number: "1111".into(),
-            pin: "".into(),
             initial_balance_minor: 10000,
             current_balance_minor: 5000,
             currency: "USD".into(),
@@ -315,13 +309,18 @@ fn redeem_gift_card_result_serde_roundtrip() {
 }
 
 #[test]
-fn gift_card_pin_is_never_serialized_or_debugged() {
-    // MSL-10 fix: the plain PIN must not reach JSON responses or Debug
-    // output (Tauri command responses, log dumps).
+fn gift_card_has_no_pin_surface_at_all() {
+    // Replaces the former `gift_card_pin_is_never_serialized_or_debugged`
+    // (MSL-10). That test pinned the *redaction* of a field that no longer
+    // exists; this pins the stronger property that replaced it — there is no
+    // PIN anywhere on the card, in the JSON, or in the Debug dump.
+    //
+    // The field was removed 2026-09-29 (migration 20261015_gift_cards_drop_pin.sql)
+    // because nothing ever verified it and `skip_serializing` meant it could
+    // not even be read back: a write-only secret with no reader.
     let card = GiftCard {
         id: "gc-1".into(),
         card_number: "9999".into(),
-        pin: "1234".into(),
         initial_balance_minor: 25000,
         current_balance_minor: 25000,
         currency: "USD".into(),
@@ -335,27 +334,35 @@ fn gift_card_pin_is_never_serialized_or_debugged() {
 
     let json = serde_json::to_string(&card).unwrap();
     assert!(
-        !json.contains("1234"),
-        "serialized JSON must not contain the PIN"
-    );
-    assert!(
         !json.contains("\"pin\""),
-        "serialized JSON must omit the pin field"
+        "serialized JSON must carry no pin field"
     );
 
     let dbg = format!("{card:?}");
     assert!(
-        !dbg.contains("1234"),
-        "Debug output must not contain the PIN"
-    );
-    assert!(
-        dbg.contains("<redacted>"),
-        "Debug output must redact the pin"
+        !dbg.contains("pin"),
+        "Debug output must not mention a pin field"
     );
 
-    // Deserialization defaults the omitted pin to empty (older payloads
-    // keep working; issuance carries the PIN via IssueGiftCardInput).
     let back: GiftCard = serde_json::from_str(&json).unwrap();
     assert_eq!(back.id, "gc-1");
-    assert_eq!(back.pin, "");
+    assert_eq!(back.card_number, "9999");
+}
+
+#[test]
+fn issue_input_has_no_pin_field() {
+    // The issuance payload lost `pin` in the same change. A payload from an
+    // older client that still sends one must not fail — unknown fields are
+    // ignored by default, which is what keeps the wire compatible.
+    let legacy = r#"{"card_number":"1111","pin":"1234","initial_amount_minor":100,
+                     "currency":"USD","created_by":"staff"}"#;
+    let input: IssueGiftCardInput = serde_json::from_str(legacy).unwrap();
+    assert_eq!(input.card_number, "1111");
+    assert_eq!(input.initial_amount_minor, 100);
+
+    let json = serde_json::to_string(&input).unwrap();
+    assert!(
+        !json.contains("\"pin\""),
+        "issuance payload must not carry a pin field"
+    );
 }

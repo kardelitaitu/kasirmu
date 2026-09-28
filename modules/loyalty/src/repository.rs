@@ -54,7 +54,7 @@ impl<'a> LoyaltyRepository<'a> {
         card_number: &str,
     ) -> Result<Option<GiftCard>, LoyaltyError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, card_number, pin, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, expiry_date, created_by, updated_at
+            "SELECT id, card_number, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, expiry_date, created_by, updated_at
              FROM gift_cards WHERE card_number = ?1",
         )?;
 
@@ -67,16 +67,15 @@ impl<'a> LoyaltyRepository<'a> {
         Ok(Some(GiftCard {
             id: row.get(0)?,
             card_number: row.get(1)?,
-            pin: row.get(2)?,
-            initial_balance_minor: row.get(3)?,
-            current_balance_minor: row.get(4)?,
-            currency: row.get(5)?,
-            status: row.get(6)?,
-            issued_to: row.get(7)?,
-            issue_date: row.get(8)?,
-            expiry_date: row.get(9)?,
-            created_by: row.get(10)?,
-            updated_at: row.get(11)?,
+            initial_balance_minor: row.get(2)?,
+            current_balance_minor: row.get(3)?,
+            currency: row.get(4)?,
+            status: row.get(5)?,
+            issued_to: row.get(6)?,
+            issue_date: row.get(7)?,
+            expiry_date: row.get(8)?,
+            created_by: row.get(9)?,
+            updated_at: row.get(10)?,
         }))
     }
 }

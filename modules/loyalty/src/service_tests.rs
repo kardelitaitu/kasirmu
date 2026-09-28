@@ -42,8 +42,8 @@ fn get_account_missing_returns_none() {
 fn get_gift_card_delegates_to_repository() {
     let conn = fresh();
     conn.execute(
-        "INSERT INTO gift_cards (id, card_number, pin, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, updated_at)
-         VALUES ('gc-1', '1111', '', 25000, 25000, 'IDR', 'active', '', '2025-01-01', '2025-01-01')",
+        "INSERT INTO gift_cards (id, card_number, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, updated_at)
+         VALUES ('gc-1', '1111', 25000, 25000, 'IDR', 'active', '', '2025-01-01', '2025-01-01')",
         [],
     )
     .unwrap();

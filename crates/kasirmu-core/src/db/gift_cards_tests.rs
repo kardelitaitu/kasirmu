@@ -39,7 +39,6 @@ fn issue_gift_card_creates_card_and_transaction() {
     let result = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-1001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: Some("Alice".into()),
@@ -62,7 +61,6 @@ fn issue_gift_card_with_zero_amount_fails() {
     let err = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-1002".into(),
-            pin: None,
             initial_amount_minor: 0,
             currency: "IDR".into(),
             issued_to: None,
@@ -86,7 +84,6 @@ fn get_gift_card_by_card_number() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-2001".into(),
-            pin: None,
             initial_amount_minor: 100000,
             currency: "IDR".into(),
             issued_to: None,
@@ -113,7 +110,6 @@ fn get_gift_card_balance_returns_tuple() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-3001".into(),
-            pin: None,
             initial_amount_minor: 75000,
             currency: "IDR".into(),
             issued_to: Some("Bob".into()),
@@ -138,7 +134,6 @@ fn redeem_gift_card_deducts_balance() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-4001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -169,7 +164,6 @@ fn redeem_gift_card_is_idempotent() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-4002".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -201,7 +195,6 @@ fn redeem_insufficient_balance_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-5001".into(),
-            pin: None,
             initial_amount_minor: 5000,
             currency: "IDR".into(),
             issued_to: None,
@@ -239,7 +232,6 @@ fn redeem_atomic_decrement_keeps_ledger_in_sync() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-5002".into(),
-            pin: None,
             initial_amount_minor: 30000,
             currency: "IDR".into(),
             issued_to: None,
@@ -287,7 +279,6 @@ fn top_up_increases_balance() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-6001".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -319,7 +310,6 @@ fn freeze_and_unfreeze() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-7001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -342,7 +332,6 @@ fn list_gift_cards_with_filters() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-L1".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: Some("Alice".into()),
@@ -353,7 +342,6 @@ fn list_gift_cards_with_filters() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-L2".into(),
-            pin: None,
             initial_amount_minor: 20000,
             currency: "IDR".into(),
             issued_to: Some("Bob".into()),
@@ -384,7 +372,6 @@ fn redeem_on_frozen_card_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-8001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -421,7 +408,6 @@ fn issue_gift_card_with_empty_card_number_fails() {
     let err = store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "  ".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -445,7 +431,6 @@ fn redeem_gift_card_zero_amount_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-9001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -507,7 +492,6 @@ fn unfreeze_card_not_frozen_fails() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-10001".into(),
-            pin: None,
             initial_amount_minor: 10000,
             currency: "IDR".into(),
             issued_to: None,
@@ -532,7 +516,6 @@ fn redeem_exhausts_balance_auto_redeemed() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-11001".into(),
-            pin: None,
             initial_amount_minor: 5000,
             currency: "IDR".into(),
             issued_to: None,
@@ -562,7 +545,6 @@ fn notes_format_major_units_via_card_currency() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12001".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "USD".into(),
             issued_to: None,
@@ -611,7 +593,6 @@ fn notes_keep_raw_minor_for_idr() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12002".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -640,7 +621,6 @@ fn notes_render_kwd_three_decimals() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-12003".into(),
-            pin: None,
             initial_amount_minor: 500,
             currency: "KWD".into(),
             issued_to: None,
@@ -691,7 +671,6 @@ fn seed_card(conn: &Connection, card_number: &str) {
     store(conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: card_number.into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -930,7 +909,6 @@ fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming()
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-ERR-1".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,
@@ -1011,7 +989,6 @@ fn redeem_still_proceeds_when_no_prior_redemption_exists() {
     store(&conn)
         .issue_gift_card(IssueGiftCardInput {
             card_number: "GC-OK-1".into(),
-            pin: None,
             initial_amount_minor: 50000,
             currency: "IDR".into(),
             issued_to: None,

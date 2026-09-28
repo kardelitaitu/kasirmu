@@ -29,8 +29,8 @@ fn seed_loyalty_account(
 
 fn seed_gift_card(conn: &Connection, id: &str, card_number: &str, balance: i64, currency: &str) {
     conn.execute(
-        "INSERT INTO gift_cards (id, card_number, pin, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, updated_at)
-         VALUES (?1, ?2, '', ?3, ?3, ?4, 'active', '', '2025-01-01', '2025-01-01')",
+        "INSERT INTO gift_cards (id, card_number, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, updated_at)
+         VALUES (?1, ?2, ?3, ?3, ?4, 'active', '', '2025-01-01', '2025-01-01')",
         rusqlite::params![id, card_number, balance, currency],
     )
     .unwrap();
@@ -96,8 +96,8 @@ fn get_gift_card_by_number_roundtrip() {
 fn get_gift_card_by_number_with_expiry() {
     let conn = fresh();
     conn.execute(
-        "INSERT INTO gift_cards (id, card_number, pin, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, expiry_date, updated_at)
-         VALUES ('gc-2', '9999', '', 10000, 5000, 'USD', 'active', 'John', '2025-01-01', '2026-01-01', '2025-06-01')",
+        "INSERT INTO gift_cards (id, card_number, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, expiry_date, updated_at)
+         VALUES ('gc-2', '9999', 10000, 5000, 'USD', 'active', 'John', '2025-01-01', '2026-01-01', '2025-06-01')",
         [],
     )
     .unwrap();
