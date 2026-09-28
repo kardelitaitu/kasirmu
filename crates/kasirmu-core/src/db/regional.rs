@@ -9,7 +9,7 @@
 //! inheritance chain, and hands the resolution to the pure
 //! [`RegionalConfig::resolve`](crate::regional::RegionalConfig::resolve).
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::Store;
 use crate::CoreError;
@@ -135,7 +135,7 @@ impl Store<'_> {
                 [],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         match id {
             Some(id) => self.regional_config_for_location(&id).map(Some),
             None => Ok(None),

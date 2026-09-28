@@ -447,3 +447,26 @@ fn write_unknown_location_is_not_found() {
         "expected NotFound, got {err:?}"
     );
 }
+
+#[test]
+fn primary_regional_config_propagates_database_error() {
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
+
+    // Verify healthy call returns some primary config
+    let healthy = store.primary_regional_config().unwrap();
+    assert!(healthy.is_some());
+
+    // Fault the query by renaming the locations table
+    store_db
+        .execute_batch("ALTER TABLE locations RENAME TO locations_hidden;")
+        .unwrap();
+
+    let err = store
+        .primary_regional_config()
+        .expect_err("a database error must not silently return Ok(None)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

@@ -12522,6 +12522,24 @@ the test passed, along with `cargo fmt`.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 7: primary regional config stops swallowing DB errors
+
+**Problem:** `Store::primary_regional_config` (`crates/kasirmu-core/src/db/regional.rs`)
+queries `SELECT id FROM locations WHERE is_primary = 1 LIMIT 1` using `.ok()`. Any database
+query fault (table lock, schema corruption, I/O failure) collapsed into `None`, returning
+`Ok(None)` ("no primary location / not seeded yet") instead of propagating `CoreError::Db`.
+Callers would incorrectly treat an active store with a faulted DB as an unseeded deployment.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the query row result, returning
+`Result<Option<RegionalConfig>, CoreError>` where genuine DB failures propagate as `Err(CoreError::Db)`
+while an unseeded/no-primary state cleanly resolves to `Ok(None)`.
+
+**Verified:** Red first (`primary_regional_config_propagates_database_error` panicked with
+`a database error must not silently return Ok(None): None`). After `.optional()?`, the test
+passed and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 
