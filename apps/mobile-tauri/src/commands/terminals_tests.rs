@@ -310,6 +310,7 @@ fn delete_terminal_not_found() {
 fn terminal_dto_debug() {
     let dto = TerminalDto {
         id: "t1".into(),
+        code: None,
         name: "Front Counter".into(),
         device_id: "host-01".into(),
         is_active: true,
@@ -326,6 +327,7 @@ fn terminal_dto_debug() {
 fn terminal_dto_serialize() {
     let dto = TerminalDto {
         id: "t2".into(),
+        code: Some("02".into()),
         name: "Drive-Thru".into(),
         device_id: "host-02".into(),
         is_active: false,
@@ -336,6 +338,7 @@ fn terminal_dto_serialize() {
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["name"], "Drive-Thru");
+    assert_eq!(json["code"], "02");
     assert_eq!(json["isActive"], false);
 }
 

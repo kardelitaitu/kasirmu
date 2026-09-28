@@ -97,6 +97,7 @@ pub fn to_staff_dto(
         .unwrap_or_default();
     StaffMemberDto {
         id: user.id.clone(),
+        staff_code: None,
         username: user.username.clone(),
         display_name: user.display_name.clone(),
         avatar: profile.and_then(|p| p.avatar.clone()),
@@ -353,7 +354,9 @@ pub async fn list_staff_scoped(
         .map(|u| {
             let profile = store.get_user_profile(&u.id).ok().flatten();
             let assignment = store.assignment_for_user(&u.id).ok().flatten();
-            to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref())
+            let mut dto = to_staff_dto(u, &roles, profile.as_ref(), assignment.as_ref());
+            dto.staff_code = store.get_staff_code(&u.id).unwrap_or(None);
+            dto
         })
         .collect();
     drop(db);
@@ -649,14 +652,17 @@ pub async fn create_staff_scoped(
             SECURITY_REASON_ACCOUNT_CREATED,
         ),
     );
+    let staff_code = store.get_staff_code(&user.id).unwrap_or(None);
     drop(db);
 
-    Ok(to_staff_dto(
+    let mut dto = to_staff_dto(
         &user,
         &roles,
         Some(&profile),
         assignment.as_ref(),
-    ))
+    );
+    dto.staff_code = staff_code;
+    Ok(dto)
 }
 
 /// Update a staff member. Caller identity is resolved from the session token.
@@ -863,17 +869,22 @@ pub async fn update_staff_scoped(
         Some(p) => Some(p.clone().into_profile()),
         None => previous_profile.and_then(|(_, _, _, _, _, p)| p),
     };
-    let assignment = {
+    let (assignment, staff_code) = {
         let db = ctx.lock_global().await;
         let store = Store::new(&db);
-        store.assignment_for_user(&args.id)?
+        (
+            store.assignment_for_user(&args.id)?,
+            store.get_staff_code(&args.id).unwrap_or(None),
+        )
     };
-    Ok(to_staff_dto(
+    let mut dto = to_staff_dto(
         &user,
         &roles,
         profile.as_ref(),
         assignment.as_ref(),
-    ))
+    );
+    dto.staff_code = staff_code;
+    Ok(dto)
 }
 
 // ── Bootstrap first owner (no authentication required) ────────────────

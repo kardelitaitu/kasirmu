@@ -66,6 +66,9 @@ pub struct AssignmentArgs {
 pub struct StaffMemberDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 staff/cashier code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_code: Option<String>,
     /// Username.
     pub username: String,
     /// Display Name.

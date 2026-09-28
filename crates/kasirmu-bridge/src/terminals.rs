@@ -138,6 +138,9 @@ fn verify_binding(
 pub struct TerminalDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 dynamic terminal code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// Display name.
     pub name: String,
     /// ID of the associated device.
@@ -158,6 +161,7 @@ impl From<Terminal> for TerminalDto {
     fn from(t: Terminal) -> Self {
         Self {
             id: t.id,
+            code: None,
             name: t.name,
             device_id: t.device_id,
             is_active: t.is_active,
@@ -167,6 +171,14 @@ impl From<Terminal> for TerminalDto {
             updated_at: t.updated_at,
         }
     }
+}
+
+/// Helper to enrich a [`TerminalDto`] with its Base62 code.
+pub fn to_terminal_dto(store: &Store<'_>, terminal: Terminal) -> TerminalDto {
+    let code = store.get_terminal_code(&terminal.id).unwrap_or(None);
+    let mut dto = TerminalDto::from(terminal);
+    dto.code = code;
+    dto
 }
 
 /// Arguments for registering a new terminal.
@@ -242,7 +254,10 @@ pub async fn list_terminals_scoped(
 pub fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, BridgeError> {
     let store = Store::new(conn);
     let terminals = store.list_terminals()?;
-    let dtos: Vec<TerminalDto> = terminals.into_iter().map(TerminalDto::from).collect();
+    let dtos: Vec<TerminalDto> = terminals
+        .into_iter()
+        .map(|t| to_terminal_dto(&store, t))
+        .collect();
     Ok(dtos)
 }
 
@@ -264,9 +279,10 @@ pub async fn get_terminal_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&db);
     let terminal = store.get_terminal(&id)?;
+    let dto = terminal.map(|t| to_terminal_dto(&store, t));
     drop(db);
 
-    Ok(terminal.map(TerminalDto::from))
+    Ok(dto)
 }
 
 /// Ping a terminal in the store resolved from a session token. ADR #7.

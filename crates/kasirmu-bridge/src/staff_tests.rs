@@ -140,6 +140,7 @@ fn complete_profile_args() -> ProfileArgs {
 fn staff_member_dto_debug() {
     let dto = StaffMemberDto {
         id: "u1".into(),
+        staff_code: None,
         username: "jdoe".into(),
         display_name: "John Doe".into(),
         avatar: None,
@@ -164,6 +165,7 @@ fn staff_member_dto_debug() {
 fn staff_member_dto_serialize() {
     let dto = StaffMemberDto {
         id: "u2".into(),
+        staff_code: Some("03".into()),
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
         avatar: Some("abcdef0123456789".into()),
@@ -179,6 +181,7 @@ fn staff_member_dto_serialize() {
     };
     let json = serde_json::to_value(&dto).unwrap();
     assert_eq!(json["username"], "asmith");
+    assert_eq!(json["staff_code"], "03");
     assert_eq!(json["is_active"], false);
     // The list carries each member's avatar hash as a plain string so the
     // roster can render a photo; null is the "no photo" case, not an omission.

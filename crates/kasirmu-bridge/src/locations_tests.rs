@@ -28,6 +28,7 @@ use crate::testing::TestBridge;
 fn location_profile_dto_serialize() {
     let dto = LocationProfileDto {
         id: "sp2".into(),
+        code: Some("01".into()),
         name: "Branch".into(),
         address: String::new(),
         tax_id: String::new(),
@@ -39,6 +40,7 @@ fn location_profile_dto_serialize() {
     };
     let v = serde_json::to_value(&dto).unwrap();
     assert_eq!(v["id"], "sp2");
+    assert_eq!(v["code"], "01");
     assert_eq!(v["name"], "Branch");
     assert_eq!(v["is_primary"], false);
     assert_eq!(v["currency"], "IDR");

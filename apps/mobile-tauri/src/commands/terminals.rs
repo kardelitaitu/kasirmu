@@ -72,6 +72,9 @@ fn sign_binding(
 pub struct TerminalDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 dynamic terminal code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// Display name.
     pub name: String,
     /// ID of the associated device.
@@ -92,6 +95,7 @@ impl From<Terminal> for TerminalDto {
     fn from(t: Terminal) -> Self {
         Self {
             id: t.id,
+            code: None,
             name: t.name,
             device_id: t.device_id,
             is_active: t.is_active,
@@ -295,7 +299,15 @@ pub(crate) fn run_set_device_binding(
 fn run_list_terminals(conn: &rusqlite::Connection) -> Result<Vec<TerminalDto>, AppError> {
     let store = Store::new(conn);
     let terminals = store.list_terminals()?;
-    let dtos: Vec<TerminalDto> = terminals.into_iter().map(TerminalDto::from).collect();
+    let dtos: Vec<TerminalDto> = terminals
+        .into_iter()
+        .map(|t| {
+            let code = store.get_terminal_code(&t.id).unwrap_or(None);
+            let mut dto = TerminalDto::from(t);
+            dto.code = code;
+            dto
+        })
+        .collect();
     Ok(dtos)
 }
 
@@ -347,9 +359,14 @@ pub async fn get_terminal_scoped(
     let db = &*db_guard;
     let store = Store::new(&db);
     let terminal = store.get_terminal(&id)?;
+    let code = store.get_terminal_code(&id).unwrap_or(None);
     drop(db);
 
-    Ok(terminal.map(TerminalDto::from))
+    Ok(terminal.map(|t| {
+        let mut dto = TerminalDto::from(t);
+        dto.code = code;
+        dto
+    }))
 }
 
 /// Register a new terminal resolved from a session token. ADR #7.

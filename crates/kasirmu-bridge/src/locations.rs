@@ -48,6 +48,9 @@ use crate::error::BridgeError;
 pub struct LocationProfileDto {
     /// Unique identifier.
     pub id: String,
+    /// Base62 dynamic branch/location code (e.g. "01", "02").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
     /// Display name.
     pub name: String,
     /// Street address.
@@ -70,6 +73,7 @@ impl From<LocationProfile> for LocationProfileDto {
     fn from(p: LocationProfile) -> Self {
         Self {
             id: p.id,
+            code: None,
             name: p.name,
             address: p.address,
             tax_id: p.tax_id,
@@ -80,6 +84,14 @@ impl From<LocationProfile> for LocationProfileDto {
             updated_at: p.updated_at,
         }
     }
+}
+
+/// Helper to enrich a [`LocationProfileDto`] with its Base62 code.
+pub fn to_location_dto(store: &Store<'_>, profile: LocationProfile) -> LocationProfileDto {
+    let code = store.get_location_code(&profile.id).unwrap_or(None);
+    let mut dto = LocationProfileDto::from(profile);
+    dto.code = code;
+    dto
 }
 
 /// Arguments for creating a location profile.
@@ -129,7 +141,7 @@ pub async fn get_primary_location(
     let conn = ctx.lock_global().await;
     let store = Store::new(&conn);
     let profile = store.get_primary_location()?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)))
 }
 
 /// List location profiles for the session's tenant (ADR #7).
@@ -152,7 +164,7 @@ pub async fn list_locations_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profiles = store.list_locations()?;
-    Ok(profiles.into_iter().map(LocationProfileDto::from).collect())
+    Ok(profiles.into_iter().map(|p| to_location_dto(&store, p)).collect())
 }
 
 /// Get a location profile for the session's tenant (ADR #7).
@@ -176,7 +188,7 @@ pub async fn get_location_profile_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.get_location_profile(id)?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)))
 }
 
 /// Get the primary location for the session's tenant (ADR #7).
@@ -199,7 +211,7 @@ pub async fn get_primary_location_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.get_primary_location()?;
-    Ok(profile.map(LocationProfileDto::from))
+    Ok(profile.map(|p| to_location_dto(&store, p)))
 }
 
 /// Create a location profile for the session's tenant (ADR #7).
@@ -281,7 +293,7 @@ pub async fn create_location_profile_scoped(
         updated_at: now,
     };
     let created = store.create_location_profile(&profile)?;
-    Ok(LocationProfileDto::from(created))
+    Ok(to_location_dto(&store, created))
 }
 
 /// Update a location profile for the session's tenant (ADR #7).
@@ -337,7 +349,7 @@ pub async fn update_location_profile_scoped(
         &args.currency,
         &args.timezone,
     )?;
-    Ok(LocationProfileDto::from(updated))
+    Ok(to_location_dto(&store, updated))
 }
 
 /// Set a location as primary for the session's tenant (ADR #7).
@@ -371,7 +383,7 @@ pub async fn set_primary_location_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profile = store.set_primary_location(id)?;
-    Ok(LocationProfileDto::from(profile))
+    Ok(to_location_dto(&store, profile))
 }
 
 /// Delete a location profile for the session's tenant (ADR #7).

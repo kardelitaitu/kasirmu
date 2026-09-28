@@ -118,7 +118,8 @@ pub async fn restore_staff_scoped(
     let roles = store.list_roles()?;
     let profile = store.get_user_profile(&user.id).ok().flatten();
     let assignment = store.assignment_for_user(&user.id).ok().flatten();
-    let dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
+    let mut dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
+    dto.staff_code = store.get_staff_code(&user.id).unwrap_or(None);
     drop(db);
     Ok(dto)
 }
@@ -155,6 +156,7 @@ pub async fn list_staff_trash_scoped(
             let profile = store.get_user_profile(&entry.user.id).ok().flatten();
             let assignment = store.assignment_for_user(&entry.user.id).ok().flatten();
             let mut dto = to_staff_dto(&entry.user, &roles, profile.as_ref(), assignment.as_ref());
+            dto.staff_code = store.get_staff_code(&entry.user.id).unwrap_or(None);
             dto.deleted_at = Some(entry.deleted_at.clone());
             dto
         })

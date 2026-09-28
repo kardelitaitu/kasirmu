@@ -9,6 +9,7 @@ use crate::commands::picker_ticket;
 fn staff_member_dto_debug() {
     let dto = StaffMemberDto {
         id: "u1".into(),
+        staff_code: None,
         username: "jdoe".into(),
         display_name: "John Doe".into(),
         avatar: None,
@@ -32,6 +33,7 @@ fn staff_member_dto_debug() {
 fn staff_member_dto_serialize() {
     let dto = StaffMemberDto {
         id: "u2".into(),
+        staff_code: None,
         username: "asmith".into(),
         display_name: "Alice Smith".into(),
         avatar: None,
