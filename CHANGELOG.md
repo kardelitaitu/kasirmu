@@ -17,10 +17,11 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 > statement of what runs. Two entries predate even that: `docs.yml` was deleted
 > outright by `0fb946b16`, and `circleci.yml` existed for one day (created
 > `0ee9fef4`, moved to `.circleci/config.yml` by `ad1d06e9`).
-> **What runs today (and how to re-check it):** three live workflows —
+> **What runs today (and how to re-check it):** four live workflows —
 > `.github/workflows/dev-ci.yml` (`pull_request` targeting `main` + `push` to main +
 > `workflow_dispatch` — `sed -n '3,8p' .github/workflows/dev-ci.yml`), `.github/workflows/release.yml`
-> (`v*` tags) and `.github/workflows/android.yml` (`v*` tag or `workflow_dispatch`, no PR trigger).
+> (`v*` tags), `.github/workflows/android.yml` (`v*` tag or `workflow_dispatch`, no PR trigger)
+> and `.github/workflows/website.yml` (`push` to main, added by `60acf8141` on 2026-09-24).
 > **Corrected 2026-09-23 (C30):** this said "two" and "no push trigger" — both were true when
 > written and both went false (the push trigger and the restored android.yml). Re-measure with
 > `ls .github/workflows/*.yml`, never from this file. Current gates and

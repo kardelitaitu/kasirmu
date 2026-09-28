@@ -157,7 +157,7 @@ kasir.mu/
 ├─ scripts/                  # unchanged (same: the tracked-file count was removed, not restated)
 ├─ assets/  fuzz/            # unchanged — fuzz/ stays workspace-excluded on purpose
 │
-├─ .github/workflows/        # 3 live: dev-ci.yml, release.yml, android.yml (`ls .github/workflows/*.yml`)
+├─ .github/workflows/        # live workflows — never quote a count, run `ls .github/workflows/*.yml`
 │   └─ attic/                # ← the retired *.yml.bak files
 │
 └─ <root files>              # see §5 of done-todo-project-folder-restructure.md — only what a tool looks up BY NAME at the project root,
