@@ -1766,29 +1766,26 @@ needs `'static` — the leak existed purely to satisfy a return type. The fix is
 `fn setup_store(conn: &Connection) -> Store<'_>` plus one `let store_conn =
 migrations::fresh_db();` per call site.
 
-**STATUS: transformed, then reverted. Not on the branch.** Written to the tree
-and, before it could be compiled, swept into `8301eef0f` (*"refactor(mobile):
-split the COR-7 checkout out of the POS command layer"*) — another lane's commit
-picked up my uncommitted working-tree change. `cargo check -p platform-sync
---lib --tests` could not be run: `target/debug/.cargo-build-lock` was held
-exclusively (fails `r+b` *and* `a+b`, i.e. no share mode) for 22 minutes. Rather
-than leave an uncompiled 77-site change on a shared branch while going idle —
-a compile error there blocks every lane — it was restored to the original in the
-next commit. The only `'static` in the file was the helper itself, every helper
-takes `&Store<'_>`, and there is no thread spawn, so it is very likely sound;
-likely is not verified, and the downstream cost of being wrong is everyone's
-build.
+**STATUS: landed and verified — `cfb1325bd`.** `cargo test -p platform-sync
+--lib -- queue::tests` → **79 passed, 0 failed**, 1.74 s. The five sibling files
+listed above are untouched and still leak.
 
-Re-apply and verify with:
+The path there was messier than the fix. Written to the tree and, before it could
+be compiled, swept into `8301eef0f` (*"refactor(mobile): split the COR-7 checkout
+out of the POS command layer"*) — another lane's commit picked up my uncommitted
+working-tree change. `cargo check -p platform-sync --lib --tests` could not be
+run: `target/debug/.cargo-build-lock` was held exclusively (fails `r+b` *and*
+`a+b`) for ~25 minutes. Rather than leave an uncompiled 77-site change on a
+shared branch while going idle — a compile error there blocks every lane — it
+was restored to the original (`e96f53b1b`). The lock freed ~15 minutes later and
+the re-applied patch passed first time.
 
-```
-cp /c/Users/Dika/queue_tests_OT03_new.rs platform/sync/src/queue_tests.rs
-cargo test -p platform-sync --lib -- queue          # expect 77 passed
-git commit -m "test(sync): drop the Box::leak in the queue fixture" -- platform/sync/src/queue_tests.rs
-```
+Two `image_push::tests` failures show up under a bare `-- queue` filter because
+"en**queue**s" matches; they are `Os { code: 5 }` at `image_push_tests.rs:74`,
+the same `C:\WINDOWS\TEMP` file-create failure, and are unrelated to this change.
 
-(`/c/Users/Dika/queue_tests_OT03_new.rs` is the transformed file;
-`queue_tests_backup.rs` alongside it is the original.)
+Note the count: 77 `setup_store()` call sites but 79 tests in `queue::tests` —
+two tests build their `Store` without the helper.
 
 **Process lesson, and it is §7.3's rule biting.** Uncommitted work in a shared
 checkout is not private. `AGENTS.md` forbids `git add` for exactly this reason —
