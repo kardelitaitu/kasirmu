@@ -66,13 +66,20 @@ step "clippy workspace" "cargo clippy --workspace --all-targets -- -D warnings" 
 # doc warnings from failing this step for a crate we do not own.
 # Gate: scripts/gates.json -> "rust-doc".
 # Notes that matter for this step specifically:
+#  * The environment variable goes through `env`, not through a bare `VAR=value` word.
+#    MEASURED 2026-09-29: `step ... RUSTDOCFLAGS='-D warnings' cargo doc ...` exits 127,
+#    because `step` runs "$@" and bash does NOT treat a word produced by parameter
+#    expansion as a variable assignment -- it looks for a COMMAND named
+#    "RUSTDOCFLAGS=-D warnings" and finds none. The step could never pass, while the
+#    comment below claimed its inline variable was load-bearing. `env` keeps both
+#    properties: rustdoc really denies warnings, and nothing leaks into later steps.
 #  * `RUSTDOCFLAGS` is set INLINE here, not exported, for the same reason the
 #    clippy step passes `-- -D warnings` inline: an exported variable would leak
 #    into every later step in this script.
 #  * Passing it at all is load-bearing. Without it `cargo doc` reports warnings
 #    and still exits 0, so the step would be decoration -- it would look like it
 #    checked something and could never fail.
-step "rustdoc (deny warnings)" "RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps" RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
+step "rustdoc (deny warnings)" "RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps" env RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps
 
 # ── ADR #7 Phase 4: no raw store_id/user_id in command signatures ───────
 step "no-raw-params (ADR #7 Phase 4)" "bash scripts/verify-no-raw-params.sh" bash scripts/verify-no-raw-params.sh
