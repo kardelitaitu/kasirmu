@@ -12724,6 +12724,49 @@ After the fix, the test passed cleanly and `cargo fmt` was applied.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD batch 3: unvalidated date bounds on the custom-report door
+
+**Loose end from batch 2, closed by RUNNING it rather than inspecting it.** That batch changed the
+Postgres twin's weekly bucket to `date_trunc('week', x::date + 1)::date - 1` and could only inspect
+the result. It is now evaluated against a real `postgres:17-alpine` (throwaway container, no host
+port, stopped afterwards): for Sunday 2026-08-09 the old form yields `2026-08-02` — the previous
+week, i.e. the bug — and the new one `2026-08-09`, the Sunday it opens; a Monday and a Saturday map
+identically before and after. The change fixes the boundary case and moves nothing else, so it
+stands. It stays an expression-level proof: the cloud's 54 `pg-tests` arms need a full
+`init.pg.sql` bootstrap, not merely a reachable server.
+
+**Problem:** `Store::build_custom_report` (`crates/kasirmu-core/src/export/mod.rs`) is the IPC door
+behind `build_custom_report_scoped` — the custom-report builder a user types a date range into — and
+it interpolated `start_date`/`end_date` straight into `DATE(col, tz) BETWEEN ?2 AND ?3` without
+validating them. Every other date-bounded report in the crate validates at the door, because
+`check_date_bound` exists precisely for this: SQLite compares a boundary as a plain string, so
+`"2026-13-45"` matches no row and the report returns **empty with no error** — the shape this repo
+treats as the worst one, "nothing errors and the numbers just read zero". The 24-09-26 crate review
+had already been through this function (MSL-57 fixed its *bound format*), and its own entry records
+that the export filter sat outside the audit fence — which is how the validation half stayed open.
+
+**Solution:** validate both bounds with `crate::db::reports::check_date_bound` when present, before
+the `0000-01-01`/`9999-12-31` defaults are applied, and inside the `has_date_filter` branch only —
+so a dataset with no date filter still ignores stray dates instead of rejecting them.
+
+**Verified:** Red first, and re-proven by temporarily reverting the fix (the honest way to show the
+failure was not incidental): the test failed with
+`CustomReportResponse { columns: ["id"], rows: [], truncated: false }` handed to `expect_err` — an
+empty report, not an error. Green after the fix: export **145/145**, `cargo fmt -p kasirmu-core`
+clean on both touched files.
+
+**Also checked and found sound (no change made):** `csv_cell` quotes cells and doubles embedded
+quotes; all ten CSV writers' headers match their row widths; the cloud's `revenue_profit_fields` is
+a faithful REP-08 mirror of the core arithmetic; and all six custom-report dataset definitions name
+real columns (`shifts` correctly filters on `opened_at`, not `created_at`).
+
+**Not fixed, recorded:** `truncated = rows.len() >= limit as usize` reports truncation for a result
+set that exactly fills the limit, because the query can only ever fetch `limit` rows — a truthful
+flag needs a `limit + 1` fetch. Still open from earlier batches: `tz_modifier`'s `.ok()` (documented
+UTC fallback, nine-module blast radius) and the cloud's `pg-tests` arms.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

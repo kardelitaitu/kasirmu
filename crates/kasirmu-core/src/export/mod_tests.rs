@@ -289,6 +289,34 @@ fn custom_report_tax_rates_dataset() {
 }
 
 #[test]
+fn custom_report_rejects_a_malformed_date_bound() {
+    // Every other date-bounded report validates its bounds with
+    // `check_date_bound` before the query runs, because SQLite compares a
+    // garbage boundary as a plain string: it matches no row and the report
+    // comes back EMPTY with no error at all — the failure shape this repo
+    // treats as the worst kind, since nothing errors and the numbers just read
+    // zero. This builder is the IPC door for a user-typed range
+    // (`build_custom_report_scoped`), and it forwarded the bounds unvalidated.
+    let conn = migrations::fresh_db();
+    let s = Store::new(&conn);
+    let req = CustomReportRequest {
+        dataset: "sales".to_string(),
+        columns: vec!["id".to_string()],
+        start_date: Some("2026-13-45".to_string()),
+        end_date: Some("2026-12-31".to_string()),
+        limit: None,
+        offset: None,
+    };
+    let err = s
+        .build_custom_report(req)
+        .expect_err("a malformed start_date must be rejected, not silently empty the report");
+    assert!(
+        matches!(err, CoreError::Validation { .. }),
+        "expected a validation error naming the bad bound, got {err:?}"
+    );
+}
+
+#[test]
 fn custom_report_shifts_dataset() {
     let conn = migrations::fresh_db();
     let s = Store::new(&conn);

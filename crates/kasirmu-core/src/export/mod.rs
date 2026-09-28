@@ -635,6 +635,17 @@ impl Store<'_> {
 
         if dataset.has_date_filter {
             let date_col = dataset.date_column;
+            // Validate the bounds at the door, as every other date-bounded
+            // report does (REP-03). `DATE(col, tz) BETWEEN ?2 AND ?3` compares
+            // the converted day as a plain string, so a mistyped bound matches
+            // nothing: the report would come back empty with no error, which
+            // is precisely why `check_date_bound` exists.
+            if let Some(start) = req.start_date.as_deref() {
+                crate::db::reports::check_date_bound("start_date", start)?;
+            }
+            if let Some(end) = req.end_date.as_deref() {
+                crate::db::reports::check_date_bound("end_date", end)?;
+            }
             let start = req
                 .start_date
                 .clone()
