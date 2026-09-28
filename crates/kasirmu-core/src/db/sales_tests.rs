@@ -5236,3 +5236,46 @@ fn void_pending_sale_propagates_db_error_when_reading_sale_total() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn complete_sale_deduction_propagates_db_error_when_resolving_shortfall_alternatives() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO inventory_locations (id, name, type) VALUES
+            ('loc-pri-f', 'Primary', 'store'),
+            ('loc-sec-f', 'Secondary', 'warehouse');
+         INSERT OR IGNORE INTO locations (id, name, is_primary) VALUES ('store-f', 'Test Store', 0);
+         INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name)
+            VALUES ('ws-multi-fault',
+                (SELECT key FROM workspace_types LIMIT 1),
+                'store-f', 'Multi-Fault');
+         INSERT OR IGNORE INTO workspace_inventory_locations (id, instance_id, location_id, is_primary, sort_order)
+            VALUES ('wsl-pri-f', 'ws-multi-fault', 'loc-pri-f', 1, 0),
+                   ('wsl-sec-f', 'ws-multi-fault', 'loc-sec-f', 0, 1);",
+    )
+    .unwrap();
+    let product_id = seed_product_with_stock(&conn, "COFFEE-F", 0);
+    conn.execute(
+        "INSERT OR REPLACE INTO stock_summary (item_id, location_id, qty) VALUES (?1, 'loc-sec-f', 5)",
+        rusqlite::params![product_id],
+    )
+    .unwrap();
+
+    let sale = make_single_line_sale("COFFEE-F", 2, 350);
+
+    // Fault the query used by resolve_location_chain_for_sku
+    conn.execute_batch(
+        "ALTER TABLE workspace_inventory_locations RENAME COLUMN location_id TO location_id_faulted;",
+    )
+    .unwrap();
+
+    let err = s
+        .complete_sale_deduction(&sale, Some("ws-multi-fault"), &[], "cashier-1", None)
+        .expect_err("database error in alternative location resolution must not be swallowed");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

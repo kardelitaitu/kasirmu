@@ -12785,6 +12785,25 @@ After the fix, the test passed, all 40 promotions tests passed, and formatting w
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 15: checkout shortfall alternative resolution stops swallowing DB errors
+
+**Problem:** In `Store::complete_sale_deduction` (`crates/kasirmu-core/src/db/sales_checkout.rs`),
+when stock shortfall occurs, alternative inventory locations are resolved via
+`resolve_location_chain_for_sku(...).unwrap_or_default()`. If a database error occurs (e.g.
+locked tables, corruption, or I/O failure during binding traversal), `.unwrap_or_default()`
+swallowed the error and returned an empty vector. This caused the checkout flow to falsely
+report zero available alternatives in the shortfall validation payload rather than surfacing
+`CoreError::Db`.
+
+**Solution:** Replaced `.unwrap_or_default()` with `?` in both line item and BOM ingredient
+shortfall resolution blocks, propagating database errors immediately.
+
+**Verified:** Red first (`complete_sale_deduction_propagates_db_error_when_resolving_shortfall_alternatives`
+panicked expecting `CoreError::Db` but got `Validation { field: "stock", ... alternatives: [] }`).
+After changing to `?`, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

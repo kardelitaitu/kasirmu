@@ -290,8 +290,7 @@ impl Store<'_> {
                     } else if let Some(ws_id) = workspace_instance_id {
                         crate::location_resolver::resolve_location_chain_for_sku(
                             &tx, ws_id, &line.sku, line.qty,
-                        )
-                        .unwrap_or_default()
+                        )?
                         .into_iter()
                         .filter(|a| a.location_id != primary_location)
                         .collect()
@@ -382,8 +381,7 @@ impl Store<'_> {
                                         ws_id,
                                         &ing_sku,
                                         required_qty,
-                                    )
-                                    .unwrap_or_default()
+                                    )?
                                     .into_iter()
                                     .filter(|a| a.location_id != primary_location)
                                     .collect()
