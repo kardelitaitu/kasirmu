@@ -228,8 +228,7 @@ fn plugin_with_legit_scripts_still_loads() {
         let canonical_dir = std::fs::canonicalize(dir.path().join("good")).unwrap();
         assert!(
             script.starts_with(&canonical_dir),
-            "script {:?} must stay inside the plugin dir",
-            script
+            "script {script:?} must stay inside the plugin dir"
         );
     }
 }

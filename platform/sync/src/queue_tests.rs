@@ -10,14 +10,22 @@ use super::*;
 use kasirmu_core::migrations;
 use rusqlite::Connection;
 
-fn setup_store() -> Store<'static> {
-    let conn: &'static Connection = Box::leak(Box::new(migrations::fresh_db()));
+/// A `Store` over a caller-owned connection.
+///
+/// This used to `Box::leak` one `fresh_db()` per call purely to manufacture a
+/// `'static` lifetime. `Store<'a>` borrows its connection for any `'a`, so the
+/// caller can own it and nothing needs `'static`. The leak kept ~2 MiB of
+/// SQLite alive for the life of the binary at each of the 77 call sites below
+/// — ~156 MiB held and never released, and a pattern five other test files
+/// copied. (O-T03.)
+fn setup_store(conn: &Connection) -> Store<'_> {
     Store::new(conn)
 }
 
 #[test]
 fn queue_empty_pending() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let pending = queue.list_pending(&store).unwrap();
     assert!(pending.is_empty());
@@ -25,7 +33,8 @@ fn queue_empty_pending() {
 
 #[test]
 fn queue_enqueue_and_list() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue
         .enqueue(&store, "complete_sale", r#"{"sale_id":"s1"}"#)
@@ -39,7 +48,8 @@ fn queue_enqueue_and_list() {
 
 #[test]
 fn queue_mark_synced() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.mark_synced(&store, &item.id).unwrap();
@@ -50,7 +60,8 @@ fn queue_mark_synced() {
 
 #[test]
 fn queue_mark_failed() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue
@@ -63,14 +74,16 @@ fn queue_mark_failed() {
 
 #[test]
 fn queue_last_synced_at_none() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     assert!(queue.last_synced_at(&store).unwrap().is_none());
 }
 
 #[test]
 fn queue_last_synced_at_after_sync() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.mark_synced(&store, &item.id).unwrap();
@@ -79,7 +92,8 @@ fn queue_last_synced_at_after_sync() {
 
 #[test]
 fn queue_delete_removes_item() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item = queue.enqueue(&store, "test", "{}").unwrap();
     queue.delete(&store, &item.id).unwrap();
@@ -89,7 +103,8 @@ fn queue_delete_removes_item() {
 
 #[test]
 fn queue_delete_nonexistent_does_not_error() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let result = queue.delete(&store, "nonexistent-id");
     assert!(result.is_ok());
@@ -97,7 +112,8 @@ fn queue_delete_nonexistent_does_not_error() {
 
 #[test]
 fn queue_pending_count() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     assert_eq!(queue.pending_count(&store).unwrap(), 0);
 
@@ -113,7 +129,8 @@ fn queue_pending_count() {
 
 #[test]
 fn queue_list_all_returns_all_statuses() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
     let _item2 = queue.enqueue(&store, "b", "{}").unwrap();
@@ -126,7 +143,8 @@ fn queue_list_all_returns_all_statuses() {
 
 #[test]
 fn queue_list_pending_returns_oldest_first() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "first", "{}").unwrap();
     let item2 = queue.enqueue(&store, "second", "{}").unwrap();
@@ -140,7 +158,8 @@ fn queue_list_pending_returns_oldest_first() {
 
 #[test]
 fn queue_enqueue_dedup_skips_duplicate() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-1"}"#;
@@ -160,7 +179,8 @@ fn queue_enqueue_dedup_skips_duplicate() {
 
 #[test]
 fn queue_enqueue_dedup_allows_different_payload() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let first = queue
@@ -179,7 +199,8 @@ fn queue_enqueue_dedup_allows_different_payload() {
 
 #[test]
 fn queue_enqueue_dedup_allows_different_action() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"id":"x"}"#;
@@ -200,7 +221,8 @@ fn queue_enqueue_dedup_cross_terminal_scenario() {
     // Simulate: Terminal A completes a sale and enqueues it.
     // That sale syncs to Terminal B, which also tries to enqueue
     // the exact same payload — the dedup should prevent duplicates.
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-cross-1","items":[{"sku":"COFFEE","qty":2}]}"#;
@@ -226,7 +248,8 @@ fn queue_enqueue_dedup_cross_terminal_scenario() {
 fn queue_enqueue_dedup_allows_after_mark_synced() {
     // After an item is synced, a new enqueue with the same payload
     // should not be deduped (only checks Pending items).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let payload = r#"{"sale_id":"s-1"}"#;
@@ -251,7 +274,8 @@ fn queue_enqueue_dedup_allows_after_mark_synced() {
 
 #[test]
 fn queue_status_summary_empty() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let summary = queue.status_summary(&store).unwrap();
     assert_eq!(summary.pending_count, 0);
@@ -263,7 +287,8 @@ fn queue_status_summary_empty() {
 
 #[test]
 fn queue_status_summary_with_data() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
@@ -280,7 +305,8 @@ fn queue_status_summary_with_data() {
 
 #[test]
 fn queue_status_summary_after_mark_failed() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let item = queue.enqueue(&store, "test", "{}").unwrap();
@@ -294,7 +320,8 @@ fn queue_status_summary_after_mark_failed() {
 
 #[test]
 fn queue_last_synced_at_multiple_items() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let item1 = queue.enqueue(&store, "a", "{}").unwrap();
     let item2 = queue.enqueue(&store, "b", "{}").unwrap();
@@ -311,7 +338,8 @@ fn queue_last_synced_at_multiple_items() {
 
 #[test]
 fn queue_apply_resolution_local_wins() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue.enqueue(&store, "test", "{}").unwrap();
 
@@ -345,7 +373,8 @@ fn queue_apply_resolution_local_wins() {
 
 #[test]
 fn queue_apply_resolution_remote_wins() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue.enqueue(&store, "test", "{}").unwrap();
 
@@ -397,7 +426,8 @@ fn inventory_qty(store: &Store<'_>, sku: &str) -> i64 {
 
 #[test]
 fn apply_remote_complete_sale_deducts_stock() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -420,7 +450,8 @@ fn apply_remote_complete_sale_deducts_stock() {
 
 #[test]
 fn apply_remote_atomic_replay_changes_stock_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -438,7 +469,8 @@ fn apply_remote_atomic_replay_changes_stock_once() {
 
 #[test]
 fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -463,7 +495,8 @@ fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
 
 #[test]
 fn apply_remote_atomic_clears_stale_failure_after_success() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -491,7 +524,8 @@ fn apply_remote_atomic_clears_stale_failure_after_success() {
 
 #[test]
 fn apply_remote_atomic_rejects_conflicting_existing_product() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     store
         .conn()
@@ -535,7 +569,8 @@ fn apply_remote_atomic_rejects_conflicting_existing_product() {
 /// was dead-lettered on `product:<sku>:create` after burning its retry budget.
 #[test]
 fn a_non_retail_product_replay_is_idempotent_despite_the_producers_missing_type() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     // The local row a `service` product create leaves behind.
     store
@@ -588,7 +623,8 @@ fn a_non_retail_product_replay_is_idempotent_despite_the_producers_missing_type(
 
 #[test]
 fn apply_remote_stock_adjustment() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -617,7 +653,8 @@ fn apply_remote_stock_adjustment() {
 
 #[test]
 fn apply_remote_unknown_action_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem::new("unknown.action", r#"{"data":"test"}"#);
     let result = queue.apply_remote(&store, &remote);
@@ -628,7 +665,8 @@ fn apply_remote_unknown_action_is_noop() {
 
 #[test]
 fn apply_remote_atomic_rejects_unknown_action_without_receipt() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem::new("unknown.action", r#"{\"data\":\"test\"}"#);
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
@@ -643,7 +681,8 @@ fn apply_remote_atomic_rejects_unknown_action_without_receipt() {
 /// it: transition the sale to completed.
 #[test]
 fn apply_remote_atomic_finalizes_pending_sale() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     // Seed a pending sale the way the terminal's complete flow leaves it.
@@ -683,7 +722,8 @@ fn apply_remote_atomic_finalizes_pending_sale() {
 
 #[test]
 fn apply_remote_legacy_finalizes_pending_sale() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     let sale_id = "sale-finalize-legacy";
@@ -732,7 +772,8 @@ fn remote_settings_update(id: &str) -> OfflineQueueItem {
 /// — today it errors as an unsupported action and gets quarantined.
 #[test]
 fn apply_remote_atomic_settings_update_writes_row_and_delta() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-1");
 
@@ -765,7 +806,8 @@ fn apply_remote_atomic_settings_update_writes_row_and_delta() {
 /// the reporting variant; the legacy bool wrapper keeps old callers.
 #[test]
 fn apply_remote_atomic_full_surfaces_settings_change() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-2");
 
@@ -782,7 +824,8 @@ fn apply_remote_atomic_full_surfaces_settings_change() {
 /// second change (the ledger skips it, so the outcome carries no change).
 #[test]
 fn apply_remote_atomic_full_replay_reports_no_settings_change() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-3");
 
@@ -800,7 +843,8 @@ fn apply_remote_atomic_full_replay_reports_no_settings_change() {
 /// settings updates with the same row + delta semantics.
 #[test]
 fn apply_remote_settings_update_non_atomic() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let remote = remote_settings_update("remote-setting-4");
 
@@ -822,7 +866,8 @@ fn apply_remote_settings_update_non_atomic() {
 /// spelling) applies identically to `settings.update`.
 #[test]
 fn apply_remote_settings_change_alias() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let mut remote = remote_settings_update("remote-setting-5");
     remote.action = "settings.change".into();
@@ -845,7 +890,8 @@ fn apply_remote_settings_change_alias() {
 
 #[test]
 fn apply_remote_stock_movement_inserts_into_ledger() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -878,7 +924,8 @@ fn apply_remote_stock_movement_inserts_into_ledger() {
 
 #[test]
 fn apply_remote_stock_movement_negative_delta() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -905,7 +952,8 @@ fn apply_remote_stock_movement_negative_delta() {
 
 #[test]
 fn apply_remote_stock_movement_rebuilds_summary() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -949,7 +997,8 @@ fn apply_remote_stock_movement_rebuilds_summary() {
 fn apply_push_conflict_routes_version_lww() {
     // A higher local product version must win, exactly as the
     // SyncEngine would resolve it (SYNC-02 shared service).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue
         .enqueue(
@@ -986,7 +1035,8 @@ fn apply_push_conflict_routes_sale_status_dag() {
     // Completed must win over pending even when the local item is
     // NEWER — proves the daemon path can no longer discard an advanced
     // sale state via blanket "remote wins" (SYNC-02).
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let local = queue
         .enqueue(
@@ -1023,7 +1073,8 @@ fn apply_push_conflict_routes_sale_status_dag() {
 /// inert and the ledger is still per-ITEM — the defect C3 set out to fix.
 #[test]
 fn applied_receipt_records_the_sale_effect_key() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let remote = OfflineQueueItem {
@@ -1057,7 +1108,8 @@ fn applied_receipt_records_the_sale_effect_key() {
 /// effect-keyed ledger sees the deduction already recorded and skips it.
 #[test]
 fn redelivered_effect_under_a_different_item_id_is_not_reapplied() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let payload = r#"{"sale_id":"sale-dup","line_items":[{"sku":"COFFEE","qty":2}]}"#;
@@ -1094,7 +1146,8 @@ fn redelivered_effect_under_a_different_item_id_is_not_reapplied() {
 /// both receipts stay NULL (the partial index ignores NULL).
 #[test]
 fn effectless_arms_keep_the_delivery_only_behaviour() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
     let payload = r#"{"sku":"COFFEE","delta":10}"#;
@@ -1137,7 +1190,8 @@ fn effectless_arms_keep_the_delivery_only_behaviour() {
 
 #[test]
 fn apply_remote_consumes_crdt_merge_stock_adjusted() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1158,7 +1212,8 @@ fn apply_remote_consumes_crdt_merge_stock_adjusted() {
 
 #[test]
 fn apply_remote_consumes_crdt_merge_stock_movement() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1200,7 +1255,8 @@ fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue
     // merged winner) → apply_remote (consume merged payload). Both
     // deltas must survive the entire pipeline.
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -1339,7 +1395,8 @@ fn assert_location_scoped_merge(store: &Store<'_>, pid: &str) {
 /// apply_remote_in_tx stock.adjusted arm the daemon pull uses.
 #[test]
 fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let winner = location_carrying_crdt_winner();
     assert!(
@@ -1355,7 +1412,8 @@ fn apply_remote_atomic_crdt_envelope_applies_location_scoped_deltas() {
 /// both pull arms must treat location_id identically (and correctly).
 #[test]
 fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let winner = location_carrying_crdt_winner();
     SyncQueue::new().apply_remote(&store, &winner).unwrap();
@@ -1368,7 +1426,8 @@ fn apply_remote_crdt_envelope_applies_location_scoped_deltas() {
 /// legacy aggregate must stay the SUM over every stock_summary row.
 #[test]
 fn apply_remote_atomic_crdt_envelope_mixed_location_and_unscoped_sides() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let pid = seed_two_location_stock(&store);
     let local = OfflineQueueItem {
         id: "crdt-mixed-local".into(),
@@ -1444,7 +1503,8 @@ fn remote_settings_kv(id: &str, key: &str, value: &str) -> OfflineQueueItem {
 /// the arm called `Settings::set` with no predicate at all.
 #[test]
 fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
 
@@ -1472,7 +1532,8 @@ fn remote_settings_update_refuses_machine_id_and_keeps_local_value() {
 /// HEAD.
 #[test]
 fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "local_api.secret", "own-signing-secret").unwrap();
 
@@ -1501,7 +1562,8 @@ fn remote_settings_update_refuses_local_api_and_lan_server_keys() {
 /// logic.
 #[test]
 fn remote_settings_batch_continues_past_a_refused_key() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     Settings::set(store.conn(), "machine_id", "own-machine-fingerprint").unwrap();
 
@@ -1562,7 +1624,8 @@ fn remote_settings_batch_continues_past_a_refused_key() {
 /// guard in the legacy settings arm to mean anything.
 #[test]
 fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
 
     for (id, key) in [
@@ -1618,7 +1681,8 @@ fn legacy_apply_remote_leaves_a_refused_key_absent_from_the_database() {
 /// commit that turns it green.
 #[test]
 fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let planted = "https://sync-ingest-hazard.invalid/";
     let mine = "https://my-own-server.invalid/";
@@ -1696,7 +1760,8 @@ fn remote_settings_update_applies_a_key_the_exclusion_list_misses() {
 /// refuse while the wider allow-list is not.
 #[test]
 fn remote_settings_update_refuses_the_named_hazard_set() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     // Six names, six legs. The count is the point: a set that quietly loses a
     // member is how the twelve stayed a twelve, so the list length is asserted
@@ -1764,7 +1829,8 @@ fn remote_settings_update_refuses_the_named_hazard_set() {
 /// ingestible_keys_cover_the_ui_egress_call_sites.
 #[test]
 fn remote_settings_still_applies_the_names_normal_operation_replicates() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let twelve = [
         ("leg-locale", "ui.locale", "id"),
@@ -1823,7 +1889,8 @@ fn remote_settings_still_applies_the_names_normal_operation_replicates() {
 /// red first. Green at HEAD and expected green after.
 #[test]
 fn remote_settings_refusal_legs_stay_closed_beside_the_hazard_set() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     for (id, key) in [
         ("leg-token", "sync.auth_token"),
@@ -2165,7 +2232,8 @@ fn refund_payload_with_total(refund_id: &str, sale_id: &str, total_minor: i64) -
 /// terminal applied it.
 #[test]
 fn apply_remote_atomic_refund_reverses_customer_lifetime_spend_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-spend-1", 1);
     deduct_one_coffee(&store);
@@ -2222,7 +2290,8 @@ fn apply_remote_atomic_refund_reverses_customer_lifetime_spend_once() {
 /// once; a re-apply is a no-op on all three.
 #[test]
 fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-refund-1", 1);
     // The sale deducted 1 unit, so stock sits at 49 before the refund.
@@ -2262,7 +2331,8 @@ fn apply_remote_atomic_refund_credits_stock_once_and_replay_is_noop() {
 /// same source the originator stamped, so both terminals agree.
 #[test]
 fn apply_remote_atomic_refund_stamps_the_local_sale_tenant() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-tenant-1", 1);
     deduct_one_coffee(&store);
@@ -2305,7 +2375,8 @@ fn apply_remote_atomic_refund_stamps_the_local_sale_tenant() {
 /// without fabricating a sales row.
 #[test]
 fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     let queue = SyncQueue::new();
 
@@ -2330,7 +2401,8 @@ fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
 /// C4: `void_sale` moves an active sale to voided, and a replay is a no-op.
 #[test]
 fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-void-1", "active");
 
@@ -2358,7 +2430,8 @@ fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {
 /// dead-letter visibly instead of being consumed.
 #[test]
 fn apply_remote_atomic_void_of_a_completed_sale_is_a_conflict() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-done-1", "completed");
 
@@ -2377,7 +2450,8 @@ fn apply_remote_atomic_void_of_a_completed_sale_is_a_conflict() {
 /// re-application inserts none.
 #[test]
 fn apply_remote_atomic_payment_with_key_inserts_once_and_replay_inserts_none() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-pay-1", "completed");
 
@@ -2397,7 +2471,8 @@ fn apply_remote_atomic_payment_with_key_inserts_once_and_replay_inserts_none() {
 /// C4: without a key the payment's own primary key is the identity.
 #[test]
 fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     seed_sale_row(&store, "sale-pay-2", "completed");
 
@@ -2420,7 +2495,8 @@ fn apply_remote_atomic_payment_without_a_key_probes_its_id() {
 /// fabricated to make one fit).
 #[test]
 fn apply_remote_atomic_payment_without_the_sale_is_a_benign_noop() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     let queue = SyncQueue::new();
     let payload = r#"{"id":"pay-orphan","sale_id":"sale-not-here","method":"CASH","amount_minor":1000,"currency":"USD","created_at":"2026-01-01T00:00:00Z"}"#;
     let remote = OfflineQueueItem::new("payment.recorded", payload);
@@ -2433,7 +2509,8 @@ fn apply_remote_atomic_payment_without_the_sale_is_a_benign_noop() {
 /// three actions instead of warning them away.
 #[test]
 fn apply_remote_legacy_consumes_the_three_new_arms() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     seed_refundable_sale(&store, "sale-legacy-1", 1);
     deduct_one_coffee(&store);
@@ -2479,7 +2556,8 @@ fn apply_remote_legacy_consumes_the_three_new_arms() {
 /// every page, so the receipt is as much a part of the fix as the skip.
 #[test]
 fn pulled_item_originating_here_is_skipped_and_receipted() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2531,7 +2609,8 @@ fn pulled_item_originating_here_is_skipped_and_receipted() {
 /// DIFFERENT terminal is exactly the case the arm exists for.
 #[test]
 fn pulled_item_originating_elsewhere_is_applied_once() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2562,7 +2641,8 @@ fn pulled_item_originating_elsewhere_is_applied_once() {
 /// applied exactly as it was before this slice, even on a paired install.
 #[test]
 fn pulled_item_without_origin_is_applied_as_before() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2602,7 +2682,8 @@ fn pulled_item_without_origin_is_applied_as_before() {
 #[test]
 #[allow(deprecated)] // adjust_stock is the exact call the complete_sale arm makes
 fn a_terminal_does_not_reapply_the_sale_it_pushed() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2669,7 +2750,8 @@ fn a_terminal_does_not_reapply_the_sale_it_pushed() {
 /// deliberately out of the way (a DIFFERENT terminal's item, re-pulled).
 #[test]
 fn already_receipted_item_still_short_circuits() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     let queue = SyncQueue::new();
@@ -2697,7 +2779,8 @@ fn already_receipted_item_still_short_circuits() {
 /// proves the deduction already happened on this inventory.
 #[test]
 fn complete_sale_arm_skips_a_sale_already_settled_here() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     store
@@ -2738,7 +2821,8 @@ fn complete_sale_arm_skips_a_sale_already_settled_here() {
 /// owes, and it must land.
 #[test]
 fn complete_sale_arm_applies_a_sale_settled_elsewhere() {
-    let store = setup_store();
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
     seed_product_and_inventory(&store);
     Settings::set(store.conn(), "sync_terminal_id", "term-this").unwrap();
     store

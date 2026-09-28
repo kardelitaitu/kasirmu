@@ -432,12 +432,10 @@ impl QrisPaymentProcessor {
     fn classify_midtrans_status(status_code: &str, status_message: &str) -> PaymentError {
         match status_code {
             "402" => PaymentError::InvalidCard(format!(
-                "midtrans card error: {} (code: {})",
-                status_message, status_code
+                "midtrans card error: {status_message} (code: {status_code})"
             )),
             "406" => PaymentError::Duplicate(format!(
-                "midtrans duplicate: {} (code: {})",
-                status_message, status_code
+                "midtrans duplicate: {status_message} (code: {status_code})"
             )),
             _ => {
                 let msg = if status_message.is_empty() {
@@ -497,8 +495,7 @@ impl QrisPaymentProcessor {
 
         serde_json::from_str(&text).map_err(|e| {
             PaymentError::InvalidResponse(format!(
-                "failed to parse QRIS charge response: {} — body: {}",
-                e, text
+                "failed to parse QRIS charge response: {e} — body: {text}"
             ))
         })
     }
@@ -775,8 +772,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
         let tx: TransactionStatusResponse = serde_json::from_str(&text).map_err(|e| {
             PaymentError::InvalidResponse(format!(
-                "failed to parse transaction status: {} — body: {}",
-                e, text
+                "failed to parse transaction status: {e} — body: {text}"
             ))
         })?;
 

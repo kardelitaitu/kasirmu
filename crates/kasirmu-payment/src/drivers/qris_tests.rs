@@ -54,8 +54,7 @@ fn qris_generate_order_id_format() {
     let id = QrisPaymentProcessor::generate_order_id();
     assert!(
         id.starts_with("QRIS-"),
-        "order id should start with QRIS-: {}",
-        id
+        "order id should start with QRIS-: {id}"
     );
     assert!(id.len() > 10, "order id should have reasonable length");
 }

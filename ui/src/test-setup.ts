@@ -234,10 +234,14 @@ beforeEach(() => {
 // (and its real `@/api/products` bindings) before test files' hoisted
 // `vi.mock('@/api/products')` runs, so every test would silently bind to
 // the real module instead of the file's mock.
+let cachedInvalidateCatalog: (() => void) | null = null;
 afterEach(async () => {
   cleanup();
-  const { invalidateCatalog } = await import('@/utils/catalog-cache');
-  invalidateCatalog();
+  if (!cachedInvalidateCatalog) {
+    const mod = await import('@/utils/catalog-cache');
+    cachedInvalidateCatalog = mod.invalidateCatalog;
+  }
+  cachedInvalidateCatalog();
 });
 
 // ── PointerEvent polyfill ────────────────────────────────────────

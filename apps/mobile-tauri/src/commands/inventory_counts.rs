@@ -87,7 +87,6 @@ fn difference(counted_qty: Option<i64>, expected_qty: i64) -> Result<i64, AppErr
         .map(|value| value.unwrap_or(0))
 }
 
-
 /// Read a count, requiring only that it exists.
 fn get_count(store: &Store<'_>, id: &str) -> Result<StockCount, AppError> {
     store

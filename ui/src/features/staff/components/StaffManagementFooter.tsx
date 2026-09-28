@@ -92,7 +92,6 @@ export function StaffManagementFooter({
             <span
               className="staff-mgmt-footer-pill"
               data-testid="staff-footer-location"
-              title={locationName}
             >
               <svg
                 className="staff-mgmt-footer-icon"

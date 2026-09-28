@@ -172,11 +172,31 @@ impl Device {
 /// Bagel:  30           - 1 (B)                 = 29
 fn script() -> Vec<(&'static str, &'static str, String)> {
     vec![
-        ("A", "complete_sale", r#"{"sale_id":"sale-a-1","line_items":[{"sku":"COFFEE","qty":2}]}"#.to_string()),
-        ("B", "complete_sale", r#"{"sale_id":"sale-b-1","line_items":[{"sku":"BAGEL","qty":1}]}"#.to_string()),
-        ("C", "stock.adjusted", r#"{"sku":"COFFEE","delta":10}"#.to_string()),
-        ("A", "complete_sale", r#"{"sale_id":"sale-a-2","line_items":[{"sku":"COFFEE","qty":1}]}"#.to_string()),
-        ("B", "stock.adjusted", r#"{"sku":"COFFEE","delta":-3}"#.to_string()),
+        (
+            "A",
+            "complete_sale",
+            r#"{"sale_id":"sale-a-1","line_items":[{"sku":"COFFEE","qty":2}]}"#.to_string(),
+        ),
+        (
+            "B",
+            "complete_sale",
+            r#"{"sale_id":"sale-b-1","line_items":[{"sku":"BAGEL","qty":1}]}"#.to_string(),
+        ),
+        (
+            "C",
+            "stock.adjusted",
+            r#"{"sku":"COFFEE","delta":10}"#.to_string(),
+        ),
+        (
+            "A",
+            "complete_sale",
+            r#"{"sale_id":"sale-a-2","line_items":[{"sku":"COFFEE","qty":1}]}"#.to_string(),
+        ),
+        (
+            "B",
+            "stock.adjusted",
+            r#"{"sku":"COFFEE","delta":-3}"#.to_string(),
+        ),
     ]
 }
 
@@ -275,7 +295,10 @@ fn three_seeded_interleavings_converge_to_the_scripts_arithmetic() {
             device.store.rebuild_stock_summary().expect("rebuild");
         }
 
-        results.push((label, devices.iter().map(|d| d.on_hand_snapshot()).collect()));
+        results.push((
+            label,
+            devices.iter().map(|d| d.on_hand_snapshot()).collect(),
+        ));
     }
 
     // (a) Agreement across all orders and devices.
@@ -316,10 +339,7 @@ fn replaying_every_item_a_second_time_changes_nothing() {
 
     // A second delivery to every device, including each one's own items —
     // a re-delivery does not respect origin.
-    let all: Vec<OfflineQueueItem> = devices
-        .iter()
-        .flat_map(|d| d.outbound.clone())
-        .collect();
+    let all: Vec<OfflineQueueItem> = devices.iter().flat_map(|d| d.outbound.clone()).collect();
     for device in devices.iter() {
         device.receive_all(&all);
     }

@@ -265,12 +265,14 @@ pub(crate) fn run_set_device_binding(
     // hashes. Binding `args.terminal_id` directly failed `NotFound` on a real
     // tablet, because a store-registered terminal has no global row.
     store.ensure_terminal_addressable(source, DEFAULT_TENANT_ID, Some(&args.bound_store_id))?;
-    let target = store.get_terminal_by_device_id(&source.device_id)?.ok_or_else(|| {
-        AppError::Internal(format!(
-            "terminal '{}' not found after mirroring into the global db",
-            source.id
-        ))
-    })?;
+    let target = store
+        .get_terminal_by_device_id(&source.device_id)?
+        .ok_or_else(|| {
+            AppError::Internal(format!(
+                "terminal '{}' not found after mirroring into the global db",
+                source.id
+            ))
+        })?;
 
     let signature = sign_binding(
         keyring,

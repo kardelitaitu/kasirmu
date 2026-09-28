@@ -326,6 +326,7 @@
 .modal-panel::after,
 .staff-login-card::after,
 .workspace-card::after,
+.staff-mgmt-card::after,
 /* Reusable utility class — recommended for new components */
 .noise-dither::after,
 /* Emergency fallback card — elevated surface (ERR-02) */
@@ -513,6 +514,7 @@
   .modal-panel::after,
   .staff-login-card::after,
   .workspace-card::after,
+  .staff-mgmt-card::after,
   .wire-rename-input::after,
   .wire-label-pill::after,
   .noise-dither::after,
@@ -649,6 +651,7 @@
   .modal-panel::after,
   .staff-login-card::after,
   .workspace-card::after,
+  .staff-mgmt-card::after,
   .wire-rename-input::after,
   .wire-label-pill::after,
   .noise-dither::after,

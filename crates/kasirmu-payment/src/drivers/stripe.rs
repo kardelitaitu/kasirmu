@@ -350,8 +350,7 @@ impl StripePaymentProcessor {
     fn parse_intent(body: &str) -> Result<PaymentIntentResponse, PaymentError> {
         serde_json::from_str(body).map_err(|e| {
             PaymentError::Network(format!(
-                "failed to parse PaymentIntent: {} -- body: {}",
-                e, body
+                "failed to parse PaymentIntent: {e} -- body: {body}"
             ))
         })
     }

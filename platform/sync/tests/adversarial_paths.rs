@@ -117,7 +117,9 @@ impl Device {
             Err(e) => {
                 // Record the refusal so a test can assert on it; the
                 // failure is already persisted by the applier itself.
-                self.refused.borrow_mut().push(format!("{}: {e}", item.action));
+                self.refused
+                    .borrow_mut()
+                    .push(format!("{}: {e}", item.action));
                 false
             }
         }

@@ -40,6 +40,7 @@ const KNOWN_NOISE_SELECTORS = [
   '.modal-panel',
   '.staff-login-card',
   '.workspace-card',
+  '.staff-mgmt-card',
   // Emergency fallback card — elevated surface (ERR-02)
   '.error-boundary__card',
   // Reusable utility class (recommended for NEW components)

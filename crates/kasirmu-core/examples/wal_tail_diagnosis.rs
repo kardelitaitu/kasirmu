@@ -259,7 +259,7 @@ fn main() {
     // Correlate the slowest inserts against the events. If the tail is
     // checkpoint-driven, the slowest inserts should be checkpoint inserts.
     let mut by_latency: Vec<&Sample> = samples.iter().collect();
-    by_latency.sort_by(|a, b| b.latency.cmp(&a.latency));
+    by_latency.sort_by_key(|a| std::cmp::Reverse(a.latency));
 
     let top_n = 20.min(by_latency.len());
     let top_shrank = by_latency.iter().take(top_n).filter(|s| s.shrank).count();

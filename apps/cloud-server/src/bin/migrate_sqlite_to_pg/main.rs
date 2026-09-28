@@ -197,8 +197,7 @@ async fn run() -> Result<(), String> {
         copy_and_verify(&pool, &conn, &args.tables, args.batch, args.dry_run).await?;
 
     println!(
-        "\n{} rows copied across {} tables ({} failures)",
-        total_copied, order_len, failures
+        "\n{total_copied} rows copied across {order_len} tables ({failures} failures)"
     );
     if failures > 0 {
         return Err(format!("{failures} table(s) failed verification"));

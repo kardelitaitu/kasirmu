@@ -80,10 +80,18 @@ fn an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_deducting() {
     // And the transaction rolled back, so neither side moved.
     let conn = db.lock().unwrap();
     let cake: i64 = conn
-        .query_row("SELECT qty FROM inventory WHERE product_id = 'p2'", [], |x| x.get(0))
+        .query_row(
+            "SELECT qty FROM inventory WHERE product_id = 'p2'",
+            [],
+            |x| x.get(0),
+        )
         .unwrap();
     let flour: i64 = conn
-        .query_row("SELECT qty FROM inventory WHERE product_id = 'p3'", [], |x| x.get(0))
+        .query_row(
+            "SELECT qty FROM inventory WHERE product_id = 'p3'",
+            [],
+            |x| x.get(0),
+        )
         .unwrap();
     assert_eq!(cake, 5, "the composite product must not be deducted");
     assert_eq!(flour, 50, "the ingredient must not be touched either");

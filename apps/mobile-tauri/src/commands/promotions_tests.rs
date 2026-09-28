@@ -263,8 +263,7 @@ async fn scoped_promotion_write_gates_before_it_opens_the_store() {
     let blocked = temp.path().join("not-a-directory");
     std::fs::write(&blocked, b"a file, not a store dir").unwrap();
     let mut state = AppState::for_test_with_conn(conn);
-    state.db_manager =
-        StoreDatabaseManager::new(blocked.clone(), kasirmu_core::migrations::ALL);
+    state.db_manager = StoreDatabaseManager::new(blocked.clone(), kasirmu_core::migrations::ALL);
     state.session_store.write().unwrap().insert(
         "cashier-token".into(),
         SessionContext::new(
@@ -293,7 +292,9 @@ async fn scoped_promotion_write_gates_before_it_opens_the_store() {
     // A control, so a pass cannot come from `open_store` quietly succeeding:
     // with the store pointed at a file, resolving it directly must fail.
     assert!(
-        app.state::<AppState>().resolve_store("cashier-token").is_err(),
+        app.state::<AppState>()
+            .resolve_store("cashier-token")
+            .is_err(),
         "the fixture must make the store genuinely unopenable, or this test proves nothing"
     );
     assert!(

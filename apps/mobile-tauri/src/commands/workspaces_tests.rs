@@ -562,7 +562,11 @@ fn verify_binding_hmac_garbage_hex_fails() {
 /// Global identity DB with `store-a`/`store-main` locations, and a store db
 /// holding `store-a`'s profile plus instance `ws-a-1` — the shape a real tablet
 /// boots with. The `TempDir` must outlive the manager, so it is returned.
-fn bindable_device() -> (rusqlite::Connection, StoreDatabaseManager, tempfile::TempDir) {
+fn bindable_device() -> (
+    rusqlite::Connection,
+    StoreDatabaseManager,
+    tempfile::TempDir,
+) {
     let conn = migrations::fresh_db();
     let now = "2026-07-31T00:00:00.000Z";
     conn.execute(
@@ -596,7 +600,7 @@ fn bindable_device() -> (rusqlite::Connection, StoreDatabaseManager, tempfile::T
 /// for 7533b58f7, mirroring the bridge pin `ea45274b6`.
 #[test]
 fn bound_store_terminal_round_trips_through_boot_resolution() {
-    use crate::commands::terminals::{run_set_device_binding, SetDeviceBindingArgs};
+    use crate::commands::terminals::{SetDeviceBindingArgs, run_set_device_binding};
 
     let (conn, db_manager, _dir) = bindable_device();
     // The terminal the UI names is registered in the STORE db, never the global
@@ -630,7 +634,7 @@ fn bound_store_terminal_round_trips_through_boot_resolution() {
 #[test]
 fn binding_signed_with_another_keyring_falls_back_to_primary() {
     use crate::commands::terminals::{
-        DEVICE_BINDING_KEYRING_NAME, run_set_device_binding, SetDeviceBindingArgs,
+        DEVICE_BINDING_KEYRING_NAME, SetDeviceBindingArgs, run_set_device_binding,
     };
 
     let (conn, db_manager, _dir) = bindable_device();

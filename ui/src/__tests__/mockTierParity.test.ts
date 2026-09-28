@@ -32,7 +32,7 @@ import {
 
 const SUBSCRIPTION_RS = path.resolve(
   process.cwd(),
-  '../crates/kasirmu-core/src/subscription.rs',
+  '../crates/kasirmu-core/src/subscription/tier.rs',
 );
 
 /** The Rust tier variants that carry a distinct `tier_key`, in table order. */

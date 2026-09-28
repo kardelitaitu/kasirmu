@@ -2179,14 +2179,11 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
         .unwrap_or_default();
     assert!(
         legacy.is_err() && legacy_msg.contains("subscription tier"),
-        "assignment-less Apply should stop at the entitlement gate, not at scope; got [{}] on {}",
-        legacy_msg,
-        obs,
+        "assignment-less Apply should stop at the entitlement gate, not at scope; got [{legacy_msg}] on {obs}",
     );
     assert!(
         scoped.is_err() && scoped_msg.contains("out of scope"),
-        "Scoped Apply naming a store outside its branch list should deny on scope; got [{}]",
-        scoped_msg,
+        "Scoped Apply naming a store outside its branch list should deny on scope; got [{scoped_msg}]",
     );
     assert_eq!(
         (
@@ -2196,9 +2193,7 @@ async fn apply_naming_a_foreign_store_records_which_database_receives_the_writes
             char_audit_count(&st, store_b),
         ),
         (false, false, 0, 0),
-        "no instance and no audit row may exist in either store; observed {} errors [{}]",
-        obs,
-        errs,
+        "no instance and no audit row may exist in either store; observed {obs} errors [{errs}]",
     );
     let _ = dir;
 }
@@ -2324,8 +2319,7 @@ async fn self_describing_store_passes_the_ownership_gate() {
         .unwrap_or_default();
     assert!(
         result.is_ok(),
-        "a store whose own registry names its profile must pass the ownership gate (R4); got [{}]",
-        msg,
+        "a store whose own registry names its profile must pass the ownership gate (R4); got [{msg}]",
     );
     let _ = dir;
 }

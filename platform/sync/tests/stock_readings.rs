@@ -135,7 +135,10 @@ fn the_ledger_excludes_an_unbacked_opening_balance() {
     // movement accounts for an opening balance.
     apply_adjustment(&store, -20);
     let (agg_mid, ledger_mid) = readings(&store);
-    assert_eq!(ledger_mid, -20, "deltas only: the opening 50 is not a delta");
+    assert_eq!(
+        ledger_mid, -20,
+        "deltas only: the opening 50 is not a delta"
+    );
     assert_eq!(agg_mid, 30, "the aggregate DOES follow: 50 - 20");
     assert_eq!(
         agg_mid - ledger_mid,

@@ -305,8 +305,7 @@ fn sandbox_allows_os_date_but_blocks_execute() {
     let date_ok = lua.load_str(r#"local d = os.date("!*t"); assert(type(d) == "table")"#);
     assert!(
         date_ok.is_ok(),
-        "os.date should be available: {:?}",
-        date_ok
+        "os.date should be available: {date_ok:?}"
     );
     let time_ok = lua.load_str(r#"local t = os.time(); assert(type(t) == "number")"#);
     assert!(time_ok.is_ok(), "os.time should be available");

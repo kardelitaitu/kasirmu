@@ -611,7 +611,14 @@ async fn device_binding_is_written_to_the_global_db_boot_reads() {
     assert_eq!(bound_store, "default");
     assert_eq!(bound_instance, "inst-1");
     assert!(
-        verify_binding(&seeded_keyring(), &boot_row.id, "default", "inst-1", &signature).unwrap(),
+        verify_binding(
+            &seeded_keyring(),
+            &boot_row.id,
+            "default",
+            "inst-1",
+            &signature
+        )
+        .unwrap(),
         "the signature must be minted over the GLOBAL row id the boot verifier hashes"
     );
 }

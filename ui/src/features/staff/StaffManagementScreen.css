@@ -41,8 +41,13 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .staff-mgmt--exiting {
+    animation: ws-page-exit var(--duration-150) var(--ease-out) both;
+  }
+}
+
 .staff-mgmt--exiting {
-  animation: ws-page-exit var(--duration-150) var(--ease-out) both;
   pointer-events: none;
 }
 
@@ -350,16 +355,18 @@ body:has(.memo-stack) .staff-mgmt-main {
   flex-shrink: 0;
 }
 
-.staff-mgmt-footer-icon--spin {
-  animation: staff-footer-spin 1s linear infinite;
-}
-
-@keyframes staff-footer-spin {
-  from {
-    transform: rotate(0deg);
+@media (prefers-reduced-motion: no-preference) {
+  .staff-mgmt-footer-icon--spin {
+    animation: staff-footer-spin 1s linear infinite;
   }
-  to {
-    transform: rotate(360deg);
+
+  @keyframes staff-footer-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 }
 
@@ -1086,15 +1093,15 @@ body:has(.memo-stack) .staff-mgmt-main {
 
 /* ── Staff Detail Popup & Smart Responsive Drawer ────────────────── */
 
-.settings-popup.staff-detail-popup {
+.staff-detail-popup {
   max-width: 580px;
   width: 94vw;
   max-height: 90vh;
   transition: max-width var(--duration-200) var(--ease-out);
 }
 
-@media (orientation: landscape) and (min-width: 768px), (min-width: 960px) {
-  .settings-popup.staff-detail-popup {
+@media (min-width: 768px) {
+  .staff-detail-popup {
     max-width: 980px;
   }
 }
@@ -1109,7 +1116,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   margin-bottom: var(--space-4);
-  box-shadow: var(--shadow-sm);
 }
 
 .staff-drawer-hero-avatar {
@@ -1121,7 +1127,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   height: 56px;
   border-radius: var(--radius-full);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
 .staff-drawer-hero-info {
@@ -1177,7 +1182,7 @@ body:has(.memo-stack) .staff-mgmt-main {
   gap: var(--space-4);
 }
 
-@media (orientation: landscape) and (min-width: 768px), (min-width: 960px) {
+@media (min-width: 768px) {
   .staff-drawer-layout {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1199,7 +1204,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: var(--space-4);
-  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -1299,51 +1303,6 @@ body:has(.memo-stack) .staff-mgmt-main {
 }
 
 .staff-drawer-action-btn--restore:hover {
-  color: var(--color-success);
-  border-color: var(--color-success-dim);
-  background: color-mix(in srgb, var(--color-success) 8%, transparent);
-}
-
-/* ── Card actions: 44px touch targets (STAFF-12 compliance) ───────── */
-
-.staff-mgmt-card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1_5);
-  flex-shrink: 0;
-}
-
-.staff-mgmt-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  min-height: 44px;
-  padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg);
-  color: var(--color-fg-secondary);
-  cursor: pointer;
-  transition:
-    background var(--duration-150) var(--ease-out),
-    color var(--duration-150) var(--ease-out),
-    border-color var(--duration-150) var(--ease-out);
-}
-
-.staff-mgmt-icon-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-fg);
-  border-color: var(--color-border-hover);
-}
-
-.staff-mgmt-icon-btn--warn:hover {
-  color: var(--color-danger);
-  border-color: var(--color-danger-dim);
-  background: color-mix(in srgb, var(--color-danger) 8%, transparent);
-}
-
-.staff-mgmt-icon-btn--restore:hover {
   color: var(--color-success);
   border-color: var(--color-success-dim);
   background: color-mix(in srgb, var(--color-success) 8%, transparent);
@@ -1454,17 +1413,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   gap: var(--space-1);
 }
 
-.staff-mgmt-field--horizontal {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.staff-mgmt-field--horizontal > .staff-mgmt-label {
-  min-width: 7rem;
-  flex-shrink: 0;
-}
-
 .staff-mgmt-label {
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
@@ -1490,24 +1438,6 @@ body:has(.memo-stack) .staff-mgmt-main {
 
 .staff-mgmt-input:disabled {
   opacity: 0.5;
-}
-
-/* ── Profile section (ADR #35 D6) ───────────────────────────────── */
-
-.staff-mgmt-profile-section {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  margin: var(--space-2) 0;
-  background: var(--color-bg-surface);
-}
-
-.staff-mgmt-profile-section legend {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-fg);
-  padding: 0 var(--space-2);
-  margin-bottom: var(--space-2);
 }
 
 .staff-mgmt-incomplete-hint {
@@ -1559,11 +1489,6 @@ body:has(.memo-stack) .staff-mgmt-main {
   background: var(--color-bg-subtle, rgba(0, 0, 0, 0.05));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
-}
-
-.staff-mgmt-incomplete-badge {
-  margin-left: var(--space-2);
-  vertical-align: middle;
 }
 
 /* ── Assignment Access (ADR #35 D5) ──────────────────────────────── */
@@ -1894,23 +1819,6 @@ body:has(.memo-stack) .staff-mgmt-main {
 }
 
 @container (max-width: 600px) {
-  /* Every identity field in the add/edit drawer is .staff-mgmt-field--horizontal:
-     a 7rem (112px) pinned label beside its input, which is a full-width
-     min-content floor before the input gets a single pixel. A 360px box minus
-     the popup's own chrome leaves ~300px, i.e. under 190px of input — a PIN or
-     a phone number is clipped rather than wrapped. Below 600px the label stops
-     being a lane and sits above its field, so the input takes the full row. The
-     drawer is a portal to document.body (SettingsPopup.tsx), so it is not a
-     descendant of this root and its own sheet is out of this fence's reach:
-     the fields keep their shared class, and that class is what folds here. */
-  .staff-mgmt-field--horizontal {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .staff-mgmt-field--horizontal > .staff-mgmt-label {
-    min-width: 0;
-  }
 
   /* The page's 2rem horizontal gutters are 64px of a 360px box. At 600px and
      below the roster table and the status footer get that back; the vertical

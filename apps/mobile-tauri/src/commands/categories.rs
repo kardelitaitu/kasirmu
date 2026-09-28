@@ -191,7 +191,7 @@ pub async fn update_category_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_UPDATE).await?;
     let conn = state.resolve_store(&session_token)?;
-    
+
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -239,7 +239,7 @@ pub async fn delete_category_scoped(
     let session = state.resolve_session(&session_token)?;
     require_permission_for_session(&state, &session, permissions::PRODUCTS_DELETE).await?;
     let conn = state.resolve_store(&session_token)?;
-    
+
     let db = conn
         .lock()
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

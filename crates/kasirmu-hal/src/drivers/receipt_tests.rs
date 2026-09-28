@@ -310,8 +310,7 @@ fn sales_receipt_contains_currency_when_enabled() {
     let text = String::from_utf8_lossy(&data);
     assert!(
         text.contains("$13.20"),
-        "receipt should show $ prefix: {:?}",
-        text
+        "receipt should show $ prefix: {text:?}"
     );
 }
 

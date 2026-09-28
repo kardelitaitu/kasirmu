@@ -498,7 +498,7 @@ describe('SalesHistoryScreen', () => {
       mockListStaff.mockResolvedValue([]);
       renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
       await waitFor(() => {
-        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1');
+        expect(mockListSalesScoped).toHaveBeenCalledWith('session-1', 500);
       });
       expect(mockListSales).not.toHaveBeenCalled();
     });

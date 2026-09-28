@@ -211,8 +211,8 @@ pub async fn sync_run_scoped(
     // Phase 1: Read pending items and config from DB (brief lock).
     let (pending_items, config_opt) = {
         let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
+        require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -346,8 +346,8 @@ pub async fn get_sync_plan_scoped(
     // before the async HTTP call.
     let (url, api_key) = {
         let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
+        require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
@@ -420,8 +420,8 @@ pub async fn sync_pull_scoped(
     // Phase 1: Read config from DB (brief lock).
     let config_opt = {
         let session = state.resolve_session(&session_token)?;
-    require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
-    let conn_arc = state.resolve_store(&session_token)?;
+        require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
+        let conn_arc = state.resolve_store(&session_token)?;
         let db_guard = conn_arc
             .lock()
             .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;

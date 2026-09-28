@@ -22,6 +22,8 @@
 //! wired in as they are extracted; the Wave-A catalog/fiscal/money modules
 //! below are all landed.
 
+#![deny(unsafe_code)]
+
 pub mod ctx;
 pub mod error;
 
