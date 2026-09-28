@@ -59,6 +59,7 @@ COPY crates/kasirmu-bridge/Cargo.toml crates/kasirmu-bridge/
 COPY crates/qris-core/Cargo.toml crates/qris-core/
 COPY foundation/Cargo.toml foundation/
 COPY platform/core/Cargo.toml platform/core/
+COPY platform/instance-guard/Cargo.toml platform/instance-guard/
 COPY platform/kernel/Cargo.toml platform/kernel/
 COPY platform/startup/Cargo.toml platform/startup/
 COPY platform/sync/Cargo.toml platform/sync/
@@ -99,7 +100,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
              crates/kasirmu-bridge/src \
              crates/qris-core/src \
              foundation/src \
-             platform/core/src platform/kernel/src platform/startup/src \
+             platform/core/src platform/instance-guard/src platform/kernel/src platform/startup/src \
              platform/sync/src \
              modules/sales/src modules/inventory/src \
              modules/crm/src modules/tax/src modules/settings/src \
@@ -127,6 +128,7 @@ RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-loggi
     && echo "// dummy" > crates/qris-core/src/lib.rs \
     && echo "// dummy" > foundation/src/lib.rs \
     && echo "// dummy" > platform/core/src/lib.rs \
+    && echo "// dummy" > platform/instance-guard/src/lib.rs \
     && echo "// dummy" > platform/kernel/src/lib.rs \
     && echo "// dummy" > platform/startup/src/lib.rs \
     && echo "// dummy" > platform/sync/src/lib.rs \
