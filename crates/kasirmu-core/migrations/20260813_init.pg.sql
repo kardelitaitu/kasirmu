@@ -789,7 +789,6 @@ BEGIN
             ('assignments', 'scope_id', 'TEXT', NULL::text, false),
             ('gift_cards', 'id', 'TEXT', NULL::text, true),
             ('gift_cards', 'card_number', 'TEXT', NULL::text, true),
-            ('gift_cards', 'pin', 'TEXT', '''''', true),
             ('gift_cards', 'initial_balance_minor', 'BIGINT', '0', true),
             ('gift_cards', 'current_balance_minor', 'BIGINT', '0', true),
             ('gift_cards', 'currency', 'TEXT', '''IDR''', true),
@@ -2253,7 +2252,6 @@ CREATE TABLE IF NOT EXISTS assignments (
 CREATE TABLE IF NOT EXISTS gift_cards (
     id                      TEXT PRIMARY KEY,
     card_number             TEXT UNIQUE NOT NULL,
-    pin                     TEXT NOT NULL DEFAULT '',
     initial_balance_minor   BIGINT NOT NULL DEFAULT 0,
     current_balance_minor   BIGINT NOT NULL DEFAULT 0,
     currency                TEXT NOT NULL DEFAULT 'IDR',

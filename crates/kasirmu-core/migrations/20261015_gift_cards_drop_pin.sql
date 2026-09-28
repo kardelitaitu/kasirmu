@@ -1,0 +1,28 @@
+-- Gift-card PIN removed: it was a credential nothing could verify.
+--
+-- HISTORY, because this mirrors the KDS pairing-token removal one day earlier
+-- (20261014_kds_drop_pairing_tokens.sql) and the reasoning is the same.
+-- `gift_cards.pin TEXT NOT NULL DEFAULT ''` (20260813_init.sql:138) was written
+-- verbatim from `input.pin.unwrap_or_default()` (db/gift_cards.rs:49) and read
+-- back by three SELECTs. Nothing ever checked it: a tree-wide search finds no
+-- PIN predicate, no bridge verify function, and no UI prompt to enter one. The
+-- only surface was an optional field on the issue modal.
+--
+-- It was weaker than merely unused. `GiftCard.pin` carried
+-- `#[serde(skip_serializing)]` (foundation/src/loyalty.rs:105), so the value
+-- could not even be read back through the API that returns the card — a
+-- write-only secret with no reader and no verifier. Meanwhile the issue modal
+-- labelled it "PIN (optional)" and the placeholder promised "For balance
+-- checks", which is a capability the code never had.
+--
+-- It is not cardholder data (PCI-DSS_CHECKLIST.md 3.4.0 records that
+-- classification), so this is not a PCI violation; it is the same
+-- displayed-but-unverified-secret shape the KDS removal named: "A
+-- displayed-but-unverified secret invites the next reader to assume it is
+-- verified. Deleting it is the honest state."
+--
+-- No index and no constraint references the column, so the drop is safe.
+-- Postgres: regenerated from this migration (scripts/generate-pg-migration.py),
+-- not hand-edited.
+
+ALTER TABLE gift_cards DROP COLUMN pin;

@@ -243,6 +243,9 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
         // "no such column". Forward-only by construction; a drifted database
         // needs the backup-plus-repair procedure, not a re-apply.
         "20261014_kds_drop_pairing_tokens.sql",
+        // Same DB-03 class, same reason: a plain `DROP COLUMN pin`, with no
+        // `IF EXISTS` form available. Forward-only.
+        "20261015_gift_cards_drop_pin.sql",
     ];
 
     // Built once: every iteration must compare the same bytes against the
@@ -422,6 +425,8 @@ fn every_migration_re_applies_against_the_final_schema() {
         // re-applied once the column is gone, and SQLite offers no
         // `IF EXISTS` form to make it idempotent.
         "20261014_kds_drop_pairing_tokens.sql",
+        // Same class again — see the prefix sweep's entry for this id.
+        "20261015_gift_cards_drop_pin.sql",
     ];
 
     let mut not_reappliable: Vec<String> = Vec::new();

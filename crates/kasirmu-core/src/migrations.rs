@@ -427,6 +427,11 @@ pub const ALL: &[Migration] = &[
         id: "20261014_kds_drop_pairing_tokens.sql",
         sql: include_str!("../migrations/20261014_kds_drop_pairing_tokens.sql"),
     },
+    // Same shape as the drop above: a secret nothing could verify. See the migration.
+    Migration {
+        id: "20261015_gift_cards_drop_pin.sql",
+        sql: include_str!("../migrations/20261015_gift_cards_drop_pin.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
