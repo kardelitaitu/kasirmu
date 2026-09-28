@@ -46,9 +46,11 @@ use platform_sync::queue::SyncQueue;
 /// row with no movement behind it. That is deliberate — it is the legacy
 /// shape `rebuild_stock_summary_for` exists to heal, and reproducing it is
 /// what makes the readings diverge.
-fn fresh_store() -> Store<'static> {
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(migrations::fresh_db()));
-    let store = Store::new(conn);
+/// The caller owns the connection: `Store::new` only needs a borrow, so
+/// this takes one instead of `Box::leak`ing a database per test to
+/// manufacture a `'static` (O-T03).
+fn fresh_store(db: &rusqlite::Connection) -> Store<'_> {
+    let store = Store::new(db);
     store
         .conn()
         .execute_batch(
@@ -90,7 +92,8 @@ fn readings(store: &Store<'_>) -> (i64, i64) {
 /// movement accounts for.
 #[test]
 fn an_adjustment_is_visible_in_the_ledger_as_a_raw_delta() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
 
     apply_adjustment(&store, 10);
     let (_, ledger) = readings(&store);
@@ -114,7 +117,8 @@ fn an_adjustment_is_visible_in_the_ledger_as_a_raw_delta() {
 /// which is exactly the state a rebuild creates.
 #[test]
 fn the_ledger_excludes_an_unbacked_opening_balance() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
 
     let (agg_before, ledger_before) = readings(&store);
     assert_eq!(agg_before, 50, "opening balance lives in inventory");
@@ -172,7 +176,8 @@ fn the_ledger_excludes_an_unbacked_opening_balance() {
 /// implementation.
 #[test]
 fn the_two_readings_answer_different_questions_and_both_are_correct() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     apply_adjustment(&store, 10);
     apply_adjustment(&store, -3);
 

@@ -27,9 +27,11 @@ use rusqlite::Connection;
 /// loudly if the two ever drift apart.
 const DUPLICATE_ID_PREFIX: &str = "duplicate id:";
 
-fn setup_store() -> Store<'static> {
-    let conn: &'static Connection = Box::leak(Box::new(migrations::fresh_db()));
-    Store::new(conn)
+/// The caller owns the connection: `Store::new` only needs a borrow, so
+/// this takes one instead of `Box::leak`ing a database per test to
+/// manufacture a `'static` (O-T03).
+fn setup_store(db: &Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 /// One ADR-21 dispatch class, expressed as the input pair both consumers receive.
@@ -184,7 +186,8 @@ fn observe(store: &Store<'_>, local: &OfflineQueueItem) -> Observed {
 
 /// Consumer 1 - the manual / tablet push path, kasirmu_core::sync_client::apply_sync_outcomes.
 fn run_consumer_one(c: &Case) -> Observed {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, c);
     let result = apply_sync_outcomes(
         &store,
@@ -204,7 +207,8 @@ fn run_consumer_one(c: &Case) -> Observed {
 
 /// Consumer 2 - the daemon path, SyncQueue::apply_push_conflict into resolve_conflict.
 fn run_consumer_two(c: &Case) -> Observed {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, c);
     SyncQueue::new()
         .apply_push_conflict(&store, &local, &server_item(c))
@@ -323,7 +327,8 @@ fn stock_conflict_loses_a_delta_on_one_path_only() {
 /// re-enqueues under the wrong tenant.
 #[test]
 fn crdt_merge_reenqueue_discards_retry_count_and_tenant() {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let row = store
         .enqueue_offline_with_tenant(CASES[0].action, CASES[0].local_payload, "store-a")
         .unwrap();
@@ -445,7 +450,8 @@ fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
 /// embedder rather than a shipped path.
 #[test]
 fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let local = enqueue_local(&store, &CASES[0]);
     let reason = format!("{}{}", DUPLICATE_ID_PREFIX, local.id);
 
@@ -484,7 +490,8 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
 
     // A genuine rejection still fails, and fails terminally - the guard above is
     // narrow, not a blanket "never fail".
-    let store = setup_store();
+    let store_db = migrations::fresh_db();
+    let store = setup_store(&store_db);
     let other = enqueue_local(&store, &CASES[0]);
     let result = apply_sync_outcomes(
         &store,

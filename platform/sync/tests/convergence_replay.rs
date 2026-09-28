@@ -44,7 +44,7 @@ use std::collections::BTreeMap;
 
 /// A device: its own database, plus the items it produced while offline.
 struct Device {
-    store: Store<'static>,
+    db: rusqlite::Connection,
     /// Items this device originated, in production order.
     outbound: Vec<OfflineQueueItem>,
 }
@@ -55,8 +55,8 @@ impl Device {
     /// Every device starts from the same opening balance, so a difference
     /// in the result measures the sync rather than the seed.
     fn new() -> Self {
-        let conn: &'static rusqlite::Connection = Box::leak(Box::new(migrations::fresh_db()));
-        let store = Store::new(conn);
+        let db = migrations::fresh_db();
+        let store = Store::new(&db);
         store
             .conn()
             .execute_batch(
@@ -69,7 +69,7 @@ impl Device {
             )
             .expect("seed catalogue");
         Self {
-            store,
+            db,
             outbound: Vec::new(),
         }
     }
@@ -91,9 +91,19 @@ impl Device {
     /// dispatch on the action and mutate the same tables. Using one applier
     /// for both is deliberate: two appliers could disagree, and then the
     /// harness would be measuring its own inconsistency.
+    /// Borrow the device's database as a `Store`.
+    ///
+    /// The device owns its connection, so the `Store` is built on demand
+    /// rather than stored beside it: a struct cannot hold a borrow of a
+    /// field it also owns, and the previous `Box::leak` here existed only
+    /// to fake that borrow (O-T03).
+    fn store(&self) -> Store<'_> {
+        Store::new(&self.db)
+    }
+
     fn produce(&mut self, action: &str, payload: &str) {
         let item = self
-            .store
+            .store()
             .enqueue_offline(action, payload)
             .expect("enqueue offline");
         // The local application that a real checkout performs.
@@ -105,11 +115,11 @@ impl Device {
     /// harness compares (see the module note on which "stock" is meant).
     fn on_hand(&self, sku: &str) -> i64 {
         let pid = self
-            .store
+            .store()
             .product_id_by_sku(sku)
             .expect("lookup product")
             .expect("product exists");
-        self.store.get_stock(&pid).expect("inventory read")
+        self.store().get_stock(&pid).expect("inventory read")
     }
 
     /// The per-location total for a SKU, summed over `stock_summary`.
@@ -123,11 +133,11 @@ impl Device {
     /// what the sync actually agreed on.
     fn summary_total(&self, sku: &str) -> i64 {
         let pid = self
-            .store
+            .store()
             .product_id_by_sku(sku)
             .expect("lookup product")
             .expect("product exists");
-        self.store
+        self.store()
             .conn()
             .query_row(
                 "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
@@ -153,7 +163,7 @@ impl Device {
     /// dropped item as a successful delivery.
     fn receive(&self, item: &OfflineQueueItem) -> bool {
         SyncQueue::new()
-            .apply_remote_atomic(&self.store, item)
+            .apply_remote_atomic(&self.store(), item)
             .expect("apply remote atomically")
     }
 
@@ -292,7 +302,7 @@ fn three_seeded_interleavings_converge_to_the_scripts_arithmetic() {
         // deltas, so this cannot hide a lost update — it can only discard
         // a lag.
         for device in devices.iter() {
-            device.store.rebuild_stock_summary().expect("rebuild");
+            device.store().rebuild_stock_summary().expect("rebuild");
         }
 
         results.push((

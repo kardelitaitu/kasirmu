@@ -41,7 +41,7 @@ use std::collections::BTreeMap;
 
 /// One device: its own database, plus what it originated.
 struct Device {
-    store: Store<'static>,
+    db: rusqlite::Connection,
     outbound: Vec<OfflineQueueItem>,
     /// Items a guard REFUSED, with the reason. An empty list after an
     /// exchange means every item was admitted (possibly as a no-op); a
@@ -52,8 +52,8 @@ struct Device {
 
 impl Device {
     fn new() -> Self {
-        let conn: &'static rusqlite::Connection = Box::leak(Box::new(migrations::fresh_db()));
-        let store = Store::new(conn);
+        let db = migrations::fresh_db();
+        let store = Store::new(&db);
         store
             .conn()
             .execute_batch(
@@ -64,7 +64,7 @@ impl Device {
             )
             .expect("seed catalogue");
         Self {
-            store,
+            db,
             outbound: Vec::new(),
             refused: std::cell::RefCell::new(Vec::new()),
         }
@@ -75,9 +75,19 @@ impl Device {
     /// Both halves matter: `enqueue_offline` writes only a queue row
     /// (`offline.rs:137-143`), so enqueueing alone would leave this device's
     /// own effect unapplied — the mistake P1-3's first attempt made.
+    /// Borrow the device's database as a `Store`.
+    ///
+    /// The device owns its connection, so the `Store` is built on demand
+    /// rather than stored beside it: a struct cannot hold a borrow of a
+    /// field it also owns, and the previous `Box::leak` here existed only
+    /// to fake that borrow (O-T03).
+    fn store(&self) -> Store<'_> {
+        Store::new(&self.db)
+    }
+
     fn act(&mut self, action: &str, payload: &str) -> bool {
         let item = self
-            .store
+            .store()
             .enqueue_offline(action, payload)
             .expect("enqueue offline");
         let applied = self.receive(&item);
@@ -88,11 +98,11 @@ impl Device {
     /// On-hand quantity for a SKU (`inventory.qty`).
     fn on_hand(&self, sku: &str) -> i64 {
         let pid = self
-            .store
+            .store()
             .product_id_by_sku(sku)
             .expect("lookup")
             .expect("exists");
-        self.store.get_stock(&pid).expect("read")
+        self.store().get_stock(&pid).expect("read")
     }
 
     /// Apply one item through the production path.
@@ -112,7 +122,7 @@ impl Device {
     /// An earlier version used `.expect()` here, which turned the guard
     /// firing into a test panic — reading a defence as a defect.
     fn receive(&self, item: &OfflineQueueItem) -> bool {
-        match SyncQueue::new().apply_remote_atomic(&self.store, item) {
+        match SyncQueue::new().apply_remote_atomic(&self.store(), item) {
             Ok(applied) => applied,
             Err(e) => {
                 // Record the refusal so a test can assert on it; the
@@ -142,7 +152,7 @@ impl Device {
     /// aggregate (see `convergence_replay.rs`). A rebuild is a pure function
     /// of the deltas, so it cannot hide a lost update.
     fn settle(&self) {
-        self.store.rebuild_stock_summary().expect("rebuild");
+        self.store().rebuild_stock_summary().expect("rebuild");
     }
 }
 
@@ -348,7 +358,7 @@ fn two_locations_cannot_refund_more_than_was_sold() {
     exchange(&mut a, &mut b);
 
     let refunded = |d: &Device| -> i64 {
-        d.store
+        d.store()
             .conn()
             .query_row(
                 "SELECT COALESCE(SUM(total_minor), 0) FROM refunds WHERE sale_id = 'refund-target'",
