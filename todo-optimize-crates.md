@@ -1748,6 +1748,56 @@ correct — it must not be weakened to make a test cheaper.** Reverted, with the
 reasoning pinned in a comment at the bottom of `migrations_tests.rs` so it is not
 retried. That sweep keeps its ~15 s.
 
+### 11J. O-T03 transformed, swept onto the branch by another lane, reverted (2026-09-28)
+
+§9: *"`queue_tests.rs` permanently leaks 76 in-memory databases … `Box::leak` on
+every one of ~77 tests, to buy a `'static` lifetime nothing needs."* The
+diagnosis is right. Measured today: **77 call sites** of `setup_store()`, all
+uniformly `let store = setup_store();`, each leaking one `fresh_db()` — and the
+snapshot is 2 024 KiB (§11F), so the binary held **~156 MiB of SQLite it never
+released**. The same `Box::leak(Box::new(migrations::fresh_db()))` line appears
+in five siblings: `platform/sync/src/sync_client_divergence_tests.rs:31`,
+`tests/adversarial_paths.rs:55`, `tests/convergence_replay.rs:58`,
+`tests/integration_test.rs:119`, `tests/stock_readings.rs:50`.
+
+`Store<'a>` (`crates/kasirmu-core/src/db/mod.rs:204`) holds `pub conn: &'a
+Connection` and `Store::new` takes `&'a Connection`, so nothing in these tests
+needs `'static` — the leak existed purely to satisfy a return type. The fix is
+`fn setup_store(conn: &Connection) -> Store<'_>` plus one `let store_conn =
+migrations::fresh_db();` per call site.
+
+**STATUS: transformed, then reverted. Not on the branch.** Written to the tree
+and, before it could be compiled, swept into `8301eef0f` (*"refactor(mobile):
+split the COR-7 checkout out of the POS command layer"*) — another lane's commit
+picked up my uncommitted working-tree change. `cargo check -p platform-sync
+--lib --tests` could not be run: `target/debug/.cargo-build-lock` was held
+exclusively (fails `r+b` *and* `a+b`, i.e. no share mode) for 22 minutes. Rather
+than leave an uncompiled 77-site change on a shared branch while going idle —
+a compile error there blocks every lane — it was restored to the original in the
+next commit. The only `'static` in the file was the helper itself, every helper
+takes `&Store<'_>`, and there is no thread spawn, so it is very likely sound;
+likely is not verified, and the downstream cost of being wrong is everyone's
+build.
+
+Re-apply and verify with:
+
+```
+cp /c/Users/Dika/queue_tests_OT03_new.rs platform/sync/src/queue_tests.rs
+cargo test -p platform-sync --lib -- queue          # expect 77 passed
+git commit -m "test(sync): drop the Box::leak in the queue fixture" -- platform/sync/src/queue_tests.rs
+```
+
+(`/c/Users/Dika/queue_tests_OT03_new.rs` is the transformed file;
+`queue_tests_backup.rs` alongside it is the original.)
+
+**Process lesson, and it is §7.3's rule biting.** Uncommitted work in a shared
+checkout is not private. `AGENTS.md` forbids `git add` for exactly this reason —
+the index is a single racing object — and I used `git add` for most of this
+session before reading it. From here: one-line `git commit -m "..." -- <path>`,
+no staging, and **do not leave a large unverified edit in the tree**. Baselines
+for A/B measurement must be taken by copying the file outside the repo and
+restoring it, never with `git stash`, which §7.3 also forbids.
+
 **The number that actually dominates axis B, and that nobody has scoped.** Under
 `cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds
 the snapshot from scratch and pays the **full 305 ms**, not the 3 ms clone. With
