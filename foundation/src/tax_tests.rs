@@ -1,9 +1,8 @@
-//! Unit tests for `models`.
+//! Sibling unit tests for `tax.rs` (AGENTS.md: no tests in production files).
 //!
-//! Moved out of `models.rs` to satisfy the AGENTS.md section 2 rule that unit
-//! tests live in a sibling `*_tests.rs` file rather than inside a production
-//! `.rs` file. Wired from `models.rs` with:
-//!   `#[cfg(test)] #[path = "models_tests.rs"] mod tests;`
+//! Moved here with the types from `modules/tax/src/models_tests.rs`; the assertions are unchanged,
+//! and `foundation::` paths became `crate::` because a crate cannot name itself by path.
+
 
 use super::*;
 

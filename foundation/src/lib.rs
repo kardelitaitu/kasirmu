@@ -36,6 +36,7 @@ pub mod events;
 pub mod money;
 pub mod percentage;
 pub mod sku;
+pub mod tax;
 pub mod validation;
 
 pub use barcode::Barcode;
@@ -52,6 +53,7 @@ pub use errors::{ConflictError, NotFoundError, ValidationError};
 pub use money::{Currency, InvalidCurrencyCode, Money, format_minor};
 pub use percentage::Percentage;
 pub use sku::{LineId, Sku};
+pub use tax::{RoundingMode, TaxRate};
 pub use validation::{
     validate_alphanumeric, validate_ascii_alphanumeric, validate_email, validate_max_length,
     validate_min_length, validate_money_range, validate_non_empty_bounded, validate_not_empty,
