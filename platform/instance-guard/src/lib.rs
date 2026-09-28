@@ -18,4 +18,4 @@
 
 pub mod single_instance;
 
-pub use single_instance::{acquire, Acquisition, InstanceGuard};
+pub use single_instance::{Acquisition, InstanceGuard, acquire};
