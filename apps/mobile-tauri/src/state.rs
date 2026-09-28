@@ -174,6 +174,29 @@ impl AppState {
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
 
+        // ── Lock tolerance, then a writability gate ──────────────────
+        // A tablet shares this file with the bridge, the sync daemon and any second
+        // process a dev machine left running, so waiting is the correct default —
+        // SQLite's own default is to fail the write instead. The desktop shell has
+        // carried the same 5s since the 2026-09-28 concurrent-launch repair.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| AppError::Internal(format!("setting busy_timeout: {e}")))?;
+
+        // Then prove the store is writable NOW, so a held lock or a denied permission is
+        // reported as itself instead of surfacing much later as "attempt to write a
+        // readonly database" from whichever statement happens to write first.
+        // `BEGIN IMMEDIATE` takes the write lock; `ROLLBACK` releases it without
+        // touching a row.
+        conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "the store database at {db_path:?} is not writable by this process ({e}). \
+                     Either another kasir.mu process is already running (or a stale one still \
+                     holds the file), or this process lacks write permission on the file and \
+                     its directory."
+                ))
+            })?;
+
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
 
