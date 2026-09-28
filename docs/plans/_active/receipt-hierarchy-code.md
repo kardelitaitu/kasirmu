@@ -119,16 +119,21 @@ is the issue date, not part of the ordering key.
 
 ## 4. Design constraints
 
-### 4.1 An index must never be reused (highest)
+### 4.1 Lowest-available slot recycling on delete
 
-If location `02` is deleted and the next location reuses `02`, every historic
-receipt whose code says `02` now resolves to a *different* store. The code stops
-being evidence. The index is therefore **not** "the Nth location" — it is an
-immutable badge, allocated monotonically, tombstoned on delete.
-
-Corollary: the allocator must **fail loudly at `14,776,336`** ($62^4$), never wrap. A silent
-wrap reissues live codes — and with a tax number on the receipt, that is
-falsification.
+When an entity (location, terminal, staff) is deleted, its index ID is released and recycled.
+When a new entity is created, the system allocates the **lowest available free slot** ($1, 2, 3\dots$):
+- **Store Operations Benefit:** A merchant with 5 cashiers retains clean badges `01` through `05`.
+  When Cashier `06` leaves and is deleted, slot `06` is reclaimed by the next new hire rather
+  than inflating to `07`, `08`, `09`... Similarly, if Terminal `02` is decommissioned, the
+  replacement terminal reclaims slot `02`.
+- **Historical Integrity Preserved:** Past sales receipts remain 100% auditable:
+  1. The receipt code in `sales.display_code` is frozen with the issue date (e.g. `01-02-260315-06-000123` from March vs `01-02-260520-06-000456` from May).
+  2. Analytics and reports link to the permanent UUID (`sales.user_id`, `sales.terminal_id`), so reporting per individual person or register is never mixed up.
+- **On Deletion:**
+  - `locations` and `terminals`: Row deletion immediately releases their `index_id`.
+  - `users`: Soft-delete (`soft_delete_user`) clears `index_id = NULL` (or query filters `deleted_at IS NULL`), releasing badge `06` for the next user and preventing unique index collision.
+- **Ceiling:** The allocator refuses if all slots up to `14,776,335` ($62^4 - 1$) are exhausted. Never wraps.
 
 ### 4.2 Enterprise scale: Base62 dynamic width (2 to 4 digits, up to 14.77 million)
 
@@ -260,9 +265,9 @@ new migration.
 - `sales.faktur_pajak_kode_transaksi TEXT NOT NULL DEFAULT '01'`
 - `sales.faktur_pajak_status TEXT NOT NULL DEFAULT '00'`
 
-All three index columns: monotonic allocator, tombstone on delete, **refuse at
-14,776,336** ($62^4$), `0` / `"00"` reserved as the "none" sentinel (kiosk / system sale has no
-staff).
+All three index columns: lowest-available slot allocator (gaps left by deleted
+entities are recycled), **refuse at 14,776,336** ($62^4$), `0` / `"00"` reserved as the
+"none" sentinel (kiosk / system sale has no staff).
 
 **New table** `receipt_number_counters`
 
@@ -300,12 +305,12 @@ a separate stored field, printed only once issued.
 ## 6. Implementation phases & state-of-the-art roadmap
 
 ### Phase 1: Core engine, Base62 dynamic allocator & sequence counter
-- **Schema & migrations:** `20261006_receipt_hierarchy_code.sql` committed and applied. Added `index_id` on `locations`, `terminals`, `users`, `entity_index_cursors`, `entity_index_tombstones`, and `receipt_number_counters`.
+- **Schema & migrations:** `20261006_receipt_hierarchy_code.sql` committed and applied. Added `index_id` on `locations`, `terminals`, `users`, and `receipt_number_counters`.
 - **Base62 dynamic formatter:** Zero-dependency encoder `format_base62_index(idx)`. Formats with minimum 2 characters (`00`–`zz`), expanding dynamically to 3 characters (`100`–`zzz`) at $\ge 3,844$, and 4 characters (`1000`–`zzzz`) at $\ge 238,328$.
 - **Allocator ceiling & safety:** `INDEX_ID_MAX = 14_776_335` ($62^4 - 1$, 14,776,336 capacity). Refuses loudly on overflow rather than wrapping.
-- **Atomic monotonicity & tombstones:** `allocate_entity_index` uses single-statement atomic upsert; `retire_entity_index` preserves deleted entity history in `entity_index_tombstones`.
+- **Lowest-available slot allocator with deletion recycling:** `allocate_entity_index` queries the lowest available free integer ($1, 2, 3\dots$) per `(tenant_id, entity_kind)`, automatically reclaiming gaps left by deleted/trashed entities.
 - **Sequence counter:** `claim_receipt_sequence` advances sequence atomically per `(tenant, terminal, fiscal_year)`, refusing at `999,999`.
-- **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, rollover refusal, rollback atomicity, and code assembly (22, 23, 24, and 28 chars).
+- **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, slot gap reuse on deletion, rollover refusal, rollback atomicity, and code assembly (22, 23, 24, and 28 chars).
 
 ### Phase 2: Per-location timezone resolution (MSL-29)
 - Parameterised timezone resolver `resolve_receipt_date(now_utc, location_tz)` using `chrono::FixedOffset`.
