@@ -1710,19 +1710,23 @@ Two details that make it safe, and one that makes it loud if it is not:
 - If any of that were wrong the test fails loudly — it asserts an exact
   `NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA` set — rather than passing vacuously.
 
-**STATUS: implemented, type-checks clean, RUNTIME VERIFICATION PENDING.** At the
-time of writing `cargo check -p kasirmu-core --lib --tests` fails on another
+**STATUS was PENDING and is now VERIFIED.** The change could not be run when it
+was written: `cargo check -p kasirmu-core --lib --tests` was failing on another
 lane's in-flight currency refactor (`create_exchange_rate` / `list_exchange_rates`
 / `get_currency_symbol_position` no longer on `Store`, across
 `db/settings_tests.rs`, `currency_integration`, `settings_integration`). Zero of
-the reported errors reference `migrations_tests.rs`, so the change compiles; it
-has not been *run*. Verify with:
+those errors referenced `migrations_tests.rs`. Their tree went green about five
+minutes later and the verification ran:
 
-```
-cargo test -p kasirmu-core --lib migrations
-```
+| Test | Baseline | After |
+|---|---|---|
+| `every_migration_re_applies_against_the_final_schema` (alone) | **25.86 s** | **1.40 s** |
+| `cosmetic_edit_to_any_migration_re_applies_cleanly` (alone, untouched) | 14.03 s | 11.72 s |
+| whole `migrations` module, 43 tests | 75.85 s | 61.58 s |
 
-and compare against the 75.85 s / 43-passed baseline.
+−24.5 s, −94.6% on the targeted test, **43 passed / 0 failed** — so the clone
+does preserve the drift verdict, which is the one thing that could have been
+wrong. The two sweeps now cost 17.08 s combined when run alone.
 
 **Still open, with the design worked out.** `cosmetic_edit_to_any_migration_
 re_applies_cleanly` cannot use one snapshot — its prefix `&ALL[..=index]` grows

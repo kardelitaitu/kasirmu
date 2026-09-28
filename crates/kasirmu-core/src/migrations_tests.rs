@@ -1,7 +1,50 @@
 use super::*;
+use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 fn fresh() -> rusqlite::Connection {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+    conn
+}
+
+/// The whole registry applied once, kept as the source for per-iteration
+/// clones.
+///
+/// Two sweeps in this file iterate all 68 migrations and, on every iteration,
+/// replay the registry (or a growing prefix of it) from an empty database.
+/// That first apply is *byte-identical* each time — same pages, same
+/// `schema_migrations` rows, same stored checksums, which is exactly what the
+/// drift assertions read — so replaying it 68 times bought nothing. A SQLite
+/// `Backup` page copy of one apply reproduces it for ~3 ms instead of ~305 ms
+/// (both measured; see todo-optimize-crates.md §11F).
+///
+/// Behind a `Mutex` because `rusqlite::Connection` is `Send` but not `Sync`,
+/// and `Backup::new` takes a `RefCell` borrow on its source — a `RwLock` would
+/// be a data race, not an optimisation. Contention is irrelevant here: these
+/// sweeps run their iterations sequentially.
+static FINAL_SCHEMA: LazyLock<Mutex<rusqlite::Connection>> = LazyLock::new(|| {
+    let mut conn = fresh();
+    platform_core::database::run(&mut conn, ALL)
+        .expect("applying the full registry to build the test snapshot");
+    Mutex::new(conn)
+});
+
+/// A byte-identical copy of [`FINAL_SCHEMA`].
+///
+/// Restores `foreign_keys = ON` explicitly: it is a per-connection setting, so
+/// a `Backup` does not carry it across, and `fresh()` sets it — without it a
+/// migration that violates a foreign key would succeed here and silently
+/// weaken every drift verdict in these sweeps.
+fn final_schema() -> rusqlite::Connection {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    {
+        let master = FINAL_SCHEMA.lock().unwrap();
+        rusqlite::backup::Backup::new(&master, &mut conn)
+            .unwrap()
+            .run_to_completion(100, Duration::from_millis(0), None)
+            .unwrap();
+    }
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     conn
 }
@@ -395,11 +438,11 @@ fn every_migration_re_applies_against_the_final_schema() {
             })
             .collect();
 
-        let mut conn = fresh();
         // The whole registry first: the re-apply below runs against the *final*
         // schema, exactly as it does for a database whose init script drifted.
-        platform_core::database::run(&mut conn, ALL)
-            .unwrap_or_else(|err| panic!("applying the full registry failed: {err}"));
+        // That apply is identical on every iteration, so it is cloned from one
+        // cached apply rather than replayed 68 times — see `final_schema`.
+        let mut conn = final_schema();
 
         let before = stored_checksum(&conn, id);
         match platform_core::database::run(&mut conn, &drifted) {
