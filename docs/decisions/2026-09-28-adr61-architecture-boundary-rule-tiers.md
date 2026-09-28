@@ -2,15 +2,15 @@
 num: 61
 area: architecture
 title: ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry
-status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and the first type-shim edge (crm) landed; the model-type move that retires the seven shims is sequenced, not done
+status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and three type-shim edges (crm, tax, terminal) landed; the model-type move that retires the seven shims is sequenced, not done
 ---
 
 # ADR-61: Architecture Boundary Rule Tiers
 
 **Status:** Implemented (2026-09-28); the currency edge is CLOSED. The named rule, the classification, the governed expiry
-and the re-tiered baseline are in the tree and gated. The currency edge is closed, and the first type-shim edge (`modules-crm`) is closed by moving
-`Customer` — with its impl and its eleven unit tests — down to `foundation`; six type-shim entries
-remain, which is the move D3 sequences as later.
+and the re-tiered baseline are in the tree and gated. The currency edge and THREE type-shim edges (`crm`, `tax`, `terminal`) are closed by moving those
+types — with their impls and their unit tests — down to `foundation`; four type-shim entries remain
+(`inventory`, `loyalty`, `sales`, `staff`), which is the move D3 sequences as later.
 **Date:** 2026-09-28
 **Recorded against:** branch `0.0.40`
 **Tags:** architecture, boundaries, gates, cargo, dependency-debt, expiry
@@ -90,8 +90,8 @@ dev-dependency is not a shipped layering edge.
   extended by editing a date.
 - **Cost, accepted:** the checker does one extra walk of core's source, and a mis-set baseline
   key turns a tracked entry into a blocking finding rather than a silent pass.
-- **Two edges are gone (currency, crm); six entries remain red on 2026-11-07 unless the model-type
-  move lands.** That is the point: the expiry is now a governed promise instead of an unread date. The
+- **Four edges are gone (currency, crm, tax, terminal); four entries remain red on 2026-11-07 unless
+  the model-type move lands.** That is the point: the expiry is now a governed promise instead of an unread date. The
   dates were NOT bumped (C26, D3).
 - **Verified this pass, and what that excludes:** `cargo check -p kasirmu-core --all-targets` is
   clean and warning-free, `cargo check --workspace --exclude kasirmu-mobile` exits 0, and
