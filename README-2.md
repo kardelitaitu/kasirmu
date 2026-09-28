@@ -61,9 +61,9 @@ around it.
 
 ### 2. Your payments, your money — no app commission
 
-kasir.mu does not sit between you and your acquirer. QRIS is supported on **every plan,
-including Free** — both dynamic per-transaction QR codes and your own store's static QR
-sticker. Card payments via Stripe.
+kasir.mu does not sit between you and your acquirer. Your own store's static QR sticker is
+supported on **every plan, including Free**; dynamic per-transaction QR codes arrive with
+Plus. Card payments via Stripe.
 
 You pay your acquirer's published rate directly, exactly as you would without us. What you
 never pay is a **kasir.mu commission on top** — no percentage of turnover, no per-transaction
@@ -116,7 +116,7 @@ flowchart LR
 
     F --> PL --> PR --> PM --> ET
 
-    A["On every plan,<br/>including Free:<br/>full offline, QRIS,<br/>the same app"] -.-> F
+    A["On every plan,<br/>including Free:<br/>full offline,<br/>static QRIS,<br/>the same app"] -.-> F
     A -.-> PL
     A -.-> PR
 
@@ -128,16 +128,17 @@ flowchart LR
     style A fill:#fff8f0,stroke:#e0a070
 ```
 
-**Going up a plan buys capacity, not permission.** Every plan signs up the same way, sells the
-same way, and works offline the same way — QRIS included. A merchant who outgrows Free never
-has to relearn the product.
+**Going up a plan mostly buys capacity, not permission.** Every plan signs up the same way,
+sells the same way, and works offline the same way, and a merchant who outgrows Free never has
+to relearn the product. A few capabilities do unlock by tier: dynamic QRIS at Plus, card
+payments at Pro, loyalty and scripting at Premium.
 
 No credit card to start. No trial that quietly converts.
 
 ### 5. The free plan is a real plan — one account, and it never expires
 
 Free is the whole product for one store, at Rp 0, permanently: one register, one warehouse
-workspace, three months of sales history, QRIS, and full offline operation. Not a 14-day
+workspace, three months of sales history, static QRIS, and full offline operation. Not a 14-day
 window, and not a feature-locked teaser.
 
 It takes an account — and that is deliberate. Setup asks for one first, and **Google or an
@@ -183,7 +184,7 @@ own, this is the difference between a cashier waiting on a spinner and a queue t
 | **Free plan** | Rp 0 / $0 forever — one store, one register, one warehouse, 3 months of history |
 | **Paid from** | Rp 49k / $4.99 per month; yearly = 2 months free |
 | **Commission on sales** | 0% — we never take a cut of a transaction |
-| **Payments** | QRIS (static + dynamic) on every plan; Stripe cards on Pro and above |
+| **Payments** | Static QRIS on every plan; dynamic QRIS from Plus; Stripe cards from Pro |
 | **Offline** | Every plan, including Free. No feature is online-only |
 | **Platforms** | Windows 10/11, Android 8.0+ tablets, Linux |
 | **Runtime** | Native Rust core, Tauri v2 shell, SQLite on-device |
@@ -266,6 +267,6 @@ authoritative tier matrix. For the technical and commercial detail, see
 
 - Website: **https://kasir.mu**
 - Support: **support@kasir.mu**
-- Commercial licensing & partnerships: **adikarawiatmaja@gmail.com**
+- Commercial licensing & partnerships: **adikaradwiatmaja@gmail.com**
 
 kasir.mu is proprietary software. See [LICENSE](./LICENSE) for terms.
