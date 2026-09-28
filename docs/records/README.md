@@ -128,6 +128,7 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 | --- | --- | --- |
 | general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](../audits/2026-09-28-api-reference-audit.md) | — |
 | general | [docs/ Folder Audit — 2026-09-28](../audits/2026-09-28-docs-audit.md) | — |
+| general | [Desktop launch failure — root cause: a Low Mandatory Level ACL on the checkout](../audits/2026-09-29-desktop-launch-integrity-label.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](../audits/documentation-audit-23-09-26.md) | — |
 | frontend | [Agent Ops Handbook — CSS Verification](../audits/frontend/css-verification.md) | — |
 | frontend | [Fluent Page Audit — Full Journal](../audits/frontend/fluent-page-audit.md) | — |
