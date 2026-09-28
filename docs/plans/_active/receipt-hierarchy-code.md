@@ -103,13 +103,16 @@ is the issue date, not part of the ordering key.
 
 ## 3. What is good about this
 
-- **Barcode width.** The barcode currently encodes `SALE-<36-char uuid>` (41
-  chars). 31 fixed-width numeric chars encodes in Code 128 Mode C with high density
-  and scans far more reliably on a 58 mm head.
-- **Customers stop seeing UUIDs.**
-- **Fixed-width segments** parse without a delimiter hunt.
-- **999,999/terminal/year is far beyond any restaurant** (2,739/day).
-- **Supports large-scale enterprise deployments (10,000+ stores, terminals, staff)** without running into ID exhaustion.
+- **Barcode width & density.** The barcode currently encodes `SALE-<36-char uuid>`
+  (41 chars). The 22–25 character alphanumeric hierarchy code (`01-02-260929-01-000123`)
+  encodes compactly in Code 128 and QR codes, scanning reliably on 58 mm heads.
+- **Customers stop seeing UUIDs.** Instead of an opaque GUID, receipts show an
+  intuitive store, terminal, date, and cashier breakdown.
+- **Delimited readability.** Hyphens provide clear visual rhythm (`01-02-260929-01-000123`),
+  audio clarity for phone support, and foolproof string parsing.
+- **999,999/terminal/year is far beyond any restaurant or supermarket** (2,739 sales/day).
+- **Supports large-scale enterprise deployments (up to 238,328 per tenant)** without
+  running into index exhaustion, while remaining ultra-compact (22 chars) for 99.9% of stores.
 
 ---
 
@@ -117,8 +120,8 @@ is the issue date, not part of the ordering key.
 
 ### 4.1 An index must never be reused (highest)
 
-If location `00002` is deleted and the next location reuses `00002`, every historic
-receipt whose code says `00002` now resolves to a *different* store. The code stops
+If location `02` is deleted and the next location reuses `02`, every historic
+receipt whose code says `02` now resolves to a *different* store. The code stops
 being evidence. The index is therefore **not** "the Nth location" — it is an
 immutable badge, allocated monotonically, tombstoned on delete.
 
@@ -171,14 +174,14 @@ Two different things, only one of which we own:
 | **Faktur Pajak** — VAT invoice, PKP only | `01` `00` `2600000000123` (17 digits) | **DJP**, assigned on upload |
 | **Nomor faktur / nota** — commercial invoice | ours | **Us** |
 
-`01-02-260918-01-A001` can never be the NSFP. It **can** be the commercial nomor
+`01-02-260929-01-000123` can never be the NSFP. It **can** be the commercial nomor
 faktur, which is what a POS receipt actually needs; the DJP number arrives later,
 and only if the sale is reported through e-Faktur.
 
 **Printed result:**
 
 ```
-#01-02-260918-01-A001                nomor faktur (ours)
+#01-02-260929-01-000123               nomor faktur (ours)
 NPWP: 00.000.000.0-000.000
 Faktur Pajak: 01002600000000123      DJP, printed only once issued
 ```
@@ -290,32 +293,55 @@ a separate stored field, printed only once issued.
 
 ---
 
-## 6. Phases
+## 6. Implementation phases & state-of-the-art roadmap
 
-1. **Migration + allocator** — index columns, `sales.terminal_id`,
-   `sales.display_code`, counter table, Base62 dynamic encoder (`format_base62_index`),
-   monotonic allocator with tombstone, refuse at 238,328. Tests for concurrency,
-   rollover, formatting, and exhaustion.
-2. **Per-location timezone** — parameterise the offset resolver; fix the
-   `kds.rs` inheritance while touching it.
-3. **Checkout assembly** — claim + freeze + store `display_code`, populate
-   `sales.terminal_id`.
-4. **Renderer + UI** — `receipt.rs`, barcode, `ReceiptPreview`, sales history.
-5. **Backfill** — existing sales keep `display_code = NULL` and fall back to
-   today's behaviour. Do **not** retro-generate codes; they would be fiction.
-6. **e-Faktur (independent, later)** — the three `faktur_pajak_*` columns, an
-   import path that stamps the NSFP once an e-Faktur is approved, a *pengganti*
-   operation that increments kode status, and the printed 17-digit line. Not
-   blocked by 1–5.
+### Phase 1: Core engine, Base62 dynamic allocator & sequence counter
+- **Schema & migrations:** `20261006_receipt_hierarchy_code.sql` committed and applied. Added `index_id` on `locations`, `terminals`, `users`, `entity_index_cursors`, `entity_index_tombstones`, and `receipt_number_counters`.
+- **Base62 dynamic formatter:** Zero-dependency encoder `format_base62_index(idx)`. Formats with minimum 2 characters (`00`–`zz`), expanding dynamically to 3 characters (`100`–`zzz`) when reaching $\ge 3,844$.
+- **Allocator ceiling & safety:** `INDEX_ID_MAX = 238_327` ($62^3 - 1$, 238,328 capacity). Refuses loudly on overflow rather than wrapping.
+- **Atomic monotonicity & tombstones:** `allocate_entity_index` uses single-statement atomic upsert; `retire_entity_index` preserves deleted entity history in `entity_index_tombstones`.
+- **Sequence counter:** `claim_receipt_sequence` advances sequence atomically per `(tenant, terminal, fiscal_year)`, refusing at `999,999`.
+- **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, rollover refusal, rollback atomicity, and code assembly (22, 23, and 25 chars).
+
+### Phase 2: Per-location timezone resolution (MSL-29)
+- Parameterised timezone resolver `resolve_receipt_date(now_utc, location_tz)` using `chrono::FixedOffset`.
+- Integrated with `reports::parse_utc_offset` to support IANA zone names (`Asia/Jakarta`, `Asia/Makassar`, `Asia/Jayapura`) and standard numeric offsets (`+07:00`).
+- Eliminates midnight race conditions where multi-timezone stores might otherwise date receipts incorrectly.
+
+### Phase 3: Checkout assembly & transaction freezing
+- Integrate `mint_receipt_code` inside the checkout transaction (`sales_checkout.rs` and `sales_lifecycle.rs`).
+- Lazy entity index allocation (`ensure_entity_index`) for pre-existing entities without requiring manual database migration scripts.
+- Atomically freezes assembled `display_code` and `terminal_id` into the `sales` record.
+- Transaction rollback guarantees: an aborted checkout burns neither an entity index nor a receipt sequence number.
+
+### Phase 4: Hardware rendering & UI presentation
+- **Hardware driver (`kasirmu-hal`):** `receipt.rs` prints `#01-02-260929-01-000123` instead of the 36-character UUID, and barcodes the compact code via Code 128 / QR.
+- **Bridge mapping (`kasirmu-bridge`):** `map_sale_to_item` and `map_sale_to_detail` expose `display_code` to front-end clients.
+- **UI screens (`ui/`):** `SalesHistoryScreen.tsx` and `PaymentModal.tsx` display the clean receipt code, with graceful fallback to `sale.id` for legacy records.
+
+### Phase 5: Backward compatibility, backfill & verification
+- Existing sales retain `display_code = NULL` and fall back to legacy `sale.id` display without fiction.
+- Pre-commit gates validation:
+  1. `cargo test -p kasirmu-core receipt_code`
+  2. `python scripts/verify-migration-column-types.py`
+  3. `python scripts/generate-pg-migration.py --check`
+  4. `python .agents/skills/docs-auditor/scripts/check-dead-refs.py`
+
+### Phase 6: e-Faktur integration (DJP Coretax, independent)
+- Stored columns: `faktur_pajak_nsfp` (13 digits), `faktur_pajak_kode_transaksi` (2 digits), `faktur_pajak_status` (2 digits).
+- Post-checkout import endpoint: stamps NSFP when approved in Coretax.
+- Faktur Pengganti lifecycle: preserves original NSFP, increments `faktur_pajak_status` (`00` → `01` → `02`), prints 17-digit DJP number alongside internal nomor faktur.
 
 ---
 
-## 7. Remaining
+## 7. Accepted invariants & decisions
 
-- **Overflow policy at 238,328** (§4.2) — hard refuse confirmed.
-- **Century** (§1) — `YYMMDD` bounds uniqueness to 100 years. Accepted.
-- **Fiscal year** (§5) — assumed to be the calendar year, matching the Indonesian
-  tax year. A non-calendar year changes the counter key and nothing else.
-- **Kode transaksi** (§4.3.1) — assumed `01` for every sale. If some sales need
-  `04`/`05`/`07`, that becomes per-sale data rather than a constant.
+- **Encoding:** Base62 (`0–9`, `a–z`, `A–Z`) with dynamic width (minimum 2 characters).
+- **Scale:** 238,328 locations, 238,328 terminals, 238,328 staff per tenant.
+- **Receipt Length:** 22 characters standard (`01-02-260929-01-000123`), 23 characters with 1 3-digit entity (`01-02-260929-10a-000123`), 25 characters maximum.
+- **Sequence Tail:** 6 decimal digits continuous per terminal per fiscal year (1 to 999,999).
+- **Overflow Ceiling:** Hard refusal at 238,328 (indices) and 999,999 (sequence).
+- **Century Window:** `YYMMDD` bounds uniqueness to 100 years (valid until 2126).
+- **Fiscal Year:** Aligns with store-local calendar year.
+- **Sentinels:** `00` represents unassigned staff / kiosk / system checkout.
 
