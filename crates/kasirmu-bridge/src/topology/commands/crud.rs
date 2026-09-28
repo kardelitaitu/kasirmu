@@ -37,7 +37,7 @@ pub(super) fn apply_workspace_crud(
 ) -> Result<(), BridgeError> {
     let conn = ctx
             .db_manager
-            .open_store(&effective_store_id)
+            .open_store(effective_store_id)
             .map_err(|e| {
                 // M5 / ruling R3: cause is logged, not returned (path-free error).
                 tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for workspace CRUD");
@@ -156,7 +156,7 @@ pub(super) fn apply_workspace_crud(
         // Only POS registers (store-pos/restaurant-pos) consume the
         // register budget — kds/warehouse/inventory/admin instances must
         // not block legitimate register creation.
-        let current = store.count_active_pos_instances(&effective_store_id)?;
+        let current = store.count_active_pos_instances(effective_store_id)?;
         let archived_ids: std::collections::HashSet<&str> =
             workspace_archives.iter().map(String::as_str).collect();
         let archived_active = archived_ids

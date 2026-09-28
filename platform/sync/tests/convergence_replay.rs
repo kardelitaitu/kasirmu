@@ -122,30 +122,15 @@ impl Device {
         self.store().get_stock(&pid).expect("inventory read")
     }
 
-    /// The per-location total for a SKU, summed over `stock_summary`.
-    ///
-    /// This is the reading ADR-19 makes authoritative for a multi-location
-    /// install: `apply_stock_adjustment_delta_in_tx` routes a delta through
-    /// `adjust_stock_at_location_with_reason` whenever the product already
-    /// has summary rows (`queue.rs:129-137`), which writes `stock_summary`
-    /// and does NOT stamp the legacy aggregate. So `inventory.qty` can lag
-    /// a location-routed delta until a rebuild, and the summary total is
-    /// what the sync actually agreed on.
-    fn summary_total(&self, sku: &str) -> i64 {
-        let pid = self
-            .store()
-            .product_id_by_sku(sku)
-            .expect("lookup product")
-            .expect("product exists");
-        self.store()
-            .conn()
-            .query_row(
-                "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
-                rusqlite::params![pid],
-                |row| row.get(0),
-            )
-            .expect("summary total")
-    }
+    // NOTE (2026-09-28): a `summary_total(sku)` helper read the per-location `stock_summary`
+    // total here and no test ever called it, so clippy's dead-code check found it. The reading it
+    // documented still matters and is kept in prose: ADR-19 makes the summary total authoritative
+    // for a multi-location install, because `apply_stock_adjustment_delta_in_tx` routes a delta
+    // through `adjust_stock_at_location_with_reason` when the product already has summary rows
+    // (`queue.rs:129-137`) — that writes `stock_summary` and does NOT stamp the legacy aggregate,
+    // so `inventory.qty` can lag a location-routed delta until a rebuild. This harness compares
+    // `inventory.qty` deliberately (see the module note). The helper is deleted rather than
+    // silenced with an allow: if a future test needs the summary reading, it comes back in use.
 
     /// Both SKUs as a comparable map.
     fn on_hand_snapshot(&self) -> BTreeMap<String, i64> {

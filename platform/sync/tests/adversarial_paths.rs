@@ -273,7 +273,9 @@ fn two_locations_overselling_the_same_stock_contain_the_overspend() {
 #[test]
 fn a_settled_sale_survives_a_stale_earlier_state_arriving_from_another_location() {
     let mut a = Device::new();
-    let mut b = Device::new();
+    // NOTE (2026-09-28): a second `Device` was built here and never used — clippy flagged it as
+    // both `unused_variables` and `unused_mut`. The stale state this test is about arrives as the
+    // payload below, not from a second device, so the line is deleted rather than silenced.
 
     // A settles a sale (COFFEE -2).
     a.act(
