@@ -57,6 +57,11 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "done-todo-project-folder-restructure.md",
     "todo-open-debt-program.md", "done-todo-review-type.md",
     "done-todo-owner-rulings.md", "todo-sync-endpoint-derivation.md",
+    # Owner plan docs, same class as the two above: named individually on purpose,
+    # because the allowlist is names-not-patterns so adding one is a decision.
+    "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
+    "todo-open-debt-agents-2.md", "todo-open-debt-agents-3.md",
+    "todo-open-debt-agents-4.md", "todo-open-debt-agents-5.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
