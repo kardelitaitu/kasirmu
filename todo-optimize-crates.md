@@ -1492,3 +1492,84 @@ This is the fourth time today that work recommended from a dated plan doc turned
 out already paid. The rule worth carrying: **re-read the cited lines before
 implementing any entry from a journal more than a day old in a multi-lane
 checkout.**
+
+### 11F. O-T04 was funded and came back negative — measured, not argued (2026-09-28)
+
+§11E left O-T04 as the head of the list and repeated §9's sequencing caution.
+This round actually ran the instrument. **The premise is wrong.** Every number
+below is measured on this checkout, 32 logical CPUs, debug profile.
+
+**What a database actually costs to build**
+
+| Quantity | Measured |
+|---|---|
+| Migrations in `ALL` | **68** |
+| `migrations::run()` — the whole chain | **305–322 ms** (3 runs: 315.6, 304.6, 304.1; a later run 322.6, 322.1, 313.4) |
+| `fresh_db()` — one clone | **2.47–3.00 ms** |
+| `Connection::open_in_memory()` alone | **40 µs** |
+| Snapshot size | **506 pages × 4096 B = 2024 KiB** |
+
+So §9's qualitative claim — that a clone beats a replay — is confirmed and is
+now quantified at ~100×. That part of O-T01/O-T02 is real money.
+
+**What parallelism actually does to it** (384 clones, total work held constant)
+
+| Threads | Wall | Per clone | vs 1 thread |
+|---|---|---|---|
+| 1 | 1.151 s | 2.996 ms | 1.00× |
+| 2 | 0.757 s | 1.971 ms | **1.52×** |
+| 4 | 1.029 s | 2.680 ms | 1.12× |
+| 8 | 2.178 s | 5.672 ms | 0.53× |
+| 16 | 3.343 s | 8.706 ms | 0.34× |
+| 32 | 3.754 s | 9.776 ms | 0.31× |
+
+DB construction does not parallelise. It improves to two threads and then
+degrades super-linearly. 32 threads is **3.3× slower than one**.
+
+**Why that is not the `Mutex` — the A/B**
+
+O-T04 was implemented as §9 prescribed: a per-thread snapshot source, so no call
+takes a process-wide lock. `Connection` is `Send` but not `Sync`, and
+`Backup::new` takes a `RefCell` borrow on its source
+(`from.db.borrow_mut()`, rusqlite 0.31 `backup.rs:213`) — which also rules out
+the tempting `Mutex` → `RwLock` "fix", since two readers would race that
+`RefCell`.
+
+| Threads | `Mutex` (HEAD) | Per-thread source |
+|---|---|---|
+| 1 | 2.985 ms | 2.996 ms |
+| 2 | 2.059 ms | 1.971 ms |
+| 4 | **2.298 ms** | 2.680 ms |
+| 8 | **4.629 ms** | 5.672 ms |
+| 16 | **7.476 ms** | 8.706 ms |
+
+Removing the lock changed nothing at 1–2 threads and made 4+ threads
+consistently ~15–20% *worse*. **The change was reverted.** `migrations.rs` at
+HEAD is unchanged in behaviour; what landed is a comment recording both the
+measured curve and the `RwLock` hazard, so the next lane neither re-funds this
+nor "simplifies" the `Mutex` into a race.
+
+**Where the ceiling actually is.** Not in this crate. The curve's shape — a
+little scaling, then super-linear collapse — plus the fact that removing our
+lock did not move it, points below `fresh_db()`: the likely candidate is
+SQLite's global allocation mutex, which every page copy contends on. That is a
+hypothesis, not a measurement, and is recorded as such.
+
+**What this does to the funding list.** §9's caution — *"fix O-T04 before
+O-T01/O-T02, or the cheap fix makes the parallelism worse"* — is **void**. The
+lock is not what caps throughput, so converting `run` sites to `fresh_db()`
+needs no prerequisite. Each conversion still trades ~305 ms for ~3 ms. **The
+live head is now O-T01 → O-T02.**
+
+**The number that actually dominates axis B, and that nobody has scoped.** Under
+`cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds
+the snapshot from scratch and pays the **full 305 ms**, not the 3 ms clone. With
+874 `fresh_db()` call sites that is ~266 s of CPU per full run before a single
+assertion executes. The `Mutex` was never going to touch that. Per-migration
+profiling says it is not one bad file either — the top 10 of 68 migrations are
+65.6% of the build, led by three whole-table rebuilds
+(`20260906_rename_store_to_location` 50.2 ms,
+`20261014_kds_drop_pairing_tokens` 43.5 ms,
+`20260831_per_tenant_unique_rebuild` 37.8 ms), which is the unavoidable price of
+68 migrations of history. Any real axis-B win has to come from not rebuilding
+per process, not from making the rebuild parallel.

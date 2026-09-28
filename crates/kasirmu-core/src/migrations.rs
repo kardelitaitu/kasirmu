@@ -506,6 +506,24 @@ pub fn seed_provisioned_baseline(conn: &rusqlite::Connection) {
 /// snapshot via SQLite's page-level [`rusqlite::backup::Backup`] API —
 /// orders of magnitude faster than re-running `execute_batch` per test.
 ///
+/// The snapshot is behind a `Mutex` and that is load-bearing, not an
+/// oversight. `rusqlite::Connection` is `Send` but deliberately not `Sync`,
+/// and `Backup::new` takes a `RefCell` borrow on its source
+/// (`from.db.borrow_mut()`, rusqlite 0.31 `backup.rs:213`), so two threads
+/// handing out clones through one shared `&Connection` would race that
+/// `RefCell`. **An `RwLock` is not an optimisation here, it is a data race.**
+///
+/// Measured 2026-09-28, recorded so this is not "optimised" again on a
+/// guess: the 68-migration chain costs ~305 ms to apply and one clone costs
+/// ~3 ms of a 2 024 KiB snapshot, but 384 clones spread over N threads get
+/// *slower* past two threads — 1.15 s at 1 thread, 0.76 s at 2, 2.18 s at 8,
+/// 3.75 s at 32. Replacing this `Mutex` with a per-thread source did not
+/// lift that ceiling; it measured ~15% worse at 4+ threads. Whatever caps
+/// parallel DB construction sits below this function — most likely SQLite's
+/// global allocation mutex — so this lock is not what is holding the suite
+/// up, and swapping the 66-odd surviving `run` call sites over to
+/// `fresh_db()` needs no prerequisite work here.
+///
 /// The returned connection carries the same per-connection PRAGMAs
 /// [`run`] applies (see there for why each exists), except
 /// `journal_mode = WAL`: an in-memory database cannot use WAL — SQLite
