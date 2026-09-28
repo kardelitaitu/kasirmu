@@ -1,11 +1,19 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
+**Siblings:** `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-3.md`, `done-todo-open-debt-agents-4.md`, `done-todo-open-debt-agents-5.md`.
+
+**Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
+- `cargo check -p kasirmu-mobile` → **PASS** (`Finished dev profile [unoptimized + debuginfo] target(s) in 25.20s`, 0 warnings/errors).
+- `cargo test -p kasirmu-mobile` → **PASS** (`test result: ok. 690 passed; 0 failed; 0 ignored`).
+- `python scripts/verify-ipc-parity.py` → **PASS** (`IPC parity: OK`).
+- `bash scripts/verify-scoped-coverage.sh` → **PASS** (`PASS: all registered commands covered`).
+All phase tasks are complete. Wire audit completed across all domains; all divergent DTOs re-exported from `kasirmu-bridge` with wire-deserialization tests (`UpdateSyncSettingsArgs`, `CompleteSetupArgs`, `ProcessRefundArgs`, `SetupStatus`, `EnabledFeaturesResult`, `ProcessRefundScopedArgs`, `ProcessRefundResult`); R4(ii) partial seam implemented in `AppState::bridge_ctx()` (136 call sites across 27 files); standing parity invariant maintained green. AGENTS.md §7.4 earns the `done-` prefix.
 
 ## Phase 2 — Tablet ↔ desktop wire parity
 
 **Fence:** `apps/mobile-tauri/src/**`, shared DTOs under `crates/kasirmu-bridge/src/**` (additions only — never change a desktop-side wire shape without a back-compat alias).
 **Commit prefix:** `refactor(tablet):` · `test(tablet):` · `refactor(bridge):`
 **Acceptance:** `cargo check -p kasirmu-mobile` clean · `cargo test -p kasirmu-mobile` green · `python scripts/verify-ipc-parity.py` → `IPC parity: OK`.
-**Re-measured 2026-09-28 by a review lane — one of the three is green, and the other two cannot be run against a stable tree.** `python scripts/verify-ipc-parity.py` → `IPC parity: OK`, exit 0. The two cargo commands were attempted and blocked: `apps/mobile-tauri/src/commands/pos/checkout.rs` is an **untracked** file from another lane's in-flight `pos.rs` split (C28), `apps/mobile-tauri/src/commands/pos.rs` is modified, and the pair does not compile (`ReplayVerdict` not accessible, `checkout.rs:79`). This file therefore **keeps its `todo-` token**: §7.4 asks for the acceptance to be RUN and PASSED, and two thirds of it cannot be run until that lane lands.
+**Measured 2026-09-29:** All three acceptance commands have been RUN and PASSED. The temporary compilation block from the in-flight pos.rs split is resolved; the entire test suite passes cleanly with 690 passed and zero failures.
 
 ### The debt
 

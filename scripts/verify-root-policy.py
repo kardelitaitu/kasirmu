@@ -60,7 +60,6 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
     "todo-android-4gb-optimization-audit.md", "todo-optimize-crates.md",
-    "todo-open-debt-agents-2.md",
     "manager-codebase-review-checklist.md",
     "manager-codebase-review-decisions.md",
     "manager-codebase-review.md",
@@ -87,6 +86,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "done-mobile-setupwizard.md",
     "done-todo-codebase-reliability.md",
     "done-todo-open-debt-agents-1.md",
+    "done-todo-open-debt-agents-2.md",
     "done-todo-open-debt-agents-3.md",
     "done-todo-open-debt-agents-4.md",
     "done-todo-open-debt-agents-5.md",

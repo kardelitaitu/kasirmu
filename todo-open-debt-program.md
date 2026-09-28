@@ -1,5 +1,5 @@
 > **This file was SPLIT on 2026-09-25 under R18.** The five phase sections moved to
-> `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`,
+> `done-todo-open-debt-agents-1.md`, `done-todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`,
 > `done-todo-open-debt-agents-4.md`, and `done-todo-open-debt-agents-5.md`, each carrying its own dated history. What stays here is the
 > program-level record: the rules, dispatch order, rotted claims, the dead-class campaign,
 > out-of-scope, and the rename audits.
@@ -8,9 +8,9 @@
 > so itself), so one filename could not honestly claim five phases. The per-phase
 > acceptances, and which of them are met, are now readable in one file each.
 >
-> **Status 2026-09-29:** Four of the five phases have earned their `done-` prefix:
+> **Status 2026-09-29:** All five phases have earned their `done-` prefix:
 > - Phase 1 (`done-todo-open-debt-agents-1.md`) — release-profile failure classified and resolved.
-> - Phase 2 (`todo-open-debt-agents-2.md`) — wire parity audited; waiting on concurrent `pos.rs` split.
+> - Phase 2 (`done-todo-open-debt-agents-2.md`) — wire parity audited, DTOs shared from bridge, 690 mobile tests green.
 > - Phase 3 (`done-todo-open-debt-agents-3.md`) — rank table folded, home gates unified on `roleAtLeast`, R5 owner ruling declining org axis.
 > - Phase 4 (`done-todo-open-debt-agents-4.md`) — triage done, R5 design doc written, R9(b) decorator wired, R4/R6/R7 owner question filed.
 > - Phase 5 (`done-todo-open-debt-agents-5.md`) — PG test honesty enforced across 3 crates with 88 skip arms and live container validation.
@@ -19,14 +19,13 @@
 
 ```
 Phase 1 (release red)  ──→ DONE (done-todo-open-debt-agents-1.md)
-Phase 2 (tablet wire)  ──→ waiting on in-flight pos.rs split in apps/mobile-tauri
+Phase 2 (tablet wire)  ──→ DONE (done-todo-open-debt-agents-2.md)
 Phase 3 (authz)        ──→ DONE (done-todo-open-debt-agents-3.md)
 Phase 4 (payment)      ──→ DONE (done-todo-open-debt-agents-4.md)
 Phase 5 (PG honesty)   ──→ DONE (done-todo-open-debt-agents-5.md)
 ```
 
-- **Phases 1, 3, 4, and 5 are COMPLETE and verified.**
-- **Phase 2 remains the sole open phase**, pending the landing of the concurrent `pos.rs` split in `apps/mobile-tauri`.
+- **All five phases (Phases 1 through 5) are COMPLETE and verified.**
 - **Nothing here authorises a push.** `dev-ci.yml:695` gates the deploy on `push` to `main` **or** to a `0.0.*` branch, and the `0.0.*` arm is currently inert only because `on.push.branches` lists `main` alone. Widening that list would make every release-branch push deploy to production.
 
 ---
