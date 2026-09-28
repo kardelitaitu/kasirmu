@@ -732,9 +732,7 @@ pub async fn sync_pull_scoped(
     // The database this pull mutates, and therefore the database the pre-pull
     // backup is a clone of. The backup is named after THIS file, not after
     // the shell's main database, so each store gets its own rotation scope.
-    let store_db = ctx
-        .db_manager
-        .checked_store_db_path(&session.store_id)?;
+    let store_db = ctx.db_manager.checked_store_db_path(&session.store_id)?;
 
     // Phase 1: Read config from DB (brief lock).
     let config_opt = {
