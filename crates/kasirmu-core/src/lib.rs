@@ -58,9 +58,10 @@ pub mod downgrade;
 pub mod error;
 /// Domain event types for cross-crate communication.
 pub mod events;
-// Note: ExchangeRateRow re-exported from `modules-currency`.
-// The old `pub mod exchange_rate` shim was removed in R2 Phase 4.
-// Import directly from `modules_currency::ExchangeRateRow`.
+// Note: ExchangeRateRow lives in `modules-currency` and is NOT re-exported here.
+// The old `pub mod exchange_rate` shim was removed in R2 Phase 4, and the
+// deprecated Store currency shims were retired 2026-09-28 (ADR-61), so this crate
+// no longer depends on modules-currency outside its dev-dependencies.
 /// Feature-gate registry and runtime guards.
 pub mod entitlements;
 /// Unified analytics export — JSON bundle of all report types.

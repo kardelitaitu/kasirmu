@@ -1,7 +1,6 @@
 //! Integration tests for the currency/exchange rate module —
 //! conversion rates, multi-currency edge cases, and Money operations.
 
-#![allow(deprecated)]
 //!
 //! Tests exercise the full persistence layer via the public
 //! [`kasirmu_core::Store`] API and [`kasirmu_core::Money`] / [`kasirmu_core::Currency`]
@@ -13,17 +12,20 @@
 //! with `_000` etc.; the conversion factor is documented at every
 //! call site for clarity.
 
-use kasirmu_core::{Currency, Money, Store, migrations};
+use kasirmu_core::{Currency, Money, migrations};
+use modules_currency::repository::CurrencyRepository;
 use rusqlite::Connection;
+
+/// The retired Store currency shims delegated here; these tests now call the
+/// repository directly (ADR-61 / C26).
+fn repo(conn: &Connection) -> CurrencyRepository<'_> {
+    CurrencyRepository::new(conn)
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
 fn setup() -> Connection {
     migrations::fresh_db()
-}
-
-fn store(conn: &Connection) -> Store<'_> {
-    Store::new(conn)
 }
 
 fn usd() -> Currency {
@@ -83,19 +85,22 @@ fn seed_common_currencies(conn: &Connection) {
 fn exchange_rates_ordered_by_from_then_to_currency() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
     // 0.79 USD/GBP, 1.08 EUR/USD, 0.92 USD/EUR, 1.26 GBP/USD — all in millionths.
-    s.create_exchange_rate("USD", "GBP", 790_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "GBP", 790_000, "ecb", "2026-06-28")
         .unwrap();
-    s.create_exchange_rate("EUR", "USD", 1_080_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("EUR", "USD", 1_080_000, "ecb", "2026-06-28")
         .unwrap();
-    s.create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
-    s.create_exchange_rate("GBP", "USD", 1_260_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("GBP", "USD", 1_260_000, "ecb", "2026-06-28")
         .unwrap();
 
-    let rates = s.list_exchange_rates().unwrap();
+    let rates = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(rates.len(), 4);
 
     // Expect: EUR→USD, GBP→USD, USD→EUR, USD→GBP (alphabetical by from, then to).
@@ -113,17 +118,16 @@ fn exchange_rates_ordered_by_from_then_to_currency() {
 fn exchange_rates_same_pair_different_dates() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
     // Two rates for the same pair on different dates.
-    let r1 = s
+    let r1 = repo(&conn)
         .create_exchange_rate("USD", "EUR", 900_000, "ecb", "2026-01-15")
         .unwrap();
-    let r2 = s
+    let r2 = repo(&conn)
         .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
 
-    let rates = s.list_exchange_rates().unwrap();
+    let rates = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(rates.len(), 2);
 
     assert_eq!(r1.from_currency, "USD");
@@ -140,8 +144,7 @@ fn exchange_rates_same_pair_different_dates() {
 #[test]
 fn exchange_rates_list_empty_db() {
     let conn = setup();
-    let s = store(&conn);
-    let rates = s.list_exchange_rates().unwrap();
+    let rates = repo(&conn).list_exchange_rates().unwrap();
     assert!(rates.is_empty());
 }
 
@@ -151,9 +154,8 @@ fn exchange_rates_list_empty_db() {
 fn create_exchange_rate_nonexistent_from_currency_rejected() {
     let conn = setup();
     seed_currency(&conn, "EUR", "978", "Euro", 2, "\u{20ac}");
-    let s = store(&conn);
 
-    let result = s.create_exchange_rate("XYZ", "EUR", 1_000_000, "manual", "2026-01-01");
+    let result = repo(&conn).create_exchange_rate("XYZ", "EUR", 1_000_000, "manual", "2026-01-01");
     assert!(
         result.is_err(),
         "should reject rate with non-existent from_currency"
@@ -164,9 +166,8 @@ fn create_exchange_rate_nonexistent_from_currency_rejected() {
 fn create_exchange_rate_nonexistent_to_currency_rejected() {
     let conn = setup();
     seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    let s = store(&conn);
 
-    let result = s.create_exchange_rate("USD", "XYZ", 1_000_000, "manual", "2026-01-01");
+    let result = repo(&conn).create_exchange_rate("USD", "XYZ", 1_000_000, "manual", "2026-01-01");
     assert!(
         result.is_err(),
         "should reject rate with non-existent to_currency"
@@ -176,9 +177,8 @@ fn create_exchange_rate_nonexistent_to_currency_rejected() {
 #[test]
 fn create_exchange_rate_both_currencies_must_exist() {
     let conn = setup();
-    let s = store(&conn);
 
-    let result = s.create_exchange_rate("ABC", "DEF", 1_000_000, "manual", "2026-01-01");
+    let result = repo(&conn).create_exchange_rate("ABC", "DEF", 1_000_000, "manual", "2026-01-01");
     assert!(
         result.is_err(),
         "should reject rate when both currencies are missing"
@@ -191,9 +191,8 @@ fn create_exchange_rate_both_currencies_must_exist() {
 fn create_exchange_rate_rejects_zero_rate() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let result = s.create_exchange_rate("USD", "EUR", 0, "manual", "2026-01-01");
+    let result = repo(&conn).create_exchange_rate("USD", "EUR", 0, "manual", "2026-01-01");
     assert!(result.is_err(), "zero rate must be rejected");
 }
 
@@ -201,10 +200,9 @@ fn create_exchange_rate_rejects_zero_rate() {
 fn create_exchange_rate_rejects_negative_rate() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
     // -500_000 = -0.50
-    let result = s.create_exchange_rate("USD", "EUR", -500_000, "manual", "2026-01-01");
+    let result = repo(&conn).create_exchange_rate("USD", "EUR", -500_000, "manual", "2026-01-01");
     assert!(result.is_err(), "negative rate must be rejected");
 }
 
@@ -215,9 +213,8 @@ fn exchange_rate_very_small_rate() {
     // 0.00025 = 250 in millionths (5-decimal magnitude test).
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("JPY", "KWD", 250, "manual", "2026-01-01")
         .unwrap();
     assert_eq!(row.rate_millionths, 250);
@@ -228,9 +225,8 @@ fn exchange_rate_large_rate() {
     // 149.50 = 149_500_000.
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("USD", "JPY", 149_500_000, "ecb", "2026-06-28")
         .unwrap();
     assert_eq!(row.rate_millionths, 149_500_000);
@@ -242,9 +238,8 @@ fn exchange_rate_large_rate() {
 fn exchange_rate_created_at_is_set() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
     assert!(!row.created_at.is_empty(), "created_at should be populated");
@@ -264,9 +259,8 @@ fn exchange_rate_created_at_is_set() {
 fn exchange_rate_effective_date_roundtrips() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("GBP", "CAD", 1_720_000, "manual", "2026-07-15")
         .unwrap();
     assert_eq!(row.effective_date, "2026-07-15");
@@ -278,19 +272,20 @@ fn exchange_rate_effective_date_roundtrips() {
 fn exchange_rate_delete_then_list() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    s.create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
-    s.create_exchange_rate("USD", "GBP", 790_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "GBP", 790_000, "ecb", "2026-06-28")
         .unwrap();
 
-    let before = s.list_exchange_rates().unwrap();
+    let before = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(before.len(), 2);
 
-    s.delete_exchange_rate(&before[0].id).unwrap();
+    repo(&conn).delete_exchange_rate(&before[0].id).unwrap();
 
-    let after = s.list_exchange_rates().unwrap();
+    let after = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(after.len(), 1);
     assert_eq!(after[0].id, before[1].id);
 }
@@ -298,12 +293,11 @@ fn exchange_rate_delete_then_list() {
 #[test]
 fn exchange_rate_delete_nonexistent_returns_not_found() {
     let conn = setup();
-    let s = store(&conn);
 
-    let result = s.delete_exchange_rate("non-existent-id");
+    let result = repo(&conn).delete_exchange_rate("non-existent-id");
     assert!(matches!(
         result,
-        Err(kasirmu_core::CoreError::NotFound { .. })
+        Err(modules_currency::CurrencyError::NotFound { .. })
     ));
 }
 
@@ -313,9 +307,8 @@ fn exchange_rate_delete_nonexistent_returns_not_found() {
 fn exchange_rate_source_roundtrips() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("USD", "EUR", 920_000, "European Central Bank", "2026-06-28")
         .unwrap();
     assert_eq!(row.source, "European Central Bank");
@@ -325,12 +318,11 @@ fn exchange_rate_source_roundtrips() {
 fn exchange_rate_different_sources() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let manual = s
+    let manual = repo(&conn)
         .create_exchange_rate("USD", "EUR", 920_000, "manual", "2026-06-28")
         .unwrap();
-    let api = s
+    let api = repo(&conn)
         .create_exchange_rate("USD", "GBP", 790_000, "ecb", "2026-06-28")
         .unwrap();
 
@@ -344,17 +336,16 @@ fn exchange_rate_different_sources() {
 fn currencies_list_ordered_by_code() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    let currencies = s.list_currencies().unwrap();
+    let currencies = repo(&conn).list_currencies().unwrap();
     assert_eq!(currencies.len(), 7);
-    assert_eq!(currencies[0].0, "CAD");
-    assert_eq!(currencies[1].0, "EUR");
-    assert_eq!(currencies[2].0, "GBP");
-    assert_eq!(currencies[3].0, "IDR");
-    assert_eq!(currencies[4].0, "JPY");
-    assert_eq!(currencies[5].0, "KWD");
-    assert_eq!(currencies[6].0, "USD");
+    assert_eq!(currencies[0].code, "CAD");
+    assert_eq!(currencies[1].code, "EUR");
+    assert_eq!(currencies[2].code, "GBP");
+    assert_eq!(currencies[3].code, "IDR");
+    assert_eq!(currencies[4].code, "JPY");
+    assert_eq!(currencies[5].code, "KWD");
+    assert_eq!(currencies[6].code, "USD");
 }
 
 #[test]
@@ -364,8 +355,7 @@ fn currencies_list_empty_db() {
     conn.execute("DELETE FROM exchange_rates", []).unwrap();
     conn.execute("DELETE FROM currencies", []).unwrap();
 
-    let s = store(&conn);
-    let currencies = s.list_currencies().unwrap();
+    let currencies = repo(&conn).list_currencies().unwrap();
     assert!(currencies.is_empty());
 }
 
@@ -377,15 +367,14 @@ fn currencies_list_contains_all_fields() {
     conn.execute("DELETE FROM currencies", []).unwrap();
 
     seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    let s = store(&conn);
 
-    let currencies = s.list_currencies().unwrap();
+    let currencies = repo(&conn).list_currencies().unwrap();
     assert_eq!(currencies.len(), 1);
-    let (code, name, minor_exponent, symbol) = &currencies[0];
-    assert_eq!(code, "USD");
-    assert_eq!(name, "US Dollar");
-    assert_eq!(*minor_exponent, 2);
-    assert_eq!(symbol, "$");
+    let dto = &currencies[0];
+    assert_eq!(dto.code, "USD");
+    assert_eq!(dto.name, "US Dollar");
+    assert_eq!(dto.minor_exponent, 2);
+    assert_eq!(dto.symbol, "$");
 }
 
 // ── Money multi-currency ─────────────────────────────────────────────
@@ -525,13 +514,12 @@ fn exchange_rate_all_fields_roundtrip() {
     let conn = setup();
     seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
     seed_currency(&conn, "JPY", "392", "Japanese Yen", 0, "\u{a5}");
-    let s = store(&conn);
 
-    let created = s
+    let created = repo(&conn)
         .create_exchange_rate("USD", "JPY", 149_500_000, "ecb", "2026-06-28")
         .unwrap();
 
-    let rates = s.list_exchange_rates().unwrap();
+    let rates = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(rates.len(), 1);
 
     let loaded = &rates[0];
@@ -550,8 +538,7 @@ fn exchange_rate_all_fields_roundtrip() {
 fn display_rate_two_decimals() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
     assert_eq!(row.display_rate(), "0.92");
@@ -565,8 +552,7 @@ fn display_rate_two_decimals() {
 fn display_rate_six_decimals_kept() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("JPY", "KWD", 250, "manual", "2026-01-01")
         .unwrap();
     assert_eq!(row.display_rate(), "0.00025");
@@ -576,8 +562,7 @@ fn display_rate_six_decimals_kept() {
 fn display_rate_trailing_zeros_trimmed() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("USD", "JPY", 149_500_000, "ecb", "2026-06-28")
         .unwrap();
     assert_eq!(row.display_rate(), "149.5");
@@ -588,8 +573,7 @@ fn display_rate_integer_only() {
     let conn = setup();
     seed_currency(&conn, "BTC", "1000", "Bitcoin", 8, "\u{20bf}");
     seed_currency(&conn, "USD", "840", "US Dollar", 2, "$");
-    let s = store(&conn);
-    let row = s
+    let row = repo(&conn)
         .create_exchange_rate("BTC", "USD", 50_000_000, "market", "2026-06-20")
         .unwrap();
     assert_eq!(row.display_rate(), "50");
@@ -601,11 +585,11 @@ fn display_rate_integer_only() {
 fn exchange_rate_duplicate_pair_date_rejected() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    s.create_exchange_rate("USD", "EUR", 900_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "EUR", 900_000, "ecb", "2026-06-28")
         .unwrap();
-    let result = s.create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28");
+    let result = repo(&conn).create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28");
     assert!(
         result.is_err(),
         "duplicate from_currency + to_currency + effective_date should be rejected"
@@ -616,14 +600,15 @@ fn exchange_rate_duplicate_pair_date_rejected() {
 fn exchange_rate_same_pair_different_dates_allowed() {
     let conn = setup();
     seed_common_currencies(&conn);
-    let s = store(&conn);
 
-    s.create_exchange_rate("USD", "EUR", 900_000, "ecb", "2026-01-15")
+    repo(&conn)
+        .create_exchange_rate("USD", "EUR", 900_000, "ecb", "2026-01-15")
         .unwrap();
-    s.create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
+    repo(&conn)
+        .create_exchange_rate("USD", "EUR", 920_000, "ecb", "2026-06-28")
         .unwrap();
 
-    let rates = s.list_exchange_rates().unwrap();
+    let rates = repo(&conn).list_exchange_rates().unwrap();
     assert_eq!(
         rates.len(),
         2,

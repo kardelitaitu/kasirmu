@@ -12,15 +12,6 @@
       "expires": "2026-11-06"
     },
     {
-      "rule": "core-upward-dependency",
-      "path": "crates/kasirmu-core/Cargo.toml",
-      "target": "modules-currency",
-      "reason": "The one GENUINE upward edge left (C26/D3): db/settings.rs delegates eleven deprecated shims to modules_currency::CurrencyRepository. Close it by deleting the shims and then the Cargo edge.",
-      "owner": "kasir.mu maintainers",
-      "introduced": "2026-08-06",
-      "expires": "2026-11-06"
-    },
-    {
       "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-inventory",

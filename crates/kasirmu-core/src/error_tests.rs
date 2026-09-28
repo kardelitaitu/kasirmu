@@ -181,7 +181,7 @@ fn core_error_debug_contains_variant_info() {
 #[test]
 fn from_currency_error_validation_to_core_validation() {
     let currency_err =
-        modules_currency::CurrencyError::validation("rate_millionths", "rate must be positive");
+        platform_core::CurrencyError::validation("rate_millionths", "rate must be positive");
     let core_err: CoreError = currency_err.into();
     assert!(matches!(
         core_err,
@@ -197,7 +197,7 @@ fn from_currency_error_validation_to_core_validation() {
 
 #[test]
 fn from_currency_error_not_found_to_core_not_found() {
-    let currency_err = modules_currency::CurrencyError::NotFound {
+    let currency_err = platform_core::CurrencyError::NotFound {
         entity: "exchange_rate",
         id: "bad-id".into(),
     };
@@ -216,7 +216,7 @@ fn from_currency_error_not_found_to_core_not_found() {
 
 #[test]
 fn from_currency_error_db_to_core_db() {
-    let currency_err = modules_currency::CurrencyError::Db(rusqlite::Error::QueryReturnedNoRows);
+    let currency_err = platform_core::CurrencyError::Db(rusqlite::Error::QueryReturnedNoRows);
     let core_err: CoreError = currency_err.into();
     match core_err {
         CoreError::Db(ref e) => {

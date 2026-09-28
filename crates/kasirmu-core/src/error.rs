@@ -185,17 +185,15 @@ pub enum CoreError {
     },
 }
 
-impl From<modules_currency::CurrencyError> for CoreError {
-    fn from(e: modules_currency::CurrencyError) -> Self {
+impl From<platform_core::CurrencyError> for CoreError {
+    fn from(e: platform_core::CurrencyError) -> Self {
         match e {
-            modules_currency::CurrencyError::Db(err) => Self::Db(err),
-            modules_currency::CurrencyError::Platform(err) => Self::Platform(err),
-            modules_currency::CurrencyError::Validation { field, message } => {
+            platform_core::CurrencyError::Db(err) => Self::Db(err),
+            platform_core::CurrencyError::Platform(err) => Self::Platform(err),
+            platform_core::CurrencyError::Validation { field, message } => {
                 Self::Validation { field, message }
             }
-            modules_currency::CurrencyError::NotFound { entity, id } => {
-                Self::NotFound { entity, id }
-            }
+            platform_core::CurrencyError::NotFound { entity, id } => Self::NotFound { entity, id },
         }
     }
 }

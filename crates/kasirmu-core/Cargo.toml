@@ -20,7 +20,6 @@ modules-crm = { workspace = true }
 modules-loyalty = { workspace = true }
 modules-staff = { workspace = true }
 modules-terminal = { workspace = true }
-modules-currency = { workspace = true }
 modules-tax = { workspace = true }
 serde = { workspace = true }
 rusqlite = { workspace = true }
@@ -53,6 +52,9 @@ lan-mdns = ["dep:mdns-sd"]
 reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
+# Only the currency integration test uses this; the production dependency was retired
+# with the deprecated Store shims (ADR-61 / C26).
+modules-currency = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
 serial_test = { workspace = true }
