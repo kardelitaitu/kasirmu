@@ -45,7 +45,7 @@ fn create_promotion_args_debug() {
         category_id: None,
         active: true,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("Test"));
 }
 

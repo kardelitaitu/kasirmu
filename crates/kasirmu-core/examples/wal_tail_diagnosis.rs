@@ -186,8 +186,7 @@ fn main() {
     println!("  database          : {}", db_path.display());
     println!("  journal_mode      : WAL, synchronous=NORMAL (via migrations::run)");
     println!(
-        "  wal_autocheckpoint: {} pages ({} bytes at {} B/page)",
-        threshold_pages, threshold_bytes, page_sz
+        "  wal_autocheckpoint: {threshold_pages} pages ({threshold_bytes} bytes at {page_sz} B/page)"
     );
     println!("  inserts           : {INSERTS}");
     println!();

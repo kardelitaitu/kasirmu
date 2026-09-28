@@ -41,10 +41,7 @@ pub(super) fn apply_workspace_crud(
             .map_err(|e| {
                 // M5 / ruling R3: cause is logged, not returned (path-free error).
                 tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for workspace CRUD");
-                BridgeError::Internal(format!(
-                    "opening store db for store '{}'",
-                    effective_store_id
-                ))
+                BridgeError::Internal(format!("opening store db for store '{effective_store_id}'"))
             })?;
     let db = conn
         .lock()
@@ -133,8 +130,7 @@ pub(super) fn apply_workspace_crud(
                 .map_err(|_| {
                     tracing::warn!(workspace_id = %archive_id, "topology Apply: archive target not found in store DB");
                     BridgeError::PermissionDenied(format!(
-                        "workspace '{}' not found in store '{}' for archive",
-                        archive_id, effective_store_id
+                        "workspace '{archive_id}' not found in store '{effective_store_id}' for archive"
                     ))
                 })?;
         if owner != effective_store_id {
@@ -145,8 +141,7 @@ pub(super) fn apply_workspace_crud(
                 "topology Apply: archive target ownership mismatch"
             );
             return Err(BridgeError::PermissionDenied(format!(
-                "workspace '{}' is in store '{}' but topology targets store '{}' for archive",
-                archive_id, owner, effective_store_id
+                "workspace '{archive_id}' is in store '{owner}' but topology targets store '{effective_store_id}' for archive"
             )));
         }
     }

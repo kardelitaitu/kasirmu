@@ -618,10 +618,7 @@ pub async fn apply_topology_diff(
             .map_err(|e| {
                 // M5 / ruling R3 discipline holds on the new arm too.
                 tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the ownership gate");
-                BridgeError::Internal(format!(
-                    "opening store db for topology gate: store '{}'",
-                    effective_store_id
-                ))
+                BridgeError::Internal(format!("opening store db for topology gate: store '{effective_store_id}'"))
             })?;
         let effective_db = effective_conn
             .as_ref()
@@ -811,8 +808,7 @@ pub async fn apply_topology_diff(
             .map_err(|e| {
                 tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening the effective store db failed for the diagram save");
                 BridgeError::Internal(format!(
-                    "opening store db for topology save: store '{}'",
-                    effective_store_id
+                    "opening store db for topology save: store '{effective_store_id}'"
                 ))
             })?;
         let effective_db = effective_conn
@@ -908,8 +904,7 @@ pub async fn apply_topology_diff(
                 // M5 / ruling R3: cause is logged, not returned (path-free error).
                 tracing::error!(store = %effective_store_id, error = %e, "topology Apply: opening store db failed for the audit write");
                 BridgeError::Internal(format!(
-                    "opening store db for topology audit: store '{}'",
-                    effective_store_id
+                    "opening store db for topology audit: store '{effective_store_id}'"
                 ))
             })?;
         let db = store_conn

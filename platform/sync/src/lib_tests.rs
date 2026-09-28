@@ -249,10 +249,7 @@ async fn run_sync_cycle_propagates_snapshot_server_migrated() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!(
-            "expected SyncError::ServerMigrated from snapshot path, got {:?}",
-            other
-        ),
+        other => panic!("expected SyncError::ServerMigrated from snapshot path, got {other:?}"),
     }
 }
 
@@ -280,10 +277,7 @@ async fn run_sync_cycle_propagates_pull_server_migrated() {
         Err(SyncError::ServerMigrated { new_url: url }) => {
             assert_eq!(url, new_url, "ServerMigrated should carry the new_url");
         }
-        other => panic!(
-            "expected SyncError::ServerMigrated from pull path, got {:?}",
-            other
-        ),
+        other => panic!("expected SyncError::ServerMigrated from pull path, got {other:?}"),
     }
 }
 
