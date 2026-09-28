@@ -55,7 +55,7 @@ ROOT_FILE_ALLOWLIST = frozenset({
     "ARCHITECTURE.md", "DSH.md", "done-todo-rebrand.md", "done-todo-rebrand-2.md",
     "done-todo-tablet-device-verify.md", "done-todo-tablet-dialog-content-uri.md",
     "done-todo-project-folder-restructure.md",
-    "todo-open-debt-program.md", "done-todo-review-type.md",
+    "todo-open-debt-program.md", "todo-review-type.md",
     "done-todo-owner-rulings.md", "done-todo-sync-endpoint-derivation.md",
     # Owner plan docs, same class as the two above: named individually on purpose,
     # because the allowlist is names-not-patterns so adding one is a decision.
