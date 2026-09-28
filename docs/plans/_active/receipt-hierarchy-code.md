@@ -7,8 +7,9 @@ ids (location, terminal, staff) plus an annual continuous sequence, supporting
 enterprise scale (10,000+ locations, 10,000+ terminals, 10,000+ staff).
 
 **Status: agreed.** Upgraded to Base62 (`0–9`, `a–z`, `A–Z`) dynamic-width formatting
-(minimum 2 characters: `00`–`zz`, expanding to 3 characters: `100`–`zzz` when ≥ 3,844).
-Supports 10,000+ entities per tenant with 238,328 capacity per axis while keeping normal
+(minimum 2 characters: `00`–`zz`, expanding to 3 characters: `100`–`zzz` at ≥ 3,844,
+and 4 characters: `1000`–`zzzz` at ≥ 238,328).
+Supports up to **14,776,336** entities per tenant per axis while keeping normal
 receipt codes ultra-compact at 22–23 characters.
 
 ---
@@ -18,18 +19,18 @@ receipt codes ultra-compact at 22–23 characters.
 ```
 01-02-260929-10a-000123
 │  │   │      │  └────── sequence: continuous, 6 digits (000001–999999 per terminal/year)
-│  │   │      └───────── staff: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844; 00 = none)
+│  │   │      └───────── staff: Base62 min 2 chars (01–zz, 3 chars 100–zzz, 4 chars 1000–zzzz; 00 = none)
 │  │   └──────────────── date: store-local, YYMMDD (6 digits)
-│  └──────────────────── terminal: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844)
-└─────────────────────── location: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844)
+│  └──────────────────── terminal: Base62 min 2 chars (01–zz, 3 chars 100–zzz, 4 chars 1000–zzzz)
+└─────────────────────── location: Base62 min 2 chars (01–zz, 3 chars 100–zzz, 4 chars 1000–zzzz)
 ```
 
-**22–25 characters.** Base62 alphanumeric segments separated by hyphens.
+**22–28 characters.** Base62 alphanumeric segments separated by hyphens.
 - **22 characters** for typical operations where location, terminal, and staff are under 3,844 (e.g. `01-02-260929-05-000123`).
-- **23 characters** when one segment reaches 3 characters (e.g. `01-02-260929-10a-000123` or `a01-02-260929-05-000123`).
-- **25 characters** max when all three segments exceed 3,843 (e.g. `a01-c02-260929-10a-000123`).
-- Fits on **1 line** with huge margins on standard 58 mm thermal receipt printers (Font A: 32 columns; Font B: 42 columns).
-- Fits with > 23 columns to spare on 80 mm printers (Font A: 48 columns).
+- **23–25 characters** when segments reach 3 characters (e.g. `01-02-260929-10a-000123`).
+- **24–28 characters** when large enterprise segments reach 4 characters (e.g. `01-02-260929-130a-000123` or `1000-1000-260929-130a-000123`).
+- Fits on **1 line** on standard 58 mm thermal receipt printers (Font A: 32 columns; Font B: 42 columns) even at full 4-digit expansion (28 cols < 32 cols).
+- Fits with > 20 columns to spare on 80 mm printers (Font A: 48 columns).
 - The sequence is **continuous per terminal per fiscal year** — starts at `000001` on 1 January and runs to `999999`, so **999,999 per terminal per year** (2,739/day). It does **not** reset daily.
 
 Sorting is chronological within a fiscal year: `…260929-10a-000123` sorts after
@@ -68,7 +69,7 @@ is the issue date, not part of the ordering key.
 | Question | Decision |
 |---|---|
 | Sixth segment (`01-01`)? | **Dropped.** Five segments. |
-| Scale per axis | **Base62 dynamic width (`00`–`zz`, expanding to `100`–`zzz` at ≥ 3,844)** — supports up to 238,328 per tenant, keeping normal codes at 22 chars. |
+| Scale per axis | **Base62 dynamic width (`00`–`zz`, 3 chars `100`–`zzz`, 4 chars `1000`–`zzzz`)** — supports up to 14,776,336 per tenant, keeping normal codes at 22 chars. |
 | Date width | **`YYMMDD`** (6 chars). Counter key is `(terminal, fiscal year)`. |
 | Terminal index scope | **Per tenant**, not per location. |
 | Source of the terminal | **New `sales.terminal_id` column.** |
@@ -125,11 +126,11 @@ receipt whose code says `02` now resolves to a *different* store. The code stops
 being evidence. The index is therefore **not** "the Nth location" — it is an
 immutable badge, allocated monotonically, tombstoned on delete.
 
-Corollary: the allocator must **fail loudly at `238,328`** ($62^3$), never wrap. A silent
+Corollary: the allocator must **fail loudly at `14,776,336`** ($62^4$), never wrap. A silent
 wrap reissues live codes — and with a tax number on the receipt, that is
 falsification.
 
-### 4.2 Enterprise scale: Base62 dynamic width (10,000+ support, 22–25 chars)
+### 4.2 Enterprise scale: Base62 dynamic width (2 to 4 digits, up to 14.77 million)
 
 The original 2-hex draft capped each axis at 256. For enterprise tenants with
 franchises, large mall footprints, or high staff turnover, 256 is inadequate:
@@ -137,15 +138,17 @@ franchises, large mall footprints, or high staff turnover, 256 is inadequate:
 - **10,000 terminals:** multi-lane supermarkets and quick-service restaurant networks operate thousands of POS registers.
 - **10,000 staff:** cashier turnover burns through employee indices over 5–10 years.
 
-**Resolution:** Base62 (`0–9`, `a–z`, `A–Z`) with **dynamic width (minimum 2 characters)** provides:
+**Resolution:** Base62 (`0–9`, `a–z`, `A–Z`) with **dynamic width (minimum 2 characters, expanding up to 4 characters)** provides:
 - **Minimum 2 characters:** `00`–`zz` covers up to **3,844** entities per tenant. `00` is reserved as the "none" sentinel (kiosk / online sale).
 - **Expands to 3 characters:** `100`–`zzz` automatically at $\ge 3,844$, covering up to **238,328** entities ($23.8\times$ the 10,000 requirement).
-- **Headroom:** 238,328 unique immutable indices per tenant for each axis (location, terminal, staff).
+- **Expands to 4 characters:** `1000`–`zzzz` automatically at $\ge 238,328$, covering up to **14,776,336** entities (massive headroom for nation-wide retail giants).
+- **Headroom:** 14,776,336 unique immutable indices per tenant for each axis (location, terminal, staff).
 - **Format:**
   - Standard store (< 3,844 entities): `01-02-260929-05-000123` (**22 characters**).
-  - High turnover staff (≥ 3,844 staff): `01-02-260929-10a-000123` (**23 characters**).
-  - All large (≥ 3,844 loc, term, staff): `a01-c02-260929-10a-000123` (**25 characters**).
-- **Thermal printer fit:** 22–25 characters easily fits on 1 single line on 58 mm printers (Font A = 32 columns; Font B = 42 columns) and 80 mm printers (Font A = 48 columns).
+  - High turnover staff (3,844–238,327 staff): `01-02-260929-10a-000123` (**23 characters**).
+  - 4-digit enterprise entity (≥ 238,328 entities): `01-02-260929-130a-000123` (**24 characters**).
+  - All large 4-digit entities: `1000-1000-260929-130a-000123` (**28 characters**, still comfortably under 32 columns for 58 mm printers).
+- **Thermal printer fit:** 22–28 characters fits on 1 single line on 58 mm printers (Font A = 32 columns; Font B = 42 columns) and 80 mm printers (Font A = 48 columns).
 - **Barcode & QR fit:** Code 128 Mode B and QR codes scan rapidly and reliably on 58 mm heads.
 
 
@@ -248,17 +251,17 @@ new migration.
 
 **New columns** (one SQLite migration; PG side via the generator)
 
-- `locations.index_id INTEGER` — unique per `tenant_id` (1–238,328)
-- `terminals.index_id INTEGER` — unique per `tenant_id` (1–238,328)
-- `users.index_id INTEGER` — unique per `tenant_id` (1–238,328)
+- `locations.index_id INTEGER` — unique per `tenant_id` (1–14,776,335)
+- `terminals.index_id INTEGER` — unique per `tenant_id` (1–14,776,335)
+- `users.index_id INTEGER` — unique per `tenant_id` (1–14,776,335)
 - `sales.terminal_id TEXT` — populated at checkout
-- `sales.display_code TEXT` — the frozen 22–25 char string
+- `sales.display_code TEXT` — the frozen 22–28 char string
 - `sales.faktur_pajak_nsfp TEXT` — 13 digits, DJP-issued, NULL until approved
 - `sales.faktur_pajak_kode_transaksi TEXT NOT NULL DEFAULT '01'`
 - `sales.faktur_pajak_status TEXT NOT NULL DEFAULT '00'`
 
 All three index columns: monotonic allocator, tombstone on delete, **refuse at
-238,328** ($62^3$), `0` / `"00"` reserved as the "none" sentinel (kiosk / system sale has no
+14,776,336** ($62^4$), `0` / `"00"` reserved as the "none" sentinel (kiosk / system sale has no
 staff).
 
 **New table** `receipt_number_counters`
@@ -284,7 +287,8 @@ restart it. No collision results — the location segment still differs, so
 ```
 Where each entity index is formatted via `format_base62_index(idx, min_width=2)`:
 - `idx < 3,844`: pads to 2 Base62 characters (`01`–`zz`, `00` for none/sentinel).
-- `idx >= 3,844`: formats naturally as 3 characters (`100`–`zzz`, up to 238,328).
+- `3,844 <= idx < 238,328`: formats naturally as 3 characters (`100`–`zzz`).
+- `238,328 <= idx < 14,776,336`: formats naturally as 4 characters (`1000`–`zzzz`).
 
 **Print** — `receipt.rs:427` shows the code; `:541` barcodes the code instead of
 the 41-char UUID. `sales.id` stays the immutable identity everywhere in the DB —
@@ -297,11 +301,11 @@ a separate stored field, printed only once issued.
 
 ### Phase 1: Core engine, Base62 dynamic allocator & sequence counter
 - **Schema & migrations:** `20261006_receipt_hierarchy_code.sql` committed and applied. Added `index_id` on `locations`, `terminals`, `users`, `entity_index_cursors`, `entity_index_tombstones`, and `receipt_number_counters`.
-- **Base62 dynamic formatter:** Zero-dependency encoder `format_base62_index(idx)`. Formats with minimum 2 characters (`00`–`zz`), expanding dynamically to 3 characters (`100`–`zzz`) when reaching $\ge 3,844$.
-- **Allocator ceiling & safety:** `INDEX_ID_MAX = 238_327` ($62^3 - 1$, 238,328 capacity). Refuses loudly on overflow rather than wrapping.
+- **Base62 dynamic formatter:** Zero-dependency encoder `format_base62_index(idx)`. Formats with minimum 2 characters (`00`–`zz`), expanding dynamically to 3 characters (`100`–`zzz`) at $\ge 3,844$, and 4 characters (`1000`–`zzzz`) at $\ge 238,328$.
+- **Allocator ceiling & safety:** `INDEX_ID_MAX = 14_776_335` ($62^4 - 1$, 14,776,336 capacity). Refuses loudly on overflow rather than wrapping.
 - **Atomic monotonicity & tombstones:** `allocate_entity_index` uses single-statement atomic upsert; `retire_entity_index` preserves deleted entity history in `entity_index_tombstones`.
 - **Sequence counter:** `claim_receipt_sequence` advances sequence atomically per `(tenant, terminal, fiscal_year)`, refusing at `999,999`.
-- **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, rollover refusal, rollback atomicity, and code assembly (22, 23, and 25 chars).
+- **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, rollover refusal, rollback atomicity, and code assembly (22, 23, 24, and 28 chars).
 
 ### Phase 2: Per-location timezone resolution (MSL-29)
 - Parameterised timezone resolver `resolve_receipt_date(now_utc, location_tz)` using `chrono::FixedOffset`.
@@ -336,11 +340,11 @@ a separate stored field, printed only once issued.
 
 ## 7. Accepted invariants & decisions
 
-- **Encoding:** Base62 (`0–9`, `a–z`, `A–Z`) with dynamic width (minimum 2 characters).
-- **Scale:** 238,328 locations, 238,328 terminals, 238,328 staff per tenant.
-- **Receipt Length:** 22 characters standard (`01-02-260929-01-000123`), 23 characters with 1 3-digit entity (`01-02-260929-10a-000123`), 25 characters maximum.
+- **Encoding:** Base62 (`0–9`, `a–z`, `A–Z`) with dynamic width (minimum 2 characters, expanding to 3 and 4 characters).
+- **Scale:** 14,776,336 locations, 14,776,336 terminals, 14,776,336 staff per tenant.
+- **Receipt Length:** 22 characters standard (`01-02-260929-01-000123`), 23–25 characters with 3-digit entities (`01-02-260929-10a-000123`), up to 28 characters with 4-digit entities.
 - **Sequence Tail:** 6 decimal digits continuous per terminal per fiscal year (1 to 999,999).
-- **Overflow Ceiling:** Hard refusal at 238,328 (indices) and 999,999 (sequence).
+- **Overflow Ceiling:** Hard refusal at 14,776,336 (indices) and 999,999 (sequence).
 - **Century Window:** `YYMMDD` bounds uniqueness to 100 years (valid until 2126).
 - **Fiscal Year:** Aligns with store-local calendar year.
 - **Sentinels:** `00` represents unassigned staff / kiosk / system checkout.
