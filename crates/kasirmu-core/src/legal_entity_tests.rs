@@ -3,11 +3,11 @@ use super::*;
 /// A provisioned store. See `migrations::seed_provisioned_baseline` for why
 /// the baseline rows are seeded here rather than shipped by the migration
 /// (ADR #56 §2.6).
-fn store() -> crate::db::Store<'static> {
-    let conn = crate::migrations::fresh_db();
-    crate::migrations::seed_provisioned_baseline(&conn);
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    crate::db::Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> crate::db::Store<'_> {
+    crate::migrations::seed_provisioned_baseline(&db);
+    crate::db::Store::new(db)
 }
 
 #[test]
@@ -24,7 +24,8 @@ fn legal_entity_roundtrips_its_business_identity() {
         updated_at: "2026-09-06T10:00:00Z".into(),
     };
 
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     assert_eq!(store.create_legal_entity(&entity).unwrap(), entity);
     assert_eq!(
         store.get_legal_entity("default", "entity-2").unwrap(),
@@ -52,7 +53,8 @@ fn legal_entity_roundtrips_its_business_identity() {
 
 #[test]
 fn list_legal_entities_is_tenant_scoped() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let default_entities = store.list_legal_entities("default").unwrap();
     assert_eq!(default_entities.len(), 1);
     assert_eq!(default_entities[0].name, "Default Legal Entity");
@@ -66,7 +68,8 @@ fn list_legal_entities_is_tenant_scoped() {
 
 #[test]
 fn location_assignment_rejects_cross_tenant_entity() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let entity = LegalEntity {
         id: "tenant-2-entity".into(),
         tenant_id: "tenant-2".into(),
@@ -104,7 +107,8 @@ fn location_assignment_rejects_cross_tenant_entity() {
 
 #[test]
 fn location_assignment_changes_entity_within_tenant() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let entity = LegalEntity {
         id: "default-secondary".into(),
         tenant_id: "default".into(),

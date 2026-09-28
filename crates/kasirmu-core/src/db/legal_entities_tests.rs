@@ -1,14 +1,15 @@
 use super::*;
 
-fn store() -> Store<'static> {
-    let conn = crate::migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 #[test]
 fn create_rejects_empty_tenant_or_name() {
-    let store = store();
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
     let entity = LegalEntity {
         id: "entity-invalid".into(),
         tenant_id: String::new(),

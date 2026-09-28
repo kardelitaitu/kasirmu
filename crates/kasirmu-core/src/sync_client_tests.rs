@@ -1,18 +1,18 @@
 use super::*;
 use crate::migrations;
 use crate::settings::Settings;
-use rusqlite::Connection;
 
-fn setup() -> Store<'static> {
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn setup(db: &rusqlite::Connection) -> Store<'_> {
     // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
-    let conn = migrations::fresh_db();
-    let conn: &'static Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+    Store::new(db)
 }
 
 #[test]
 fn sync_pending_empty_queue() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let config = SyncConfig {
         server_url: "http://localhost:3099".into(),
         api_key: None,
@@ -25,14 +25,16 @@ fn sync_pending_empty_queue() {
 
 #[test]
 fn sync_config_from_settings_disabled() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let config = SyncConfig::from_settings(&store).unwrap();
     assert!(config.is_none());
 }
 
 #[test]
 fn sync_pending_marks_items_synced() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let _item = store
         .enqueue_offline("complete_sale", r#"{"test": true}"#)
         .unwrap();
@@ -90,7 +92,8 @@ fn sync_pending_plan_required_keeps_items_pending() {
         let _ = stream.write_all(response.as_bytes());
     });
 
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"id":"blocking-plan-gate"}"#)
         .unwrap();
@@ -192,7 +195,8 @@ fn fetch_tenant_plan_reports_server_error() {
 
 #[test]
 fn sync_pending_multiple_items() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap();
@@ -224,7 +228,8 @@ fn sync_pending_multiple_items() {
 
 #[test]
 fn sync_config_from_settings_enabled_with_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "http://sync.example.com").unwrap();
@@ -236,7 +241,8 @@ fn sync_config_from_settings_enabled_with_url() {
 
 #[test]
 fn sync_config_from_settings_enabled_no_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     // Don't set a URL
@@ -246,7 +252,8 @@ fn sync_config_from_settings_enabled_no_url() {
 
 #[test]
 fn sync_config_from_settings_enabled_empty_url() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "").unwrap();
@@ -257,7 +264,8 @@ fn sync_config_from_settings_enabled_empty_url() {
 
 #[test]
 fn sync_config_from_settings_with_api_key() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let conn = store.conn();
     Settings::set_sync_enabled(conn, true).unwrap();
     Settings::set_sync_server_url(conn, "http://sync.example.com").unwrap();
@@ -276,7 +284,8 @@ fn sync_config_from_settings_with_api_key() {
 
 #[test]
 fn apply_sync_outcomes_accepted_marks_synced() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [
         store
             .enqueue_offline("complete_sale", r#"{"id":1}"#)
@@ -299,7 +308,8 @@ fn apply_sync_outcomes_accepted_marks_synced() {
 
 #[test]
 fn apply_sync_outcomes_rejected_marks_failed() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -323,7 +333,8 @@ fn apply_sync_outcomes_duplicate_id_rejection_marks_synced() {
     // item (crash between server-insert and local mark-synced, then re-push).
     // The mutation is safe on the server, so the item must become `synced`,
     // NOT a terminal `failed` (push-side failed items have no requeue path).
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -348,7 +359,8 @@ fn apply_sync_outcomes_duplicate_id_rejection_marks_synced() {
 fn apply_sync_outcomes_genuine_rejection_still_marks_failed() {
     // Guard the boundary: a Rejected that merely CONTAINS "duplicate id" but
     // does not start with the exact prefix is still a genuine failure.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap()];
@@ -365,7 +377,8 @@ fn apply_sync_outcomes_genuine_rejection_still_marks_failed() {
 
 #[test]
 fn apply_sync_outcomes_conflict_resolves_with_server_copy_wins() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let local = store
         .enqueue_offline("complete_sale", r#"{"id":1}"#)
         .unwrap();
@@ -419,7 +432,8 @@ fn apply_sync_outcomes_truncates_on_outcome_len_mismatch() {
     // retry caller must re-list them next cycle. This pins the
     // current contract so a future refactor can't silently mark them
     // synced without an outcome.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let items = [
         store
             .enqueue_offline("complete_sale", r#"{"id":1}"#)
@@ -498,7 +512,8 @@ fn snapshot_user_with_pin_hash_is_rejected() {
 
 #[test]
 fn apply_snapshot_writes_placeholder_pin_hash_for_new_users() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     // Seed a role so the users FK is satisfied.
     store
         .conn()
@@ -538,7 +553,8 @@ fn apply_snapshot_writes_placeholder_pin_hash_for_new_users() {
 
 #[test]
 fn apply_snapshot_preserves_existing_local_pin_hash_on_conflict() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .conn()
         .execute(
@@ -791,7 +807,8 @@ fn pull_lands_a_scoped_rate_and_the_branch_prices_only_its_location() {
     // THE test that closes the hazard: before the four columns travelled, this
     // payload arrived unscoped and the Jakarta rate answered for every
     // location. Now the scoped row applies where it belongs and nowhere else.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-jkt");
     let result = pull(
         &store,
@@ -846,7 +863,8 @@ fn pull_lands_a_legacy_payload_as_the_tenant_global_row() {
     // server predating 20260921 — lands as the tenant-global legacy row, which
     // is what every such row already is. Absence is not an error and not
     // "unknown scope".
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     let result = pull(
         &store,
@@ -870,7 +888,8 @@ fn pull_refuses_a_scoped_rate_whose_target_is_absent_locally() {
     // for one location to the tenant-global answer. The FK would reject the
     // write anyway, and unlike the products path this does NOT roll back the
     // whole pull — the deviation is documented on the helper in sync_pull.rs.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     let result = pull(
         &store,
@@ -908,7 +927,8 @@ fn pull_clears_a_stale_scope_when_the_server_row_is_unscoped() {
     // The ON CONFLICT assignments are unconditional, not COALESCE: a pull makes
     // the server authoritative, so a scope REMOVED at the hub must clear here.
     // COALESCE would keep a dead location scope alive forever.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     seed_scope(&store, "ent-a", "loc-a");
     store
         .conn()
@@ -1115,7 +1135,8 @@ fn derive_requires_an_unset_url() {
 
 #[test]
 fn derive_writes_the_origin_when_nothing_is_configured() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
     assert!(
         wrote,
@@ -1131,7 +1152,8 @@ fn derive_writes_the_origin_when_nothing_is_configured() {
 
 #[test]
 fn derive_leaves_an_operator_url_untouched() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     Settings::set_sync_server_url(store.conn(), "https://shop.example.test").unwrap();
 
     let wrote = derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap();
@@ -1147,7 +1169,8 @@ fn derive_leaves_an_operator_url_untouched() {
 
 #[test]
 fn derive_is_idempotent() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
     assert!(
         !derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap(),
@@ -1159,7 +1182,8 @@ fn derive_is_idempotent() {
 fn derive_refuses_an_empty_origin() {
     // An empty origin is unconfigured, not a value to store — writing it
     // would leave a blank URL that looks configured to a later reader.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     assert!(!derive_sync_url_if_unset(store.conn(), "").unwrap());
     assert!(!derive_sync_url_if_unset(store.conn(), "   ").unwrap());
     assert_eq!(Settings::get_sync_server_url(store.conn()).unwrap(), None);
@@ -1171,7 +1195,8 @@ fn derived_url_alone_does_not_start_sync() {
     // disabled, because the status probe asks a PUBLIC endpoint: an install
     // with a URL and no working credential would draw a green pill while
     // every push 401'd. Derivation is safe only while it starts nothing.
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     assert!(derive_sync_url_if_unset(store.conn(), "https://license.kasir.mu").unwrap());
 
     assert!(
@@ -1214,7 +1239,8 @@ fn probe_auth_reports_unauthenticated_without_a_key() {
 /// kind of transient condition and must not destroy the queue.
 #[test]
 fn sync_pending_keeps_items_pending_on_a_transport_error() {
-    let store = setup();
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
     store
         .enqueue_offline("complete_sale", r#"{"id":"transient"}"#)
         .unwrap();

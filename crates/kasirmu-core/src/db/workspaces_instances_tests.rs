@@ -9,12 +9,12 @@ use crate::migrations;
 /// Seed a role, a user, a store, two active instances, and a role→type grant
 /// of `kds`. The role deliberately does NOT bypass workspace assignment, so
 /// resolution reaches phase 2 (explicit assignment) and, on failure, phase 3.
-fn fresh() -> (Store<'static>, &'static rusqlite::Connection) {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    let store = Store::new(conn);
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn fresh(db: &rusqlite::Connection) -> (Store<'_>, &rusqlite::Connection) {
+    let store = Store::new(db);
 
-    conn.execute_batch(
+    db.execute_batch(
         "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
          VALUES ('role-test', 'Test', 'Test', '[]', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');
          INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
@@ -27,7 +27,7 @@ fn fresh() -> (Store<'static>, &'static rusqlite::Connection) {
     )
     .unwrap();
 
-    (store, conn)
+    (store, db)
 }
 
 /// A corrupt `user_workspace_instances` row must abort resolution.
@@ -41,7 +41,8 @@ fn fresh() -> (Store<'static>, &'static rusqlite::Connection) {
 /// so the drop is a fail-open sibling divergence (COR-11/25/30 family).
 #[test]
 fn list_workspaces_refuses_a_corrupt_assignment_row_instead_of_widening_to_role_types() {
-    let (store, conn) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, conn) = fresh(&store_db);
 
     // Recreate the join table as a shim so a BLOB can sit in `instance_id`
     // without the FK to `workspace_instances` rejecting the orphan value.
@@ -72,7 +73,8 @@ fn list_workspaces_refuses_a_corrupt_assignment_row_instead_of_widening_to_role_
 /// workspace types.
 #[test]
 fn list_workspaces_falls_through_to_role_types_when_no_assignment_exists() {
-    let (store, _conn) = fresh();
+    let store_db = migrations::fresh_db();
+    let (store, _conn) = fresh(&store_db);
 
     let list = store
         .list_workspaces("role-test", Some("user-1"), "default")

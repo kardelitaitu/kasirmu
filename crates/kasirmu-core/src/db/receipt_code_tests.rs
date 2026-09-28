@@ -4,10 +4,10 @@ use super::*;
 use crate::db::Store;
 use crate::migrations;
 
-fn store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 const NOW: &str = "2026-09-18T10:15:00.000Z";
@@ -24,7 +24,8 @@ fn seed_cursor(tx: &rusqlite::Transaction<'_>, kind: &str, next_value: i64) {
 
 #[test]
 fn allocation_starts_at_one_and_increments() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     for expected in 1..=3 {
         assert_eq!(
@@ -37,7 +38,8 @@ fn allocation_starts_at_one_and_increments() {
 
 #[test]
 fn allocation_is_scoped_per_tenant() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     // Two tenants both start at 1 — an index id is only meaningful inside
     // its own tenant, which is why the code carries no tenant segment.
@@ -60,7 +62,8 @@ fn allocation_is_scoped_per_tenant() {
 
 #[test]
 fn allocation_is_scoped_per_kind() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     assert_eq!(
         s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
@@ -86,7 +89,8 @@ fn allocation_is_scoped_per_kind() {
 
 #[test]
 fn retiring_an_index_does_not_free_it() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     let issued: Vec<i64> = (0..3)
         .map(|_| {
@@ -117,7 +121,8 @@ fn retiring_an_index_does_not_free_it() {
 
 #[test]
 fn the_last_valid_index_is_0xff_and_the_next_one_refuses() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     seed_cursor(&tx, "location", 255);
 
@@ -137,7 +142,8 @@ fn the_last_valid_index_is_0xff_and_the_next_one_refuses() {
 
 #[test]
 fn a_refused_allocation_consumes_nothing_once_rolled_back() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     {
         let tx = s.conn.unchecked_transaction().unwrap();
         seed_cursor(&tx, "location", 255);
@@ -164,7 +170,8 @@ fn a_refused_allocation_consumes_nothing_once_rolled_back() {
 
 #[test]
 fn tombstone_records_what_a_retired_index_was() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     s.retire_entity_index(
         &tx,
@@ -193,7 +200,8 @@ fn tombstone_records_what_a_retired_index_was() {
 
 #[test]
 fn claim_starts_at_one_and_increments_per_terminal_year() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     for expected in 1..=3 {
         assert_eq!(
@@ -206,7 +214,8 @@ fn claim_starts_at_one_and_increments_per_terminal_year() {
 
 #[test]
 fn claim_is_scoped_per_tenant_terminal_and_year() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     // The same terminal index under two tenants does not share a counter.
     assert_eq!(
@@ -241,7 +250,8 @@ fn claim_is_scoped_per_tenant_terminal_and_year() {
 
 #[test]
 fn claim_refuses_when_sequence_exceeds_max() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     tx.execute(
         "INSERT INTO receipt_number_counters (tenant_id, terminal_idx, fiscal_year, counter)
@@ -261,7 +271,8 @@ fn claim_refuses_when_sequence_exceeds_max() {
 
 #[test]
 fn a_refused_claim_consumes_nothing_once_rolled_back() {
-    let s = store();
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
     // Seed the exhausted counter and COMMIT it, so it survives the rollback
     // that follows.
     {

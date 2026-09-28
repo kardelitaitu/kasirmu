@@ -1,11 +1,11 @@
 use super::*;
 use crate::migrations;
 
-fn fresh_store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn fresh_store(db: &rusqlite::Connection) -> Store<'_> {
     // Seed products so FK constraints are satisfied.
-    conn.execute_batch(
+    db.execute_batch(
         "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at)
          VALUES ('p1', 'ITEM-A', 'Item A', 100, 'USD', 'now', 'now'),
                 ('p2', 'ITEM-B', 'Item B', 200, 'USD', 'now', 'now'),
@@ -20,8 +20,7 @@ fn fresh_store() -> Store<'static> {
     .unwrap();
 
     // We need a static reference for Store — use leak to satisfy lifetime.
-    let conn = Box::leak(Box::new(conn));
-    Store::new(conn)
+    Store::new(db)
 }
 
 fn make_bundle(name: &str) -> ProductBundle {
@@ -50,7 +49,8 @@ fn make_item(bundle_id: &str, sku: &str, qty: i64) -> BundleItem {
 
 #[test]
 fn list_bundles_empty() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundles = store.list_bundles().unwrap();
     // Our bundle product "BUNDLE1" is in products but not in product_bundles, so empty.
     assert!(bundles.is_empty());
@@ -58,7 +58,8 @@ fn list_bundles_empty() {
 
 #[test]
 fn create_and_list_bundles() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     let items = vec![
         make_item(&bundle.id, "ITEM-A", 1),
@@ -75,7 +76,8 @@ fn create_and_list_bundles() {
 
 #[test]
 fn get_bundle_by_id() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Hamper");
     let items = vec![make_item(&bundle.id, "ITEM-C", 3)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -87,7 +89,8 @@ fn get_bundle_by_id() {
 
 #[test]
 fn get_bundle_by_sku() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Sampler");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -101,14 +104,16 @@ fn get_bundle_by_sku() {
 
 #[test]
 fn get_missing_bundle_returns_none() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     assert!(store.get_bundle("nonexistent").unwrap().is_none());
     assert!(store.get_bundle_by_sku("NONEXISTENT").unwrap().is_none());
 }
 
 #[test]
 fn update_bundle_replaces_items() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let mut bundle = make_bundle("Edit Me");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -127,7 +132,8 @@ fn update_bundle_replaces_items() {
 
 #[test]
 fn delete_bundle_removes_items() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Delete Me");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -142,7 +148,8 @@ fn delete_bundle_removes_items() {
 
 #[test]
 fn delete_nonexistent_bundle_is_noop() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     // Deleting a nonexistent bundle should not error.
     store.delete_bundle("no-such-bundle").unwrap();
 }
@@ -155,7 +162,8 @@ fn delete_nonexistent_bundle_is_noop() {
 
 #[test]
 fn create_bundle_with_many_items() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     let items = vec![
         make_item(&bundle.id, "ITEM-A", 1),
@@ -179,7 +187,8 @@ fn create_bundle_with_zero_qty_item() {
     // `qty < 1` (the bundle-management screen), so the two disagreed and
     // only the client guarded anything. A bundle containing "0 of ITEM-A" is not
     // a meaningful bundle, so the store now refuses it and every caller agrees.
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Hamper");
     let items = vec![make_item(&bundle.id, "ITEM-A", 0)];
 
@@ -195,7 +204,8 @@ fn create_bundle_with_zero_qty_item() {
 
 #[test]
 fn create_bundle_with_no_items() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Sampler");
     store.create_bundle(&bundle, &[]).unwrap();
 
@@ -205,7 +215,8 @@ fn create_bundle_with_no_items() {
 
 #[test]
 fn update_bundle_sku() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let mut bundle = make_bundle("Edit Me");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -224,7 +235,8 @@ fn update_bundle_sku() {
 
 #[test]
 fn update_bundle_mark_inactive() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let mut bundle = make_bundle("Delete Me");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -238,7 +250,8 @@ fn update_bundle_mark_inactive() {
 
 #[test]
 fn update_bundle_clear_items_to_empty() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -252,7 +265,8 @@ fn update_bundle_clear_items_to_empty() {
 
 #[test]
 fn list_bundles_multiple_ordered_by_name() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
 
     // Create bundles using seeded skus: B-Gift Box, B-Hamper, B-Sampler
     // Names sort as: Gift Box < Hamper < Sampler -> already in order
@@ -274,13 +288,15 @@ fn list_bundles_multiple_ordered_by_name() {
 
 #[test]
 fn get_bundle_by_sku_empty_string() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     assert!(store.get_bundle_by_sku("").unwrap().is_none());
 }
 
 #[test]
 fn create_bundle_duplicate_id() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     let items = vec![make_item(&bundle.id, "ITEM-A", 1)];
     store.create_bundle(&bundle, &items).unwrap();
@@ -299,13 +315,15 @@ fn create_bundle_duplicate_id() {
 
 #[test]
 fn get_bundle_by_nonexistent_id_returns_none() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     assert!(store.get_bundle("no-such-id").unwrap().is_none());
 }
 
 #[test]
 fn get_bundle_by_nonexistent_sku_returns_none() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     assert!(store.get_bundle_by_sku("NO-SUCH-SKU").unwrap().is_none());
 }
 
@@ -349,7 +367,8 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
 /// and would turn a bad value into a raw failure rather than a named field).
 #[test]
 fn a_bundle_item_quantity_must_be_positive() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
 
     for bad in [0_i64, -1, -99] {
@@ -389,7 +408,8 @@ fn a_bundle_item_quantity_must_be_positive() {
 /// value the UI already believes is impossible.
 #[test]
 fn a_bundle_item_price_override_cannot_be_negative() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Sampler");
     let mut item = make_item(&bundle.id, "ITEM-A", 1);
     item.unit_price_minor = Some(-500);
@@ -410,7 +430,8 @@ fn a_bundle_item_price_override_cannot_be_negative() {
 /// must not break.
 #[test]
 fn a_valid_price_override_still_round_trips() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Edit Me");
     let mut with_override = make_item(&bundle.id, "ITEM-A", 1);
     with_override.unit_price_minor = Some(250);
@@ -426,7 +447,8 @@ fn a_valid_price_override_still_round_trips() {
 
 #[test]
 fn updating_a_bundle_with_a_non_positive_quantity_is_refused() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Hamper");
     store
         .create_bundle(&bundle, &[make_item(&bundle.id, "ITEM-A", 2)])
@@ -443,7 +465,8 @@ fn updating_a_bundle_with_a_non_positive_quantity_is_refused() {
 
 #[test]
 fn an_item_naming_a_missing_product_is_a_typed_error() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     let items = vec![make_item(&bundle.id, "NO-SUCH-SKU", 1)];
 
@@ -468,7 +491,8 @@ fn an_item_naming_a_missing_product_is_a_typed_error() {
 /// same raw-FK leak, on the row written before the items.
 #[test]
 fn a_bundle_sku_that_is_not_a_product_is_a_typed_error() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let mut bundle = make_bundle("Sampler");
     bundle.bundle_sku = "NOT-A-PRODUCT".into();
 
@@ -487,7 +511,8 @@ fn a_bundle_sku_that_is_not_a_product_is_a_typed_error() {
 /// Renaming a bundle onto a non-product SKU is refused the same way.
 #[test]
 fn renaming_a_bundle_onto_a_missing_product_is_a_typed_error() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Edit Me");
     store.create_bundle(&bundle, &[]).unwrap();
 
@@ -510,7 +535,8 @@ fn renaming_a_bundle_onto_a_missing_product_is_a_typed_error() {
 
 #[test]
 fn updating_onto_a_missing_product_is_a_typed_error() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Hamper");
     store
         .create_bundle(&bundle, &[make_item(&bundle.id, "ITEM-A", 1)])
@@ -533,7 +559,8 @@ fn updating_onto_a_missing_product_is_a_typed_error() {
 
 #[test]
 fn update_nonexistent_bundle_is_noop() {
-    let store = fresh_store();
+    let store_db = migrations::fresh_db();
+    let store = fresh_store(&store_db);
     let bundle = make_bundle("Gift Box");
     // Updating a bundle that doesn't exist is a no-op (0 rows affected, no error)
     store.update_bundle(&bundle, &[]).unwrap();

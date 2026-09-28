@@ -4,10 +4,10 @@ use super::*;
 use crate::db::Store;
 use crate::migrations;
 
-fn store() -> Store<'static> {
-    let conn = migrations::fresh_db();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    Store::new(conn)
+/// The caller owns the connection, so this no longer `Box::leak`s a
+/// database per test to manufacture a `'static` (O-T03).
+fn store(db: &rusqlite::Connection) -> Store<'_> {
+    Store::new(db)
 }
 
 const NOW: &str = "2026-09-26T12:00:00.000Z";
@@ -66,7 +66,8 @@ fn layout() -> ReceiptLayout {
 
 #[test]
 fn content_write_upserts_one_row_per_entity() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .set_receipt_content_for_entity("ent-1", &content(), NOW)
         .unwrap();
@@ -89,7 +90,8 @@ fn content_write_upserts_one_row_per_entity() {
 
 #[test]
 fn content_write_rejects_unknown_and_duplicate_element_codes() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.required_fields.push("qr_code_marketing".into());
     let err = store
@@ -116,7 +118,8 @@ fn content_write_rejects_unknown_and_duplicate_element_codes() {
 
 #[test]
 fn content_write_rejects_bad_separator_and_long_footer() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.decimal_separator = "period".into();
     assert!(
@@ -135,7 +138,8 @@ fn content_write_rejects_bad_separator_and_long_footer() {
 
 #[test]
 fn layout_write_rejects_bad_scope_and_nonsense_width() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut wide = layout();
     wide.paper_width_mm = Some(200);
     assert!(
@@ -167,7 +171,8 @@ fn layout_write_rejects_bad_scope_and_nonsense_width() {
 
 #[test]
 fn db_check_rejects_out_of_range_width_even_without_the_boundary() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     // Supervisor addition 3: nonsense widths fail at the DB layer too.
     let err = store.conn.execute(
         "INSERT INTO receipt_formats (id, tenant_id, scope_type, scope_id, config, paper_width_mm, created_at, updated_at)
@@ -181,7 +186,8 @@ fn db_check_rejects_out_of_range_width_even_without_the_boundary() {
 
 #[test]
 fn content_comes_from_the_entity_and_layout_from_terminal_over_workspace() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .conn
         .execute(
@@ -231,7 +237,8 @@ fn content_comes_from_the_entity_and_layout_from_terminal_over_workspace() {
 
 #[test]
 fn terminal_layout_fills_only_its_own_fields_over_workspace() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     store
         .conn
         .execute(
@@ -272,7 +279,8 @@ fn terminal_layout_fills_only_its_own_fields_over_workspace() {
 
 #[test]
 fn no_scoped_rows_and_no_legacy_keys_answers_unset() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let eff = store
         .effective_receipt_format(Some("no-such-terminal"), None)
         .unwrap();
@@ -291,7 +299,8 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
     // Pin the EXACT key list: if the settings-rebuild stream retires or
     // renames a key, this test fails here first instead of the fallback
     // silently drifting.
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     for key in LEGACY_RECEIPT_KEYS {
         platform_core::settings::Settings::set(store.conn, key, "x").unwrap();
     }
@@ -319,7 +328,8 @@ fn legacy_fallback_reads_exactly_the_pinned_keys() {
 
 #[test]
 fn scoped_row_overrides_the_legacy_key_for_the_same_concern() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     // Legacy footer set org-globally.
     platform_core::settings::Settings::set(store.conn, "receipt.footer", "legacy footer").unwrap();
     // Scoped content row with a different footer.
@@ -353,7 +363,8 @@ fn scoped_row_overrides_the_legacy_key_for_the_same_concern() {
 
 #[test]
 fn unknown_element_code_is_named_in_the_error() {
-    let store = store();
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
     let mut bad = content();
     bad.required_fields = vec!["nft_certificate".into()];
     let err = store
