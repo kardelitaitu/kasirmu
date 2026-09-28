@@ -76,6 +76,9 @@ pub struct PrintSalesReceiptArgs {
     #[serde(default)]
     /// Table Number.
     pub table_number: Option<String>,
+    #[serde(default)]
+    /// Optional 17-digit DJP Faktur Pajak string.
+    pub faktur_pajak: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -313,6 +316,7 @@ pub async fn print_sales_receipt_scoped(
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
+        faktur_pajak: args.faktur_pajak,
     };
 
     let data = receipt::format_sales_receipt(&receipt, &config);

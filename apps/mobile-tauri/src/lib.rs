@@ -861,6 +861,8 @@ pub fn run() {
                 commands::history::export_sales_by_hour_scoped,
                 commands::history::get_sale_scoped,
                 commands::history::list_sales_scoped,
+                commands::history::stamp_faktur_pajak_scoped,
+                commands::history::create_faktur_pengganti_scoped,
                 commands::kds::create_kds_order_from_sale_scoped,
                 commands::kds::get_kds_order_scoped,
                 commands::kds::get_kds_queue_scoped,

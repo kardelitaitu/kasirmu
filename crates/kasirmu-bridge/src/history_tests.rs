@@ -54,6 +54,7 @@ fn sale_list_item_debug() {
         user_id: Some("u1".into()),
         created_at: "2025-01-01".into(),
         display_code: None,
+        faktur_pajak: None,
     };
     let d = format!("{item:?}");
     assert!(d.contains("s1"));
@@ -78,6 +79,7 @@ fn make_detail(note: Option<String>) -> SaleDetail {
         lines: vec![],
         tax_estimate_note: note,
         display_code: None,
+        faktur_pajak: None,
     }
 }
 
@@ -113,6 +115,7 @@ fn sale_list_item_serialize() {
         user_id: None,
         created_at: "2025-06-01".into(),
         display_code: None,
+        faktur_pajak: None,
     };
     let json = serde_json::to_value(&item).unwrap();
     assert_eq!(json["id"], "s2");
@@ -138,6 +141,7 @@ fn sale_detail_debug() {
         lines: vec![make_sale_line("sd1", "SKU-A", 2, 5000)],
         tax_estimate_note: None,
         display_code: None,
+        faktur_pajak: None,
     };
     let d = format!("{detail:?}");
     assert!(d.contains("sd1"));
@@ -160,6 +164,7 @@ fn sale_detail_serialize() {
         lines: vec![],
         tax_estimate_note: None,
         display_code: None,
+        faktur_pajak: None,
     };
     let json = serde_json::to_value(&detail).unwrap();
     assert_eq!(json["id"], "sd2");
@@ -364,4 +369,38 @@ fn eod_report_reconciles_on_a_refund_and_void_fixture() {
         report.discount_total,
         report.total_revenue
     );
+}
+
+// ── Phase 6: e-Faktur tests ────────────────────────────────────────
+
+#[test]
+fn stamp_faktur_pajak_scoped_rejects_invalid_token() {
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("bad-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+
+#[test]
+fn create_faktur_pengganti_scoped_rejects_invalid_token() {
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+    let result = ctx.resolve_session("bad-token");
+    assert!(matches!(result, Err(BridgeError::InvalidSession)));
+}
+
+#[test]
+fn sale_detail_serializes_faktur_pajak_when_stamped() {
+    let mut detail = make_detail(None);
+    detail.faktur_pajak = Some(FakturPajakInfo {
+        nsfp: "2600000000123".into(),
+        kode_transaksi: "01".into(),
+        status: "00".into(),
+        formatted: "01002600000000123".into(),
+    });
+    let json = serde_json::to_value(&detail).unwrap();
+    assert_eq!(json["fakturPajak"]["formatted"], "01002600000000123");
+    assert_eq!(json["fakturPajak"]["nsfp"], "2600000000123");
+    assert_eq!(json["fakturPajak"]["kodeTransaksi"], "01");
+    assert_eq!(json["fakturPajak"]["status"], "00");
 }

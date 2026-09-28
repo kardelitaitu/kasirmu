@@ -1184,6 +1184,8 @@ pub fn run() {
             commands::kds_routing::save_kds_routing_rules_scoped,
             commands::history::list_sales_scoped,
             commands::history::get_sale_scoped,
+            commands::history::stamp_faktur_pajak_scoped,
+            commands::history::create_faktur_pengganti_scoped,
             commands::history::export_daily_summary_scoped,
             commands::history::export_sales_by_hour_scoped,
             commands::history::export_eod_report_scoped,

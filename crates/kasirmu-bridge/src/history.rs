@@ -9,6 +9,7 @@
 use serde::Serialize;
 
 use kasirmu_core::Money;
+use kasirmu_core::db::faktur_pajak::FakturPajakInfo;
 use kasirmu_core::db::{DailySummaryRow, SalesByHourRow, Store};
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
@@ -40,6 +41,10 @@ pub struct SaleListItem {
     /// Surfaced read-only; the code is immutable once issued (plan §4.5).
     #[serde(default)]
     pub display_code: Option<String>,
+    /// Phase 6: 17-digit DJP Faktur Pajak string (`{kode_transaksi}{status}{nsfp}`)
+    /// when the sale has been approved and stamped with an NSFP, or `None`.
+    #[serde(default)]
+    pub faktur_pajak: Option<String>,
 }
 
 /// Response for the sale-list commands (C1.2).
@@ -88,17 +93,19 @@ pub async fn list_sales_scoped(
     // Phase 4: attach the frozen receipt hierarchy code to each list row in a
     // single batch read (no per-row N+1). The list is capped to the tier's
     // history window, so the IN-set is small.
-    let code_map: std::collections::HashMap<String, Option<String>> = store
-        .sale_display_codes(&sales.iter().map(|s| s.id.clone()).collect::<Vec<_>>())?
-        .into_iter()
-        .collect();
+    let ids: Vec<String> = sales.iter().map(|s| s.id.clone()).collect();
+    let code_map: std::collections::HashMap<String, Option<String>> =
+        store.sale_display_codes(&ids)?.into_iter().collect();
+    // Phase 6: batch read of 17-digit DJP e-Faktur string for approved sales.
+    let fp_map = store.get_faktur_pajak_map(&ids)?;
     drop(db);
     Ok(SaleListResponse {
         sales: sales
             .into_iter()
             .map(|s| {
                 let code = code_map.get(&s.id).cloned().flatten();
-                map_sale_to_item(s, code)
+                let fp = fp_map.get(&s.id).map(|f| f.formatted.clone());
+                map_sale_to_item(s, code, fp)
             })
             .collect(),
         sales_history_capped: capped,
@@ -106,7 +113,11 @@ pub async fn list_sales_scoped(
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleListItem`.
-fn map_sale_to_item(s: kasirmu_core::Sale, display_code: Option<String>) -> SaleListItem {
+fn map_sale_to_item(
+    s: kasirmu_core::Sale,
+    display_code: Option<String>,
+    faktur_pajak: Option<String>,
+) -> SaleListItem {
     SaleListItem {
         id: s.id,
         total: s.total,
@@ -116,6 +127,7 @@ fn map_sale_to_item(s: kasirmu_core::Sale, display_code: Option<String>) -> Sale
         user_id: s.user_id,
         created_at: s.created_at,
         display_code,
+        faktur_pajak,
     }
 }
 
@@ -155,6 +167,9 @@ pub struct SaleDetail {
     /// Wire-verified: the struct-wide `rename_all` above IS the drift fix —
     /// ui + dev-mock both read camelCase; the backend was the wrong side.
     pub tax_estimate_note: Option<String>,
+    /// Phase 6: e-Faktur Pajak compliance metadata (DJP Coretax PER-11/PJ/2025).
+    #[serde(default)]
+    pub faktur_pajak: Option<FakturPajakInfo>,
 }
 
 /// Fetch a single sale by ID from the store resolved from a session token.
@@ -189,8 +204,13 @@ pub async fn get_sale_scoped(
         Some(s) => store.sale_display_code(&s.id)?,
         None => None,
     };
+    // Phase 6: e-Faktur compliance metadata (NSFP, kode transaksi, status).
+    let faktur_pajak = match &sale {
+        Some(s) => store.get_faktur_pajak(&s.id)?,
+        None => None,
+    };
     drop(db);
-    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code)))
+    Ok(sale.map(|s| map_sale_to_detail(s, tax_estimate_note, display_code, faktur_pajak)))
 }
 
 /// Shared mapping from `kasirmu_core::Sale` to `SaleDetail`.
@@ -198,6 +218,7 @@ fn map_sale_to_detail(
     s: kasirmu_core::Sale,
     tax_estimate_note: Option<String>,
     display_code: Option<String>,
+    faktur_pajak: Option<FakturPajakInfo>,
 ) -> SaleDetail {
     SaleDetail {
         id: s.id,
@@ -213,7 +234,59 @@ fn map_sale_to_detail(
         lines: s.lines,
         tax_estimate_note,
         display_code,
+        faktur_pajak,
     }
+}
+
+// ── e-Faktur Compliance (DJP Coretax / PER-11/PJ/2025) ────────────────
+
+/// Arguments for stamping an approved DJP e-Faktur NSFP onto a completed sale.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StampFakturPajakArgs {
+    /// ID of the sale to stamp.
+    pub sale_id: String,
+    /// 13-digit NSFP issued by DJP (e.g. `"2600000000123"`).
+    pub nsfp: String,
+    /// 2-digit transaction code (`"01"`..`"10"`, default `"01"`).
+    pub kode_transaksi: Option<String>,
+}
+
+/// Stamp a DJP-approved NSFP onto a completed sale.
+pub async fn stamp_faktur_pajak_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    args: StampFakturPajakArgs,
+) -> Result<FakturPajakInfo, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::SALES_PROCESS)
+        .await?;
+    let conn = ctx.resolve_store(session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    let info =
+        store.stamp_faktur_pajak(&args.sale_id, &args.nsfp, args.kode_transaksi.as_deref())?;
+    Ok(info)
+}
+
+/// Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+pub async fn create_faktur_pengganti_scoped(
+    ctx: &BridgeCtx<'_>,
+    session_token: &str,
+    sale_id: &str,
+) -> Result<FakturPajakInfo, BridgeError> {
+    let session = ctx.resolve_session(session_token)?;
+    ctx.require_session_permission(&session, permissions::SALES_PROCESS)
+        .await?;
+    let conn = ctx.resolve_store(session_token)?;
+    let db = conn
+        .lock()
+        .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
+    let store = Store::new(&db);
+    let info = store.create_faktur_pengganti(sale_id)?;
+    Ok(info)
 }
 
 // ── Dashboard / Export ───────────────────────────────────────────────

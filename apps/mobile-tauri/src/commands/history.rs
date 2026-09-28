@@ -8,9 +8,12 @@ use serde::Serialize;
 use tauri::{State, command};
 
 use kasirmu_core::Money;
+use kasirmu_core::db::faktur_pajak::FakturPajakInfo;
 use kasirmu_core::db::{DailySummaryRow, SalesByHourRow, Store};
 use kasirmu_core::permissions;
 use kasirmu_core::subscription::TenantSubscription;
+
+pub use kasirmu_bridge::history::StampFakturPajakArgs;
 
 use crate::commands::authz::require_permission_for_session;
 // R3: the SAME window arithmetic the products door uses and that
@@ -489,6 +492,48 @@ pub async fn export_eod_report_scoped(
         discount_total,
         hourly_breakdown: hourly,
     })
+}
+
+/// Stamp a DJP-approved NSFP onto a completed sale.
+#[command]
+pub async fn stamp_faktur_pajak_scoped(
+    session_token: String,
+    args: StampFakturPajakArgs,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let info = store.stamp_faktur_pajak(
+        &args.sale_id,
+        &args.nsfp,
+        args.kode_transaksi.as_deref(),
+    )?;
+    Ok(info)
+}
+
+/// Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+#[command]
+pub async fn create_faktur_pengganti_scoped(
+    session_token: String,
+    sale_id: String,
+    state: State<'_, AppState>,
+) -> Result<FakturPajakInfo, AppError> {
+    let session = state.resolve_session(&session_token)?;
+    require_permission_for_session(&state, &session, permissions::SALES_PROCESS).await?;
+    let conn_arc = state.resolve_store(&session_token)?;
+    let db_guard = conn_arc
+        .lock()
+        .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
+    let db = &*db_guard;
+    let store = Store::new(&db);
+    let info = store.create_faktur_pengganti(&sale_id)?;
+    Ok(info)
 }
 
 #[cfg(test)]
