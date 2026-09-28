@@ -636,6 +636,12 @@ async fn category_breakdown_pg(
 }
 
 /// Per-location low-stock alerts using `stock_summary`.
+///
+/// The filter compares against the RESOLVED threshold (the same `COALESCE` the
+/// `threshold` column reports), so an enabled custom threshold replaces the
+/// default for the decision as well as the value — testing the default first
+/// returns rows whose own fields contradict them. Mirror of
+/// `kasirmu_core::db::reports::product_sales::Store::low_stock_alerts_at_location`.
 async fn low_stock_alerts_at_location_pg(
     pool: &Pool,
     location_id: &str,
@@ -667,13 +673,16 @@ async fn low_stock_alerts_at_location_pg(
              LEFT JOIN stock_summary ss
                 ON ss.item_id = p.id AND ss.location_id = $1
              WHERE p.tenant_id = $3
-               AND (COALESCE(ss.qty, 0) <= $2
-                    OR (SELECT 1 FROM stock_thresholds st
-                        WHERE st.product_id = p.id
-                          AND (st.location_id = $1 OR st.location_id IS NULL)
-                          AND st.enabled = 1
-                          AND COALESCE(ss.qty, 0) <= st.threshold
-                        LIMIT 1) = 1)
+               AND COALESCE(ss.qty, 0) <= COALESCE(
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id = $1 AND st.enabled = 1
+                         LIMIT 1),
+                        (SELECT st.threshold FROM stock_thresholds st
+                         WHERE st.product_id = p.id
+                           AND st.location_id IS NULL AND st.enabled = 1
+                         LIMIT 1),
+                        $2)
              ORDER BY current_qty ASC",
             &[&location_id, &default_threshold, &tenant],
         )

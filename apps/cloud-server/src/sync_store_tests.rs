@@ -1908,3 +1908,83 @@ async fn sqlite_pull_filter_applies_to_all_three_query_shapes() {
         .unwrap();
     assert_eq!(limited.len(), 1, "LIMIT semantics are untouched");
 }
+
+/// The multi-row push fast path emits one statement per `MULTIROW_CHUNK` rows
+/// and rebuilds its returned-id multiset for each chunk. Every other test in
+/// this file pushes a handful of items, so nothing reaches the second
+/// statement — and an id that straddles the boundary must still be reported
+/// exactly once as `Accepted` and once as `Rejected`, the same as a duplicate
+/// inside one chunk.
+#[tokio::test]
+async fn sqlite_push_batch_keeps_outcomes_across_the_multirow_chunk_boundary() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    // 501 items: one full chunk, then one row into the next statement — the
+    // same id first and last, so the duplicate straddles the boundary.
+    let mut items: Vec<OfflineQueueItem> = (0..500)
+        .map(|i| sample_item(&format!("chunk-{i:04}")))
+        .collect();
+    items.push(sample_item("chunk-0000"));
+
+    let outcomes = store.push_batch(&items, "tenant-chunk").await.unwrap();
+    assert_eq!(outcomes.len(), 501, "one outcome per item, always");
+    assert!(
+        outcomes[..500]
+            .iter()
+            .all(|o| matches!(o, PushOutcome::Accepted)),
+        "the first chunk lands in full"
+    );
+    assert!(
+        matches!(&outcomes[500], PushOutcome::Rejected { .. }),
+        "the id repeated in the second chunk is a duplicate: {:?}",
+        outcomes[500]
+    );
+
+    let stored = store
+        .pull_items("tenant-chunk", None, None, None, 1000)
+        .await
+        .unwrap();
+    assert_eq!(stored.len(), 500, "501 pushes minus the one duplicate id");
+}
+
+/// SYNC-10: a row that cannot be decoded must fail the WHOLE pull rather than
+/// be skipped. A pull that silently drops the rows it could not read is
+/// indistinguishable from "there was nothing to sync" at the terminal, which
+/// then advances its cursor past data it never received.
+#[tokio::test]
+async fn sqlite_pull_fails_loudly_when_a_row_cannot_be_decoded() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+    assert!(matches!(
+        store
+            .push_item(&sample_item("decode-good"), "tenant-decode")
+            .await
+            .unwrap(),
+        PushOutcome::Accepted
+    ));
+
+    // `retry_count` has INTEGER affinity: a non-numeric TEXT stores as TEXT
+    // and decodes as nothing the item type can hold.
+    {
+        let conn = conn.lock().await;
+        conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, created_at, tenant_id)
+             VALUES ('decode-bad', 'complete_sale', '{}', 'pending', 'not-a-number', '2026-01-01T00:00:00Z', 'tenant-decode')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let err = store
+        .pull_items(
+            "tenant-decode",
+            None,
+            Some("2026-01-01T00:00:00Z"),
+            None,
+            501,
+        )
+        .await
+        .expect_err("an undecodable row must fail the pull, never vanish from it");
+    assert!(err.contains("row decode failed"), "got: {err}");
+}

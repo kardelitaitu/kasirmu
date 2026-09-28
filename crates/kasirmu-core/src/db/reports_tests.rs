@@ -705,6 +705,54 @@ fn low_stock_alerts_at_location_respects_custom_threshold() {
     );
 }
 
+#[test]
+fn low_stock_alerts_at_location_does_not_fall_back_to_the_default_over_a_custom_threshold() {
+    // The documented contract is that a configured threshold REPLACES the
+    // default. With a custom threshold of 4 and 5 units on hand the product is
+    // not low, yet the default branch (`qty <= default`) still fires and
+    // returns a row whose own fields contradict the filter — `current_qty: 5`
+    // against `threshold: 4` — raising a false low-stock alert.
+    let conn = fresh();
+    let s = store(&conn);
+    let money = Money {
+        minor_units: 100,
+        currency: usd(),
+    };
+    let prod = s
+        .create_product("CALM", "Calm Stock Item", money, None, None, 5, None)
+        .unwrap();
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute(
+        "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled, created_at, updated_at)
+         VALUES (?1, ?2, NULL, 4, 1, ?3, ?3)",
+        rusqlite::params![uuid::Uuid::now_v7().to_string(), prod.id, now],
+    )
+    .unwrap();
+
+    let rows = s
+        .low_stock_alerts_at_location(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID, 10)
+        .unwrap();
+    assert!(
+        rows.is_empty(),
+        "custom threshold 4 with 5 on hand is not low stock, got {rows:?}"
+    );
+
+    // The default must still apply where no threshold is configured.
+    s.create_product("PLAIN", "Plain Stock Item", money, None, None, 5, None)
+        .unwrap();
+    let rows = s
+        .low_stock_alerts_at_location(crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID, 10)
+        .unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the default still governs unconfigured products"
+    );
+    assert_eq!(rows[0].sku, "PLAIN");
+    assert_eq!(rows[0].current_qty, 5);
+    assert_eq!(rows[0].threshold, 10);
+}
+
 // ── Active stock alerts ────────────────────────────────────────
 
 #[test]

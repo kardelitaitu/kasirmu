@@ -28,6 +28,20 @@ use crate::error::CoreError;
 
 use super::check_date_bound;
 
+/// The table-activity source shared by both turnover rollups: completed sales
+/// that carry a table number, counted per SALE.
+///
+/// `kds_orders` is unique on `(sale_id, kitchen_zone)`, so a sale routed to two
+/// kitchen zones has two tickets; `COUNT(*)` over them would report one party at
+/// one table as two turns. The `DISTINCT` and the predicate stay together here
+/// because two hand-copied versions drifting apart is what produced that bug
+/// twice.
+const TABLE_TURN_SOURCE: &str = "FROM kds_orders k
+             JOIN sales s ON k.sale_id = s.id
+             WHERE s.status = 'completed'
+               AND k.table_number IS NOT NULL AND k.table_number != ''
+               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2";
+
 /// Hourly sales heatmap entry.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HourlyHeatmapRow {
@@ -444,17 +458,13 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT DATE(s.created_at, ?3) AS date,
                     COUNT(DISTINCT s.id) AS table_orders
-             FROM kds_orders k
-             JOIN sales s ON k.sale_id = s.id
-             WHERE s.status = 'completed'
-               AND k.table_number IS NOT NULL AND k.table_number != ''
-               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+             {TABLE_TURN_SOURCE}
              GROUP BY DATE(s.created_at, ?3)
-             ORDER BY date ASC",
-        )?;
+             ORDER BY date ASC"
+        ))?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(TableTurnoverRow {
                 date: row.get("date")?,
@@ -475,17 +485,13 @@ impl Store<'_> {
         check_date_bound("start_date", start_date)?;
         check_date_bound("end_date", end_date)?;
         let tz = self.tz_modifier();
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT CAST(strftime('%H', s.created_at, ?3) AS INTEGER) AS hour,
                     COUNT(DISTINCT s.id) AS table_orders
-             FROM kds_orders k
-             JOIN sales s ON k.sale_id = s.id
-             WHERE s.status = 'completed'
-               AND k.table_number IS NOT NULL AND k.table_number != ''
-               AND DATE(s.created_at, ?3) BETWEEN ?1 AND ?2
+             {TABLE_TURN_SOURCE}
              GROUP BY hour
-             ORDER BY hour ASC",
-        )?;
+             ORDER BY hour ASC"
+        ))?;
         let rows = stmt.query_map(params![start_date, end_date, tz], |row| {
             Ok(HourlyOccupancyRow {
                 hour: row.get("hour")?,

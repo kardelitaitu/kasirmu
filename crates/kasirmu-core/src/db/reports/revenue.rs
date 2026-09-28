@@ -56,7 +56,8 @@ pub struct DailyRevenueRow {
 /// Weekly revenue aggregation.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WeeklyRevenueRow {
-    /// ISO date of the week start (Sunday).
+    /// ISO date of the week's Monday (Monday-first buckets, matching the UI's
+    /// `weekStartKey`).
     pub week_start: String,
     /// Total revenue in minor units.
     pub total_minor: i64,
