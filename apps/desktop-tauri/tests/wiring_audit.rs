@@ -81,8 +81,8 @@ fn find_lib_rs(app_dir: &str) -> PathBuf {
 #[test]
 fn desktop_client_no_duplicate_handler_commands() {
     let lib_rs = find_lib_rs(".");
-    let src = fs::read_to_string(&lib_rs)
-        .unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
+    let src =
+        fs::read_to_string(&lib_rs).unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
 
     let commands = extract_handler_commands(&src);
     assert!(
@@ -108,8 +108,8 @@ fn desktop_client_no_duplicate_handler_commands() {
 #[test]
 fn tablet_client_no_duplicate_handler_commands() {
     let lib_rs = find_lib_rs("../mobile-tauri");
-    let src = fs::read_to_string(&lib_rs)
-        .unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
+    let src =
+        fs::read_to_string(&lib_rs).unwrap_or_else(|e| panic!("failed to read {lib_rs:?}: {e}"));
 
     let commands = extract_handler_commands(&src);
     assert!(
