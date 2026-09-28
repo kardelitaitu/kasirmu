@@ -91,6 +91,28 @@ edge is closed, the baseline entry is DELETED rather than renewed, and `kasirmu-
 `modules-currency` as a dev-dependency only — which this checker ignores by design, because a
 dev-dependency is not a shipped layering edge.
 
+**D7 — What may enter the lowest tier, and why two dependencies did.** Moving types down is not free:
+behaviour travels with types. Closing these edges left `foundation` depending on `tracing` (the
+documented `tracing::warn!` in `ProductType::parse_stored_or_default`, whose parser is needed below
+`kasirmu-core` and inside `modules-inventory` alike) and on `chrono` (three sales constructors stamp
+`created_at`, and the insert path writes that field straight into the row). Both are judgement calls
+rather than oversights, so the rule is recorded: **the lowest tier may hold pure computation, value
+types and thin facades; it may not hold a database driver, an async runtime, network or filesystem IO,
+or a platform service.** `tracing` satisfies that rule outright. `chrono` satisfies its letter but not
+its spirit transitively — `clock` reads the OS clock through `iana-time-zone`, so "no FFI/IO" is a claim
+about this crate's own source rather than its dependency graph, and its audit line now says so.
+
+**The rejected alternative, and when to revisit it.** The clock could have been chased out by making
+the writers stamp instead. That was measured before it was attempted, and the grep changed the answer:
+it touches ten production insert paths across five crates (`modules/sales/src/repository.rs:150`;
+`crates/kasirmu-core/src/db/{{sales_checkout,sales_lifecycle,sales_crud,refunds}}.rs`;
+`crates/kasirmu-api/src/pg/sales.rs:76`; `platform/sync/src/queue/appliers.rs:503` and `:520`;
+`crates/kasirmu-cli/src/seed_demo.rs:467` and `:670`), and its failure mode is a silently EMPTY
+`created_at` in financial rows rather than a compile error. A compile-checked variant exists (make each
+constructor take the timestamp, ~15 call sites, a seven-argument `Refund::new`) and is the better
+shape if this is ever revisited — as is a domain crate between `foundation` and `platform-core`, which
+would be the natural home for clock-reading types.
+
 ## Consequences
 
 - **Good:** the seven edges are named for what they are, and the deadline can no longer be

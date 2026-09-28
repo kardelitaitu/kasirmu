@@ -25,6 +25,10 @@ tracing = { workspace = true }
 # `RefundLine::new` and `Refund::new` all call `chrono::Utc::now().to_rfc3339_opts(.., true)` exactly as
 # they did in `modules-sales`, so the types cannot move without the crate. This is a time formatter, not a
 # driver: foundation stays free of the database dependency the tier rule actually forbids (`rusqlite`).
+# Caveat named rather than implied: `clock` reaches the OS clock through `iana-time-zone`, so the
+# `no FFI/IO` claim above is about this crate's own source, not its dependency graph. ADR-61 D7 records
+# the alternative that was rejected (make the writers stamp instead: ten production insert paths across
+# five crates, with a silently empty `created_at` as the failure mode) and keeps this revisitable.
 chrono = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true }

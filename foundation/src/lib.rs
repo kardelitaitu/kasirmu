@@ -1,7 +1,7 @@
 /*
 last audited DD-MM-YY by DSH-Agent (Money audit)
 crate: foundation | status: SAFE | lint: CLEAN
-findings: zero unsafe, no FFI/IO, minimal deps (tracing + chrono added 2026-09-28 — see Cargo.toml), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
+findings: zero unsafe, no IO in its own source, minimal deps (tracing + chrono added 2026-09-28 — see Cargo.toml; chrono's clock feature reaches the OS clock transitively, so this is a claim about this crate, not its graph), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
 next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
 */
 
@@ -14,6 +14,17 @@ next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot
 //! [`ProductType::parse_stored_or_default`] (2026-09-28): that parser is needed
 //! below `kasirmu-core` and inside `modules-inventory` alike, so this tier is its
 //! only non-duplicating home.
+//!
+//! # What may live here
+//!
+//! This crate is the bottom of the dependency graph, so anything it takes on is taken on by every
+//! other crate. The rule: **pure computation, value types and thin facades are welcome; a database
+//! driver, an async runtime, network or filesystem IO, or a platform service is not.** Two judgement
+//! calls are recorded rather than hidden: `tracing` (a facade that does nothing without a subscriber
+//! installed) arrived with `ProductType::parse_stored_or_default`'s documented warning, and `chrono`
+//! arrived with three sales constructors that stamp `created_at`. Both came in on 2026-09-28 with
+//! moved domain types — see `docs/decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md`,
+//! D6 and D7, which also record why the clock was not chased out of this tier.
 //!
 //! # Contents
 //!
