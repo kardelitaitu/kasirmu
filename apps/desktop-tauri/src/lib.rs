@@ -48,6 +48,8 @@ pub mod local_api;
 /// database — the only moment a restore swap is safe, because nothing has yet
 /// cloned the connection into the detached daemons that cannot be forced closed.
 mod recovery;
+/// Early single-instance process mutual exclusion guard.
+mod single_instance;
 /// Global application state (DB, kernel, sync daemon, registry).
 pub mod state;
 
@@ -104,6 +106,14 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // Acquire early single-instance guard to prevent EBWebView and SQLite lock races.
+    let _instance_guard = match single_instance::acquire() {
+        single_instance::Acquisition::Acquired(guard) => guard,
+        single_instance::Acquisition::AlreadyRunning => {
+            std::process::exit(0);
+        }
+    };
+
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 

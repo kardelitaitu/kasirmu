@@ -228,6 +228,8 @@ impl AppState {
 
         let mut conn = Connection::open(&db_path)
             .map_err(|e| AppError::Internal(format!("opening {db_path:?}: {e}")))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| AppError::Internal(format!("setting busy_timeout: {e}")))?;
         conn.pragma_update(None, "foreign_keys", "ON")
             .map_err(|e| AppError::Internal(format!("enabling foreign_keys: {e}")))?;
         conn.pragma_update(None, "journal_mode", "WAL")
@@ -419,7 +421,7 @@ impl AppState {
 /// `get_primary_store()` (which queries `is_primary = 1`) returning `None`
 /// and breaking boot on a fresh install.
 fn seed_primary_store(conn: &mut Connection) -> Result<(), rusqlite::Error> {
-    let tx = conn.transaction()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let count: i64 = tx.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
     if count == 0 {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

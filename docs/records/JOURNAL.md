@@ -1,4 +1,31 @@
 
+## 2026-09-28 — Fix: prevent WebView2 collision and SQLite readonly lock on concurrent launch (desktop)
+
+**Context:**
+During `cargo tauri dev` reload/watch or rapid secondary launches, process collision manifested dual errors:
+1. `ERROR failed to create webview: WebView2 error: WindowsError(Error { code: HRESULT(0x800700AA), message: "The requested resource is in use." })`
+2. `Failed to setup app: error encountered during setup hook: internal error: seeding primary store: attempt to write a readonly database`
+
+Root cause:
+`tauri-plugin-single-instance` checks `GetLastError() == ERROR_ALREADY_EXISTS`. If `FindWindowW` returns null (e.g. while the previous instance is shutting down or before its event target window is created), the plugin silently fell through without exiting (`std::process::exit(0)` was guarded by `if !hwnd.is_null()`). The secondary process continued into Tauri window creation, racing for the locked `EBWebView` profile directory and SQLite database.
+Furthermore, in `AppState::new`, `conn.busy_timeout` was not configured (defaulting to 0ms), and `seed_primary_store` used `conn.transaction()?` (`BEGIN DEFERRED`), which starts with a read lock and fails with `SQLITE_BUSY` or `SQLITE_READONLY_CANTLOCK` when attempting an in-flight write upgrade under concurrency.
+
+**Changes:**
+1. `apps/desktop-tauri/src/single_instance.rs` & `apps/desktop-tauri/src/single_instance_tests.rs`:
+   - Created process-boundary single-instance guard using Windows session-local named mutex (`Local\mu.kasir.app-primary-instance`).
+   - If held, searches for active window (`kasir.mu` or IPC target), brings to foreground, forwards arguments, and exits cleanly.
+   - If held but window is not found (e.g. `tauri dev` watch reload), retries with 1500ms timeout for previous instance to finish releasing file locks before cleanly terminating.
+2. `apps/desktop-tauri/src/lib.rs`:
+   - Wired `single_instance::acquire()` at the very entry of `pub fn run()` before runtime or logging initialization.
+3. `apps/desktop-tauri/src/state.rs`:
+   - Configured `conn.busy_timeout(std::time::Duration::from_secs(5))` in `AppState::new`.
+   - Updated `seed_primary_store` to use `conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?` to avoid deferred lock-upgrade collisions.
+
+**Verification:**
+- `cargo check -p kasirmu-app` -> OK, 0 warnings.
+- `cargo test -p kasirmu-app --lib single_instance::tests` -> 3 passed, 0 failed.
+- `cargo test -p kasirmu-app --lib state::tests` -> 11 passed, 0 failed.
+
 ## 2026-09-20 — Absorb: `auth::has_users` raises the tablet debt ceiling 88 → 89 (mobile/tablet)
 
 **Context:**
