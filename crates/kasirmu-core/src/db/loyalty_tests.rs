@@ -998,3 +998,67 @@ fn earn_points_22_50_at_1_4x_tier_earns_32() {
         "22.5 × 1.4 = 31.5 → half-up 32; the old f64 path earned 31"
     );
 }
+
+#[test]
+fn a_db_failure_in_the_tier_formula_probe_is_not_a_silent_default_rate() {
+    let conn = fresh();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_sale(&conn, "sale-1");
+    let s = store(&conn);
+    s.get_or_create_loyalty_account("cust-1").unwrap();
+
+    // Force a REAL fault in the tier-formula probe. Under the old
+    // `.ok()` the failure collapsed to `None`, and `None` was answered with
+    // the hardcoded `unwrap_or((10, 1_000_000))` -- a rate the operator never
+    // configured, on the ladder whose whole purpose is that the tier decides
+    // the rate. A silent wrong rate is worse than a loud failure: the sale IS
+    // awarded, and the mistake is only discoverable by reconciling points.
+    //
+    // The fault is injected by renaming ONLY the column the probe reads: a
+    // whole-table rename would also break the later tier-recompute subquery
+    // (`UPDATE loyalty_accounts ... SELECT id FROM loyalty_tiers`) and the
+    // function would fail for the wrong reason -- a test that passes without
+    // pinning the probe at all.
+    conn.execute_batch(
+        "ALTER TABLE loyalty_tiers RENAME COLUMN earn_multiplier_millionths TO earn_multiplier_millionths_hidden;",
+    )
+    .unwrap();
+
+    let err = s
+        .earn_points("cust-1", "sale-1", 1000)
+        .expect_err("a DB failure must not award at a hardcoded default rate");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the tier-formula probe must surface the DB fault, got {err:?}"
+    );
+}
+
+#[test]
+fn a_db_failure_in_the_customer_probe_is_not_reported_as_not_found() {
+    let conn = fresh();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_sale(&conn, "sale-1");
+    let s = store(&conn);
+
+    // Same forced-fault idiom. `.unwrap_or(false)` made "the customers table
+    // could not be queried" answer `NotFound` -- "this customer does not
+    // exist" while the row was present and the database was failing.
+    conn.execute_batch("ALTER TABLE customers RENAME TO customers_hidden;")
+        .unwrap();
+
+    // Both doors carry the same probe.
+    let earn_err = s
+        .earn_points("cust-1", "sale-1", 1000)
+        .expect_err("a DB failure must not read as 'no such customer'");
+    assert!(
+        matches!(earn_err, CoreError::Db(_)),
+        "earn_points: the customer probe must surface the DB fault, got {earn_err:?}"
+    );
+    let goc_err = s
+        .get_or_create_loyalty_account("cust-1")
+        .expect_err("a DB failure must not read as 'no such customer'");
+    assert!(
+        matches!(goc_err, CoreError::Db(_)),
+        "get_or_create_loyalty_account: the customer probe must surface the DB fault, got {goc_err:?}"
+    );
+}

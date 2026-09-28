@@ -12360,6 +12360,52 @@ round 2+.
 **Commits:** this entry + the fix land in the pathspec commit below.
 
 
+### 2026-09-28 — TDD round 2: the loyalty earn path stops inventing an award rate
+
+**Problem:** two probes in `crates/kasirmu-core/src/db/loyalty.rs` turned a database fault into
+an ANSWER, not an error.
+
+1. The tier-formula probe (`:665-676`) ended in `.ok()` and was then answered with
+   `unwrap_or((10, 1_000_000))` — a hardcoded rate. So a failing `loyalty_tiers` read did not
+   fail the award; it **awarded points at a rate the operator never configured**, silently. The
+   tier IS the rate ladder; a wrong rate here is money-shaped, and the mistake is only
+   discoverable by reconciling points after the fact. The Red test proves the severity: with the
+   probe faulted, `earn_points` returned `Ok(Some(... points: 100 ...))` instead of an error.
+2. The customer-existence probe used `.unwrap_or(false)`, so "the `customers` table could not be
+   queried" was answered `CoreError::NotFound { entity: "customer" }` — "this customer does not
+   exist" while the row was present and the database was failing. The same shape sat in
+   `get_or_create_loyalty_account` (`:105-112`), which is the second door into the same probe.
+
+**Solution:** both probes now use `.optional()?`. A genuinely MISSING tier (or a NULL `tier_id`)
+keeps the documented default rate; a row that EXISTS but whose read FAILED is now `CoreError::Db`.
+Two Red-first tests in `db/loyalty_tests.rs` force a real fault and assert `CoreError::Db`.
+
+**A test that passed for the wrong reason, caught and fixed.** The first draft of the formula test
+renamed the whole `loyalty_tiers` table. That passed BEFORE the fix — but not because the probe was
+pinned: the whole-table rename also broke the later tier-recompute subquery in the
+`UPDATE loyalty_accounts` statement, so the function failed for an unrelated reason. The fault is
+now injected by renaming ONLY the column the probe reads
+(`ALTER TABLE loyalty_tiers RENAME COLUMN earn_multiplier_millionths TO ..._hidden`), which leaves
+the later `SELECT id FROM loyalty_tiers` resolving and therefore pins the probe itself. Both tests
+now go red for the right reason and green after.
+
+**Verified:** full `kasirmu-core` lib suite **3397 passed / 0 failed** (3395 + the 2 new);
+loyalty module 49/49; `cargo fmt -p kasirmu-core -- --check` reports no diff in either touched
+file; `cargo clippy -p kasirmu-core --all-targets` emits no diagnostic naming either touched file.
+
+**Deliberately NOT done — the candidates this pass surveyed and rejected as distinct slices:**
+`adjust.rs:466`/`:475` (stock-threshold lookup collapsing a fault to "no threshold configured",
+dropping a low-stock alert) and `:494` `unwrap_or(false)` (dedup probe collapsing to "no existing
+alert", duplicating an alert); `promotions.rs:289`/`:421` (`get_product(...).ok()` in the
+category-scope closure, silently treating an unreadable product as uncategorized and dropping its
+line from the discount base — that closure's `Option` contract makes it a signature change, not a
+one-liner); and `tax/scopes.rs:629` in `ensure_scoped_coverage_survives`, where a swallowed fault
+reads as "nothing covers this location" and DECLINES a refusal the guard exists to raise. Each needs
+its own red-first slice.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

@@ -6,7 +6,7 @@ findings: MSL-4 FIXED here — earn_points and redeem_points now maintain custom
 next: none | perf: projection UPDATE is one indexed row per mutation
 */
 
-use rusqlite::{Transaction, TransactionBehavior, params};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 
 use crate::error::CoreError;
 use crate::loyalty::{LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction};
@@ -109,6 +109,7 @@ impl Store<'_> {
                 params![customer_id],
                 |_| Ok(true),
             )
+            .optional()?
             .unwrap_or(false);
 
         if !customer_exists {
@@ -619,6 +620,7 @@ pub(crate) fn earn_points_with_conn(
             params![customer_id],
             |_| Ok(true),
         )
+        .optional()?
         .unwrap_or(false);
     if !customer_exists {
         return Err(CoreError::NotFound {
@@ -662,18 +664,25 @@ pub(crate) fn earn_points_with_conn(
     // [`compute_points`] — the multiplier is fixed-point millionths, so
     // no float ever touches points. (The old f64 path mis-rounded every
     // exact .5 boundary.)
-    let tier = account
-        .tier_id
-        .as_deref()
-        .and_then(|tid| {
-            conn.query_row(
+    // Resolve the rate from the tier the account carries.
+    //
+    // A MISSING tier (or a NULL `tier_id`) is the documented fallback: the
+    // default rate, which is what the bootstrap account's `tier-bronze` row
+    // carries anyway. A DB FAILURE is not a fallback -- under the old `.ok()`
+    // it collapsed to `None` and the award went out at a hardcoded default
+    // rate the operator never configured, silently, on a ladder whose whole
+    // purpose is that the tier decides the rate.
+    let tier = match account.tier_id.as_deref() {
+        Some(tid) => conn
+            .query_row(
                 "SELECT points_per_unit, earn_multiplier_millionths FROM loyalty_tiers WHERE id = ?1",
                 params![tid],
                 |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
             )
-            .ok()
-        })
-        .unwrap_or((10, 1_000_000));
+            .optional()?
+            .unwrap_or((10, 1_000_000)),
+        None => (10, 1_000_000),
+    };
     let base = total_minor.saturating_mul(tier.0);
     let points = compute_points(base, tier.1);
     if points <= 0 {
