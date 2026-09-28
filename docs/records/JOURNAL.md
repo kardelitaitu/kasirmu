@@ -12998,6 +12998,25 @@ After adding `?`, the test passed cleanly along with all 19 terminal profile tes
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 22: mark_push_attempt stops swallowing DB errors on attempts lookup
+
+**Problem:** In `Store::mark_push_attempt` (`crates/kasirmu-core/src/db/image_refs.rs`),
+when recording an image push failure, the current attempt count was queried via
+`SELECT attempts FROM image_push_queue WHERE hash = ?1` chained with `.unwrap_or((0,))`.
+If reading the `attempts` column failed due to a database error or invalid column type,
+the error was swallowed and treated as `0` attempts, endlessly resetting backoff attempts and
+preventing dead-letter handling.
+
+**Solution:** Replaced `.unwrap_or((0,))` with `.optional()?.unwrap_or(0)`, ensuring true database
+errors propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`mark_push_attempt_propagates_db_error_when_reading_attempts` panicked with
+`database error reading attempts must propagate, not fallback to (0,): ()`).
+After adding `.optional()?`, the test passed cleanly along with all 16 image ref tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

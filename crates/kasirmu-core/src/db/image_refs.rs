@@ -9,6 +9,7 @@
 
 use super::Store;
 use crate::error::CoreError;
+use rusqlite::OptionalExtension;
 
 /// The smallest SQLite ceiling this module must keep working on:
 /// `SQLITE_MAX_VARIABLE_NUMBER` is 32 766 on the bundled rusqlite
@@ -236,14 +237,15 @@ impl Store<'_> {
             return Ok(());
         }
         // Fetch current attempts
-        let (attempts,): (i32,) = self
+        let attempts: i32 = self
             .conn
             .query_row(
                 "SELECT attempts FROM image_push_queue WHERE hash = ?1",
                 rusqlite::params![hash],
-                |r| Ok((r.get(0)?,)),
+                |r| r.get(0),
             )
-            .unwrap_or((0,));
+            .optional()?
+            .unwrap_or(0);
         let next_attempt = attempts + 1;
         if next_attempt > 8 {
             // Dead-letter after 8 attempts — delete and return

@@ -290,3 +290,25 @@ fn image_refs_in_chunk_stays_under_the_sqlite_ceiling() {
     assert_eq!(SQLITE_MAX_VARIABLES, 999);
     assert!(IMAGE_REFS_IN_CHUNK + IMAGE_REFS_LEAD_PARAMS < SQLITE_MAX_VARIABLES);
 }
+
+#[test]
+fn mark_push_attempt_propagates_db_error_when_reading_attempts() {
+    let conn = fresh_db();
+    let store = Store::new(&conn);
+    store.enqueue_image_push("hash-err-1", 1024).unwrap();
+
+    // Corrupt the attempts column with a blob so reading i32 fails
+    conn.execute(
+        "UPDATE image_push_queue SET attempts = X'FFFF' WHERE hash = 'hash-err-1'",
+        [],
+    )
+    .unwrap();
+
+    let err = store
+        .mark_push_attempt("hash-err-1", false)
+        .expect_err("database error reading attempts must propagate, not fallback to (0,)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
