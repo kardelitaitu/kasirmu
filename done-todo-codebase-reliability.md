@@ -871,6 +871,54 @@ covered, because no coverage instrument is enforced. Close that in this order.
       Acceptance: `cargo clippy -p foundation -p kasirmu-core --all-targets -- -D warnings`
       exits 0 with pedantic enabled. Do **not** enable `nursery` — it is
       explicitly unstable and will churn every release.
+      **ROUND 6 — 2026-09-28. THE INSTRUCTION AS WRITTEN CANNOT BE FOLLOWED, and
+      this is a structural discovery rather than a difficulty. No manifest was
+      edited.**
+      **`[lints.clippy] pedantic = "warn"` in each manifest is not expressible
+      here.** Both target crates already carry `[lints] workspace = true`
+      (`foundation/Cargo.toml:11`, `crates/kasirmu-core/Cargo.toml:11`), and
+      **Cargo refuses to combine that with a local override** — demonstrated, not
+      recalled: adding a `[lints.clippy]` block beside `workspace = true` makes
+      `cargo metadata` fail with *"cannot override `workspace.lints` in `lints`,
+      either remove the overrides or `lints.workspace = true` and manually
+      specify the lints."* The root manifest already documents this at
+      `Cargo.toml:190-192`, so the constraint was known — what was NOT known is
+      that it makes this box's mechanism unusable.
+      **What the instruction would actually require.** Scoping pedantic to two
+      crates means those two must **stop using the workspace table** and
+      re-declare `missing_docs = "warn"` by hand. The workspace table has exactly
+      ONE lint in it (`[workspace.lints.rust] missing_docs = "warn"`,
+      `Cargo.toml:205-206`), which AGENTS.md §6.1 makes a house requirement, and
+      39 crates opt in. Opting two of them out would (a) duplicate the rule,
+      (b) silently exempt those two from any FUTURE workspace lint, and
+      (c) break the property the table's own comment exists to state — *"a new
+      crate inherits the house rule instead of re-declaring it"*. That is a real
+      structural cost, and it is the opposite of what the box's rationale
+      ("scoped pedantic is signal") is reaching for.
+      **The three scopes, now measured rather than estimated:**
+      | scope | cost | assessment |
+      |---|---|---|
+      | pedantic **workspace-wide** | **7,544** violations | This is the "noise" the box warns about, by a factor of 3 over the scoped option |
+      | pedantic on **the two named crates** | **2,494** (was 2,677 before the correctness sweep) | Needs the structural opt-out above |
+      | only the **correctness-adjacent** classes | **0 in these two crates** — done over rounds 1–5 | Already achieved; nothing to enable |
+      **What is genuinely left is a DESIGN choice, not a task.** The two-crate
+      number is 2,494 and **998 of those (40%) are `missing_errors_doc`** —
+      `# Errors` sections on every `Result`-returning public fn — plus 528
+      `doc_markdown` and 240 `must_use_candidate`. So "scoped pedantic"
+      as the box describes it is mostly a documentation campaign wearing a lint's
+      name, and it cannot be turned on partially without the opt-out above.
+      **Recommendation, recorded so it is not re-derived:** either (a) accept
+      workspace-wide pedantic as out of scope and mark this box retired with
+      that reasoning, or (b) opt the two crates out of the workspace table and
+      enable pedantic-minus-the-doc-lints there, accepting the duplicated
+      `missing_docs` and the future-lint exemption as the price. **(b) is the
+      one that matches the box's intent**, and it is a decision about the
+      workspace lint architecture — which is why it stops here rather than being
+      taken unilaterally by the lane that happens to be holding the pen.
+      **What this round DID establish, all by measurement:** every correctness
+      class in both crates is at zero; the workspace table holds exactly one
+      lint; 39 crates inherit it; the override constraint is real and reproducible;
+      and workspace-wide pedantic would be 7,544 violations.
       **MEASURED 2026-09-28, BOX STAYS OPEN, NO MANIFEST CHANGED.** Nothing was
       enabled, so no red gate appears — the same discipline P2-4 was closed
       under, and for the same reason: enabling pedantic today makes
