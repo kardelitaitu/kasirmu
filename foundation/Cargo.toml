@@ -14,6 +14,13 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 regex = { workspace = true }
+# 2026-09-28 (ADR-61 / C26): `ProductType::parse_stored_or_default` emits a documented
+# `tracing::warn!` about unmapped `product_type` values. That parser is needed below
+# `kasirmu-core` (its DB readers) AND inside `modules-inventory` (its repository) AND by
+# `kasirmu-api` (its PG reader), so the only home that serves all three without duplicating
+# the diagnostic is this tier. `tracing` is a facade with no cost unless a subscriber is
+# installed, which is why it is acceptable here and a database driver would not be.
+tracing = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true }
 thiserror = { workspace = true }

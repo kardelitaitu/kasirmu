@@ -1,3 +1,3 @@
-//! Product domain type — re-exported from `modules_inventory`.
+//! Product domain type — re-exported from `foundation` (moved down 2026-09-28, ADR-61 / C26).
 
-pub use modules_inventory::models::{Product, ProductType};
+pub use foundation::inventory::{Product, ProductType};

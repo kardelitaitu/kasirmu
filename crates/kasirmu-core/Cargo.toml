@@ -15,7 +15,6 @@ workspace = true
 foundation = { workspace = true }
 platform-core = { workspace = true }
 modules-sales = { workspace = true }
-modules-inventory = { workspace = true }
 modules-loyalty = { workspace = true }
 modules-staff = { workspace = true }
 serde = { workspace = true }

@@ -1,14 +1,8 @@
-//! Sibling tests for [`ProductType::parse_stored_or_default`], the one helper
-//! every reader of `products.product_type` now funnels through.
+//! Sibling unit tests for `inventory.rs` (AGENTS.md: no tests in production files).
 //!
-//! The four arms are the whole contract: a valid value returns its variant,
-//! and each way the column can go wrong — unmapped, empty, NULL — returns the
-//! default. Each of those three is also the warn arm, because `parse_str`
-//! returns `None` for exactly those inputs and the helper's `match` falls
-//! through to the `tracing::warn!`. The paired `parse_str` assertions below
-//! pin that: they prove the input reached the arm that logs rather than a
-//! silently-swallowed one. Asserting the emitted line itself would need a
-//! `tracing-subscriber` dev-dependency this crate does not carry.
+//! Moved here with the types from `modules/inventory/src/models_tests.rs`; the assertions are
+//! unchanged, and `foundation::` paths became `crate::` because a crate cannot name itself by path.
+
 
 use super::*;
 

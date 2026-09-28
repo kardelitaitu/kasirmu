@@ -5,15 +5,6 @@
     {
       "rule": "core-type-shim",
       "path": "crates/kasirmu-core/Cargo.toml",
-      "target": "modules-inventory",
-      "reason": "Re-export-only edge (C26/D3): every modules_inventory:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
-      "owner": "kasir.mu maintainers",
-      "introduced": "2026-08-06",
-      "expires": "2026-11-06"
-    },
-    {
-      "rule": "core-type-shim",
-      "path": "crates/kasirmu-core/Cargo.toml",
       "target": "modules-loyalty",
       "reason": "Re-export-only edge (C26/D3): every modules_loyalty:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
       "owner": "kasir.mu maintainers",

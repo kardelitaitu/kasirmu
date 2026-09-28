@@ -1,7 +1,7 @@
 /*
 last audited DD-MM-YY by DSH-Agent (Money audit)
 crate: foundation | status: SAFE | lint: CLEAN
-findings: zero unsafe, no FFI/IO, minimal deps, missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
+findings: zero unsafe, no FFI/IO, minimal deps (tracing added 2026-09-28 — see Cargo.toml), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
 next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
 */
 
@@ -10,7 +10,10 @@ next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot
 //! Contains the value objects, contracts, enums, and error types that
 //! are shared across all other crates. This crate has minimal
 //! dependencies so it can be used everywhere without pulling in heavy
-//! transitive deps.
+//! transitive deps. The one logging dep, `tracing`, arrived with
+//! [`ProductType::parse_stored_or_default`] (2026-09-28): that parser is needed
+//! below `kasirmu-core` and inside `modules-inventory` alike, so this tier is its
+//! only non-duplicating home.
 //!
 //! # Contents
 //!
@@ -33,6 +36,7 @@ pub mod dto;
 pub mod enums;
 pub mod errors;
 pub mod events;
+pub mod inventory;
 pub mod money;
 pub mod percentage;
 pub mod sku;
@@ -51,6 +55,10 @@ pub use customer::Customer;
 pub use contracts::{EventHandler, Module, Service};
 pub use enums::{InvalidTransition, PaymentMethod, SaleStatus};
 pub use errors::{ConflictError, NotFoundError, ValidationError};
+pub use inventory::{
+    CANONICAL_DEFAULT_LOCATION_UUID, Category, Inventory, InventoryLocation, InventoryShift,
+    LocationId, Product, ProductType, StockThreshold, WorkspaceInventoryLocation,
+};
 pub use money::{Currency, InvalidCurrencyCode, Money, format_minor};
 pub use percentage::Percentage;
 pub use sku::{LineId, Sku};

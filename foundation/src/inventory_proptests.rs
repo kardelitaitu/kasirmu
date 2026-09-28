@@ -1,6 +1,10 @@
-//! Property-based tests for `modules-inventory` model invariants.
+//! Property-based tests for the `foundation::inventory` model invariants.
 //!
-//! `models_tests.rs` samples cases — the negative-qty panic, the
+//! Moved here 2026-09-28 with the types, from `modules/inventory/src/models_proptests.rs`
+//! (ADR-61 / C26); `foundation::` paths became `crate::` for the same reason
+//! `inventory_tests.rs` records, and the wiring below now names `inventory.rs`.
+//!
+//! `inventory_tests.rs` samples cases — the negative-qty panic, the
 //! `ProductType` round-trip, a non-empty name. These properties range over
 //! the space those samples sit in, on the types where a stored value comes
 //! from outside the process and cannot be trusted: an IPC string in
@@ -13,7 +17,7 @@
 //! goes negative under any interleaving of adjustments and sales"*. **That
 //! contract does not exist in this crate, and asserting it would fail
 //! against correct code.** `WorkspaceInventoryLocation.allow_negative_stock`
-//! (`models.rs:368`) is a documented per-location policy flag, and
+//! (`inventory.rs`) is a documented per-location policy flag, and
 //! `Repository::adjust_stock_tx` (`repository.rs:130`) applies a raw
 //! `UPDATE inventory SET qty = qty + ?1` with no floor — deliberately, so a
 //! location that opts into negative stock can oversell. The only
@@ -26,11 +30,11 @@
 //! rather than quietly dropped, because the difference between "unchecked"
 //! and "checkably false" is the whole point of writing one down.
 //!
-//! Wired from `models.rs` via
-//! `#[cfg(test)] #[path = "models_proptests.rs"] mod proptests;`.
+//! Wired from `inventory.rs` via
+//! `#[cfg(test)] #[path = "inventory_proptests.rs"] mod proptests;`.
 
 use super::*;
-use foundation::money::{Currency, Money};
+use crate::money::{Currency, Money};
 use proptest::prelude::*;
 
 fn usd() -> Currency {
