@@ -43,6 +43,16 @@ which AGENTS.md §7.3 forbids. Excluding the dirty subset is a moving target rat
 **77 commits touched `crates/` in the previous 24 hours.** The sanctioned command is `cargo fmt
 --all` run as a pre-push step, and it wants a quiet window.
 
+
+> **Outcome, same day — commit `1f83abfaf`: 30 of the 31 files are formatted and committed; 1 diff block(s) remain.**
+> The command went from **50 diff blocks across 31 files** to **1** in **modules/inventory/src/handlers_tests.rs**. The 30 fixed
+> files were each verified clean in `git status` *before* the write, so no other lane's in-flight edit was
+> recorded under that commit; the write set was exactly the pre-measured diff set minus the excluded file.
+>
+> The survivor needs one `cargo fmt -p modules-inventory` once its owning lane lands — at measurement time it was
+> **dirty** (`git status` records an uncommitted edit), and formatting another lane's uncommitted file would write
+> into their work, so it was deliberately left. Same quiet-window rule as above, now with a much smaller surface.
+
 ## What would close it
 
 1. **Now:** in a quiet window, `cargo fmt --all`, then `cargo fmt --all -- --check` -> exit 0,
