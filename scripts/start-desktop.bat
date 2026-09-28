@@ -32,6 +32,17 @@ REM      `..\apps\desktop-tauri` suffix is resolved relative to that, so the
 REM      bat works no matter which directory it is invoked from. Do NOT replace
 REM      with an absolute path that ties it to one developer's machine layout.
 REM
+REM  NOTE ON `beforeDevCommand` IN apps\desktop-tauri\tauri.conf.json:
+REM  tauri-cli does NOT run it from the crate directory this bat cd's into.
+REM  It runs the child with the working directory set to the FRONTEND
+REM  directory derived from `frontendDist` -- here `ui\` -- so
+REM  `npm run dev --prefix ../ui` is CORRECT even though it reads one level
+REM  short from apps\desktop-tauri. "Correcting" it to `../../ui` makes npm
+REM  look for C:\dev\ui\package.json, and the dev server never starts.
+REM  (Measured 2026-09-28: `--prefix ../ui` resolves to C:\dev\kasirmu\ui and
+REM  npm finds kasirmu-ui; `--prefix ../../ui` fails with ENOENT on
+REM  C:\dev\ui\package.json.)
+REM
 REM  PREREQS (you install these once, this bat does none of it):
 REM    - Node.js + npm            (node / npm on PATH)
 REM    - Rust toolchain           (rustup + stable)
