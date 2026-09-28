@@ -58,7 +58,7 @@ hit the same class.
 KNOWN LIMIT — SOURCE_MANIFESTS IS A HAND-MAINTAINED LITERAL
 ===========================================================
 
-`SOURCE_MANIFESTS` is a 4-entry literal, not a glob, so THIS GATE CANNOT NOTICE
+`SOURCE_MANIFESTS` is a 6-entry literal, not a glob, so THIS GATE CANNOT NOTICE
 A NEW WINDOWS BINARY: a fifth shipped exe whose manifest asks for
 `requireAdministrator` passes here, because nothing ever asked about it. Do not
 read a green run as "every Windows exe in this repo embeds asInvoker". When you
@@ -112,8 +112,10 @@ TAURI_CONFIGS = sorted((ROOT / "apps").glob("*/tauri.conf.json"))
 # "KNOWN LIMIT" in the module docstring for what to do when you ship one.
 SOURCE_MANIFESTS = [
     ROOT / "apps" / "cloud-server" / "app.manifest",
-    ROOT / "crates" / "kasirmu-cli" / "app.manifest",
+    ROOT / "apps" / "desktop-tauri" / "app.manifest",
     ROOT / "apps" / "license-server" / "app.manifest",
+    ROOT / "apps" / "mobile-tauri" / "app.manifest",
+    ROOT / "crates" / "kasirmu-cli" / "app.manifest",
     ROOT / "scripts" / "updater-compat-check" / "app.manifest",
 ]
 
