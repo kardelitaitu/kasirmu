@@ -62,6 +62,13 @@ REM        -File "%~dp0free-dev-port.ps1" -Port 1420
 REM  (%~dp0 IS scripts\ now, so there is no `scripts\` prefix on the suffix --
 REM  adding one doubles the directory and the -File argument resolves to a path
 REM  inside scripts\scripts\, which does not exist.)
+REM
+REM  PREVIOUS-INSTANCE HANDLING (auto on every startup, Windows only):
+REM  scripts\stop-desktop-instances.ps1 kills `kasirmu-app.exe` /
+REM  `kasirmu-mobile.exe` and then WAITS until the locks they held are actually
+REM  free -- polling, not sleeping a fixed guess. See the comment at the call
+REM  site below for why the wait, not the kill, is the half that decides
+REM  whether the next launch works.
 REM ============================================================================
 setlocal
 
@@ -80,23 +87,26 @@ if errorlevel 1 (
 REM Stop the complete app process tree, not just the Rust parent. WebView2 keeps
 REM renderer/GPU utility children alive after `taskkill /IM` alone; they retain the
 REM EBWebView profile lock and the replacement fails with HRESULT 0x800700AA.
-taskkill /F /T /IM kasirmu-app.exe >nul 2>&1
-if not errorlevel 1 (
-    REM Windows releases a killed tree's memory-mapped handles -- the SQLite
-    REM -shm sidecar and the EBWebView profile lock -- LAZILY, measurably
-    REM later than the processes themselves exit. Starting the replacement
-    REM immediately is what produced HRESULT 0x800700AA ("The requested
-    REM resource is in use") and "unable to open database file" from the
-    REM setup hook on 2026-09-28. Wait ONLY when something was really killed,
-    REM so a clean start pays nothing. `timeout` is used instead of `ping`
-    REM because it exists on every supported Windows build and takes seconds.
-    echo Previous instance stopped; waiting for Windows to release its file locks...
-    timeout /t 3 /nobreak >nul
-)
-taskkill /F /T /IM kasirmu-mobile.exe >nul 2>&1
-if not errorlevel 1 (
-    echo Previous mobile instance stopped; waiting for Windows to release its file locks...
-    timeout /t 3 /nobreak >nul
+REM
+REM The WAIT is the load-bearing half, and scripts\stop-desktop-instances.ps1
+REM owns it: `taskkill /F /T` returns as soon as the processes die, but Windows
+REM releases what they held -- the memory-mapped SQLite -shm sidecar and the
+REM EBWebView profile lock -- LAZILY, measurably later. Launching straight into
+REM that window is what produced HRESULT 0x800700AA and "unable to open
+REM database file" from the setup hook on 2026-09-28. A fixed `timeout /t 3`
+REM was the first fix and is only a guess; the script VERIFIES instead:
+REM it polls until no kasir.mu process and no own WebView2 child remain,
+REM attributing WebView2 children by the `mu.kasir.app` marker in their
+REM --user-data-dir so it never touches Windows Search's. It exits 0 as soon
+REM as the locks are free -- including when nothing was running, so a clean
+REM start pays nothing -- and 1 only at its deadline, which is what the
+REM warning below reports. Do NOT reintroduce a bare `taskkill` here: the
+REM wait is what makes the next launch work.
+echo Stopping any previous kasir.mu instance and waiting for its locks...
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0stop-desktop-instances.ps1"
+if errorlevel 1 (
+    echo [WARNING] A previous instance may still hold the database or WebView2 lock.
+    echo           Launching anyway; the app now retries the database open itself.
 )
 
 REM Sync connectivity: the debug build auto-provisions a connection to the
