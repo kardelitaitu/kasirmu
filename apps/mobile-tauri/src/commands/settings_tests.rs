@@ -1,6 +1,6 @@
 use super::*;
-use kasirmu_core::SyncPriority;
 use kasirmu_core::migrations;
+use kasirmu_core::SyncPriority;
 use rusqlite::Connection;
 
 fn fresh_conn() -> Connection {
@@ -1106,8 +1106,7 @@ const PLAT_RAW_RS: &str = include_str!("../../../../platform/core/src/settings/r
 // `manager_owned_key_refusal` calls the count leg expects moved to `settings/core.rs` (4 literals).
 // One const served both legs before the split, which is why the refusal count read 0 while the code
 // was intact. Two consts, one per concern, so neither can hide the other.
-const BRIDGE_SETTINGS_RS: &str =
-    include_str!("../../../../crates/kasirmu-bridge/src/settings.rs");
+const BRIDGE_SETTINGS_RS: &str = include_str!("../../../../crates/kasirmu-bridge/src/settings.rs");
 const BRIDGE_SETTINGS_CORE_RS: &str =
     include_str!("../../../../crates/kasirmu-bridge/src/settings/core.rs");
 const TABLET_SETTINGS_RS: &str = include_str!("settings.rs");
@@ -2092,11 +2091,9 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
             .await
             .is_ok()
     );
-    assert!(
-        get_store_settings_scoped("owner-token".into(), app.state())
-            .await
-            .is_ok()
-    );
+    assert!(get_store_settings_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
     assert!(
         get_credit_settings_scoped("owner-token".into(), app.state())
             .await
@@ -2111,11 +2108,9 @@ async fn scoped_settings_reads_reach_their_bodies_for_an_owner() {
         get_setting_scoped("owner-token".into(), "store.name".into(), app.state()).await,
         Err(AppError::PermissionDenied(_))
     ));
-    assert!(
-        list_credit_sales_scoped("owner-token".into(), app.state())
-            .await
-            .is_ok()
-    );
+    assert!(list_credit_sales_scoped("owner-token".into(), app.state())
+        .await
+        .is_ok());
 }
 
 // ── T11: the updater's pre-login settings write cannot land ──────────────
