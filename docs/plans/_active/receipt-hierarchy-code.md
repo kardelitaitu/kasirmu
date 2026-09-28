@@ -6,29 +6,34 @@ Plan for a hierarchical, human-readable receipt code built from per-entity index
 ids (location, terminal, staff) plus an annual continuous sequence, supporting
 enterprise scale (10,000+ locations, 10,000+ terminals, 10,000+ staff).
 
-**Status: agreed.** Upgraded to 5-digit decimal segments (`00001`–`99999`) to
-natively support up to 99,999 locations, 99,999 terminals, and 99,999 staff per tenant.
+**Status: agreed.** Upgraded to Base62 (`0–9`, `a–z`, `A–Z`) dynamic-width formatting
+(minimum 2 characters: `00`–`zz`, expanding to 3 characters: `100`–`zzz` when ≥ 3,844).
+Supports 10,000+ entities per tenant with 238,328 capacity per axis while keeping normal
+receipt codes ultra-compact at 22–23 characters.
 
 ---
 
 ## 1. Agreed format
 
 ```
-00001-00002-260929-00015-000123
-│    │     │      │     └────── sequence: continuous, 6 digits (000001–999999 per terminal/year)
-│    │     │      └──────────── staff index: 5 decimal digits (00001–99999 per tenant, 00000 = none)
-│    │     └─────────────────── date: store-local, YYMMDD (6 digits)
-│    └───────────────────────── terminal index: 5 decimal digits (00001–99999 per tenant)
-└────────────────────────────── location index: 5 decimal digits (00001–99999 per tenant)
+01-02-260929-10a-000123
+│  │   │      │  └────── sequence: continuous, 6 digits (000001–999999 per terminal/year)
+│  │   │      └───────── staff: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844; 00 = none)
+│  │   └──────────────── date: store-local, YYMMDD (6 digits)
+│  └──────────────────── terminal: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844)
+└─────────────────────── location: Base62 min 2 chars (01–zz, expands to 100–zzz when ≥ 3,844)
 ```
 
-**31 characters.** Pure decimal digits separated by hyphens.
-- Fits on **1 line** on standard 58 mm thermal receipt printers (Font A: 32 columns; Font B: 42 columns).
-- Fits with 17 columns to spare on 80 mm printers (Font A: 48 columns).
+**22–25 characters.** Base62 alphanumeric segments separated by hyphens.
+- **22 characters** for typical operations where location, terminal, and staff are under 3,844 (e.g. `01-02-260929-05-000123`).
+- **23 characters** when one segment reaches 3 characters (e.g. `01-02-260929-10a-000123` or `a01-02-260929-05-000123`).
+- **25 characters** max when all three segments exceed 3,843 (e.g. `a01-c02-260929-10a-000123`).
+- Fits on **1 line** with huge margins on standard 58 mm thermal receipt printers (Font A: 32 columns; Font B: 42 columns).
+- Fits with > 23 columns to spare on 80 mm printers (Font A: 48 columns).
 - The sequence is **continuous per terminal per fiscal year** — starts at `000001` on 1 January and runs to `999999`, so **999,999 per terminal per year** (2,739/day). It does **not** reset daily.
 
-Sorting is chronological within a fiscal year: `…260929-00015-000123` sorts after
-`…260101-00001-000900`. That is correct for a continuous series — the date segment
+Sorting is chronological within a fiscal year: `…260929-10a-000123` sorts after
+`…260101-01-000900`. That is correct for a continuous series — the date segment
 is the issue date, not part of the ordering key.
 
 
@@ -44,7 +49,7 @@ is the issue date, not part of the ordering key.
 
 ### Separator — hyphens, and keep every field separate
 
-`00001-00002-260929-00015-000123`, **not** `0000100002/260929/00015/000123`. Three reasons:
+`01-02-260929-10a-000123`, **not** `0102/260929/10a/000123`. Three reasons:
 
 1. **`/` cannot safely appear in the payment-link QR.** `receipt.rs:546-549`
    substitutes `{receipt}` into `payment_link_template` with a raw
@@ -52,23 +57,18 @@ is the issue date, not part of the ordering key.
    silently becomes extra path segments; in a query-style template it depends on
    the framework. `-` is inert in both. Wanting slashes is fine, but then the fix
    is to percent-encode at that call site — a separate change with its own risk.
-2. **`0000100002` is ambiguous.** Merged, reading adjacent numbers without
-   separators invites scanning and human transcription errors.
-3. **The delimiter saving buys nothing.** Barcode content is
-   `#00001-00002-260929-00015-000123` (32 chars) against the 41 chars encoded
-   today with UUIDs (`SALE-<36-char uuid>`). In Code 128 Mode C, pure numeric
-   pairs encode at 2 digits per symbol character, making the 31-char string
-   denser and faster to scan than alphanumeric strings.
-
-Keeping the loc/term separator also means a future widening of either index is
-visible in the string instead of silently moving the field boundary.
+2. **Dynamic widths require clear delimiters.** Because segments can be 2 characters
+   (`01`) or 3 characters (`10a`), hyphens ensure exact, unambiguous parsing:
+   `code.split('-')` yields `[loc, term, date, staff, seq]`.
+3. **Barcode fits comfortably.** 22–25 characters easily encodes in Code 128 Mode B/C
+   and QR codes, scanning reliably on 58 mm heads.
 
 ### Decisions taken 2026-09-18 (updated 2026-09-29)
 
 | Question | Decision |
 |---|---|
 | Sixth segment (`01-01`)? | **Dropped.** Five segments. |
-| Scale per axis | **5 decimal digits (`00001`–`99999`)** — supports up to 99,999 locations, 99,999 terminals, 99,999 staff. |
+| Scale per axis | **Base62 dynamic width (`00`–`zz`, expanding to `100`–`zzz` at ≥ 3,844)** — supports up to 238,328 per tenant, keeping normal codes at 22 chars. |
 | Date width | **`YYMMDD`** (6 chars). Counter key is `(terminal, fiscal year)`. |
 | Terminal index scope | **Per tenant**, not per location. |
 | Source of the terminal | **New `sales.terminal_id` column.** |
@@ -122,11 +122,11 @@ receipt whose code says `00002` now resolves to a *different* store. The code st
 being evidence. The index is therefore **not** "the Nth location" — it is an
 immutable badge, allocated monotonically, tombstoned on delete.
 
-Corollary: the allocator must **fail loudly at `99999`**, never wrap. A silent
+Corollary: the allocator must **fail loudly at `238,328`** ($62^3$), never wrap. A silent
 wrap reissues live codes — and with a tax number on the receipt, that is
 falsification.
 
-### 4.2 Enterprise scale: 5 decimal digits covers up to 99,999 per axis (10,000+ support)
+### 4.2 Enterprise scale: Base62 dynamic width (10,000+ support, 22–25 chars)
 
 The original 2-hex draft capped each axis at 256. For enterprise tenants with
 franchises, large mall footprints, or high staff turnover, 256 is inadequate:
@@ -134,11 +134,16 @@ franchises, large mall footprints, or high staff turnover, 256 is inadequate:
 - **10,000 terminals:** multi-lane supermarkets and quick-service restaurant networks operate thousands of POS registers.
 - **10,000 staff:** cashier turnover burns through employee indices over 5–10 years.
 
-**Resolution:** 5 decimal digits (`00001`–`99999`) provides **99,999 unique immutable indices per tenant** for each axis (location, terminal, staff) with `00000` reserved as the sentinel (kiosk / online / unassigned).
-- **Headroom:** 10× safety factor over the 10,000 enterprise requirement.
-- **Readability:** 100% decimal numbers eliminate confusion between `0` and `O`, `1` and `I`.
-- **Thermal printer fit:** 31 characters fits in 1 single line on 58 mm printers (Font A = 32 columns; Font B = 42 columns) and 80 mm printers (Font A = 48 columns).
-- **Barcode density:** Code 128 Mode C pairs adjacent digits together (2 digits per symbol character), so a 31-char string with 27 digits encodes in fewer bar symbols than an alphanumeric 22-char string, scanning reliably on 58 mm heads.
+**Resolution:** Base62 (`0–9`, `a–z`, `A–Z`) with **dynamic width (minimum 2 characters)** provides:
+- **Minimum 2 characters:** `00`–`zz` covers up to **3,844** entities per tenant. `00` is reserved as the "none" sentinel (kiosk / online sale).
+- **Expands to 3 characters:** `100`–`zzz` automatically at $\ge 3,844$, covering up to **238,328** entities ($23.8\times$ the 10,000 requirement).
+- **Headroom:** 238,328 unique immutable indices per tenant for each axis (location, terminal, staff).
+- **Format:**
+  - Standard store (< 3,844 entities): `01-02-260929-05-000123` (**22 characters**).
+  - High turnover staff (≥ 3,844 staff): `01-02-260929-10a-000123` (**23 characters**).
+  - All large (≥ 3,844 loc, term, staff): `a01-c02-260929-10a-000123` (**25 characters**).
+- **Thermal printer fit:** 22–25 characters easily fits on 1 single line on 58 mm printers (Font A = 32 columns; Font B = 42 columns) and 80 mm printers (Font A = 48 columns).
+- **Barcode & QR fit:** Code 128 Mode B and QR codes scan rapidly and reliably on 58 mm heads.
 
 
 ### 4.3 REVISED 2026-09-18 — "Faktur" has two meanings, and one is not ours to design
@@ -240,17 +245,17 @@ new migration.
 
 **New columns** (one SQLite migration; PG side via the generator)
 
-- `locations.index_id INTEGER` — unique per `tenant_id` (1–99,999)
-- `terminals.index_id INTEGER` — unique per `tenant_id` (1–99,999)
-- `users.index_id INTEGER` — unique per `tenant_id` (1–99,999)
+- `locations.index_id INTEGER` — unique per `tenant_id` (1–238,328)
+- `terminals.index_id INTEGER` — unique per `tenant_id` (1–238,328)
+- `users.index_id INTEGER` — unique per `tenant_id` (1–238,328)
 - `sales.terminal_id TEXT` — populated at checkout
-- `sales.display_code TEXT` — the frozen 31-char string
+- `sales.display_code TEXT` — the frozen 22–25 char string
 - `sales.faktur_pajak_nsfp TEXT` — 13 digits, DJP-issued, NULL until approved
 - `sales.faktur_pajak_kode_transaksi TEXT NOT NULL DEFAULT '01'`
 - `sales.faktur_pajak_status TEXT NOT NULL DEFAULT '00'`
 
 All three index columns: monotonic allocator, tombstone on delete, **refuse at
-99,999**, `00000` reserved as the "none" sentinel (kiosk / system sale has no
+238,328** ($62^3$), `0` / `"00"` reserved as the "none" sentinel (kiosk / system sale has no
 staff).
 
 **New table** `receipt_number_counters`
@@ -267,13 +272,16 @@ inside the sale transaction, so a rolled-back sale consumes no number.
 The key is **terminal + year only**, deliberately: the series is continuous, so a
 terminal re-bound to another location must *continue* its counter rather than
 restart it. No collision results — the location segment still differs, so
-`00001-00002-…-000123` and `00003-00002-…-000124` are distinct strings.
+`01-02-…-000123` and `03-02-…-000124` are distinct strings.
 
 **Assembly** — inside the existing checkout tx, beside the statutory claim:
 
 ```
-{loc:05}-{term:05}-{YYMMDD}-{staff:05}-{seq:06}
+{loc_base62}-{term_base62}-{YYMMDD}-{staff_base62}-{seq:06}
 ```
+Where each entity index is formatted via `format_base62_index(idx, min_width=2)`:
+- `idx < 3,844`: pads to 2 Base62 characters (`01`–`zz`, `00` for none/sentinel).
+- `idx >= 3,844`: formats naturally as 3 characters (`100`–`zzz`, up to 238,328).
 
 **Print** — `receipt.rs:427` shows the code; `:541` barcodes the code instead of
 the 41-char UUID. `sales.id` stays the immutable identity everywhere in the DB —
@@ -285,8 +293,9 @@ a separate stored field, printed only once issued.
 ## 6. Phases
 
 1. **Migration + allocator** — index columns, `sales.terminal_id`,
-   `sales.display_code`, counter table, monotonic allocator with tombstone,
-   refuse at 99,999. Tests for concurrency, rollover, and exhaustion.
+   `sales.display_code`, counter table, Base62 dynamic encoder (`format_base62_index`),
+   monotonic allocator with tombstone, refuse at 238,328. Tests for concurrency,
+   rollover, formatting, and exhaustion.
 2. **Per-location timezone** — parameterise the offset resolver; fix the
    `kds.rs` inheritance while touching it.
 3. **Checkout assembly** — claim + freeze + store `display_code`, populate
@@ -303,7 +312,7 @@ a separate stored field, printed only once issued.
 
 ## 7. Remaining
 
-- **Overflow policy at 99,999** (§4.2) — hard refuse confirmed.
+- **Overflow policy at 238,328** (§4.2) — hard refuse confirmed.
 - **Century** (§1) — `YYMMDD` bounds uniqueness to 100 years. Accepted.
 - **Fiscal year** (§5) — assumed to be the calendar year, matching the Indonesian
   tax year. A non-calendar year changes the counter key and nothing else.
