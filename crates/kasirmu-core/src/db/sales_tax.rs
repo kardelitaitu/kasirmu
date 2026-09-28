@@ -23,6 +23,7 @@ use super::*;
 use crate::db::tax::MAX_TAX_RATE_BPS;
 use crate::db::tax::TaxSaleScope;
 use crate::tax_rate::{RoundingMode, TaxRate};
+use rusqlite::OptionalExtension;
 
 impl Store<'_> {
     /// E1: the mode that rounds THIS rate's contribution — the row's
@@ -543,10 +544,16 @@ impl Store<'_> {
                 .query_row(
                     "SELECT category_id FROM products WHERE id = ?1",
                     params![pid],
-                    |row| row.get(0),
+                    // The COLUMN is nullable, so the getter must say so: with
+                    // a bare `row.get(0)` the `optional()?` below infers
+                    // `String`, and a product with NO category (NULL) then
+                    // errors with InvalidColumnType instead of resolving to
+                    // "uncategorized". `flatten()` collapses the row-missing
+                    // and column-NULL cases into the same `None`.
+                    |row| row.get::<_, Option<String>>(0),
                 )
-                .ok()
-                .and_then(|v| v);
+                .optional()?
+                .flatten();
 
             if let Some(cid) = category_id {
                 let cat_rate_ids = self.get_category_tax_rates(&cid)?;

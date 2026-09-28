@@ -12447,6 +12447,33 @@ feature, not to this probe-class sweep. Recorded rather than churned.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 4: a category-probe fault stops billing the tenant-default rate
+
+**Problem:** `Store::resolve_best_tax_rates_for_sku_at` (`crates/kasirmu-core/src/db/sales_tax.rs`)
+picks a sale line's tax rates from three levels: product-assigned, then category-assigned via the
+product's `category_id`, then the store default. The level-2 probe read `category_id` with
+`.ok().and_then(|v| v)`, so a database fault collapsed to `None` — and `None` there means "this
+product has no category". Resolution fell through to level 3 and returned the TENANT-DEFAULT rate.
+The Red test made the money impact literal: an 8% category rate and a 5% default configured, the
+probe faulted, and `resolve_best_tax_rates_for_sku` returned the "Default Store Tax 5%" row — a
+wrong tax rate on a real sale, with no error raised anywhere.
+
+**Solution:** `.optional()?` — but the obvious form was wrong and the suite caught it. Keeping the
+bare `row.get(0)` let inference pick `String`, so a product with a NULL `category_id` — the
+ordinary "no category" case — errored `InvalidColumnType` and broke 12 existing tests, among them
+`resolve_best_tax_rates_falls_back_to_default_store_rate` and
+`resolve_best_tax_rates_returns_empty_when_no_rates_exist`. The correct form names the column's
+nullability in the getter — `row.get::<_, Option<String>>(0)` — and flattens:
+`.optional()?.flatten()`. Row-missing, column-NULL, and DB fault are three distinct outcomes
+again: the first two really are "no category", the third propagates as `CoreError::Db`. The test
+injects the fault by renaming only `products.category_id`, so the failure is the probe's own.
+
+**Verified:** Red first — the new test failed returning the default-rate row; after the fix the
+sales module passed 156/156 and the full `kasirmu-core` lib suite passed **3399 / 0**
+(3398 + 1 new); `cargo fmt --check` and `cargo clippy --all-targets` clean on both touched files.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

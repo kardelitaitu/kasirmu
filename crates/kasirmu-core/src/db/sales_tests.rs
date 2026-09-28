@@ -3928,6 +3928,49 @@ fn resolve_best_tax_rates_returns_empty_when_no_rates_exist() {
     assert!(rates.is_empty());
 }
 
+#[test]
+fn a_db_failure_in_the_category_probe_does_not_bill_the_tenant_default_rate() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    // Arrange: a category-assigned rate AND a different store default, with the
+    // product assigned to the category. Resolving normally must return the
+    // category rate -- level 2 -- and never the default.
+    seed_tax_rate(&conn, "Default Store Tax 5%", 500, true, false);
+    let cat_rate_id = seed_tax_rate(&conn, "Category Tax 8%", 800, false, false);
+    s.create_category("CAT-TEST", "Test Category", "#ffffff", "")
+        .unwrap();
+    s.set_category_tax_rates("CAT-TEST", std::slice::from_ref(&cat_rate_id))
+        .unwrap();
+    seed_product_with_category(&conn, "TEST-SKU", Some("CAT-TEST"));
+
+    let before = s.resolve_best_tax_rates_for_sku("TEST-SKU").unwrap();
+    assert_eq!(
+        before.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+        vec![cat_rate_id.as_str()],
+        "the category level must outrank the store default before any fault is injected"
+    );
+
+    // Force a REAL fault in the product's category-id probe.
+    //
+    // Under the old `.ok().and_then(|v| v)` the failure collapsed to `None`,
+    // and `None` is defined here as "this product has no category" -- so
+    // resolution SILENTLY FELL THROUGH to level 3 and billed the tenant-default
+    // rate (5%) instead of the category's 8%. A wrong tax rate on a sale, with
+    // no error raised anywhere. Renaming only the column the probe reads keeps
+    // the failure the probe's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE products RENAME COLUMN category_id TO category_id_hidden;")
+        .unwrap();
+
+    let err = s
+        .resolve_best_tax_rates_for_sku("TEST-SKU")
+        .expect_err("a DB failure must not silently bill the tenant-default rate");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the category probe must surface the DB fault, got {err:?}"
+    );
+}
+
 // ── Multi-terminal: list_sales_by_user ─────────────────────────
 
 #[test]
