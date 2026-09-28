@@ -349,10 +349,30 @@ a separate stored field, printed only once issued.
   6. `python scripts/generate-pg-migration.py --check` (100% in sync)
   7. `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` (0 dead refs)
 
-### Phase 6: e-Faktur integration (DJP Coretax, next agenda)
-- Stored columns: `faktur_pajak_nsfp` (13 digits), `faktur_pajak_kode_transaksi` (2 digits), `faktur_pajak_status` (2 digits).
-- Post-checkout import endpoint: stamps NSFP when approved in Coretax.
-- Faktur Pengganti lifecycle: preserves original NSFP, increments `faktur_pajak_status` (`00` → `01` → `02`), prints 17-digit DJP number alongside internal nomor faktur.
+### Phase 6: e-Faktur integration (DJP Coretax / PER-11/PJ/2025) (COMPLETED)
+- **Schema & Core Repository (`kasirmu-core`):**
+  - Stored columns on `sales`: `faktur_pajak_nsfp` (13 digits), `faktur_pajak_kode_transaksi` (2 digits, default `01`), `faktur_pajak_status` (2 digits, default `00`).
+  - Validation routines: `validate_nsfp` (exactly 13 ASCII digits) and `validate_kode_transaksi` (`01`–`10` per PER-11/PJ/2025 Pasal 37).
+  - 17-digit assembly: `format_faktur_pajak_17({kodeTransaksi}{status}{nsfp})`.
+  - Repository methods on `Store`: `get_faktur_pajak`, `get_faktur_pajak_map` (batch lookup), `stamp_faktur_pajak`, and `create_faktur_pengganti`.
+  - 11 unit tests in `crates/kasirmu-core/src/db/faktur_pajak_tests.rs`.
+- **Hardware Driver (`kasirmu-hal`):**
+  - Updated `SalesReceipt` with optional `faktur_pajak`.
+  - In `receipt.rs`: prints `Faktur Pajak: {fp}` directly below NPWP when present on receipt.
+  - Unit & contract tests verified in `receipt_tests.rs`.
+- **Headless Bridge & IPC Commands (`kasirmu-bridge`, `apps/desktop-tauri`, `apps/mobile-tauri`):**
+  - `SaleListItem` carries `faktur_pajak: Option<String>` (17-digit code).
+  - `SaleDetail` carries `faktur_pajak: Option<FakturPajakInfo>` (full compliance breakdown).
+  - Endpoints exposed & registered on desktop and mobile: `stamp_faktur_pajak_scoped` and `create_faktur_pengganti_scoped`.
+  - `print_sales_receipt_scoped` carries `faktur_pajak` through to HAL driver.
+- **Frontend UI & Mock Handlers (`ui/`):**
+  - Sales history table renders an e-Faktur badge on stamped sales.
+  - Search filter matches against 17-digit Faktur Pajak numbers.
+  - Sale detail modal displays compliance section with 17-digit code, NSFP, transaction code, and status badge ("Normal" or "Pengganti (XX)").
+  - "Input e-Faktur NSFP" dialog validates 13 digits and supports selection of all 10 transaction codes.
+  - "Create Faktur Pengganti" action increments status code while preserving the original NSFP.
+  - Receipt reprinting passes `fakturPajak` to the thermal printer.
+  - 26 tests pass in `SalesHistoryScreen.test.tsx` (all e-Faktur workflows covered).
 
 ---
 

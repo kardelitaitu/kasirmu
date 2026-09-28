@@ -63,6 +63,8 @@ export interface PrintSalesReceiptArgs {
     change?: { minorUnits: number; currency: string } | null;
   }[];
   tableNumber?: string | null;
+  /** Phase 6: optional 17-digit DJP Faktur Pajak string. */
+  fakturPajak?: string | null;
 }
 
 /** Print a structured sales receipt (scoped — ADR #7). */

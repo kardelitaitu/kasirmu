@@ -18,6 +18,8 @@ vi.mock('@/api/sales', () => ({
   printSalesReceipt: vi.fn(),
   listRefundsScoped: vi.fn(),
   voidSaleScoped: vi.fn(),
+  stampFakturPajakScoped: vi.fn(),
+  createFakturPenggantiScoped: vi.fn(),
 }));
 
 vi.mock('@/api/staff', () => ({
@@ -48,7 +50,15 @@ vi.mock('@/features/sales/RefundModal', () => ({
 }));
 
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
-import { listSales, getSale, listSalesScoped, getSaleScoped, listRefundsScoped } from '@/api/sales';
+import {
+  listSales,
+  getSale,
+  listSalesScoped,
+  getSaleScoped,
+  listRefundsScoped,
+  stampFakturPajakScoped,
+  createFakturPenggantiScoped,
+} from '@/api/sales';
 import { listStaffScoped } from '@/api/staff';
 import { getSaleLineMarginsScoped } from '@/api/reports';
 
@@ -57,6 +67,8 @@ const mockGetSale = getSale as ReturnType<typeof vi.fn>;
 const mockListSalesScoped = listSalesScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleScoped = getSaleScoped as ReturnType<typeof vi.fn>;
 const mockListRefunds = listRefundsScoped as ReturnType<typeof vi.fn>;
+const mockStampFakturPajakScoped = stampFakturPajakScoped as ReturnType<typeof vi.fn>;
+const mockCreateFakturPenggantiScoped = createFakturPenggantiScoped as ReturnType<typeof vi.fn>;
 const mockListStaff = listStaffScoped as ReturnType<typeof vi.fn>;
 const mockGetSaleLineMargins = getSaleLineMarginsScoped as ReturnType<typeof vi.fn>;
 
@@ -524,6 +536,103 @@ describe('SalesHistoryScreen', () => {
         );
       });
       expect(mockGetSale).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Phase 6: e-Faktur integration (DJP Coretax / PER-11/PJ/2025)', () => {
+    it('renders e-Faktur badge on sales list item with fakturPajak', async () => {
+      const salesWithFp = [
+        {
+          ...sampleSales[0],
+          fakturPajak: '01002600000000123',
+        },
+      ];
+      mockListSalesScoped.mockResolvedValue({ sales: salesWithFp, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getByText('e-Faktur')).toBeInTheDocument();
+      });
+    });
+
+    it('displays e-Faktur compliance info and creates faktur pengganti', async () => {
+      const user = userEvent.setup();
+      const fpDetail = {
+        ...sampleDetail,
+        fakturPajak: {
+          nsfp: '2600000000123',
+          kodeTransaksi: '01',
+          status: '00',
+          formatted: '01002600000000123',
+        },
+      };
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(fpDetail);
+      mockListRefunds.mockResolvedValue([]);
+      mockCreateFakturPenggantiScoped.mockResolvedValue({
+        nsfp: '2600000000123',
+        kodeTransaksi: '01',
+        status: '01',
+        formatted: '01012600000000123',
+      });
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByText('01002600000000123')).toBeInTheDocument();
+        expect(screen.getByText('Normal')).toBeInTheDocument();
+        expect(screen.getByText('Create Faktur Pengganti')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Create Faktur Pengganti'));
+      await waitFor(() => {
+        expect(mockCreateFakturPenggantiScoped).toHaveBeenCalledWith('session-1', sampleDetail.id);
+      });
+    });
+
+    it('stamps e-Faktur NSFP on unstamped sale', async () => {
+      const user = userEvent.setup();
+      mockListSalesScoped.mockResolvedValue({ sales: sampleSales, salesHistoryCapped: false });
+      mockListStaff.mockResolvedValue([]);
+      mockGetSaleScoped.mockResolvedValue(sampleDetail);
+      mockListRefunds.mockResolvedValue([]);
+      mockStampFakturPajakScoped.mockResolvedValue({
+        nsfp: '2600000000999',
+        kodeTransaksi: '01',
+        status: '00',
+        formatted: '01002600000000999',
+      });
+
+      renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+      await waitFor(() => {
+        expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+      });
+      await user.click(screen.getAllByText('View')[0]!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Belum ada e-Faktur (Unstamped)')).toBeInTheDocument();
+        expect(screen.getByText('Input e-Faktur NSFP')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Input e-Faktur NSFP'));
+      expect(screen.getByText('Input e-Faktur NSFP (DJP Coretax)')).toBeInTheDocument();
+
+      const nsfpInput = screen.getByLabelText('13-Digit NSFP');
+      await user.type(nsfpInput, '2600000000999');
+
+      await user.click(screen.getByRole('button', { name: 'Stamp e-Faktur' }));
+      await waitFor(() => {
+        expect(mockStampFakturPajakScoped).toHaveBeenCalledWith('session-1', {
+          saleId: sampleDetail.id,
+          nsfp: '2600000000999',
+          kodeTransaksi: '01',
+        });
+      });
     });
   });
 });

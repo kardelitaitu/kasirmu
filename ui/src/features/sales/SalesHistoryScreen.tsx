@@ -10,6 +10,8 @@ import {
   printSalesReceipt,
   listRefundsScoped,
   voidSaleScoped,
+  stampFakturPajakScoped,
+  createFakturPenggantiScoped,
   type SaleListItem,
   type SaleDetail,
   type RefundDto,
@@ -111,9 +113,14 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
       {...swipe}
     >
       <td className="sales-history-cell-id">{sale.id.slice(0, 8)}&hellip;</td>
-      {/* Phase 4: the frozen receipt hierarchy code; dash when the sale
-          predates the code / had no known terminal. */}
-      <td className="sales-history-cell-receipt">{sale.displayCode ?? '\u2014'}</td>
+      <td className="sales-history-cell-receipt">
+        <div>{sale.displayCode ?? '\u2014'}</div>
+        {sale.fakturPajak && (
+          <span style={{ display: 'inline-block', marginTop: '2px' }} title={`Faktur Pajak: ${sale.fakturPajak}`}>
+            <Badge variant="info" size="sm">e-Faktur</Badge>
+          </span>
+        )}
+      </td>
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
       <td className="sales-history-cell-total">{formatMoney(sale.total)}</td>
       <td>{sale.lineCount}</td>
@@ -205,6 +212,13 @@ export default function SalesHistoryScreen() {
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
   const [lineMargins, setLineMargins] = useState<SaleLineMarginDto[]>([]);
+  // ── e-Faktur state (DJP Coretax) ───────────────────────────────────
+  const [showStampModal, setShowStampModal] = useState(false);
+  const [stampNsfp, setStampNsfp] = useState('');
+  const [stampKodeTransaksi, setStampKodeTransaksi] = useState('01');
+  const [stamping, setStamping] = useState(false);
+  const [stampError, setStampError] = useState<string | null>(null);
+  const [penggantiLoading, setPenggantiLoading] = useState(false);
 
   // P2-4: Sale detail cache — avoids re-fetching the same sale on modal re-open.
   // Invalidated when a sale is voided or refunded (status-changing events).
@@ -341,9 +355,10 @@ export default function SalesHistoryScreen() {
         const q = searchQuery.toLowerCase();
         const idMatch = s.id.toLowerCase().includes(q);
         const codeMatch = (s.displayCode ?? '').toLowerCase().includes(q);
+        const fpMatch = (s.fakturPajak ?? '').toLowerCase().includes(q);
         const pmMatch = (s.paymentMethod ?? '').toLowerCase().includes(q);
         const uidMatch = (s.userId ?? '').toLowerCase().includes(q);
-        if (!idMatch && !codeMatch && !pmMatch && !uidMatch) return false;
+        if (!idMatch && !codeMatch && !fpMatch && !pmMatch && !uidMatch) return false;
       }
 
       // Status filter.
@@ -491,6 +506,7 @@ export default function SalesHistoryScreen() {
               : null,
           },
         ],
+        fakturPajak: detail.fakturPajak?.formatted ?? null,
       });
     } catch (printErr) {
       // Was `catch { /* Ignore print errors. */ }` — the quietest failure on this
@@ -512,6 +528,71 @@ export default function SalesHistoryScreen() {
     // button that stops doing anything. Listing the token at least makes the next attempt use
     // a live one.
   }, [detail, l10n, sessionToken, addToast]);
+
+  // ── e-Faktur handlers (DJP Coretax / PER-11/PJ/2025) ──────────────
+  const handleOpenStamp = useCallback(() => {
+    setStampNsfp('');
+    setStampKodeTransaksi('01');
+    setStampError(null);
+    setShowStampModal(true);
+  }, []);
+
+  const handleCloseStamp = useCallback(() => {
+    setShowStampModal(false);
+    setStampError(null);
+  }, []);
+
+  const handleConfirmStamp = useCallback(async () => {
+    if (!detail || !sessionToken) return;
+    const cleanNsfp = stampNsfp.replace(/\D/g, '');
+    if (cleanNsfp.length !== 13) {
+      setStampError('NSFP must be exactly 13 digits (PER-11/PJ/2025)');
+      return;
+    }
+    setStamping(true);
+    setStampError(null);
+    try {
+      const updated = await stampFakturPajakScoped(sessionToken, {
+        saleId: detail.id,
+        nsfp: cleanNsfp,
+        kodeTransaksi: stampKodeTransaksi,
+      });
+      setDetail((prev) => (prev ? { ...prev, fakturPajak: updated } : null));
+      invalidateCache(detail.id);
+      load();
+      setShowStampModal(false);
+      addToast({
+        message: 'e-Faktur NSFP successfully stamped',
+        type: 'success',
+      });
+    } catch (err) {
+      setStampError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStamping(false);
+    }
+  }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast]);
+
+  const handleCreatePengganti = useCallback(async () => {
+    if (!detail || !sessionToken || !detail.fakturPajak) return;
+    setPenggantiLoading(true);
+    try {
+      const updated = await createFakturPenggantiScoped(sessionToken, detail.id);
+      setDetail((prev) => (prev ? { ...prev, fakturPajak: updated } : null));
+      invalidateCache(detail.id);
+      load();
+      addToast({
+        message: `Faktur Pengganti created (${updated.formatted})`,
+        type: 'success',
+      });
+    } catch (err) {
+      addToast({
+        message: err instanceof Error ? err.message : String(err),
+        type: 'error',
+      });
+    } finally {
+      setPenggantiLoading(false);
+    }
+  }, [detail, sessionToken, invalidateCache, load, addToast]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {
@@ -1133,6 +1214,91 @@ export default function SalesHistoryScreen() {
         </Localized>
       )}
 
+      {/* ── Stamp e-Faktur Modal (PER-11/PJ/2025) ──────────────────── */}
+      {showStampModal && (
+        <div className="sales-history-overlay" role="dialog" aria-modal="true" aria-label="Stamp e-Faktur NSFP">
+          <div className="sales-history-modal sales-history-stamp-modal" style={{ maxWidth: '460px' }}>
+            <div className="sales-history-modal-header">
+              <h2><span>Input e-Faktur NSFP (DJP Coretax)</span></h2>
+              <button
+                type="button"
+                className="sales-history-modal-close"
+                onClick={handleCloseStamp}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="sales-history-modal-body">
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted, #64748b)', marginBottom: '1rem' }}>
+                Masukkan 13-digit Nomor Seri Faktur Pajak (NSFP) yang diterbitkan oleh DJP Coretax untuk transaksi ini.
+              </p>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label htmlFor="stamp-kode-transaksi" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  Kode Transaksi (PER-11/PJ/2025)
+                </label>
+                <select
+                  id="stamp-kode-transaksi"
+                  value={stampKodeTransaksi}
+                  onChange={(e) => setStampKodeTransaksi(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)' }}
+                >
+                  <option value="01">01 - Penyerahan BKP/JKP kepada selain Pemungut PPN</option>
+                  <option value="02">02 - Penyerahan BKP/JKP kepada Pemungut Bendaharawan Pemerintah</option>
+                  <option value="03">03 - Penyerahan BKP/JKP kepada Pemungut selain Bendaharawan</option>
+                  <option value="04">04 - Penyerahan BKP/JKP yang PPN-nya Dipungut dengan Besaran Tertentu</option>
+                  <option value="05">05 - Penyerahan BKP/JKP Tertentu</option>
+                  <option value="06">06 - Penyerahan Lainnya</option>
+                  <option value="07">07 - Penyerahan BKP/JKP yang PPN-nya Tidak Dipungut</option>
+                  <option value="08">08 - Penyerahan BKP/JKP yang Dibebaskan dari Pengenaan PPN</option>
+                  <option value="09">09 - Penyerahan BKP berupa Aktiva (Pasal 16D UU PPN)</option>
+                  <option value="10">10 - Penyerahan BKP/JKP dengan PPN Ditanggung Pemerintah (DTP)</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label htmlFor="stamp-nsfp" style={{ display: 'block', fontSize: '0.8125rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                  13-Digit NSFP
+                </label>
+                <input
+                  id="stamp-nsfp"
+                  type="text"
+                  maxLength={13}
+                  placeholder="e.g. 2600000000123"
+                  value={stampNsfp}
+                  onChange={(e) => setStampNsfp(e.target.value.replace(/\D/g, ''))}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color, #cbd5e1)', fontFamily: 'monospace' }}
+                />
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                  Format Faktur Pajak: <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{stampKodeTransaksi}00{stampNsfp.padEnd(13, '·')}</span>
+                </div>
+              </div>
+
+              {stampError && (
+                <div className="sales-history-void-error" role="alert" style={{ marginBottom: '1rem' }}>
+                  {stampError}
+                </div>
+              )}
+
+              <div className="sales-history-modal-actions">
+                <Button variant="ghost" onClick={handleCloseStamp} disabled={stamping}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleConfirmStamp}
+                  loading={stamping}
+                  disabled={stampNsfp.length !== 13}
+                >
+                  Stamp e-Faktur
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Detail modal ────────────────────────────────────────── */}
       {detailExit.shouldRender && detail && (
         <Localized id="sales-history-detail-overlay-aria" attrs={{ 'aria-label': true }}>
@@ -1260,6 +1426,61 @@ export default function SalesHistoryScreen() {
                           <span>Refunded</span>
                         </Localized>
                       </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── e-Faktur Section (DJP Coretax / PER-11/PJ/2025) ── */}
+                <div
+                  className="sales-history-efaktur-section"
+                  style={{
+                    margin: '1rem 0',
+                    padding: '0.75rem 1rem',
+                    background: 'var(--bg-subtle, #f8f9fa)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color, #e2e8f0)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>e-Faktur (DJP Coretax)</div>
+                      {detail.fakturPajak ? (
+                        <div style={{ fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{detail.fakturPajak.formatted}</span>
+                          <Badge variant="success">
+                            {detail.fakturPajak.status === '00' ? 'Normal' : `Pengganti (${detail.fakturPajak.status})`}
+                          </Badge>
+                          <span style={{ color: 'var(--text-muted, #64748b)' }}>
+                            NSFP: {detail.fakturPajak.nsfp} | Kode: {detail.fakturPajak.kodeTransaksi}
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted, #64748b)', marginTop: '0.25rem' }}>
+                          Belum ada e-Faktur (Unstamped)
+                        </div>
+                      )}
+                    </div>
+                    {session && isManager && (
+                      <div>
+                        {detail.fakturPajak ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleCreatePengganti}
+                            loading={penggantiLoading}
+                          >
+                            Create Faktur Pengganti
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleOpenStamp}
+                          >
+                            Input e-Faktur NSFP
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
