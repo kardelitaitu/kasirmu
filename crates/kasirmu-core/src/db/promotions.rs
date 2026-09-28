@@ -6,6 +6,8 @@ findings: clean CRUD; update_promotion validates only the name while create also
 next: extend update validation | perf: N/A
 */
 
+use std::collections::HashMap;
+
 use rusqlite::params;
 
 use crate::error::CoreError;
@@ -284,12 +286,18 @@ impl Store<'_> {
 
         // Category scope resolution: SKU -> product category. Only
         // consulted when the promotion carries a category_id.
-        let category_of = |sku: &str| {
-            self.get_product(sku)
-                .ok()
-                .flatten()
-                .and_then(|p| p.product.category_id)
-        };
+        let mut categories = HashMap::new();
+        if promo.category_id.is_some() {
+            for line in &sale.lines {
+                if !categories.contains_key(&line.sku) {
+                    let cat = self
+                        .get_product(&line.sku)?
+                        .and_then(|p| p.product.category_id);
+                    categories.insert(line.sku.clone(), cat);
+                }
+            }
+        }
+        let category_of = |sku: &str| categories.get(sku).cloned().flatten();
         let discount_minor = crate::compute_discount(&promo, &sale, now, category_of)?;
 
         let app = PromotionApplication {
@@ -416,12 +424,18 @@ impl Store<'_> {
 
             // Category scope resolution: SKU -> product category. Only
             // consulted when the promotion carries a category_id.
-            let category_of = |sku: &str| {
-                self.get_product(sku)
-                    .ok()
-                    .flatten()
-                    .and_then(|p| p.product.category_id)
-            };
+            let mut categories = HashMap::new();
+            if promo.category_id.is_some() {
+                for line in &sale.lines {
+                    if !categories.contains_key(&line.sku) {
+                        let cat = self
+                            .get_product(&line.sku)?
+                            .and_then(|p| p.product.category_id);
+                        categories.insert(line.sku.clone(), cat);
+                    }
+                }
+            }
+            let category_of = |sku: &str| categories.get(sku).cloned().flatten();
             let discount_minor = crate::compute_discount(&promo, sale, now, category_of)?;
 
             let remaining = sale

@@ -12767,6 +12767,24 @@ UTC fallback, nine-module blast radius) and the cloud's `pg-tests` arms.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 14: promotion category resolution stops swallowing product DB errors
+
+**Problem:** `Store::apply_promotion_to_sale` and `Store::apply_promotions_batch`
+(`crates/kasirmu-core/src/db/promotions.rs`) resolved product categories for category-scoped
+promotions via `self.get_product(sku).ok().flatten().and_then(|p| p.product.category_id)`.
+Any database read or type-conversion fault when looking up the product collapsed into `None`
+via `.ok()`. This caused category-scoped promotions to view eligible products as uncategorized,
+silently reducing or eliminating discounts (e.g. charging full price without error).
+
+**Solution:** Pre-resolve the product categories of the sale's lines when `promo.category_id.is_some()`,
+propagating any database error with `self.get_product(&line.sku)?` before discount evaluation.
+
+**Verified:** Red first (`apply_category_promotion_propagates_db_error_when_resolving_product`
+panicked with `a database error resolving product category must not silently collapse to zero discount: PromotionApplication { ... discount_minor: 0 ... }`).
+After the fix, the test passed, all 40 promotions tests passed, and formatting was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

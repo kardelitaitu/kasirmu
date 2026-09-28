@@ -702,3 +702,64 @@ fn apply_missing_promotion_is_not_found() {
         .unwrap_err();
     assert!(matches!(err, CoreError::NotFound { ref entity, .. } if entity == &"promotion"));
 }
+
+#[test]
+fn apply_category_promotion_propagates_db_error_when_resolving_product() {
+    let store_db = migrations::fresh_db();
+    let store = setup(&store_db);
+
+    // Create category and product with category "cat-drinks"
+    store_db
+        .execute(
+            "INSERT INTO categories (id, name, created_at, updated_at) VALUES ('cat-drinks', 'Drinks', '2025-01-01', '2025-01-01')",
+            [],
+        )
+        .unwrap();
+    store
+        .create_product(
+            "COFFEE",
+            "Coffee",
+            usd_money(350),
+            Some("cat-drinks"),
+            None,
+            100,
+            None,
+        )
+        .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("COFFEE"), 2, usd_money(350)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    store.create_sale(&sale).unwrap();
+
+    let mut p = test_promo("promo-cat");
+    p.category_id = Some("cat-drinks".into());
+    store.create_promotion(&p).unwrap();
+
+    // Verify healthy application works and discounts 10% of 700 = 70
+    let app = store
+        .apply_promotion_to_sale(&sale.id, "promo-cat", chrono::Utc::now())
+        .unwrap();
+    assert_eq!(app.discount_minor, 70);
+
+    // Create a second sale
+    let sale2 = Sale::from_cart(&cart).unwrap();
+    store.create_sale(&sale2).unwrap();
+
+    // Corrupt products table price_minor with invalid blob data so get_product fails
+    store_db
+        .execute(
+            "UPDATE products SET price_minor = X'FFFF' WHERE sku = 'COFFEE'",
+            [],
+        )
+        .unwrap();
+
+    let err = store
+        .apply_promotion_to_sale(&sale2.id, "promo-cat", chrono::Utc::now())
+        .expect_err("a database error resolving product category must not silently collapse to zero discount");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
