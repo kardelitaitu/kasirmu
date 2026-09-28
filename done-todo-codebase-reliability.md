@@ -1610,6 +1610,28 @@ Recorded so the question does not get re-litigated every few weeks.
 
 **STATUS 2026-09-28: 18 of 19 items resolved. ONE remains open (P2-5).**
 
+**ONE KNOWN DIVERGENCE, handed off rather than left to be rediscovered.** The
+i128 round-half-up money conversion — `((num * 2 + den) / (den * 2))` — exists at
+TWO sites, and they are the same behaviour by the code's own account:
+`db/refunds.rs:750` documents itself as *"the ONE writer of this effect"* and
+cross-references *"like [`crate::db::loyalty::reverse_loyalty_on_refund`]"*.
+- `db/loyalty.rs:814` — **converted** to `i64::try_from(..).map_err(..)` by
+  P2-5 round 4 (commit `fe4e6f808`), so an out-of-range result is a named error.
+- `db/refunds.rs:750` — still `as i64`, so the same expression still wraps
+  silently.
+This is NOT an open checklist item and NOT a claim of a live bug: the quotient is
+bounded by the sale's own minor units in practice. It is recorded because a
+partially-applied fix is worse than an unapplied one — the next reader who greps
+for the pattern will find one converted site and one not, with no note saying
+which is correct. `refunds.rs` was dirty under a concurrent session throughout
+P2-5, so the fix could not be applied here. **Applying `i64::try_from` at
+`refunds.rs:750` the way `loyalty.rs:814` does is the whole change.**
+Also outstanding from the same round, same reason: `db/staff/login.rs` has 10
+correctness-adjacent lints (a `window_secs as i64` wrap plus four
+`count as usize` sign-loss pairs in the lockout-strike arithmetic) and
+`license_verification.rs:108` has `as_millis() as u64`. All three files are the
+concurrent session's.
+
 The original staging below is kept for the reasoning it records — why each item
 came where it did — with its outcome marked. Read it as history, not a plan.
 
