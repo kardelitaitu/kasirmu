@@ -2144,3 +2144,74 @@ fn a_db_failure_in_the_rate_probe_is_not_reported_as_not_found() {
          which also hides the real fault; got {err:?}"
     );
 }
+
+#[test]
+fn a_db_failure_in_the_scope_and_window_probes_is_not_reported_as_no_such_rate() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    let rate = s
+        .create_tax_rate_scoped(
+            "Rate",
+            1000,
+            true,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow {
+                effective_from: Some("2026-01-01".into()),
+                effective_to: None,
+            },
+        )
+        .unwrap();
+
+    // Force a REAL database error in both one-row probes: rename the table they
+    // read, so the query fails for a reason that is not "no such row".
+    //
+    // Under the old `.ok()` each probe collapsed to `None`, and `None` is
+    // defined as "no such active row". So a failing database was reported as
+    // "this rate has no scope" and "this rate has no window" -- both wrong
+    // diagnoses, and both of them consume the money path: the authoring screen
+    // (`list_tax_rate_scopes`) and the sale resolver read them.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME TO tax_rates_hidden;")
+        .unwrap();
+
+    let scope_err = s
+        .tax_rate_scope(&rate.id)
+        .expect_err("a DB failure must not read as 'no such rate'");
+    assert!(
+        matches!(scope_err, CoreError::Db(_)),
+        "tax_rate_scope must surface the DB fault, got {scope_err:?}"
+    );
+
+    let window_err = s
+        .tax_rate_window(&rate.id)
+        .expect_err("a DB failure must not read as 'no such window'");
+    assert!(
+        matches!(window_err, CoreError::Db(_)),
+        "tax_rate_window must surface the DB fault, got {window_err:?}"
+    );
+}
+
+#[test]
+fn a_db_failure_in_the_entity_probe_is_not_reported_as_no_entity_assigned() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+
+    // Same forced-fault idiom as the sibling above. `None` from
+    // `location_legal_entity` means "this location has no legal entity
+    // assigned", and that answer SKIPS level 2 of the resolver walk
+    // (`resolve_tax_rate_for_location`) and the assignment filter
+    // (`db/sales_tax.rs`). A database that cannot answer must not be handed
+    // back as "the entity level does not apply".
+    conn.execute_batch("ALTER TABLE locations RENAME TO locations_hidden;")
+        .unwrap();
+
+    let err = s
+        .location_legal_entity("loc-a")
+        .expect_err("a DB failure must not read as 'no entity assigned'");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "location_legal_entity must surface the DB fault, got {err:?}"
+    );
+}

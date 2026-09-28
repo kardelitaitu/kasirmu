@@ -12318,6 +12318,48 @@ mount — false, the node is a sibling before `#root`; `index.mobile.html` docum
 `22caae2d5` fix(ui): scope important motion declarations to no-preference — plus this docs entry.
 
 
+### 2026-09-28 — TDD round 1: the tax scope/window/entity probes no longer swallow a DB fault
+
+**Problem:** Three one-row readers in `crates/kasirmu-core/src/db/tax/scopes.rs` ended their
+`query_row` in a bare `.ok()` — `tax_rate_scope` (`:490`), `tax_rate_window` (`:294`) and
+`location_legal_entity` (`:524`) — and `tax_rate_applies_at` (`:564`) did the same. A bare
+`.ok()` collapses EVERY `rusqlite::Error` to `None`, and `None` is defined by these methods as
+"no such active row" / "no entity assigned". So a DB failure was reported as a configuration
+answer: the authoring screen (`list_tax_rate_scopes` callers, bridge `tax.rs:296`, tablet
+`tax.rs:114`) and the sale path (`db/sales_tax.rs:511`, `:517`) were handed "this rate has no
+scope", "this rate has no window" and "this location has no legal entity" while the database was
+actually failing. The entity answer is the one with a money consequence: `Some(s) =>
+self.location_legal_entity(&s.location_id)?` in `sales_tax.rs` decides whether level 2 of the
+resolver walk applies at all.
+
+This is the exact MSL-27 class the same file already documents fixing twice — `update_tax_rate_scoped`
+(`:133`) and `validate_scope_target` (`:250`) both carry comments naming the `.ok()` trap — so the
+defect was a known pattern that had not been swept to these four probes.
+
+**Solution:** Each probe now uses `.optional()?` — rusqlite's idiom that maps ONLY
+`QueryReturnedNoRows` to `None` and propagates every other error as `CoreError::Db`. Two Red-first
+tests in `db/tax_tests.rs` force a real fault the way the sibling MSL-27 pin does
+(`ALTER TABLE ... RENAME TO ..._hidden`) and assert the failure surfaces as `CoreError::Db`, not as
+`None`. Both went red for the right reason ("a DB failure must not read as 'no such rate': None")
+before the fix and green after.
+
+**Verified:** full `kasirmu-core` lib suite **3395 passed / 0 failed**; tax module 80/80;
+`cargo fmt -p kasirmu-core -- --check` reports no diff in either touched file (the two diffs it does
+report are pre-existing, in `user_tests.rs`, and are the red recorded in
+`docs/records/snapshots/2026-09-28-rustfmt-gate-red.md`); `cargo clippy -p kasirmu-core --all-targets`
+emits no diagnostic naming either touched file (6 pre-existing errors elsewhere).
+
+**Deliberately NOT done:** the same `.ok()` shape still stands at 14 sites across `db/` — `kds_lines.rs:154`,
+`kds_orders.rs:442`, `loyalty.rs:674`, `popularity.rs:591`/`:627`, `promotions.rs:289`/`:421`,
+`products_stock_adjust/adjust.rs:466`/`:475`, `sales_tax.rs:548` and others — plus `tax/scopes.rs:629`
+(the last-coverage guard's own read, where a swallowed fault reads as "nothing is covered" and
+DECLINES a refusal the guard exists to raise). Whether each of those is a bug depends on what its
+`None` means to its caller, so the sweep is a per-site TDD slice, not a mechanical replace. That is
+round 2+.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

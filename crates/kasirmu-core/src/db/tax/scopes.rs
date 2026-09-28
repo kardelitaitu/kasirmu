@@ -291,7 +291,7 @@ impl Store<'_> {
                     })
                 },
             )
-            .ok())
+            .optional()?)
     }
 
     /// Every active rate's scope and window, in one read.
@@ -487,7 +487,7 @@ impl Store<'_> {
                 params![rate_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .ok();
+            .optional()?;
         let Some((entity, location)) = pair else {
             return Ok(None);
         };
@@ -520,7 +520,7 @@ impl Store<'_> {
                 rusqlite::params![location_id],
                 |row| row.get::<_, Option<String>>(0),
             )
-            .ok()
+            .optional()?
             .flatten())
     }
 
@@ -561,7 +561,7 @@ impl Store<'_> {
                     ))
                 },
             )
-            .ok();
+            .optional()?;
         let Some((entity, location, from, to)) = row else {
             return Ok(false);
         };
