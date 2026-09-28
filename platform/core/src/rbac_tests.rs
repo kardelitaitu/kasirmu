@@ -458,8 +458,7 @@ fn role_preset_names_are_title_case() {
         assert!(!name.is_empty(), "role name must not be empty");
         assert!(
             name.chars().next().unwrap().is_uppercase(),
-            "role name '{}' should start with uppercase",
-            name
+            "role name '{name}' should start with uppercase"
         );
     }
 }

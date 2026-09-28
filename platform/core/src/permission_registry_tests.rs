@@ -761,9 +761,8 @@ fn every_family_has_operational_key() {
         let has_operational = REGISTRY.iter().any(|e| e.family == family && !e.sensitive);
         assert!(
             has_operational,
-            "family '{}' has NO operational (non-sensitive) keys — \
-                 family wildcards will always be rejected",
-            family
+            "family '{family}' has NO operational (non-sensitive) keys — \
+                 family wildcards will always be rejected"
         );
     }
 }
