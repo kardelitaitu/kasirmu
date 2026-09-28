@@ -66,8 +66,27 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0free-dev-port.ps1"
 if errorlevel 1 (
     echo [WARNING] Could not cleanly free port 1420. Tauri may fail to start.
 )
-taskkill /F /IM kasirmu-app.exe >nul 2>&1
-taskkill /F /IM kasirmu-mobile.exe >nul 2>&1
+REM Stop the complete app process tree, not just the Rust parent. WebView2 keeps
+REM renderer/GPU utility children alive after `taskkill /IM` alone; they retain the
+REM EBWebView profile lock and the replacement fails with HRESULT 0x800700AA.
+taskkill /F /T /IM kasirmu-app.exe >nul 2>&1
+if not errorlevel 1 (
+    REM Windows releases a killed tree's memory-mapped handles -- the SQLite
+    REM -shm sidecar and the EBWebView profile lock -- LAZILY, measurably
+    REM later than the processes themselves exit. Starting the replacement
+    REM immediately is what produced HRESULT 0x800700AA ("The requested
+    REM resource is in use") and "unable to open database file" from the
+    REM setup hook on 2026-09-28. Wait ONLY when something was really killed,
+    REM so a clean start pays nothing. `timeout` is used instead of `ping`
+    REM because it exists on every supported Windows build and takes seconds.
+    echo Previous instance stopped; waiting for Windows to release its file locks...
+    timeout /t 3 /nobreak >nul
+)
+taskkill /F /T /IM kasirmu-mobile.exe >nul 2>&1
+if not errorlevel 1 (
+    echo Previous mobile instance stopped; waiting for Windows to release its file locks...
+    timeout /t 3 /nobreak >nul
+)
 
 REM Sync connectivity: the debug build auto-provisions a connection to the
 REM cloud server (https://license.kasir.mu). The health endpoint check

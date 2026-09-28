@@ -226,14 +226,26 @@ impl AppState {
                 .map_err(|e| AppError::Internal(format!("creating db dir {parent:?}: {e}")))?;
         }
 
-        let mut conn = Connection::open(&db_path)
-            .map_err(|e| AppError::Internal(format!("opening {db_path:?}: {e}")))?;
-        conn.busy_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| AppError::Internal(format!("setting busy_timeout: {e}")))?;
-        conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| AppError::Internal(format!("enabling foreign_keys: {e}")))?;
-        conn.pragma_update(None, "journal_mode", "WAL")
-            .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
+        // ── Open, with stale-`-shm` recovery ─────────────────────────────
+        // `scripts/start-desktop.bat` stops a previous dev instance with
+        // `taskkill /F /T`, and `cargo tauri dev` restarts the binary after
+        // every Rust edit. Windows releases a memory-mapped `-shm` sidecar
+        // LAZILY, measurably later than the owning process exits, so the
+        // successor finds the file still mapped and the first statement that
+        // touches the database fails with SQLITE_CANTOPEN — "unable to open
+        // database file" (observed 2026-09-28, setup hook panicked).
+        //
+        // Every step that can raise that code lives inside
+        // `open_store_connection`, which re-deletes the stale `-shm` and
+        // retries. Coverage of the *whole* open sequence, not only the
+        // journal-mode transition, is the point: on a database whose header
+        // already says WAL the transition is skipped, so a retry wrapped
+        // around the transition alone would never run — and the plain
+        // `Connection::open` above is lazy, meaning the failure surfaces on
+        // whichever pragma happens to touch the file first.
+        // The `-wal` file is left intact so WAL recovery can commit its
+        // frames on the next open.
+        let mut conn = open_store_connection(&db_path)?;
 
         // ── Writability gate (fail loud, and say why) ─────────────────
         // SQLite reports BOTH a lock held by another process and a permission that
@@ -820,6 +832,110 @@ pub(crate) fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     }
 
     Ok(dir.join("kasir.db"))
+}
+
+/// One attempt at opening the store database at `db_path`.
+///
+/// Returns the failing step beside the underlying `rusqlite` error so the
+/// caller can read the SQLite error code: `CannotOpen` is recoverable (a
+/// stale `-shm` mapping), anything else is not.
+fn open_store_connection_once(
+    db_path: &std::path::Path,
+) -> Result<Connection, (&'static str, rusqlite::Error)> {
+    let conn = Connection::open(db_path).map_err(|e| ("opening", e))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| ("setting busy_timeout on", e))?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| ("enabling foreign_keys on", e))?;
+
+    // A database already using WAL records that fact in its file header at a
+    // fixed offset. Asking SQLite (`PRAGMA journal_mode`) would itself open
+    // the `-shm` sidecar and can fail with the very CANTOPEN we are trying to
+    // survive, before telling us anything; read the header instead. Only a
+    // new or legacy rollback-journal database needs the write-like
+    // journal-mode transition, which is the slowest of the three steps.
+    if sqlite_header_uses_wal(db_path) {
+        tracing::debug!("database header already specifies WAL; skipping journal-mode transition");
+    } else {
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(|e| ("enabling WAL on", e))?;
+    }
+    Ok(conn)
+}
+
+/// Open the store database, retrying past a stale `-shm` memory mapping.
+///
+/// See the call site in [`AppState::new`] for why the recovery has to wrap
+/// the whole open sequence rather than one pragma.
+fn open_store_connection(db_path: &std::path::Path) -> Result<Connection, AppError> {
+    const ATTEMPTS: u8 = 8;
+    const RETRY_DELAY_MS: u64 = 250;
+
+    let shm_path = {
+        let mut p = db_path.to_path_buf();
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string()
+            + "-shm";
+        p.set_file_name(name);
+        p
+    };
+
+    let mut last: Option<(&'static str, rusqlite::Error)> = None;
+    for attempt in 0..ATTEMPTS {
+        match open_store_connection_once(db_path) {
+            Ok(conn) => return Ok(conn),
+            Err((step, e)) => {
+                if e.sqlite_error_code() != Some(rusqlite::ffi::ErrorCode::CannotOpen) {
+                    return Err(AppError::Internal(format!("{step} {db_path:?}: {e}")));
+                }
+                tracing::warn!(
+                    attempt,
+                    step,
+                    shm = %shm_path.display(),
+                    "database open failed with SQLITE_CANTOPEN (stale -shm mapping from a \
+                     previous instance); deleting the stale sidecar and retrying"
+                );
+                let _ = std::fs::remove_file(&shm_path);
+                last = Some((step, e));
+                if attempt + 1 < ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                }
+            }
+        }
+    }
+
+    // INVARIANT: the loop returns on success and records every failure, so one exists here.
+    let (step, e) = last.expect("a failed open records its error before the loop ends");
+    Err(AppError::Internal(format!(
+        "{step} {db_path:?}: {e} (after {ATTEMPTS} attempts with stale -shm cleanup)"
+    )))
+}
+
+/// Whether the SQLite file header at `path` declares WAL.
+///
+/// Offsets 18 and 19 of the 100-byte header are the file-format write and
+/// read versions; `2` means WAL in both. Anything unverifiable — missing
+/// file, shorter than the header, wrong magic, unreadable — is reported as
+/// "not WAL" so the caller falls through to the journal-mode transition,
+/// which then surfaces the real problem if there is one.
+fn sqlite_header_uses_wal(path: &std::path::Path) -> bool {
+    use std::io::Read as _;
+
+    let mut header = [0u8; 20];
+    let mut file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    if file.read_exact(&mut header).is_err() {
+        return false;
+    }
+    if &header[0..16] != b"SQLite format 3\0" {
+        return false;
+    }
+    header[18] == 2 && header[19] == 2
 }
 
 impl Drop for AppState {
