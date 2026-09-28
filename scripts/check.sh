@@ -266,10 +266,22 @@ fi
 #
 # Gate: scripts/gates.json -> "coverage-floors".
 if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2>&1; then
-    if cargo llvm-cov \
+    # Two --no-report passes plus one report, because `cargo llvm-cov` drives `cargo test`
+    # and therefore CANNOT use the nextest test group (.config/nextest.toml) that serializes
+    # the shared-Postgres tests. Measured 2026-09-29: the single-invocation form died on
+    # `sync_store::tests::pg_integration_conflict_detection_end_to_end`
+    # (apps/cloud-server/src/sync_store_tests.rs:1256) -- one of the very tests that group
+    # exists to serialize -- and the floors then went UNGRADED behind a warning. Hold the
+    # three packages that own that database to one thread; everything else keeps full
+    # parallelism, so the cost is confined to them.
+    if cargo llvm-cov --no-report \
+        -p kasirmu-cloud -p kasirmu-api -p platform-sync \
+        --all-features -- --test-threads=1 >/dev/null 2>&1 \
+       && cargo llvm-cov --no-report \
         --workspace --all-features \
         --exclude kasirmu-app --exclude kasirmu-mobile \
-        --json --output-path coverage-probe.json >/dev/null 2>&1; then
+        --exclude kasirmu-cloud --exclude kasirmu-api --exclude platform-sync >/dev/null 2>&1 \
+       && cargo llvm-cov report --json --output-path coverage-probe.json >/dev/null 2>&1; then
         step "coverage floors" "scripts/coverage-floors.json (ratchet)" python3 scripts/verify-coverage-floors.py
     else
         echo -e "${YELLOW}⚠ cargo llvm-cov could not complete (a failing test aborts it) — floors NOT checked${NC}"
