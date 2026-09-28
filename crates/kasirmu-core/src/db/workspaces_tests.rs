@@ -2143,3 +2143,29 @@ fn the_bypass_predicate_admits_exactly_the_management_roles() {
 const BARE_ADMIN: &str = "admin";
 const BARE_MANAGER: &str = "manager";
 const BARE_AUDITOR: &str = "auditor";
+
+#[test]
+fn list_workspaces_legacy_propagates_db_error_on_corrupt_user_workspace_row() {
+    let store_db = migrations::fresh_db();
+    let store = Store::new(&store_db);
+
+    // Insert user workspace with invalid blob in ws_key
+    store_db
+        .execute_batch("PRAGMA foreign_keys = OFF;")
+        .unwrap();
+    store_db
+        .execute(
+            "INSERT INTO user_workspaces (user_id, ws_key) VALUES ('user-corrupt', X'FFFF')",
+            [],
+        )
+        .unwrap();
+    store_db.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+    let err = store
+        .list_workspaces_legacy("role-custom", Some("user-corrupt"))
+        .expect_err("corrupt user_workspaces row must abort resolution with DB error");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

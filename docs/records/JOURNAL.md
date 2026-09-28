@@ -12804,6 +12804,24 @@ After changing to `?`, the test passed cleanly and `cargo fmt` was applied.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 16: legacy workspace assignment stops swallowing row decoding DB errors
+
+**Problem:** In `Store::list_workspaces_legacy` (`crates/kasirmu-core/src/db/workspaces.rs`),
+user workspace assignments were queried from `user_workspaces` via
+`query_map(...)?.filter_map(|r| r.ok()).collect()`. Any row decoding or database error
+silently caused the corrupt row to be filtered out. If all rows or specific assignments failed,
+the user's workspace keys became empty and unexpectedly fell through to role-level workspace
+assignments, failing open with broader or unintended permissions.
+
+**Solution:** Changed `.filter_map(|r| r.ok())` to `.collect::<Result<Vec<_>, _>>()?`,
+ensuring row decoding or query errors fail closed and propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`list_workspaces_legacy_propagates_db_error_on_corrupt_user_workspace_row`
+panicked with `corrupt user_workspaces row must abort resolution with DB error: []`).
+After changing to `.collect::<Result<Vec<_>, _>>()?`, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

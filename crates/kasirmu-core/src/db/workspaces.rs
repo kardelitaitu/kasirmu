@@ -204,12 +204,12 @@ impl Store<'_> {
         }
 
         if let Some(uid) = user_id {
-            let user_keys: Vec<String> = self
+            let mut stmt = self
                 .conn
-                .prepare("SELECT ws_key FROM user_workspaces WHERE user_id = ?1")?
+                .prepare("SELECT ws_key FROM user_workspaces WHERE user_id = ?1")?;
+            let user_keys: Vec<String> = stmt
                 .query_map(params![uid], |row| row.get::<_, String>(0))?
-                .filter_map(|r| r.ok())
-                .collect();
+                .collect::<Result<Vec<_>, _>>()?;
 
             if !user_keys.is_empty() {
                 let placeholders: Vec<String> = user_keys
