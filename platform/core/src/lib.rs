@@ -43,3 +43,4 @@ pub mod terminal_profile;
 
 pub use database::StoreDatabaseManager;
 pub use error::PlatformError;
+pub use error::CurrencyError;

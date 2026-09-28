@@ -5,49 +5,11 @@ findings: clean thiserror currency error taxonomy
 next: none | perf: N/A
 */
 //! Error type for the currency/exchange-rate domain.
+//!
+//! The taxonomy itself moved to `platform-core` (ADR-61 / C26, 2026-09-28), so
+//! that `kasirmu-core` can name it without depending on this module. It is
+//! re-exported rather than deleted so every existing
+//! `modules_currency::CurrencyError` path keeps resolving, including this
+//! crate's own tests and `kasirmu-core`'s error conversions.
 
-use thiserror::Error;
-
-/// Errors that can originate in the currency/exchange-rate domain.
-#[derive(Debug, Error)]
-pub enum CurrencyError {
-    /// A database operation failed.
-    #[error("database error: {0}")]
-    Db(#[from] rusqlite::Error),
-
-    /// A platform infrastructure error.
-    #[error("platform error: {0}")]
-    Platform(#[from] platform_core::PlatformError),
-
-    /// Input validation failure.
-    #[error("validation error on {field}: {message}")]
-    Validation {
-        /// The field that failed validation.
-        field: &'static str,
-        /// Human-readable description of the failure.
-        message: String,
-    },
-
-    /// A lookup by id returned no row.
-    #[error("not found: {entity} {id}")]
-    NotFound {
-        /// The kind of entity that was being looked up.
-        entity: &'static str,
-        /// The id that was looked up.
-        id: String,
-    },
-}
-
-impl CurrencyError {
-    /// Create a validation error for a specific field.
-    pub fn validation(field: &'static str, message: impl Into<String>) -> Self {
-        Self::Validation {
-            field,
-            message: message.into(),
-        }
-    }
-}
-
-#[cfg(test)]
-#[path = "error_tests.rs"]
-mod tests;
+pub use platform_core::CurrencyError;

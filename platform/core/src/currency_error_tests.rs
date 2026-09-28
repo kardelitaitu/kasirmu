@@ -1,4 +1,9 @@
-//! Sibling unit tests for `error.rs` (AGENTS.md: no tests in production files).
+//! Sibling unit tests for the currency half of `error.rs`
+//! (AGENTS.md: no tests in production files).
+//!
+//! Moved here with the type from `modules/currency/src/error_tests.rs`; the
+//! assertions are unchanged, and `platform_core::PlatformError` became plain
+//! `PlatformError` because a crate cannot name itself by path.
 
 use super::*;
 
@@ -31,9 +36,7 @@ fn currency_error_from_rusqlite() {
 
 #[test]
 fn currency_error_platform_message() {
-    let err = CurrencyError::Platform(platform_core::PlatformError::Internal(
-        "settings read failed".into(),
-    ));
+    let err = CurrencyError::Platform(PlatformError::Internal("settings read failed".into()));
     assert_eq!(
         format!("{err}"),
         "platform error: internal error: settings read failed"
@@ -42,7 +45,7 @@ fn currency_error_platform_message() {
 
 #[test]
 fn currency_error_from_platform_error() {
-    let platform_err = platform_core::PlatformError::Internal("test".into());
+    let platform_err = PlatformError::Internal("test".into());
     let err = CurrencyError::from(platform_err);
     assert!(matches!(err, CurrencyError::Platform(_)));
 }
