@@ -184,9 +184,19 @@ if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2
     # is the one thing that can catch the checker going stale. Gate:
     # scripts/gates.json -> "pg-receipt-selftest".
     step "pg receipt self-test" "python3 scripts/verify-pg-tests-ran.py --self-test" python3 scripts/verify-pg-tests-ran.py --self-test
+    # The two application shells are excluded from the workspace run above, because their
+    # unit tests LINK the Tauri runtime (the desktop test binary embeds the Common-Controls v6
+    # manifest via .drectve for exactly this reason). Excluded there, they were run by nothing:
+    # measured 2026-09-29, neither this script nor any .github/workflows file named kasirmu-app
+    # or kasirmu-mobile, so 863 tests -- 173 desktop, 690 tablet -- had no automation at all.
+    # Run them explicitly, AFTER the receipt above so this run cannot overwrite the JUnit report
+    # that step grades (nextest writes target/nextest/default/junit.xml on every invocation).
+    step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
+    # The same two shells in the fallback branch; see the note in the nextest branch above.
+    step "test application shells" "cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count" cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count
 fi
 
 # ── Fuzz targets (P0-3) ──────────────────────────────────────────────────
