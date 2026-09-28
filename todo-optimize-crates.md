@@ -1458,3 +1458,37 @@ poll; the ceiling (1 s) is 5× the old allowance.
 **Axis B is still unfunded as a phase.** This round did one finding, not the
 axis. Axis A (compile time) remains the largest unmeasured claim, and §5's
 "run `--timings` once to confirm the guess" is still outstanding.
+
+### 11E. The funding-candidate list at §9 is stale — re-verified 2026-09-28
+
+§9's cross-cutting reading closes with an ordered candidate list: *"O-H26 (live
+panic), O-H24 (double charge), O-H23 (UI stall), then O-T04 → O-T01 → O-T02."*
+**The first three are all paid**, and they landed on 2026-09-27 — two days after
+the round that ranked them, and without this journal being told. A lane that
+funds from that list as written would rebuild three finished fixes.
+
+| Entry | Status | Evidence |
+|---|---|---|
+| **O-H26** `blocking_lock` panic | **PAID** | `581f32981` (2026-09-27) *"fix(bridge,desktop): replace panicking blocking_lock with try_lock in the sync scope resolvers (O-H26)"*. `crates/kasirmu-bridge/src/ctx.rs:412` now heads a section titled *"Why this uses `try_lock`, not `blocking_lock`"* carrying the `audit.rs` rebuttal. Note it took `try_lock`, not the `lock().await` this journal suggested — same defect closed, different mechanism. |
+| **O-H24** double charge | **PAID** | `8c592c58f` (2026-09-27) *"fix(payment): gate fallback-chain advance on the caller's gateway key (O-H24)"*. `crates/kasirmu-payment/src/registry.rs:96-115` is now a class × key table, and `execute_with_fallback` takes `gateway_key: Option<&str>` (`:119`). This is the journal's own alternative fix — *"require a caller-supplied gateway key"* — chosen over *"fall through only on Terminal"*, and the doc records why: an open breaker classifies `Transient`, so blocking the class would make one unhealthy gateway fatal to its chain. |
+| **O-H23** email-scheduler stall | **PAID** | Fixed in place, no separate commit found. `crates/kasirmu-notification/src/email_scheduler.rs:70-91` splits the work into *"Scope 2a: Load the analytics bundle under the lock"* and *"Scope 2b: Render with NO database lock held"*, with a comment citing O-H23 by name. The lock now covers only the queries. |
+| **O-T04** `fresh_db()` global mutex | **STILL LIVE** | `crates/kasirmu-core/src/migrations.rs:528` is `static SNAPSHOT: LazyLock<Mutex<rusqlite::Connection>>`; the clone takes `SNAPSHOT.lock()` at `:563` for `Backup::run_to_completion` at `:564-567`. Unchanged. |
+| **O-T01** topology `fresh_conn()` | **STILL LIVE** | `apps/desktop-tauri/src/commands/topology/topology_tests.rs:16-22` — `fresh_conn()` still does `migrations::run(&mut conn)`. Plus 9 direct `run` sites in `topology_command_tests.rs` (`:71,106,148,198,231,254,330,369,410`) beside 10 `fresh_db()` calls in the same file. Unchanged. |
+
+**So the live head of the funding list is now O-T04 → O-T01 → O-T02.** §9's
+sequencing caution still stands and was not overridden: fix O-T04 before
+O-T01/O-T02, because `fresh_db()` is the *good* design and is still a global
+mutex, so converting the remaining `run` sites concentrates them onto one lock.
+
+**One caveat on that caution, recorded rather than silently applied.** O-T01 is
+not merely "66 sites move onto one lock" in the abstract — each `run` replays
+the **entire** migration chain, whereas each `fresh_db()` is a Backup copy of a
+pre-migrated snapshot. The swap trades a full replay for a copy, which is a win
+even while serialized; the caution is about how much of the win is left on the
+table, not about whether there is one. That reasoning is unmeasured, and §10C's
+"test wall-clock per crate — PARTIALLY EARNED" is why it stays a caveat.
+
+This is the fourth time today that work recommended from a dated plan doc turned
+out already paid. The rule worth carrying: **re-read the cited lines before
+implementing any entry from a journal more than a day old in a multi-lane
+checkout.**
