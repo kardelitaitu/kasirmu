@@ -96,7 +96,16 @@ impl Store<'_> {
              LIMIT ?2",
         )?;
         let item_ids: Vec<String> = stmt
-            .query_map(params![cutoff_str, max_groups as i64], |row| row.get(0))?
+            .query_map(
+                params![
+                    cutoff_str,
+                    i64::try_from(max_groups).map_err(|_| CoreError::Validation {
+                        field: "max_groups",
+                        message: format!("group limit {max_groups} exceeds i64"),
+                    })?
+                ],
+                |row| row.get(0),
+            )?
             .collect::<Result<Vec<_>, _>>()?;
 
         if item_ids.is_empty() {

@@ -398,7 +398,16 @@ pub fn resolve_receipt_date(
         message: format!("invalid UTC timestamp '{now_utc}': {e}"),
     })?;
     let secs = offset_seconds(location_timezone).unwrap_or(0);
-    let offset = FixedOffset::east_opt(secs as i32).ok_or_else(|| CoreError::Validation {
+    // `i32::try_from` rather than `as i32`: the `ok_or_else` below already
+    // treats an out-of-range offset as a validation failure, so the narrowing
+    // should BE that check rather than a silent wrap in front of it. With
+    // `as`, an offset beyond `i32` would wrap to a plausible-looking value and
+    // the error branch could never fire.
+    let offset_i32 = i32::try_from(secs).map_err(|_| CoreError::Validation {
+        field: "receipt_date",
+        message: format!("timezone offset out of range: {secs}s"),
+    })?;
+    let offset = FixedOffset::east_opt(offset_i32).ok_or_else(|| CoreError::Validation {
         field: "receipt_date",
         message: format!("timezone offset out of range: {secs}s"),
     })?;

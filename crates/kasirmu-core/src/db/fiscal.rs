@@ -460,14 +460,21 @@ impl crate::db::Store<'_> {
         // Issue format: prefix + optional period bucket + zero-padded
         // ordinal. `never` series carry no bucket segment; a 0 padding means
         // the ordinal prints bare.
+        //
+        // `usize::try_from` rather than `as usize`: `padding` is validated
+        // non-negative on the way in (`set_*` refuses `padding < 0`), but that
+        // guard lives in a DIFFERENT function, so the conversion here should
+        // still state its own precondition rather than inherit one. `as usize`
+        // would turn a negative into a huge width and the format machinery
+        // would try to allocate it.
+        let width = usize::try_from(padding).map_err(|_| CoreError::Validation {
+            field: "padding",
+            message: format!("padding must not be negative, got {padding}"),
+        })?;
         let number = if reset == ResetPeriod::Never {
-            format!("{prefix}{:0>width$}", value, width = padding as usize)
+            format!("{prefix}{value:0>width$}")
         } else {
-            format!(
-                "{prefix}{bucket}/{:0>width$}",
-                value,
-                width = padding as usize
-            )
+            format!("{prefix}{bucket}/{value:0>width$}")
         };
 
         tx.execute(

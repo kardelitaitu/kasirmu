@@ -805,7 +805,18 @@ pub fn reverse_loyalty_on_refund(
     let proportional = if sale_total_minor > 0 && refund_total_minor > 0 {
         let num = i128::from(earned_points) * i128::from(refund_total_minor);
         let den = i128::from(sale_total_minor);
-        ((num * 2 + den) / (den * 2)) as i64
+        // `try_from` rather than `as i64`: the i128 intermediate is wider than
+        // the result ON PURPOSE (the comment above says why money never touches
+        // a float), so the narrowing back is exactly the step that could lose
+        // data. The quotient is bounded by `earned_points` in practice, but
+        // making the conversion checked means an out-of-range value surfaces as
+        // an error rather than as a silently truncated points grant.
+        i64::try_from((num * 2 + den) / (den * 2)).map_err(|_| CoreError::Validation {
+            field: "proportional_points",
+            message: format!(
+                "reversal of {earned_points} points on sale {sale_total_minor} minor units does not fit i64"
+            ),
+        })?
     } else {
         0
     };

@@ -209,7 +209,14 @@ impl Store<'_> {
              ORDER BY next_attempt_at ASC, enqueued_at ASC
              LIMIT ?1",
         )?;
-        let rows = stmt.query_map(rusqlite::params![limit as i64], |r| {
+        // `try_from` rather than `as i64`: `limit` is caller-supplied and
+        // reaches a SQL `LIMIT`, so a value beyond `i64` should be refused
+        // rather than wrapped into a small (or negative) page size.
+        let limit_i64 = i64::try_from(limit).map_err(|_| CoreError::Validation {
+            field: "limit",
+            message: format!("batch limit {limit} exceeds i64"),
+        })?;
+        let rows = stmt.query_map(rusqlite::params![limit_i64], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)

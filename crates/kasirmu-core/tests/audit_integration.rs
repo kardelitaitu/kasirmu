@@ -321,7 +321,12 @@ fn pagination_consistent_across_calls() {
         let entries = s.list_audit_entries(5, offset).unwrap();
         assert_eq!(entries.len(), 5, "page {page} should have 5 entries");
         for (j, entry) in entries.iter().enumerate() {
-            let global_idx = (page * 5 + j as i64) as usize;
+            // `usize::try_from` rather than `as usize`: `page * 5 + j` is
+            // non-negative by construction (page is 0..4, j enumerates the
+            // page), so this cannot fail — but stating it keeps the index
+            // arithmetic honest if the loop bounds ever change.
+            let global_idx = usize::try_from(page * 5 + j as i64)
+                .expect("page index is non-negative by construction");
             assert_eq!(
                 entry.id, all[global_idx].id,
                 "entry mismatch at page {page} index {j}"

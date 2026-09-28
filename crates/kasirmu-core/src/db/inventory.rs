@@ -537,7 +537,14 @@ impl Store<'_> {
         // Insert lines and adjust stock
         for (i, line) in lines.iter().enumerate() {
             let line_id = uuid::Uuid::now_v7().to_string();
-            let sort_order = (i + 1) as i64;
+            // `try_from` rather than `as i64`: a line index cannot realistically
+            // exceed `i64`, but saying so explicitly keeps the narrowing honest
+            // and turns an impossible overflow into a named error instead of a
+            // wrapped sort_order.
+            let sort_order = i64::try_from(i + 1).map_err(|_| CoreError::Validation {
+                field: "sort_order",
+                message: format!("line index {} exceeds i64", i + 1),
+            })?;
 
             tx.execute(
                 "INSERT INTO inventory_transaction_lines (id, transaction_id, sku, product_name, qty, barcode_scanned, sort_order) \

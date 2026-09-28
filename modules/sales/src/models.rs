@@ -170,7 +170,11 @@ impl Sale {
         let id = uuid::Uuid::now_v7().to_string();
         let total = cart.total()?;
         let currency = cart.currency();
-        let line_count = cart.line_count() as i64;
+        // `try_from` rather than `as i64`: this function's whole contract is
+        // `Option`-returning, so an out-of-range conversion is one more reason
+        // to yield `None` rather than a wrapped `line_count` in a persisted
+        // sale row. `?` on the `Option` matches the `cart.total()?` above.
+        let line_count = i64::try_from(cart.line_count()).ok()?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
         let lines: Vec<SaleLine> = cart
@@ -186,7 +190,7 @@ impl Sale {
                     qty: cl.qty,
                     unit_price: cl.unit_price,
                     line_total,
-                    line_position: (i as i64) + 1,
+                    line_position: i64::try_from(i).ok()? + 1,
                     tax_amount: Money::zero(currency),
                     tax_rate_id: None,
                     tax_breakdown_json: None,

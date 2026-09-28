@@ -133,7 +133,13 @@ impl Store<'_> {
             });
         }
         tx.commit()?;
-        Ok(unlinked as i64)
+        // `try_from` rather than `as i64`: `tx.execute` returns a row count
+        // as `usize`, and a count beyond `i64` means the DELETE touched more
+        // rows than this table can hold — worth an error, not a wrapped one.
+        i64::try_from(unlinked).map_err(|_| CoreError::Validation {
+            field: "unlinked",
+            message: format!("unlinked row count {unlinked} exceeds i64"),
+        })
     }
 
     /// Look up a category by id.

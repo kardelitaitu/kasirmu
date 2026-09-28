@@ -547,7 +547,11 @@ pub async fn ping_server(url: &str) -> PingResult {
     {
         Ok(client) => match client.get(&health_url).send().await {
             Ok(resp) => {
-                let latency = start.elapsed().as_millis() as u64;
+                // `try_from` rather than `as u64`: a health-check latency
+                // cannot exceed u64 milliseconds, but saturating states that
+                // explicitly and keeps the value monotone instead of wrapping
+                // to ~0 on an absurd clock jump.
+                let latency = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 if resp.status().is_success() {
                     PingResult {
                         ok: true,

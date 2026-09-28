@@ -262,6 +262,13 @@ impl Store<'_> {
                     })?,
                 )
             };
+            // `try_from` rather than `as i64`, same reasoning as the line index
+            // in `create_inventory_transaction`: a wrapped `line_position` would
+            // reorder the kitchen ticket silently.
+            let line_position = i64::try_from(i).map_err(|_| CoreError::Validation {
+                field: "line_position",
+                message: format!("line index {i} exceeds i64"),
+            })?;
             tx.execute(
                 "INSERT INTO kds_line_items
                     (id, kds_order_id, sku, display_name, qty, course, modifiers_json,
@@ -275,7 +282,7 @@ impl Store<'_> {
                     item.qty,
                     item.course,
                     modifiers_json,
-                    i as i64,
+                    line_position,
                     now,
                 ],
             )?;
