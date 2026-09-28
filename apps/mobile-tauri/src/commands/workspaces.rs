@@ -234,11 +234,11 @@ fn resolve_boot_store_core(
                 // absence silently unpinned a bound terminal and booted it
                 // into the primary store. Only `Ok(None)` means no binding;
                 // every error propagates, matching the `?` on the sibling
-                // read directly above.
-                match store.get_terminal_binding(&tid) {
-                    Ok(binding) => binding.map(|(s, i, sig)| (tid, s, i, sig)),
-                    Err(e) => return Err(e.into()),
-                }
+                // read directly above — and now spelled with `?` for the same
+                // reason it describes: one propagation form, not two.
+                store
+                    .get_terminal_binding(&tid)?
+                    .map(|(s, i, sig)| (tid, s, i, sig))
             }
         }
     };
