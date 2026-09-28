@@ -304,7 +304,7 @@ a separate stored field, printed only once issued.
 
 ## 6. Implementation phases & state-of-the-art roadmap
 
-### Phase 1: Core engine, Base62 dynamic allocator & sequence counter
+### Phase 1: Core engine, Base62 dynamic allocator & sequence counter (COMPLETED · commit 13ef0a472)
 - **Schema & migrations:** `20261006_receipt_hierarchy_code.sql` committed and applied. Added `index_id` on `locations`, `terminals`, `users`, and `receipt_number_counters`.
 - **Base62 dynamic formatter:** Zero-dependency encoder `format_base62_index(idx)`. Formats with minimum 2 characters (`00`–`zz`), expanding dynamically to 3 characters (`100`–`zzz`) at $\ge 3,844$, and 4 characters (`1000`–`zzzz`) at $\ge 238,328$.
 - **Allocator ceiling & safety:** `INDEX_ID_MAX = 14_776_335` ($62^4 - 1$, 14,776,336 capacity). Refuses loudly on overflow rather than wrapping.
@@ -312,31 +312,44 @@ a separate stored field, printed only once issued.
 - **Sequence counter:** `claim_receipt_sequence` advances sequence atomically per `(tenant, terminal, fiscal_year)`, refusing at `999,999`.
 - **Testing:** Sibling unit tests in `receipt_code_tests.rs` covering Base62 boundaries, slot gap reuse on deletion, rollover refusal, rollback atomicity, and code assembly (22, 23, 24, and 28 chars).
 
-### Phase 2: Per-location timezone resolution (MSL-29)
+### Phase 2: Per-location timezone resolution (MSL-29) (COMPLETED · commit 13ef0a472)
 - Parameterised timezone resolver `resolve_receipt_date(now_utc, location_tz)` using `chrono::FixedOffset`.
 - Integrated with `reports::parse_utc_offset` to support IANA zone names (`Asia/Jakarta`, `Asia/Makassar`, `Asia/Jayapura`) and standard numeric offsets (`+07:00`).
 - Eliminates midnight race conditions where multi-timezone stores might otherwise date receipts incorrectly.
 
-### Phase 3: Checkout assembly & transaction freezing
-- Integrate `mint_receipt_code` inside the checkout transaction (`sales_checkout.rs` and `sales_lifecycle.rs`).
+### Phase 3: Checkout assembly & transaction freezing (COMPLETED · commit 147d01444)
+- Integrated `mint_receipt_code` inside the checkout transaction (`sales_checkout.rs` and `sales_lifecycle.rs`).
 - Lazy entity index allocation (`ensure_entity_index`) for pre-existing entities without requiring manual database migration scripts.
 - Atomically freezes assembled `display_code` and `terminal_id` into the `sales` record.
 - Transaction rollback guarantees: an aborted checkout burns neither an entity index nor a receipt sequence number.
+- Eager allocation upon entity creation (`create_location_profile`, `register_terminal`, `create_user_with_profile`) and instant slot recycling on soft/hard deletion.
 
-### Phase 4: Hardware rendering & UI presentation
-- **Hardware driver (`kasirmu-hal`):** `receipt.rs` prints `#01-02-260929-01-000123` instead of the 36-character UUID, and barcodes the compact code via Code 128 / QR.
-- **Bridge mapping (`kasirmu-bridge`):** `map_sale_to_item` and `map_sale_to_detail` expose `display_code` to front-end clients.
-- **UI screens (`ui/`):** `SalesHistoryScreen.tsx` and `PaymentModal.tsx` display the clean receipt code, with graceful fallback to `sale.id` for legacy records.
+### Phase 4: Hardware rendering, Bridge & UI presentation (COMPLETED · commits 51bb92093, 13b577201, 4a2a79c6e)
+- **Hardware driver (`kasirmu-hal`):** `receipt.rs` formats `#01-02-260929-01-000123` via `r.receipt_number` (populated from `sales.display_code`), and barcodes the compact code via Code 128 / QR.
+- **Bridge mapping (`kasirmu-bridge` & `kasirmu-mobile`):**
+  - Exposed Base62 `code` in `LocationProfileDto`, `TerminalDto`, and `staff_code` in `StaffMemberDto`.
+  - Scoped read, write, and restore commands automatically populate the Base62 entity codes.
+  - `SaleListItem` and `SaleDetail` carry `display_code` across `history.rs`.
+- **UI visibility (`ui/`):**
+  - `StaffRoster.tsx`: Displays `#<staff_code>` cashier badge next to staff display names, and enables filtering by cashier code in the search box.
+  - `TerminalManagementScreen.tsx`: Displays `#<terminal_code>` register badge in the terminal table.
+  - `StoreSwitcher.tsx` & `TopologyScreen.tsx`: Displays `[<location_code>] <name>` branch prefixes in store dropdowns and topology selectors.
+  - `MultiStoreDashboardScreen.tsx`: Displays `#<location_code>` in store overview cards.
+  - `SalesHistoryScreen.tsx`: Displays receipt `displayCode`, reprints `#<displayCode>`, and supports full-text search matching on receipt display codes.
+  - `PaymentModal.tsx`: Displays frozen receipt code upon checkout settlement.
 
-### Phase 5: Backward compatibility, backfill & verification
+### Phase 5: Backward compatibility, backfill & verification (COMPLETED)
 - Existing sales retain `display_code = NULL` and fall back to legacy `sale.id` display without fiction.
 - Pre-commit gates validation:
-  1. `cargo test -p kasirmu-core receipt_code`
-  2. `python scripts/verify-migration-column-types.py`
-  3. `python scripts/generate-pg-migration.py --check`
-  4. `python .agents/skills/docs-auditor/scripts/check-dead-refs.py`
+  1. `cargo test -p kasirmu-core receipt_code` (21 tests pass)
+  2. `cargo test -p kasirmu-bridge` & `kasirmu-mobile` (all tests pass)
+  3. `npm run typecheck && npm run lint` (0 errors)
+  4. Vitest UI suites: 191 tests pass across affected screens
+  5. `python scripts/verify-migration-column-types.py` (0 errors)
+  6. `python scripts/generate-pg-migration.py --check` (100% in sync)
+  7. `python .agents/skills/docs-auditor/scripts/check-dead-refs.py` (0 dead refs)
 
-### Phase 6: e-Faktur integration (DJP Coretax, independent)
+### Phase 6: e-Faktur integration (DJP Coretax, next agenda)
 - Stored columns: `faktur_pajak_nsfp` (13 digits), `faktur_pajak_kode_transaksi` (2 digits), `faktur_pajak_status` (2 digits).
 - Post-checkout import endpoint: stamps NSFP when approved in Coretax.
 - Faktur Pengganti lifecycle: preserves original NSFP, increments `faktur_pajak_status` (`00` → `01` → `02`), prints 17-digit DJP number alongside internal nomor faktur.
