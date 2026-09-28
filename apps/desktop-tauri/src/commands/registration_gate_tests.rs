@@ -1581,6 +1581,12 @@ const TOLERATED_FORWARDS: &[&str] = &[
     // to run over its callers instead of over invoke( sites.
     "utils/logged-invoke.ts",
     "__tests__/useSessionKeepalive.test.ts",
+    // The one production forwarder in the tree: invoke<T>(cmd, args) exists to bound the wait on
+    // a command that panics, so its command name is a parameter by construction and cannot be a
+    // literal. Tolerating the FILE suppresses its offender list only - the counts beside it still
+    // include every site it forwards, so a second forwarder anywhere else on the production
+    // surface still reds this leg (measured 2026-09-28).
+    "ui/src/api/tauri.ts",
 ];
 
 /// Does `rel` fall under one of the `TOLERATED_FORWARDS` entries? An entry matches when its components
