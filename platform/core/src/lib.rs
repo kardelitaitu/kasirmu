@@ -17,6 +17,9 @@ next: none — files carry current stamps from 25-07-26 / 31-08-26 audits | perf
 //!   write-time grant validation (ADR #35 D3 / spec 0046)
 //! - [`settings`] — generic key-value settings store with typed helpers
 //! - [`error`] — shared error type ([`PlatformError`])
+//! - [`staff`] — persisted staff and role rows, hosted here rather than in
+//!   `foundation` because their behaviour calls [`rbac`]. Their names are always
+//!   module-qualified: `staff::Role` is the row, `rbac::Role` is the policy type.
 
 // rustdoc::private_intra_doc_links is allowed crate-wide, deliberately.
 //
@@ -45,4 +48,6 @@ pub mod terminal_profile;
 pub use database::StoreDatabaseManager;
 pub use error::CurrencyError;
 pub use error::PlatformError;
-pub use staff::{Role, User, UserId, seed_users};
+// NOTE: `staff` is deliberately NOT re-exported at the crate root. This crate carries TWO unrelated
+// types called `Role` — `rbac::Role` (the policy type) and `staff::Role` (the persisted row) — so a
+// bare `platform_core::Role` would silently pick one. The path is always spelled out.
