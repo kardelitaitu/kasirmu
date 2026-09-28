@@ -2,7 +2,7 @@
 num: 61
 area: architecture
 title: ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry
-status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier landed; the foundation type move that retires the seven shims is sequenced, not done
+status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier and the currency edge closure landed; the model-type move that retires the seven shims is sequenced, not done
 ---
 
 # ADR-61: Architecture Boundary Rule Tiers

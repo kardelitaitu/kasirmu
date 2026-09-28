@@ -64,6 +64,7 @@ Unified registry for architectural decisions (ADRs), audits, verifications, meas
 | 58 | licensing | [ADR #58: Pre-Expiry Re-Authentication, Manual Revocation, and the Locked State](../decisions/2026-09-21-adr58-online-licence-heartbeat-and-revocation.md) | Partially implemented (2026-09-21; status re-audited 2026-09-22) — the Revoked state, the session lock, the export twin command, the ride-along, the per-device renewal refusal, and the §2.3/§2.5 Rust-side pre-expiry re-auth session obligation in create_session are IMPLEMENTED; the export twin has NO UI caller, so §2.6's promise is not reachable in the product |
 | 59 | topology | [ADR #59: Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and…](../decisions/2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — the region field, admin route and audit trail are IMPLEMENTED; topology and modules are not |
 | 60 | frontend-architecture | [ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared…](../decisions/2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
+| 61 | architecture | [ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](../decisions/2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier and the currency edge closure landed; the model-type move that retires the seven shims is sequenced, not done |
 
 ### Research Notes
 
@@ -113,6 +114,7 @@ same scan that lists the other documentation directories; `README.md` itself is 
 | subscription | [Licence rate-limit collapse — 2026-09-21](snapshots/2026-09-21-license-ratelimit-collapse.md) | — |
 | release | [Migration init-script drift bricked startup — 2026-09-21](snapshots/2026-09-21-migration-init-drift-bricked-startup.md) | — |
 | ui | [Driving the tablet UI — the method that works, and the blind one that does not — 2026-09-21](snapshots/2026-09-21-tablet-ui-driving-method.md) | — |
+| general | [The formatting gate is red — 50 rustfmt diffs on committed code](snapshots/2026-09-28-rustfmt-gate-red.md) | — |
 | staff | [SQLite / Postgres Roles](sqlite-pg-roles.md) | — |
 | money | [Statutory Rounding & Tax-Estimate Stamps](statutory-rounding-and-estimate-stamps.md) | — |
 
@@ -124,6 +126,8 @@ The per-sector audit reports were consolidated into [**Audit Open Findings**](./
 
 | Area | Title | Status |
 | --- | --- | --- |
+| general | [api-reference.md — Full Audit (anchor-by-anchor, full audit mode)](../audits/2026-09-28-api-reference-audit.md) | — |
+| general | [docs/ Folder Audit — 2026-09-28](../audits/2026-09-28-docs-audit.md) | — |
 | general | [Documentation audit — the docs system itself — 23-09-26](../audits/documentation-audit-23-09-26.md) | — |
 | frontend | [Agent Ops Handbook — CSS Verification](../audits/frontend/css-verification.md) | — |
 | frontend | [Fluent Page Audit — Full Journal](../audits/frontend/fluent-page-audit.md) | — |
