@@ -89,6 +89,22 @@ platform-startup = { path = "platform/startup" }
 platform-sync = { path = "platform/sync" }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+# ── Build-graph feature fix, not a runtime dependency ─────────────────
+# `schemars 0.8.22` is pulled in by `tauri-build` with the `preserve_order`
+# feature, which enables its optional `indexmap` v1 dependency. schemars then
+# writes `pub type Map<K, V> = indexmap::IndexMap<K, V>;`, and that alias only
+# compiles when indexmap's `std` feature supplies the `S = RandomState`
+# default. indexmap 1.9.x declares NO `default` feature, so `std` is off and
+# schemars dies with E0107 on any clean build of a Tauri app crate.
+#
+# Nothing else in the graph turns `std` on, and `resolver = "2"` keeps
+# build-dependency features separate from normal ones, so it has to be turned
+# on explicitly. Verified 2026-09-29 in a scratch crate: `schemars` +
+# `preserve_order` reproduces E0107, and adding this makes it compile.
+#
+# Do NOT remove. The symptom is a schemars compile error, not an indexmap one,
+# so nothing here will look related to the failure it prevents.
+indexmap = { version = "1", features = ["std"] }
 
 # Ecosystem deps
 serde = { version = "1", features = ["derive"] }
