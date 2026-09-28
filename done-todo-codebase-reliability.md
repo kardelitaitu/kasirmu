@@ -1323,6 +1323,60 @@ covered, because no coverage instrument is enforced. Close that in this order.
       **Not a defect claim:** nothing above shows a missing log is hiding a bug.
       It shows the box was written from a premise about this tree that the tree
       does not match.
+      **ROUND 38 — 2026-09-28. The premise is refuted a SECOND time, from a
+      different direction, and this round names the actual blocker.**
+      The earlier audit asked "which `debug_assert!` sites are reachable from bad
+      data" and found none. This round asked the complementary question the box
+      also implies — *"where is an invariant check that panics or is SILENTLY
+      REPAIRED at runtime"* — by grepping for the silent-repair SHAPE
+      (`unwrap_or(0)`, `.max(0)`, `saturating_sub`) in the money and stock paths.
+      **They have already been fixed, and each fix is documented in place:**
+      `db/refunds.rs` head note records COR-25 MEDIUM *"the over-refund guard now
+      runs inside the transaction and propagates cumulative-SUM read errors (was:
+      outside the tx with `.unwrap_or(0)`, fail-open on a money guard)"* and COR-26;
+      `db/inventory.rs` records COR-11 *"guards now propagate DB errors (`?`)
+      instead of `unwrap_or(0)`, so a read error fails closed"*. The doc on
+      `total_refunded_for_sale` states the principle directly: *"Zero is zero, an
+      error is an error."* The remaining `unwrap_or(0)` hits are legitimate —
+      `Option` handling in purchase-order input, `.max(0)` on a SQL `COUNT(*)`.
+      **THE ACTUAL BLOCKER IS THE ACCEPTANCE'S OWN INSTRUMENT, not the premise.**
+      P3-2's acceptance is *"one seeded violation produces an `error!` line naming
+      the invariant and the entity."* **Nothing in this workspace can assert that.**
+      Verified repo-wide: `tracing-test` / `tracing_test` appear in **zero**
+      `Cargo.toml` files, no test calls `set_default`, and no test asserts on
+      captured log output (the single grep hit for a "log assertion" is prose in
+      a doc comment mentioning "webserver access logs"). Meanwhile
+      **37 files under `crates/kasirmu-core/src` + `platform/sync/src` call
+      `tracing::`** — so the production calls exist and are unasserted.
+      **A correction to my own first reading of that.** I initially recorded
+      "no log-capturing dependency exists in this workspace", which is too
+      strong: `tracing-subscriber` IS a workspace dependency
+      (`Cargo.toml:101`) and `kasirmu-logging` already uses it with the `json`
+      and `registry` features. What is missing is narrower and still decisive —
+      `tracing-subscriber` is an OUTPUT library, and `kasirmu-core` does not
+      depend on it at all (`crates/kasirmu-core/Cargo.toml:28` has `tracing`
+      only, as a production dep). Capturing for ASSERTION needs either the
+      `tracing-test` crate or a custom `MakeWriter` layer, and neither exists.
+      So the cost is "a dev-dependency plus a small harness", not "a library the
+      repo has never seen" — a difference that matters if someone acts on this.
+      **What this means concretely.** Writing `tracing::error!` at a violation
+      site would satisfy the LETTER of the acceptance while leaving it
+      unverifiable: the seeded violation could not be observed by any test, so
+      the box would close on a claim no instrument backs. That is the same shape
+      this checklist has caught three times (uncompiled fuzz targets, an unwired
+      PG self-test, unenforced coverage floors) — with the twist that here it
+      would be ME creating the unverifiable claim rather than finding one.
+      **The costed prerequisite, if this box is wanted:** add a test-only
+      capturing layer (`tracing-test`, or `tracing-subscriber` as a dev-dep plus
+      a `MakeWriter` into a buffer) to `kasirmu-core`, then write the acceptance
+      as a real test. A deliberate addition, not a one-line log call, which is
+      why it is not taken here.
+      **Recommendation:** retire this box. Its premise is refuted twice over
+      (round 38's original audit, and this round's silent-repair sweep), the
+      fail-open sites it was written against are already fixed and documented,
+      and its acceptance cannot be evaluated with the current dependency set.
+      The residual honest version — "log violations in debug builds" — has no
+      named violation site to attach to.
 - [x] **P3-3 — Keep the `unsafe` inventory reviewable.** 27 `unsafe {` sites and
       7 `unsafe impl/fn/no_mangle` items, all in 4 production files plus 8
       test-only sites. Every one must carry a `// SAFETY:` line.
