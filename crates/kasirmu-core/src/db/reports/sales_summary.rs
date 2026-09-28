@@ -372,6 +372,11 @@ impl Store<'_> {
 
     /// Discount usage for a date range: share of discounted sales plus the
     /// most-redeemed discount codes.
+    ///
+    /// The code list buckets on the DISPLAYED label, not the raw column: an
+    /// unlabelled discount is stored either as NULL or as `''`, and both show
+    /// as `discount`, so grouping the raw column would report the same code
+    /// twice and spend two of the five slots on it.
     pub fn discounts_summary(
         &self,
         start_date: &str,
@@ -396,7 +401,7 @@ impl Store<'_> {
              FROM sales
              WHERE status = 'completed' AND discount_percent > 0
                AND DATE(created_at, ?3) BETWEEN ?1 AND ?2
-             GROUP BY discount_label
+             GROUP BY COALESCE(NULLIF(discount_label, ''), 'discount')
              ORDER BY redeemed_count DESC
              LIMIT 5",
         )?;
@@ -425,6 +430,11 @@ impl Store<'_> {
     /// is tracked through KDS orders carrying a table number; each completed
     /// sale with one represents a single table turn (takeaway orders without
     /// a table number are excluded).
+    ///
+    /// The turn is counted per SALE, not per KDS ticket: a sale whose items
+    /// span two kitchen zones fans out into one `kds_orders` row per zone
+    /// (`UNIQUE (sale_id, kitchen_zone)`), and counting tickets would report
+    /// one party at one table as two turns.
     pub fn table_turnover(
         &self,
         start_date: &str,
@@ -436,7 +446,7 @@ impl Store<'_> {
         let tz = self.tz_modifier();
         let mut stmt = self.conn.prepare(
             "SELECT DATE(s.created_at, ?3) AS date,
-                    COUNT(*) AS table_orders
+                    COUNT(DISTINCT s.id) AS table_orders
              FROM kds_orders k
              JOIN sales s ON k.sale_id = s.id
              WHERE s.status = 'completed'
@@ -467,7 +477,7 @@ impl Store<'_> {
         let tz = self.tz_modifier();
         let mut stmt = self.conn.prepare(
             "SELECT CAST(strftime('%H', s.created_at, ?3) AS INTEGER) AS hour,
-                    COUNT(*) AS table_orders
+                    COUNT(DISTINCT s.id) AS table_orders
              FROM kds_orders k
              JOIN sales s ON k.sale_id = s.id
              WHERE s.status = 'completed'

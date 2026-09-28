@@ -1589,6 +1589,31 @@ fn discounts_summary_counts_and_lists_codes() {
     assert_eq!(row.codes[0].redeemed_count, 2);
 }
 
+#[test]
+fn discounts_summary_treats_null_and_empty_labels_as_one_bucket() {
+    // `discount_label` is a nullable TEXT column, and an unlabelled discount
+    // can be stored either way (NULL from a cart with no label, '' from an
+    // empty one). Both DISPLAY as `discount`, so both must GROUP as
+    // `discount`: grouping the raw column splits the same code into two rows
+    // with an identical label and spends two of the five slots on it.
+    let conn = fresh();
+    conn.execute_batch(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, discount_percent, discount_label, created_at) VALUES
+            ('n1', 1000, 'USD', 1, 'completed', 10, NULL,        '2026-07-10T09:00:00Z'),
+            ('e1', 1000, 'USD', 1, 'completed', 10, '',          '2026-07-11T09:00:00Z'),
+            ('w1', 500,  'USD', 1, 'completed', 20, 'WELCOME10', '2026-07-12T09:00:00Z');",
+    )
+    .unwrap();
+    let row = store(&conn)
+        .discounts_summary("2026-07-01", "2026-07-31")
+        .unwrap();
+    assert_eq!(row.codes.len(), 2, "codes: {:?}", row.codes);
+    assert_eq!(row.codes[0].label, "discount");
+    assert_eq!(row.codes[0].redeemed_count, 2);
+    assert_eq!(row.codes[1].label, "WELCOME10");
+    assert_eq!(row.codes[1].redeemed_count, 1);
+}
+
 // ── Inventory turnover + trend ─────────────────────────────────
 
 #[test]
@@ -1702,6 +1727,37 @@ fn table_turnover_counts_completed_table_orders() {
 }
 
 #[test]
+fn table_turnover_counts_one_turn_per_table_not_per_kitchen_ticket() {
+    // `kds_orders` is UNIQUE on (sale_id, kitchen_zone) because a sale whose
+    // items span two zones FANS OUT into one ticket per zone. Those tickets
+    // are still one party at one table, so a per-ticket COUNT double-counts
+    // the table turn.
+    let conn = fresh();
+    let s = store(&conn);
+    let sale_id = seed_completed_sale(&conn, "PLATTER", 1, 24000);
+    for zone in ["grill", "bar"] {
+        s.create_kds_order(CreateKdsOrderInput {
+            sale_id: sale_id.clone(),
+            store_id: None,
+            items_summary: "x".into(),
+            item_count: 1,
+            kitchen_zone: Some(zone.into()),
+            notes: String::new(),
+            table_number: Some("T5".into()),
+            priority: false,
+        })
+        .unwrap();
+    }
+
+    let rows = s.table_turnover("2000-01-01", "2099-12-31").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].table_orders, 1,
+        "one sale at one table is one turn, however many kitchen zones it fanned out to"
+    );
+}
+
+#[test]
 fn hourly_table_activity_groups_completed_table_orders_by_hour() {
     let conn = fresh();
     let s = store(&conn);
@@ -1752,6 +1808,38 @@ fn hourly_table_activity_groups_completed_table_orders_by_hour() {
     assert_eq!(rows[0].table_orders, 1);
     assert_eq!(rows[1].hour, 12);
     assert_eq!(rows[1].table_orders, 1);
+}
+
+#[test]
+fn hourly_table_activity_counts_one_turn_per_table_not_per_kitchen_ticket() {
+    // Same fan-out as `table_turnover`: the occupancy curve must count the
+    // party once, not once per kitchen zone it routed to.
+    let conn = fresh();
+    let s = store(&conn);
+    let sale_id = seed_completed_sale(&conn, "PLATTER", 1, 24000);
+    conn.execute(
+        "UPDATE sales SET created_at = ?1 WHERE id = ?2",
+        params!["2026-01-01T19:15:00.000Z", sale_id],
+    )
+    .unwrap();
+    for zone in ["grill", "bar"] {
+        s.create_kds_order(CreateKdsOrderInput {
+            sale_id: sale_id.clone(),
+            store_id: None,
+            items_summary: "x".into(),
+            item_count: 1,
+            kitchen_zone: Some(zone.into()),
+            notes: String::new(),
+            table_number: Some("T5".into()),
+            priority: false,
+        })
+        .unwrap();
+    }
+
+    let rows = s.hourly_table_activity("2000-01-01", "2099-12-31").unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].hour, 19);
+    assert_eq!(rows[0].table_orders, 1);
 }
 
 #[test]
