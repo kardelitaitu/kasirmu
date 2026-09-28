@@ -53,17 +53,13 @@ impl Store<'_> {
         locked_screen: Option<&str>,
     ) -> Result<(), CoreError> {
         // Verify the terminal exists.
-        let exists: bool = self
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM terminals WHERE id = ?1",
-                params![terminal_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|c| c > 0)
-            .unwrap_or(false);
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM terminals WHERE id = ?1",
+            params![terminal_id],
+            |row| row.get(0),
+        )?;
 
-        if !exists {
+        if count == 0 {
             return Err(CoreError::NotFound {
                 entity: "terminal",
                 id: terminal_id.to_owned(),

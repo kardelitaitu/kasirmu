@@ -12981,6 +12981,24 @@ After adding `?`, the test passed cleanly along with all 25 stock count tests.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 21: set_terminal_profile stops misreporting DB errors as NotFound
+
+**Problem:** In `Store::set_terminal_profile` (`crates/kasirmu-core/src/db/terminal_profiles.rs`),
+the pre-check verifying terminal existence queried `SELECT COUNT(*) FROM terminals WHERE id = ?1` and mapped
+it with `.unwrap_or(false)`. If a database error occurred during the count query (e.g. disk fault or table lock),
+`.unwrap_or(false)` treated it as 0 terminals found and returned `Err(CoreError::NotFound { entity: "terminal", .. })`.
+This misreported underlying database faults as missing entities.
+
+**Solution:** Replaced `.map(...).unwrap_or(false)` with direct `?` propagation on the count query,
+only returning `CoreError::NotFound` when `count == 0` without DB errors.
+
+**Verified:** Red first (`set_terminal_profile_propagates_db_error_when_checking_terminal_exists` panicked with
+`expected CoreError::Db, got NotFound { entity: "terminal", id: "t1" }`).
+After adding `?`, the test passed cleanly along with all 19 terminal profile tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

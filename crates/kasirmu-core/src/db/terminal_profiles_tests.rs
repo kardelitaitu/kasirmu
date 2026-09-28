@@ -307,3 +307,21 @@ fn list_profiles_ordered_by_terminal_id_asc() {
     assert_eq!(profiles[1].terminal_id, "m-terminal");
     assert_eq!(profiles[2].terminal_id, "z-terminal");
 }
+
+#[test]
+fn set_terminal_profile_propagates_db_error_when_checking_terminal_exists() {
+    let conn = fresh();
+    seed_terminal(&conn, "t1", "Front Counter", "dev-1");
+
+    // Force a DB error on the terminals query by renaming the terminals table
+    conn.execute_batch("ALTER TABLE terminals RENAME TO terminals_hidden;")
+        .unwrap();
+
+    let err = store(&conn)
+        .set_terminal_profile("t1", "counter_pos", None)
+        .expect_err("a database error must not be misreported as NotFound");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
