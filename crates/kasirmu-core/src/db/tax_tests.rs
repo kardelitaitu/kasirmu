@@ -2215,3 +2215,45 @@ fn a_db_failure_in_the_entity_probe_is_not_reported_as_no_entity_assigned() {
         "location_legal_entity must surface the DB fault, got {err:?}"
     );
 }
+
+#[test]
+fn a_db_failure_in_the_coverage_probe_does_not_silently_allow_the_last_scoped_archive() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_topology(&conn, "ent-a", "loc-a");
+    // A single location-scoped row: the guard exists precisely to REFUSE this
+    // archive, because no other row covers loc-a at any tier.
+    let only = s
+        .create_tax_rate_scoped(
+            "Only loc-a rate",
+            1000,
+            false,
+            false,
+            &TaxRateScope::Location("loc-a".into()),
+            &TaxRateWindow::default(),
+        )
+        .unwrap();
+
+    // Force a REAL fault in the guard's own read of the row being archived.
+    //
+    // Under the old `.ok()` the failure collapsed to `None`, and `None` is
+    // defined at `ensure_scoped_coverage_survives` as "no such active row --
+    // nothing scoped is being erased", so the guard returned `Ok(())` and
+    // ALLOWED the archive it exists to refuse. A guard that fails OPEN is worse
+    // than no guard: the operator is told nothing while the branch silently
+    // relocates onto whatever the fallback tiers happen to hold -- or onto
+    // nothing at all.
+    //
+    // The fault is injected by renaming only the column the guard's first read
+    // touches, so the failure is the guard's, not some later statement's.
+    conn.execute_batch("ALTER TABLE tax_rates RENAME COLUMN location_id TO location_id_hidden;")
+        .unwrap();
+
+    let err = s
+        .delete_tax_rate(&only.id)
+        .expect_err("a DB failure must not let the last scoped rate be archived");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the coverage guard must surface the DB fault, got {err:?}"
+    );
+}

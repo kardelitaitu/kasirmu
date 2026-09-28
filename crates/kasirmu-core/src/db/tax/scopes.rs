@@ -626,7 +626,7 @@ impl Store<'_> {
                     ))
                 },
             )
-            .ok();
+            .optional()?;
         let Some((entity, location)) = stored else {
             return Ok(());
         };

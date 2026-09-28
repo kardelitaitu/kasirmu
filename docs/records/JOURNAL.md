@@ -12406,6 +12406,48 @@ its own red-first slice.
 **Commits:** this entry + the fix land in the pathspec commit below.
 
 
+### 2026-09-28 — TDD round 3: the tax coverage guard stops failing open
+
+**Problem:** `Store::ensure_scoped_coverage_survives` (`crates/kasirmu-core/src/db/tax/scopes.rs:617-629`)
+exists to REFUSE archiving the last rate row covering a scoped location — the "somebody authored a
+scope for a branch, and archiving its last row silently relocates that branch onto a fallback three
+tiers away, or onto nothing at all" case its own doc describes. Its first read of the row being
+archived ended in `.ok()`, and the very next lines define `None` as "no such active row — nothing
+scoped is being erased" and return `Ok(())`. So a database fault made the guard **allow the archive
+it exists to refuse**: fail-open on a money-configuration guard. The Red test proves it — with the
+probe faulted, `delete_tax_rate` returned `Ok(())`.
+
+**Solution:** the probe now uses `.optional()?`, so only a genuinely absent row is "nothing scoped
+is being erased" and a real fault is `CoreError::Db`. The Red-first test injects the fault by
+renaming only the column that read touches (`RENAME COLUMN location_id TO location_id_hidden`), so
+the failure is the guard's own and not a later statement's.
+
+**Verified:** full `kasirmu-core` lib suite **3398 passed / 0 failed** (3397 + 1 new); tax module
+81/81; `cargo fmt -p kasirmu-core -- --check` and `cargo clippy -p kasirmu-core --all-targets` both
+silent on the two touched files.
+
+**Investigated and deliberately NOT changed — `adjust.rs:466`/`:475`/`:494`.** These were queued
+for this round and are NOT defects: the caller documents the threshold check as "NON-FATAL by design:
+a threshold alert is advisory, so a failure here must not roll back the stock adjustment", routes it
+through `if let Err(e) = ... { tracing::warn!(...) }` (`:345-359`, the MSL-26 log), and
+`products_tests.rs::a_failing_threshold_check_does_not_block_the_stock_adjustment` pins that a failed
+threshold check must not fail the adjustment. Converting the probes to hard errors would break that
+pinned contract. The residual (a fault reads as "no threshold configured" or "no existing alert")
+changes which advisory alert is written, never the adjustment — so it belongs to the threshold
+feature, not to this probe-class sweep. Recorded rather than churned.
+
+**New leads this pass surveyed, queued for their own slices (not fixed here):**
+1. `db/sales_tax.rs:541-549` — `resolve_best_tax_rates_for_sku_at` reads the product's
+   `category_id` with `.ok().and_then(|v| v)`; a fault makes a product read as UNCATEGORIZED and
+   silently falls through to the tenant-default rate. That is a wrong TAX RATE on a sale. Same
+   MSL-27 class, and the strongest remaining candidate found so far.
+2. `db/popularity.rs:620-628` — `sku_means` reads the product's category with
+   `.ok().flatten()`; a fault silently drops to the global mean, quietly shifting the popularity
+   score for that SKU's search events.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 
