@@ -509,7 +509,7 @@ fn verify_square_signature(
     timestamp: &str,
 ) -> bool {
     let body_str = std::str::from_utf8(payload).unwrap_or("");
-    let signed_payload = format!("{}.{}.{}", webhook_url, body_str, timestamp);
+    let signed_payload = format!("{webhook_url}.{body_str}.{timestamp}");
 
     let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
         Ok(m) => m,

@@ -133,8 +133,8 @@ impl StripePaymentProcessor {
     /// should be directed to a mock server (e.g. `wiremock`).
     pub fn new_with_endpoint(secret_key: &str, api_base: &str, card_present: bool) -> Self {
         let mut headers = HeaderMap::new();
-        let mut auth_value = HeaderValue::from_str(&format!("Bearer {}", secret_key))
-            .unwrap_or_else(|e| {
+        let mut auth_value =
+            HeaderValue::from_str(&format!("Bearer {secret_key}")).unwrap_or_else(|e| {
                 tracing::error!(error = %e, "invalid Stripe auth header — using placeholder");
                 HeaderValue::from_static("Bearer placeholder")
             });
@@ -329,7 +329,7 @@ impl StripePaymentProcessor {
             | "api_connection_error"
             | "authentication_error"
             | "rate_limit_error" => PaymentError::Network(msg),
-            _ => PaymentError::Network(format!("stripe_error: {}", msg)),
+            _ => PaymentError::Network(format!("stripe_error: {msg}")),
         }
     }
 
@@ -342,7 +342,7 @@ impl StripePaymentProcessor {
                 err.error.code.as_deref(),
             )
         } else {
-            PaymentError::Network(format!("HTTP {}: {}", status, body))
+            PaymentError::Network(format!("HTTP {status}: {body}"))
         }
     }
 
@@ -359,7 +359,7 @@ impl StripePaymentProcessor {
     /// Parse a successful Stripe response body into a [`RefundResponse`].
     fn parse_refund(body: &str) -> Result<RefundResponse, PaymentError> {
         serde_json::from_str(body).map_err(|e| {
-            PaymentError::Network(format!("failed to parse Refund: {} -- body: {}", e, body))
+            PaymentError::Network(format!("failed to parse Refund: {e} -- body: {body}"))
         })
     }
 
@@ -414,7 +414,7 @@ impl PaymentProcessor for StripePaymentProcessor {
         // response, not a second charge.
         let (status, body) = self
             .post(
-                &format!("/payment_intents/{}/capture", transaction_id),
+                &format!("/payment_intents/{transaction_id}/capture"),
                 vec![],
                 None,
             )
@@ -484,7 +484,7 @@ impl PaymentProcessor for StripePaymentProcessor {
         // not a second state change, so a retry cannot double-apply.
         let (status, body) = self
             .post(
-                &format!("/payment_intents/{}/cancel", transaction_id),
+                &format!("/payment_intents/{transaction_id}/cancel"),
                 vec![],
                 None,
             )
@@ -507,7 +507,7 @@ impl PaymentProcessor for StripePaymentProcessor {
 
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
         let (status, body) = self
-            .get(&format!("/payment_intents/{}", transaction_id))
+            .get(&format!("/payment_intents/{transaction_id}"))
             .await?;
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &body));

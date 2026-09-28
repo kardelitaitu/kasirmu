@@ -31,7 +31,7 @@ impl<'a> tracing::field::Visit for MessageVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
             // Use debug formatting for the message field.
-            self.0.push_str(&format!("{:?}", value));
+            self.0.push_str(&format!("{value:?}"));
         } else {
             self.0.push_str(&format!(" {}={:?}", field.name(), value));
         }

@@ -21,7 +21,7 @@ fn create_bundle_args_debug() {
         currency: None,
         items: vec![],
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("B-TEST"));
 }
 
@@ -41,7 +41,7 @@ fn create_bundle_item_arg_debug() {
         qty: 1,
         unit_price_minor: Some(100),
     };
-    let debug = format!("{:?}", item);
+    let debug = format!("{item:?}");
     assert!(debug.contains("SKU-X"));
     assert!(debug.contains("100"));
 }

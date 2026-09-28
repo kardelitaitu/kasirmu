@@ -278,7 +278,7 @@ pub fn render_report_email(
         .format("%Y-%m-%d")
         .to_string();
     let end = Utc::now().format("%Y-%m-%d").to_string();
-    let date_label = format!("{} to {}", lookback_start, end);
+    let date_label = format!("{lookback_start} to {end}");
 
     ReportEmailBuilder::build(&bundle, store_name, &date_label)
 }

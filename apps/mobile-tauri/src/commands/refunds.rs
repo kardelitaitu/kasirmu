@@ -94,7 +94,7 @@ fn run_process_refund(
 
     let sale = store
         .get_sale(sale_id)?
-        .ok_or_else(|| AppError::Invalid(format!("sale {} not found", sale_id)))?;
+        .ok_or_else(|| AppError::Invalid(format!("sale {sale_id} not found")))?;
     if sale.status != kasirmu_core::SaleStatus::Completed {
         return Err(AppError::Invalid(format!(
             "cannot refund a sale with status {:?}",

@@ -606,7 +606,7 @@ impl Store<'_> {
         if !SaleStatus::can_transition_to(current, to) {
             return Err(CoreError::Validation {
                 field: "status",
-                message: format!("cannot transition from {:?} to {:?}", current, to),
+                message: format!("cannot transition from {current:?} to {to:?}"),
             });
         }
 

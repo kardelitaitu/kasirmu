@@ -96,7 +96,7 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
         QuotaDimension::Staff,
     ] {
         let u = report.usage(d).unwrap();
-        assert!(u.is_over_quota(), "{:?} should be over quota", d);
+        assert!(u.is_over_quota(), "{d:?} should be over quota");
         assert_eq!(u.excess(), 1);
     }
 

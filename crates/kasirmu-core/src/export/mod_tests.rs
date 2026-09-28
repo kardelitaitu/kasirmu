@@ -486,7 +486,7 @@ fn custom_report_unbounded_without_limit() {
 
     // Create 150 products to test unbounded results
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -513,7 +513,7 @@ fn custom_report_respects_limit() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -543,7 +543,7 @@ fn custom_report_respects_offset_and_limit() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }
@@ -572,7 +572,7 @@ fn custom_report_limit_clamped_to_max() {
 
     // Create 150 products
     for i in 0..150 {
-        let sku = format!("PROD{:03}", i);
+        let sku = format!("PROD{i:03}");
         s.create_product(&sku, &sku, price(100), None, None, 100, None)
             .unwrap();
     }

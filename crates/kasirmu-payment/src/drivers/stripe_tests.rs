@@ -174,7 +174,7 @@ fn stripe_secret_key_from_env_error_check() {
         Err(_) => {
             assert!(result.is_err());
             let msg = result.unwrap_err().to_string();
-            assert!(msg.contains("not set"), "error: {}", msg);
+            assert!(msg.contains("not set"), "error: {msg}");
         }
     }
 }
@@ -317,7 +317,7 @@ fn stripe_parse_error_non_json() {
 #[test]
 fn stripe_debug_masks_key() {
     let proc = StripePaymentProcessor::new(&test_key(), false);
-    let debug = format!("{:?}", proc);
+    let debug = format!("{proc:?}");
     assert!(!debug.contains("sk_test"));
     assert!(!debug.contains("dummy_key"));
     assert!(debug.contains("***"));
@@ -335,6 +335,6 @@ fn stripe_clone_preserves_config() {
 #[test]
 fn stripe_new_with_endpoint_uses_custom_base() {
     let proc = StripePaymentProcessor::new_with_endpoint("sk_test", "http://localhost:9999", false);
-    let debug = format!("{:?}", proc);
+    let debug = format!("{proc:?}");
     assert!(debug.contains("localhost:9999"));
 }

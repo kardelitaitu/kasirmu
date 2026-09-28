@@ -679,7 +679,7 @@ impl Store<'_> {
         }
 
         // Add LIMIT and OFFSET
-        sql.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
 
         let mut stmt = self.conn.prepare(&sql).map_err(|e| {
             CoreError::Internal(format!("failed to prepare custom report query: {e}"))

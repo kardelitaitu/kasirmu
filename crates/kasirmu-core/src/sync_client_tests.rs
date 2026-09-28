@@ -603,7 +603,7 @@ fn sync_attempt_result_debug() {
         error: Some("network error".into()),
         plan_required: false,
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("synced: 5"));
     assert!(debug.contains("failed: 1"));
 }

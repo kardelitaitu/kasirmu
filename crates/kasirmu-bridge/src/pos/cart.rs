@@ -347,7 +347,7 @@ pub fn run_override_line_price_unchecked(
     let store = Store::new(db);
     let mut cart = store
         .load_active_cart(cart_id)?
-        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", cart_id)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {cart_id}")))?;
 
     let currency = cart.currency();
     let new_price = Money {
@@ -359,7 +359,7 @@ pub fn run_override_line_price_unchecked(
         .lines_mut()
         .iter_mut()
         .find(|l| l.id == *line_id)
-        .ok_or_else(|| BridgeError::Invalid(format!("line not found: {}", line_id)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("line not found: {line_id}")))?;
 
     line.set_overridden_price(new_price)
         .map_err(|e| BridgeError::Invalid(e.to_string()))?;
@@ -421,14 +421,14 @@ pub fn run_set_line_course_unchecked(
     let store = Store::new(db);
     let mut cart = store
         .load_active_cart(cart_id)?
-        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {}", cart_id)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("cart not found: {cart_id}")))?;
 
     let assigned = {
         let line = cart
             .lines_mut()
             .iter_mut()
             .find(|l| l.id == *line_id)
-            .ok_or_else(|| BridgeError::Invalid(format!("line not found: {}", line_id)))?;
+            .ok_or_else(|| BridgeError::Invalid(format!("line not found: {line_id}")))?;
         line.set_course(course);
         line.course.clone()
     };

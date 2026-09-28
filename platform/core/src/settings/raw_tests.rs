@@ -64,7 +64,7 @@ fn trusted_local_admits_the_key_the_other_policies_refuse() {
     // And the two untrusted policies refuse that very key on the same row.
     for policy in [IngestPolicy::PortablePackage, IngestPolicy::RemoteSync] {
         let refused = Settings::set_with_policy(&conn, keys::MACHINE_ID, "x", policy).unwrap();
-        assert!(!refused, "{:?} must refuse machine_id", policy);
+        assert!(!refused, "{policy:?} must refuse machine_id");
         assert_eq!(
             Settings::get(&conn, keys::MACHINE_ID).unwrap().as_deref(),
             Some("minted-locally"),

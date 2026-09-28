@@ -44,7 +44,7 @@ fn qris_from_env_missing_key() {
         Err(_) => {
             assert!(result.is_err());
             let msg = result.unwrap_err().to_string();
-            assert!(msg.contains("not set"), "error: {}", msg);
+            assert!(msg.contains("not set"), "error: {msg}");
         }
     }
 }
@@ -240,7 +240,7 @@ fn qris_parse_error_empty() {
 #[test]
 fn qris_debug_masks_key() {
     let proc = QrisPaymentProcessor::new(&test_key(), false);
-    let debug = format!("{:?}", proc);
+    let debug = format!("{proc:?}");
     assert!(!debug.contains("test_key"));
     assert!(!debug.contains("MID-server"));
     assert!(debug.contains("***"));

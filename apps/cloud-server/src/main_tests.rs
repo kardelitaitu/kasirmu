@@ -918,7 +918,7 @@ fn lifecycle_stripe_signature(payload: &[u8], secret: &str) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(&signed_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
-    format!("t={},v1={}", timestamp, expected)
+    format!("t={timestamp},v1={expected}")
 }
 
 /// Health must fail fast under pool saturation (Bug 3). The Docker

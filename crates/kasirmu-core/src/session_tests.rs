@@ -55,7 +55,7 @@ fn session_context_debug_output() {
         Some(42),
         7,
     );
-    let debug = format!("{:?}", ctx);
+    let debug = format!("{ctx:?}");
     assert!(debug.contains("u1"));
     assert!(debug.contains("s1"));
     assert!(debug.contains("restaurant-pos"));

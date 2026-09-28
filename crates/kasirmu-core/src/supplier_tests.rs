@@ -68,7 +68,7 @@ fn new_defaults_timestamps_to_empty() {
 #[test]
 fn debug_output() {
     let s = Supplier::new("SUP001", "Acme Corp");
-    let debug = format!("{:?}", s);
+    let debug = format!("{s:?}");
     assert!(debug.contains("SUP001"));
     assert!(debug.contains("Acme Corp"));
 }

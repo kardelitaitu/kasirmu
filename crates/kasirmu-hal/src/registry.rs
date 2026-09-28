@@ -276,7 +276,7 @@ impl DriverRegistry {
             let printer_arc = Arc::new(printer);
             self.register_printer(&id, printer_arc.clone()).await;
             // Register a companion cash drawer that kicks through this printer.
-            let drawer_id = format!("drawer:kick:{}", id);
+            let drawer_id = format!("drawer:kick:{id}");
             let drawer = Arc::new(PrinterKickCashDrawer::new_pin2(printer_arc));
             self.register_cash_drawer(&drawer_id, drawer).await;
         }
@@ -298,7 +298,7 @@ impl DriverRegistry {
             let printer_arc = Arc::new(printer);
             self.register_printer(&id, printer_arc.clone()).await;
             // Companion drawer for BT printers.
-            let drawer_id = format!("drawer:kick:{}", id);
+            let drawer_id = format!("drawer:kick:{id}");
             let drawer = Arc::new(PrinterKickCashDrawer::new_pin2(printer_arc));
             self.register_cash_drawer(&drawer_id, drawer).await;
         }

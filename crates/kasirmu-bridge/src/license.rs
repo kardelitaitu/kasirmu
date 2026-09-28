@@ -671,7 +671,7 @@ pub async fn get_license_status(ctx: &BridgeCtx<'_>) -> Result<LicenseStatusDto,
                 status: LicenseVerificationStatus::InvalidSignature,
                 tier: None,
                 payload: None,
-                message: Some(format!("Invalid signature: {}", e)),
+                message: Some(format!("Invalid signature: {e}")),
             });
         }
 
@@ -684,7 +684,7 @@ pub async fn get_license_status(ctx: &BridgeCtx<'_>) -> Result<LicenseStatusDto,
                     status: LicenseVerificationStatus::InvalidSignature,
                     tier: None,
                     payload: None,
-                    message: Some(format!("Failed to parse payload: {}", e)),
+                    message: Some(format!("Failed to parse payload: {e}")),
                 });
             }
         };

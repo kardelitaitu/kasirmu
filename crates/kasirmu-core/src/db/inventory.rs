@@ -91,7 +91,7 @@ impl Store<'_> {
             other => {
                 return Err(CoreError::Validation {
                     field: "type",
-                    message: format!("invalid location type: {}", other),
+                    message: format!("invalid location type: {other}"),
                 });
             }
         }
@@ -202,7 +202,7 @@ impl Store<'_> {
             other => {
                 return Err(CoreError::Validation {
                     field: "type",
-                    message: format!("invalid location type: {}", other),
+                    message: format!("invalid location type: {other}"),
                 });
             }
         }

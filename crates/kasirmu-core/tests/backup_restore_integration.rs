@@ -51,7 +51,7 @@ fn run_migrations(conn: &mut Connection) {
 fn sqlite3_backup(source_path: &str, backup_path: &str) -> Result<(), String> {
     let output = Command::new("sqlite3")
         .arg(source_path)
-        .arg(format!(".backup '{}'", backup_path))
+        .arg(format!(".backup '{backup_path}'"))
         .output()
         .map_err(|e| format!("failed to run sqlite3: {e}"))?;
 

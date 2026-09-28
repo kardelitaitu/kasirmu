@@ -119,11 +119,11 @@ fn open_memory() -> Connection {
 fn seed(conn: &Connection, count: usize) {
     let store = Store::new(conn);
     for i in 0..count {
-        let sku = format!("SKU-{:05}", i);
+        let sku = format!("SKU-{i:05}");
         store
             .create_product(
                 &sku,
-                &format!("Product {}", i),
+                &format!("Product {i}"),
                 price(1000),
                 None,
                 None,

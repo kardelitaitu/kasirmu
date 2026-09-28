@@ -562,7 +562,7 @@ fn right_pad(s: &str, width: usize) -> String {
     if cell_width(s) >= width {
         s.to_owned()
     } else {
-        format!("{:>width$}", s, width = width)
+        format!("{s:>width$}")
     }
 }
 

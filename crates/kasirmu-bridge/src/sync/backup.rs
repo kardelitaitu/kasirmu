@@ -56,7 +56,7 @@ pub(super) fn pre_pull_backup_path(store_db: &Path, timestamp: &str) -> PathBuf 
 
 /// Whether `name` is exactly `<stem>.sync-pull-<14 digits>.backup.db`.
 pub(super) fn matches_pre_pull_backup_name(stem: &str, name: &str) -> bool {
-    let prefix = format!("{}.{PRE_PULL_BACKUP_INFIX}", stem);
+    let prefix = format!("{stem}.{PRE_PULL_BACKUP_INFIX}");
     let Some(rest) = name.strip_prefix(&prefix) else {
         return false;
     };

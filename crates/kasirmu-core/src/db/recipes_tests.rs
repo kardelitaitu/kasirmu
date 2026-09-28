@@ -216,7 +216,7 @@ fn get_recipe_ingredients_many_ingredients() {
 
     // Add 10 extra products as ingredients
     for i in 0..10 {
-        let pid = format!("ing_{}", i);
+        let pid = format!("ing_{i}");
         conn.execute(
             "INSERT INTO products (id, sku, name, price_minor, currency, created_at, updated_at) VALUES
              (?1, ?1, ?1, 100, 'USD', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",

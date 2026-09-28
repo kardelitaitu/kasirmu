@@ -14,7 +14,7 @@ fn received_line_input_debug() {
         line_id: "l2".into(),
         received_qty: 10,
     };
-    let debug = format!("{:?}", input);
+    let debug = format!("{input:?}");
     assert!(debug.contains("l2"));
     assert!(debug.contains("10"));
 }
@@ -65,6 +65,6 @@ fn transfer_with_lines_debug() {
         transfer,
         lines: vec![],
     };
-    let debug = format!("{:?}", twl);
+    let debug = format!("{twl:?}");
     assert!(debug.contains("t2"));
 }

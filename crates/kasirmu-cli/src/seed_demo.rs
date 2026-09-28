@@ -79,11 +79,11 @@ pub fn run_seed_demo(conn: &Connection, args: &SeedDemoArgs) -> Result<()> {
 
     // ── Seed main database ──────────────────────────────────────
     if args.all || args.retail {
-        eprintln!("Seeding retail POS demo data ({} days)...", days);
+        eprintln!("Seeding retail POS demo data ({days} days)...");
         seed_retail(conn, days)?;
     }
     if args.all || args.restaurant {
-        eprintln!("Seeding restaurant POS demo data ({} days)...", days);
+        eprintln!("Seeding restaurant POS demo data ({days} days)...");
         seed_restaurant(conn, days)?;
     }
     if !args.all && !args.retail && !args.restaurant {
@@ -135,7 +135,7 @@ fn seed_store_databases(
             }
 
             found = true;
-            eprintln!("\nSeeding per-store DB: {}", fname);
+            eprintln!("\nSeeding per-store DB: {fname}");
 
             let store_conn = rusqlite::Connection::open(&path)
                 .with_context(|| format!("opening store db {}", path.display()))?;
@@ -486,7 +486,7 @@ fn seed_retail(conn: &Connection, days: u32) -> Result<()> {
             );
         }
     }
-    eprintln!("  ✅ {} sales over {} days", total_sales, days);
+    eprintln!("  ✅ {total_sales} sales over {days} days");
 
     Ok(())
 }
@@ -584,7 +584,7 @@ fn seed_restaurant(conn: &Connection, days: u32) -> Result<()> {
 
     // ── Tables ──────────────────────────────────────────────────
     for t in 1..=12 {
-        let tid = format!("table-{:02}", t);
+        let tid = format!("table-{t:02}");
         conn.execute(
             "INSERT OR IGNORE INTO tables (id, name, capacity, status) VALUES (?1,?2,4,'available')",
             params![tid, format!("Table {}", t)],
@@ -688,7 +688,7 @@ fn seed_restaurant(conn: &Connection, days: u32) -> Result<()> {
             );
         }
     }
-    eprintln!("  ✅ {} orders over {} days", total_orders, days);
+    eprintln!("  ✅ {total_orders} orders over {days} days");
 
     Ok(())
 }

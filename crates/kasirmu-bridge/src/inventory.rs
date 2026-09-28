@@ -507,7 +507,7 @@ pub async fn create_inventory_transaction(
     let store = Store::new(&db);
 
     let ttype = InventoryTransactionType::from_stored_str(&type_str)
-        .ok_or_else(|| BridgeError::Invalid(format!("invalid transaction type: {}", type_str)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("invalid transaction type: {type_str}")))?;
 
     let tx_id = store.create_inventory_transaction(
         ttype,

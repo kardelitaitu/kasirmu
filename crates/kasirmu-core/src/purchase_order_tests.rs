@@ -66,7 +66,7 @@ fn unique_ids_per_instance() {
 #[test]
 fn debug_output() {
     let po = PurchaseOrder::new("PO-001", "sup-1");
-    let debug = format!("{:?}", po);
+    let debug = format!("{po:?}");
     assert!(debug.contains("PO-001"));
     assert!(debug.contains("sup-1"));
 }
@@ -108,7 +108,7 @@ fn new_line_defaults_fields() {
 #[test]
 fn line_debug_output() {
     let line = PurchaseOrderLine::new("po-1");
-    let debug = format!("{:?}", line);
+    let debug = format!("{line:?}");
     assert!(debug.contains("po-1"));
 }
 

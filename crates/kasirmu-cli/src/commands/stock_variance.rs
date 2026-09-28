@@ -179,9 +179,9 @@ pub(crate) fn run_stock_variance(conn: &Connection, args: &StockVarianceArgs) ->
         println!("{note}");
     }
     println!();
-    println!("{}", HELP_WHY);
+    println!("{HELP_WHY}");
     println!();
-    println!("{}", HELP_BYTES_NOT_CONTENT);
+    println!("{HELP_BYTES_NOT_CONTENT}");
     Ok(())
 }
 

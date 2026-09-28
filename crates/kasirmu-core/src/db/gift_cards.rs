@@ -198,7 +198,7 @@ impl Store<'_> {
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            let pattern = format!("%{}%", escaped);
+            let pattern = format!("%{escaped}%");
             where_clauses.push(format!(
                 "(g.card_number LIKE ?{param_idx} ESCAPE '\\' OR g.issued_to LIKE ?{param_idx} ESCAPE '\\')"
             ));
@@ -218,7 +218,7 @@ impl Store<'_> {
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            let pattern = format!("%{}%", escaped);
+            let pattern = format!("%{escaped}%");
             where_clauses.push(format!("g.issued_to LIKE ?{param_idx} ESCAPE '\\'"));
             param_values.push(Box::new(pattern));
             param_idx += 1;

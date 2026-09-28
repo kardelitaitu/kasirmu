@@ -452,7 +452,7 @@ async fn missing_returns_only_hashes_not_in_image_refs() {
 
     // The uploaded hash has refcount=1 → NOT missing.
     // Some other random hash → IS missing.
-    let missing_uri = format!("/api/v1/images:missing?hashes={},bbbbbbbbbbbbbbbb", hash);
+    let missing_uri = format!("/api/v1/images:missing?hashes={hash},bbbbbbbbbbbbbbbb");
     let resp = app
         .oneshot(
             Request::builder()

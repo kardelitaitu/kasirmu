@@ -14,7 +14,7 @@ fn audit_entry_dto_debug() {
         outcome: "success".into(),
         created_at: "2026-01-15T10:00:00Z".into(),
     };
-    let debug = format!("{:?}", dto);
+    let debug = format!("{dto:?}");
     assert!(debug.contains("sale.void"));
     assert!(debug.contains("u1"));
 }
@@ -77,7 +77,7 @@ fn list_audit_log_args_debug() {
         limit: 50,
         offset: 0,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("50"));
 }
 

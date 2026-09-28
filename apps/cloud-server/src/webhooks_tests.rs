@@ -103,7 +103,7 @@ fn stripe_signature(payload: &[u8], secret: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(&signed_bytes);
     let expected = hex::encode(mac.finalize().into_bytes());
-    format!("t={},v1={}", timestamp, expected)
+    format!("t={timestamp},v1={expected}")
 }
 
 // ── Stripe signature verification ─────────────────────────────
@@ -588,7 +588,7 @@ async fn square_webhook_valid_signature_happy_path() {
 
     // Build Square signature
     let body_str = std::str::from_utf8(payload).unwrap();
-    let signed = format!("{}.{}.{}", url, body_str, timestamp);
+    let signed = format!("{url}.{body_str}.{timestamp}");
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(signed.as_bytes());
     let signature = hex::encode(mac.finalize().into_bytes());

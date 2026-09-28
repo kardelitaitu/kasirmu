@@ -7,7 +7,7 @@ fn scale_device_info_debug() {
         product_id: "0x8001".into(),
         device_path: "/dev/hidraw0".into(),
     };
-    let debug = format!("{:?}", info);
+    let debug = format!("{info:?}");
     assert!(debug.contains("0x0922"));
 }
 

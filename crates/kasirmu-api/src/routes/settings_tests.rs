@@ -392,7 +392,7 @@ async fn put_supplying_smtp_password_still_overwrites_it() {
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
     let rotated = smtp_blob("smtp.example.com", 587, Some("u"), Some("rotated"));
-    let body = format!(r#"{{"smtp_config":{}}}"#, rotated);
+    let body = format!(r#"{{"smtp_config":{rotated}}}"#);
     let resp = put_raw(&state, &body).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let json = body_json(resp).await;
@@ -412,7 +412,7 @@ async fn put_empty_smtp_password_clears_it() {
     let state = state_with(None);
     put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, smtp_json())).await;
     let clearing = smtp_blob("smtp.example.com", 587, Some("u"), Some(""));
-    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{}}}"#, clearing)).await;
+    let resp = put_raw(&state, &format!(r#"{{"smtp_config":{clearing}}}"#)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let raw = raw_smtp_row(&state, "smtp_config:default").await.unwrap();
     assert_eq!(

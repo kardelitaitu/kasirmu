@@ -95,7 +95,7 @@ impl tracing::Subscriber for Capture {
                 self.0.push((f.name().to_string(), val.to_string()));
             }
             fn record_debug(&mut self, f: &tracing::field::Field, val: &dyn std::fmt::Debug) {
-                self.0.push((f.name().to_string(), format!("{:?}", val)));
+                self.0.push((f.name().to_string(), format!("{val:?}")));
             }
         }
         let mut v = V(Vec::new());

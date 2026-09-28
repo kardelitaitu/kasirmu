@@ -1763,7 +1763,7 @@ fn drift_pin_no_computed_command_names_in_ui() {
                         }
                     ));
                     if offend {
-                        offenders.push(format!("{}:{}", rel, at));
+                        offenders.push(format!("{rel}:{at}"));
                     }
                 }
             }

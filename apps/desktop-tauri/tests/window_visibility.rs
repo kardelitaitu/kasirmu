@@ -22,7 +22,7 @@ fn manifest_dir() -> PathBuf {
 fn tauri_conf_main_window_starts_hidden() {
     let conf_path = manifest_dir().join("tauri.conf.json");
     let raw = fs::read_to_string(&conf_path)
-        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", conf_path, e));
+        .unwrap_or_else(|e| panic!("failed to read {conf_path:?}: {e}"));
 
     let parsed: serde_json::Value =
         serde_json::from_str(&raw).expect("tauri.conf.json should be valid JSON");
@@ -57,7 +57,7 @@ fn lib_rs_shows_main_window_after_setup() {
     // The pattern is: app.get_webview_window("main")?.show()
     let lib_path = manifest_dir().join("src/lib.rs");
     let src = fs::read_to_string(&lib_path)
-        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", lib_path, e));
+        .unwrap_or_else(|e| panic!("failed to read {lib_path:?}: {e}"));
 
     assert!(
         src.contains("get_webview_window(\"main\")"),

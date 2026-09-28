@@ -96,19 +96,19 @@ impl StoreDatabaseManager {
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                PlatformError::Internal(format!("creating data dir {:?}: {e}", parent))
+                PlatformError::Internal(format!("creating data dir {parent:?}: {e}"))
             })?;
         }
 
         let is_new = !path.exists();
         let mut conn = Connection::open(&path)
-            .map_err(|e| PlatformError::Internal(format!("opening store db {:?}: {e}", path)))?;
+            .map_err(|e| PlatformError::Internal(format!("opening store db {path:?}: {e}")))?;
         conn.pragma_update(None, "foreign_keys", "ON")
-            .map_err(|e| PlatformError::Internal(format!("enabling FK on {:?}: {e}", path)))?;
+            .map_err(|e| PlatformError::Internal(format!("enabling FK on {path:?}: {e}")))?;
 
         if is_new {
             conn.pragma_update(None, "journal_mode", "WAL")
-                .map_err(|e| PlatformError::Internal(format!("enabling WAL on {:?}: {e}", path)))?;
+                .map_err(|e| PlatformError::Internal(format!("enabling WAL on {path:?}: {e}")))?;
             tracing::info!(store_id, path = %path.display(), "creating store database");
         }
 

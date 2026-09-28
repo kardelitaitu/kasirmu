@@ -121,7 +121,7 @@ impl TemplateParameter {
     pub fn currency(code: &str, amount: i64) -> Self {
         Self {
             param_type: "currency".into(),
-            text: Some(format!("{} {}", amount, code)),
+            text: Some(format!("{amount} {code}")),
             currency_code: Some(code.to_owned()),
             amount_1000: Some(amount.saturating_mul(1000)),
         }

@@ -35,7 +35,7 @@ fn void_sale_args_debug() {
         user_id: "u2".into(),
         reason: "wrong item".into(),
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("s2"));
     assert!(debug.contains("wrong item"));
 }

@@ -232,7 +232,7 @@ fn update_sync_settings_debug() {
         api_key: None,
         enabled: true,
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("url"));
 }
 

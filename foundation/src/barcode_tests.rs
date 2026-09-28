@@ -111,7 +111,7 @@ fn barcode_hash_consistent_with_eq() {
 #[test]
 fn barcode_debug_format_contains_value() {
     let bc = Barcode::new("4901234567890").unwrap();
-    let debug = format!("{:?}", bc);
+    let debug = format!("{bc:?}");
     assert!(debug.contains("4901234567890"));
 }
 

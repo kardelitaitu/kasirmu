@@ -146,7 +146,7 @@ pub async fn ingest_to_store(
     // Only write if the file doesn't exist (dedupe hit).
     if !tokio::fs::try_exists(&store_path).await.unwrap_or(false) {
         // Write to a temp path first, then atomically rename
-        let temp_path = parent_dir.join(format!(".{}.tmp", hash16));
+        let temp_path = parent_dir.join(format!(".{hash16}.tmp"));
         {
             let mut tmp = tokio::fs::File::create(&temp_path)
                 .await

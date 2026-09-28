@@ -38,10 +38,7 @@ impl<'a> SalesRepository<'a> {
 
         let currency_str: String = row.get(4)?;
         let currency: Currency = currency_str.parse().map_err(|_| {
-            SalesError::validation(
-                "currency",
-                format!("invalid currency code: {}", currency_str),
-            )
+            SalesError::validation("currency", format!("invalid currency code: {currency_str}"))
         })?;
 
         let status_str: String = row.get(1)?;
@@ -52,7 +49,7 @@ impl<'a> SalesRepository<'a> {
         let status: SaleStatus = SaleStatus::from_stored_str(&status_str).ok_or_else(|| {
             SalesError::validation(
                 "status",
-                format!("unrecognized stored sale status: {}", status_str),
+                format!("unrecognized stored sale status: {status_str}"),
             )
         })?;
 

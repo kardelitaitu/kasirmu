@@ -666,7 +666,7 @@ fn list_stock_adjustments_ordered() {
         let cid = uuid::Uuid::now_v7().to_string();
         let count = StockCount {
             id: cid.clone(),
-            count_number: format!("CNT-ADJ-{}", i),
+            count_number: format!("CNT-ADJ-{i}"),
             status: StockCountStatus::InProgress,
             count_type: CountType::Full,
             notes: "".into(),
@@ -681,7 +681,7 @@ fn list_stock_adjustments_ordered() {
                 id: uuid::Uuid::now_v7().to_string(),
                 count_id: cid.clone(),
                 sku: sku.to_string(),
-                product_name: format!("Product {}", sku),
+                product_name: format!("Product {sku}"),
                 expected_qty: 10,
                 counted_qty: Some(*counted),
                 difference: *counted - 10,

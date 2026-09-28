@@ -154,7 +154,7 @@ fn invalid_session_serde() {
 #[test]
 fn invalid_session_debug() {
     let err = AppError::InvalidSession;
-    let debug = format!("{:?}", err);
+    let debug = format!("{err:?}");
     assert!(debug.contains("InvalidSession"));
 }
 
@@ -280,7 +280,7 @@ fn from_rusqlite_to_string() {
 #[test]
 fn permission_denied_debug() {
     let err = AppError::PermissionDenied("owner only".into());
-    let debug = format!("{:?}", err);
+    let debug = format!("{err:?}");
     assert!(debug.contains("PermissionDenied"));
     assert!(debug.contains("owner only"));
 }
@@ -290,7 +290,7 @@ fn permission_denied_debug() {
 #[test]
 fn internal_debug() {
     let err = AppError::Internal("catastrophic failure".into());
-    let debug = format!("{:?}", err);
+    let debug = format!("{err:?}");
     assert!(debug.contains("Internal"));
     assert!(debug.contains("catastrophic failure"));
 }

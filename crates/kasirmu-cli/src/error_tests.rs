@@ -43,7 +43,7 @@ fn implements_std_error() {
 #[test]
 fn debug_output() {
     let err = CliError::Subcommand("backup", "disk full".into());
-    let debug = format!("{:?}", err);
+    let debug = format!("{err:?}");
     assert!(debug.contains("Subcommand"));
     assert!(debug.contains("backup"));
     assert!(debug.contains("disk full"));

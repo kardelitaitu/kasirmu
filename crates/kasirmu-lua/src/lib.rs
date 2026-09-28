@@ -254,7 +254,7 @@ impl LuaRuntime {
             return Ok(());
         }
         let mut entries: Vec<_> = std::fs::read_dir(dir)
-            .map_err(|e| LuaError::Load(format!("read dir {:?}: {e}", dir)))?
+            .map_err(|e| LuaError::Load(format!("read dir {dir:?}: {e}")))?
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension().is_some_and(|ext| ext == "lua"))
             .collect();

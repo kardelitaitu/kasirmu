@@ -26,7 +26,7 @@ fn square_device_info() {
 #[test]
 fn square_debug_masks_key() {
     let proc = SquarePaymentProcessor::new(&test_api_key(), &test_location_id());
-    let debug = format!("{:?}", proc);
+    let debug = format!("{proc:?}");
     assert!(!debug.contains("EAAA_test"));
     assert!(debug.contains("***"));
 }

@@ -37,7 +37,7 @@ fn price(minor: i64) -> Money {
 
 fn new_sale_line(sale_id: &str, sku: &str, qty: i64, unit_minor: i64, position: i64) -> SaleLine {
     SaleLine {
-        id: format!("line-{}-{}", sale_id, sku),
+        id: format!("line-{sale_id}-{sku}"),
         sale_id: sale_id.to_string(),
         sku: sku.to_string(),
         qty,

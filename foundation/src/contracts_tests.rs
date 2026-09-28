@@ -111,7 +111,7 @@ fn module_is_send_sync() {
 #[test]
 fn module_debug() {
     let m = TestModule::new("debug-test");
-    let debug = format!("{:?}", m);
+    let debug = format!("{m:?}");
     assert!(debug.contains("debug-test"));
 }
 
@@ -170,7 +170,7 @@ fn service_is_send_sync() {
 #[test]
 fn service_debug() {
     let s = TestService::new("debug-service");
-    let debug = format!("{:?}", s);
+    let debug = format!("{s:?}");
     assert!(debug.contains("debug-service"));
 }
 

@@ -216,9 +216,9 @@ impl QrisPaymentProcessor {
     /// should be directed to a mock server (e.g. `wiremock`).
     pub fn new_with_endpoint(server_key: &str, api_base: &str, sandbox: bool) -> Self {
         let mut headers = HeaderMap::new();
-        let encoded = base64_standard(&format!("{}:", server_key));
+        let encoded = base64_standard(&format!("{server_key}:"));
         let mut auth_value =
-            HeaderValue::from_str(&format!("Basic {}", encoded)).unwrap_or_else(|e| {
+            HeaderValue::from_str(&format!("Basic {encoded}")).unwrap_or_else(|e| {
                 tracing::error!(
                     error = %e,
                     "invalid Midtrans auth header — using placeholder"
@@ -441,9 +441,9 @@ impl QrisPaymentProcessor {
             )),
             _ => {
                 let msg = if status_message.is_empty() {
-                    format!("midtrans_error: HTTP {}", status_code)
+                    format!("midtrans_error: HTTP {status_code}")
                 } else {
-                    format!("midtrans_error: {} (code: {})", status_message, status_code)
+                    format!("midtrans_error: {status_message} (code: {status_code})")
                 };
                 PaymentError::Network(msg)
             }
@@ -455,7 +455,7 @@ impl QrisPaymentProcessor {
         if let Ok(err) = serde_json::from_str::<MidtransErrorResponse>(body) {
             Self::classify_midtrans_status(&err.status_code, &err.status_message)
         } else {
-            PaymentError::Network(format!("HTTP {}: {}", status, body))
+            PaymentError::Network(format!("HTTP {status}: {body}"))
         }
     }
 
@@ -506,7 +506,7 @@ impl QrisPaymentProcessor {
     /// Poll the transaction status until settlement or failure.
     async fn poll_status(&self, order_id: &str) -> Result<TransactionStatusResponse, PaymentError> {
         for attempt in 1..=MAX_POLL_ATTEMPTS {
-            let (status, text) = self.get_json(&format!("/{}/status", order_id)).await?;
+            let (status, text) = self.get_json(&format!("/{order_id}/status")).await?;
 
             if !(200..300).contains(&status) {
                 return Err(Self::parse_error(status, &text));
@@ -697,7 +697,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         });
 
         let (status, text) = self
-            .post_json(&format!("/{}/refund", transaction_id), refund_body)
+            .post_json(&format!("/{transaction_id}/refund"), refund_body)
             .await?;
 
         if !(200..300).contains(&status) {
@@ -717,7 +717,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         }
 
         let refund: RefundResponse = serde_json::from_str(&text).map_err(|e| {
-            PaymentError::InvalidResponse(format!("failed to parse refund: {} — body: {}", e, text))
+            PaymentError::InvalidResponse(format!("failed to parse refund: {e} — body: {text}"))
         })?;
 
         Ok(PaymentResult {
@@ -735,10 +735,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
     /// Cancel/void a pending QRIS transaction.
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
         let (status, text) = self
-            .post_json(
-                &format!("/{}/cancel", transaction_id),
-                serde_json::json!({}),
-            )
+            .post_json(&format!("/{transaction_id}/cancel"), serde_json::json!({}))
             .await?;
 
         if !(200..300).contains(&status) {
@@ -756,7 +753,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
         }
 
         let cancel: CancelResponse = serde_json::from_str(&text).map_err(|e| {
-            PaymentError::InvalidResponse(format!("failed to parse cancel: {} — body: {}", e, text))
+            PaymentError::InvalidResponse(format!("failed to parse cancel: {e} — body: {text}"))
         })?;
 
         Ok(PaymentResult {
@@ -770,9 +767,7 @@ impl PaymentProcessor for QrisPaymentProcessor {
 
     /// Return a receipt for a completed QRIS transaction.
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
-        let (status, text) = self
-            .get_json(&format!("/{}/status", transaction_id))
-            .await?;
+        let (status, text) = self.get_json(&format!("/{transaction_id}/status")).await?;
 
         if !(200..300).contains(&status) {
             return Err(Self::parse_error(status, &text));

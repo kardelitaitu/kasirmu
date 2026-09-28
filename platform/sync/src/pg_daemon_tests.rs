@@ -580,7 +580,7 @@ fn large_batch_enqueue_10k_items() {
         store
             .enqueue_offline(
                 "product.created",
-                &format!(r#"{{"sku":"SKU-{}","name":"Item {}"}}"#, i, i),
+                &format!(r#"{{"sku":"SKU-{i}","name":"Item {i}"}}"#),
             )
             .unwrap();
     }
@@ -597,7 +597,7 @@ fn list_pending_returns_correct_items() {
 
     for i in 0..100 {
         store
-            .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{}"}}"#, i))
+            .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{i}"}}"#))
             .unwrap();
     }
 
@@ -712,7 +712,7 @@ async fn daemon_status_shows_pending_count_after_tick() {
             let store = Store::new(&conn);
             for i in 0..5 {
                 store
-                    .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{}"}}"#, i))
+                    .enqueue_offline("product.created", &format!(r#"{{"sku":"SKU-{i}"}}"#))
                     .unwrap();
             }
         })

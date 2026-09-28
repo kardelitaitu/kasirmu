@@ -232,7 +232,7 @@ pub fn validate_topology_envelope(value: &Value) -> Result<(&[Value], &[Value]),
             None,
             None,
             None,
-            format!("unsupported topology schema version: {}", version),
+            format!("unsupported topology schema version: {version}"),
         ));
     }
     let nodes = object

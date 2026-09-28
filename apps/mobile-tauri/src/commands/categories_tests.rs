@@ -11,7 +11,7 @@ fn category_dto_debug() {
         colour: "#06b6d4".into(),
         icon: "coffee".into(),
     };
-    let debug = format!("{:?}", dto);
+    let debug = format!("{dto:?}");
     assert!(debug.contains("Drinks"));
 }
 
@@ -45,7 +45,7 @@ fn create_category_args_debug() {
         colour: "#000".into(),
         icon: "test".into(),
     };
-    let debug = format!("{:?}", args);
+    let debug = format!("{args:?}");
     assert!(debug.contains("cat-test"));
 }
 
@@ -54,7 +54,7 @@ fn create_category_result_debug_and_serialize() {
     let result = CreateCategoryResult {
         id: "cat-99".into(),
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("cat-99"));
     let json = serde_json::to_value(&result).unwrap();
     assert_eq!(json["id"], "cat-99");

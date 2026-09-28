@@ -338,7 +338,7 @@ async fn card_present_authorize_uses_correct_method_type() {
         .expect("Authorization header should be present");
     assert_eq!(
         auth_header.to_str().unwrap(),
-        &format!("Bearer {}", TEST_SECRET_KEY)
+        &format!("Bearer {TEST_SECRET_KEY}")
     );
 }
 
@@ -517,7 +517,7 @@ async fn authorize_sends_description_and_metadata() {
         .expect("Authorization header should be present");
     assert_eq!(
         auth_header.to_str().unwrap(),
-        &format!("Bearer {}", TEST_SECRET_KEY)
+        &format!("Bearer {TEST_SECRET_KEY}")
     );
 }
 

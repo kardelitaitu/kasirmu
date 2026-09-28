@@ -463,7 +463,7 @@ fn all_expected_sensitive_keys_are_flagged() {
         permissions::DATA_EXPORT,
         permissions::OPERATOR_IMPERSONATE,
     ] {
-        assert!(is_sensitive(key), "{} must be classified sensitive", key);
+        assert!(is_sensitive(key), "{key} must be classified sensitive");
     }
 }
 
@@ -492,7 +492,7 @@ fn operational_keys_are_not_sensitive() {
         permissions::KDS_VIEW,
         permissions::KDS_UPDATE,
     ] {
-        assert!(!is_sensitive(key), "{} must NOT be sensitive", key);
+        assert!(!is_sensitive(key), "{key} must NOT be sensitive");
     }
 }
 
@@ -596,7 +596,7 @@ fn every_family_has_at_least_one_key() {
     // Every family present in the registry must have at least one key.
     for family in families() {
         let count = REGISTRY.iter().filter(|e| e.family == family).count();
-        assert!(count > 0, "family '{}' has no keys", family);
+        assert!(count > 0, "family '{family}' has no keys");
     }
 }
 

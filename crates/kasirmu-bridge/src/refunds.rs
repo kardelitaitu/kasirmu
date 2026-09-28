@@ -105,7 +105,7 @@ pub fn process_refund_unchecked(
     // Verify the sale exists and is completed.
     let sale = store
         .get_sale(sale_id)?
-        .ok_or_else(|| BridgeError::Invalid(format!("sale {} not found", sale_id)))?;
+        .ok_or_else(|| BridgeError::Invalid(format!("sale {sale_id} not found")))?;
     if sale.status != kasirmu_core::SaleStatus::Completed {
         return Err(BridgeError::Invalid(format!(
             "cannot refund a sale with status {:?}; only completed sales can be refunded",

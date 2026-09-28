@@ -73,7 +73,7 @@ fn brand_settings_debug() {
         logo_path: Some("/logo.png".into()),
         store_name: "My Store".into(),
     };
-    let debug = format!("{:?}", dto);
+    let debug = format!("{dto:?}");
     assert!(debug.contains("My Store"));
 }
 

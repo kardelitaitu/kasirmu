@@ -459,7 +459,7 @@ impl ReportEmailBuilder {
     /// contains summary tables for all populated report types, rendered
     /// as both HTML and plain-text.
     pub fn build(bundle: &AnalyticsBundle, store_name: &str, date_label: &str) -> ReportEmail {
-        let subject = format!("kasir.mu Report — {} ({})", store_name, date_label,);
+        let subject = format!("kasir.mu Report — {store_name} ({date_label})",);
 
         let html_body = Self::render_html(bundle, store_name, date_label);
         let text_body = Self::render_text(bundle, store_name, date_label);

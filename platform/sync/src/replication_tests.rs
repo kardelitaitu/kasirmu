@@ -42,7 +42,7 @@ fn replication_result_debug() {
         pushed: 1,
         pulled: 2,
     };
-    let debug = format!("{:?}", result);
+    let debug = format!("{result:?}");
     assert!(debug.contains("pushed: 1"));
     assert!(debug.contains("pulled: 2"));
 }

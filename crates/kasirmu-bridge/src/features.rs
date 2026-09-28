@@ -319,7 +319,7 @@ pub async fn set_feature(
     if args.enabled && feature == Feature::MultiTerminal {
         let device_id = device_hostname();
         if store.get_terminal_by_device_id(&device_id)?.is_none() {
-            let name = format!("{} (auto)", device_id);
+            let name = format!("{device_id} (auto)");
             let terminal = Terminal::new(&name, &device_id);
             store.create_terminal(&terminal)?;
             *tid = Some(terminal.id.clone());
