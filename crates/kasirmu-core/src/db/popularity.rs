@@ -27,13 +27,13 @@ next: none | perf: grouped single-pass recompute
 
 use std::collections::HashMap;
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::CoreError;
-use crate::popularity::{compute_score, decayed_sum, total_events, DayCount};
+use crate::popularity::{DayCount, compute_score, decayed_sum, total_events};
 
-use super::reports::{check_date_bound, parse_utc_offset};
 use super::Store;
+use super::reports::{check_date_bound, parse_utc_offset};
 
 /// Settings keys caching the catalog means computed by the last full pass.
 const MEAN_SALES: &str = "popularity.mean.sales";
@@ -159,6 +159,27 @@ fn parse_period_start(period_start: &str) -> Option<chrono::NaiveDate> {
         .or_else(|| {
             chrono::NaiveDate::parse_from_str(&format!("{period_start}-01"), "%Y-%m-%d").ok()
         })
+}
+
+/// Cache a raw `settings` value (JSON or number string) inside an open
+/// transaction.
+///
+/// A free function rather than a method: the caller owns the transaction, so
+/// the means cache commits atomically with the scores it belongs to (a cache
+/// that survives a failed pass would smooth later single-SKU recomputes
+/// against means no stored score was built from).
+fn write_setting_in_tx(
+    tx: &rusqlite::Transaction<'_>,
+    key: &str,
+    value: &str,
+) -> Result<(), CoreError> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    tx.execute(
+        "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![key, value, now],
+    )?;
+    Ok(())
 }
 
 /// Accepted granularities for [`Store::category_popularity_trend`].
@@ -383,7 +404,7 @@ impl Store<'_> {
             if !rank.contains_key(&cat) {
                 continue;
             }
-            let (ms, mq, me) = self.category_means(&cat).unwrap_or((0.0, 0.0, 0.0));
+            let (ms, mq, me) = self.category_means(&cat)?.unwrap_or((0.0, 0.0, 0.0));
             let score = crate::popularity::score_from_raw(
                 units as f64,
                 units as f64,
@@ -599,38 +620,56 @@ impl Store<'_> {
         Ok(out)
     }
 
-    /// Read a raw `settings` value (None when absent).
-    fn read_setting(&self, key: &str) -> Option<String> {
-        self.conn
+    /// Read a raw `settings` value (`None` when the key is absent).
+    ///
+    /// MSL-28: `.optional()?` rather than `.ok()`. A bare `.ok()` maps a DB
+    /// fault onto the same `None` as a genuinely absent key, so a broken read
+    /// reads as an empty cache and every fallback below it silently
+    /// substitutes a wrong (usually zero) mean — the same defect class as
+    /// MSL-27 in the category probe above. Only row-absence is `None`; a
+    /// fault propagates.
+    fn read_setting(&self, key: &str) -> Result<Option<String>, CoreError> {
+        Ok(self
+            .conn
             .query_row(
                 "SELECT value FROM settings WHERE key = ?1",
                 params![key],
                 |r| r.get::<_, String>(0),
             )
-            .ok()
+            .optional()?)
     }
 
     /// Read a cached catalog mean from `settings` (0.0 when absent).
-    fn read_mean(&self, key: &str) -> f64 {
-        self.read_setting(key)
+    fn read_mean(&self, key: &str) -> Result<f64, CoreError> {
+        Ok(self
+            .read_setting(key)?
             .and_then(|v| v.parse().ok())
-            .unwrap_or(0.0)
+            .unwrap_or(0.0))
     }
 
     /// Look up the cached smoothing means for a product's category.
     ///
     /// Returns the category's means when the per-category map (written by
     /// the last full pass) has an entry for it; falls back to the `""`
-    /// global entry, then to the legacy `MEAN_*` keys (fresh DB).
-    fn category_means(&self, category: &str) -> Option<(f64, f64, f64)> {
-        let raw = self.read_setting(CATEGORY_MEANS)?;
-        let map: serde_json::Value = serde_json::from_str(&raw).ok()?;
-        let entry = map.get(category).or_else(|| map.get(""))?;
-        Some((
+    /// global entry, then to the legacy `MEAN_*` keys (fresh DB). An absent
+    /// or unparseable cache degrades to that fallback by design — it is a
+    /// locally rebuilt cache, not a source of truth — but a database fault
+    /// is an error, not a cache miss.
+    fn category_means(&self, category: &str) -> Result<Option<(f64, f64, f64)>, CoreError> {
+        let Some(raw) = self.read_setting(CATEGORY_MEANS)? else {
+            return Ok(None);
+        };
+        let Ok(map) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            return Ok(None);
+        };
+        let Some(entry) = map.get(category).or_else(|| map.get("")) else {
+            return Ok(None);
+        };
+        Ok(Some((
             entry.get("sales").and_then(|v| v.as_f64()).unwrap_or(0.0),
             entry.get("search").and_then(|v| v.as_f64()).unwrap_or(0.0),
             entry.get("edits").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        ))
+        )))
     }
 
     /// Smoothing means for a single SKU: its category's cached means, else
@@ -653,33 +692,19 @@ impl Store<'_> {
             )
             .optional()?
             .flatten();
-        Ok(
-            if let Some(means) = category.as_deref().and_then(|cat| self.category_means(cat)) {
-                means
-            } else {
-                (
-                    self.read_mean(MEAN_SALES),
-                    self.read_mean(MEAN_SEARCH),
-                    self.read_mean(MEAN_EDITS),
-                )
-            },
-        )
-    }
-
-    /// Cache a raw `settings` value (JSON or number string).
-    fn write_setting(&self, key: &str, value: &str) -> Result<(), CoreError> {
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        self.conn.execute(
-            "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            params![key, value, now],
-        )?;
-        Ok(())
-    }
-
-    /// Cache a catalog mean in `settings`.
-    fn write_mean(&self, key: &str, value: f64) -> Result<(), CoreError> {
-        self.write_setting(key, &value.to_string())
+        let means = match category.as_deref() {
+            Some(cat) => self.category_means(cat)?,
+            None => None,
+        };
+        Ok(if let Some(means) = means {
+            means
+        } else {
+            (
+                self.read_mean(MEAN_SALES)?,
+                self.read_mean(MEAN_SEARCH)?,
+                self.read_mean(MEAN_EDITS)?,
+            )
+        })
     }
 
     /// Record an acted-upon search (ADR #37 D2) and refresh the SKU's score.
@@ -885,16 +910,19 @@ impl Store<'_> {
                 serde_json::json!({ "sales": ms, "search": mq, "edits": me }),
             );
         }
-        self.write_setting(
-            CATEGORY_MEANS,
-            &serde_json::Value::Object(cat_json).to_string(),
-        )?;
-        self.write_mean(MEAN_SALES, mean_sales)?;
-        self.write_mean(MEAN_SEARCH, mean_search)?;
-        self.write_mean(MEAN_EDITS, mean_edits)?;
+        let cat_means_json = serde_json::Value::Object(cat_json).to_string();
 
-        // ── Write scores (one transaction: the per-SKU updates are atomic) ─
+        // ── Means cache + scores in ONE transaction ───────────────────
+        // The cache and the scores are two views of the same pass, so they
+        // commit together: persisting the means before the score write leaves
+        // a failed pass with a cache ahead of the catalog, and every later
+        // single-SKU recompute then smooths against means that no stored score
+        // was built from.
         let tx = self.conn.unchecked_transaction()?;
+        write_setting_in_tx(&tx, CATEGORY_MEANS, &cat_means_json)?;
+        write_setting_in_tx(&tx, MEAN_SALES, &mean_sales.to_string())?;
+        write_setting_in_tx(&tx, MEAN_SEARCH, &mean_search.to_string())?;
+        write_setting_in_tx(&tx, MEAN_EDITS, &mean_edits.to_string())?;
         for (sku, category, sr, sv, qr, qv, er, ev) in products {
             let key = category.unwrap_or_default();
             let (ms, mq, me) =

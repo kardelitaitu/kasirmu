@@ -384,6 +384,120 @@ fn a_db_failure_in_the_category_probe_does_not_score_against_the_global_mean() {
 }
 
 #[test]
+fn a_db_failure_reading_the_means_cache_does_not_score_against_zero_means() {
+    let conn = fresh();
+    seed_category(&conn, "cat-quiet", "Quiet");
+    seed_sold_in_category(&conn, "QUIET-1", Some("cat-quiet"), 2);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let full_pass_score: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Pin the healthy path first: with the cache intact the single-SKU
+    // recompute reproduces the full-pass score, so a later mismatch is the
+    // fault's doing rather than a pre-existing divergence.
+    store.recompute_popularity("QUIET-1").unwrap();
+
+    // Fault the settings read that supplies EVERY smoothing mean. Under the
+    // current `.ok()` the failure collapses to `None`, which is
+    // indistinguishable from "this cache key was never written": the SKU is
+    // scored against 0.0 means — the fresh-DB path — and the recompute
+    // reports `Ok(())`. Renaming only the column the read touches keeps the
+    // failure the read's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE settings RENAME COLUMN value TO value_hidden;")
+        .unwrap();
+
+    let err = store
+        .recompute_popularity("QUIET-1")
+        .expect_err("a settings-read fault must not silently score against zero means");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the means-cache read must surface the DB fault, got {err:?}"
+    );
+
+    // And the stored score must be untouched: the failed recompute must not
+    // have written a zero-mean score over the cached-mean one.
+    let after: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        (full_pass_score - after).abs() < 1e-9,
+        "the failed recompute must leave the cached-mean score in place \
+         (stored={after}, full-pass={full_pass_score})"
+    );
+}
+
+#[test]
+fn a_failed_full_pass_does_not_advance_the_means_cache() {
+    // The full pass refreshes the cached smoothing means and the materialized
+    // scores together — they are two views of one pass. Persisting the means
+    // before the score write means a mid-pass failure leaves the cache ahead
+    // of the catalog: every later single-SKU recompute would smooth against
+    // means that no stored score was built from, until the next full pass
+    // happens to succeed. AGENTS.md puts SQLite writes in one transaction;
+    // this pass is the case that needs it.
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    seed_category(&conn, "cat-b", "B");
+    seed_sold_in_category(&conn, "A-1", Some("cat-a"), 2);
+    seed_sold_in_category(&conn, "B-1", Some("cat-b"), 100);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let mean_before: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'popularity.mean.sales'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Change the catalog so the next pass WOULD cache a different mean.
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    conn.execute_batch(&format!(
+        "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+         ('s-late', 200000, 'USD', 1, 'completed', '{now}', '{now}');
+         INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+         ('sl-late', 's-late', 'A-1', 200, 1000, 200000, 'USD', 1);"
+    ))
+    .unwrap();
+
+    // Make the score write fail and only the score write: a trigger on the
+    // UPDATE the pass performs inside its transaction.
+    conn.execute_batch(
+        "CREATE TRIGGER fail_score_update BEFORE UPDATE ON products
+         BEGIN SELECT RAISE(ABORT, 'score write blocked'); END;",
+    )
+    .unwrap();
+
+    store
+        .recompute_all_popularity()
+        .expect_err("the blocked score write must fail the pass");
+
+    let mean_after: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'popularity.mean.sales'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        mean_after, mean_before,
+        "a failed pass must not persist means that no stored score was built from"
+    );
+}
+
+#[test]
 fn category_popularity_ranks_categories_and_top_products() {
     let conn = fresh();
     seed_category(&conn, "cat-hot", "Hot");

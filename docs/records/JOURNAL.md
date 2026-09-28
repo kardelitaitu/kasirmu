@@ -12540,6 +12540,61 @@ passed and `cargo fmt` was applied.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 8: monthly forecasts, a means-read fault, and a torn means cache
+
+**Problem (1/3):** `Store::category_forecast` (`crates/kasirmu-core/src/db/popularity.rs`)
+parsed every trend bucket key with `NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d")`.
+The monthly bucket key is `YYYY-MM` (`strftime('%Y-%m', …)`), which never matches, so every
+monthly point was dropped from its category's series and the forecast returned a confident row
+of zeros — `forecast_units: 0`, `trend_per_period: 0.0`, `recent_avg_units: 0.0` — for a catalog
+with real monthly sales history. The granularity is reachable: the bridge's `validate_trend_args`
+admits `monthly` (`TREND_GRANULARITIES`) and `ui/src/api/reports.ts` types the argument
+`'daily' | 'weekly' | 'monthly'`. The caller got a confident zero instead of an error.
+
+**Solution (1/3):** a `parse_period_start` helper accepts both bucket-key shapes — `%Y-%m-%d` for
+the daily/weekly buckets and `%Y-%m` anchored to the first of the month. Only the per-period
+ordering and count feed the fit, so the anchor day is immaterial; the function doc now says so.
+
+**Problem (2/3):** `read_setting` used `.ok()`, collapsing a `settings` read fault onto the same
+`None` as a genuinely absent key. `read_mean`, `category_means` and `sku_means` were built on
+that, so a fault read as an empty cache: the SKU was scored against 0.0 means — the fresh-DB
+path — and `recompute_popularity` returned `Ok(())`. Same defect class as MSL-27 (the category
+probe, round 5, one level up); round 5's entry queued exactly this slice.
+
+**Solution (2/3):** `read_setting` now returns `Result<Option<String>, CoreError>` via
+`.optional()?`, so only row-absence is `None`; `read_mean` and `category_means` propagate, and
+`category_popularity_trend`'s means read propagates with them. An absent or unparseable cache
+still degrades to the global fallback by design — it is a locally rebuilt cache, not a source of
+truth — while a database fault is now an error.
+
+**Problem (3/3):** `recompute_all_popularity` persisted the means cache (`CATEGORY_MEANS` plus the
+three `MEAN_*` keys) through `self.conn` and only then opened the transaction that writes the
+scores. A score write that failed left the cache ahead of the catalog, so every later single-SKU
+recompute smoothed against means that no stored score was built from until some later full pass
+happened to succeed — and AGENTS.md puts SQLite writes in one transaction.
+
+**Solution (3/3):** a free `write_setting_in_tx(tx, key, value)` helper; the cache and the scores
+now commit in one transaction. The old `write_setting`/`write_mean` methods went away with their
+now-only caller.
+
+**Verified:** Red first on all three. (1) `left: 0, right: 16` on a 10 → 12 → 14 units-per-month
+series; (2) `expect_err` got `Ok(())` after renaming only `settings.value`; (3) `left:
+"145.61720018347634"` vs `right: "35.35050620855721"` after a trigger blocked the score UPDATE.
+After the fixes the popularity module passed **36/36** (33 before this round) and
+`cargo fmt -p kasirmu-core -- --check` is clean on both touched files. The full `kasirmu-core` lib
+suite is **3376 passed / 29 failed**, and all 29 are pre-existing environment failures — the
+file-DB race, backup and export tests panicking on `Os { code: 5, PermissionDenied }` while
+building a database under `std::env::temp_dir()` — untouched by this round.
+
+**Investigated & deliberately NOT done:** a void does not recompute popularity, but `void_sale`
+only voids `status = 'active'` sales, which the `status = 'completed'` filter never counted, so no
+score can be left stale by one. The popularity window filters compare an RFC3339 `…T…Z` value
+against SQL-side `datetime('now')`, but that prefilter is always a superset of the
+`[0, WINDOW_DAYS)` window `decayed_sum`/`total_events` enforce afterwards, so nothing is
+mis-included.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
 
 
 
