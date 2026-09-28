@@ -2,17 +2,19 @@
 num: 61
 area: architecture
 title: ADR-61: Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry
-status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and six type-shim edges (crm, tax, terminal, inventory, loyalty, sales) landed; the model-type move that retires the seven shims is sequenced, not done
+status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant and the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied (0 tracked findings); the deadline that made the seven shims is sequenced, not done
 ---
 
 # ADR-61: Architecture Boundary Rule Tiers
 
 **Status:** Implemented (2026-09-28); the currency edge is CLOSED. The named rule, the classification, the governed expiry
-and the re-tiered baseline are in the tree and gated. The currency edge and SIX type-shim edges (`crm`, `tax`, `terminal`, `inventory`, `loyalty`, `sales`)
-are closed by moving those types — with their impls and their unit tests — down to `foundation`; ONE
-entry remains (`staff`), and it is the one that cannot close the same way: its `Role` calls
-`platform_core::rbac`, and `platform-core` depends on `foundation`, so moving it down would be a
-cycle. `foundation` now depends on `tracing` and `chrono`, each for a moved member whose behaviour
+and the re-tiered baseline are in the tree and gated. ALL EIGHT edges are closed, the baseline is EMPTY, and the 2026-11-06 deadline has nothing left to
+expire. The last one (`staff`) closed by moving its types into `platform-core` — the tier its `Role`'s
+`platform_core::rbac` calls FORCE, since `platform-core` depends on `foundation` and the foundation
+route would have been a cycle — and by DELETING the four-constant `builtin_roles` subset rather than
+copying it, because its values were byte-identical to the authoritative
+`platform_core::rbac::builtin_roles` (a six-id superset) and two spellings of one id set is how they
+drift apart. `foundation` depends on `tracing` and `chrono`, each for a moved member whose behaviour
 could not be left behind (a documented diagnostic; a load-bearing clock read). `foundation`
 now depends on `tracing`, because `ProductType::parse_stored_or_default`'s documented warning had to
 move with its type and every consumer of that parser sits above the module.
@@ -95,8 +97,10 @@ dev-dependency is not a shipped layering edge.
   extended by editing a date.
 - **Cost, accepted:** the checker does one extra walk of core's source, and a mis-set baseline
   key turns a tracked entry into a blocking finding rather than a silent pass.
-- **Seven edges are gone (currency, crm, tax, terminal, inventory, loyalty, sales); ONE entry remains
-  red on 2026-11-07 — and it needs a different move from the seven that worked.** That is the point: the expiry is now a governed promise instead of an unread date. The
+- **No entry remains.** `scripts/architecture-boundaries-baseline.json` holds zero entries and the
+  checker reports 0 tracked / 0 blocking / 0 stale. The deadline did its job: every exemption was
+  closed rather than renewed, the one edge that could not take the foundation route was closed by the
+  move its own dependencies allowed, and a duplicated id taxonomy died with it. That is the point: the expiry is now a governed promise instead of an unread date. The
   dates were NOT bumped (C26, D3).
 - **Verified this pass, and what that excludes:** `cargo check -p kasirmu-core --all-targets` is
   clean and warning-free, `cargo check --workspace --exclude kasirmu-mobile` exits 0, and
