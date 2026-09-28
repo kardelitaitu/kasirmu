@@ -470,3 +470,40 @@ fn primary_regional_config_propagates_database_error() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn regional_config_for_location_propagates_legal_entity_db_error() {
+    let store_db = crate::migrations::fresh_db();
+    let store = store(&store_db);
+    insert_location(&store, "loc-ent-fault", "USD", "UTC", "");
+    insert_entity(
+        &store,
+        "ent-fault",
+        "default",
+        "ID",
+        "id-ID",
+        "+07:00",
+        "IDR",
+    );
+    link_location(&store, "loc-ent-fault", "ent-fault");
+
+    // Verify healthy call resolves legal entity layer
+    let healthy = store.regional_config_for_location("loc-ent-fault").unwrap();
+    assert_eq!(healthy.locale.scope, ConfigScope::LegalEntity);
+
+    // Set invalid blob in locale so row.get::<_, String>("locale") fails with FromSqlConversionFailure
+    store_db
+        .execute(
+            "UPDATE legal_entities SET locale = X'FFFF' WHERE id = 'ent-fault'",
+            [],
+        )
+        .unwrap();
+
+    let err = store
+        .regional_config_for_location("loc-ent-fault")
+        .expect_err("a database error reading legal entity must not silently fall back");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

@@ -12595,6 +12595,26 @@ mis-included.
 
 **Commits:** this entry + the fixes land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 9: legal entity regional resolution stops swallowing DB errors
+
+**Problem:** `Store::regional_config_for_location` (`crates/kasirmu-core/src/db/regional.rs`)
+queries `legal_entities` to construct the `LegalEntity` layer. The query row execution used
+`.ok()`, collapsing any row parsing, type conversion, or query fault into `None`. When faulted,
+the location silently ignored its configured legal entity and fell back to organization/built-in
+defaults (e.g. "en-US", built-in currency) and returned `Ok(RegionalConfig)` rather than
+propagating `CoreError::Db`.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the `query_row` call. Row-absence
+(or cross-tenant isolation where no row matches) still cleanly resolves to `None` preserving
+fail-closed tenant isolation, while SQLite type conversion or database errors propagate as
+`Err(CoreError::Db)`.
+
+**Verified:** Red first (`regional_config_for_location_propagates_legal_entity_db_error`
+panicked with `a database error reading legal entity must not silently fall back: RegionalConfig { ... locale: RegionalValue { value: "en-US", scope: BuiltIn } ... }`).
+After `.optional()?`, the test passed, all 21 regional tests passed, and `cargo fmt` was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

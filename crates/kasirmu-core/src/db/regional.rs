@@ -87,7 +87,7 @@ impl Store<'_> {
                             row.get::<_, String>("country_code")?,
                         ))
                     })
-                    .ok();
+                    .optional()?;
                 entity.map(|(locale, timezone, currency, country_code)| {
                     RegionalLayer::blank(
                         ConfigScope::LegalEntity,
