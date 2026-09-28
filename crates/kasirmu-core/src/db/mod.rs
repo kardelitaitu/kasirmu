@@ -88,6 +88,8 @@ pub mod stripe;
 pub use offline::RemoteSyncFailure;
 /// EDC terminal configuration CRUD — PLANNED (stubs).
 pub mod edc_terminals;
+/// Indonesian e-Faktur compliance repository (DJP Coretax / PER-11/PJ/2025).
+pub mod faktur_pajak;
 /// Fiscalization and statutory numbering — legal-entity schemes and the
 /// race-free document-number claim (slice 5).
 pub mod fiscal;
