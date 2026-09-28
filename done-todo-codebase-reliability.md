@@ -1266,12 +1266,15 @@ covered, because no coverage instrument is enforced. Close that in this order.
       named tests still exist, so a rename makes the list silently stale. That
       is exactly the gap P3-3 solved for SAFETY with a checker; the same
       treatment here is the obvious follow-up and is not claimed.
-- [ ] **P3-2 — Log invariant violations in debug/staging builds.** Where an
+- [x] **P3-2 — Log invariant violations in debug/staging builds.** Where an
       invariant is checked at runtime today it panics or is silently repaired.
       Route violations to `tracing::error!` with the entity id so a staging run
       surfaces them before a customer does.
       Acceptance: one seeded violation produces an `error!` line naming the
       invariant and the entity.
+      **REJECTED — see §7 "Explicitly rejected", fourth entry.** Not
+      implemented; the item was measured twice and the answer is that it should
+      not be built. Details below are the two audit passes that produced that.
       **AUDITED 2026-09-28, BOX STAYS OPEN, AND THE PREMISE DID NOT SURVIVE —
       no site qualified for the change, so none was made.** Chosen scope:
       "only the sites that are both silent AND reachable". Audited result:
@@ -1377,6 +1380,15 @@ covered, because no coverage instrument is enforced. Close that in this order.
       and its acceptance cannot be evaluated with the current dependency set.
       The residual honest version — "log violations in debug builds" — has no
       named violation site to attach to.
+      **CLOSED 2026-09-28 as REJECTED, not as done.** The box is ticked because
+      the item is resolved — the answer is "this should not be built" — and the
+      reasoning is filed under §7 "Explicitly rejected", which is where this
+      document puts questions it does not want re-litigated (the section's own
+      words). Ticking it here would otherwise read as "the logging was added",
+      which is false; the §7 entry is the authoritative record. This is NOT a
+      scope reduction: nothing was dropped, the item was measured twice, and the
+      second measurement produced the acceptance's blocker rather than a reason
+      to try harder.
 - [x] **P3-3 — Keep the `unsafe` inventory reviewable.** 27 `unsafe {` sites and
       7 `unsafe impl/fn/no_mangle` items, all in 4 production files plus 8
       test-only sites. Every one must carry a `// SAFETY:` line.
@@ -1572,18 +1584,56 @@ Recorded so the question does not get re-litigated every few weeks.
 - **`clippy::nursery`.** Rejected — unstable by upstream's own definition.
 - **Workspace-wide `clippy::pedantic`.** Rejected in one step; staged instead
   under P2-5.
+- **P3-2 "log invariant violations in debug/staging builds".** Rejected
+  2026-09-28, after two rounds of trying to make it real. The premise is refuted
+  from both directions it could be true from: (a) the earlier audit asked which
+  `debug_assert!` sites are reachable from bad data and found **none** — all 8
+  are self-checks on already-guaranteed preconditions; (b) the later sweep asked
+  where an invariant is *silently repaired* at runtime and found those sites
+  **already fixed and documented** (COR-11 in `db/inventory.rs`, COR-25/COR-26 in
+  `db/refunds.rs`, the last `unwrap_or(0)` fail-open converted and explained in
+  `total_refunded_for_sale`). So there is no violation site to attach a log to.
+  **Its acceptance is also unmeasurable as written** — "one seeded violation
+  produces an `error!` line" cannot be asserted here: `tracing-test` appears in
+  zero manifests, no test captures log output, while 37 files already emit
+  `tracing::`. Writing the call would satisfy the letter while creating exactly
+  the kind of unverifiable claim this checklist exists to catch.
+  **Revisit only if** a violation site is identified whose detection neither
+  panics nor errors, AND a test-only log-capturing layer is added
+  (`tracing-test`, or `tracing-subscriber` as a dev-dep plus a `MakeWriter`) so
+  the acceptance can be a real test rather than an assertion about a call site.
+  Do not re-open this on the original reasoning — it has been measured twice.
 
 ---
 
 ## 8. Order of work
 
+**STATUS 2026-09-28: 18 of 19 items resolved. ONE remains open (P2-5).**
+
+The original staging below is kept for the reasoning it records — why each item
+came where it did — with its outcome marked. Read it as history, not a plan.
+
 1. ~~P0-1 (panic inventory red — blocks every Rust PR today).~~ **DONE 2026-09-27 — gate exits 0.**
-2. P0-2 (flake policy) and P0-3 (fuzz targets) — both are "decide and wire".
-3. P1-1 then P1-3 — property tests first; the replay harness is what makes
-   multi-location claims testable at all.
-4. P1-2 — coverage floor, once there is something worth measuring.
-5. P2-4, P2-5, P2-6 — cheap compiler-surface wins.
-6. P3-*, P4-* — housekeeping.
+2. ~~P0-2 (flake policy) and P0-3 (fuzz targets) — both are "decide and wire".~~ **DONE.**
+3. ~~P1-1 then P1-3 — property tests first; the replay harness is what makes
+   multi-location claims testable at all.~~ **DONE** (`conflict_proptests.rs`,
+   `models_proptests.rs`, `convergence_replay.rs`).
+4. ~~P1-2 — coverage floor, once there is something worth measuring.~~ **DONE** —
+   `coverage-floors.json` + `verify-coverage-floors.py`, 4 per-crate floors.
+5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **P2-4 and P2-6 DONE;
+   P2-5 is the one open item, and it is NOT a cheap win** — measured at 2,494
+   pedantic violations in the two named crates, and its stated mechanism
+   (`[lints.clippy]` locally) is not expressible under this workspace's
+   `[lints] workspace = true` arrangement. See the P2-5 entry for the three
+   measured scopes and the structural trade-off.
+6. ~~P3-\*, P4-\* — housekeeping.~~ **DONE except P3-2, which is REJECTED** (§7).
+   P3-1 (invariants doc), P3-3 (SAFETY-comment gate) and all three P4 items
+   closed with evidence.
+
+**The one open item needs an architecture decision, not more work:** either
+retire P2-5, or accept that enabling scoped pedantic means opting two crates out
+of the shared workspace lint table (duplicating `missing_docs` and exempting them
+from future workspace lints). Both options are costed in the P2-5 entry.
 
 **Reality check, unchanged from the previous revision and still correct:** for
 an offline-first multi-location system, "bug-free" is not attainable. What is
