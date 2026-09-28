@@ -474,10 +474,7 @@ fn payment_gateway_response_large_payload() {
 
     // Large JSON payload (10 KB)
     let large_body = "x".repeat(10_000);
-    let large_response = format!(
-        r#"{{"id":"txn_big","status":"approved","data":"{}"}}"#,
-        large_body
-    );
+    let large_response = format!(r#"{{"id":"txn_big","status":"approved","data":"{large_body}"}}"#);
     assert!(large_response.len() > 10_000);
 
     let splits = vec![PaymentSplitArg {

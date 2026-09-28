@@ -308,8 +308,7 @@ fn deactivate_inventory_location_with_stock_errors() {
     ));
     assert!(
         err.to_string().contains("non-zero stock balance"),
-        "expected non-zero stock balance message, got: {}",
-        err
+        "expected non-zero stock balance message, got: {err}"
     );
 }
 
@@ -345,8 +344,7 @@ fn deactivate_inventory_location_with_negative_stock_errors() {
     ));
     assert!(
         err.to_string().contains("non-zero stock balance"),
-        "expected non-zero stock balance message, got: {}",
-        err
+        "expected non-zero stock balance message, got: {err}"
     );
     // The location must still be active afterwards.
     let active: i64 = conn
@@ -430,8 +428,7 @@ fn deactivate_inventory_location_already_inactive_errors() {
     ));
     assert!(
         err.to_string().contains("already inactive"),
-        "expected already-inactive message, got: {}",
-        err
+        "expected already-inactive message, got: {err}"
     );
 }
 
@@ -960,8 +957,7 @@ fn deactivate_location_with_pending_transfers_errors() {
     let err = s.deactivate_inventory_location(&loc_id).unwrap_err();
     assert!(
         err.to_string().contains("pending stock transfers"),
-        "expected pending transfer message, got: {}",
-        err
+        "expected pending transfer message, got: {err}"
     );
 }
 
