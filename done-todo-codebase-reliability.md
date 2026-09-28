@@ -1610,8 +1610,56 @@ Recorded so the question does not get re-litigated every few weeks.
 
 **STATUS 2026-09-28: 18 of 19 items resolved. ONE remains open (P2-5).**
 
-**ROUND 43 — the `uninlined_format_args` sweep is NOT finished, and I reported
-it as finished. Correcting that here (commit `c2dd40d55` for the part that did
+**ROUND 44 — `uninlined_format_args` is now at ZERO findings in every file this
+session may touch (commit `ced4397a1`). Measured on a settled tree this time.**
+7 files, 12 insertions / 35 deletions. The last 7 sites were the
+**multi-placeholder** shapes clippy emits no auto-suggestion for —
+`format!("workspace '{}' not found in store '{}' …", a, b)` — fixed by carrying
+each placeholder's format spec into an inline capture: `{a}`, `{b}`. Verified by
+reading every `-`/`+` pair: each is a faithful placeholder→inline rewrite with
+**identical output text**.
+**THE PROCESS LESSON, and it is the more important half of this round.** I got
+here by writing string-manipulation scripts, and **they corrupted two files**:
+- `export/email_report.rs` — the splice dropped a closing paren, producing
+  `format!(…)\n");` (one `)` short).
+- `apps/mobile-tauri/src/commands/promotions_tests.rs` — the rewrite **duplicated**
+  the old text instead of replacing it, producing
+  `format!("{args:?}")let debug = format!("{:?}", args);`.
+Three more files had the same dropped-paren defect. All five were caught by
+`cargo check` and repaired, and the final commit compiles — but **a scripted
+rewrite of source text is not a safe tool for this, and the compile step is what
+caught it, not my review.** The last 7 were done BY HAND and were correct first
+time. The lesson is to hand-edit source and reserve scripts for *finding*, not
+*rewriting*.
+**Also corrected a misattribution mid-round.** `cargo clippy --workspace` briefly
+reported 9 `E0597` lifetime errors in `db/fiscal_tests.rs` (38 insertions / 21
+deletions, dirty). I did not touch that file — it is a concurrent session's
+in-flight change. Checked before reacting rather than "fixing" someone else's
+work.
+**Standing state:** zero findings in unclaimed files. The 2 remaining sites
+(`db/offline.rs`, `db/refunds.rs`) are in files the other session holds. The
+enable is therefore still NOT made, and the reason is now narrow and specific:
+two sites in two dirty files.
+
+**ROUND 43 — the `uninlined_format_args` sweep was NOT finished in that round,
+and it was reported as finished. Kept for the record (commit `c2dd40d55` for the
+part that did land).**
+**What went wrong.** At the end of round 42 I measured the lint at zero and said
+it was ready to enable. Round 43 opened by re-measuring: **40**. It then read 15,
+then 4, then 17 files — a different number each time, because **every reading was
+taken on a tree another session was actively committing to.** No single reading
+was false; treating a moving number as a state was the error. This is the second
+occurrence of that failure in three rounds (P2-6's miscount was the first).
+**What landed:** `c2dd40d55` — 7 files, 15 insertions / 30 deletions — inlining 22
+multi-line `assert!` arguments. The transformer originally matched only `{}`
+placeholders; these sites use `{:?}`, so the correct rewrite is `{result:?}`, not
+`{result}`. Carrying the format SPEC through took it from 0 to 22 transformed.
+Files were formatted with rustfmt DIRECTLY because `cargo fmt --all` fails while
+a concurrent session moves `modules/staff/src/models.rs`.
+**Also this round:** `scan-unwrap-panic.py` went red on two new `build.rs` files
+(`desktop-tauri`, `mobile-tauri`) whose `expect()` on `tauri_build::try_build`
+lacked an `INVARIANT` marker — a genuinely red gate in HEAD, fixed in `6da6b01f3`
+with a rationale that a build-script failure has no runtime to degrade into.
 land).**
 **What went wrong.** Last round I measured the lint at zero and said it was ready
 to enable. This round it re-measured at **40**, then 15, then 4, then 17 files —
