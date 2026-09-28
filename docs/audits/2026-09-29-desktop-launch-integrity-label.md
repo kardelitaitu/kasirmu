@@ -169,9 +169,38 @@ error[E0107]: struct takes 3 generic arguments but 2 generic arguments were supp
 shared `target/` masks it with stale artifacts, which is why `cargo tauri dev` still finishes in
 seconds.
 
-**Unproven hypothesis:** a workspace-wide build enables indexmap's `std` feature, which supplies
-the `S = RandomState` default that makes `IndexMap<K, V>` legal, while a package-scoped build
-does not. CI runs `--workspace`, so CI may be unaffected. Not tested — that is another ~10 minute
-build. Test it before calling this a CI break.
+**Retracted.** I first guessed workspace-wide feature unification would rescue it. Wrong — the
+clean build failed under both default features and `--no-default-features`, so package-level
+feature selection is irrelevant.
+
+**Resolved 2026-09-29, commit `03e5c08a7`.** The chain, measured with `cargo tree -e features`:
+
+1. `tauri-build 2.6.3` and `tauri-plugin 2.6.3` request `schemars 0.8.22` with **`preserve_order`**.
+2. schemars defines `preserve_order = ["indexmap"]` and `indexmap1 = ["indexmap"]`
+   (`Cargo.toml:415-416`); its `default = ["derive"]` (`:411`) does not pull indexmap, so this
+   only bites when something asks for `preserve_order`.
+3. That optional dep is indexmap **v1**, resolving to 1.9.3.
+4. **indexmap 1.9.x declares no `default` feature** — verified for 1.9.1, 1.9.2 and 1.9.3, whose
+   `[features]` blocks are byte-identical: `serde-1`, `std`, `test_debug`,
+   `test_low_transition_point`. So `std` is off and `map.rs` falls to line 76
+   `pub struct IndexMap<K, V, S>` with no `S = RandomState` default (line 71 has it, behind `std`).
+5. `pub type Map<K, V> = indexmap::IndexMap<K, V>;` (lib.rs:12) then needs three generics → `E0107`.
+6. `resolver = "2"` keeps build-dependency features separate from normal ones, so nothing turns
+   `std` on by accident.
+
+**Two candidate fixes were disproven without spending a build:** pinning indexmap to 1.9.2 or
+1.9.1 changes nothing (identical feature blocks), and `cargo update -p schemars@0.8.22` reports
+`Locking 0 packages` because 0.8.22 already is the newest `^0.8`.
+
+**The fix.** Proven first in a scratch crate outside the repo (`schemars` + `preserve_order`
+reproduces `E0107`; adding `indexmap = { version = "1", features = ["std"] }` compiles), then in
+the real workspace: `indexmap = { version = "1", features = ["std"] }` added to
+`[workspace.dependencies]` and referenced from `[build-dependencies]` in both Tauri app crates.
+It has to be a **build**-dependency, because that is the graph schemars lives in under resolver 2.
+`cargo build --no-default-features` in a fresh target dir then finishes in 2m22s with zero errors;
+`Cargo.lock` gains exactly two lines.
+
+The dependency is not used by any of our code. Both sites carry a comment saying so, because the
+symptom is a *schemars* compile error and nothing will look related to `indexmap`.
 
 > last audited 29-09-26 by BK
