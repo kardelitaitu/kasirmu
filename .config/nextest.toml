@@ -56,3 +56,24 @@ retries = { backoff = "exponential", count = 1, delay = "2s" }
 retries = 0
 test-threads = 4
 slow-timeout = { period = "30s", terminate-after = 1 }
+
+# ── The shared dev Postgres is ONE resource, and these tests mutate it ───────────────
+# Measured 2026-09-29 on a full workspace run: 19 tests failed and were then rescued by
+# the retry, every one of them kasirmu-cloud's Postgres integration tests (db_tests,
+# email_pg_tests, sync_store_tests, tests/pg_stock_guard, tests/pg_init_reconciliation,
+# tests/pg_trigger_ports). They are not nondeterministic -- they RACE. Several call
+# `PG_INIT`, which applies the whole schema to `public`, and others assert on that same
+# schema: `pg_integration_apply_schema_can_be_skipped` requires `public` to be EMPTY
+# (db_tests.rs:459) while its neighbours are filling it. Two at once is a self-inflicted
+# collision whose loser the retry rescues, which is exactly what the flake receipt
+# (scripts/verify-pg-tests-ran.py) exists to make visible -- the JUnit totals call all
+# 19 of them passes. Serialize them instead of paying for the retry.
+[test-groups.shared-postgres]
+max-threads = 1
+
+[[profile.default.overrides]]
+# Every test whose name contains `pg` reaches that one database, including the
+# integration binaries, whose names carry it too (`pg_trigger_ports::...`).
+filter = 'test(/pg/)'
+test-group = 'shared-postgres'
+

@@ -1,4 +1,25 @@
 
+## 2026-09-29 — The 19 “flaky” PG tests were racing, and nextest could already stop it (P1)
+
+**Finding.** The full workspace run passed 9731/9731, and the flake receipt
+(`scripts/verify-pg-tests-ran.py --nextest-junit target/nextest/default/junit.xml`) reported **FAIL: 19
+test(s) failed and were then rescued by a retry** — every one of them a `kasirmu-cloud` Postgres
+integration test (`db_tests`, `email_pg_tests`, `sync_store_tests`, `tests/pg_stock_guard`,
+`tests/pg_init_reconciliation`, `tests/pg_trigger_ports`). The JUnit totals call all 19 a pass; only the
+receipt names them, which is why that step exists.
+
+**Cause, named.** They share ONE resource — the dev Postgres database — and several apply the whole
+schema to `public` (`PG_INIT`) while others assert on it: `pg_integration_apply_schema_can_be_skipped`
+requires `public` to be EMPTY (`db_tests.rs:459`). nextest runs test binaries in parallel, so two of them
+overlapping is a self-inflicted collision, and `retries = { count = 2 }` turns the loser into a silent
+pass. Not nondeterminism: contention.
+
+**Repair.** One test group with `max-threads = 1`, applied by filter to every test whose name contains
+`pg`, in `.config/nextest.toml`. Serializing the one resource is the fix; relaxing the retry would only
+have hidden it.
+
+**Measured after.** `cargo nextest run -p kasirmu-cloud --all-features`: 415 run, 415 passed, 4 skipped,
+and the receipt says `PASS — no <flakyFailure> and no <failure>` where it had named 19.
 ## 2026-09-29 — P2 deferred: the mobile guard waits for the desktop guard to be committed
 
 **What is done.** `apps/mobile-tauri/src/state.rs` now sets `busy_timeout(5s)` before its pragmas and probes
