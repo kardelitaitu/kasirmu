@@ -126,7 +126,8 @@ fn slot_recycling_reclaims_gaps_from_deleted_entities() {
     insert_location(&tx, "default", "loc-3", 3);
 
     // Delete location 2 -> gap at 2
-    tx.execute("DELETE FROM locations WHERE id = 'loc-2'", []).unwrap();
+    tx.execute("DELETE FROM locations WHERE id = 'loc-2'", [])
+        .unwrap();
     let recycled = s
         .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
         .unwrap();
@@ -142,7 +143,8 @@ fn slot_recycling_reclaims_gaps_from_deleted_entities() {
     // 2. Terminals: delete terminal 1 -> gap at 1
     insert_terminal(&tx, "default", "term-1", 1);
     insert_terminal(&tx, "default", "term-2", 2);
-    tx.execute("DELETE FROM terminals WHERE id = 'term-1'", []).unwrap();
+    tx.execute("DELETE FROM terminals WHERE id = 'term-1'", [])
+        .unwrap();
     let recycled_term = s
         .allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, NOW)
         .unwrap();
@@ -159,7 +161,10 @@ fn slot_recycling_reclaims_gaps_from_deleted_entities() {
     let recycled_user = s
         .allocate_entity_index(&tx, "default", EntityIndexKind::User, NOW)
         .unwrap();
-    assert_eq!(recycled_user, 1, "slot 1 must be reclaimed for user after soft-delete");
+    assert_eq!(
+        recycled_user, 1,
+        "slot 1 must be reclaimed for user after soft-delete"
+    );
 }
 
 #[test]
@@ -368,7 +373,8 @@ fn assemble_renders_dynamic_widths() {
     assert_eq!(code_24.len(), 24);
 
     // 28-char format: all 4-character max indices (14,776,335 = "ZZZZ")
-    let code_28 = assemble_receipt_code(INDEX_ID_MAX, INDEX_ID_MAX, "260929", INDEX_ID_MAX, 999_999);
+    let code_28 =
+        assemble_receipt_code(INDEX_ID_MAX, INDEX_ID_MAX, "260929", INDEX_ID_MAX, 999_999);
     assert_eq!(code_28, "ZZZZ-ZZZZ-260929-ZZZZ-999999");
     assert_eq!(code_28.len(), 28);
 }
@@ -488,7 +494,20 @@ fn base62_parsing_and_roundtrip() {
     assert_eq!(parse_base62_index("ZZZZZ"), None); // 5 digits
 
     // Roundtrip for representative samples
-    for sample in [0, 1, 10, 61, 62, 3843, 3844, 10000, 238327, 238328, 1_000_000, INDEX_ID_MAX] {
+    for sample in [
+        0,
+        1,
+        10,
+        61,
+        62,
+        3843,
+        3844,
+        10000,
+        238327,
+        238328,
+        1_000_000,
+        INDEX_ID_MAX,
+    ] {
         let encoded = format_base62_index(sample);
         let decoded = parse_base62_index(&encoded).unwrap();
         assert_eq!(decoded, sample, "failed roundtrip for {sample}");

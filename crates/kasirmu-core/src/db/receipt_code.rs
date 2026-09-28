@@ -423,7 +423,12 @@ impl crate::db::Store<'_> {
             )
             .optional()?;
         let (yymmdd, fiscal_year) = resolve_receipt_date(now_utc, tz.as_deref().unwrap_or("UTC"))?;
-        let seq = self.claim_receipt_sequence(tx, tenant_id, &format_base62_index(term_idx), &fiscal_year)?;
+        let seq = self.claim_receipt_sequence(
+            tx,
+            tenant_id,
+            &format_base62_index(term_idx),
+            &fiscal_year,
+        )?;
         let code = assemble_receipt_code(loc_idx, term_idx, &yymmdd, staff_idx, seq);
         Ok((Some(code), terminal_id))
     }
