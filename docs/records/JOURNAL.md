@@ -12651,6 +12651,60 @@ After `.optional()?`, the test passed, all 17 stock adjust tests passed, and for
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD batch 2: Postgres-twin monthly drift, and a Sunday reported a week early
+
+**Problem (1/2):** the Postgres mirror of the forecast
+(`apps/cloud-server/src/email_pg/popularity.rs`) parsed every trend bucket key with
+`NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d")` — the exact defect the previous round
+fixed on the SQLite side, still live in the twin. Its own trend emits `LEFT(created_at, 7)`,
+that is `YYYY-MM`, for the monthly granularity, so every monthly point was dropped from its
+category's series and the web dashboard's monthly forecast returned rows of zeros for catalogs
+with real monthly history. A duplicated implementation drifted from the original: the twin had
+no tests at all, which is why nothing caught it.
+
+**Solution (1/2):** one parser, not two. `parse_period_start` is now `pub` in
+`kasirmu_core::db::popularity` (the container type the twin already imports from) and the twin
+delegates to it, so the two implementations can no longer disagree about which bucket-key shapes
+the trend can emit. The new `email_pg/popularity_tests.rs` pins the contract the twin relies on.
+
+**Problem (2/2):** the weekly trend bucket used `DATE(x, tz, 'weekday 0', '-7 days')` (SQLite)
+and `date_trunc('week', x::date)::date - 1` (PG). Both put the boundary Sunday in the PREVIOUS
+week: `'weekday 0'` leaves a Sunday where it is and the `-7 days` then subtracts a week, so every
+Sunday sale was reported a week early and split away from the Monday that follows it.
+`Store::weekly_revenue` documents and has already fixed this exact class for its own Monday form
+(`'weekday 1', '-7 days'` pushes a Monday into the previous week; the fix is to shift first).
+The trend's doc comment also claimed to mirror `weekly_revenue`'s expression, which no longer
+exists — a maintainer trusting it would have concluded the two surfaces share a week boundary
+when they do not.
+
+**Solution (2/2):** shift first, then advance — `DATE(x, tz, '-6 days', 'weekday 0')` — so the
+boundary Sunday opens its own week; the PG mirror advances the day by one before truncating
+(`date_trunc('week', x::date + 1)::date - 1`). The comment now states the real convention: weekly
+trend buckets are Sunday-start, deliberately unlike `weekly_revenue`'s Monday-first weeks.
+
+**Verified:** Red first for both. (1) `a_monthly_bucket_key_parses_into_a_date` failed on the
+monthly key while the daily key passed. (2) `weekly_trend_buckets_a_sunday_with_the_week_it_starts`
+failed with `left: ["2026-08-02", "2026-08-09"]` for a Sunday+Monday pair that is one week.
+After the fixes: popularity **37/37**, cloud **363/363**, reports **115/115**, and the full
+`kasirmu-core` lib suite **3409 / 0**. ⚠️ The PG weekly expression cannot be run in this
+ecosystem — the twin's integration arms are `pg-tests`-gated (54 skipped, no Postgres available)
+— so that edit is inspection-verified only; the SQLite side of the same idiom is run-verified.
+
+**Environment, and why the earlier "29 environmental failures" claim was only half right:**
+every one of those 29 failures was `Os { code: 5, PermissionDenied }` raised while a test built a
+file database under `std::env::temp_dir()`, which this sandbox denies. Redirecting `TMP`/`TEMP`
+to a writable directory (`target/tdd-tmp`) lets them all run: the suite goes from **3376 / 29** to
+**3409 / 0**. Tests that need a real file database are runnable here after all — only the
+database-backed ones (Postgres) are not.
+
+**Investigated & deliberately NOT done:** `tz_modifier` still reads the primary location's
+timezone with `.ok()`, but its UTC fallback is documented and logged, and making it an error means
+an `Result` signature through nine modules — left for its own slice. The Sunday-vs-Monday week
+convention difference between the popularity trend and `weekly_revenue` is now documented rather
+than changed: unifying it is a product decision with UI consequences, not a defect fix.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
 
 
 

@@ -153,7 +153,11 @@ fn window_modifier() -> String {
 /// but the key must still parse or the point is dropped from the series — a
 /// monthly key fed to the day parser alone silently empties the series and
 /// every monthly forecast collapses to zero.
-fn parse_period_start(period_start: &str) -> Option<chrono::NaiveDate> {
+///
+/// Shared with the Postgres mirror (`apps/cloud-server`,
+/// `email_pg::popularity`) so the two implementations cannot drift on which
+/// bucket-key shapes the trend can emit.
+pub fn parse_period_start(period_start: &str) -> Option<chrono::NaiveDate> {
     chrono::NaiveDate::parse_from_str(period_start, "%Y-%m-%d")
         .ok()
         .or_else(|| {
@@ -269,12 +273,14 @@ impl Store<'_> {
     /// Per-period popularity trend for the top `top_categories` categories.
     ///
     /// Buckets the sale/search/edit ledgers by `granularity` (`daily`,
-    /// `weekly`, `monthly`; the weekly bucket mirrors `weekly_revenue`'s
-    /// `DATE(created_at, 'weekday 0', '-7 days')`) over `[start_date,
+    /// `weekly`, `monthly`) over `[start_date,
     /// end_date]` and evaluates the ADR #37 blend per (period, category)
     /// with the raw period counts smoothed toward the cached category
     /// means — the same scale as the materialized `popularity_score`, so a
     /// category's trend line reads directly against its current standing.
+    /// Weekly buckets are Sunday-start (the Postgres twin mirrors that),
+    /// which deliberately differs from [`Store::weekly_revenue`]'s
+    /// Monday-first weeks.
     pub fn category_popularity_trend(
         &self,
         start_date: &str,
@@ -295,9 +301,17 @@ impl Store<'_> {
         // the activity query joins `products p` (which also has a
         // `created_at`), so the column must be explicit per query.
         let (s_period, a_period) = match granularity {
+            // Sunday-start weeks, with the shift FIRST: `'-6 days'` lands in
+            // the previous week and `'weekday 0'` then advances to that
+            // week's Sunday, so the boundary Sunday opens its own week. The
+            // reverse order (`'weekday 0', '-7 days'`) leaves a Sunday where
+            // it already is and then subtracts seven days, which reports
+            // every Sunday sale a week early — the defect
+            // [`Store::weekly_revenue`] documents for its own
+            // `'weekday 1', '-7 days'` form.
             "weekly" => (
-                format!("DATE(s.created_at, '{tz}', 'weekday 0', '-7 days')"),
-                format!("DATE(a.created_at, '{tz}', 'weekday 0', '-7 days')"),
+                format!("DATE(s.created_at, '{tz}', '-6 days', 'weekday 0')"),
+                format!("DATE(a.created_at, '{tz}', '-6 days', 'weekday 0')"),
             ),
             "monthly" => (
                 format!("strftime('%Y-%m', s.created_at, '{tz}')"),

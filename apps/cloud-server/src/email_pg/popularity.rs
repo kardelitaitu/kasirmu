@@ -10,6 +10,7 @@ use deadpool_postgres::Pool;
 
 use kasirmu_core::db::popularity::{
     CategoryForecastRow, CategoryPopularityRow, CategoryTopProduct, CategoryTrendPoint,
+    parse_period_start,
 };
 use kasirmu_core::popularity::{linear_forecast, score_from_raw, seasonal_daily_forecast};
 
@@ -148,12 +149,17 @@ async fn category_popularity_trend_pg(
     let end = parse_date(end_date)?;
 
     // Period expressions per granularity (same shapes the SQLite version
-    // produced: YYYY-MM-DD daily/weekly, YYYY-MM monthly; weekly is
-    // Sunday-start via the date_trunc('week') Monday minus one).
+    // produces: YYYY-MM-DD daily/weekly, YYYY-MM monthly; weekly is
+    // Sunday-start). `date_trunc('week')` is Postgres's Monday, so the day is
+    // advanced by one first and the Monday of THAT week is stepped back one —
+    // which puts a Sunday on the Sunday it opens rather than on the previous
+    // one. (Stepping back a bare `date_trunc('week')` instead, as this used
+    // to, reports every Sunday a week early; the SQLite side had the same
+    // defect through `'weekday 0', '-7 days'`.)
     let (s_period, a_period) = match granularity {
         "weekly" => (
-            "to_char(date_trunc('week', s.created_at::date)::date - 1, 'YYYY-MM-DD')",
-            "to_char(date_trunc('week', a.created_at::date)::date - 1, 'YYYY-MM-DD')",
+            "to_char(date_trunc('week', s.created_at::date + 1)::date - 1, 'YYYY-MM-DD')",
+            "to_char(date_trunc('week', a.created_at::date + 1)::date - 1, 'YYYY-MM-DD')",
         ),
         "monthly" => ("LEFT(s.created_at, 7)", "LEFT(a.created_at, 7)"),
         _ => (
@@ -353,7 +359,7 @@ pub async fn category_forecast_pg(
         (Option<String>, Vec<(chrono::NaiveDate, f64)>),
     > = std::collections::HashMap::new();
     for p in points {
-        let date = chrono::NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d").ok();
+        let date = parse_period_start(&p.period_start);
         let entry = groups
             .entry(p.category_id.clone())
             .or_insert((p.category_name, Vec::new()));
@@ -399,3 +405,7 @@ pub async fn category_forecast_pg(
     });
     Ok(out)
 }
+
+#[cfg(test)]
+#[path = "popularity_tests.rs"]
+mod tests;

@@ -691,6 +691,65 @@ fn category_popularity_trend_monthly_and_top_limit() {
 }
 
 #[test]
+fn weekly_trend_buckets_a_sunday_with_the_week_it_starts() {
+    // Weekly trend buckets are Sunday-start, so the Sunday at a week boundary
+    // belongs to the week it OPENS, not to the one that just ended. The idiom
+    // `'weekday 0', '-7 days'` puts the boundary day itself in the previous
+    // week — the same defect `weekly_revenue` documents for its own
+    // `'weekday 1', '-7 days'` form and fixes by shifting first
+    // (`'-6 days', 'weekday 1'`). A Sunday sale is therefore reported a week
+    // early, on its own week's chart, and the two implementations agree on the
+    // wrong answer (the Postgres twin mirrors this idiom).
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    let id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, category_id, created_at, updated_at) \
+         VALUES (?1, 'A-1', 'A one', 1000, 'USD', 'cat-a', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![id],
+    )
+    .unwrap();
+    // 2026-08-09 is a Sunday; 2026-08-10 is the Monday that follows it, so
+    // both sales are inside the single week that Sunday opens.
+    for (i, (day, units)) in [("2026-08-09", 3_i64), ("2026-08-10", 4)]
+        .iter()
+        .enumerate()
+    {
+        let ts = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc()
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+             (?1, ?2, 'USD', 1, 'completed', ?3, ?3)",
+            params![format!("sale-{i}"), units * 1000, ts],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+             (?1, ?2, 'A-1', ?3, 1000, ?4, 'USD', 1)",
+            params![format!("sl-{i}"), format!("sale-{i}"), units, units * 1000],
+        )
+        .unwrap();
+    }
+
+    let store = Store::new(&conn);
+    let points = store
+        .category_popularity_trend("2000-01-01", "2099-12-31", "weekly", 5)
+        .unwrap();
+
+    let keys: Vec<&str> = points.iter().map(|p| p.period_start.as_str()).collect();
+    assert_eq!(
+        keys,
+        vec!["2026-08-09"],
+        "the Sunday and the Monday after it are one week, labelled by its Sunday"
+    );
+    assert_eq!(points[0].units_sold, 7);
+}
+
+#[test]
 fn category_forecast_projects_next_period_from_trend_series() {
     let conn = fresh();
     seed_category(&conn, "cat-a", "A");
