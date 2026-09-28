@@ -19,12 +19,11 @@ fn price(minor: i64) -> Money {
     }
 }
 
-fn setup_store() -> Store<'static> {
-    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    kasirmu_core::migrations::run(&mut conn).unwrap();
-    let conn: &'static rusqlite::Connection = Box::leak(Box::new(conn));
-    let store = Store::new(conn);
+// The caller owns the connection; no `Box::leak` to manufacture a
+// `'static` for the `Store` (O-T03). `fresh_db()` also replaces the
+// 68-migration replay with a ~3 ms snapshot clone.
+fn setup_store(db: &rusqlite::Connection) -> Store<'_> {
+    let store = Store::new(db);
 
     store
         .create_product(
@@ -42,7 +41,8 @@ fn setup_store() -> Store<'static> {
 }
 
 fn bench_create_sale_minimal(c: &mut Criterion) {
-    let store = setup_store();
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     c.bench_function("create_sale_minimal", |b| {
         b.iter(|| {
@@ -56,7 +56,8 @@ fn bench_create_sale_minimal(c: &mut Criterion) {
 }
 
 fn bench_create_sale_with_lines(c: &mut Criterion) {
-    let store = setup_store();
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     c.bench_function("create_sale_with_5_lines", |b| {
         b.iter(|| {
@@ -72,7 +73,8 @@ fn bench_create_sale_with_lines(c: &mut Criterion) {
 }
 
 fn bench_complete_checkout(c: &mut Criterion) {
-    let store = setup_store();
+    let store_db = kasirmu_core::migrations::fresh_db();
+    let store = setup_store(&store_db);
 
     c.bench_function("complete_checkout_5_items", |b| {
         b.iter(|| {
