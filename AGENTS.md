@@ -282,4 +282,8 @@ git config --get core.hooksPath      # gates enabled? (expect: .githooks)
 git rev-parse --show-toplevel        # repo root
 ```
 
-> last audited 27-09-26 by BK · roundtrip-economy rewrite · prior stamp 08-09-26
+> last audited 27-09-26 by BK
+>
+> roundtrip-economy rewrite; prior stamp 08-09-26. The line above IS the audit footer and is
+> shape-checked by the skill drift guard, so it stays exactly `> last audited DD-MM-YY by <name>`:
+> trailing detail on that line fails Check 10.
