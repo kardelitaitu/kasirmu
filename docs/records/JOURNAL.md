@@ -12896,6 +12896,58 @@ along with all 18 stock adjustment tests.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 18: a custom stock threshold no longer sits under the default (core/reports + cloud mirror)
+
+**Problem:** `Store::low_stock_alerts_at_location`
+(`crates/kasirmu-core/src/db/reports/product_sales.rs`) resolved the reported `threshold` with a
+three-way `COALESCE(product+location, product+global, default)` but decided the WHERE with a
+DISJUNCTION — `COALESCE(ss.qty, 0) <= ?2 OR (custom ≤ threshold)` — so the default branch fired
+even when an enabled custom threshold existed. A product configured with a threshold of 4 and 5
+units on hand was returned as a low-stock alert carrying `current_qty: 5` beside `threshold: 4`: a
+row whose own fields contradict it, surfaced in the UI's low-stock badge. The Postgres twin
+(`apps/cloud-server/src/email_pg/analytics.rs::low_stock_alerts_at_location_pg`) had the identical
+predicate, so the scheduled email's low-stock section reported the same false alert.
+
+**Solution:** the filter now compares the current quantity against the SAME resolved threshold the
+`threshold` column reports — one `COALESCE(...)` in the WHERE, mirroring the SELECT list — so an
+enabled custom threshold replaces the default for the decision as well as for the value. Applied to
+both twins.
+
+**Verified:** Red first:
+`low_stock_alerts_at_location_does_not_fall_back_to_the_default_over_a_custom_threshold` failed with
+`[... current_qty: 5, threshold: 4 ...]` ("custom threshold 4 with 5 on hand is not low stock").
+Green after the fix, with the unpinned half asserted too (a product with no threshold still reports
+at the default). The Postgres twin was proved at expression level in a throwaway
+`postgres:17-alpine`: the OLD predicate returned `CALM (qty 5, threshold 4)`, `DEEP (15, custom 20)`
+and `PLAIN (5, default 10)`; the NEW one drops `CALM` and keeps `DEEP` and `PLAIN`. Suites: core
+reports + export + popularity **298/298**, cloud `sync_store` **22/22**, `cargo fmt -- --check` clean
+for both crates.
+
+**Also fixed (doc):** `WeeklyRevenueRow::week_start` was documented as "the week start (Sunday)"
+while the query buckets Monday-first (`'-6 days', 'weekday 1'`) and the UI keys yearly heatmap cells
+off a Monday `week_start` — a row doc contradicting the value it describes.
+
+**Folded in, no behaviour change:** the two table-activity rollups now share a `TABLE_TURN_SOURCE`
+constant holding the `COUNT(DISTINCT s.id)` source and its predicate. Two hand-copied versions
+drifting apart is exactly what produced the same double-count bug in both queries in round 17.
+
+**Probed and found sound (no change made):** the audit's premise that `sync_store/sqlite.rs` has no
+tests was WRONG — its arms are exercised through the parent's `sync_store_tests.rs` (origin-terminal
+round trip, fallback INSERT, all three pull shapes, conflict detection with auto-merge and
+last-writer-wins, duplicate rejection, tax-rate scope, and a sibling's three-shape filter test). Two
+genuinely uncovered paths were closed with tests and both are CLEAN, not finds: the multi-statement
+chunk boundary (`sqlite_push_batch_keeps_outcomes_across_the_multirow_chunk_boundary`, 501 items with
+a duplicate straddling the boundary: first `Accepted`, second `Rejected`, 500 rows stored) and the
+SYNC-10 fail-loud decode path (`sqlite_pull_fails_loudly_when_a_row_cannot_be_decoded`). Also sound:
+`sqlite_snapshot_products` reading `price_updated_at` as required is NOT the outlier the PG arm's
+`unwrap_or_default` suggests — core's own product row mapper (`db/mod.rs:617`) reads it as required
+too, so a NULL is outside the column's contract; `inventory_turnover`'s `sku_count =
+COUNT(*) FROM products` is exact because `delete_product` is a hard DELETE; and the tenant-scoped
+products join the cloud PG queries carry (`AND p.tenant_id = s.tenant_id`) has no core equivalent to
+fix, because the local `sales` table has no `tenant_id`/`store_id` column at all.
+
+**Commits:** this entry + the fixes land in the pathspec commit below.
+
 
 
 
