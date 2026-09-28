@@ -180,10 +180,10 @@ pub async fn daily_revenue_pg(
             // REP-04 cloud parity: sales and refunds aggregate independently
             // and join FULL OUTER on (date, currency) — a refund-only day
             // must still produce a row, mirroring the local daily_revenue
-            // semantics exactly. COGS is a pre-aggregated CTE rather than
-            // the local correlated subquery: PG rejects subqueries that
-            // reference ungrouped outer columns (E42803), and joining an
-            // aggregate keyed on (date, currency) cannot multiply rows.
+            // semantics exactly. COGS and refund COGS are pre-aggregated CTEs
+            // (c and rc) rather than correlated subqueries: PG rejects
+            // subqueries that reference ungrouped outer columns (E42803),
+            // and joining aggregates keyed on (date, currency) cannot multiply rows.
             "WITH s AS (
                  SELECT to_char(s1.created_at::date, 'YYYY-MM-DD') AS d, s1.currency AS c,
                         SUM(s1.total_minor)::bigint AS t, COUNT(*) AS n
@@ -204,17 +204,20 @@ pub async fn daily_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY s3.created_at::date, s3.currency
              ),
+             rc AS (
+                 SELECT to_char(rf3.created_at::date, 'YYYY-MM-DD') AS d, rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY rf3.created_at::date, rf3.currency
+             ),
              r AS (
                  SELECT to_char(rf1.created_at::date, 'YYYY-MM-DD') AS d, rf1.currency AS c,
-                        SUM(rf1.total_minor)::bigint AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)::bigint
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
-                         WHERE rf3.tenant_id = $3
-                           AND rf3.created_at::date = rf1.created_at::date
-                           AND rf3.currency = rf1.currency) AS rcost
+                        SUM(rf1.total_minor)::bigint AS rf
                  FROM refunds rf1
                  WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
                  GROUP BY rf1.created_at::date, rf1.currency
@@ -223,11 +226,12 @@ pub async fn daily_revenue_pg(
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    (COALESCE(c.cogs, 0) - COALESCE(r.rcost, 0))::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY date ASC",
             &[&start, &end, &tenant],
         )
@@ -298,18 +302,22 @@ async fn weekly_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY date_trunc('week', s3.created_at::date), s3.currency
              ),
+             rc AS (
+                 SELECT to_char(date_trunc('week', rf3.created_at::date)::date, 'YYYY-MM-DD') AS d,
+                        rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY date_trunc('week', rf3.created_at::date), rf3.currency
+             ),
              r AS (
                  SELECT to_char(date_trunc('week', rf1.created_at::date)::date, 'YYYY-MM-DD') AS d,
                         rf1.currency AS c,
-                        SUM(rf1.total_minor)::bigint AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)::bigint
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
-                         WHERE rf3.tenant_id = $3
-                           AND date_trunc('week', rf3.created_at::date) = date_trunc('week', rf1.created_at::date)
-                           AND rf3.currency = rf1.currency) AS rcost
+                        SUM(rf1.total_minor)::bigint AS rf
                  FROM refunds rf1
                  WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
                  GROUP BY date_trunc('week', rf1.created_at::date), rf1.currency
@@ -318,11 +326,12 @@ async fn weekly_revenue_pg(
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    (COALESCE(c.cogs, 0) - COALESCE(r.rcost, 0))::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY week_start ASC",
             &[&start, &end, &tenant],
         )
@@ -391,17 +400,20 @@ async fn monthly_revenue_pg(
                    AND s3.created_at::date BETWEEN $1 AND $2
                  GROUP BY LEFT(s3.created_at, 7), s3.currency
              ),
+             rc AS (
+                 SELECT LEFT(rf3.created_at, 7) AS d, rf3.currency AS c,
+                        SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty)::bigint AS rcost
+                 FROM refund_lines rl3
+                 JOIN refunds rf3 ON rf3.id = rl3.refund_id
+                 LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
+                 LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
+                 WHERE rf3.tenant_id = $3
+                   AND rf3.created_at::date BETWEEN $1 AND $2
+                 GROUP BY LEFT(rf3.created_at, 7), rf3.currency
+             ),
              r AS (
                  SELECT LEFT(rf1.created_at, 7) AS d, rf1.currency AS c,
-                        SUM(rf1.total_minor)::bigint AS rf,
-                        (SELECT COALESCE(SUM(COALESCE(sl3.cost_minor, p3.cost_minor, 0) * rl3.qty), 0)::bigint
-                         FROM refund_lines rl3
-                         JOIN refunds rf3 ON rf3.id = rl3.refund_id
-                         LEFT JOIN sale_lines sl3 ON sl3.id = rl3.sale_line_id
-                         LEFT JOIN products p3 ON p3.sku = sl3.sku AND p3.tenant_id = rf3.tenant_id
-                         WHERE rf3.tenant_id = $3
-                           AND LEFT(rf3.created_at, 7) = LEFT(rf1.created_at, 7)
-                           AND rf3.currency = rf1.currency) AS rcost
+                        SUM(rf1.total_minor)::bigint AS rf
                  FROM refunds rf1
                  WHERE rf1.tenant_id = $3 AND rf1.created_at::date BETWEEN $1 AND $2
                  GROUP BY LEFT(rf1.created_at, 7), rf1.currency
@@ -410,11 +422,12 @@ async fn monthly_revenue_pg(
                     COALESCE(s.t, 0)::bigint AS total_minor,
                     COALESCE(s.c, r.c) AS currency,
                     COALESCE(s.n, 0)::bigint AS sale_count,
-                    (COALESCE(c.cogs, 0) - COALESCE(r.rcost, 0))::bigint AS cogs_minor,
+                    (COALESCE(c.cogs, 0) - COALESCE(rc.rcost, 0))::bigint AS cogs_minor,
                     COALESCE(r.rf, 0)::bigint AS refund_minor,
                     (COALESCE(s.t, 0) - COALESCE(r.rf, 0))::bigint AS net_revenue_minor
              FROM s FULL OUTER JOIN r ON s.d = r.d AND s.c = r.c
-             LEFT JOIN c ON c.d = s.d AND c.c = s.c
+             LEFT JOIN c ON c.d = COALESCE(s.d, r.d) AND c.c = COALESCE(s.c, r.c)
+             LEFT JOIN rc ON rc.d = COALESCE(s.d, r.d) AND rc.c = COALESCE(s.c, r.c)
              ORDER BY month ASC",
             &[&start, &end, &tenant],
         )

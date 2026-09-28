@@ -984,7 +984,7 @@ async fn pg_integration_email_analytics_visible_as_restricted_role() {
              END $$;
              CREATE ROLE {role} LOGIN PASSWORD 'oz_email_rls_probe_pw';
              GRANT USAGE ON SCHEMA public TO {role};
-             GRANT SELECT, INSERT, UPDATE, DELETE ON sales, sale_lines, sent_reports, products, refunds TO {role};
+             GRANT SELECT, INSERT, UPDATE, DELETE ON sales, sale_lines, sent_reports, products, refunds, refund_lines TO {role};
              ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
              ALTER TABLE sent_reports ENABLE ROW LEVEL SECURITY;
              ALTER TABLE refunds ENABLE ROW LEVEL SECURITY;
