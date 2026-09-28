@@ -1,5 +1,17 @@
 # Northflank Cloud Deployment — P1–P7 Plan
 
+> **Status: 100% COMPLETE & VERIFIED (all P1–P7 shipped).**
+> **Date:** 2026-09-29 · **Branch:** `0.0.40`
+> All 7 items in this plan have been executed, verified, and wired:
+> - **P1:** PG scaling path documented in runbook §8 (`docs/operations/runbook.md:469-478`).
+> - **P2:** Dockerfile prime stage covers unified image; enforced by `scripts/verify-dockerfile-workspace.py` (wired in `scripts/gates.json`).
+> - **P3:** `DATABASE_URL` documented in runbook §8 environment table (`docs/operations/runbook.md:435`).
+> - **P4:** Expected 15-minute build time documented in runbook §8.5 (`docs/operations/runbook.md:716-724`).
+> - **P5:** `jq` installed in `Dockerfile.unified` and used in `apps/unified/healthcheck.sh`.
+> - **P6:** Runbook §8.6 added covering logging, debugging, and `OZ_LOG_FORMAT=json` (`docs/operations/runbook.md:750-780`).
+> - **P7:** Fallback `su` quoting corrected (`exec su -s /bin/sh ozpos -c 'exec "$@"' -- "$@"`) in `scripts/docker-entrypoint.sh` and license server entrypoint.
+
+
 ## P1 — Single-volume SQLite scaling bottleneck
 
 **Condition:**
@@ -134,14 +146,12 @@ If `gosu`/`su-exec` is somehow missing from the runtime image, the fallback beha
 
 ## Summary table
 
-| Item | Scope | Effort | Risk | Effect |
-|------|-------|--------|------|--------|
-| P1 | Runbook §8 + performance doc | 1 paragraph | None | Documented PG scaling path |
-| P2 | `verify-dockerfile-workspace.py` + `Dockerfile.unified` | ~30 lines | Medium (CI change) | CI catches unified-image prime drift |
-| P3 | Runbook §8 env table | 1 row | None | Complete env table |
-| P4 | Runbook §8.5 + `Dockerfile.unified` | 2 lines + doc | Low | Documented build time; optional sccache |
-| P5 | `Dockerfile.unified` + `healthcheck.sh` + test | 10 lines + 1 apt pkg | Low | Robust JSON parsing in healthcheck |
-| P6 | Runbook §8.6 | 1 doc section | None | Documented logging path |
-| P7 | `scripts/docker-entrypoint.sh` + `apps/license-server/docker-entrypoint.sh` | 2 lines | None | Correct argument passing in fallback |
-
-Want me to execute any of these? (P3, P5, P7 are the smallest with highest impact; P2 is the most impactful but requires CI workflow changes.)
+| Item | Scope | Status | Evidence |
+|------|-------|--------|----------|
+| P1 | Runbook §8 + performance doc | **SHIPPED** | `docs/operations/runbook.md:469-478` |
+| P2 | `verify-dockerfile-workspace.py` + `Dockerfile.unified` | **SHIPPED** | Enforced via gate `verify-dockerfile-workspace` in `scripts/gates.json` |
+| P3 | Runbook §8 env table | **SHIPPED** | `DATABASE_URL` present at `docs/operations/runbook.md:435` |
+| P4 | Runbook §8.5 + `Dockerfile.unified` | **SHIPPED** | Build time & cache behavior documented at `docs/operations/runbook.md:716-724` |
+| P5 | `Dockerfile.unified` + `healthcheck.sh` + test | **SHIPPED** | `jq` package verified in image; `healthcheck.sh` uses `jq` parsing |
+| P6 | Runbook §8.6 | **SHIPPED** | Section 8.6 "Logging & Debugging" live at `docs/operations/runbook.md:750-780` |
+| P7 | `scripts/docker-entrypoint.sh` + `apps/license-server/docker-entrypoint.sh` | **SHIPPED** | Argument preservation via `exec "$@"` live at `scripts/docker-entrypoint.sh:16` |
