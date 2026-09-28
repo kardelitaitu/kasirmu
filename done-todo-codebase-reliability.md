@@ -1005,6 +1005,37 @@ covered, because no coverage instrument is enforced. Close that in this order.
       precedent at `platform/startup/src/rate_sync.rs:51`. That is a review
       task with a judgment per site, and the outcome may legitimately be
       "deliberate, documented" rather than "changed".
+      **ROUND 3 — 2026-09-28 (commit `ee07f79cc`). 189 → 49. The deliberate
+      classes are now DOCUMENTED rather than silently allowed.**
+      Method, per the ruling: each allow carries a reason at the point where the
+      judgment was made, so a reader hits the explanation rather than a bare
+      lint suppression. Twelve files, **108 insertions and ZERO deletions** —
+      this round changed no behaviour at all, which is the correct shape for
+      documenting intent.
+      **The four clusters, and why each is deliberate:**
+      | cluster | sites | why float is correct |
+      |---|---|---|
+      | WAL diagnostics (`wal_tail_diagnosis`, `wal_sync_attribution`, `wal_ondisk`) | 46 | percentile rank is `p * n` **by definition**; sample counts cannot approach 2^53 |
+      | `popularity.rs` + `db/popularity.rs` | 36 | ADR #37 D1's scoring formula — `λ^t` decay, `ln(1+txns)` breadth weighting and Bayesian shrinkage are real-valued **by construction**; inputs are event counts, output is a sort key, **no money passes through** |
+      | percentage ratios (`reports/{product_sales,revenue,sales_summary}`, `db/shifts`) | 14 | `part as f64 / whole as f64 * 100.0` — a **displayed ratio**, with the `i64` minor-unit totals still the source of truth it is derived from |
+      | test assertions (`popularity_tests`, `reports_tests`) | 17 | `assert_eq!(x, 1.0)` on values the formula produces **exactly**; an epsilon would make the assertion weaker |
+      Plus `db/audit.rs` (6), where each site is guarded at the call: a SQL
+      `COUNT(*)` is never negative and `.max(0)` makes that explicit before the
+      `u64` cast, and `days as i64` cannot wrap for any reachable window.
+      **Why this is worth doing even though it changes no behaviour:** the
+      alternative was 189 silent lints that a future reader cannot distinguish
+      from 189 undiscovered bugs. The allow turns each into a stated decision
+      with its reason, which is the difference between "we suppressed this" and
+      "we considered this".
+      **Verified:** `cargo test -p kasirmu-core --lib popularity` → 32 passed,
+      `--lib audit` → 117 passed, `cargo check --all-targets` clean,
+      `cargo fmt -p kasirmu-core -- --check` → 0 diffs.
+      **What remains — 49, and 15 of those are not mine.**
+      `src/db/staff/login.rs` (15) is a file the concurrent session owns.
+      The rest are small and scattered: `db/fiscal.rs` (4), `tests/audit_integration.rs`
+      (3), `modules/sales/src/models.rs` (2), `db/loyalty.rs` (2), `db/image_refs.rs`
+      (2), then 14 files with 1 each. They need the same per-site judgment; none
+      is a mechanical sweep.
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
