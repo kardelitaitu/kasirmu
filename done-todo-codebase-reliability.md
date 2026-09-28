@@ -1610,6 +1610,50 @@ Recorded so the question does not get re-litigated every few weeks.
 
 **STATUS 2026-09-28: 18 of 19 items resolved. ONE remains open (P2-5).**
 
+**ROUND 41 — the first P2-5 increment that is both mechanical AND enforceable.**
+Commit `9db61b3cd`, 84 files, 168 insertions / 177 deletions.
+
+**What changed, and why this lint rather than the pedantic group.**
+`clippy::uninlined_format_args` is an INDIVIDUAL lint, not the `pedantic` group
+— so it can be named in `[workspace.lints.clippy]` without dragging in the
+1,669 doc lints that made pedantic a campaign. That distinction is what makes it
+enforceable: a future `[workspace.lints.clippy] uninlined_format_args = "warn"`
+is a one-line change with a bounded, auto-fixable population.
+
+Measured before touching anything: **246 sites workspace-wide**, in **110 files**,
+of which **243 sites (110 files) were in files no other session had claimed**.
+The lint rewrites `format!("{:?}", value)` → `format!("{value:?}")` — a real
+readability rule and the Rust 2021+ idiom, not lint noise.
+
+**Method, chosen for safety over speed.** `cargo clippy --fix` would rewrite
+every file in one pass, including the other session's dirty ones. Instead the
+suggestions were parsed out of clippy's own `-`/`+` output and applied per file,
+which keeps the dirty files untouched by construction. Verified afterwards by
+hashing all three dirty files before and after: **all three hashes unchanged.**
+`kasirmu-app` (the one crate with no dirty files) was fixed with
+`clippy --fix` directly, 14 fixes.
+
+**246 → 5, and the last 5 are legitimately excluded.** They are multi-line
+`assert!` macros where the fix is a large reflow clippy will not auto-apply. The
+count measured 59 at the end of the round, HIGHER than 5, because the concurrent
+session added new call sites while this round ran — the same layering effect
+documented for rustdoc, and the reason a lint count is only meaningful with a
+timestamp and a tree.
+
+**A scare worth recording, because the diagnosis was correct and the conclusion
+was not.** Mid-round `cargo check --workspace` failed with
+`cannot find module or crate tracing` in `foundation/src/inventory.rs`. I had
+just committed 84 files, so the first question was whether I had broken it.
+Verified: `foundation/src/inventory.rs` is **untracked (`??`)** and
+`pub mod inventory;` is an uncommitted addition to `foundation/src/lib.rs` — the
+concurrent session was mid-feature, calling `tracing::warn!` in a crate that does
+not depend on `tracing` yet. My commit touched `kasirmu-bridge/src/inventory.rs`
+and `kasirmu-core/src/db/inventory.rs`, which are different files. **The error
+also cleared on its own while I was diagnosing** — the other session added the
+dependency — which is the tell that it was never mine. Had I "fixed" it by
+adding `tracing` to `foundation/Cargo.toml`, I would have committed a dependency
+change for someone else's half-finished module.
+
 **ONE KNOWN DIVERGENCE, handed off rather than left to be rediscovered.** The
 i128 round-half-up money conversion — `((num * 2 + den) / (den * 2))` — exists at
 TWO sites, and they are the same behaviour by the code's own account:
