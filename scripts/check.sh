@@ -266,22 +266,21 @@ fi
 #
 # Gate: scripts/gates.json -> "coverage-floors".
 if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2>&1; then
-    # Two --no-report passes plus one report, because `cargo llvm-cov` drives `cargo test`
-    # and therefore CANNOT use the nextest test group (.config/nextest.toml) that serializes
-    # the shared-Postgres tests. Measured 2026-09-29: the single-invocation form died on
-    # `sync_store::tests::pg_integration_conflict_detection_end_to_end`
-    # (apps/cloud-server/src/sync_store_tests.rs:1256) -- one of the very tests that group
-    # exists to serialize -- and the floors then went UNGRADED behind a warning. Hold the
-    # three packages that own that database to one thread; everything else keeps full
-    # parallelism, so the cost is confined to them.
-    if cargo llvm-cov --no-report \
-        -p kasirmu-cloud -p kasirmu-api -p platform-sync \
-        --all-features -- --test-threads=1 >/dev/null 2>&1 \
-       && cargo llvm-cov --no-report \
+    # `cargo llvm-cov nextest`, not plain `cargo llvm-cov`. The plain form drives `cargo
+    # test`, which cannot see the nextest test group (.config/nextest.toml) that serializes
+    # the shared-Postgres tests, and has NO per-test timeout. Both were measured on
+    # 2026-09-29: the plain form first died on
+    # `sync_store::tests::pg_integration_conflict_detection_end_to_end` (apps/cloud-server/
+    # src/sync_store_tests.rs:1256) -- one of the very tests that group serializes -- and
+    # once that was handled it HUNG on a kasirmu-bridge test binary that burned 14,873
+    # CPU-seconds in 15 minutes of wall clock, with nothing able to kill it. The nextest
+    # subcommand keeps the group, the 120s slow-timeout and per-test process isolation, so
+    # neither failure mode can recur. One invocation, not the two-pass split this step
+    # briefly carried.
+    if cargo llvm-cov nextest \
         --workspace --all-features \
         --exclude kasirmu-app --exclude kasirmu-mobile \
-        --exclude kasirmu-cloud --exclude kasirmu-api --exclude platform-sync >/dev/null 2>&1 \
-       && cargo llvm-cov report --json --output-path coverage-probe.json >/dev/null 2>&1; then
+        --json --output-path coverage-probe.json >/dev/null 2>&1; then
         step "coverage floors" "scripts/coverage-floors.json (ratchet)" python3 scripts/verify-coverage-floors.py
     else
         echo -e "${YELLOW}⚠ cargo llvm-cov could not complete (a failing test aborts it) — floors NOT checked${NC}"
