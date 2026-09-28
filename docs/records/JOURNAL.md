@@ -12474,6 +12474,38 @@ sales module passed 156/156 and the full `kasirmu-core` lib suite passed **3399 
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 5: a category-probe fault stops scoring popularity against the global mean
+
+**Problem:** `Store::recompute_popularity` (`crates/kasirmu-core/src/db/popularity.rs`)
+refreshes a single SKU's popularity score after a sale or search event, smoothing its raw
+signals against cached per-category means. The probe deciding WHICH means to use — reading the
+product's `category_id` — used `.ok().flatten()`, so a database fault collapsed to `None`.
+`None` there reads as "uncategorized": the SKU fell back to the GLOBAL catalog means, a
+global-mean-smoothed score overwrote the correct category-mean one, and the recompute reported
+`Ok(())`. The retail grid's default popularity sort silently drifted for that SKU with no
+error anywhere — the same MSL-27 defect class as round 4, one file over.
+
+**Solution:** `.optional()?`, with the round-4 lesson applied on the first attempt: the getter
+is typed `row.get::<_, Option<String>>(0)` so a NULL `category_id` (the ordinary uncategorized
+case) still resolves to `None`, and `flatten()` keeps row-missing and column-NULL as the same
+"no category" while a real fault propagates. `sku_means` became
+`Result<(f64, f64, f64), CoreError>`; its only caller — `recompute_popularity`, already
+`Result`-returning — now propagates with `?`.
+
+**Verified:** Red first — under a faulted probe (renaming only `products.category_id`) the
+recompute reported success: `expect_err` got `Ok(())`. After the fix the popularity module
+passed 15/15 and the full `kasirmu-core` lib suite passed **3400 / 0** (3399 + 1 new);
+`cargo fmt --check` and `cargo clippy --all-targets` clean on both touched files. The test
+pins the healthy path before injecting the fault — a missing category cache would otherwise
+make the fault test pass for the wrong reason — and asserts the failed run left the stored
+score untouched.
+
+**Investigated & deliberately NOT done:** `read_setting`'s own `.ok()` still collapses a
+settings-read fault into a cache miss, falling back to global means — same drift, lower
+severity, different fault surface. Queued as its own slice.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

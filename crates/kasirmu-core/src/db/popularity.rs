@@ -27,13 +27,13 @@ next: none | perf: grouped single-pass recompute
 
 use std::collections::HashMap;
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 use crate::error::CoreError;
-use crate::popularity::{DayCount, compute_score, decayed_sum, total_events};
+use crate::popularity::{compute_score, decayed_sum, total_events, DayCount};
 
-use super::Store;
 use super::reports::{check_date_bound, parse_utc_offset};
+use super::Store;
 
 /// Settings keys caching the catalog means computed by the last full pass.
 const MEAN_SALES: &str = "popularity.mean.sales";
@@ -145,6 +145,22 @@ fn window_modifier() -> String {
     format!("-{} days", crate::popularity::WINDOW_DAYS)
 }
 
+/// Parse a trend bucket key into a date: `YYYY-MM-DD` for the daily and
+/// weekly buckets, `YYYY-MM` for the monthly one (anchored to the first of
+/// the month).
+///
+/// The per-period unit series only needs the periods in chronological order,
+/// but the key must still parse or the point is dropped from the series — a
+/// monthly key fed to the day parser alone silently empties the series and
+/// every monthly forecast collapses to zero.
+fn parse_period_start(period_start: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(period_start, "%Y-%m-%d")
+        .ok()
+        .or_else(|| {
+            chrono::NaiveDate::parse_from_str(&format!("{period_start}-01"), "%Y-%m-%d").ok()
+        })
+}
+
 /// Accepted granularities for [`Store::category_popularity_trend`].
 pub const TREND_GRANULARITIES: [&str; 3] = ["daily", "weekly", "monthly"];
 
@@ -156,9 +172,12 @@ impl Store<'_> {
     /// points) to project the next period: day-of-week seasonality (via
     /// [`crate::popularity::seasonal_daily_forecast`]) for daily series of a
     /// full week or more, otherwise a plain linear fit
-    /// ([`crate::popularity::linear_forecast`]). Categories with a single
-    /// point fall back to their recent average; results sort by forecast
-    /// descending. Prototype-level forecast — the demand-forecasting
+    /// ([`crate::popularity::linear_forecast`]). All three
+    /// [`TREND_GRANULARITIES`] are supported; the monthly bucket keys are
+    /// `YYYY-MM` and are anchored to the first of the month (only the
+    /// per-period ordering and count matter to the fit). Categories with a
+    /// single point fall back to their recent average; results sort by
+    /// forecast descending. Prototype-level forecast — the demand-forecasting
     /// research (2026-07-20) may replace the fit with a learned model later.
     pub fn category_forecast(
         &self,
@@ -176,7 +195,7 @@ impl Store<'_> {
         // (category_id) → (name, chronological (period date, units) series).
         let mut groups: HashMap<String, ForecastSeries> = HashMap::new();
         for p in points {
-            let date = chrono::NaiveDate::parse_from_str(&p.period_start, "%Y-%m-%d").ok();
+            let date = parse_period_start(&p.period_start);
             let entry = groups
                 .entry(p.category_id.clone())
                 .or_insert((p.category_name, Vec::new()));
@@ -616,23 +635,34 @@ impl Store<'_> {
 
     /// Smoothing means for a single SKU: its category's cached means, else
     /// the global fallback.
-    fn sku_means(&self, sku: &str) -> (f64, f64, f64) {
+    fn sku_means(&self, sku: &str) -> Result<(f64, f64, f64), CoreError> {
+        // MSL-27: the probe must be .optional()? — a bare .ok() collapses a
+        // DB fault into None, which reads as "uncategorized": the SKU is
+        // then silently scored against the GLOBAL mean while the category
+        // cache it should have used sits unread. The getter names the
+        // column's nullability so a NULL category (the ordinary case) still
+        // resolves to None, and flatten() collapses row-missing and
+        // column-NULL into the same "no category" while a real fault
+        // propagates.
         let category: Option<String> = self
             .conn
             .query_row(
                 "SELECT category_id FROM products WHERE sku = ?1",
                 params![sku],
-                |r| r.get(0),
+                |r| r.get::<_, Option<String>>(0),
             )
-            .ok()
+            .optional()?
             .flatten();
-        if let Some(means) = category.as_deref().and_then(|cat| self.category_means(cat)) {
-            return means;
-        }
-        (
-            self.read_mean(MEAN_SALES),
-            self.read_mean(MEAN_SEARCH),
-            self.read_mean(MEAN_EDITS),
+        Ok(
+            if let Some(means) = category.as_deref().and_then(|cat| self.category_means(cat)) {
+                means
+            } else {
+                (
+                    self.read_mean(MEAN_SALES),
+                    self.read_mean(MEAN_SEARCH),
+                    self.read_mean(MEAN_EDITS),
+                )
+            },
         )
     }
 
@@ -673,7 +703,7 @@ impl Store<'_> {
         let distinct = self.sale_distinct_transactions(sku)?;
         let searches = self.activity_day_counts(sku, "search")?;
         let edits = self.activity_day_counts(sku, "edit")?;
-        let (mean_sales, mean_search, mean_edits) = self.sku_means(sku);
+        let (mean_sales, mean_search, mean_edits) = self.sku_means(sku)?;
         let score = compute_score(
             &sales,
             distinct,

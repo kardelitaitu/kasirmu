@@ -325,6 +325,65 @@ fn single_sku_recompute_uses_cached_category_means() {
 }
 
 #[test]
+fn a_db_failure_in_the_category_probe_does_not_score_against_the_global_mean() {
+    let conn = fresh();
+    seed_category(&conn, "cat-hot", "Hot");
+    seed_category(&conn, "cat-quiet", "Quiet");
+    for i in 0..5 {
+        seed_sold_in_category(&conn, &format!("HOT-{i}"), Some("cat-hot"), 100);
+    }
+    seed_sold_in_category(&conn, "QUIET-1", Some("cat-quiet"), 2);
+
+    let store = Store::new(&conn);
+    store.recompute_all_popularity().unwrap();
+    let full_pass_score: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+
+    // Pin the healthy path first: the category cache exists and a single-SKU
+    // recompute reproduces the full-pass score. If the cache were absent the
+    // fault test below would "pass" for the wrong reason (global mean either
+    // way), so this guard makes the pin explicit.
+    store.recompute_popularity("QUIET-1").unwrap();
+
+    // Force a REAL fault in sku_means' category probe. Under the old
+    // `.ok().flatten()` the failure collapsed to `None` — "this product has
+    // no category" — so the SKU was silently scored against the GLOBAL mean
+    // instead of its category's, and `recompute_popularity` reported success
+    // with a different score. Renaming only the column the probe reads keeps
+    // the failure the probe's own rather than a later statement's.
+    conn.execute_batch("ALTER TABLE products RENAME COLUMN category_id TO category_id_hidden;")
+        .unwrap();
+
+    let err = store
+        .recompute_popularity("QUIET-1")
+        .expect_err("a DB failure must not silently score against the global mean");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "the category probe must surface the DB fault, got {err:?}"
+    );
+
+    // And the stored score must be untouched: the failed recompute must not
+    // have written a global-mean score over the category-mean one.
+    let after: f64 = conn
+        .query_row(
+            "SELECT popularity_score FROM products WHERE sku = 'QUIET-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        (full_pass_score - after).abs() < 1e-9,
+        "the failed recompute must leave the category-mean score in place \
+         (stored={after}, full-pass={full_pass_score})"
+    );
+}
+
+#[test]
 fn category_popularity_ranks_categories_and_top_products() {
     let conn = fresh();
     seed_category(&conn, "cat-hot", "Hot");
@@ -575,6 +634,62 @@ fn category_forecast_projects_next_period_from_trend_series() {
     // Sorted by forecast descending: cat-a (18) before cat-b (5).
     assert_eq!(rows[0].category_id, "cat-a");
     assert_eq!(rows[1].category_id, "cat-b");
+}
+
+#[test]
+fn category_forecast_monthly_series_projects_next_month() {
+    // The forecast is reachable at every granularity the trend accepts:
+    // the bridge's `validate_trend_args` admits `daily`/`weekly`/`monthly`
+    // (`TREND_GRANULARITIES`) and `ui/src/api/reports.ts` types the arg the
+    // same way, so a monthly series must project a next-month figure like
+    // the others. The month keys come from the trend bucket — `YYYY-MM` for
+    // monthly, not the `YYYY-MM-DD` the daily/weekly buckets emit — so the
+    // series builder must understand both shapes.
+    let conn = fresh();
+    seed_category(&conn, "cat-a", "A");
+    let id = uuid::Uuid::now_v7().to_string();
+    conn.execute(
+        "INSERT INTO products (id, sku, name, price_minor, currency, category_id, created_at, updated_at) \
+         VALUES (?1, 'A-1', 'A one', 1000, 'USD', 'cat-a', '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z')",
+        params![id],
+    )
+    .unwrap();
+    // 10 → 12 → 14 units in three consecutive months (slope 2/period).
+    for (i, units) in [10_i64, 12, 14].iter().enumerate() {
+        let ts = chrono::NaiveDate::from_ymd_opt(2026, 5 + i as u32, 15)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc()
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        conn.execute(
+            "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at) VALUES
+             (?1, ?2, 'USD', 1, 'completed', ?3, ?3)",
+            params![format!("sale-{i}"), units * 1000, ts],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, currency, line_position) VALUES
+             (?1, ?2, 'A-1', ?3, 1000, ?4, 'USD', 1)",
+            params![format!("sl-{i}"), format!("sale-{i}"), units, units * 1000],
+        )
+        .unwrap();
+    }
+
+    let store = Store::new(&conn);
+    let rows = store
+        .category_forecast("2000-01-01", "2099-12-31", "monthly", 5)
+        .unwrap();
+
+    assert_eq!(rows.len(), 1, "one category with sales history");
+    let a = &rows[0];
+    assert_eq!(a.category_id, "cat-a");
+    assert_eq!(
+        a.forecast_units, 16,
+        "10 → 12 → 14 units per month must project 16 for the next month"
+    );
+    assert!((a.trend_per_period - 2.0).abs() < 1e-9);
+    assert!((a.recent_avg_units - 12.0).abs() < 1e-9);
 }
 
 #[test]
