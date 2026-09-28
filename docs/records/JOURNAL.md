@@ -1,4 +1,21 @@
 
+## 2026-09-29 — Ruling: the `s-no-stamp` row is a tax note, and `created_at` is stamped by the schema (P4/P5)
+
+**Correcting an earlier reading of my own.** The agenda item "`s-no-stamp` `created_at` semantics" came from the
+row id, not from the test's subject. `migrations_tests.rs:2845` inserts `('s-no-stamp', ...)` without
+`tax_estimate_note` to pin that the column is nullable with NO default, so an unstamped tax estimate reads back
+as NULL rather than a sentinel (`:2836-2840`), and `:2864` pins that arbitrary free text is accepted. Nothing in
+that test is about `created_at`.
+
+**The question the row id misled me into asking, now settled.** `sales.created_at` is
+`TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` — the shape every table in that init migration
+uses — so the value can never be NULL, the sales repository's `created_at: row.get(8)?` into a `String` cannot
+fail on it, and the SQL default is **byte-identical** to the Rust chrono format the constructors produce.
+
+**Consequence for ADR-61 D7.** The schema can stamp, in the same format, so the Rust clock is only reached
+because each insert names the column explicitly. Removing `chrono` from `foundation` is therefore an omission
+change with no format risk — and still ten production insert paths across five crates, which is why D7 keeps it
+recorded rather than done.
 ## 2026-09-28 — Fix: prevent WebView2 collision and SQLite readonly lock on concurrent launch (desktop)
 
 **Context:**
