@@ -514,7 +514,7 @@ fn gated_bridge_stems() -> BTreeSet<String> {
         files.len(),
         dir.display()
     );
-    files
+    let mut stems: BTreeSet<String> = files
         .iter()
         .filter(|f| names_permission(&read(f)))
         .map(|f| {
@@ -523,7 +523,34 @@ fn gated_bridge_stems() -> BTreeSet<String> {
                 .to_string_lossy()
                 .to_string()
         })
-        .collect()
+        .collect();
+
+    // A module can also BE a directory, and then the namespace a shell wrapper names is the
+    // directory's while the permission calls sit in its children, so file stems lose it.
+    // Same defect the desktop copy carried until 2026-09-28; see that file for the measured
+    // evidence (the COR-7 split moved the POS and auth handlers into directories).
+    for f in &files {
+        let Ok(rel) = f.strip_prefix(&dir) else {
+            continue;
+        };
+        let mut components = rel.components();
+        let (Some(first), Some(_child)) = (components.next(), components.next()) else {
+            continue;
+        };
+        let module = first.as_os_str().to_string_lossy().to_string();
+        if stems.contains(&module) {
+            continue;
+        }
+        let module_dir = dir.join(&module);
+        if files
+            .iter()
+            .any(|g| g.starts_with(&module_dir) && names_permission(&read(g)))
+        {
+            stems.insert(module);
+        }
+    }
+
+    stems
 }
 
 fn run_sweep() -> Sweep {
