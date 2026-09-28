@@ -6,7 +6,7 @@ use super::*;
 /// The caller owns the connection, so this no longer `Box::leak`s a
 /// database per test to manufacture a `'static` (O-T03).
 fn store(db: &rusqlite::Connection) -> crate::db::Store<'_> {
-    crate::migrations::seed_provisioned_baseline(&db);
+    crate::migrations::seed_provisioned_baseline(db);
     crate::db::Store::new(db)
 }
 

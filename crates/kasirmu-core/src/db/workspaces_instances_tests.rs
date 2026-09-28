@@ -58,13 +58,11 @@ fn list_workspaces_refuses_a_corrupt_assignment_row_instead_of_widening_to_role_
     )
     .unwrap();
 
-    match store.list_workspaces("role-test", Some("user-1"), "default") {
-        // RED: the dropped row leaves an empty assignment set, so resolution
-        // widens to the role-type fallback and hands back the KDS instance the
-        // user was never assigned.
-        Ok(list) => panic!("corrupt assignment row widened access to role types: {list:?}"),
-        // GREEN: the decode error propagates instead of being read as absence.
-        Err(_) => {}
+    // RED: the dropped row leaves an empty assignment set, so resolution widens to the role-type
+    // fallback and hands back the KDS instance the user was never assigned. GREEN: the decode
+    // error propagates instead of being read as absence, so `Err` leaves this untouched.
+    if let Ok(list) = store.list_workspaces("role-test", Some("user-1"), "default") {
+        panic!("corrupt assignment row widened access to role types: {list:?}");
     }
 }
 

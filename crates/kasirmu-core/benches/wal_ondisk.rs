@@ -11,8 +11,8 @@
 //! regime that no deployed terminal uses.
 //!
 //! This file measures the file-backed path instead, under exactly the
-//! PRAGMAs production sets (WAL + `synchronous = NORMAL` + `busy_timeout`
-//! + `foreign_keys`), and adds the three things the in-memory harness
+//! PRAGMAs production sets — WAL, `synchronous = NORMAL`, `busy_timeout`, and
+//! `foreign_keys` — and adds the three things the in-memory harness
 //! structurally cannot see:
 //!
 //! 1. **WAL-vs-memory delta** — how much durability actually costs.

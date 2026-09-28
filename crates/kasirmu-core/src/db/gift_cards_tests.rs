@@ -968,15 +968,14 @@ fn redeem_refuses_when_the_idempotency_read_errors_instead_of_double_redeeming()
     conn.execute_batch("DROP INDEX IF EXISTS uq_gift_card_redeem_sale;")
         .unwrap();
 
-    match store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
-        // RED: the failed read was taken for "no prior redemption", so the
-        // redemption ran a second time.
-        Ok(r) => panic!(
+    // RED: the failed read was taken for "no prior redemption", so the redemption ran a second
+    // time. GREEN: the read failure propagates — the `if let` leaves the block untouched on
+    // `Err`, which is the whole assertion.
+    if let Ok(r) = store(&conn).redeem_gift_card("GC-ERR-1", 10000, "sale-err-1") {
+        panic!(
             "unreadable idempotency row was read as absence and re-redeemed: {}",
             r.transaction.id
-        ),
-        // GREEN: the read failure propagates.
-        Err(_) => {}
+        );
     }
 
     let balance: i64 = conn

@@ -329,27 +329,32 @@ fn get_bundle_by_nonexistent_sku_returns_none() {
 
 // ── MSL-48: a bundle item naming a missing product must say so ──
 
-/// The component SKU is free text in the editor, and a typo currently reaches
-/// the caller as a bare `FOREIGN KEY constraint failed`.
-///
-/// `bundle_items.sku` is `REFERENCES products(sku)`, and both writers bind
-/// `item.sku` from an untyped `String` (`product_bundle.rs:41`). Measured:
-///
-/// ```text
-/// PROBE create_bundle with bad sku = Err(Db(SqliteFailure(
-///     ConstraintViolation, 787, Some("FOREIGN KEY constraint failed"))))
-/// ```
-///
-/// No field, no SKU, and no statement that the product is the missing thing —
-/// while the bridge forwards `i.sku` unvalidated (`bundles.rs:170`) and the
-/// editor renders it as an `<input>` (the bundle-management screen) whose
-/// save failure shows the generic `bundles-error-save` message, because a DB
-/// error is not the client-side `BundleValidationError` the catch distinguishes.
-///
-/// So a mistyped SKU reads as "the bundle could not be saved" with nothing
-/// pointing at the field. This is MSL-40's shape once more — a constraint
-/// violation reported as a storage fault — but here the constraint is an FK
-/// and the offending value is on screen.
+// The component SKU is free text in the editor, and a typo currently reaches
+// the caller as a bare `FOREIGN KEY constraint failed`.
+//
+// `bundle_items.sku` is `REFERENCES products(sku)`, and both writers bind
+// `item.sku` from an untyped `String` (`product_bundle.rs:41`). Measured:
+//
+// ```text
+// PROBE create_bundle with bad sku = Err(Db(SqliteFailure(
+//     ConstraintViolation, 787, Some("FOREIGN KEY constraint failed"))))
+// ```
+//
+// No field, no SKU, and no statement that the product is the missing thing —
+// while the bridge forwards `i.sku` unvalidated (`bundles.rs:170`) and the
+// editor renders it as an `<input>` (the bundle-management screen) whose
+// save failure shows the generic `bundles-error-save` message, because a DB
+// error is not the client-side `BundleValidationError` the catch distinguishes.
+//
+// So a mistyped SKU reads as "the bundle could not be saved" with nothing
+// pointing at the field. This is MSL-40's shape once more — a constraint
+// violation reported as a storage fault — but here the constraint is an FK
+// and the offending value is on screen.
+//
+// NOTE (2026-09-28): this block documents an OPEN finding with no test under it — MSL-48
+// names a defect (`create_bundle` with a bad SKU reports a bare FK violation) that nothing
+// here asserts. It was a doc comment with no item, which is also what clippy's
+// `empty_line_after_doc_comments` was flagging.
 // ── MSL-51: a bundle item quantity must be positive ─────────────
 
 /// `bundle_items.qty` has `DEFAULT 1` and **no CHECK**, and nothing validates it
