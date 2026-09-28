@@ -1728,14 +1728,25 @@ minutes later and the verification ran:
 does preserve the drift verdict, which is the one thing that could have been
 wrong. The two sweeps now cost 17.08 s combined when run alone.
 
-**Still open, with the design worked out.** `cosmetic_edit_to_any_migration_
-re_applies_cleanly` cannot use one snapshot — its prefix `&ALL[..=index]` grows
-per iteration — but it does not need to rebuild from scratch either: hold one
-master connection, apply `ALL[index]` to it incrementally, and clone per
-iteration. That turns a sum-of-prefixes (~10 s) into one chain plus 68 clones
-(~0.5 s). Higher semantic risk than the change above (it asserts incremental
-application equals a fresh prefix apply), so it is written down rather than
-shipped unverified.
+**The other sweep cannot be optimised this way, and the attempt is worth
+recording.** `cosmetic_edit_to_any_migration_re_applies_cleanly` cannot use one
+snapshot — its prefix `&ALL[..=index]` grows per iteration — so the design was to
+hold one master connection, apply `ALL[index]` to it incrementally, and clone per
+iteration: a sum-of-prefixes (~10 s) becomes one chain plus 68 clones (~0.5 s).
+**It was implemented and it fails immediately**, on the second-listed migration:
+
+> `internal error: 1 recorded migration(s) are newer than this build knows (e.g.
+> 20260815_tenant_unique_indexes.sql; this build's newest is 20260814_*.sql), so
+> this database was migrated by a later release. Refusing to run: its schema may
+> already have been renamed or dropped by migrations this binary cannot see…`
+
+`platform_core::database::run` treats the slice it is handed as *"the registry
+this build knows"*, so a one-element sub-slice makes every already-recorded
+migration look like it came from a later release. `ALL` is also not in lexical id
+order, which is why it trips on the first step. **That guard is deliberate and
+correct — it must not be weakened to make a test cheaper.** Reverted, with the
+reasoning pinned in a comment at the bottom of `migrations_tests.rs` so it is not
+retried. That sweep keeps its ~15 s.
 
 **The number that actually dominates axis B, and that nobody has scoped.** Under
 `cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds

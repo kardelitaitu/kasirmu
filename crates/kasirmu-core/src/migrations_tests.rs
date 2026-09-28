@@ -30,23 +30,26 @@ static FINAL_SCHEMA: LazyLock<Mutex<rusqlite::Connection>> = LazyLock::new(|| {
     Mutex::new(conn)
 });
 
-/// A byte-identical copy of [`FINAL_SCHEMA`].
+/// A byte-identical copy of `src`.
 ///
 /// Restores `foreign_keys = ON` explicitly: it is a per-connection setting, so
 /// a `Backup` does not carry it across, and `fresh()` sets it — without it a
 /// migration that violates a foreign key would succeed here and silently
 /// weaken every drift verdict in these sweeps.
-fn final_schema() -> rusqlite::Connection {
+fn clone_db(src: &rusqlite::Connection) -> rusqlite::Connection {
     let mut conn = rusqlite::Connection::open_in_memory().unwrap();
-    {
-        let master = FINAL_SCHEMA.lock().unwrap();
-        rusqlite::backup::Backup::new(&master, &mut conn)
-            .unwrap()
-            .run_to_completion(100, Duration::from_millis(0), None)
-            .unwrap();
-    }
+    rusqlite::backup::Backup::new(src, &mut conn)
+        .unwrap()
+        .run_to_completion(100, Duration::from_millis(0), None)
+        .unwrap();
     conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
     conn
+}
+
+/// A byte-identical copy of [`FINAL_SCHEMA`].
+fn final_schema() -> rusqlite::Connection {
+    let master = FINAL_SCHEMA.lock().unwrap();
+    clone_db(&master)
 }
 
 #[test]
@@ -253,6 +256,10 @@ fn cosmetic_edit_to_any_migration_re_applies_cleanly() {
         .collect();
 
     let mut not_reappliable: Vec<String> = Vec::new();
+    // NOT built incrementally — see the note at the bottom of this file. In
+    // short: `platform_core::database::run` refuses to extend a database with a
+    // slice that does not cover the migrations it has already recorded, so the
+    // prefix has to be replayed from an empty database on every iteration.
     for index in 0..ALL.len() {
         let id = ALL[index].id;
         // Applying the prefix and then editing its last entry reproduces the
@@ -3506,3 +3513,33 @@ fn stock_summary_negative_guard_is_not_an_unconditional_check() {
         "D11: no quarantine table — existing negatives are legitimate and are never repaired"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Why `cosmetic_edit_to_any_migration_re_applies_cleanly` replays a growing
+// prefix instead of extending one master connection (measured 2026-09-28).
+//
+// The obvious optimisation is to keep a master connection, apply `ALL[index]`
+// to it on iteration `index`, and clone — turning a sum of 68 prefix replays
+// into one chain plus 68 clones. It was tried and it does not work:
+//
+//   platform_core::database::run(&mut master, &ALL[index..=index])
+//
+// fails on the second-listed migration with
+//
+//   internal error: 1 recorded migration(s) are newer than this build knows
+//   (e.g. 20260815_tenant_unique_indexes.sql; this build's newest is
+//   20260814_*.sql), so this database was migrated by a later release.
+//   Refusing to run: its schema may already have been renamed or dropped by
+//   migrations this binary cannot see, which surfaces later as a confusing
+//   `no such table` in whatever opens first.
+//
+// `run` treats the slice it is handed as "the registry this build knows", so a
+// sub-slice makes every already-recorded migration look like it came from a
+// later release. That guard is deliberate and correct — do not weaken it to
+// make this test cheaper. `ALL` is also not in lexical id order, which is why
+// a one-element slice trips it on the very first step rather than later.
+//
+// `every_migration_re_applies_against_the_final_schema` has no such problem:
+// its first apply is always the *whole* registry and therefore byte-identical
+// every iteration, so it clones one cached apply via `final_schema()` instead.
+// ---------------------------------------------------------------------------
