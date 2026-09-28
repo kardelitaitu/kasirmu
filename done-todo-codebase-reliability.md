@@ -1071,6 +1071,47 @@ covered, because no coverage instrument is enforced. Close that in this order.
       mine and all 11 are `float_cmp`/`cast_possible_wrap` in TEST files**;
       21 belong to the claimed `staff/login.rs`, `refunds.rs` and
       `license_verification.rs`. The production surface is clear.
+      **ROUND 5 — 2026-09-28 (commit `036bba25d`). ZERO of the correctness-adjacent
+      lints in `kasirmu-core` are mine any more. All 17 remaining are in files a
+      concurrent session owns.**
+      **The find of this round is a real crash, not a style point.**
+      `db/image_refs.rs` computes AWS full-jitter backoff as
+      `60_i64 * 2_i64.pow(attempts as u32)`. `attempts` is an **`i32` column**.
+      Under `as u32` a NEGATIVE count wraps to ~4 billion, and `2_i64.pow(4e9)`
+      **panics on overflow** — so one corrupt or hand-edited row turns the
+      image-push retry path into a crash instead of a backoff. Fixed with
+      `u32::try_from(attempts).unwrap_or(0)` plus a clamped exponent.
+      **The clamp bound was derived, not guessed, and my first two attempts at
+      it were both wrong.** I initially wrote `.min(31)` — over-conservative,
+      it clamps far below where anything breaks. I then wrote `.min(58)`, which
+      is still wrong for a subtler reason: `2_i64.pow(58)` FITS `i64`
+      (288230376151711744) but `60 * 2^58 = 17293822569102704640` does NOT, so
+      the multiply panics anyway. The correct bound is **`.min(57)`**, verified
+      by measuring both sides: `60 * 2^57 = 8646911284551352320` fits,
+      `60 * 2^58` does not. Mutation-tested by raising the clamp past the
+      boundary and confirming the overflow. Recording the two wrong attempts
+      because the first was a guess and the second was a guess that survived a
+      partial check — "2^58 fits" is true and irrelevant to the multiply.
+      **The rest are test-side narrowings, fixed with `try_from` + an explicit
+      `expect` reason** (`i64::try_from(count).expect("fixture count fits i64")`),
+      which is honest for a fixture where the value is known-small. Three test
+      files got a scoped `#![allow(clippy::float_cmp)]` with the shared reason:
+      a fully-attributed percentile is exactly 1.0, a zero trend is exactly 0.0,
+      a 100% margin is exactly 100.0, and a parsed coordinate is the literal it
+      was written as — **an epsilon would make each assertion weaker by
+      accepting values it should reject.**
+      **11 files, 62 insertions / 9 deletions. Verified: 3391 lib tests pass,
+      0 failed** (113 s). `cargo fmt` was applied with rustfmt DIRECTLY on my
+      four files rather than `cargo fmt -p kasirmu-core`, because the latter
+      would have reformatted the other session's `settings_integration.rs` and
+      `currency_integration.rs`, which are mid-refactor and dirty.
+      **P2-5 STATUS: the lint surface is done for every file this session may
+      touch.** 17 remain and all 17 are `staff/login.rs` (15), `refunds.rs` (1)
+      and `license_verification.rs` (1) — all claimed. Two things still unbuilt:
+      no manifest was edited, so **pedantic is still not enabled for either
+      crate and this box has no enforcement behind it**; and the original
+      acceptance (`cargo clippy -p foundation -p kasirmu-core --all-targets --
+      -D warnings` exits 0 with pedantic enabled) is therefore NOT met.
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
