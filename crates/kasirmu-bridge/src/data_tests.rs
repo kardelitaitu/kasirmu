@@ -152,17 +152,14 @@ fn assert_event_shape(ev: &Fields, expected_operation: &str, dir: &std::path::Pa
     for (k, v) in &ev.0 {
         assert!(
             !PAYLOAD_NAMES.contains(&k.as_str()),
-            "field {} is payload-shaped; this event must be pastable into a ticket, so it carries none",
-            k
+            "field {k} is payload-shaped; this event must be pastable into a ticket, so it carries none"
         );
         assert!(
             !v.contains("store.db")
                 && !v.contains(".db")
                 && !dir.to_string_lossy().is_empty()
                 && !v.contains(&dir.to_string_lossy().to_string()),
-            "field {} carries a filesystem path or backup file name: {}",
-            k,
-            v
+            "field {k} carries a filesystem path or backup file name: {v}"
         );
     }
 }
