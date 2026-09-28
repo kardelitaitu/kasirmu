@@ -296,3 +296,5 @@ manager-journal.md
 # checker's existing git-ignored skip rather than a new rule of its own.
 /.codebuddy/
 /.tmp
+/.agent-tmp/
+/.probe/
