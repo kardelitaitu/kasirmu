@@ -12948,6 +12948,24 @@ fix, because the local `sales` table has no `tenant_id`/`store_id` column at all
 
 **Commits:** this entry + the fixes land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 19: reverse_loyalty_on_refund stops swallowing DB errors on earn lookup
+
+**Problem:** In `reverse_loyalty_on_refund` (`crates/kasirmu-core/src/db/loyalty.rs`), the query looking up
+the original `earn` transaction for a refunded sale used `.ok()`. Any database query error or column decoding
+failure (e.g. invalid integer points representation) was collapsed to `None`. The function treated this as
+"sale earned nothing or predates loyalty" and returned `Ok(None)`, silently completing the refund without
+reversing the customer's earned loyalty points.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the earn query, so legitimate missing rows return `Ok(None)`
+while true database and decoding errors properly propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`reverse_loyalty_on_refund_propagates_db_error_when_reading_earn_row` panicked with
+`database error reading earn transaction must propagate, not return Ok(None): None`). After `.optional()?`,
+the test passed cleanly along with all 50 loyalty tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

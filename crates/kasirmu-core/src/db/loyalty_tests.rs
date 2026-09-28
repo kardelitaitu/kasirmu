@@ -1062,3 +1062,28 @@ fn a_db_failure_in_the_customer_probe_is_not_reported_as_not_found() {
         "get_or_create_loyalty_account: the customer probe must surface the DB fault, got {goc_err:?}"
     );
 }
+
+#[test]
+fn reverse_loyalty_on_refund_propagates_db_error_when_reading_earn_row() {
+    let conn = fresh();
+    seed_customer(&conn, "cust-1", "Alice");
+    seed_sale(&conn, "sale-1");
+    let s = store(&conn);
+    s.get_or_create_loyalty_account("cust-1").unwrap();
+    let txn = s.earn_points("cust-1", "sale-1", 1000).unwrap();
+    assert!(txn.points > 0);
+
+    // Corrupt the points column in loyalty_transactions with a blob to trip FromSqlConversionFailure
+    conn.execute(
+        "UPDATE loyalty_transactions SET points = X'FFFF' WHERE id = ?1",
+        params![txn.id],
+    )
+    .unwrap();
+
+    let err = reverse_loyalty_on_refund(&conn, "sale-1", "refund-1", 1000, 1000)
+        .expect_err("database error reading earn transaction must propagate, not return Ok(None)");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

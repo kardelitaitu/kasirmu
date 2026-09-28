@@ -791,7 +791,7 @@ pub fn reverse_loyalty_on_refund(
             params![sale_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .ok();
+        .optional()?;
     let Some((account_id, earned_points)) = earn else {
         // Legacy sale predating LOY-06 awarding, or a sale that earned nothing.
         return Ok(None);
