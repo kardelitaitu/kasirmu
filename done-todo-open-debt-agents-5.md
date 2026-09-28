@@ -1,4 +1,13 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
+**Siblings:** `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md` .. `todo-open-debt-agents-4.md`.
+
+**Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
+- `python scripts/verify-pg-tests-ran.py --self-test` → **PASS** (36 green, 0 red).
+- `python scripts/verify-pg-tests-ran.py --census-only` → **88 TOTAL skip arms across 16 test files in 3 crates** (floor 65, baseline 88).
+- `python scripts/verify-pg-tests-ran.py --crate kasirmu-api` → **PASS** (`RUN: 348 passed; 0 failed; 0 ignored`, zero skip events).
+- `python scripts/verify-pg-tests-ran.py --crate platform-sync` → **PASS** (`RUN: 475 passed; 0 failed; 3 ignored`, zero skip events).
+- `python scripts/verify-pg-tests-ran.py --crate kasirmu-cloud --serialize` → **PASS** (`RUN: 415 passed; 0 failed; 4 ignored`, zero skip events).
+All 10 phase tasks are complete. Skip arms gated with `pg-tests = []` no-op feature so tests report `ignored` when feature is absent, execute in CI/Docker, and fail loudly with panic on unreachable database when enabled. Latent E42803 ungrouped-column SQL defect in cloud email analytics resolved with pre-aggregated refund COGS CTEs. AGENTS.md §7.4 earns the `done-` prefix.
 
 ## Phase 5 — cloud-server, kasirmu-api and platform-sync print a local green for PG cases that never ran, and the obvious fix would delete 64 real CI tests
 
