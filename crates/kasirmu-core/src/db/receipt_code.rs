@@ -133,9 +133,32 @@ impl crate::db::Store<'_> {
         self.allocate_entity_index_with_ceiling(tx, tenant_id, kind, now, INDEX_ID_MAX)
     }
 
+    /// Allocate the lowest available index id for `(tenant_id, kind)` on an
+    /// arbitrary connection (which may already be inside a transaction).
+    pub fn allocate_entity_index_on_conn(
+        &self,
+        conn: &rusqlite::Connection,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        now: &str,
+    ) -> Result<i64, CoreError> {
+        self.allocate_entity_index_with_ceiling_on_conn(conn, tenant_id, kind, now, INDEX_ID_MAX)
+    }
+
     pub(crate) fn allocate_entity_index_with_ceiling(
         &self,
         tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        now: &str,
+        ceiling: i64,
+    ) -> Result<i64, CoreError> {
+        self.allocate_entity_index_with_ceiling_on_conn(tx, tenant_id, kind, now, ceiling)
+    }
+
+    pub(crate) fn allocate_entity_index_with_ceiling_on_conn(
+        &self,
+        conn: &rusqlite::Connection,
         tenant_id: &str,
         kind: EntityIndexKind,
         _now: &str,
@@ -170,7 +193,7 @@ impl crate::db::Store<'_> {
             END"
         );
 
-        let allocated: i64 = tx.query_row(&query, params![tenant_id], |row| row.get(0))?;
+        let allocated: i64 = conn.query_row(&query, params![tenant_id], |row| row.get(0))?;
 
         if allocated > ceiling {
             return Err(CoreError::Validation {

@@ -27,6 +27,7 @@ an audit stamp records what was true when it ran, so it is annotated, not edited
 
 use rusqlite::params;
 
+use crate::db::receipt_code::{EntityIndexKind, format_base62_index};
 use crate::downgrade::QuotaDimension;
 use crate::error::CoreError;
 use crate::subscription::SubscriptionTier;
@@ -288,6 +289,23 @@ impl Store<'_> {
         }
     }
 
+    /// Read a user's index id (1..=14,776,335).
+    pub fn get_user_index_id(&self, user_id: &str) -> Result<Option<i64>, CoreError> {
+        let mut stmt = self.conn.prepare("SELECT index_id FROM users WHERE id = ?1")?;
+        let result = stmt.query_row(params![user_id], |row| row.get(0));
+        match result {
+            Ok(idx) => Ok(idx),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Read a staff member's Base62 badge code (e.g. "01", "02", "100").
+    pub fn get_staff_code(&self, user_id: &str) -> Result<Option<String>, CoreError> {
+        let idx = self.get_user_index_id(user_id)?;
+        Ok(idx.map(format_base62_index))
+    }
+
     /// The centralized fail-closed authorization gate (ADR #35 D3 / spec
     /// 0047): resolve `user_id` to their role and verify the role grants
     /// `required`.
@@ -541,11 +559,12 @@ impl Store<'_> {
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let index_id = self.allocate_entity_index_on_conn(self.conn, "default", EntityIndexKind::User, &now)?;
 
         self.conn.execute(
-            "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, username, pin_hash, display_name.trim(), role_id, now, now],
+            "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at, index_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, username, pin_hash, display_name.trim(), role_id, now, now, index_id],
         )
         .map_err(|e| match e {
             rusqlite::Error::SqliteFailure(ref err, _)

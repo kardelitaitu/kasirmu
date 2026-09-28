@@ -522,3 +522,143 @@ fn index_hex_renders_base62_string() {
     assert_eq!(index_hex(3843), "ZZ");
     assert_eq!(index_hex(INDEX_ID_MAX), "ZZZZ");
 }
+
+#[test]
+fn eager_allocation_and_code_lookups_for_locations() {
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
+
+    let profile1 = crate::LocationProfile {
+        id: "loc-1".into(),
+        name: "Branch 1".into(),
+        address: "Address 1".into(),
+        tax_id: "".into(),
+        currency: "USD".into(),
+        timezone: "UTC".into(),
+        is_primary: false,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_location_profile(&profile1).unwrap();
+    assert_eq!(s.get_location_index_id("loc-1").unwrap(), Some(1));
+    assert_eq!(s.get_location_code("loc-1").unwrap().as_deref(), Some("01"));
+
+    let profile2 = crate::LocationProfile {
+        id: "loc-2".into(),
+        name: "Branch 2".into(),
+        address: "Address 2".into(),
+        tax_id: "".into(),
+        currency: "USD".into(),
+        timezone: "UTC".into(),
+        is_primary: false,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_location_profile(&profile2).unwrap();
+    assert_eq!(s.get_location_index_id("loc-2").unwrap(), Some(2));
+    assert_eq!(s.get_location_code("loc-2").unwrap().as_deref(), Some("02"));
+
+    // Delete loc-1 -> slot 1 is reclaimed!
+    s.delete_location_profile("loc-1").unwrap();
+    assert_eq!(s.get_location_index_id("loc-1").unwrap(), None);
+
+    let profile3 = crate::LocationProfile {
+        id: "loc-3".into(),
+        name: "Branch 3".into(),
+        address: "Address 3".into(),
+        tax_id: "".into(),
+        currency: "USD".into(),
+        timezone: "UTC".into(),
+        is_primary: false,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_location_profile(&profile3).unwrap();
+    assert_eq!(s.get_location_index_id("loc-3").unwrap(), Some(1), "slot 1 should be recycled");
+    assert_eq!(s.get_location_code("loc-3").unwrap().as_deref(), Some("01"));
+}
+
+#[test]
+fn eager_allocation_and_code_lookups_for_terminals() {
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
+
+    let t1 = crate::Terminal {
+        id: "term-1".into(),
+        name: "Counter 1".into(),
+        device_id: "dev-1".into(),
+        terminal_secret: None,
+        is_active: true,
+        last_seen_at: None,
+        metadata: None,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_terminal(&t1).unwrap();
+    assert_eq!(s.get_terminal_index_id("term-1").unwrap(), Some(1));
+    assert_eq!(s.get_terminal_code("term-1").unwrap().as_deref(), Some("01"));
+
+    let t2 = crate::Terminal {
+        id: "term-2".into(),
+        name: "Counter 2".into(),
+        device_id: "dev-2".into(),
+        terminal_secret: None,
+        is_active: true,
+        last_seen_at: None,
+        metadata: None,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_terminal(&t2).unwrap();
+    assert_eq!(s.get_terminal_index_id("term-2").unwrap(), Some(2));
+    assert_eq!(s.get_terminal_code("term-2").unwrap().as_deref(), Some("02"));
+
+    // Delete term-1 -> slot 1 is reclaimed!
+    s.delete_terminal("term-1").unwrap();
+    assert_eq!(s.get_terminal_index_id("term-1").unwrap(), None);
+
+    let t3 = crate::Terminal {
+        id: "term-3".into(),
+        name: "Counter 3".into(),
+        device_id: "dev-3".into(),
+        terminal_secret: None,
+        is_active: true,
+        last_seen_at: None,
+        metadata: None,
+        created_at: NOW.into(),
+        updated_at: NOW.into(),
+    };
+    s.create_terminal(&t3).unwrap();
+    assert_eq!(s.get_terminal_index_id("term-3").unwrap(), Some(1), "slot 1 should be recycled");
+    assert_eq!(s.get_terminal_code("term-3").unwrap().as_deref(), Some("01"));
+}
+
+#[test]
+fn eager_allocation_and_code_lookups_for_staff() {
+    let s_db = migrations::fresh_db();
+    let s = store(&s_db);
+
+    s.conn.execute(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('cashier', 'Cashier', '', '[]', ?1, ?1)",
+        params![NOW],
+    ).unwrap();
+
+    let u1 = s.create_user("cashier1", "hash", "Alice", "cashier").unwrap();
+    assert_eq!(s.get_user_index_id(&u1.id).unwrap(), Some(1));
+    assert_eq!(s.get_staff_code(&u1.id).unwrap().as_deref(), Some("01"));
+
+    let u2 = s.create_user("cashier2", "hash", "Bob", "cashier").unwrap();
+    assert_eq!(s.get_user_index_id(&u2.id).unwrap(), Some(2));
+    assert_eq!(s.get_staff_code(&u2.id).unwrap().as_deref(), Some("02"));
+
+    s.conn
+        .execute("UPDATE users SET is_active = 0 WHERE id = ?1", params![&u1.id])
+        .unwrap();
+    s.soft_delete_user(&u1.id).unwrap();
+    assert_eq!(s.get_user_index_id(&u1.id).unwrap(), None);
+
+    let u3 = s.create_user("cashier3", "hash", "Charlie", "cashier").unwrap();
+    assert_eq!(s.get_user_index_id(&u3.id).unwrap(), Some(1), "slot 1 should be recycled");
+    assert_eq!(s.get_staff_code(&u3.id).unwrap().as_deref(), Some("01"));
+}

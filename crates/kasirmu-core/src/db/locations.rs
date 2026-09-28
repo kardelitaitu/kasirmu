@@ -13,6 +13,7 @@ next: none | perf: N/A
 use rusqlite::params;
 
 use super::Store;
+use crate::db::receipt_code::{EntityIndexKind, format_base62_index};
 use crate::downgrade::QuotaDimension;
 use crate::subscription::SubscriptionTier;
 use crate::{CoreError, LocationProfile};
@@ -180,9 +181,11 @@ impl Store<'_> {
         profile: &LocationProfile,
     ) -> Result<LocationProfile, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let index_id = self.allocate_entity_index(&tx, "default", EntityIndexKind::Location, &now)?;
         tx.execute(
-            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, index_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 profile.id,
                 profile.name,
@@ -193,6 +196,7 @@ impl Store<'_> {
                 i32::from(profile.is_primary),
                 profile.created_at,
                 profile.updated_at,
+                index_id,
             ],
         )?;
         // Authoritative in-tx re-check: current already includes the row just
@@ -216,6 +220,23 @@ impl Store<'_> {
         }
         tx.commit()?;
         Ok(profile.clone())
+    }
+
+    /// Read a location's index id (1..=14,776,335).
+    pub fn get_location_index_id(&self, location_id: &str) -> Result<Option<i64>, CoreError> {
+        let mut stmt = self.conn.prepare("SELECT index_id FROM locations WHERE id = ?1")?;
+        let result = stmt.query_row(params![location_id], |row| row.get(0));
+        match result {
+            Ok(idx) => Ok(idx),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Read a location's Base62 code (e.g. "01", "02", "100").
+    pub fn get_location_code(&self, location_id: &str) -> Result<Option<String>, CoreError> {
+        let idx = self.get_location_index_id(location_id)?;
+        Ok(idx.map(format_base62_index))
     }
 
     /// Update a store profile's mutable fields (name, address, tax_id, currency, timezone).
