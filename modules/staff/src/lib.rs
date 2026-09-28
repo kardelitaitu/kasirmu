@@ -46,13 +46,15 @@ next: none | perf: N/A
 #![deny(unsafe_code)]
 
 pub mod error;
-pub mod models;
 pub mod repository;
 pub mod service;
 
 pub use error::StaffError;
 
-pub use models::{Role, User, UserId, builtin_roles, seed_users};
+// The id taxonomy now has ONE home: `platform_core::rbac::builtin_roles` (six ids). The four-constant
+// subset that used to live in `models.rs` was deleted rather than copied here.
+pub use platform_core::rbac::builtin_roles;
+pub use platform_core::staff::{Role, User, UserId, seed_users};
 pub use repository::StaffRepository;
 pub use service::StaffService;
 

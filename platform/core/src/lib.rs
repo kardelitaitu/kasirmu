@@ -39,8 +39,10 @@ pub mod error;
 pub mod permission_registry;
 pub mod rbac;
 pub mod settings;
+pub mod staff;
 pub mod terminal_profile;
 
 pub use database::StoreDatabaseManager;
 pub use error::CurrencyError;
 pub use error::PlatformError;
+pub use staff::{Role, User, UserId, seed_users};

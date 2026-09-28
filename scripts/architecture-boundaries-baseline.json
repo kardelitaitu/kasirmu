@@ -1,15 +1,5 @@
 {
   "schema_version": 1,
   "description": "Explicit transitional debt for the architecture boundary checker. Do not add entries without reviewing the underlying boundary and setting an owner and expiry. An entry may run at most one calendar quarter from its introduced date; extending it further requires a renewals entry with a dated reason, so a bumped expiry is a recorded decision rather than an edit.",
-  "entries": [
-    {
-      "rule": "core-type-shim",
-      "path": "crates/kasirmu-core/Cargo.toml",
-      "target": "modules-staff",
-      "reason": "Re-export-only edge (C26/D3): every modules_staff:: mention in kasirmu-core is a use line. Move the shared types to foundation, then delete the Cargo edge.",
-      "owner": "kasir.mu maintainers",
-      "introduced": "2026-08-06",
-      "expires": "2026-11-06"
-    }
-  ]
+  "entries": []
 }

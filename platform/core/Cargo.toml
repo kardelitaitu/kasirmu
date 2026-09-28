@@ -22,6 +22,8 @@ tracing = { workspace = true }
 argon2 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+# 2026-09-28 (ADR-61 / C26): the staff models moved in and `User::new`/`UserId::new` mint UUID v7 ids.
+uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

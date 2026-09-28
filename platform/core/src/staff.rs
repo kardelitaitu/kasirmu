@@ -1,13 +1,12 @@
-/*
-last audited 31-08-26 by RSA-Agent (user-role campaign, FINAL verification pass)
-crate: modules-staff | status: SAFE | lint: CLEAN
-findings: E-1 / MSL-6 CLOSED — builtin_roles::STAFF doc now states checkout-only (preset-pinned) and cross-references the authoritative platform-core taxonomy; accepted convention drift remains: builtin_roles here lists 4 of the 6 platform ids (ADMIN/AUDITOR unused by this module's seeds — deliberate subset, documented) and top-level test fns at the file bottom sit outside mod tests (cosmetic; all 52 tests green via the module target)
-next: none — campaign closed for this file; optional cosmetic relocation of top-level tests into mod tests in a future chore pass | perf: N/A
-*/
+//! Staff and role domain models — persisted rows for users, roles and their identifiers.
+//!
+//! Moved here from `modules-staff` (ADR-61 / C26, 2026-09-28). The tier is `platform-core`, not
+//! `foundation`, and that is forced rather than preferred: `Role`'s policy methods call
+//! [`crate::rbac`], and `platform-core` depends on `foundation`, so moving these types down to
+//! foundation would make it depend on a crate that depends on it. Every impl moved with its type,
+//! including the hand-written `Debug` that redacts `User::pin_hash` (MSL-9 / E-1).
 
-//! Staff & Role domain models.
-
-use platform_core::rbac::{AuthorizationError, has_permission};
+use crate::rbac::{AuthorizationError, has_permission};
 use serde::{Deserialize, Serialize};
 
 /// A staff role with a set of permissions.
@@ -171,23 +170,10 @@ impl User {
     }
 }
 
-/// Well-known role ids used by the seed data.
-///
-/// The authoritative taxonomy is `platform_core::rbac::builtin_roles`
-/// (six ids incl. ADMIN/AUDITOR); this subset covers the seeds this
-/// module owns. STAFF is checkout-only per the preset (40+ negative
-/// assertions) — NOT "Manager minus settings" as an earlier revision
-/// of this doc claimed (MSL-6 / E-1).
-pub mod builtin_roles {
-    /// Owner — full access to all features and settings.
-    pub const OWNER: &str = "role-owner";
-    /// Manager — can manage products, inventory, sales, staff, and settings.
-    pub const MANAGER: &str = "role-manager";
-    /// Staff — checkout-only operational role (preset-pinned).
-    pub const STAFF: &str = "role-staff";
-    /// Custom — fully flexible role with no preset permissions.
-    pub const CUSTOM: &str = "role-custom";
-}
+// NOTE (2026-09-28, ADR-61 / C26): the four-constant `builtin_roles` subset that used to live here was
+// DELETED, not moved. Its values were byte-identical to `platform_core::rbac::builtin_roles`, which its
+// own doc named as the authoritative taxonomy; two spellings of one id set is how the two drift apart.
+// Consumers of the old subset use `platform_core::rbac::builtin_roles`, a superset (six ids).
 
 /// Well-known seed user ids.
 pub mod seed_users {
@@ -245,5 +231,5 @@ impl From<&str> for UserId {
 }
 
 #[cfg(test)]
-#[path = "models_tests.rs"]
+#[path = "staff_tests.rs"]
 mod tests;

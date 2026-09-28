@@ -1,11 +1,11 @@
-//! Unit tests for `models`.
+//! Sibling unit tests for `staff.rs` (AGENTS.md: no tests in production files).
 //!
-//! Moved out of `models.rs` to satisfy the AGENTS.md section 2 rule that unit
-//! tests live in a sibling `*_tests.rs` file rather than inside a production
-//! `.rs` file. Wired from `models.rs` with:
-//!   `#[cfg(test)] #[path = "models_tests.rs"] mod tests;`
+//! Moved here with the types from `modules/staff/src/models_tests.rs`; the assertions are unchanged.
 
 use super::*;
+
+// The subset that used to sit in `models.rs` was deleted in favour of the authoritative set.
+use crate::rbac::builtin_roles;
 
 #[test]
 fn permission_keys_returns_verbatim_grants() {

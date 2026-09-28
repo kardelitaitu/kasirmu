@@ -8,7 +8,7 @@ next: none | perf: indexed PK lookups
 //! Staff Repository — database persistence for users and roles.
 
 use crate::error::StaffError;
-use crate::models::{Role, User};
+use platform_core::staff::{Role, User};
 use rusqlite::{Connection, params};
 
 /// Database access repository for users and roles.
