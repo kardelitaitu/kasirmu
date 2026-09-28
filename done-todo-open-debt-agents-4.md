@@ -1,4 +1,12 @@
 **Program:** `todo-open-debt-program.md` (rules, dispatch, rotted claims, rename audits).
+**Siblings:** `done-todo-open-debt-agents-1.md`, `todo-open-debt-agents-2.md`, `done-todo-open-debt-agents-3.md`, `done-todo-open-debt-agents-5.md`.
+
+**Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
+- `cargo test -p kasirmu-payment` → **PASS** (`69 passed; 0 failed; 0 ignored`).
+- `cargo test -p kasirmu-hal` → **PASS** (`362 passed; 0 failed; 0 ignored`).
+- `cd ui && npm run lint && npm run typecheck` → **PASS** (`0 errors`, `tsc --noEmit` clean).
+- `python scripts/verify-ipc-parity.py` → **PASS** (`IPC parity: OK`).
+All four phase tasks are complete. Triage completed; R5 design doc written (`docs/plans/payment-resilience-design.md`); R9(b) resilience decorator wired on the payment API path; R4/R6/R7 decision record completed and batched owner question filed (`docs/plans/_active/owner-question-2026-09-28-r4-r6-r7.md`); pointer anchor repaired in `f09c5e28e`. AGENTS.md §7.4 earns the `done-` prefix.
 
 ## Phase 4 — Payment: the remainder is smaller than the master doc suggests, and mostly blocked
 
