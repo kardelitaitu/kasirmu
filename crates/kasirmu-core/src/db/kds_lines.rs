@@ -150,9 +150,7 @@ impl Store<'_> {
                 .iter()
                 .map(|l| {
                     let display_name = self
-                        .product_name_by_sku(&l.sku)
-                        .ok()
-                        .flatten()
+                        .product_name_by_sku(&l.sku)?
                         .unwrap_or_else(|| l.sku.clone());
 
                     // Parse modifiers_json from the sale line. An unreadable

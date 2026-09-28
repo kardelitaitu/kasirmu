@@ -12705,6 +12705,25 @@ than changed: unifying it is a product decision with UI consequences, not a defe
 
 **Commits:** this entry + the fixes land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 13: KDS complete_sale_to_kds stops swallowing product name DB errors
+
+**Problem:** `Store::complete_sale_to_kds_fanout` (`crates/kasirmu-core/src/db/kds_lines.rs`)
+resolves product display names for kitchen tickets using
+`self.product_name_by_sku(&l.sku).ok().flatten().unwrap_or_else(|| l.sku.clone())`.
+Any database query error (disk I/O, table lock, corrupted index) silently collapsed into `None`
+via `.ok()`, causing the kitchen ticket to print the raw SKU string instead of failing the
+ticket transaction and alerting the system.
+
+**Solution:** Changed `.ok().flatten()` to `?` on `product_name_by_sku(&l.sku)`, properly
+propagating `CoreError::Db` when querying product details fails, while legitimately un-named
+or missing product rows still fall back cleanly to `l.sku.clone()`.
+
+**Verified:** Red first (`complete_sale_to_kds_propagates_db_error_when_resolving_product_name`
+panicked with `a database error reading product name must not silently fall back to raw SKU`).
+After the fix, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

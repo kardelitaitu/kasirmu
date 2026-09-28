@@ -4159,3 +4159,37 @@ fn fanout_routes_a_line_with_no_zone_to_the_unzoned_ticket() {
     assert_eq!(orders[0].kitchen_zone, None);
     assert_eq!(s.get_kds_order_lines(&orders[0].id).unwrap().len(), 2);
 }
+
+#[test]
+fn complete_sale_to_kds_propagates_db_error_when_resolving_product_name() {
+    let conn = fresh();
+    let s = store(&conn);
+    seed_product(&conn, "STEAK", "Ribeye Steak");
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("STEAK"), 1, price(1500)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale).unwrap();
+
+    // Verify healthy call resolves display name
+    let orders = s.complete_sale_to_kds(&sale.id, None).unwrap();
+    let lines = s.get_kds_order_lines(&orders[0].id).unwrap();
+    assert_eq!(lines[0].display_name, "Ribeye Steak");
+
+    // Create a second sale
+    let sale2 = Sale::from_cart(&cart).unwrap();
+    s.create_sale(&sale2).unwrap();
+
+    // Set products.name to a blob so reading String fails
+    conn.execute("UPDATE products SET name = X'FFFF' WHERE sku = 'STEAK'", [])
+        .unwrap();
+
+    let err = s
+        .complete_sale_to_kds(&sale2.id, None)
+        .expect_err("a database error reading product name must not silently fall back to raw SKU");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
