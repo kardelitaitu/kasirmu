@@ -864,3 +864,36 @@ fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn check_stock_threshold_and_alert_propagates_db_error() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-ALERT-ERR");
+    let loc_id = "loc-err-test";
+    seed_location(&conn, loc_id, "Error Location");
+
+    // Insert a valid stock threshold
+    conn.execute(
+        "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled)
+         VALUES ('th-err-1', ?1, ?2, 10, 1)",
+        params![&pid, loc_id],
+    )
+    .unwrap();
+
+    // Corrupt threshold column with a blob
+    conn.execute(
+        "UPDATE stock_thresholds SET threshold = X'FFFF' WHERE id = 'th-err-1'",
+        [],
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let err = s
+        .check_stock_threshold_and_alert_in_tx(&tx, &pid, loc_id, 5, "2025-01-01T00:00:00.000Z")
+        .expect_err("database error reading threshold must propagate");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

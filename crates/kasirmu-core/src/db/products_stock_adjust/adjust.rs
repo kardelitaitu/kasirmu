@@ -447,7 +447,7 @@ impl Store<'_> {
     /// (deduped — no duplicate active alerts per threshold_id).
     /// If stock recovers above threshold: UPDATE any active/acknowledged
     /// alerts to `status = 'resolved'` (auto-resolve).
-    fn check_stock_threshold_and_alert_in_tx(
+    pub(crate) fn check_stock_threshold_and_alert_in_tx(
         &self,
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
@@ -456,7 +456,7 @@ impl Store<'_> {
         now: &str,
     ) -> Result<(), CoreError> {
         // Lookup: product+location specific, then product+global.
-        let threshold_row: Option<(String, i64)> = tx
+        let threshold_row: Option<(String, i64)> = match tx
             .query_row(
                 "SELECT id, threshold FROM stock_thresholds \
                  WHERE product_id = ?1 AND location_id = ?2 AND enabled = 1 \
@@ -464,17 +464,19 @@ impl Store<'_> {
                 rusqlite::params![product_id, location_id],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
             )
-            .ok()
-            .or_else(|| {
-                tx.query_row(
+            .optional()?
+        {
+            Some(row) => Some(row),
+            None => tx
+                .query_row(
                     "SELECT id, threshold FROM stock_thresholds \
                      WHERE product_id = ?1 AND location_id IS NULL AND enabled = 1 \
                      LIMIT 1",
                     rusqlite::params![product_id],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
                 )
-                .ok()
-            });
+                .optional()?,
+        };
 
         let (threshold_id, threshold) = match threshold_row {
             Some(row) => row,
@@ -492,6 +494,7 @@ impl Store<'_> {
                     rusqlite::params![threshold_id],
                     |_| Ok(true),
                 )
+                .optional()?
                 .unwrap_or(false);
 
             if !existing {

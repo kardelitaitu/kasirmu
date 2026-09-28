@@ -12878,6 +12878,25 @@ than a fix.
 **Commits:** the `truncated` fix is `8c38443cb`; the two rollup fixes are `bec59ac3b`; this entry
 lands in its own pathspec commit.
 
+### 2026-09-28 — TDD round 18: stock threshold alert checks stop swallowing DB errors
+
+**Problem:** In `Store::check_stock_threshold_and_alert_in_tx` (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs`),
+querying `stock_thresholds` (for product+location or global product thresholds) chained `.ok().or_else(|| ...ok())`.
+Any query or row decoding error (e.g. invalid threshold integer or DB read error) was collapsed to `None`,
+failing open and silently skipping threshold alerts as if no threshold had been configured.
+Similarly, querying `stock_alert_events` used `.unwrap_or(false)`, masking database query errors when checking for
+existing alerts.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on the threshold queries and `.optional()?.unwrap_or(false)`
+on the alert events query, ensuring database and decoding errors properly propagate as `CoreError::Db`.
+
+**Verified:** Red first (`check_stock_threshold_and_alert_propagates_db_error` panicked with
+`database error reading threshold must propagate: ()`). After changing to `.optional()?`, the test passed cleanly
+along with all 18 stock adjustment tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 
