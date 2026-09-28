@@ -1,8 +1,12 @@
-//! Sibling unit tests for `models.rs` (AGENTS.md: no tests in production files).
+//! Sibling unit tests for `sales.rs` (AGENTS.md: no tests in production files).
+//!
+//! Moved here with the types from `modules/sales/src/models_tests.rs`; the assertions are
+//! unchanged, and `foundation::` paths became `crate::` because a crate cannot name itself by path.
+
 
 use super::*;
 
-use foundation::{Cart, CartLine, Percentage, Sku};
+use crate::{Cart, CartLine, Percentage, Sku};
 
 fn usd() -> Currency {
     "USD".parse().unwrap()

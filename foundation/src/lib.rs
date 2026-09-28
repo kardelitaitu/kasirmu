@@ -1,7 +1,7 @@
 /*
 last audited DD-MM-YY by DSH-Agent (Money audit)
 crate: foundation | status: SAFE | lint: CLEAN
-findings: zero unsafe, no FFI/IO, minimal deps (tracing added 2026-09-28 — see Cargo.toml), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
+findings: zero unsafe, no FFI/IO, minimal deps (tracing + chrono added 2026-09-28 — see Cargo.toml), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED DD-MM-YY — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
 next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
 */
 
@@ -40,6 +40,7 @@ pub mod inventory;
 pub mod loyalty;
 pub mod money;
 pub mod percentage;
+pub mod sales;
 pub mod sku;
 pub mod tax;
 pub mod terminal;
@@ -66,6 +67,7 @@ pub use inventory::{
 };
 pub use money::{Currency, InvalidCurrencyCode, Money, format_minor};
 pub use percentage::Percentage;
+pub use sales::{Refund, RefundLine, Sale, SaleLine, default_version};
 pub use sku::{LineId, Sku};
 pub use tax::{RoundingMode, TaxRate};
 pub use terminal::{Terminal, TerminalId};
