@@ -451,7 +451,7 @@ fn gated_bridge_stems() -> BTreeSet<String> {
         files.len(),
         dir.display()
     );
-    files
+    let mut stems: BTreeSet<String> = files
         .iter()
         .filter(|f| names_permission(&read(f)))
         .map(|f| {
@@ -460,7 +460,37 @@ fn gated_bridge_stems() -> BTreeSet<String> {
                 .to_string_lossy()
                 .to_string()
         })
-        .collect()
+        .collect();
+
+    // A module can also BE a directory. When it is, the namespace a shell wrapper names is the
+    // directory's (pos::add_line_scoped), while the permission calls sit in its children - so
+    // reading only the file stems loses the whole module. Measured 2026-09-28: the COR-7 split
+    // moved the POS handlers into src/pos/*.rs and auth's into src/auth/*.rs, 'pos' and 'auth'
+    // vanished from this set, and twenty-four GATED commands - every pos::*_scoped twin plus six
+    // auth::* - read as debt. One child naming a permission vouches for the module, which is the
+    // same merge the file case above already makes.
+    for f in &files {
+        let Ok(rel) = f.strip_prefix(&dir) else {
+            continue;
+        };
+        let mut components = rel.components();
+        let (Some(first), Some(_child)) = (components.next(), components.next()) else {
+            continue;
+        };
+        let module = first.as_os_str().to_string_lossy().to_string();
+        if stems.contains(&module) {
+            continue;
+        }
+        let module_dir = dir.join(&module);
+        if files
+            .iter()
+            .any(|g| g.starts_with(&module_dir) && names_permission(&read(g)))
+        {
+            stems.insert(module);
+        }
+    }
+
+    stems
 }
 
 fn run_sweep() -> Sweep {

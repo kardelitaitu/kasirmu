@@ -139,46 +139,6 @@ pub const DEBT_LEDGER: &[(&str, &str)] = &[
         "subscription::get_subscription_capabilities",
         "no_session_resolution",
     ),
-    (
-        "topology::load_topology",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::can_save_topology",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::apply_topology_diff",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::list_topology_revisions",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::load_topology_revision",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::pin_topology_revision",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::save_topology_template",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::load_topology_template",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::list_topology_templates",
-        "resolves_session_names_no_permission",
-    ),
-    (
-        "topology::delete_topology_template",
-        "resolves_session_names_no_permission",
-    ),
     ("settings::get_setting", "no_session_resolution"),
     ("settings::gateway_status", "no_session_resolution"),
     (
