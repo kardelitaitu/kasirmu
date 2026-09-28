@@ -12822,6 +12822,62 @@ After changing to `.collect::<Result<Vec<_>, _>>()?`, the test passed cleanly an
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 17: one table turn per sale, one bucket per unlabelled discount (core/reports)
+
+**Problem (1/2):** `Store::table_turnover` and `Store::hourly_table_activity`
+(`crates/kasirmu-core/src/db/reports/sales_summary.rs`) counted `COUNT(*)` over `kds_orders`
+joined to `sales`. `kds_orders` is `UNIQUE (sale_id, kitchen_zone)`, and the migration's own
+comment says a sale whose items span two kitchen zones fans out into one ticket per zone — so one
+party at one table was reported as two table turns, and the occupancy curve double-counted the
+same sale.
+
+**Problem (2/2):** `Store::discounts_summary` selected
+`COALESCE(NULLIF(discount_label, ''), 'discount') AS label` but grouped on the RAW
+`discount_label` column. An unlabelled discount is stored either as NULL (no label) or as `''`
+(empty label), so the same displayed code came back as two rows both labelled `discount`, each
+with half the count, and the pair spent two of the five `LIMIT 5` slots.
+
+**Solution:** `COUNT(DISTINCT s.id)` in both KDS-joined rollups, and
+`GROUP BY COALESCE(NULLIF(discount_label, ''), 'discount')` in `discounts_summary`, so the group
+key is the label that is actually displayed. Both doc comments now state the invariant (one turn
+per sale whatever the zone fan-out; bucketing on the displayed label). No other change.
+
+**Verified:** Red first, three independent failures. `table_turnover_counts_one_turn_per_table_not_per_kitchen_ticket`
+failed `left: 2, right: 1` (one sale, two zones, one table);
+`hourly_table_activity_counts_one_turn_per_table_not_per_kitchen_ticket` failed the same way;
+`discounts_summary_treats_null_and_empty_labels_as_one_bucket` failed `left: 3, right: 2` with
+codes `[WELCOME10 1, discount 1, discount 1]`. Green after the fix: reports + export + popularity
+**297/297**, `cargo fmt -p kasirmu-core -- --check` clean.
+
+**Closed from an earlier batch:** `truncated = rows.len() >= limit as usize` is fixed in
+`8c38443cb` — the query now fetches `limit + 1`, so a page that exactly fills the limit reports
+`truncated: false` while the genuine case still reports `true` and the page stays capped.
+
+**Probed and found sound (no change made):** a store offset past ±14:00 is not the silent-wipe
+hazard it looks like — SQLite accepts it (`DATE('2026-01-01T10:00:00Z', '+15:00')` → `2026-01-02`),
+so no NULL dates; an impossible day is likewise harmless (`DATE('2026-02-31')` → `2026-03-03`, and
+the range bounds compare as TEXT, so `2026-02-31` is a loose but harmless upper bound rather than
+an empty report) — `check_date_bound`'s month/day-range contract therefore stands as documented;
+`filter_analytics_bundle` never clears `category_popularity` / `category_forecast`, which is
+harmless because the email builder renders neither section, and the UI's seven
+daily/weekly/monthly/top-products/heatmap/category/stock checkboxes are exactly the seven keys the
+filter DOES clear; the cloud bundle calls `category_popularity(3)` and
+`category_forecast(.., "weekly", 10)`, matching the core call sites exactly. The cloud modules with
+no tests at all were read in full (`email_pg/analytics.rs`, `email_pg/settings_store.rs`,
+`email_pg/queue_worker.rs`, `sync_store/{sqlite,pg,conflicts,tenant}.rs`, `openapi/cloud.rs`) and
+no provable defect surfaced from reading: their PG arms need the full `init.pg.sql` bootstrap,
+which this checkout cannot run.
+
+**Not fixed, recorded:** the cloud report loop polls every 300 s
+(`start_report_sender_loop_pg`, `apps/cloud-server/src/email_pg/queue_worker.rs`) while
+`should_send_scheduled_with_last_sent` accepts a send only inside a ±120 s window — a wake-up that
+falls outside it is a silent miss for that whole period (~20% of wake-ups). The function reads the
+wall clock, so there was no deterministic Red, and widening the window is a behaviour change rather
+than a fix.
+
+**Commits:** the `truncated` fix is `8c38443cb`; the two rollup fixes are `bec59ac3b`; this entry
+lands in its own pathspec commit.
+
 
 
 
