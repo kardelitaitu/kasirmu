@@ -969,8 +969,7 @@ async fn staff_login_rejects_short_pin() {
 
     assert!(
         matches!(result, Err(BridgeError::Invalid(ref msg)) if msg.contains("at least 4 digits")),
-        "3-digit PIN must be rejected with 'at least 4 digits' error, got: {:?}",
-        result
+        "3-digit PIN must be rejected with 'at least 4 digits' error, got: {result:?}"
     );
 }
 
@@ -992,8 +991,7 @@ async fn staff_login_rejects_empty_pin() {
 
     assert!(
         matches!(result, Err(BridgeError::Invalid(ref msg)) if msg.contains("at least 4 digits")),
-        "empty PIN must be rejected, got: {:?}",
-        result
+        "empty PIN must be rejected, got: {result:?}"
     );
 }
 
@@ -1025,8 +1023,7 @@ async fn staff_login_accepts_exactly_4_digit_pin() {
     // Should NOT be rejected for length — should be rejected for wrong PIN
     assert!(
         matches!(result, Err(BridgeError::Invalid(ref msg)) if msg.contains("invalid username or PIN")),
-        "4-digit wrong PIN should get 'invalid username or PIN', not length error, got: {:?}",
-        result
+        "4-digit wrong PIN should get 'invalid username or PIN', not length error, got: {result:?}"
     );
 }
 // ── Basic security events on the auth paths (todo-global-saas-2.md P1) ─

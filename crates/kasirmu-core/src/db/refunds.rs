@@ -530,8 +530,7 @@ impl Store<'_> {
         .ok_or_else(|| CoreError::Validation {
             field: "refund_line.sale_line_id",
             message: format!(
-                "sale_line_id {} is not a line of sale {}; refusing to credit stock or value against an unknown line",
-                sale_line_id, sale_id
+                "sale_line_id {sale_line_id} is not a line of sale {sale_id}; refusing to credit stock or value against an unknown line"
             ),
         })
     }

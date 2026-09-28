@@ -360,7 +360,7 @@ impl Store<'_> {
         id: &str,
         resolution: &str,
     ) -> Result<(), CoreError> {
-        let marker = format!("resolved: conflict ({})", resolution);
+        let marker = format!("resolved: conflict ({resolution})");
         let affected = conn.execute(
             "UPDATE offline_queue SET status = 'synced', synced_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), last_error = ?1
              WHERE id = ?2 AND status = 'pending'",

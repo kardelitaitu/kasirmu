@@ -241,32 +241,28 @@ fn main() {
 
     if normal_vs_off < 1.5 {
         println!(
-            "  NORMAL p99 is within {:.2}x of OFF — consistent with WAL skipping the\n  \
+            "  NORMAL p99 is within {normal_vs_off:.2}x of OFF — consistent with WAL skipping the\n  \
              per-commit fsync, as documented. The p99 tail you ship is therefore NOT\n  \
              fsync. Look at the median path instead: the cost is spread across\n  \
-             ordinary inserts, not concentrated in a durable-commit spike.",
-            normal_vs_off
+             ordinary inserts, not concentrated in a durable-commit spike."
         );
     } else {
         println!(
-            "  NORMAL p99 is {:.2}x OFF's — WAL is syncing more than a skipped\n  \
-             per-commit fsync would explain. Investigate what NORMAL is flushing.",
-            normal_vs_off
+            "  NORMAL p99 is {normal_vs_off:.2}x OFF's — WAL is syncing more than a skipped\n  \
+             per-commit fsync would explain. Investigate what NORMAL is flushing."
         );
     }
     println!();
     if full_vs_normal > 2.0 {
         println!(
-            "  FULL p99 is {:.2}x NORMAL's, confirming per-commit fsync CAN produce\n  \
+            "  FULL p99 is {full_vs_normal:.2}x NORMAL's, confirming per-commit fsync CAN produce\n  \
              a tail of this shape. This is the upper bound you avoid by shipping\n  \
-             synchronous=NORMAL.",
-            full_vs_normal
+             synchronous=NORMAL."
         );
     } else {
         println!(
-            "  FULL p99 is only {:.2}x NORMAL's — per-commit fsync does NOT dominate\n  \
-             the tail on this filesystem. The tail is coming from something else.",
-            full_vs_normal
+            "  FULL p99 is only {full_vs_normal:.2}x NORMAL's — per-commit fsync does NOT dominate\n  \
+             the tail on this filesystem. The tail is coming from something else."
         );
     }
 }
