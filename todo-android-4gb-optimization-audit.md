@@ -366,3 +366,18 @@ runner plus a recorded baseline.
   comment at `:53-63`, not yet confirmed by a scratch `tauri android init` run.
 - The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys
   window` reporting `KEEP_SCREEN_ON`) are still unrun.
+
+---
+
+## Status pass — 2026-09-29, third
+
+Re-verified the state of R1 through R6 in this checkout:
+- **R1:** In tree (`ui/index.mobile.html:9` with `interactive-widget=resizes-content`).
+- **R2:** In tree (`MainActivity.kt:109-111` `FLAG_KEEP_SCREEN_ON`).
+- **R3:** In tree (`ProductManagementScreen.tsx`, `products.rs:119-121`, `SALES_FETCH_LIMIT = 500`).
+- **R4:** Verified green (`cd ui && npm run test -- touchTargetSizing.test.tsx` → 8 passed in 355ms).
+- **R5:** `scripts/android-soak.sh` exists; CI leg waits on hardware runner with recorded baseline.
+- **R6:** Deferred pending measured GPU incidents.
+
+Per `AGENTS.md` §7.4, this audit continues to hold `todo-` until hardware verification on a real tablet (soak test & screen-on idle) can be executed.
+
