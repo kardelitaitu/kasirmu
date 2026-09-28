@@ -200,6 +200,8 @@ pub struct SalesReceipt {
     pub total: Money,
     /// Payments tendered.
     pub payments: Vec<PaymentInfo>,
+    /// Optional 17-digit DJP Faktur Pajak string (e-Faktur Coretax PER-11/PJ/2025).
+    pub faktur_pajak: Option<String>,
 }
 
 // ── Helpers ──────────────────────────────────────────────
@@ -419,6 +421,9 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
     }
     if let Some(ref tax_id) = r.store.tax_id {
         b.center(&format!("NPWP: {tax_id}"));
+    }
+    if let Some(ref fp) = r.faktur_pajak {
+        b.center(&format!("Faktur Pajak: {fp}"));
     }
     b.blank();
     b.separator();

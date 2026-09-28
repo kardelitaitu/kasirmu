@@ -54,6 +54,7 @@ fn sample_receipt() -> SalesReceipt {
             amount: usd_money(2000),
             change: Some(usd_money(680)),
         }],
+        faktur_pajak: None,
     }
 }
 
@@ -359,6 +360,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
             amount: money(4_450_000),
             change: None,
         }],
+        faktur_pajak: None,
     };
 
     let data = format_sales_receipt(&r, &default_config());
@@ -670,3 +672,16 @@ fn right_line_overflows_gracefully_when_nothing_fits() {
     let line = right_line("A very long label", "123456", 10);
     assert_eq!(line, "A very long label 123456");
 }
+
+#[test]
+fn sales_receipt_prints_faktur_pajak_when_present() {
+    let mut r = sample_receipt();
+    r.faktur_pajak = Some("01002600000000123".into());
+    let data = format_sales_receipt(&r, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(
+        text.contains("Faktur Pajak: 01002600000000123"),
+        "receipt must print Faktur Pajak line: {text}"
+    );
+}
+
