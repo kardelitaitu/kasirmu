@@ -1,4 +1,22 @@
 
+## 2026-09-29 — CORRECTION: CI has always run the app suites; the gap was local only
+
+**What I got wrong, and how.** The note I added to `scripts/check.sh` this session says the two
+application suites "had no automation at all", and a second note says the desktop's six integration
+targets are gated by nothing. Both are false, and both came from the same bad grep: I searched
+`.github/workflows` for the literal strings `kasirmu-app` and `kasirmu-mobile`, found none, and
+concluded nothing ran them. CI does not name the packages — `dev-ci.yml:552` runs
+`cargo nextest run --workspace --all-features` with NO excludes, which includes both shells and
+their integration targets. `check.sh` is the half that excluded them (`--exclude kasirmu-app
+--exclude kasirmu-mobile`), so the hole was local-only. It is still worth repairing, which is why
+the step stays.
+
+**Also corrected by the same reading:** the six integration targets are covered in CI for one more
+reason — CI builds from a fresh checkout, where no dev instance holds
+`target/debug/kasirmu-app.exe`, the lock that keeps them out of the local step.
+
+**Rule I should have applied:** a grep for a package NAME proves nothing about a `--workspace` run.
+Check what the job actually executes before claiming what it covers.
 ## 2026-09-29 — The instance guard now belongs to both shells, and the sweep found two holes (P2)
 
 **What moved.** `apps/desktop-tauri/src/single_instance.rs` (211 lines, plus 45 lines of tests) is now
