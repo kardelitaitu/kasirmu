@@ -5196,3 +5196,43 @@ fn a_db_failure_in_lookup_sale_by_receipt_barcode_surfaces_the_error() {
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn void_pending_sale_propagates_db_error_when_reading_sale_total() {
+    let conn = fresh();
+    let s = store(&conn);
+
+    conn.execute(
+        "INSERT OR IGNORE INTO products (id, sku, name, price_minor, currency, product_type) VALUES ('prod-vps', 'VPS-1', 'VPS', 5000, 'IDR', 'retail')",
+        [],
+    )
+    .unwrap();
+    let default_loc = crate::location_resolver::get_default_location_id();
+    conn.execute(
+        "INSERT OR IGNORE INTO stock_summary (item_id, location_id, qty) VALUES ('prod-vps', ?1, 10)",
+        rusqlite::params![default_loc.as_str()],
+    )
+    .unwrap();
+
+    let mut cart = Cart::new(usd());
+    cart.add_line(CartLine::new(Sku::new("VPS-1"), 2, price(5000)))
+        .unwrap();
+    let sale = Sale::from_cart(&cart).unwrap();
+    s.complete_sale_deduction(&sale, None, &tender(10000), "staff-1", None)
+        .unwrap();
+
+    // Corrupt total_minor column data with a blob so reading i64 fails
+    conn.execute(
+        "UPDATE sales SET total_minor = X'FFFF' WHERE id = ?1",
+        rusqlite::params![&sale.id],
+    )
+    .unwrap();
+
+    let err = s.void_pending_sale(&sale.id).expect_err(
+        "a database error reading total_minor must not be swallowed into null audit details",
+    );
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

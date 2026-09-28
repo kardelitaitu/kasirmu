@@ -12615,6 +12615,23 @@ After `.optional()?`, the test passed, all 21 regional tests passed, and `cargo 
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 10: void_pending_sale audit detail stops swallowing total_minor DB errors
+
+**Problem:** `Store::void_pending_sale` (`crates/kasirmu-core/src/db/sales_lifecycle.rs`)
+queries `total_minor` from the updated sale row to record in the `sale.void` audit log entry.
+The query used `.ok()`, causing any SQLite read/type-conversion/database error to collapse to
+`None`. This caused the audit log to record `"total_minor": null` for a voided sale without
+signaling any error, corrupting audit trails.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on `tx.query_row`, propagating
+`CoreError::Db` when reading `total_minor` fails.
+
+**Verified:** Red first (`void_pending_sale_propagates_db_error_when_reading_sale_total`
+panicked with `a database error reading total_minor must not be swallowed into null audit details: ()`).
+After the fix, the test passed cleanly and `cargo fmt` was applied.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

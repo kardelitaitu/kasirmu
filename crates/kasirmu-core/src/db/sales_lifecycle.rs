@@ -13,7 +13,7 @@
 use super::*;
 use crate::AuditEntry;
 use crate::SaleStatus;
-use rusqlite::{Transaction, TransactionBehavior};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///
@@ -741,7 +741,7 @@ impl Store<'_> {
                 rusqlite::params![sale_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         let details = serde_json::json!({
             "total_minor": total_minor,
             "reversal": "pending_sale_void",
