@@ -7,7 +7,7 @@ status: Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewa
 
 # ADR-61: Architecture Boundary Rule Tiers
 
-**Status:** Implemented (2026-09-28). The named rule, the classification, the governed expiry
+**Status:** Implemented (2026-09-28); the currency edge is CLOSED. The named rule, the classification, the governed expiry
 and the re-tiered baseline are in the tree and gated. The foundation type move that retires the
 seven re-export edges is sequenced behind a compatibility ruling and is NOT part of this change.
 **Date:** 2026-09-28
@@ -72,9 +72,16 @@ why.
 expiry is already an expired finding (exit 1), and refusing it as malformed input would report
 governed history as a broken file.
 
-**D6 — The currency edge retires with the others, not before them.** All eight entries are one
-piece of work: `CurrencyError` and the currency row types move to foundation, the shims then
-retire on a compatibility ruling, and the Cargo edges follow.
+**D6 — The currency edge is closed by moving the shared error type DOWN, not by deleting it.**
+`CurrencyError` moves to `platform-core`, NOT to `foundation` — the payload forbids that: the enum
+carries `rusqlite::Error` in its `Db` variant and foundation deliberately has no database
+dependency. `platform-core` already depends on rusqlite and is already a dependency of both
+`kasirmu-core` and `modules-currency`, so the move costs no new edge. `modules-currency` re-exports
+the type so every existing path keeps resolving, and the fifteen deprecated `Store` shims retire
+once the repository is the only caller. **Implemented 2026-09-28** (`596ab8f66`, `a6b32370c`): the
+edge is closed, the baseline entry is DELETED rather than renewed, and `kasirmu-core` keeps
+`modules-currency` as a dev-dependency only — which this checker ignores by design, because a
+dev-dependency is not a shipped layering edge.
 
 ## Consequences
 
@@ -82,8 +89,15 @@ retire on a compatibility ruling, and the Cargo edges follow.
   extended by editing a date.
 - **Cost, accepted:** the checker does one extra walk of core's source, and a mis-set baseline
   key turns a tracked entry into a blocking finding rather than a silent pass.
-- **Still red on 2026-11-07 unless the type move lands.** That is the point: the expiry is now a
-  governed promise instead of an unread date. The dates were NOT bumped (C26, D3).
+- **The currency edge is gone; seven entries remain red on 2026-11-07 unless the model-type move
+  lands.** That is the point: the expiry is now a governed promise instead of an unread date. The
+  dates were NOT bumped (C26, D3).
+- **Verified this pass, and what that excludes:** `cargo check -p kasirmu-core --all-targets` is
+  clean and warning-free, `cargo check --workspace --exclude kasirmu-mobile` exits 0, and
+  `cargo test -p kasirmu-core --test currency_integration --test settings_integration` is
+  38 + 86 passed / 0 failed. `kasirmu-mobile` is excluded because it does not compile for an
+  unrelated reason (an uncommitted C28 `pos.rs` split by another lane), so mobile is covered by a
+  source read instead: its nine currency calls are `repo.`-receiver calls on `CurrencyRepository`.
 - **Verification:** `python scripts/verify-architecture-boundaries.py` → 8 tracked / 0 blocking /
   0 stale, exit 0, with 7 `core-type-shim` + 1 `core-upward-dependency`;
   `node --test scripts/__tests__/verify-architecture-boundaries.test.mjs` → 32 pass / 0 fail,
