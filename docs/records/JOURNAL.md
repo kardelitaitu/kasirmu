@@ -13016,6 +13016,24 @@ After adding `.optional()?`, the test passed cleanly along with all 16 image ref
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 23: complete_sale_with_resolved_shortfalls stops swallowing DB errors on stock check
+
+**Problem:** In `Store::complete_sale_with_resolved_shortfalls` (`crates/kasirmu-core/src/db/sales_lifecycle.rs`),
+when re-checking stock availability at alternative locations for shortfall resolutions, `stock_summary` and
+`workspace_inventory_locations` were queried using bare `.unwrap_or(0)`. If a database query or column decoding
+failure occurred (e.g. invalid integer format or DB error), the error was swallowed and treated as `available = 0`,
+causing the sale to fail with `CoreError::InsufficientStockAtLocation` instead of propagating `Err(CoreError::Db)`.
+
+**Solution:** Replaced `.unwrap_or(0)` with `.optional()?.unwrap_or(0)` on both the `stock_summary` availability
+query and the `workspace_inventory_locations` negative stock allowance check, properly propagating database errors.
+
+**Verified:** Red first (`complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stock_summary`
+panicked with `expected CoreError::Db, got InsufficientStockAtLocation ...`).
+After adding `.optional()?`, the test passed cleanly along with all 12 shortfall settlement tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

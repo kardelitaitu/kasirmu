@@ -286,6 +286,7 @@ impl Store<'_> {
                             rusqlite::params![product_id, alloc.location_id.as_str()],
                             |row| row.get(0),
                         )
+                        .optional()?
                         .unwrap_or(0);
 
                     if available < alloc.qty {
@@ -298,6 +299,7 @@ impl Store<'_> {
                                 rusqlite::params![ws_id, alloc.location_id.as_str()],
                                 |row| row.get::<_, i64>(0),
                             )
+                            .optional()?
                             .unwrap_or(0)
                                 == 1
                         } else {

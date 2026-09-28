@@ -5279,3 +5279,45 @@ fn complete_sale_deduction_propagates_db_error_when_resolving_shortfall_alternat
         "expected CoreError::Db, got {err:?}"
     );
 }
+
+#[test]
+fn complete_sale_with_resolved_shortfalls_propagates_db_error_when_checking_stock_summary() {
+    let conn = fresh();
+    let s = store(&conn);
+    let loc_a = "loc-a";
+    setup_locations_with_stock(&conn, "COFFEE", loc_a, 5, "loc-b", 10);
+
+    let sale = make_single_line_sale("COFFEE", 5, 350);
+    let resolution = crate::sale_deduction::ResolvedShortfall {
+        sku: "COFFEE".into(),
+        allocations: vec![crate::sale_deduction::LocationAllocation {
+            location_id: crate::inventory::LocationId::from(loc_a),
+            qty: 5,
+        }],
+    };
+
+    // Corrupt the stock_summary qty column with a blob to trip FromSqlConversionFailure
+    conn.execute(
+        "UPDATE stock_summary SET qty = X'FFFF' WHERE location_id = ?1",
+        rusqlite::params![loc_a],
+    )
+    .unwrap();
+
+    let err = s
+        .complete_sale_with_resolved_shortfalls(
+            &sale,
+            None,
+            &tender(1750),
+            "cashier-1",
+            None,
+            &[resolution],
+            &[],
+        )
+        .expect_err(
+            "database error reading stock_summary must propagate, not report insufficient stock",
+        );
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
