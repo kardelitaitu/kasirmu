@@ -417,8 +417,7 @@ fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
         serde_json::from_value::<StockAdjustmentPayload>(v2["local"].clone()).map(|_| ());
     assert!(
         inner.is_err(),
-        "UNDECIDED: a depth-two payload fails to deserialize as StockAdjustmentPayload, and that failure is the only thing that stops the loop - got {:?}",
-        inner
+        "UNDECIDED: a depth-two payload fails to deserialize as StockAdjustmentPayload, and that failure is the only thing that stops the loop - got {inner:?}"
     );
 }
 

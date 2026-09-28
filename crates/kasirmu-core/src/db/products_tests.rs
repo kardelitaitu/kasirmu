@@ -2653,8 +2653,7 @@ fn negative_stock_event_fires_when_allow_negative_enabled() {
     // The deduction should succeed (allow_negative_stock = true).
     assert!(
         result.is_ok(),
-        "deduction should succeed with allow_negative_stock=true: {:?}",
-        result
+        "deduction should succeed with allow_negative_stock=true: {result:?}"
     );
     assert_eq!(result.unwrap(), -3, "stock should go to -3");
     tx.commit().unwrap();

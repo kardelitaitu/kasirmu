@@ -2057,8 +2057,7 @@ async fn scoped_credit_sale_list_stays_open_to_a_session_with_sales_view() {
     assert!(
         !matches!(result, Err(AppError::PermissionDenied(_))),
         "list_credit_sales_scoped gates on sales:view, which this session holds; \
-         got {:?}",
-        result
+         got {result:?}"
     );
     assert!(
         result.is_ok(),

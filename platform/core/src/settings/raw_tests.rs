@@ -760,8 +760,7 @@ fn an_ordinary_lowercase_manager_key_is_still_admitted_by_the_manager_door_and_r
         for policy in [IngestPolicy::PortablePackage, IngestPolicy::RemoteSync] {
             assert!(
                 !policy.admits(key),
-                "{:?} must refuse the manager key {key}",
-                policy
+                "{policy:?} must refuse the manager key {key}"
             );
         }
         assert!(

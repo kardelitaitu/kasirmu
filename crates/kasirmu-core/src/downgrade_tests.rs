@@ -151,8 +151,7 @@ fn default_counts_are_within_every_paid_tier() {
         let report = evaluate(&tier, &zero);
         assert!(
             !report.is_over_quota(),
-            "empty tenant over quota on {:?}",
-            tier
+            "empty tenant over quota on {tier:?}"
         );
         assert_eq!(report.total_excess(), 0);
     }

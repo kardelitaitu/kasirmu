@@ -822,8 +822,7 @@ fn audit_retention_per_tier_windows() {
             .unwrap();
         assert_eq!(
             deleted, *expected,
-            "tier {:?} swept {deleted} rows, expected {expected}",
-            tier
+            "tier {tier:?} swept {deleted} rows, expected {expected}"
         );
         assert_eq!(marker_count(&conn), 0);
     }
