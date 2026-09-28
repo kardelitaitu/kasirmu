@@ -264,7 +264,7 @@ impl AppState {
             .map_err(|e| AppError::Internal(format!("tenant integrity check: {e}")))?;
 
         // Seed the primary store profile if none exists.
-        seed_primary_store(&conn)
+        seed_primary_store(&mut conn)
             .map_err(|e| AppError::Internal(format!("seeding primary store: {e}")))?;
 
         // ── Popularity full pass (ADR #37) ────────────────────────────
@@ -418,11 +418,12 @@ impl AppState {
 /// `INSERT OR IGNORE` cannot change the existing `is_primary` value — leaving
 /// `get_primary_store()` (which queries `is_primary = 1`) returning `None`
 /// and breaking boot on a fresh install.
-fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
+fn seed_primary_store(conn: &mut Connection) -> Result<(), rusqlite::Error> {
+    let tx = conn.transaction()?;
+    let count: i64 = tx.query_row("SELECT COUNT(*) FROM locations", [], |r| r.get(0))?;
     if count == 0 {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        conn.execute(
+        tx.execute(
             "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at)
              VALUES ('default', 'Main Store', '', '', 'USD', 'UTC', 1, ?1, ?1)",
             rusqlite::params![now],
@@ -432,7 +433,7 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
         // Promote the canonical 'default' store to primary. The unique partial
         // index on is_primary = 1 allows at most one primary store, so only
         // promote when no other store is already primary (multi-store case).
-        let affected = conn.execute(
+        let affected = tx.execute(
             "UPDATE locations SET is_primary = 1
              WHERE id = 'default'
                AND NOT EXISTS (
@@ -444,6 +445,7 @@ fn seed_primary_store(conn: &Connection) -> Result<(), rusqlite::Error> {
             tracing::info!("promoted 'default' store profile to primary");
         }
     }
+    tx.commit()?;
     Ok(())
 }
 

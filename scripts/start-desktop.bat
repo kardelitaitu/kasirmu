@@ -66,6 +66,8 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0free-dev-port.ps1"
 if errorlevel 1 (
     echo [WARNING] Could not cleanly free port 1420. Tauri may fail to start.
 )
+taskkill /F /IM kasirmu-app.exe >nul 2>&1
+taskkill /F /IM kasirmu-mobile.exe >nul 2>&1
 
 REM Sync connectivity: the debug build auto-provisions a connection to the
 REM cloud server (https://license.kasir.mu). The health endpoint check
