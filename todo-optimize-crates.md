@@ -1674,6 +1674,65 @@ failures already attributed three times today.
 **Class A is now empty.** Remaining: class C 9 (needs a WAL-aware snapshot
 helper — §11G), class D 16 (on-disk, correct as-is), production 15 (must stay).
 
+### 11I. O-T02 re-scoped: the premise was aimed at the wrong 90% (2026-09-28)
+
+§9's O-T02 reads *"`migrations_tests.rs` replays the chain 32 times to assert one
+row each"* at `:3-12`, with the fix *"hoist one `LazyLock` migrated connection
+for read-only schema assertions."* Both halves are wrong on the file as it
+stands.
+
+- **`fresh()` (`:3-6`) does not run migrations at all.** It opens an in-memory
+  connection and sets `foreign_keys = ON`. The file's subject *is* migrations,
+  so the tests that call `run` do so deliberately.
+- **Of 26 `platform_core::database::run` calls, only 7 apply the full chain**
+  (`run(&mut conn, ALL)`). 15 are *partial* — `&ALL[..split]` / `&ALL[split..]`
+  — which is the upgrade-path contract and cannot be served from a snapshot.
+- **The 43 tests cost 75.85 s, and ~70 s of that is two of them.**
+  `every_migration_re_applies_against_the_final_schema` and
+  `cosmetic_edit_to_any_migration_re_applies_cleanly` each sweep all 68
+  migrations. Hoisting a `LazyLock` for the read-only legs would have bought
+  about a second of 75.85.
+
+**What was actually funded.** `every_migration_re_applies_against_the_final_schema`
+applied the *whole registry* on each of its 68 iterations. That first apply is
+byte-identical every time — same pages, same `schema_migrations` rows, same
+stored checksums, which is precisely what the drift assertions read — so it now
+clones one cached apply via `Backup` (~3 ms) instead of replaying it (~305 ms).
+New `final_schema()` / `FINAL_SCHEMA` helpers in `migrations_tests.rs`.
+
+Two details that make it safe, and one that makes it loud if it is not:
+- A `Backup` page copy preserves the `schema_migrations` **checksums**, so
+  `stored_checksum` and the drift verdict are unchanged. (Note `fresh_db()` is
+  *not* usable here for exactly this reason — it inserts ids with no checksum.)
+- `foreign_keys = ON` is re-applied on every clone: it is per-connection, so
+  `Backup` does not carry it, and `fresh()` sets it. Without it a migration that
+  violates a foreign key would succeed and silently weaken every verdict.
+- If any of that were wrong the test fails loudly — it asserts an exact
+  `NOT_REAPPLIABLE_AGAINST_FINAL_SCHEMA` set — rather than passing vacuously.
+
+**STATUS: implemented, type-checks clean, RUNTIME VERIFICATION PENDING.** At the
+time of writing `cargo check -p kasirmu-core --lib --tests` fails on another
+lane's in-flight currency refactor (`create_exchange_rate` / `list_exchange_rates`
+/ `get_currency_symbol_position` no longer on `Store`, across
+`db/settings_tests.rs`, `currency_integration`, `settings_integration`). Zero of
+the reported errors reference `migrations_tests.rs`, so the change compiles; it
+has not been *run*. Verify with:
+
+```
+cargo test -p kasirmu-core --lib migrations
+```
+
+and compare against the 75.85 s / 43-passed baseline.
+
+**Still open, with the design worked out.** `cosmetic_edit_to_any_migration_
+re_applies_cleanly` cannot use one snapshot — its prefix `&ALL[..=index]` grows
+per iteration — but it does not need to rebuild from scratch either: hold one
+master connection, apply `ALL[index]` to it incrementally, and clone per
+iteration. That turns a sum-of-prefixes (~10 s) into one chain plus 68 clones
+(~0.5 s). Higher semantic risk than the change above (it asserts incremental
+application equals a fresh prefix apply), so it is written down rather than
+shipped unverified.
+
 **The number that actually dominates axis B, and that nobody has scoped.** Under
 `cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds
 the snapshot from scratch and pays the **full 305 ms**, not the 3 ms clone. With
