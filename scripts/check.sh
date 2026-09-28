@@ -200,6 +200,14 @@ if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2
     # holding target/debug/kasirmu-app.exe makes the step die on `failed to remove file` (measured
     # 2026-09-29) -- a gate that demands you stop the app first is a gate nobody runs. The unit
     # tests live in the lib target on both shells, so `--lib` covers them and nothing else is lost.
+    #
+    # NOT covered here, measured 2026-09-29: the desktop's six integration targets (tests/
+    # gate_audit, wiring_audit, capability_parity, kernel_lifecycle, window_visibility,
+    # window_state_multi_monitor). They link the shell BINARY, so building them needs
+    # target/debug/kasirmu-app.exe replaced, which fails with `Access is denied` whenever a dev
+    # instance is running -- as it normally is on this machine. A gate that fails because the app
+    # is open is a gate people bypass, so they stay out of this step. CI builds from scratch, so CI
+    # is where they belong; nothing gates them today.
     # Run them explicitly, AFTER the receipt above so this run cannot overwrite the JUnit report
     # that step grades (nextest writes target/nextest/default/junit.xml on every invocation).
     step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --lib --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features
