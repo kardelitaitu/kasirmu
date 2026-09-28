@@ -2049,6 +2049,7 @@ name = "foundation"
 version = "0.0.40"
 dependencies = [
  "anyhow",
+ "chrono",
  "proptest",
  "regex",
  "serde",
@@ -3390,6 +3391,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "tempfile",
@@ -3511,8 +3513,6 @@ dependencies = [
  "lettre",
  "mdns-sd",
  "modules-currency",
- "modules-sales",
- "modules-staff",
  "platform-core",
  "proptest",
  "rand 0.8.6",
@@ -5240,6 +5240,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -7390,6 +7391,22 @@ dependencies = [
  "thiserror 2.0.18",
  "url",
  "windows",
+ "zbus",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db817fe9295e19b7d8357e900af31edb93703dd9fb6de524b007b47b6afc63b0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "windows-sys 0.60.2",
  "zbus",
 ]
 

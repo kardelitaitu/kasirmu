@@ -233,6 +233,22 @@ impl AppState {
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| AppError::Internal(format!("enabling WAL: {e}")))?;
 
+        // ── Writability gate (fail loud, and say why) ─────────────────
+        // SQLite reports BOTH a lock held by another process and a permission that
+        // denies write with the same terse string — "attempt to write a readonly
+        // database" — and it surfaces from whichever statement happens to write
+        // first, historically the seed far below. Probing here names the database and
+        // the two real causes while the context is still local; `BEGIN IMMEDIATE` takes
+        // the write lock and `ROLLBACK` releases it without touching a row.
+        conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
+            .map_err(|e| {
+                AppError::Internal(format!(
+                    "the store database at {db_path:?} is not writable by this process ({e}). Either \
+                     another kasir.mu instance is already running (or a stale one still holds the \
+                     file), or this process lacks write permission on the file and its directory."
+                ))
+            })?;
+
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
 
