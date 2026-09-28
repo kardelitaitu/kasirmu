@@ -12632,6 +12632,25 @@ After the fix, the test passed cleanly and `cargo fmt` was applied.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 11: legacy stock bridge and location qty stop swallowing DB errors
+
+**Problem:** `Store::bridge_legacy_inventory_into_stock_summary_in_tx` and
+`Store::legacy_aware_location_qty` (`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs`)
+query `SELECT qty FROM inventory WHERE product_id = ?1` using `.ok()`. Any SQLite
+read/type-conversion/database error collapsed into `None`. In the legacy bridge, this silently
+skipped backfilling existing inventory into `stock_summary` with `Ok(())`. In location qty
+resolution, it caused current stock to be evaluated as 0, potentially overwriting legacy inventory
+upon stock adjustment.
+
+**Solution:** Replaced `.ok()` with `.optional()?` on both `inventory` query calls, ensuring
+database errors propagate as `Err(CoreError::Db)` instead of corrupting inventory calculations.
+
+**Verified:** Red first (`bridge_legacy_inventory_propagates_db_error_when_reading_inventory`
+panicked with `a database error reading legacy inventory must not silently be ignored: ()`).
+After `.optional()?`, the test passed, all 17 stock adjust tests passed, and formatting was clean.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
 
 
 

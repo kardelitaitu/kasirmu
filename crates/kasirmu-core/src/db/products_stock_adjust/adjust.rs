@@ -14,6 +14,7 @@
 //! recomputes the aggregate as the SUM over per-location rows.
 
 use super::*;
+use rusqlite::OptionalExtension;
 
 impl Store<'_> {
     /// Adjust stock with an explicit reason at a specific location (ADR-19 §3.1 canonical API).
@@ -119,7 +120,7 @@ impl Store<'_> {
                 rusqlite::params![product_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         match legacy_qty {
             Some(legacy) if legacy != 0 => {
                 let sku: String = self
@@ -412,7 +413,7 @@ impl Store<'_> {
                 rusqlite::params![product_id],
                 |row| row.get(0),
             )
-            .ok();
+            .optional()?;
         let legacy_qty = match legacy_qty {
             Some(q) if q != 0 => q,
             _ => return Ok(()),

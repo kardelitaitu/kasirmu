@@ -840,3 +840,27 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
         "chunked rebuild over {count} products took {elapsed:?}"
     );
 }
+
+#[test]
+fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
+    let conn = fresh();
+    let s = store(&conn);
+    let pid = seed_product(&conn, "SKU-LEGACY-BRIDGE");
+    seed_legacy_inventory(&conn, &pid, 50);
+
+    // Corrupt the inventory qty column with a blob so reading i64 fails
+    conn.execute(
+        "UPDATE inventory SET qty = X'FFFF' WHERE product_id = ?1",
+        params![&pid],
+    )
+    .unwrap();
+
+    let tx = conn.unchecked_transaction().unwrap();
+    let err = s
+        .bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &pid)
+        .expect_err("a database error reading legacy inventory must not silently be ignored");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}
