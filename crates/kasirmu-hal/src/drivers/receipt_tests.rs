@@ -684,4 +684,3 @@ fn sales_receipt_prints_faktur_pajak_when_present() {
         "receipt must print Faktur Pajak line: {text}"
     );
 }
-

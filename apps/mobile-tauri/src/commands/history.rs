@@ -509,11 +509,8 @@ pub async fn stamp_faktur_pajak_scoped(
         .map_err(|e| AppError::Internal(format!("store db lock: {e}")))?;
     let db = &*db_guard;
     let store = Store::new(&db);
-    let info = store.stamp_faktur_pajak(
-        &args.sale_id,
-        &args.nsfp,
-        args.kode_transaksi.as_deref(),
-    )?;
+    let info =
+        store.stamp_faktur_pajak(&args.sale_id, &args.nsfp, args.kode_transaksi.as_deref())?;
     Ok(info)
 }
 
