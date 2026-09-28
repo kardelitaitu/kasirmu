@@ -12,3 +12,7 @@
 
 pub use platform_core::rbac::builtin_roles;
 pub use platform_core::staff::{Role, User, UserId, seed_users};
+
+#[cfg(test)]
+#[path = "user_tests.rs"]
+mod tests;
