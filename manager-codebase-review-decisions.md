@@ -1,5 +1,10 @@
 # Owner Decisions - D1 to D11
 
+**Date:** 2026-09-24 (rulings); status surface reviewed 2026-09-29. **Version:** 0.0.40.
+**Status:** all eleven decisions are ruled — none is open. D10 is *partially* open by
+design: its A-vs-B choice is a commercial call the manager explicitly declined to make
+("it touches pricing copy, which I cannot see from the code").
+
 Companion to manager-codebase-review.md and manager-codebase-review-checklist.md. Each decision was analysed by a worker that traced the code before forming a view; every option below is priced against facts cited as file:line, and the recommendation is the manager's, not the analyst's. Three of these analyses **changed the review's own advice**, and those corrections are recorded at the end.
 
 **How to use this with the checklist.** A decision here unblocks a checklist item; the checklist tells you when it is done. D1 and D2 gate C1 and C7. D3 gates C26. D4 gates C9. D5 gates C8 (and decides whether C8 is a feature or a runbook). D6 gates C29. D7 gates C2. D8 gates C27. **D9 gates the rest of C32** - added during implementation, after three workers refused to stamp a tenant that does not exist on the desktop path. **D10 gates C36** - the locations quota axis (and the tier limit it publishes) is provably unenforceable. **D11 re-scopes C10b** - the briefed `CHECK (qty >= 0)` contradicts a shipped feature, so the item is now the CONDITIONAL guard plus the two dead comments, and the unconditional constraint is the artifact for the other branch.

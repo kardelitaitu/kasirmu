@@ -53,7 +53,7 @@ Ordered by merchant-visible consequence, not by how bad the code looks. The DEFE
 
 ### How to read the rest
 
-Remediation is tracked separately: manager-codebase-review-checklist.md records each item, its fence and its acceptance evidence as it lands, and manager-codebase-review-decisions.md holds the eight owner decisions. This document records what was found, not what has since been fixed - except where a fix revealed a finding this review had missed, which is marked inline.
+Remediation is tracked separately: manager-codebase-review-checklist.md records each item, its fence and its acceptance evidence as it lands, and manager-codebase-review-decisions.md holds the eleven owner decisions (D1-D11). This document records what was found, not what has since been fixed - except where a fix revealed a finding this review had missed, which is marked inline.
 
 Section 3 is a scorecard if you want one screen. Sections 4 through 14 are the evidence, grouped by axis, each ending with what is right as well as what is wrong. A tickable companion - one checkbox per remediation item, with its file fence, its acceptance check and a verification log - is at manager-codebase-review-checklist.md. Section 15 is the remediation plan with an acceptance check per item. Section 16 lists the decisions that are yours, not the code's. Section 17 states what this review could not determine, and section 14 holds four findings that arrived after the first draft - two of them P0 - together with what they changed., and the appendix records which headline claims were confirmed, refined, or downgraded after independent verification - including one that was over-claimed and corrected.
 
@@ -520,6 +520,22 @@ Two of these four findings are P0 and both outrank several items in the original
 
 ## 15. Prioritized remediation
 
+> **Reconciliation note · added 2026-09-29 · the findings above are unchanged; the ORDER and
+> two instructions below were corrected after the owner ruled.**
+> Read this list together with **manager-codebase-review-decisions.md**, which now holds
+> **D1–D11** (this section and §16 both still said D1–D8). Three reconciliations apply:
+> - **P0-1 and P0-2 are FIXED.** Both were re-verified against the tree on 2026-09-25 and
+>   their items are ticked in the checklist (C10 and C3). They stay listed below as the
+>   dated record of what was wrong, not as open work.
+> - **P0-1's `CHECK (qty >= 0)` instruction is WITHDRAWN** — it is the one instruction in this
+>   section that would have caused harm. **D11** reverses it: an unconditional constraint would
+>   silently re-enable the guard that `allow_negative_stock` exists to opt out of, breaking a
+>   shipped, ADR-documented, cashier-facing feature. The replacement is the CONDITIONAL guard
+>   plus the two dead comments; see D11 and checklist C10b. The "142 bare execute sites" figure
+>   under P1 is also superseded — §4.4's own re-derivation counted **131 sites across 12
+>   functions**.
+> - **P0-6's "cutover covers 30 tables" is 29**, per D2 and this file's own corrections section.
+
 Order matters: the transaction-mode change is small, sits behind an idiom already in the tree, and is the precondition that makes every later stock test meaningful. Never batch a schema change with the code that depends on it; RLS ships last and as a role/ops change, never as a schema edit. Never batch a schema change with the code that depends on it. RLS ships last and as a role/ops change, never as a schema edit.
 
 ### P0 - fix before the next release
@@ -545,7 +561,7 @@ Acceptance: a voided sale on a day does not change total_revenue, and the EOD he
 Acceptance: a store provisioned as Asia/Jakarta reports a 00:30 local sale on that local day, asserted by a test; and provisioning rejects or normalizes anything it cannot report on.
 
 **P0-6 (revised). Tenant isolation lands as a role change - and the role is currently a superuser.**
-Do **not** add FORCE ROW LEVEL SECURITY to the generated migration while the application still connects as the table owner: every query would return zero rows on deploy. But the role is the real blocker, and it is worse than a missing FORCE - the shipped PostgreSQL profile sets POSTGRES_USER and DATABASE_URL from the same variable (ops/docker/docker-compose.pg.yml:21, :39), which in the official image is the **superuser**, and superusers bypass RLS even with FORCE enabled (apps/cloud-server/src/db_tests.rs:710-713). Against that profile the cutover alone produces no enforcement. The sequence, per D2: create oz_app, grant DML, point DATABASE_URL at it **and** set OZ_APPLY_SCHEMA=0 in the same step, verify, keep FORCE as the documented follow-up, preserve both BYPASSRLS roles (rls-cutover.sql:126-158), and add a boot-time rolsuper / relforcerowsecurity assertion so the state is visible. The cutover covers 30 tables and its own comments disagree about the count (rls-cutover.sql:56, :195-205).
+Do **not** add FORCE ROW LEVEL SECURITY to the generated migration while the application still connects as the table owner: every query would return zero rows on deploy. But the role is the real blocker, and it is worse than a missing FORCE - the shipped PostgreSQL profile sets POSTGRES_USER and DATABASE_URL from the same variable (ops/docker/docker-compose.pg.yml:21, :39), which in the official image is the **superuser**, and superusers bypass RLS even with FORCE enabled (apps/cloud-server/src/db_tests.rs:710-713). Against that profile the cutover alone produces no enforcement. The sequence, per D2: create oz_app, grant DML, point DATABASE_URL at it **and** set OZ_APPLY_SCHEMA=0 in the same step, verify, keep FORCE as the documented follow-up, preserve both BYPASSRLS roles (rls-cutover.sql:126-158), and add a boot-time rolsuper / relforcerowsecurity assertion so the state is visible. The cutover covers 29 tables (this line said 30 until 2026-09-29; D2 and this file's own corrections section both record 29 — 34 before the four writerless tables and `user_location_access` moved to `RLS_EXEMPT`) and its own comments disagree about the count (rls-cutover.sql:56, :195-205).
 Acceptance: a tenant-table query without the tenant GUC returns zero rows and a write is rejected; a query with the GUC returns only that tenant's rows; and the boot assertion warns loudly when the connected role is the owner or a superuser.
 
 **P0-7 (revised). Default to a real at-rest key - but fix the reader first.**
@@ -579,7 +595,7 @@ Acceptance: a forced panic in a command body makes the caller receive Err rather
 - **The two-total sale**: decide whether tip and service belong in sales.total_minor or only in payments, and make validate_payment_splits_cover_total compare like with like. One sale, one total.
 - **Split-tender cash**: derive expected_cash from the payments table rather than from the payment_method stamp, so the drawer and the shift report tell the same story; attribute refunds to refunds.processed_by, not to the original sale's seller.
 - **IPC gate debt**: delete the renderer-supplied user_id variant of settings::set_setting in favour of the scoped twin; gate create_backup or document it as a deliberate unauthenticated filesystem write; drive the two generated ledgers down deliberately instead of raising the ceilings.
-- **Autocommit writes**: wrap the 142 bare execute sites on money paths, and make update_sale_status a conditional update inside a transaction like void_sale already is.
+- **Autocommit writes**: wrap the bare execute sites on money paths (this said "142" until 2026-09-29; §4.4 re-derived **131 sites across 12 functions** — quote that number, not this one), and make update_sale_status a conditional update inside a transaction like void_sale already is.
 - **Conflict enforcement**: either consume Decision::LastWriterWins and Decision::AutoMerge or stop computing them; add sale to the money-entity test so a completed sale stops classifying as low-severity catalog metadata; and write the 'delivering' state the CHECK constraint already allows.
 - **Gift-card numbers**: encrypt or mask card_number, which rides every plaintext snapshot today.
 - **Base-currency reporting**: make reports read base_total_minor so an owner has a total that can be added across currencies, and fix menu_engineering, which currently adds currencies together on a live screen.
@@ -598,7 +614,7 @@ Flip RLS from ENABLE to FORCE while the app connects as the owner. Hand-edit the
 
 ## 16. Parked decisions for the owner
 
-Each of these is now analysed in **manager-codebase-review-decisions.md** (D1-D8), with the deciding facts, the options priced against them, what would change the answer, and a recommendation. Two of those analyses changed this review's own advice: D1 showed that requiring the master key at boot would destroy data, and D2 showed that the shipped PostgreSQL profile connects as a superuser, where FORCE is a no-op.
+Each of these is now analysed in **manager-codebase-review-decisions.md** (D1-D11; this line said D1-D8 until 2026-09-29), with the deciding facts, the options priced against them, what would change the answer, and a recommendation. Two of those analyses changed this review's own advice: D1 showed that requiring the master key at boot would destroy data, and D2 showed that the shipped PostgreSQL profile connects as a superuser, where FORCE is a no-op.
 
 These are irreversible, deployment-dependent, or genuinely the owner's call. Nothing here blocks the reversible work above.
 
