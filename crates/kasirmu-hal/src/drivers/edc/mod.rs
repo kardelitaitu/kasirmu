@@ -24,10 +24,10 @@ pub mod protocol;
 pub mod wired;
 pub mod wireless;
 
+pub use loopback::{EdcBehaviour, LoopbackEdcTerminal};
 pub use protocol::{
     ProtocolCodec, ProtocolMessage, ingenico::IngenicoCodec, pax::PaxCodec, verifone::VerifoneCodec,
 };
-pub use loopback::{EdcBehaviour, LoopbackEdcTerminal};
 pub use wired::WiredEdcTerminal;
 pub use wireless::{WirelessEdcTerminal, WirelessTarget};
 

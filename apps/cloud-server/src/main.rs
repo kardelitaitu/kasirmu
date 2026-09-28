@@ -26,7 +26,6 @@
 // spec's `paths` object is one long literal (exchange-rates endpoints,
 // 2026-08-31, pushed it past the default 128).
 #![recursion_limit = "512"]
-
 // P2-6: the crate has no production `unsafe` — the only occurrences are
 // `std::env::set_var`/`remove_var` calls in `db_tests.rs`, which are unsafe
 // since Rust 2024 and are TEST-ONLY. A crate-level deny therefore holds for

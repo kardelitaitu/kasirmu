@@ -106,7 +106,10 @@ fn terminal_debug_keeps_none_distinguishable_from_a_redacted_secret() {
         "an unset secret must render as None: {absent}"
     );
 
-    let present = format!("{:?}", Terminal::new("POS-1", "dev-1").with_secret("s3cret"));
+    let present = format!(
+        "{:?}",
+        Terminal::new("POS-1", "dev-1").with_secret("s3cret")
+    );
     assert!(
         present.contains("terminal_secret: Some(\"<redacted>\")"),
         "a set secret must render redacted, not as None: {present}"

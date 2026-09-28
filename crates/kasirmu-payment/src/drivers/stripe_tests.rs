@@ -53,7 +53,9 @@ async fn stripe_refund_omits_a_blank_idempotency_key() {
         .mount(&server2)
         .await;
     let proc2 = StripePaymentProcessor::new_with_endpoint(&test_key(), &server2.uri(), false);
-    let _ = proc2.refund("pi_1", Some(amount), Some("refund-key-1")).await;
+    let _ = proc2
+        .refund("pi_1", Some(amount), Some("refund-key-1"))
+        .await;
     let reqs2 = server2.received_requests().await.unwrap();
     assert_eq!(
         reqs2[0]

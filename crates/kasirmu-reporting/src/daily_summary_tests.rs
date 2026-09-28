@@ -78,14 +78,22 @@ fn deleted_product_still_appears_in_product_reports() {
         .unwrap();
 
     let top = query_top_products(&conn, "2026-03-01", "2026-03-31", 10).unwrap();
-    assert_eq!(top.len(), 1, "a deleted product must keep its sales history");
+    assert_eq!(
+        top.len(),
+        1,
+        "a deleted product must keep its sales history"
+    );
     assert_eq!(top[0].sku, "SKU-GONE");
     assert_eq!(top[0].name, "SKU-GONE", "name falls back to the SKU");
     assert_eq!(top[0].total_revenue_minor, 3000);
 
     let menu =
         crate::menu_engineering::query_menu_engineering(&conn, "2026-03-01", "2026-03-31").unwrap();
-    assert_eq!(menu.rows.len(), 1, "menu engineering must keep the history too");
+    assert_eq!(
+        menu.rows.len(),
+        1,
+        "menu engineering must keep the history too"
+    );
     assert_eq!(menu.rows[0].sku, "SKU-GONE");
     assert_eq!(menu.rows[0].total_revenue_minor, 3000);
 

@@ -147,8 +147,7 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => {
                 if guard.probe_in_flight {
                     return Err(PaymentError::Network(
-                        "circuit breaker is half-open with a probe in flight (failing fast)"
-                            .into(),
+                        "circuit breaker is half-open with a probe in flight (failing fast)".into(),
                     ));
                 }
                 guard.probe_in_flight = true;
@@ -365,10 +364,9 @@ fn policy_for_key(key: Option<&str>) -> RetryPolicy {
 #[async_trait]
 impl PaymentProcessor for ResilientProcessor {
     async fn authorize(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(
-            policy_for_key(request.idempotency_key.as_deref()),
-            || self.inner.authorize(request),
-        )
+        self.execute_with_resilience(policy_for_key(request.idempotency_key.as_deref()), || {
+            self.inner.authorize(request)
+        })
         .await
     }
 
@@ -384,10 +382,9 @@ impl PaymentProcessor for ResilientProcessor {
     }
 
     async fn sale(&self, request: &PaymentRequest) -> Result<PaymentResult, PaymentError> {
-        self.execute_with_resilience(
-            policy_for_key(request.idempotency_key.as_deref()),
-            || self.inner.sale(request),
-        )
+        self.execute_with_resilience(policy_for_key(request.idempotency_key.as_deref()), || {
+            self.inner.sale(request)
+        })
         .await
     }
 
@@ -405,19 +402,15 @@ impl PaymentProcessor for ResilientProcessor {
 
     async fn void(&self, transaction_id: &str) -> Result<PaymentResult, PaymentError> {
         // Single-shot for the same reason as `capture`: no key parameter exists.
-        self.execute_with_resilience(RetryPolicy::SingleShot, || {
-            self.inner.void(transaction_id)
-        })
-        .await
+        self.execute_with_resilience(RetryPolicy::SingleShot, || self.inner.void(transaction_id))
+            .await
     }
 
     async fn receipt(&self, transaction_id: &str) -> Result<PaymentReceipt, PaymentError> {
         // A receipt is a read. Retrying it cannot move money, so the policy is
         // Keyed rather than SingleShot purely to keep the retry budget available.
-        self.execute_with_resilience(RetryPolicy::Keyed, || {
-            self.inner.receipt(transaction_id)
-        })
-        .await
+        self.execute_with_resilience(RetryPolicy::Keyed, || self.inner.receipt(transaction_id))
+            .await
     }
 
     fn device_info(&self) -> DeviceInfo {

@@ -106,9 +106,12 @@ async fn render_is_reachable_without_holding_the_db_lock() {
     let bundle = {
         let conn = db.lock().await;
         let store = Store::new(&conn);
-        let bundle =
-            kasirmu_core::export::email_sender::load_analytics_bundle(&store, &schedule, "Test Store")
-                .expect("analytics bundle loads from a fresh database");
+        let bundle = kasirmu_core::export::email_sender::load_analytics_bundle(
+            &store,
+            &schedule,
+            "Test Store",
+        )
+        .expect("analytics bundle loads from a fresh database");
         drop(store);
         drop(conn);
         bundle

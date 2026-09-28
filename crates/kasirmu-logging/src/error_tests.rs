@@ -48,6 +48,9 @@ fn is_send_sync() {
 #[test]
 fn variants_are_distinct() {
     let a = format!("{:?}", LoggingError::InvalidLevel("x".into()));
-    let b = format!("{:?}", LoggingError::LogDirUnusable(std::io::Error::other("x")));
+    let b = format!(
+        "{:?}",
+        LoggingError::LogDirUnusable(std::io::Error::other("x"))
+    );
     assert_ne!(a, b);
 }

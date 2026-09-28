@@ -38,9 +38,7 @@ next: none | perf: N/A
 // The shared OpenAPI document (`spec.rs`) is one deeply-nested `json!`
 // literal — same requirement as `apps/cloud-server` (main.rs).
 #![deny(unsafe_code)]
-
 #![recursion_limit = "512"]
-
 // `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
 // that lint. Several public items in this crate document their behaviour by
 // naming the private helper that enforces it — which is more useful to a

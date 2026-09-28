@@ -146,8 +146,7 @@ fn create_customer_dto_minimal() {
 
 #[test]
 fn create_customer_dto_full() {
-    let json =
-        r#"{"name":"Bob","email":"bob@example.com","phone":"+6281234567890","notes":"VIP"}"#;
+    let json = r#"{"name":"Bob","email":"bob@example.com","phone":"+6281234567890","notes":"VIP"}"#;
     let dto: CreateCustomerDto = serde_json::from_str(json).unwrap();
     assert_eq!(dto.email, Some("bob@example.com".into()));
     assert_eq!(dto.phone, Some("+6281234567890".into()));

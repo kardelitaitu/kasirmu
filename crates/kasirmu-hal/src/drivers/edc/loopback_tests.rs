@@ -50,7 +50,10 @@ async fn decline_returns_an_unsuccessful_result_not_an_error() {
     let r = t.sale(idr(15000)).await.expect("a decline is an answer");
     assert!(!r.success);
     assert_eq!(r.message, "insufficient funds");
-    assert!(r.transaction_id.is_none(), "a declined sale has no transaction");
+    assert!(
+        r.transaction_id.is_none(),
+        "a declined sale has no transaction"
+    );
 }
 
 /// The terminal goes quiet AFTER the charge — the case that must not be
@@ -131,8 +134,14 @@ async fn script_runs_in_order_so_a_cancel_follows_the_timeout_it_cancels() {
         vec![EdcBehaviour::TimeoutAfterCharge, EdcBehaviour::Approve],
         EdcBehaviour::Approve,
     );
-    assert!(matches!(t.sale(idr(15000)).await, Err(HalError::Timeout(_))));
-    let void = t.void("LOOPBACK-0001").await.expect("void reaches the terminal");
+    assert!(matches!(
+        t.sale(idr(15000)).await,
+        Err(HalError::Timeout(_))
+    ));
+    let void = t
+        .void("LOOPBACK-0001")
+        .await
+        .expect("void reaches the terminal");
     assert!(void.success);
     assert_eq!(t.attempts(), 2, "both operations consumed a scripted step");
 }
@@ -155,10 +164,7 @@ async fn script_drains_then_default_applies() {
 #[tokio::test]
 async fn capture_and_refund_require_a_transaction_id() {
     let t = LoopbackEdcTerminal::new();
-    assert!(matches!(
-        t.capture("").await,
-        Err(HalError::Unsupported(_))
-    ));
+    assert!(matches!(t.capture("").await, Err(HalError::Unsupported(_))));
     assert!(matches!(
         t.refund("", None).await,
         Err(HalError::Unsupported(_))
@@ -184,9 +190,5 @@ async fn receipt_is_raw_bytes_for_the_transaction() {
 async fn status_is_always_ready_and_not_scriptable() {
     let t = LoopbackEdcTerminal::with_script(vec![EdcBehaviour::Offline], EdcBehaviour::Approve);
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
-    assert_eq!(
-        t.attempts(),
-        0,
-        "status must not consume a scripted step"
-    );
+    assert_eq!(t.attempts(), 0, "status must not consume a scripted step");
 }

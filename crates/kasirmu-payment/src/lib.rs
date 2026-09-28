@@ -5,7 +5,6 @@ findings: 0 unsafe blocks (#![deny(unsafe_code)] at crate root). mock.rs lock().
 next: none for PAY-2/PAY-3/PAY-4 (all closed above; see PAY-C). Genuinely open in this crate: webhook.rs verifiers are a fail-closed stub (PAY-11) and registry.rs build_from_config is a PLANNED stub (PAY-12) — both are deliberate, both fail closed, neither is a correctness hole. | perf: HTTP async/tokio; mock in-memory atomics
 */
 #![deny(unsafe_code)]
-
 // `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY that
 // lint. `QrisProcessor::capture` documents its per-call poll budget by naming
 // the private constants that define it (`MAX_POLL_ATTEMPTS`,

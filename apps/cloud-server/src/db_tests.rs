@@ -780,7 +780,9 @@ async fn pg_integration_rls_force_blocks_owner() {
                 #[cfg(not(feature = "pg-tests"))]
                 return;
                 #[cfg(feature = "pg-tests")]
-                panic!("PG test enabled but the resource is unreachable - see the skip message above");
+                panic!(
+                    "PG test enabled but the resource is unreachable - see the skip message above"
+                );
             }
         };
         let admin = admin_pool

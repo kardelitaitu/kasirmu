@@ -395,7 +395,13 @@ fn menu_quadrant_recommendation_strings_stable() {
 /// single-currency by construction, and this test needs one product sold
 /// in two currencies in the same period — the exact shape that used to be
 /// summed together.
-fn seed_sale_with_line(conn: &Connection, sale_id: &str, sku: &str, currency: &str, line_minor: i64) {
+fn seed_sale_with_line(
+    conn: &Connection,
+    sale_id: &str,
+    sku: &str,
+    currency: &str,
+    line_minor: i64,
+) {
     conn.execute(
         "INSERT INTO sales (id, total_minor, currency, line_count, status, created_at, updated_at, subtotal_minor, tax_total_minor)
          VALUES (?1, ?2, ?3, 1, 'completed', '2026-07-10T10:00:00.000Z', '2026-07-10T10:00:00.000Z', ?2, 0)",

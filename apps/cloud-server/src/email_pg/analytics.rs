@@ -136,7 +136,11 @@ pub async fn export_analytics_bundle_pg(
 
 /// Compute revenue profit fields from a row (shared by the daily/weekly/
 /// monthly queries — same arithmetic as `kasirmu_core::db::reports`).
-fn revenue_profit_fields(total_minor: i64, cogs_minor: i64, refund_minor: i64) -> (i64, i64, i64, f64) {
+fn revenue_profit_fields(
+    total_minor: i64,
+    cogs_minor: i64,
+    refund_minor: i64,
+) -> (i64, i64, i64, f64) {
     // REP-08 parity with kasirmu_core::db::reports: `cogs_minor` arrives already
     // net of the returned goods' cost, so profit must be measured against
     // revenue net of the refunds. Using the gross total would add the refund

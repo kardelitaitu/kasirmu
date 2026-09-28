@@ -84,7 +84,6 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! ```
 
 #![deny(unsafe_code)]
-
 // `rustdoc::private_intra_doc_links` is allowed crate-wide here, and ONLY
 // that lint. Several public items in this crate document their behaviour by
 // naming the private helper that enforces it — which is more useful to a

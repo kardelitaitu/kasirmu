@@ -325,7 +325,8 @@ fn test_tamper_detection_rejects_altered_fields() {
         .amount("50000")
         .build()
         .unwrap()
-        .to_qris_string().unwrap();
+        .to_qris_string()
+        .unwrap();
 
     assert!(is_valid_qris(&valid_dynamic));
 

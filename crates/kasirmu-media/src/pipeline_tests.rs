@@ -29,7 +29,12 @@ fn transform_produces_original_plus_thumbnails() {
     let src = source_image();
 
     let variants = pipeline
-        .transform("photo.png", &src, CropMode::TrimBorders, None, ImageFormat::Jpeg,
+        .transform(
+            "photo.png",
+            &src,
+            CropMode::TrimBorders,
+            None,
+            ImageFormat::Jpeg,
             Quality::Medium,
             &[ThumbnailPreset::Small, ThumbnailPreset::Large],
         )
@@ -77,7 +82,12 @@ fn transform_rejects_oversized_input() {
     let storage = LocalStorage::new("/tmp/media");
     let pipeline = MediaPipeline::new(storage);
     let big = vec![0u8; 21 * 1024 * 1024]; // > 20 MiB default limit.
-    let result = pipeline.transform("big.bin", &big, CropMode::TrimBorders, None, ImageFormat::Jpeg,
+    let result = pipeline.transform(
+        "big.bin",
+        &big,
+        CropMode::TrimBorders,
+        None,
+        ImageFormat::Jpeg,
         Quality::Low,
         &[],
     );
@@ -185,7 +195,12 @@ fn transform_rejects_dimensions_over_max_side() {
     };
     let pipeline = MediaPipeline::with_limits(storage, limits);
     let err = pipeline
-        .transform("bomb.png", &source_image(), CropMode::TrimBorders, None, ImageFormat::Jpeg,
+        .transform(
+            "bomb.png",
+            &source_image(),
+            CropMode::TrimBorders,
+            None,
+            ImageFormat::Jpeg,
             Quality::Medium,
             &[],
         )
@@ -207,7 +222,12 @@ fn transform_rejects_pixel_count_over_max_pixels() {
     };
     let pipeline = MediaPipeline::with_limits(storage, limits);
     let err = pipeline
-        .transform("bomb.png", &source_image(), CropMode::TrimBorders, None, ImageFormat::Jpeg,
+        .transform(
+            "bomb.png",
+            &source_image(),
+            CropMode::TrimBorders,
+            None,
+            ImageFormat::Jpeg,
             Quality::Medium,
             &[],
         )

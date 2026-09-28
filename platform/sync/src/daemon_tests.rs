@@ -58,7 +58,10 @@ where
 
 /// Wait for the daemon to have completed at least one cycle.
 async fn wait_for_first_cycle(daemon: &SyncDaemon) {
-    wait_for_daemon(daemon, "a completed first cycle", |s| s.last_sync_at.is_some()).await;
+    wait_for_daemon(daemon, "a completed first cycle", |s| {
+        s.last_sync_at.is_some()
+    })
+    .await;
 }
 
 /// Wait for the daemon to be fully stopped, rather than assuming `stop()`

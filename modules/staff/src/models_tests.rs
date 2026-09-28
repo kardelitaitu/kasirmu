@@ -9,8 +9,8 @@ use super::*;
 
 #[test]
 fn permission_keys_returns_verbatim_grants() {
-    let role = Role::new("role-x", "X")
-        .with_permissions_json(r##"["sales:process", "analytics:view"]"##);
+    let role =
+        Role::new("role-x", "X").with_permissions_json(r##"["sales:process", "analytics:view"]"##);
     assert_eq!(
         role.permission_keys(),
         vec!["sales:process", "analytics:view"]
@@ -206,7 +206,12 @@ fn user_deserialization_requires_pin_hash() {
 /// depending on the layer above.
 #[test]
 fn user_debug_redacts_the_pin_hash() {
-    let user = User::new("admin", "$argon2id$v=19$m=19456,t=2,p=1$SALT$HASH", "Admin", "r");
+    let user = User::new(
+        "admin",
+        "$argon2id$v=19$m=19456,t=2,p=1$SALT$HASH",
+        "Admin",
+        "r",
+    );
 
     let out = format!("{user:?}");
     assert!(
@@ -219,7 +224,10 @@ fn user_debug_redacts_the_pin_hash() {
     );
     assert!(out.contains("User"), "type name must print: {out}");
     assert!(out.contains("admin"), "username must still print: {out}");
-    assert!(out.contains("Admin"), "display_name must still print: {out}");
+    assert!(
+        out.contains("Admin"),
+        "display_name must still print: {out}"
+    );
 }
 
 #[test]

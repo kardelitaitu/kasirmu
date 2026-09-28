@@ -160,11 +160,7 @@ async fn fallback_chain_continues_past_an_unimplemented_processor() {
     assert!(res.success);
     // The distinguishing evidence: the chain REACHED both, so it neither
     // stopped at the stub nor skipped past a working member.
-    assert_eq!(
-        stub_mock.authorize_calls(),
-        1,
-        "the stub was tried first"
-    );
+    assert_eq!(stub_mock.authorize_calls(), 1, "the stub was tried first");
 }
 
 /// A DECLINED card stops the chain, and that is the other half of the same rule.
@@ -237,7 +233,9 @@ async fn chain_escalates_past_a_processor_whose_breaker_is_open() {
     let reg = PaymentProcessorRegistry::new();
 
     let inner: Arc<dyn crate::PaymentProcessor> = Arc::new(
-        MockPaymentProcessor::builder().simulate_timeout(true).build(),
+        MockPaymentProcessor::builder()
+            .simulate_timeout(true)
+            .build(),
     );
     let config = crate::resilience::ResilientProcessorConfig {
         max_retries: 0,

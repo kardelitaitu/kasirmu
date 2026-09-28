@@ -50,7 +50,10 @@ fn sandbox_removes_coroutine_so_the_instruction_limit_holds() {
 fn main_thread_still_aborts_past_the_instruction_limit() {
     let lua = runtime();
     let result = lua.load_str("local x = 0 for i = 1, 200000 do x = x + 1 end result = x");
-    assert!(result.is_err(), "the main-thread instruction limit must hold");
+    assert!(
+        result.is_err(),
+        "the main-thread instruction limit must hold"
+    );
 }
 
 fn runtime() -> LuaRuntime {

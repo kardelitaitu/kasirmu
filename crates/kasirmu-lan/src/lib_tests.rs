@@ -11,7 +11,13 @@ use super::*;
 /// an unparseable hostname must both fail closed.
 #[test]
 fn bind_addr_is_loopback_accepts_only_real_loopback() {
-    for ok in ["127.0.0.1:9180", "127.0.0.1", "localhost:9180", "[::1]:9180", "::1"] {
+    for ok in [
+        "127.0.0.1:9180",
+        "127.0.0.1",
+        "localhost:9180",
+        "[::1]:9180",
+        "::1",
+    ] {
         assert!(bind_addr_is_loopback(ok), "{ok} must count as loopback");
     }
     for not_ok in [
@@ -29,7 +35,6 @@ fn bind_addr_is_loopback_accepts_only_real_loopback() {
         );
     }
 }
-
 
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;

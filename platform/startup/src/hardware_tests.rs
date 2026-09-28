@@ -396,8 +396,14 @@ async fn default_does_not_move_when_the_caller_passes_rows_unordered() {
     let b = DriverRegistry::default();
     register_card_terminals(&b, &backward).await;
 
-    let bound_a = a.terminal(DEFAULT_TERMINAL_ID).await.expect("default (forward)");
-    let bound_b = b.terminal(DEFAULT_TERMINAL_ID).await.expect("default (backward)");
+    let bound_a = a
+        .terminal(DEFAULT_TERMINAL_ID)
+        .await
+        .expect("default (forward)");
+    let bound_b = b
+        .terminal(DEFAULT_TERMINAL_ID)
+        .await
+        .expect("default (backward)");
     assert_eq!(
         bound_a.device_info().serial,
         bound_b.device_info().serial,

@@ -353,7 +353,10 @@ async fn probe_success_closes_and_probe_failure_reopens() {
     let success = CircuitBreaker::new(1, Duration::from_millis(20));
     success.record_failure(true).await;
     tokio::time::sleep(Duration::from_millis(30)).await;
-    assert!(success.allow_request().await.is_ok(), "the probe is admitted");
+    assert!(
+        success.allow_request().await.is_ok(),
+        "the probe is admitted"
+    );
     success.record_success().await;
     assert_eq!(success.state().await, CircuitState::Closed);
     assert!(
@@ -366,7 +369,10 @@ async fn probe_success_closes_and_probe_failure_reopens() {
     let failed = CircuitBreaker::new(1, Duration::from_millis(20));
     failed.record_failure(true).await;
     tokio::time::sleep(Duration::from_millis(30)).await;
-    assert!(failed.allow_request().await.is_ok(), "the probe is admitted");
+    assert!(
+        failed.allow_request().await.is_ok(),
+        "the probe is admitted"
+    );
     failed.record_failure(true).await;
     assert_eq!(failed.state().await, CircuitState::Open);
     assert!(
