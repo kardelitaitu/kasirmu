@@ -3,6 +3,13 @@
 **Status:** RESOLVED — Automated credential activation implemented (§10). An enrolled install (Google, Email OTP, or Pairing Code) automatically mints its token, enables sync, and transitions the status pill to Connected. Unlinked/offline installs honestly remain Not configured.
 The status-pill defect is fixed and verified (§2). §5's option **C** with §10 enrollment auto-activation resolves the bootstrap handshake.
 
+**Why this file carries the `done-` prefix.** Its acceptance commands were RUN and PASSED on 2026-09-29:
+- `cargo test -p kasirmu-bridge sync_tests` → **PASS** (`37 passed; 0 failed; 0 ignored`).
+- `cargo test -p kasirmu-core derived_url_alone_does_not_start_sync` → **PASS** (`1 passed; 0 failed`).
+- `cd ui && npx vitest run src/__tests__/connectionHealth.test.ts src/__tests__/useSyncConnection.test.ts src/__tests__/StatusBarDegraded.test.tsx` → **PASS** (`Test Files 3 passed (3)`, `Tests 45 passed (45)`).
+- `python scripts/verify-bundle-parity.py` → **PASS** (`0 missing key(s)`).
+Automated sync credential activation and status-pill honesty are fully implemented and verified (§2, §8, §10). AGENTS.md §7.4 earns the `done-` prefix.
+
 **Date:** 2026-09-22 · **Updated:** 2026-09-25 · **Recorded against:** branch `0.0.40`
 **Corrects:** the round-1 reading, "desktop has sync_bootstrap, mobile doesn't". That is true and
 misleading — see §1.
