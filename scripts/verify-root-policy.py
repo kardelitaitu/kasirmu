@@ -77,6 +77,17 @@ ROOT_FILE_ALLOWLIST = frozenset({
     # which writes it at the repo root by design (its own `REPORT` constant).
     # Nothing here is committed; like `.env`, it is sanctioned tool state.
     "skill-drift-report.md",
+    # The codebase-memory MCP indexes the workspace with its path sanitised into the
+    # filename, so this checkout's two indexes land here. Gitignored derived tool state,
+    # the same class as skill-drift-report.md above, and settled 2026-09-28 by naming them
+    # rather than by deleting a 210 MB index or teaching the gate a pattern it refuses.
+    "C-dev-kasirmu.db",
+    "C-dev-encapsule.db",
+    # Owner plan docs that earned their `done-` rename; same class as the done-todo-*
+    # names above, added when the sweep caught them (2026-09-28).
+    "done-mobile-setupwizard.md",
+    "done-todo-codebase-reliability.md",
+    "done-todo-open-debt-agents-1.md",
 })
 
 # Directories the empty-dir sweep must not descend into. `.git` is git's own;

@@ -230,6 +230,9 @@ if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2
     else
         echo -e "${YELLOW}⚠ cargo llvm-cov could not complete (a failing test aborts it) — floors NOT checked${NC}"
     fi
+    # The probe is a byproduct, not an artifact: leaving it behind makes the root-policy
+    # gate red on a file this script wrote itself (measured 2026-09-28).
+    rm -f coverage-probe.json
 else
     echo -e "${YELLOW}⚠ cargo-llvm-cov or llvm-cov not installed — coverage floors NOT checked${NC}"
 fi
