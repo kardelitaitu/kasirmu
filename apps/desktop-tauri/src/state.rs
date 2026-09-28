@@ -247,21 +247,9 @@ impl AppState {
         // frames on the next open.
         let mut conn = open_store_connection(&db_path)?;
 
-        // ── Writability gate (fail loud, and say why) ─────────────────
-        // SQLite reports BOTH a lock held by another process and a permission that
-        // denies write with the same terse string — "attempt to write a readonly
-        // database" — and it surfaces from whichever statement happens to write
-        // first, historically the seed far below. Probing here names the database and
-        // the two real causes while the context is still local; `BEGIN IMMEDIATE` takes
-        // the write lock and `ROLLBACK` releases it without touching a row.
-        conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
-            .map_err(|e| {
-                AppError::Internal(format!(
-                    "the store database at {db_path:?} is not writable by this process ({e}). Either \
-                     another kasir.mu instance is already running (or a stale one still holds the \
-                     file), or this process lacks write permission on the file and its directory."
-                ))
-            })?;
+        // The writability gate (`BEGIN IMMEDIATE; ROLLBACK;`) runs inside
+        // `open_store_connection`, not here. See that function for why it has
+        // to be part of the retried sequence rather than a probe out here.
 
         migrations::run(&mut conn)
             .map_err(|e| AppError::Internal(format!("running migrations: {e}")))?;
@@ -834,6 +822,10 @@ pub(crate) fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("kasir.db"))
 }
 
+/// Step name reported for a failure of the `BEGIN IMMEDIATE` probe, so the
+/// caller can render the fuller "not writable by this process" explanation.
+const WRITABILITY_STEP: &str = "taking the write lock on";
+
 /// One attempt at opening the store database at `db_path`.
 ///
 /// Returns the failing step beside the underlying `rusqlite` error so the
@@ -860,6 +852,20 @@ fn open_store_connection_once(
         conn.pragma_update(None, "journal_mode", "WAL")
             .map_err(|e| ("enabling WAL on", e))?;
     }
+
+    // ── Writability probe ─────────────────────────────────────────────
+    // `BEGIN IMMEDIATE` takes the write lock and `ROLLBACK` releases it
+    // without touching a row. It belongs INSIDE the retried sequence, not
+    // after it: on a database whose header already says WAL — the normal
+    // case here — the journal-mode transition above is skipped, so this is
+    // the first statement that touches the database for writing and therefore
+    // the first one to create the `-shm` / `-wal` sidecars. That makes it the
+    // first statement to fail with SQLITE_CANTOPEN when a killed predecessor
+    // still holds a mapping on them — measured 2026-09-28, where the setup
+    // hook died on exactly this line with "unable to open database file".
+    conn.execute_batch("BEGIN IMMEDIATE; ROLLBACK;")
+        .map_err(|e| (WRITABILITY_STEP, e))?;
+
     Ok(conn)
 }
 
@@ -909,6 +915,21 @@ fn open_store_connection(db_path: &std::path::Path) -> Result<Connection, AppErr
 
     // INVARIANT: the loop returns on success and records every failure, so one exists here.
     let (step, e) = last.expect("a failed open records its error before the loop ends");
+
+    // A write-lock failure gets the operator-facing wording rather than the
+    // terse step name. SQLite reports a lock held by another process and a
+    // permission that denies write with the same terse string, so the message
+    // has to name both real causes: this is what someone reads off a console
+    // when the till will not boot, and it has to say what to do next.
+    if step == WRITABILITY_STEP {
+        return Err(AppError::Internal(format!(
+            "the store database at {db_path:?} is not writable by this process ({e}). Either \
+             another kasir.mu instance is already running (or a stale one still holds the \
+             file), or this process lacks write permission on the file and its directory. \
+             ({ATTEMPTS} attempts with stale -shm cleanup)"
+        )));
+    }
+
     Err(AppError::Internal(format!(
         "{step} {db_path:?}: {e} (after {ATTEMPTS} attempts with stale -shm cleanup)"
     )))
