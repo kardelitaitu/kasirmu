@@ -336,13 +336,14 @@ export default function SalesHistoryScreen() {
   // ── Client-side filtering + sorting ────────────────────────────
   const filteredSales = useMemo(() => {
     const filtered = sales.filter((s) => {
-      // Text search: match against sale ID, payment method, or user_id.
+      // Text search: match against sale ID, displayCode, payment method, or user_id.
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const idMatch = s.id.toLowerCase().includes(q);
+        const codeMatch = (s.displayCode ?? '').toLowerCase().includes(q);
         const pmMatch = (s.paymentMethod ?? '').toLowerCase().includes(q);
         const uidMatch = (s.userId ?? '').toLowerCase().includes(q);
-        if (!idMatch && !pmMatch && !uidMatch) return false;
+        if (!idMatch && !codeMatch && !pmMatch && !uidMatch) return false;
       }
 
       // Status filter.
