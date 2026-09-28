@@ -39,8 +39,8 @@ layers. That was found while writing the adversarial tests below, and no
 single-layer test would have shown it.
 
 **Enforced by:**
-- `modules/inventory/src/models_tests.rs:318` — `inventory_new_rejects_negative_qty`
-- `modules/inventory/src/models_proptests.rs:163` — `inventory_rejects_negative_qty_at_construction` (property: any `qty` in `i64::MIN..0` panics)
+- `foundation/src/inventory_tests.rs:311` — `inventory_new_rejects_negative_qty`
+- `foundation/src/inventory_proptests.rs:167` — `inventory_rejects_negative_qty_at_construction` (property: any `qty` in `i64::MIN..0` panics)
 - `platform/sync/tests/adversarial_paths.rs` — `two_locations_overselling_the_same_stock_contain_the_overspend` (two partitioned devices sell 30 of 50 each; the pair converges at 20, having REFUSED the other's duplicate deduction)
 - `crates/kasirmu-core/src/db/products_tests.rs:2628` — `negative_stock_event_fires_when_allow_negative_enabled` (pins the OPT-IN path, so the conditional clause above is tested rather than merely documented)
 
