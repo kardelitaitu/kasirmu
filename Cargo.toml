@@ -119,11 +119,6 @@ tauri-plugin-fs = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-opener = "2"
-# A second launch must exit BEFORE it creates a WebView2 profile or opens the store
-# database. Without the guard the two processes race for `EBWebView` and `kasir.db`,
-# and the loser reports "resource is in use" and then "attempt to write a readonly
-# database" — two symptoms with one cause.
-tauri-plugin-single-instance = "2"
 # Android-only JNI bridge for the HAL Bluetooth transport (kasirmu-hal); the
 # version is already resolved in Cargo.lock via tauri's own Android path.
 jni = "0.21"

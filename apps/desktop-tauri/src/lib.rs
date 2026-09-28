@@ -123,19 +123,11 @@ pub fn run() {
     let _ = kasirmu_logging::try_init();
 
     let result: Result<(), AppError> = tauri::Builder::default()
-        // FIRST, deliberately: `tauri-plugin-single-instance` must be registered before any
-        // other plugin so a second launch exits here. Without it two processes race for the
-        // same `EBWebView` profile and the same `kasir.db`, and the loser reports
-        // `WebView2 error ... "The requested resource is in use."` before dying in the setup
-        // hook below with `seeding primary store: attempt to write a readonly database`.
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            // A second launch is a request to see the running app, not to start a second copy.
-            if let Some(window) = tauri::Manager::get_webview_window(app, "main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
+        // NOTE: the single-instance guard is NOT a plugin. `single_instance::acquire()` above runs
+        // before the runtime exists, which is the only place it can be reliable: the plugin checked
+        // `GetLastError()` and then guarded its own exit on `FindWindowW` finding a window, so during
+        // a fast reload it fell through and the second process went on to race for `EBWebView` and
+        // `kasir.db` (journal, 2026-09-28). Keeping both would leave the unreliable one in the tree.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
