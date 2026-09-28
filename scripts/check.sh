@@ -210,12 +210,12 @@ if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2
     # is where they belong; nothing gates them today.
     # Run them explicitly, AFTER the receipt above so this run cannot overwrite the JUnit report
     # that step grades (nextest writes target/nextest/default/junit.xml on every invocation).
-    step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --lib --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features
+    step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --lib --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --lib --all-features
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
     # The same two shells in the fallback branch; see the note in the nextest branch above.
-    step "test application shells" "cargo test -p kasirmu-app -p kasirmu-mobile --lib --all-features -- --test-threads $cpu_count" cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count
+    step "test application shells" "cargo test -p kasirmu-app -p kasirmu-mobile --lib --all-features -- --test-threads $cpu_count" cargo test -p kasirmu-app -p kasirmu-mobile --lib --all-features -- --test-threads $cpu_count
 fi
 
 # ── Fuzz targets (P0-3) ──────────────────────────────────────────────────
