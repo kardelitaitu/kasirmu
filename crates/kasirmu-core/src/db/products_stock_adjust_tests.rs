@@ -811,7 +811,11 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(healed, count as i64, "no chunk may be skipped by the heal");
+    assert_eq!(
+        healed,
+        i64::try_from(count).expect("fixture count fits i64"),
+        "no chunk may be skipped by the heal"
+    );
     let stale: i64 = conn
         .query_row("SELECT COUNT(*) FROM inventory WHERE qty <> 60", [], |r| {
             r.get(0)
@@ -825,7 +829,11 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(distinct, count as i64, "and no product lost its rows");
+    assert_eq!(
+        distinct,
+        i64::try_from(count).expect("fixture count fits i64"),
+        "and no product lost its rows"
+    );
     // The suite pays for a thousand-product fixture; keep that bounded.
     assert!(
         elapsed.as_secs() < 30,

@@ -1237,7 +1237,9 @@ fn record_login_attempt_is_all_or_nothing_when_the_insert_fails() {
     let s = store(&conn);
 
     // Seed an OLD attempt that the prune would delete (outside the window).
-    let stale_at = chrono::Utc::now().timestamp() - LIMITS.window_secs as i64 - 60;
+    let stale_at = chrono::Utc::now().timestamp()
+        - i64::try_from(LIMITS.window_secs).expect("window fits i64")
+        - 60;
     conn.execute(
         "INSERT INTO login_attempts (id, username, device_id, attempted_at) VALUES ('stale-1', 'alice', NULL, ?1)",
         rusqlite::params![stale_at],

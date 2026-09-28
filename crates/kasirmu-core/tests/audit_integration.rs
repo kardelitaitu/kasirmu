@@ -325,7 +325,7 @@ fn pagination_consistent_across_calls() {
             // non-negative by construction (page is 0..4, j enumerates the
             // page), so this cannot fail — but stating it keeps the index
             // arithmetic honest if the loop bounds ever change.
-            let global_idx = usize::try_from(page * 5 + j as i64)
+            let global_idx = usize::try_from(page * 5 + i64::try_from(j).expect("index fits i64"))
                 .expect("page index is non-negative by construction");
             assert_eq!(
                 entry.id, all[global_idx].id,

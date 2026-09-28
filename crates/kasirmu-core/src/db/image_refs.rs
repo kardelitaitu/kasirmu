@@ -254,7 +254,23 @@ impl Store<'_> {
             return Ok(());
         }
         // AWS full-jitter: delay = uniform(0, min(30 min, 60 s * 2^attempts))
-        let max_base = 60_i64 * 2_i64.pow(attempts as u32);
+        //
+        // `u32::try_from` rather than `as u32`, and this one is NOT theoretical:
+        // `attempts` is an `i32` column. Under `as u32` a NEGATIVE count (a
+        // corrupt or hand-edited row) wraps to ~4 billion, and `2_i64.pow(..)`
+        // then panics on overflow rather than backing off — turning one bad row
+        // into a crash in the retry path. Clamping at 0 keeps the backoff
+        // monotone and lets the dead-letter rule at 8 attempts do its job.
+        //
+        // The `.min(57)` bound is where `60 * 2^n` still fits `i64` — measured
+        // against the real values rather than estimated: `2^58` fits the
+        // exponent but `60 * 2^58 = 17293822569102704640` exceeds `i64::MAX`,
+        // while `60 * 2^57 = 8646911284551352320` does not. It is not a tuning
+        // choice: the dead-letter rule at 8 attempts means no legitimate row
+        // approaches it, and `limit` below caps the result at 1800 s anyway. It
+        // exists so a hostile `attempts` cannot reach the overflow panic.
+        let attempts = u32::try_from(attempts).unwrap_or(0);
+        let max_base = 60_i64 * 2_i64.pow(attempts.min(57));
         let limit = max_base.min(1800); // 30 minutes in seconds
         let delay_secs: i64 = rand::thread_rng().gen_range(0..=limit);
         let next_at = format!("+{delay_secs} seconds");

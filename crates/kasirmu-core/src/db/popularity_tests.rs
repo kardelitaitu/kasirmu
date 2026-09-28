@@ -1,3 +1,11 @@
+// P2-5: `float_cmp` assertions on exact values the code produces by
+// construction — a fully-attributed percentile is exactly 1.0, a zero trend
+// is exactly 0.0, a 100% margin is exactly 100.0, and a parsed coordinate is
+// the literal it was written as. These are equality assertions, not
+// approximate comparisons: an epsilon would make each one WEAKER by accepting
+// values it should reject.
+#![allow(clippy::float_cmp)]
+
 use super::*;
 use crate::migrations;
 use chrono::Datelike;

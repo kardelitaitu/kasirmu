@@ -1112,7 +1112,7 @@ fn role_holders_cap_at_fifty_and_still_report_the_total() {
     assert_eq!(holders.len(), 50, "capped");
     assert_eq!(total, 60, "the full count is not clipped by the cap");
     assert_eq!(
-        total - holders.len() as i64,
+        total - i64::try_from(holders.len()).expect("fixture count fits i64"),
         10,
         "this difference is the and-N-more number the screen shows"
     );

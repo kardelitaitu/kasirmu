@@ -938,7 +938,7 @@ fn export_eod_breakdown_reconciles_with_the_daily_summary() {
     let voids = s.export_eod_voids().unwrap();
 
     // Header and body are the same set of sales.
-    let header_count: i64 = daily.len() as i64;
+    let header_count: i64 = i64::try_from(daily.len()).expect("fixture count fits i64");
     let body_count: i64 = breakdown.iter().map(|r| r.sale_count).sum();
     assert_eq!(
         body_count, header_count,

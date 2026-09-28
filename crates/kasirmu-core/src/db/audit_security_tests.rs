@@ -705,7 +705,10 @@ fn every_security_action_is_readable_back() {
         s.record_security_event(&event, false).unwrap();
     }
     let (items, total, _) = s.list_security_events(None, None, None, None, 50).unwrap();
-    assert_eq!(total as usize, SECURITY_ACTIONS.len());
+    assert_eq!(
+        usize::try_from(total).expect("count fits usize"),
+        SECURITY_ACTIONS.len()
+    );
     assert_eq!(items.len(), SECURITY_ACTIONS.len());
 }
 
