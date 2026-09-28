@@ -74,6 +74,16 @@ max-threads = 1
 [[profile.default.overrides]]
 # Every test whose name contains `pg` reaches that one database, including the
 # integration binaries, whose names carry it too (`pg_trigger_ports::...`).
-filter = 'test(/pg/)'
+#
+# AUDITED 2026-09-29 and the name filter was too narrow. The group was keyed on
+# `test(/pg/)`, which is a heuristic about NAMES. Measuring the criterion that actually
+# matters -- which tests connect with `apply_schema = true`, the flag that applies PG_INIT to
+# the shared public schema -- found webhooks_tests.rs (:634, :910), sync_api_tests.rs (:928,
+# :1873, :2430), prune_tests.rs, main_tests.rs and others doing exactly that with no `pg`
+# anywhere in their names. They were never serialized, so they could race the very tests this
+# group exists to protect. The filter is the PACKAGES that hold those tests: coarser, and true
+# by construction, where a name filter rots the moment someone writes a Postgres test without
+# `pg` in its name -- which is exactly how this hole opened.
+filter = 'test(/pg/) | package(kasirmu-cloud) | package(kasirmu-api) | package(platform-sync)'
 test-group = 'shared-postgres'
 
