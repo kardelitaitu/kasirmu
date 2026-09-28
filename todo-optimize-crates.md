@@ -1807,3 +1807,111 @@ profiling says it is not one bad file either — the top 10 of 68 migrations are
 `20260831_per_tenant_unique_rebuild` 37.8 ms), which is the unavoidable price of
 68 migrations of history. Any real axis-B win has to come from not rebuilding
 per process, not from making the rebuild parallel.
+
+---
+
+## §11K — O-T03 finished: every `Box::leak`ed database is gone (2026-09-28)
+
+The five sibling files §11J left open turned out to understate the defect. A
+full census (`Box::leak` over the workspace, filtered to leaks whose payload is
+a `Connection` or a `Store` holder) found **21 sites across 19 files, ~368 call
+sites**, not five. All 21 are now repaired, in three commits:
+
+| commit | scope | shape |
+|---|---|---|
+| `608ca5c9e` | 14 `kasirmu-core` test files, ~328 call sites | helper returns `Store<'_>`, takes `&Connection` |
+| `9c4a32854` | 5 `platform/sync` files, 24 call sites | as above, **plus** two `Device` structs (below) |
+| `89e083ad5` | 2 criterion benches, 6 call sites | as above, and `migrations::run` → `fresh_db()` |
+
+Census after: **zero** database leaks. The `Box::leak` calls that remain in the
+tree are all `&'static str` / `Vec<Migration>` manufacturing for **compile-time**
+constants (`migrations_tests.rs:253/351/440`, `startup_tests.rs:371…493`,
+`platform/core/src/database/manager_tests.rs:23`). Those need a `'static`
+*value*, not a lifetime the caller could own, and are not this defect.
+
+### The one shape that was not mechanical
+
+`convergence_replay.rs` and `adversarial_paths.rs` stored a `Store` **inside**
+`Device`:
+
+```rust
+struct Device { store: Store<'static>, outbound: Vec<OfflineQueueItem>, … }
+```
+
+A struct cannot hold a borrow of a field it also owns — that is precisely what
+the `Box::leak` was buying. The repair inverts the ownership:
+
+```rust
+struct Device { db: rusqlite::Connection, outbound: Vec<OfflineQueueItem>, … }
+impl Device { fn store(&self) -> Store<'_> { Store::new(&self.db) } }
+```
+
+and every `self.store` becomes `self.store()`. 13 call sites between the two
+files; `&self.store()` passed to `apply_remote_atomic` works because the
+temporary lives to the end of the statement.
+
+`fiscal_tests.rs` had a second-order instance: `fn tx_of(store: &Store<'static>)`
+forced every caller to hold a `'static`. It is now
+`fn tx_of<'a>(store: &Store<'a>) -> rusqlite::Transaction<'a>` — the
+`Transaction` borrows the connection through the `Store`, so it never needed
+`'static` either. This produced the only compile errors in the sweep: 8 ×
+`E0597: 'store_db' does not live long enough`, all from that one signature.
+
+### Verification, and the part that is *not* verified
+
+- `cargo check -p kasirmu-core --lib --tests` — clean.
+- `cargo check -p kasirmu-core --benches` — clean.
+- `cargo check -p platform-sync --lib` — clean.
+- Scoped `cargo test -p kasirmu-core --lib` over the 14 touched modules:
+  **368 passed, 4 failed**. All four environmental and pre-existing in kind:
+  three `Os { code: 10106 }` socket binds in `sync_client`, one
+  `create_dir_all` under `std::env::temp_dir()` in
+  `db::fiscal::tests::concurrent_claims_never_issue_the_same_number`.
+- **`cargo check -p platform-sync --tests` never ran.** Its dev-dependency
+  closure needs the `serde_core` and `num-traits` build scripts, and both panic
+  with `Os { code: 5 }` on `fs::write` into `OUT_DIR`. Four attempts over ~20
+  minutes — sandboxed and not, Bash and PowerShell — including one with the
+  `out` directory pre-created by hand.
+
+That last failure is worth its own note, because it explains a whole class of
+"test failures" collected this session. **A Rust binary compiled in this session
+cannot create a file at all.** Proven with a bare `rustc` probe — no cargo, no
+repo code, no `target` directory involved:
+
+```
+$ rustc --edition 2024 fs_write.rs && OUT_DIR=<any writable dir> ./fs_write.exe
+WRITE FAILS -> … : OS Error 5 (FormatMessageW() returned error 15100)
+```
+
+`rustc` itself can write (it just emitted that `.exe`); Python can write the
+same path. Only executables produced by `rustc` are denied. So the 17 desktop
+topology `PermissionDenied` temp-dir failures, the `db::fiscal` one above, and
+the `modules-inventory` `manifest.json` read are one machine-level fact, not 19
+unrelated flakes.
+
+Because `platform/sync`'s test targets could not be compiled, the one new shape
+was proven indirectly instead: `Store`, `rusqlite::Connection` and
+`migrations::fresh_db` are all reachable from `kasirmu-core`, so the `Device`
+pattern (struct owns the connection, `Store` built on demand, `&self.store()`
+passed by reference, and a `|d: &Device| d.store().conn()…` closure) was
+compiled and run there as a throwaway integration test. **1 passed, 0 failed**,
+then deleted. All five files are additionally rustfmt-clean, which at least
+proves they parse. The gap is written into `9c4a32854` rather than papered over.
+
+### Line endings
+
+The first sweep's script wrote with Python's default newline translation and
+turned 12 files CRLF. `.gitattributes` pins the working tree to LF
+(`* text=auto eol=lf`) specifically to stop that noise, so they were normalised
+before committing. Diff sizes are unchanged by the normalisation — 849/470
+across the 21 files — confirming no whole-file churn rode along.
+
+### What this does *not* win
+
+Removing a leak removes a leak; it does not make anything faster. The wall-clock
+wins were O-T01 and O-T02, and they came from `fresh_db()` replacing
+`migrations::run`, not from the borrow change. The only timing effect here is
+the two benches, which drop a ~305 ms replay from setup. The number that still
+dominates axis B is the one at the end of §11J: under `cargo nextest` each
+process rebuilds the 305 ms snapshot from scratch, ~266 s of CPU per full run
+across 874 `fresh_db()` call sites.
