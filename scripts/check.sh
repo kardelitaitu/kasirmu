@@ -31,10 +31,25 @@ step() {
     echo -n "${step_str}. checking ${name}... "
     step_counter=$((step_counter + 1))
 
+    # Keep the output instead of discarding it. This used to be `>/dev/null 2>&1`
+    # plus a "re-run it by hand" hint, and that is precisely how the rustdoc step
+    # stayed broken: it exited 127 on every single run, because `step` executes
+    # "$@" and bash does NOT treat a word produced by parameter expansion as a
+    # variable assignment -- so it went looking for a COMMAND named
+    # `RUSTDOCFLAGS=-D warnings`, found none, and reported a bare FAIL. The hint
+    # told the reader to re-run it and nobody ever did. One file per step, under
+    # target/ so it stays out of the tracked tree, read back only on failure.
+    local log_dir="${CHECK_LOG_DIR:-target/check-logs}"
+    local slug; slug=$(printf '%s' "$name" | tr -c 'a-zA-Z0-9' '-')
+    local log="${log_dir}/${step_str}-${slug}.log"
+    mkdir -p "$log_dir"
+
     local start; start=$(date +%s)
-    if ! "$@" >/dev/null 2>&1; then
+    if ! "$@" >"$log" 2>&1; then
         echo -e "${RED}FAIL${NC}"
-        echo "run \"$retry_cmd\" for full detailed error messages"
+        echo "  --- last 25 lines of $log ---"
+        tail -n 25 "$log" 2>/dev/null | sed 's/^/  /'
+        echo "  --- full output above; re-run by hand: $retry_cmd ---"
         exit 1
     else
         local end; end=$(date +%s)
