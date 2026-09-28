@@ -29,15 +29,6 @@ next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot
 // is the right signature for a numeric range check; `&T` would force every caller
 // to borrow literals for no benefit.
 #![allow(clippy::needless_pass_by_value)]
-// TEMPORARY — remove when the gift-card `pin`-removal lane commits
-// `foundation/src/loyalty_tests.rs`. That file is held uncommitted by that lane
-// (2026-09-29) and still carries 17 `"".into()` sites. Enabling pedantic without
-// fixing them would redden `cargo clippy --workspace --all-targets -- -D warnings`
-// (`scripts/check.sh:74`) for every lane, so they are allowed for now rather than
-// fixed in someone else's working file. The allow is crate-wide only because the
-// `mod tests` declaration that scopes this file lives in `loyalty.rs`, which is
-// held by the same lane.
-#![allow(clippy::manual_string_new)]
 
 //! Foundation crate for kasir.mu.
 //!

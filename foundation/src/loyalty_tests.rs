@@ -55,8 +55,8 @@ fn loyalty_account_tier_id_nullable() {
         points: 0,
         lifetime_points: 0,
         tier_id: None,
-        updated_at: "".into(),
-        created_at: "".into(),
+        updated_at: String::new(),
+        created_at: String::new(),
     };
     let json = serde_json::to_string(&acct).unwrap();
     let back: LoyaltyAccount = serde_json::from_str(&json).unwrap();
@@ -92,7 +92,7 @@ fn loyalty_transaction_negative_points_for_redeem() {
         points: -200,
         txn_type: "redeem".into(),
         description: "Redeemed at checkout".into(),
-        created_at: "".into(),
+        created_at: String::new(),
     };
     let json = serde_json::to_string(&txn).unwrap();
     let back: LoyaltyTransaction = serde_json::from_str(&json).unwrap();
@@ -134,11 +134,11 @@ fn gift_card_nullable_fields() {
         current_balance_minor: 10000,
         currency: "USD".into(),
         status: "active".into(),
-        issued_to: "".into(),
-        issue_date: "".into(),
+        issued_to: String::new(),
+        issue_date: String::new(),
         expiry_date: None,
         created_by: None,
-        updated_at: "".into(),
+        updated_at: String::new(),
     };
     let json = serde_json::to_string(&card).unwrap();
     let back: GiftCard = serde_json::from_str(&json).unwrap();
@@ -178,8 +178,8 @@ fn loyalty_account_with_details_serde_roundtrip() {
             points: 500,
             lifetime_points: 2000,
             tier_id: Some("tier-1".into()),
-            updated_at: "".into(),
-            created_at: "".into(),
+            updated_at: String::new(),
+            created_at: String::new(),
         },
         tier: Some(LoyaltyTier {
             id: "tier-1".into(),
@@ -189,7 +189,7 @@ fn loyalty_account_with_details_serde_roundtrip() {
             earn_multiplier_millionths: 1_500_000,
             colour: "#FFD700".into(),
             sort_order: 1,
-            created_at: "".into(),
+            created_at: String::new(),
         }),
         recent_transactions: vec![],
         next_tier: None,
@@ -215,11 +215,11 @@ fn gift_card_with_transactions_serde_roundtrip() {
             current_balance_minor: 5000,
             currency: "USD".into(),
             status: "active".into(),
-            issued_to: "".into(),
-            issue_date: "".into(),
+            issued_to: String::new(),
+            issue_date: String::new(),
             expiry_date: None,
             created_by: None,
-            updated_at: "".into(),
+            updated_at: String::new(),
         },
         transactions: vec![],
     };
@@ -285,11 +285,11 @@ fn redeem_gift_card_result_serde_roundtrip() {
             current_balance_minor: 5000,
             currency: "USD".into(),
             status: "active".into(),
-            issued_to: "".into(),
-            issue_date: "".into(),
+            issued_to: String::new(),
+            issue_date: String::new(),
             expiry_date: None,
             created_by: None,
-            updated_at: "".into(),
+            updated_at: String::new(),
         },
         transaction: GiftCardTransaction {
             id: "gct-1".into(),
@@ -298,8 +298,8 @@ fn redeem_gift_card_result_serde_roundtrip() {
             txn_type: "redeem".into(),
             amount_minor: -5000,
             balance_after_minor: 5000,
-            notes: "".into(),
-            created_at: "".into(),
+            notes: String::new(),
+            created_at: String::new(),
         },
     };
     let json = serde_json::to_string(&r).unwrap();

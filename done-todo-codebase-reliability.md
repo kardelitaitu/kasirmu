@@ -1829,8 +1829,9 @@ is allowed by name with its reason at the allow site:
   right signature, and `&T` would force every caller to borrow literals.
 - `cart.rs:375` was a **genuine** finding (a private, 3-byte `Currency`) and was fixed.
 
-**149 → 0.** Six `#![allow(...)]` at the crate root, each carrying its reason; 26 sites
-fixed by `cargo clippy --fix`; `currency_summary`'s signature and one `clone_from` by hand.
+**149 → 0.** Six permanent `#![allow(...)]` at the crate root, each carrying its reason, plus
+one temporary one that was removed the same hour (see below); 26 sites fixed by
+`cargo clippy --fix`; `currency_summary`'s signature and one `clone_from` by hand.
 
 **Acceptance verified:** `cargo clippy -p foundation --all-targets -- -D warnings` → **exit
 0**; `cargo check -p foundation --all-targets` → exit 0 with **0** `unknown_lints` (rustc
@@ -1839,15 +1840,23 @@ accepts `clippy::`-prefixed attributes without a clippy driver); `cargo test -p 
 foreign-`CARGO_TARGET_DIR` incremental lock (`os error 5`), **not** a denied lint surviving
 `-D` — do not misread it as one.
 
-**ONE TEMPORARY ALLOW, and it is not a hole left open.** 17 of the 149 are in
-`foundation/src/loyalty_tests.rs`, which a live lane holds uncommitted (the gift-card `pin`
-removal, `20261015_gift_cards_drop_pin.sql`). Since the gate is
+**A TEMPORARY ALLOW WAS ADDED AND REMOVED THE SAME HOUR — nothing is left behind.** 17 of the
+149 live in `foundation/src/loyalty_tests.rs`, which the gift-card `pin` lane held uncommitted
+while this round ran. Because the gate is
 `cargo clippy --workspace --all-targets -- -D warnings` (`scripts/check.sh:74`), enabling
-pedantic without fixing those 17 would redden a **required** gate for every lane.
-`#![allow(clippy::manual_string_new)]` therefore carries a dated comment naming the 17 sites
-and the removal condition. It is crate-wide rather than module-scoped only because the
-`mod tests` declaration lives in `loyalty.rs`, held by the same lane. **Remove it when that
-lane commits; the change is 17 × `"".into()` → `String::new()`.**
+pedantic without fixing those 17 would have reddened a **required** gate for every lane, so
+`#![allow(clippy::manual_string_new)]` was added — crate-wide, because the `mod tests`
+declaration that would scope it lives in `loyalty.rs`, held by the same lane. Commit
+`b27eb17be` therefore shipped carrying that one allow, with a dated comment naming the 17 sites
+and the removal condition.
+
+That lane committed at 05:55 (`ffac0fa42`, *refactor(giftcards): remove the pin field from the
+card type and its readers*), which freed the file, so the allow was removed and the 17 sites
+fixed (`"".into()` → `String::new()`) — this paragraph ships in that removal commit.
+**`foundation` now runs pedantic with six allows, every one of them a reasoned false positive
+or explicitly-named documentation debt; no temporary exemption remains.** Re-verified after
+removal: `cargo clippy -p foundation --all-targets -- -D warnings` → exit 0,
+`cargo test -p foundation` → 599 + 23 passed.
 
 **METHOD NOTE — I violated ROUND 41's own rule and had to recover from it.** Round 41
 applied its fixes per file *by construction* so that dirty files stayed untouched, and
