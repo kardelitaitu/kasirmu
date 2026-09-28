@@ -12965,6 +12965,23 @@ the test passed cleanly along with all 50 loyalty tests.
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-28 — TDD round 20: next_count_number stops swallowing DB errors on sequence lookup
+
+**Problem:** In `Store::next_count_number` (`crates/kasirmu-core/src/db/stock_counts.rs`),
+the query computing `COALESCE(MAX(CAST(SUBSTR(count_number, ...) AS INTEGER)), 0)` used `.unwrap_or(0)`.
+Because `COALESCE` guarantees a row with 0 if no matching counts exist, `query_row` returns `Err` only on genuine
+database failures (e.g. database locks, disk failures, or schema errors). The `.unwrap_or(0)` swallowed
+these errors and returned `Ok(format!("{prefix}001"))`, causing collisions and constraint violations on subsequent inserts.
+
+**Solution:** Replaced `.unwrap_or(0)` with `?`, ensuring database errors properly propagate as `Err(CoreError::Db)`.
+
+**Verified:** Red first (`next_count_number_propagates_db_error` panicked with
+`database error in next_count_number must propagate, not fallback to 0: "CNT-20260928-001"`).
+After adding `?`, the test passed cleanly along with all 25 stock count tests.
+
+**Commits:** this entry + the fix land in the pathspec commit below.
+
+
 
 
 

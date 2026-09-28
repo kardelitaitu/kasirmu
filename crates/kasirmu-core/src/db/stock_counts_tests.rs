@@ -829,3 +829,21 @@ fn create_stock_count_with_next_number_still_commits_in_autocommit() {
     );
     assert!(conn.is_autocommit(), "the owned transaction must be closed");
 }
+
+#[test]
+fn next_count_number_propagates_db_error() {
+    let conn = fresh_conn();
+    let s = Store::new(&conn);
+
+    // Rename the stock_counts table to force a DB error during query_row
+    conn.execute_batch("ALTER TABLE stock_counts RENAME TO stock_counts_hidden;")
+        .unwrap();
+
+    let err = s
+        .next_count_number()
+        .expect_err("database error in next_count_number must propagate, not fallback to 0");
+    assert!(
+        matches!(err, CoreError::Db(_)),
+        "expected CoreError::Db, got {err:?}"
+    );
+}

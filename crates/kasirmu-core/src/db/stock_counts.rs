@@ -719,8 +719,7 @@ impl Store<'_> {
                 "SELECT COALESCE(MAX(CAST(SUBSTR(count_number, ?2) AS INTEGER)), 0) FROM stock_counts WHERE count_number LIKE ?1",
                 params![format!("{prefix}%"), prefix.len() + 1],
                 |row| row.get(0),
-            )
-            .unwrap_or(0);
+            )?;
         Ok(format!("{}{:03}", prefix, max_seq + 1))
     }
 }
