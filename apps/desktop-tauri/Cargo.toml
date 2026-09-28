@@ -61,6 +61,7 @@ kasirmu-reporting = { workspace = true }
 platform-core = { workspace = true }
 platform-kernel = { workspace = true }
 platform-startup = { workspace = true }
+platform-instance-guard = { workspace = true }
 platform-sync = { workspace = true }
 kasirmu-notification = { workspace = true }
 tauri = { workspace = true, features = ["protocol-asset"] }

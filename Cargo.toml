@@ -86,6 +86,7 @@ modules-promotions = { path = "modules/promotions" }
 modules-giftcards = { path = "modules/giftcards" }
 modules-kitchen = { path = "modules/kitchen" }
 platform-startup = { path = "platform/startup" }
+platform-instance-guard = { path = "platform/instance-guard" }
 platform-sync = { path = "platform/sync" }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }

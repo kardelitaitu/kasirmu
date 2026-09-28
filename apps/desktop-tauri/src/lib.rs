@@ -48,8 +48,8 @@ pub mod local_api;
 /// database — the only moment a restore swap is safe, because nothing has yet
 /// cloned the connection into the detached daemons that cannot be forced closed.
 mod recovery;
-/// Early single-instance process mutual exclusion guard.
-mod single_instance;
+// The young-instance guard lives in platform-instance-guard now: the tablet shell calls
+// the same implementation from its own entry point.
 /// Global application state (DB, kernel, sync daemon, registry).
 pub mod state;
 
@@ -106,10 +106,12 @@ use tauri::{Emitter, Manager};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
-    // Acquire early single-instance guard to prevent EBWebView and SQLite lock races.
-    let _instance_guard = match single_instance::acquire() {
-        single_instance::Acquisition::Acquired(guard) => guard,
-        single_instance::Acquisition::AlreadyRunning => {
+    // Claim the process-level instance guard before the Tauri runtime, the WebView or the
+    // store open, so a second launch exits instead of racing for the same EBWebView profile
+    // and the same kasir.db.
+    let _instance_guard = match platform_instance_guard::acquire() {
+        platform_instance_guard::Acquisition::Acquired(guard) => guard,
+        platform_instance_guard::Acquisition::AlreadyRunning => {
             std::process::exit(0);
         }
     };

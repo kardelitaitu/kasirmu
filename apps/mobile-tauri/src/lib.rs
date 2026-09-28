@@ -79,6 +79,17 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // Claim the process-level instance guard before the runtime, the WebView or the store
+    // open. On Android the OS already enforces one instance, so this returns Acquired
+    // without doing anything; on a dev machine running the tablet shell twice it is the same
+    // race the desktop shell guards against (see platform_instance_guard).
+    let _instance_guard = match platform_instance_guard::acquire() {
+        platform_instance_guard::Acquisition::Acquired(guard) => guard,
+        platform_instance_guard::Acquisition::AlreadyRunning => {
+            std::process::exit(0);
+        }
+    };
+
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 

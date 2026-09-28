@@ -14,7 +14,15 @@ fn test_to_wide() {
 #[test]
 #[cfg(windows)]
 fn test_mutex_acquisition_and_release() {
-    let mutex_name = format!("Local\\kasirmu-unit-test-{}", uuid::Uuid::new_v4());
+    // Unique to this process AND this call, so a concurrent test binary on the same host
+    // cannot be holding the same name. This replaced a uuid dev-dependency: the test needs
+    // uniqueness, and process id plus a nanosecond stamp already provides it without adding
+    // a crate to the workspace.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mutex_name = format!("Local\\kasirmu-unit-test-{}-{}", std::process::id(), stamp);
     let guard1 = acquire_windows(&mutex_name, std::time::Duration::from_millis(100));
     assert!(matches!(guard1, Acquisition::Acquired(_)));
 
