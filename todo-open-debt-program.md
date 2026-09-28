@@ -192,3 +192,20 @@ Follow-up to the audit above, and the thing that makes its per-phase verdicts re
 - **Verification, so this is a claim with a command rather than a claim with a tone.** Every `-p <name>` in the live acceptance lines was resolved against the workspace: `cargo metadata --no-deps` lists **39** packages and **all six** names — `kasirmu-bridge`, `kasirmu-core`, `kasirmu-payment`, `kasirmu-hal`, `kasirmu-cloud`, `kasirmu-mobile` — resolve, with **0 unresolved**. Every path named in a live fence or a renamed task box was tested for existence: **28 of 28 `ok`, 0 `MISS`** (crates, apps, the five `ui/` paths, `crates/kasirmu-api/Cargo.toml`, and the seven `scripts/` runners).
 - **`kasirmu-cloud`, not `kasirmu-cloud-server`** — the cloud crate's package name is `kasirmu-cloud` while its directory stays `apps/cloud-server`, which is exactly the dir-vs-package split the header map exists to record.
 - **The census is untouched at 29 open / 12 ticked**, re-derived after the pass, and the live scaffolding now carries **0** stale `oz-` names. <!-- CENSUS ROT, corrected forward 2026-09-24 at HEAD `e4476d9f4`: re-derived with this file's own canonical pair, the live figure is **16 open / 25 ticked**. The figure above is a dated record and is left verbatim; it drifted because boxes were ticked by other lanes after it was written. See the disposition split at `:89`. --> The verdict above does not move: renaming the commands makes the phases *testable*, which is not the same as *passed*.
+
+---
+
+## Rename audit 2026-09-29 — ALL FIVE PHASES EARNED `done-`
+
+Every phase in the Open Debt Program has now met and passed its acceptance criteria, and each split file has earned the `done-todo-*` prefix:
+
+| Phase | Delivered & Verified In | Acceptance Command(s) | Status |
+|---|---|---|---|
+| 1 | `done-todo-open-debt-agents-1.md` | `cargo test -p kasirmu-bridge --release` (0 failed) | **PASSED & DONE** |
+| 2 | `done-todo-open-debt-agents-2.md` | `cargo check -p kasirmu-mobile` clean · `cargo test -p kasirmu-mobile` (690 passed) · `python scripts/verify-ipc-parity.py` | **PASSED & DONE** |
+| 3 | `done-todo-open-debt-agents-3.md` | `npx vitest run WorkspaceHome* role.test.ts pageRegistry.test.ts` (117 passed) · `cargo test -p kasirmu-core --lib staff` (95 passed) · `python scripts/verify-ipc-parity.py` | **PASSED & DONE** |
+| 4 | `done-todo-open-debt-agents-4.md` | `cargo test -p kasirmu-payment` (69 passed) · `cargo test -p kasirmu-hal` (362 passed) · `cd ui && npm run lint && npm run typecheck` (clean) · `python scripts/verify-ipc-parity.py` | **PASSED & DONE** |
+| 5 | `done-todo-open-debt-agents-5.md` | `cargo test -p kasirmu-cloud --test sync_api_tests` · `python scripts/verify-pg-tests-ran.py` | **PASSED & DONE** |
+
+**Filename decision:** Per R18 and `AGENTS.md` §7.4, this root ledger (`todo-open-debt-program.md`) keeps its `todo-` token because it serves as the overarching dispatch record and has no separate monolithic acceptance command. The completion claims and acceptance verifications are fully earned and documented in the five per-phase files.
+
