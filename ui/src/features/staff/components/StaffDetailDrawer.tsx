@@ -745,7 +745,7 @@ export function StaffDetailDrawer({
       </div>
 
       <div className="staff-drawer-footer-primary">
-        <Button variant="ghost" onClick={onClose} disabled={saving} data-testid="settings-popup-cancel">
+        <Button variant="ghost" onClick={onClose} disabled={saving} data-testid="staff-detail-cancel">
           {l10n.getString('staff-btn-cancel')}
         </Button>
         <Button
@@ -753,7 +753,7 @@ export function StaffDetailDrawer({
           {...(saving ? { loading: true } : {})}
           disabled={saveDisabled}
           onClick={handleSave}
-          data-testid="settings-popup-save"
+          data-testid="staff-detail-save"
         >
           {l10n.getString(isEditing ? 'staff-btn-update' : 'staff-btn-create')}
         </Button>

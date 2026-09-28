@@ -963,7 +963,7 @@ describe('StaffManagementScreen', () => {
     expect(within(dialog).queryByLabelText('Monthly Take-Home Pay *')).not.toBeInTheDocument();
 
     // Saved through the shared popup's tagged control.
-    fireEvent.click(within(dialog).getByTestId('settings-popup-save'));
+    fireEvent.click(within(dialog).getByTestId('staff-detail-save'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('update_staff_scoped', expect.objectContaining({
         sessionToken: 'session-1',
@@ -990,7 +990,7 @@ describe('StaffManagementScreen', () => {
     fireEvent.change(within(dialog).getByRole('combobox', { name: /^role/i }), { target: { value: 'role-staff' } });
     await fillRequiredProfile(dialog);
 
-    fireEvent.click(within(dialog).getByTestId('settings-popup-save'));
+    fireEvent.click(within(dialog).getByTestId('staff-detail-save'));
     await waitFor(() => {
       const call = invokeMock.mock.calls.find((c: unknown[]) => c[0] === 'create_staff_scoped');
       const profile = (call?.[1] as { args: { profile: Record<string, unknown> } }).args.profile;
@@ -1025,7 +1025,7 @@ describe('StaffManagementScreen', () => {
     await screen.findByRole('dialog');
     expectSharedButton(screen.getByTestId('staff-toggle-active-staff-1'));
     expectSharedButton(screen.getByTestId('staff-impersonate-staff-1'));
-    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    fireEvent.click(screen.getByTestId('staff-detail-cancel'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     // Restore is the SAME control in its other state, so its testid must not
@@ -1033,7 +1033,7 @@ describe('StaffManagementScreen', () => {
     fireEvent.click(screen.getByTestId('staff-edit-staff-2'));
     await screen.findByRole('dialog');
     expectSharedButton(screen.getByTestId('staff-toggle-active-staff-2'));
-    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    fireEvent.click(screen.getByTestId('staff-detail-cancel'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     // The tab strip is a shared control too, tagged per section.
@@ -1059,7 +1059,7 @@ describe('StaffManagementScreen', () => {
     }, FAST_WAIT);
 
     // Cancel closes the drawer without writing anything.
-    fireEvent.click(within(dialog).getByTestId('settings-popup-cancel'));
+    fireEvent.click(within(dialog).getByTestId('staff-detail-cancel'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
     expect(invokeMock).not.toHaveBeenCalledWith('update_staff_scoped', expect.anything());
 
@@ -1580,7 +1580,7 @@ describe('StaffManagementScreen trash', () => {
     fireEvent.click(screen.getByTestId('staff-edit-staff-1'));
     await screen.findByRole('dialog');
     expect(screen.queryByTestId('staff-delete-staff-1')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('settings-popup-cancel'));
+    fireEvent.click(screen.getByTestId('staff-detail-cancel'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
     // Open inactive member in drawer and click Delete
@@ -1960,7 +1960,7 @@ describe('StaffManagementScreen feedback and route entry', () => {
       expect(within(editDialog).getByLabelText('National ID (hidden)')).toBeDisabled();
     }, FAST_WAIT);
 
-    fireEvent.click(within(editDialog).getByTestId('settings-popup-cancel'));
+    fireEvent.click(within(editDialog).getByTestId('staff-detail-cancel'));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), FAST_WAIT);
 
     fireEvent.click(screen.getByRole('button', { name: /add staff/i }));
