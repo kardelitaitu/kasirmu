@@ -12,12 +12,36 @@ fn store(db: &rusqlite::Connection) -> Store<'_> {
 
 const NOW: &str = "2026-09-18T10:15:00.000Z";
 
-/// `entity_index_cursors.next_value` means "the next id to hand out".
-fn seed_cursor(tx: &rusqlite::Transaction<'_>, kind: &str, next_value: i64) {
+fn insert_location(tx: &rusqlite::Transaction<'_>, tenant_id: &str, id: &str, index_id: i64) {
     tx.execute(
-        "INSERT INTO entity_index_cursors (tenant_id, entity_kind, next_value, updated_at)
-         VALUES ('default', ?1, ?2, ?3)",
-        params![kind, next_value, NOW],
+        "INSERT INTO locations (id, tenant_id, name, timezone, index_id, created_at, updated_at)
+         VALUES (?1, ?2, ?1, 'UTC', ?3, ?4, ?4)",
+        params![id, tenant_id, index_id, NOW],
+    )
+    .unwrap();
+}
+
+fn insert_terminal(tx: &rusqlite::Transaction<'_>, tenant_id: &str, id: &str, index_id: i64) {
+    tx.execute(
+        "INSERT INTO terminals (id, tenant_id, name, device_id, index_id, created_at, updated_at)
+         VALUES (?1, ?2, ?1, ?1, ?3, ?4, ?4)",
+        params![id, tenant_id, index_id, NOW],
+    )
+    .unwrap();
+}
+
+fn insert_user(tx: &rusqlite::Transaction<'_>, tenant_id: &str, id: &str, index_id: i64) {
+    tx.execute(
+        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+         VALUES ('role-test', 'test', 'Test', '[]', ?1, ?1)
+         ON CONFLICT (id) DO NOTHING",
+        params![NOW],
+    )
+    .unwrap();
+    tx.execute(
+        "INSERT INTO users (id, tenant_id, username, pin_hash, display_name, role_id, index_id, is_active, created_at, updated_at)
+         VALUES (?1, ?2, ?1, 'hash', ?1, 'role-test', ?3, 1, ?4, ?4)",
+        params![id, tenant_id, index_id, NOW],
     )
     .unwrap();
 }
@@ -28,11 +52,11 @@ fn allocation_starts_at_one_and_increments() {
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
     for expected in 1..=3 {
-        assert_eq!(
-            s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-                .unwrap(),
-            expected
-        );
+        let idx = s
+            .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+            .unwrap();
+        assert_eq!(idx, expected);
+        insert_location(&tx, "default", &format!("loc-{expected}"), idx);
     }
 }
 
@@ -43,21 +67,22 @@ fn allocation_is_scoped_per_tenant() {
     let tx = s.conn.unchecked_transaction().unwrap();
     // Two tenants both start at 1 — an index id is only meaningful inside
     // its own tenant, which is why the code carries no tenant segment.
-    assert_eq!(
-        s.allocate_entity_index(&tx, "tenant-a", EntityIndexKind::Terminal, NOW)
-            .unwrap(),
-        1
-    );
-    assert_eq!(
-        s.allocate_entity_index(&tx, "tenant-b", EntityIndexKind::Terminal, NOW)
-            .unwrap(),
-        1
-    );
-    assert_eq!(
-        s.allocate_entity_index(&tx, "tenant-a", EntityIndexKind::Terminal, NOW)
-            .unwrap(),
-        2
-    );
+    let a1 = s
+        .allocate_entity_index(&tx, "tenant-a", EntityIndexKind::Terminal, NOW)
+        .unwrap();
+    assert_eq!(a1, 1);
+    insert_terminal(&tx, "tenant-a", "term-a1", a1);
+
+    let b1 = s
+        .allocate_entity_index(&tx, "tenant-b", EntityIndexKind::Terminal, NOW)
+        .unwrap();
+    assert_eq!(b1, 1);
+    insert_terminal(&tx, "tenant-b", "term-b1", b1);
+
+    let a2 = s
+        .allocate_entity_index(&tx, "tenant-a", EntityIndexKind::Terminal, NOW)
+        .unwrap();
+    assert_eq!(a2, 2);
 }
 
 #[test]
@@ -65,74 +90,98 @@ fn allocation_is_scoped_per_kind() {
     let s_db = migrations::fresh_db();
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-            .unwrap(),
-        1
-    );
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, NOW)
-            .unwrap(),
-        1
-    );
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::User, NOW)
-            .unwrap(),
-        1
-    );
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-            .unwrap(),
-        2
-    );
+    let loc1 = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+        .unwrap();
+    assert_eq!(loc1, 1);
+    insert_location(&tx, "default", "loc-1", loc1);
+
+    let term1 = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, NOW)
+        .unwrap();
+    assert_eq!(term1, 1);
+    insert_terminal(&tx, "default", "term-1", term1);
+
+    let user1 = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::User, NOW)
+        .unwrap();
+    assert_eq!(user1, 1);
+    insert_user(&tx, "default", "user-1", user1);
+
+    let loc2 = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+        .unwrap();
+    assert_eq!(loc2, 2);
 }
 
 #[test]
-fn retiring_an_index_does_not_free_it() {
+fn slot_recycling_reclaims_gaps_from_deleted_entities() {
     let s_db = migrations::fresh_db();
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
-    let issued: Vec<i64> = (0..3)
-        .map(|_| {
-            s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-                .unwrap()
-        })
-        .collect();
-    assert_eq!(issued, vec![1, 2, 3]);
 
-    // Retiring 2 must not make 2 available again: a reissued 02 would
-    // silently redirect every historic receipt that names it.
-    s.retire_entity_index(
-        &tx,
-        "default",
-        EntityIndexKind::Location,
-        2,
-        "loc-2",
-        "Branch 2",
-        NOW,
+    // 1. Locations: allocate 1, 2, 3
+    insert_location(&tx, "default", "loc-1", 1);
+    insert_location(&tx, "default", "loc-2", 2);
+    insert_location(&tx, "default", "loc-3", 3);
+
+    // Delete location 2 -> gap at 2
+    tx.execute("DELETE FROM locations WHERE id = 'loc-2'", []).unwrap();
+    let recycled = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+        .unwrap();
+    assert_eq!(recycled, 2, "slot 2 must be reclaimed for location");
+    insert_location(&tx, "default", "loc-2b", recycled);
+
+    // Next is 4
+    let next = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+        .unwrap();
+    assert_eq!(next, 4);
+
+    // 2. Terminals: delete terminal 1 -> gap at 1
+    insert_terminal(&tx, "default", "term-1", 1);
+    insert_terminal(&tx, "default", "term-2", 2);
+    tx.execute("DELETE FROM terminals WHERE id = 'term-1'", []).unwrap();
+    let recycled_term = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, NOW)
+        .unwrap();
+    assert_eq!(recycled_term, 1, "slot 1 must be reclaimed for terminal");
+
+    // 3. Users: soft-delete clears index_id and sets deleted_at
+    insert_user(&tx, "default", "user-1", 1);
+    insert_user(&tx, "default", "user-2", 2);
+    tx.execute(
+        "UPDATE users SET deleted_at = ?1, index_id = NULL WHERE id = 'user-1'",
+        params![NOW],
     )
     .unwrap();
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-            .unwrap(),
-        4
-    );
+    let recycled_user = s
+        .allocate_entity_index(&tx, "default", EntityIndexKind::User, NOW)
+        .unwrap();
+    assert_eq!(recycled_user, 1, "slot 1 must be reclaimed for user after soft-delete");
 }
 
 #[test]
-fn the_last_valid_index_is_0xff_and_the_next_one_refuses() {
+fn the_last_valid_index_is_max_and_the_next_one_refuses() {
     let s_db = migrations::fresh_db();
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
-    seed_cursor(&tx, "location", 255);
 
-    assert_eq!(
-        s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-            .unwrap(),
-        INDEX_ID_MAX
-    );
+    let idx1 = s
+        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
+        .unwrap();
+    assert_eq!(idx1, 1);
+    insert_location(&tx, "default", "loc-1", idx1);
+
+    let idx2 = s
+        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
+        .unwrap();
+    assert_eq!(idx2, 2);
+    insert_location(&tx, "default", "loc-2", idx2);
+
     let err = s
-        .allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
         .unwrap_err();
     assert!(
         err.to_string().contains("exhausted"),
@@ -146,20 +195,14 @@ fn a_refused_allocation_consumes_nothing_once_rolled_back() {
     let s = store(&s_db);
     {
         let tx = s.conn.unchecked_transaction().unwrap();
-        seed_cursor(&tx, "location", 255);
-        assert_eq!(
-            s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
-                .unwrap(),
-            INDEX_ID_MAX
-        );
+        insert_location(&tx, "default", "loc-1", 1);
         assert!(
-            s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
+            s.allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 1)
                 .is_err()
         );
     } // dropped without commit — rolled back
 
-    // The refusal must not have burned an id: a fresh allocation starts
-    // over from 1 rather than continuing past the ceiling.
+    // The refusal rolled back, leaving table clean
     let tx = s.conn.unchecked_transaction().unwrap();
     assert_eq!(
         s.allocate_entity_index(&tx, "default", EntityIndexKind::Location, NOW)
@@ -308,16 +351,26 @@ fn a_refused_claim_consumes_nothing_once_rolled_back() {
 }
 
 #[test]
-fn assemble_renders_the_agreed_22_char_format() {
-    assert_eq!(
-        assemble_receipt_code(1, 2, "260918", 1, 123),
-        "01-02-260918-01-000123"
-    );
-    // Hex letters appear above 99, and the sequence is zero-padded to six.
-    assert_eq!(
-        assemble_receipt_code(0xFF, 0x0A, "260101", 0x00, 999_999),
-        "FF-0A-260101-00-999999"
-    );
+fn assemble_renders_dynamic_widths() {
+    // 22-char format: standard 2-character indices
+    let code_22 = assemble_receipt_code(1, 2, "260929", 1, 123);
+    assert_eq!(code_22, "01-02-260929-01-000123");
+    assert_eq!(code_22.len(), 22);
+
+    // 23-char format: 3-character staff index (3844 = "100")
+    let code_23 = assemble_receipt_code(1, 2, "260929", 3844, 123);
+    assert_eq!(code_23, "01-02-260929-100-000123");
+    assert_eq!(code_23.len(), 23);
+
+    // 24-char format: 4-character staff index (238328 = "1000")
+    let code_24 = assemble_receipt_code(1, 2, "260929", 238328, 123);
+    assert_eq!(code_24, "01-02-260929-1000-000123");
+    assert_eq!(code_24.len(), 24);
+
+    // 28-char format: all 4-character max indices (14,776,335 = "ZZZZ")
+    let code_28 = assemble_receipt_code(INDEX_ID_MAX, INDEX_ID_MAX, "260929", INDEX_ID_MAX, 999_999);
+    assert_eq!(code_28, "ZZZZ-ZZZZ-260929-ZZZZ-999999");
+    assert_eq!(code_28.len(), 28);
 }
 
 #[test]
@@ -394,9 +447,59 @@ fn resolve_receipt_date_resolves_iana_zone_names_like_the_reports_path() {
 }
 
 #[test]
-fn index_hex_renders_two_uppercase_digits() {
+fn base62_encoding_boundaries() {
+    assert_eq!(format_base62_index(INDEX_ID_NONE), "00");
+    assert_eq!(format_base62_index(-1), "00");
+    assert_eq!(format_base62_index(1), "01");
+    assert_eq!(format_base62_index(9), "09");
+    assert_eq!(format_base62_index(10), "0a");
+    assert_eq!(format_base62_index(35), "0z");
+    assert_eq!(format_base62_index(36), "0A");
+    assert_eq!(format_base62_index(61), "0Z");
+    assert_eq!(format_base62_index(62), "10");
+    assert_eq!(format_base62_index(3843), "ZZ");
+    assert_eq!(format_base62_index(3844), "100");
+    assert_eq!(format_base62_index(238327), "ZZZ");
+    assert_eq!(format_base62_index(238328), "1000");
+    assert_eq!(format_base62_index(INDEX_ID_MAX), "ZZZZ");
+}
+
+#[test]
+fn base62_parsing_and_roundtrip() {
+    assert_eq!(parse_base62_index("00"), Some(0));
+    assert_eq!(parse_base62_index("01"), Some(1));
+    assert_eq!(parse_base62_index("0a"), Some(10));
+    assert_eq!(parse_base62_index("0A"), Some(36));
+    assert_eq!(parse_base62_index("ZZ"), Some(3843));
+    assert_eq!(parse_base62_index("100"), Some(3844));
+    assert_eq!(parse_base62_index("ZZZ"), Some(238327));
+    assert_eq!(parse_base62_index("1000"), Some(238328));
+    assert_eq!(parse_base62_index("ZZZZ"), Some(INDEX_ID_MAX));
+
+    // Whitespace trimming
+    assert_eq!(parse_base62_index("  01  "), Some(1));
+
+    // Invalid strings
+    assert_eq!(parse_base62_index(""), None);
+    assert_eq!(parse_base62_index("   "), None);
+    assert_eq!(parse_base62_index("0-1"), None);
+    assert_eq!(parse_base62_index("0!"), None);
+    assert_eq!(parse_base62_index("10000"), None); // Exceeds INDEX_ID_MAX
+    assert_eq!(parse_base62_index("ZZZZZ"), None); // 5 digits
+
+    // Roundtrip for representative samples
+    for sample in [0, 1, 10, 61, 62, 3843, 3844, 10000, 238327, 238328, 1_000_000, INDEX_ID_MAX] {
+        let encoded = format_base62_index(sample);
+        let decoded = parse_base62_index(&encoded).unwrap();
+        assert_eq!(decoded, sample, "failed roundtrip for {sample}");
+    }
+}
+
+#[test]
+fn index_hex_renders_base62_string() {
     assert_eq!(index_hex(INDEX_ID_NONE), "00");
     assert_eq!(index_hex(1), "01");
-    assert_eq!(index_hex(10), "0A");
-    assert_eq!(index_hex(INDEX_ID_MAX), "FF");
+    assert_eq!(index_hex(10), "0a");
+    assert_eq!(index_hex(3843), "ZZ");
+    assert_eq!(index_hex(INDEX_ID_MAX), "ZZZZ");
 }

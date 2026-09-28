@@ -744,7 +744,7 @@ impl Store<'_> {
             None
         };
         let rows = self.conn.execute(
-            "UPDATE users SET deleted_at = ?1, updated_at = ?1 \
+            "UPDATE users SET deleted_at = ?1, updated_at = ?1, index_id = NULL \
              WHERE id = ?2 AND deleted_at IS NULL",
             params![now, id],
         )?;

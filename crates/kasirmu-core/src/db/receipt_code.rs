@@ -1,8 +1,8 @@
 //! Index ids for the receipt hierarchy code.
 //!
 //! An index id is an immutable badge allocated once, at registration, and
-//! printed as two uppercase hex digits inside the receipt code
-//! (`01-02-260918-01-000123`). It is deliberately NOT "the Nth location":
+//! printed as dynamic-width Base62 characters inside the receipt code
+//! (`01-02-260929-10a-000123`). It is deliberately NOT "the Nth location":
 //! a value is never reused, because a retired `02` reissued to a new
 //! location would make every historic receipt naming `02` resolve to the
 //! wrong store — and with a tax number on the receipt that is
@@ -10,10 +10,10 @@
 //!
 //! Allocation is monotonic, driven by `entity_index_cursors`, so even a row
 //! deleted without a tombstone cannot hand its index to the next entity.
-//! `0x00` is never allocated: it is the display sentinel for "no staff"
-//! (kiosk and system sales). The ceiling is `0xFF` — two hex digits is all
-//! the field can express — and the allocator refuses rather than wraps,
-//! because a wrap would reissue live codes.
+//! `0` is never allocated: `"00"` is the display sentinel for "no staff"
+//! (kiosk and system sales). The ceiling is `14,776,335` ($62^4 - 1$) — four
+//! Base62 digits is all the field can express — and the allocator refuses
+//! rather than wraps, because a wrap would reissue live codes.
 //!
 //! Design and decisions: docs/plans/receipt-hierarchy-code.md
 
@@ -22,8 +22,8 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::CoreError;
 
-/// Largest index id the two-hex-digit field can express.
-pub const INDEX_ID_MAX: i64 = 0xFF;
+/// Largest index id the 4-digit Base62 field can express: 62^4 - 1 = 14,776,335.
+pub const INDEX_ID_MAX: i64 = 14_776_335;
 
 /// Display sentinel for "no entity" — a kiosk sale has no staff.
 pub const INDEX_ID_NONE: i64 = 0x00;
@@ -51,22 +51,78 @@ impl EntityIndexKind {
     }
 }
 
-/// Render an index id as the two uppercase hex digits used in the code.
+/// Base62 character table: 0–9 (0..9), a–z (10..35), A–Z (36..61).
+pub const BASE62_ALPHABET: &[u8; 62] =
+    b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/// Format an index id as a dynamic-width Base62 string (minimum 2 characters).
+///
+/// - `value <= 0`: `"00"` (the [`INDEX_ID_NONE`] sentinel)
+/// - `1..=3843` (< 62^2): padded to 2 characters (`01`–`zz`)
+/// - `3844..=238327` (< 62^3): 3 characters (`100`–`zzz`)
+/// - `238328..=14776335` (< 62^4): 4 characters (`1000`–`zzzz`)
+#[must_use]
+pub fn format_base62_index(value: i64) -> String {
+    if value <= 0 {
+        return "00".to_string();
+    }
+    let mut n = value as u64;
+    let mut digits = Vec::new();
+    while n > 0 {
+        let rem = (n % 62) as usize;
+        digits.push(BASE62_ALPHABET[rem] as char);
+        n /= 62;
+    }
+    digits.reverse();
+    if digits.len() < 2 {
+        format!("0{}", digits.into_iter().collect::<String>())
+    } else {
+        digits.into_iter().collect()
+    }
+}
+
+/// Parse a Base62 index string back into its numeric index id.
+///
+/// Returns `None` if the string contains invalid characters, is empty,
+/// or exceeds [`INDEX_ID_MAX`].
+#[must_use]
+pub fn parse_base62_index(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let mut acc: u64 = 0;
+    for &b in s.as_bytes() {
+        let val = match b {
+            b'0'..=b'9' => (b - b'0') as u64,
+            b'a'..=b'z' => (b - b'a' + 10) as u64,
+            b'A'..=b'Z' => (b - b'A' + 36) as u64,
+            _ => return None,
+        };
+        acc = acc.checked_mul(62)?.checked_add(val)?;
+    }
+    let signed = i64::try_from(acc).ok()?;
+    if signed > INDEX_ID_MAX {
+        return None;
+    }
+    Some(signed)
+}
+
+/// Legacy alias for [`format_base62_index`].
 #[must_use]
 pub fn index_hex(value: i64) -> String {
-    format!("{value:02X}")
+    format_base62_index(value)
 }
 
 impl crate::db::Store<'_> {
-    /// Allocate the next index id for `(tenant_id, kind)`.
+    /// Allocate the lowest available index id for `(tenant_id, kind)`.
     ///
-    /// Monotonic and never reused. The claim is one statement — the
-    /// increment reads the row's own `next_value` at write time — so two
-    /// interleaved allocations can never observe the same ordinal.
+    /// Finds the lowest positive integer (1, 2, 3...) not currently in use by
+    /// an active entity in the tenant's database. When an entity (location,
+    /// terminal, staff) is deleted, its index id is reclaimed and recycled for
+    /// the next new entity.
     ///
-    /// Must be called inside a transaction. On exhaustion the caller is
-    /// expected to roll back, which is what stops a refused allocation
-    /// from consuming an index anyway.
+    /// Must be called inside a transaction.
     pub fn allocate_entity_index(
         &self,
         tx: &rusqlite::Transaction<'_>,
@@ -74,25 +130,54 @@ impl crate::db::Store<'_> {
         kind: EntityIndexKind,
         now: &str,
     ) -> Result<i64, CoreError> {
-        // Seed 2, read `next_value - 1`: the stored cursor then always
-        // means "the next id to hand out", including on the very first
-        // insert, which no conflict branch ever touches.
-        let allocated: i64 = tx.query_row(
-            "INSERT INTO entity_index_cursors (tenant_id, entity_kind, next_value, updated_at)
-             VALUES (?1, ?2, 2, ?3)
-             ON CONFLICT(tenant_id, entity_kind)
-                 DO UPDATE SET next_value = next_value + 1, updated_at = ?3
-             RETURNING next_value - 1",
-            params![tenant_id, kind.as_str(), now],
-            |row| row.get(0),
-        )?;
+        self.allocate_entity_index_with_ceiling(tx, tenant_id, kind, now, INDEX_ID_MAX)
+    }
 
-        if allocated > INDEX_ID_MAX {
+    pub(crate) fn allocate_entity_index_with_ceiling(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        tenant_id: &str,
+        kind: EntityIndexKind,
+        _now: &str,
+        ceiling: i64,
+    ) -> Result<i64, CoreError> {
+        let (table, extra_where) = match kind {
+            EntityIndexKind::Location => ("locations", ""),
+            EntityIndexKind::Terminal => ("terminals", ""),
+            EntityIndexKind::User => ("users", "AND deleted_at IS NULL"),
+        };
+
+        let query = format!(
+            "SELECT CASE 
+                WHEN NOT EXISTS (
+                    SELECT 1 FROM {table} 
+                    WHERE tenant_id = ?1 AND index_id = 1 {extra_where}
+                ) THEN 1
+                ELSE COALESCE(
+                    (
+                        SELECT t1.index_id + 1
+                        FROM {table} t1
+                        WHERE t1.tenant_id = ?1 AND t1.index_id IS NOT NULL {extra_where}
+                          AND NOT EXISTS (
+                              SELECT 1 FROM {table} t2
+                              WHERE t2.tenant_id = ?1 AND t2.index_id = t1.index_id + 1 {extra_where}
+                          )
+                        ORDER BY t1.index_id ASC
+                        LIMIT 1
+                    ),
+                    1
+                )
+            END"
+        );
+
+        let allocated: i64 = tx.query_row(&query, params![tenant_id], |row| row.get(0))?;
+
+        if allocated > ceiling {
             return Err(CoreError::Validation {
                 field: "index_id",
                 message: format!(
-                    "index id exhausted: {} for tenant '{}' has reached {INDEX_ID_MAX} \
-                     (0xFF); the two-hex-digit field cannot express another",
+                    "index id exhausted: {} for tenant '{}' has reached {ceiling}; \
+                     the 4-digit Base62 field cannot express another",
                     kind.as_str(),
                     tenant_id
                 ),
@@ -162,16 +247,20 @@ pub const SEQUENCE_MIN: i64 = 1;
 /// (999,999 ≈ 2,739/day). Per §4.6 the claim refuses rather than wraps.
 pub const SEQUENCE_MAX: i64 = 999_999;
 
-/// Assemble the frozen 22-character receipt code.
+/// Assemble the frozen receipt code.
 ///
 /// Pure: it takes the already-resolved indices and the store-local date, so
 /// it is trivially testable and the same code that freezes at checkout also
 /// renders in a reprint six months later. The caller passes
-/// [`INDEX_ID_NONE`] (0x00) for `staff_idx` when the sale has no staff
-/// (`sales.user_id` is null — kiosk / system sale), so the code never
-/// prints a staff index that was never assigned.
+/// [`INDEX_ID_NONE`] (0) for `staff_idx` when the sale has no staff
+/// (`sales.user_id` is null — kiosk / system sale), so the code prints "00".
 ///
-/// Format: `{loc:02X}-{term:02X}-{YYMMDD}-{staff:02X}-{seq:06}`
+/// Format: `{loc_base62}-{term_base62}-{YYMMDD}-{staff_base62}-{seq:06}`
+///
+/// Length:
+/// - 22 characters for standard operations (all indices < 3,844).
+/// - 23–25 characters with 3-digit indices.
+/// - 24–28 characters with 4-digit indices.
 #[must_use]
 pub fn assemble_receipt_code(
     loc_idx: i64,
@@ -182,10 +271,10 @@ pub fn assemble_receipt_code(
 ) -> String {
     format!(
         "{}-{}-{}-{}-{:06}",
-        index_hex(loc_idx),
-        index_hex(term_idx),
+        format_base62_index(loc_idx),
+        format_base62_index(term_idx),
         yymmdd,
-        index_hex(staff_idx),
+        format_base62_index(staff_idx),
         seq
     )
 }
@@ -271,7 +360,7 @@ impl crate::db::Store<'_> {
         Ok(idx)
     }
 
-    /// Mint the frozen 22-char receipt hierarchy code for a sale, or return
+    /// Mint the frozen receipt hierarchy code for a sale, or return
     /// `None` when it cannot be formed.
     ///
     /// Returns `(display_code, terminal_id)` — `terminal_id` is the raw
@@ -334,7 +423,7 @@ impl crate::db::Store<'_> {
             )
             .optional()?;
         let (yymmdd, fiscal_year) = resolve_receipt_date(now_utc, tz.as_deref().unwrap_or("UTC"))?;
-        let seq = self.claim_receipt_sequence(tx, tenant_id, &index_hex(term_idx), &fiscal_year)?;
+        let seq = self.claim_receipt_sequence(tx, tenant_id, &format_base62_index(term_idx), &fiscal_year)?;
         let code = assemble_receipt_code(loc_idx, term_idx, &yymmdd, staff_idx, seq);
         Ok((Some(code), terminal_id))
     }
