@@ -1,4 +1,24 @@
 
+## 2026-09-29 — P2 deferred: the mobile guard waits for the desktop guard to be committed
+
+**What is done.** `apps/mobile-tauri/src/state.rs` now sets `busy_timeout(5s)` before its pragmas and probes
+writability with `BEGIN IMMEDIATE; ROLLBACK`, with the same actionable refusal message the desktop shell got
+— the half that protects the DATA. `2de3e0250`.
+
+**What is deferred, and why it is not laziness.** The guard half is a Windows named-mutex + `FindWindowW`
+module (211 lines + tests) that another lane added to `apps/desktop-tauri/src/single_instance.rs` and has left
+MODIFIED in the working tree across two rounds. AGENTS §7.3 forbids editing another session's uncommitted
+work, and the alternatives are both worse than waiting: duplicating 200 lines of `unsafe` FFI into
+`apps/mobile-tauri` gives the tree two implementations of one primitive, and writing a second, minimal guard in
+`platform-startup` for mobile alone gives it two implementations with different behaviour (mine cannot focus
+the running window).
+
+**The follow-up, sized.** When that file is committed: move it to `platform/startup/src/single_instance.rs`
+(both shells already depend on `platform-startup` for `console` / cache init), export it, point the desktop's
+`run()` at the shared path, add one call at the top of the mobile shell's `run()`, and delete the app-local
+module. Mechanical, and the reason it is worth doing at all is the Windows dev/test case: Android enforces
+single-instance itself, so on the tablet this is belt-and-braces, while `pos_tests.rs:870` records the
+two-process window as a real one for the desktop-run tablet shell.
 ## 2026-09-29 — Ruling: the `s-no-stamp` row is a tax note, and `created_at` is stamped by the schema (P4/P5)
 
 **Correcting an earlier reading of my own.** The agenda item "`s-no-stamp` `created_at` semantics" came from the
