@@ -1,4 +1,33 @@
 
+## 2026-09-29 — The instance guard now belongs to both shells, and the sweep found two holes (P2)
+
+**What moved.** `apps/desktop-tauri/src/single_instance.rs` (211 lines, plus 45 lines of tests) is now
+`platform/instance-guard`, a crate of its own, and `apps/mobile-tauri` calls the same `acquire()` at the
+top of its `run()`. I took that file over on the owner's explicit word, after four rounds of waiting on
+another session's uncommitted edits. Their working-tree delta was documentation plus a 1500→2000 ms mutex
+timeout, and both survive in the new crate.
+
+**Why a new crate and not `platform-startup`.** My own plan said `platform-startup`; reading it changed
+the answer. It — and every other crate under `platform/` — carries `deny(unsafe_code)`, and its opening
+comment is a long account of removing an allow that was not justified. A named Win32 mutex is FFI by
+definition, so putting it there would have meant allowing a deny the crate documents as deliberate.
+`platform/*` is globbed by the root manifest, so the new crate needed no members-list edit.
+
+**Two holes the sweep found, both repaired here.**
+
+1. `unsafe-safety` has scanned this tree since 2026-09-27, but its file list comes from git: while the new
+   crate was untracked the gate reported 30 constructs, and after the commit it reports 41, every one
+   justified. The five missing `SAFETY:` notes are written.
+2. Neither `scripts/check.sh` nor ANY `.github/workflows` file named `kasirmu-app` or `kasirmu-mobile`.
+   The two application suites — 173 desktop tests, 690 tablet tests — had no automation anywhere. They are
+   excluded from the workspace run for a real reason (their unit tests link the Tauri runtime), and that
+   exclusion had quietly become “nobody runs them”. `check.sh` now runs them explicitly in both the nextest
+   and the fallback branch, placed after the flake receipt so the app run cannot overwrite the JUnit report
+   that step grades.
+
+**Evidence.** `platform-instance-guard`: 3 tests pass. `cargo check` clean for new crate plus both shells.
+`clippy -D warnings` clean on all three. `unsafe-safety`: OK (41 constructs, every one justified). `cargo fmt`
+clean. Commits `42217f2a4`, `fd812d6a4`, `3a7eb4612`.
 ## 2026-09-29 — The 19 “flaky” PG tests were racing, and nextest could already stop it (P1)
 
 **Finding.** The full workspace run passed 9731/9731, and the flake receipt
