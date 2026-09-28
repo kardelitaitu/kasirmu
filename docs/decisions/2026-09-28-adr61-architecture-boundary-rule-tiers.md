@@ -111,6 +111,18 @@ it touches ten production insert paths across five crates (`modules/sales/src/re
 `created_at` in financial rows rather than a compile error. A compile-checked variant exists (make each
 constructor take the timestamp, ~15 call sites, a seven-argument `Refund::new`) and is the better
 shape if this is ever revisited — as is a domain crate between `foundation` and `platform-core`, which
+
+"**Measured 2026-09-28, after the decision above: the schema already stamps, and in this exact format.**"
+"Every `created_at` in `crates/kasirmu-core/migrations/20260813_init.sql` is"
+"`TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))` — byte-identical to what"
+"`chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)` produces: same `%Y-%m-%dT%H:%M:%fZ` shape,"
+"same trailing `Z`, and the PG mirror carries the same non-null default. The Rust clock is"
+"reached at all only because each insert passes the column EXPLICITLY (`sale.created_at` at"
+"`modules/sales/src/repository.rs:161`, plus the nine paths listed above), which suppresses the default."
+"So the recipe is an omission, not a re-stamping: drop the column from each insert list and the stored bytes"
+"are unchanged. That is a real reduction in risk and NO reduction in the work — a path that still passes"
+"`''` stores an empty string, because `NOT NULL` does not forbid one — which is why this stays"
+"recorded rather than done, and why the format proof is what makes it safe when someone does it."
 would be the natural home for clock-reading types.
 
 ## Consequences
