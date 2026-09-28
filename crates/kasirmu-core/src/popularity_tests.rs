@@ -1,3 +1,12 @@
+// P2-5: the `float_cmp` assertions here compare against EXACT literals the
+// scoring formula produces by construction — a product with no events scores
+// exactly 0.0, a single-signal product is exactly its weight, and the top
+// percentile is exactly 1.0. These are not approximate comparisons needing an
+// epsilon; they are equality assertions on values the formula computes from
+// integer inputs, which is the standard reason `float_cmp` exists as a lint
+// rather than an error. An epsilon here would WEAKEN the tests.
+#![allow(clippy::float_cmp)]
+
 use super::*;
 
 fn day(days_ago: i64, count: i64) -> DayCount {

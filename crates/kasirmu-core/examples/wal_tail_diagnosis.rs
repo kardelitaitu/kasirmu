@@ -45,6 +45,18 @@
 //! call site carries its own `INVARIANT`/`SAFETY` marker for the gate.
 
 #![allow(clippy::print_stdout)]
+// P2-5: the float casts here are the MEASUREMENT, not a mistake. A percentile
+// rank is `p * n` by definition (p in 0.0..=1.0), `n` is a sample count that
+// cannot approach 2^53, and the durations being ranked are microsecond-scale so
+// `as f64` retains far more precision than the three decimals this prints.
+// Converting them to checked forms would add error paths to a diagnostic that
+// has no way to act on them. Same rationale as `print_stdout` above: this is a
+// tool, not shipped code.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 
 use kasirmu_core::db::Store;
 use kasirmu_core::migrations;

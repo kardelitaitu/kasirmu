@@ -43,6 +43,14 @@
 // `criterion_group!` expands to a public function it does not document, so
 // the workspace-wide `missing_docs` warning cannot be satisfied here.
 #![allow(missing_docs)]
+// P2-5: float casts are the measurement itself — percentile ranks are `p * n` by
+// definition and the sample counts cannot approach 2^53. A benchmark that added
+// error paths for these would be measuring its own error handling.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use kasirmu_core::db::Store;

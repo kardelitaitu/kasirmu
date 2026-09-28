@@ -1,4 +1,9 @@
 //! Shift management — open/close shifts, cash reconciliation.
+// P2-5: `gross_profit_minor as f64 / net_revenue_minor as f64 * 100.0` is a
+// MARGIN PERCENTAGE, not money. The minor-unit totals stay `i64` and remain
+// the source of truth; only the displayed ratio is floating point.
+#![allow(clippy::cast_precision_loss)]
+
 /*
 last audited 26-09-26 by DSH (COR-27 fully CLOSED; the previous claim was wrong and came from a scoped check)
 crate: kasirmu-core | status: SAFE | lint: CLEAN

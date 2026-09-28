@@ -9,6 +9,15 @@
 //! Split from `db/reports.rs` 13-09-26, behaviour unchanged — pure module
 //! decomposition, no logic edits.
 
+// P2-5: every cast here converts EXACT integer minor units to `f64` for one
+// division whose result is a PERCENTAGE (`part as f64 / whole as f64 * 100.0`).
+// A percentage is a ratio, not money — no monetary value is stored or summed in
+// floating point, and the i64 minor-unit totals remain the source of truth that
+// the ratio is derived FROM. `cast_precision_loss` is unactionable here for the
+// same reason it exists: it is warning that a 53-bit mantissa cannot hold every
+// i64, which is true and irrelevant to a two-significant-figure display value.
+#![allow(clippy::cast_precision_loss)]
+
 use rusqlite::params;
 
 use crate::db::Store;

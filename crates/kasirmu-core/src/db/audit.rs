@@ -1,6 +1,15 @@
 //! Audit Log — append-only immutable entries, plus the tier retention
 //! sweep (`sweep_audit_retention`) that deletes rows past the tenant's
 //! window through the trigger carve-out migration 20260920.
+// P2-5: three guarded conversions, each correct by construction.
+//  * `COUNT(*)` returned as `i64` then `.max(0) as u64` — a SQL count is
+//    never negative, and `.max(0)` makes that explicit before the cast, so
+//    the sign loss the lint warns about cannot occur.
+//  * `days as i64` into `chrono::Duration::days` — `days` is a `u64` window
+//    size from the API; a value large enough to wrap `i64` is not reachable
+//    (it would be ~292 billion years).
+#![allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
+
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 finale)
 crate: kasirmu-core | status: SAFE | lint: CLEAN

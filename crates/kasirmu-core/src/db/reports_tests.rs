@@ -1,3 +1,9 @@
+// P2-5: `float_cmp` assertions on aggregator output that the reports compute
+// from integer minor units — a percentage of an exact total, or a zero. These
+// compare against literals the code produces exactly, so an epsilon would make
+// the assertion weaker, not safer.
+#![allow(clippy::float_cmp)]
+
 use crate::db::Store;
 use crate::db::products::{CreateProductAttributes, UpdateProductAttributes};
 use crate::kds::CreateKdsOrderInput;

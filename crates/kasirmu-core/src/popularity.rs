@@ -28,6 +28,17 @@
 //! a sum-scale `raw` against a count-scale `v`; the shrinkage form below
 //! achieves the ADR's stated goals on the correct scale.
 
+// P2-5: this crate's ONE float surface, and it is float by design. The formula
+// above (ADR #37 D1) is a recency-decayed, evidence-smoothed blend — `λ^t`
+// decay, `ln(1 + transactions)` breadth weighting, and a Bayesian shrinkage
+// term are all real-valued by construction, so `units_sold as f64` is the
+// intended conversion rather than a lossy shortcut. NO MONEY PASSES THROUGH
+// HERE: the inputs are event counts and the output is a ranking score, so the
+// 53-bit mantissa is far more precision than a sort key needs. Converting these
+// to checked forms would add error paths to a scoring function whose
+// documented contract is "pure, unit-tested formula".
+#![allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+
 use chrono::Datelike;
 
 /// Daily recency decay factor (λ). `1/(1−λ) ≈ 14` effective days of memory.

@@ -35,6 +35,14 @@
 //! ```
 
 #![allow(clippy::print_stdout)]
+// P2-5: float casts here are the measurement (percentile ranks as `p * n`, and
+// a mean of microsecond durations), not a correctness risk. Diagnostic tool, not
+// shipped code — same rationale as `print_stdout` above.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 
 use kasirmu_core::db::Store;
 use kasirmu_core::migrations;

@@ -12,6 +12,19 @@ next: none | perf: grouped single-pass recompute
 //! a full-catalog pass recomputes every score and refreshes the catalog means
 //! cached in `settings`. Scores and the ledger are local-only (ADR #37 D4).
 
+// P2-5: same rationale as `crate::popularity` — this module reads the ledgers
+// and hands event COUNTS to the float scoring formula, so the casts into `f64`
+// are the intended representation and not a precision loss that matters. A
+// `top_categories` page size arrives as `i64` from the API and is clamped with
+// `.max(0)` before the `usize` cast, so the sign and wrap lints are already
+// guarded at the call site rather than by the conversion.
+#![allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_possible_wrap
+)]
+
 use std::collections::HashMap;
 
 use rusqlite::params;
