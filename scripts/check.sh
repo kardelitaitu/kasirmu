@@ -196,14 +196,18 @@ if command -v cargo-nextest &>/dev/null || cargo nextest --version &>/dev/null 2
     # manifest via .drectve for exactly this reason). Excluded there, they were run by nothing:
     # measured 2026-09-29, neither this script nor any .github/workflows file named kasirmu-app
     # or kasirmu-mobile, so 863 tests -- 173 desktop, 690 tablet -- had no automation at all.
+    # `--lib` is load-bearing: without it cargo rebuilds the shell BINARY too, and a dev instance
+    # holding target/debug/kasirmu-app.exe makes the step die on `failed to remove file` (measured
+    # 2026-09-29) -- a gate that demands you stop the app first is a gate nobody runs. The unit
+    # tests live in the lib target on both shells, so `--lib` covers them and nothing else is lost.
     # Run them explicitly, AFTER the receipt above so this run cannot overwrite the JUnit report
     # that step grades (nextest writes target/nextest/default/junit.xml on every invocation).
-    step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features
+    step "test application shells (nextest)" "cargo nextest run -p kasirmu-app -p kasirmu-mobile --lib --all-features" cargo nextest run -p kasirmu-app -p kasirmu-mobile --all-features
 else
     echo -e "${YELLOW}⚠ nextest not found — falling back to cargo test (slower)${NC}"
     step "test workspace" "cargo test --workspace --all-features -- --test-threads $cpu_count" cargo test --workspace --all-features -- --test-threads "$cpu_count"
     # The same two shells in the fallback branch; see the note in the nextest branch above.
-    step "test application shells" "cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count" cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count
+    step "test application shells" "cargo test -p kasirmu-app -p kasirmu-mobile --lib --all-features -- --test-threads $cpu_count" cargo test -p kasirmu-app -p kasirmu-mobile --all-features -- --test-threads $cpu_count
 fi
 
 # ── Fuzz targets (P0-3) ──────────────────────────────────────────────────
