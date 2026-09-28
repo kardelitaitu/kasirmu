@@ -1036,6 +1036,41 @@ covered, because no coverage instrument is enforced. Close that in this order.
       (3), `modules/sales/src/models.rs` (2), `db/loyalty.rs` (2), `db/image_refs.rs`
       (2), then 14 files with 1 each. They need the same per-site judgment; none
       is a mechanical sweep.
+      **ROUND 4 — 2026-09-28 (commit `fe4e6f808`). The production sites are done:
+      every remaining correctness-adjacent lint is now either a TEST or in a
+      file another session owns.**
+      **The key discovery: these were NOT all "deliberate float" after all.**
+      Reading each production site instead of trusting the class label showed
+      the `cast_possible_wrap` / `cast_sign_loss` / `cast_possible_truncation`
+      group divides in two:
+      - **Genuinely deliberate** (documented last round, unchanged): `popularity.rs`'s
+        scoring formula, the WAL diagnostics, the percentage ratios.
+      - **Not deliberate at all — narrowlyings that feed SQL or money
+        arithmetic**, where `as` was hiding a real (if remote) boundary. These
+        are the ones fixed here, and each fix is a genuine tightening:
+      | site | was | now | why it matters |
+      |---|---|---|---|
+      | `db/receipt_code.rs:401` | `secs as i32` | `i32::try_from` + existing error | an `ok_or_else` sat RIGHT BELOW; with `as` an out-of-range offset wrapped to a plausible value and **the error branch could never fire** |
+      | `db/loyalty.rs:808` | `(i128 expr) as i64` | `i64::try_from` + error | this is the points-reversal path whose own comment says points "never touch a float"; the narrowing back from i128 was the one unchecked step |
+      | `db/fiscal.rs:464` | `padding as usize` | `usize::try_from` + error | `padding` is validated in a DIFFERENT function, so this conversion should state its own precondition; a negative would have become a huge format width |
+      | `db/inventory.rs:540`, `db/kds.rs:278` | `i as i64` | `i64::try_from` + error | line-ordering indices; a wrap would silently reorder a ticket |
+      | `db/image_refs.rs:212`, `db/products_stock_adjust/movements.rs:99` | `limit/max_groups as i64` | `i64::try_from` + error | caller-supplied values reaching a SQL `LIMIT`; a wrap yields a wrong page size |
+      | `db/products_categories.rs:136` | `unlinked as i64` | `i64::try_from` + error | `tx.execute` row count |
+      | `src/session.rs:145` | `.as_secs() as i64` | `i64::try_from` saturating | a u64 clock past 2262 would have wrapped NEGATIVE and reported a long-dead session as **live** — a fail-open on an auth-adjacent check |
+      | `src/sync_auth.rs:550` | `.as_millis() as u64` | `u64::try_from` saturating | health-check latency |
+      | `modules/sales/src/models.rs:173,189` | `as i64` | `try_from` → `Option` | matched the function's own `Option` contract (`?` on the Option, like `cart.total()?` one line above) rather than inventing an error type it does not have |
+      **13 files, 105 insertions / 19 deletions.** Verified: 123 tests pass
+      across the touched areas (loyalty 54, fiscal 19, modules-sales 50),
+      `cargo check -p kasirmu-core --lib` and `-p modules-sales` both clean.
+      **A caveat I have to state:** the final count reads **32, not 27** — higher
+      than the round's start — because the concurrent currency refactor
+      (`create_exchange_rate` / `get_default_currency` missing from `Store`)
+      broke some targets and clippy then re-reported in files it could not reach
+      before. That is the same layering effect documented for rustdoc: the
+      number goes up as previously-unreachable code becomes visible. **11 are
+      mine and all 11 are `float_cmp`/`cast_possible_wrap` in TEST files**;
+      21 belong to the claimed `staff/login.rs`, `refunds.rs` and
+      `license_verification.rs`. The production surface is clear.
 
 - [x] **P2-6 — Extend `deny(unsafe_code)` to the crates that can carry it.**
       7 of 38 crate roots deny it today. The remaining ones are mostly
