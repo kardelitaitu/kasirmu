@@ -194,7 +194,8 @@ export function StaffRoster({
       return (
         member.display_name.toLowerCase().includes(needle) ||
         member.username.toLowerCase().includes(needle) ||
-        member.national_id_masked.toLowerCase().includes(needle)
+        member.national_id_masked.toLowerCase().includes(needle) ||
+        (member.staff_code?.toLowerCase().includes(needle) ?? false)
       );
     });
     return [...matches].sort((a, b) => {
@@ -307,7 +308,23 @@ export function StaffRoster({
                   />
                 </div>
                 <div className="staff-mgmt-card-who">
-                  <span className="staff-mgmt-card-name">{member.display_name}</span>
+                  <span className="staff-mgmt-card-name">
+                    {member.display_name}
+                    {(member.staff_code ?? member.code) && (
+                      <span
+                        className="staff-mgmt-code-badge"
+                        style={{
+                          marginLeft: 6,
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 'normal',
+                          opacity: 0.75,
+                        }}
+                      >
+                        #{member.staff_code ?? member.code}
+                      </span>
+                    )}
+                  </span>
                   <div className="staff-mgmt-card-sub-row">
                     <span className="staff-mgmt-card-username">
                       <span className="staff-mgmt-card-at" aria-hidden="true">@</span>

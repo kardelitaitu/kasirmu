@@ -220,7 +220,7 @@ export default function StoreSwitcher() {
                 className={`store-switcher-option ${store.id === primary?.id ? 'store-switcher-option--active' : ''} ${activeIndex === idx ? 'store-switcher-option--highlighted' : ''}`}
                 onClick={() => handleSelect(store)}
               >
-                <span className="store-switcher-option-name">{store.name}</span>
+                <span className="store-switcher-option-name">{store.code ? `[${store.code}] ` : ''}{store.name}</span>
                 <span className="store-switcher-option-meta">
                   {store.currency}
                   {store.is_primary ? l10n.getString('store-switcher-primary') : ''}

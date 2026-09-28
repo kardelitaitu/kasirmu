@@ -147,6 +147,9 @@ export interface AssignmentArgs {
 /** A staff member record. */
 export interface StaffMemberDto {
   id: string;
+  /** Base62 dynamic staff/cashier badge code (e.g. "01", "02"). */
+  staff_code?: string | null;
+  code?: string | null;
   username: string;
   display_name: string;
   role_id: string;

@@ -3,6 +3,8 @@ import { loggedInvoke } from '@/utils/logged-invoke';
 /** A physical location profile with address and local configuration. */
 export interface LocationProfile {
   id: string;
+  /** Base62 dynamic branch/location code (e.g. "01", "02"). */
+  code?: string;
   name: string;
   address: string;
   tax_id: string;

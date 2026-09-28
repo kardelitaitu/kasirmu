@@ -572,7 +572,23 @@ export default function TerminalManagementScreen() {
             </thead>
             <tbody>{terminals.map((terminal) => (
                 <tr key={terminal.id}>
-                  <td className="terminal-mgmt-cell-name">{terminal.name}</td>
+                  <td className="terminal-mgmt-cell-name">
+                    {terminal.name}
+                    {terminal.code && (
+                      <span
+                        className="terminal-mgmt-code-badge"
+                        style={{
+                          marginLeft: 6,
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          fontWeight: 'normal',
+                          opacity: 0.75,
+                        }}
+                      >
+                        #{terminal.code}
+                      </span>
+                    )}
+                  </td>
                   <td className="terminal-mgmt-cell-device-id">{terminal.deviceId}</td>
                   <td>
                     {terminal.isActive ? (
