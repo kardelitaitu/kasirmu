@@ -689,8 +689,11 @@ impl Store<'_> {
             params.push(end);
         }
 
-        // Add LIMIT and OFFSET
-        sql.push_str(&format!(" LIMIT {limit} OFFSET {offset}"));
+        // Ask for one row past the page: with only `limit` rows fetched,
+        // "everything was returned" and "there is more" are the same
+        // observation, so `truncated` could not be decided from the result.
+        let fetch = limit.saturating_add(1);
+        sql.push_str(&format!(" LIMIT {fetch} OFFSET {offset}"));
 
         let mut stmt = self.conn.prepare(&sql).map_err(|e| {
             CoreError::Internal(format!("failed to prepare custom report query: {e}"))
@@ -704,7 +707,7 @@ impl Store<'_> {
             .map(|s| s as &dyn rusqlite::types::ToSql)
             .collect();
 
-        let rows = stmt
+        let mut rows = stmt
             .query_map(param_refs.as_slice(), |row| {
                 let mut row_data = Vec::with_capacity(col_count);
                 for i in 0..col_count {
@@ -719,7 +722,10 @@ impl Store<'_> {
                 CoreError::Internal(format!("failed to collect custom report rows: {e}"))
             })?;
 
-        let truncated = rows.len() >= limit as usize;
+        // The extra row exists only to answer the flag; it is not part of the
+        // page, and a page that exactly fills the limit withheld nothing.
+        let truncated = rows.len() > limit as usize;
+        rows.truncate(limit as usize);
 
         Ok(CustomReportResponse {
             columns: safe_cols.iter().map(|&s| s.to_string()).collect(),

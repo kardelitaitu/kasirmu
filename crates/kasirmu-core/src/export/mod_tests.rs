@@ -398,6 +398,45 @@ fn custom_report_invalid_columns_filtered() {
 }
 
 #[test]
+fn custom_report_truncated_means_rows_were_withheld() {
+    // `truncated` answers "is there more than you asked for". Asking for
+    // exactly the number of rows that exist must say no: with the query
+    // fetching only `limit` rows, "everything was returned" and "there is
+    // more" are literally the same observation, so the flag has to be decided
+    // by asking for one row past the page.
+    let conn = migrations::fresh_db();
+    seed_sale(&conn, "A", 1, 100);
+    seed_sale(&conn, "B", 1, 100);
+    seed_sale(&conn, "C", 1, 100);
+    let s = Store::new(&conn);
+
+    let req = |limit: u32| CustomReportRequest {
+        dataset: "sales".to_string(),
+        columns: vec!["id".to_string()],
+        start_date: None,
+        end_date: None,
+        limit: Some(limit),
+        offset: None,
+    };
+
+    let exact = s.build_custom_report(req(3)).unwrap();
+    assert_eq!(exact.rows.len(), 3);
+    assert!(
+        !exact.truncated,
+        "a page that exactly fills the limit withheld nothing"
+    );
+
+    // The genuine truncation case must still report it, and still cap the page.
+    let capped = s.build_custom_report(req(2)).unwrap();
+    assert_eq!(
+        capped.rows.len(),
+        2,
+        "the page must stay capped at the limit"
+    );
+    assert!(capped.truncated, "a third row existed and was withheld");
+}
+
+#[test]
 fn custom_report_sales_basic() {
     let conn = migrations::fresh_db();
     seed_sale(&conn, "A", 1, 100);
