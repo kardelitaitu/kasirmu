@@ -7,9 +7,9 @@ use rusqlite::Connection;
 /// the baseline rows are seeded here rather than shipped by the migration
 /// (ADR #56 §2.6).
 fn fresh() -> Connection {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
+    // O-T01: `fresh_db` clones a pre-migrated snapshot (~3 ms) rather than
+    // replaying all 68 migrations (~305 ms). It sets foreign_keys=ON itself.
+    let conn = migrations::fresh_db();
     migrations::seed_provisioned_baseline(&conn);
     conn
 }

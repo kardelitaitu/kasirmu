@@ -1592,7 +1592,7 @@ and only one third is a one-line fix:
 
 | Class | Count | What it is | Convertible? |
 |---|---|---|---|
-| **A** | **12** | `Connection::open_in_memory()` then `run` | **Yes — `fresh_db()` is a drop-in.** One of these was `fresh_conn()` (O-T01, now paid); **11 remain.** |
+| **A** | **12** | `Connection::open_in_memory()` then `run` | **Yes — `fresh_db()` is a drop-in.** All 12 converted in §11H. *(This read "11 remain" when written; the 12 above was already counted **after** O-T01 landed, so 12 remained, not 11. Corrected by §11H.)* |
 | **C** | **9** | `run` on a connection the test does not own (`state.db.lock().await`) | **No.** `fresh_db()` *returns* a new connection; these tests need the one `AppState` already holds. |
 | **D** | **16** | `Connection::open(&path)` — on-disk databases | **No, and correctly so.** `crates/kasirmu-core/tests/backup_restore_integration.rs:45` already says why: *"`fresh_db()` creates an in-memory DB… For file-based DBs, we run migrations manually."* Includes both `recovery_tests.rs` files and `migrate_sqlite_to_pg_tests.rs`, which exist to exercise on-disk and WAL behaviour. |
 
@@ -1618,6 +1618,61 @@ WAL. Worth ~2.7 s; **not funded here**, because the only tests that exercise it
 are the 17 that cannot run in this sandbox.
 
 **O-T02 is the remaining live entry** from §9's list.
+
+### 11H. The rest of class A paid — 115 s off six test binaries (2026-09-28)
+
+All 12 remaining class-A sites converted (`migrations::run` on a freshly opened
+in-memory connection → `migrations::fresh_db()`): `crates/kasirmu-core/src/db/
+inventory_tests.rs`, `settings_tests.rs`, `sync_client_tests.rs`,
+`user_preferences_tests.rs`, `tests/gift_card_integration.rs`,
+`tests/loyalty_integration.rs`, `tests/purchase_order_integration.rs`,
+`tests/stock_count_integration.rs`, `tests/stock_transfer_integration.rs`,
+`tests/supplier_integration.rs`, `modules/inventory/src/handlers_tests.rs`,
+`platform/sync/src/crdt/clock_store_tests.rs`.
+
+`tests/stock_count_integration.rs` also dropped a `journal_mode = WAL` pragma
+that was dead code — an in-memory database cannot use WAL whatever the caller
+asks for, which is exactly why `fresh_db` does not set it.
+
+**Measured A/B** — the six `kasirmu-core` integration binaries, baseline taken
+by `git stash`-ing only those six files and running immediately after (98 tests):
+
+| Binary | Tests | `migrations::run` | `fresh_db()` |
+|---|---|---|---|
+| `gift_card_integration` | 21 | 27.00 s | 0.81 s |
+| `loyalty_integration` | 20 | 25.40 s | 0.56 s |
+| `purchase_order_integration` | 14 | 15.26 s | 0.45 s |
+| `stock_count_integration` | 14 | 15.23 s | 0.43 s |
+| `stock_transfer_integration` | 14 | 17.10 s | 0.44 s |
+| `supplier_integration` | 15 | 17.95 s | 0.42 s |
+| **Total** | **98** | **117.94 s** | **3.11 s** |
+
+**−114.8 s, −97.4%.** With O-T01's −43.5 s (§11G), this line of work has taken
+**~158 s** out of the dev-CI test wall.
+
+**Why the win is ~4× the naive projection.** 218 helper invocations × 305 ms
+predicts ~65 s; measured 115 s. The multiplier is §11F's own finding turned
+around on `run`: under `cargo test`'s 32 threads a *replay* costs ~1.2 s, not
+305 ms (27 s / 22 calls in `gift_card_integration`), because replays do not
+parallelise either and contend on the same allocator. So the single-threaded
+microbenchmark understates the parallel cost of `run` by roughly 4×, and any
+future estimate of "how much is this `run` site costing" must not use the 305 ms
+single-thread figure.
+
+**Verification, and the failures that are not mine.** `db::inventory_tests` 49
+passed; `db::settings` 35 passed / 1 failed; `sync_client` 52 passed / 3 failed;
+`user_preferences_tests` 7 passed; `modules-inventory` lib 90 passed;
+`platform-sync --lib crdt` 72 passed / 1 failed. Every failure is the sandbox,
+not the change: `backup_creates_snapshot_file` cannot create
+`C:\WINDOWS\TEMP\oz-test-backup-…db.tmp-…`; three `sync_client` tests die on
+`Os { code: 10106 }` in mock-server setup; the `daemon_crdt_…` test on
+`Os { code: 11003 }` at `daemon_tests.rs:1377`; and `boundary_contract`'s
+`manifest_id_matches_module_trait_id` on `OS Error 5` reading
+`modules/inventory/manifest.json`. All are the same temp-path / socket / file
+failures already attributed three times today.
+
+**Class A is now empty.** Remaining: class C 9 (needs a WAL-aware snapshot
+helper — §11G), class D 16 (on-disk, correct as-is), production 15 (must stay).
 
 **The number that actually dominates axis B, and that nobody has scoped.** Under
 `cargo nextest run` (dev-ci.yml:552 — process-per-test), each test process builds

@@ -4,9 +4,8 @@ use crate::settings::Settings;
 use rusqlite::Connection;
 
 fn setup() -> Store<'static> {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
+    // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
+    let conn = migrations::fresh_db();
     let conn: &'static Connection = Box::leak(Box::new(conn));
     Store::new(conn)
 }

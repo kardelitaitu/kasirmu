@@ -12,9 +12,8 @@ use kasirmu_core::migrations;
 use platform_kernel::EventBus;
 
 fn fresh_db() -> Arc<Mutex<Connection>> {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
+    // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
+    let conn = migrations::fresh_db();
     Arc::new(Mutex::new(conn))
 }
 

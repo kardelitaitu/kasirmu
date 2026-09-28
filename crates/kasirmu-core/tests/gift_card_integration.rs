@@ -10,10 +10,8 @@ use rusqlite::Connection;
 // ── Helpers ───────────────────────────────────────────────────────────
 
 fn setup() -> Connection {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-    migrations::run(&mut conn).unwrap();
-    conn
+    // O-T01: snapshot clone (~3 ms) rather than a 68-migration replay (~305 ms).
+    migrations::fresh_db()
 }
 
 fn store(conn: &Connection) -> Store<'_> {
