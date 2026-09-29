@@ -763,6 +763,17 @@
         "chokepoints self-test", "doc uniqueness self-test",
         "release workflow self-test"
       ] }
+    },
+    {
+      "id": "local-matrix-checkers",
+      "label": "local matrix checkers",
+      "status": "required",
+      "_note": "Added 2026-09-29 to close the 7 gate steps that ran in check.sh with no row. These are checkers, not setup: npm ci, website npm ci, test workspace (nextest), test application shells and their siblings are deliberately NOT listed here, and that is the reason no blanket reverse check exists. check.sh mixes gates with INSTALLS and TEST-RUNNER invocations, and deciding which is which is a judgement per step, not a rule -- so a naive 'every step needs a row' check would fire on 13 correct entries and get muted on its first run. Which is the shape of the mistake this campaign has made repeatedly: a check broad enough to be easy is narrow enough to be useless. Each step listed here runs a scripts/*.py checker with a --self-test beside it, and verify-selftests-wired.py is what keeps that pairing true from now on.",
+      "runners": { "check.sh": [
+        "ipc invoke token parity", "windows config drift",
+        "feature registry parity", "no-hardcoded-money-format",
+        "flaky quarantine", "deployment verification", "chokepoints"
+      ] }
     }
   ]
 }
