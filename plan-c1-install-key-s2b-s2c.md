@@ -209,12 +209,70 @@ C1 says: *"a per-install key is held in the OS keychain, a test asserts the stat
 fallback cannot be reached in a release build, and a row written under the legacy
 derivation still decrypts after the key exists."*
 
-- [ ] A key written to the OS keychain at boot and read back on the next boot.
+- [x] **A key written to the OS keychain at boot and read back on the next boot.**
+      DONE — S2b-2a (`f2932f6f8`) resolves it generate-once; S2b-2b (`625c47290`,
+      `5813b9208`) installs it in both shells before the store opens.
 - [ ] **The static fallback is unreachable in a release build.** This needs a build-time
       assertion, not a runtime one — likely `#[cfg(not(debug_assertions))]` plus a
       `compile_error!` if `derive_static_key` is reachable, or a release-only test. **This
       is the least-specified part of the item and needs a design decision during S2b-2.**
+      **⚠️ IT CONTRADICTS §5's H2 AS WRITTEN — see §10. Do not implement the hard-error
+      reading without reading §10 first.**
 - [ ] A row written under the legacy derivation still decrypts after the key exists (H4).
+      **Satisfied structurally by S2b-1** (the install arm is first for writes, last for
+      reads; `candidate_keys` keeps the legacy tail) and pinned by
+      `crates/kasirmu-crypto/tests/at_rest_key_lifecycle.rs`; not re-run this pass.
+
+## 10. The §7 release-build clause contradicts §5's H2 — do not build it as written
+
+Found 2026-09-29 while implementing S2b-2b, **before** writing any code for this clause.
+
+**The two clauses, verbatim from this plan:**
+
+- §8 Q4 (answering the §7 clause): *"In a release build an unset master key must be a **hard
+  error** rather than a silent fallback to the public constant, so the fallback is
+  structurally unreachable there."*
+- §5 H2: *"Keychain lost/unavailable → all six families fail at once. **Boot must not fail.**
+  A missing key = today's behaviour (legacy/master), never an error."*
+
+**They cannot both hold, and the collision is the default path, not an exotic one.** On a
+machine whose keychain is unusable (the H3 refusal, or a Linux box with no libsecret) the
+install key is absent **and** — verified: **zero** shipped config sets `KASIRMU_MASTER_KEY`
+or `OZ_MASTER_KEY` anywhere in `ops/`, `.env.example`, any compose or Dockerfile — the master
+key is unset too. So the arm a release build selects is exactly `derive_static_key`, the
+public constant. Q4 would make that a **hard error**, i.e. the app refuses to start on every
+CI runner and every libsecret-less Linux install — which is what H2 forbids.
+
+**Why H2 should win, on evidence this plan already collected.**
+
+1. **Every shipped install is in that state.** The checklist records the public-constant key
+   as "live on every shipped install" and nothing ships a master key. A hard error would not
+   harden those installs; it would stop them booting.
+2. **It converts an at-rest exposure into an availability outage**, a strictly worse trade for
+   a till. D1's whole analysis was built on *not* bricking live installs — that is why option B
+   (set the master key now) was rejected.
+3. **The clause's intent is satisfiable without the hard error.** Its goal is that the public
+   constant stops being the derivation for **new writes**, not that the process refuses to run.
+   S2b-2 already achieves that wherever a durable keychain exists: the install key becomes the
+   write arm, and the static fallback survives only as the **last read candidate** for rows
+   written before the upgrade — which H4 *requires* it to be.
+
+**Options for whoever picks this up.**
+
+- **(a) Re-scope the clause** to *"the static fallback is never the WRITER in a release build
+  when a durable keychain exists"* — testable, and consistent with both H2 and H4.
+- **(b) Keep the hard-error reading** and accept it is a breaking change needing an operator
+  opt-in (e.g. only when a key is *expected* but missing) — a product decision, not a
+  mechanical one.
+
+**(a) is the recommendation.** Note that neither option is expressible as a `compile_error!`
+build gate: `derive_static_key` must stay compiled because H4's legacy read path needs it, so
+the assertion has to be **behavioural** (a release-profile test), not a build failure. That is
+also why this clause is the only part of C1 that cannot be closed from the checklist alone.
+
+**Status: NOT IMPLEMENTED, deliberately.** S2b-2b's other half — the boot injection — is done
+and tested. This clause is left for a decision rather than guessed at, because guessing wrong
+here stops the application from starting.
 
 ## 8. Owner questions — ANSWERED 2026-09-29
 
