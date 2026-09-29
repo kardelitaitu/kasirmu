@@ -61,9 +61,53 @@ JSON shape to paste. **There is no file = nothing loads.**
 
 **What this does and does not buy you.** It turns a self-declaration into an
 explicit, auditable approval, and it fails closed by default. It is **not**
-tamper resistance: `plugin-grants.json` sits in the plugins directory, so
-anyone who can add a plugin can add a grant for it. Protecting against that
-needs signed manifests, which are not implemented.
+tamper resistance on its own: `plugin-grants.json` sits in the plugins
+directory, so anyone who can add a plugin can add a grant for it. Tamper
+resistance comes from **signing** — see the next section.
+
+### Signing plugins (tamper resistance)
+
+A signature is what makes a plugin's contents verifiable rather than merely
+approved. It is **opt-in per install**: with no public key configured, unsigned
+plugins load exactly as before. Set the key to require signatures.
+
+```bash
+# 1. Generate a keypair (once). KEEP THE PRIVATE KEY SECRET.
+python3 scripts/sign-plugin.py --generate-key --key plugin-signing-key.pem
+
+# 2. Sign a plugin directory. Writes plugin.toml.sig beside plugin.toml.
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem path/to/plugin
+
+# 3. On the machine that LOADS the plugin, configure the public key:
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem --print-public-key
+#   -> set KASIRMU_PLUGIN_PUBLIC_KEY to that PEM
+
+# Check an existing signature, or re-check after editing:
+python3 scripts/sign-plugin.py --key plugin-signing-key.pem --check path/to/plugin
+```
+
+**What the signature covers:** the plugin id and version, the **canonicalised**
+declared permission set, and every resolved script's relative path and exact
+bytes. The scripts are included deliberately — a signature over `plugin.toml`
+alone would be decorative, because anyone could rewrite `discount.lua` and leave
+a valid manifest signature in place.
+
+**The rules the loader enforces, and they fail closed:**
+
+| Situation | Result |
+|---|---|
+| No key configured, no signature | Loads (the opt-in default) |
+| No key configured, signature present | **Refused** — an install that never checked must not report "fine" |
+| Key configured, no signature | **Refused** |
+| Key configured, signature valid | Loads |
+| Key configured, contents changed after signing | **Refused** |
+
+**Not verified by the signature:** `plugin-grants.json` (that is your local
+policy, not signed material), and **revocation** — a leaked key cannot be
+un-trusted without a new build. Changing the digest framing in
+`crates/kasirmu-plugin/src/signature.rs` invalidates every existing signature:
+that framing is cross-checked against the Python tool by
+`cargo test -p kasirmu-plugin -- --ignored signature_roundtrip`.
 
 ### Available permissions
 
@@ -228,8 +272,10 @@ Key requirements:
 3. Write your Lua scripts
 4. **Approve the permissions** in `plugins/plugin-grants.json` (see
    "Operator approval" above) — without this the plugin is refused
-5. Restart kasir.mu to load the plugin
-6. Check the logs for any load errors
+5. **Sign the plugin** if the target install requires signatures (see "Signing
+   plugins" above)
+6. Restart kasir.mu to load the plugin
+7. Check the logs for any load errors
 
 ## Testing Plugins
 
