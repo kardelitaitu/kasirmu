@@ -20,8 +20,12 @@ import {
   formatPrice as _formatPrice,
   fontSizeClass,
   computeReceiptPreview,
+  TEST_PRINT_CODES,
+  formatTestPrintResult,
+  classifyTestPrintError,
   type ReceiptFontSize,
   type ReceiptLogoPosition,
+  type TestPrintResult,
 } from './receiptLogic';
 import './RestaurantSettingsScreens.css';
 
@@ -111,6 +115,7 @@ export default function RestaurantReceiptsScreen({
 
   const [saving, setSaving] = useState(false);
   const [testingPrint, setTestingPrint] = useState(false);
+  const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -401,12 +406,60 @@ export default function RestaurantReceiptsScreen({
 
   // ── Test Print ──────────────────────────────────────────────
   const handleTestPrint = useCallback(async () => {
-    if (!sessionToken) return;
+    // 1. Pre-flight check: authentication session
+    if (!sessionToken) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_AUTH_REQUIRED);
+      setTestPrintResult({ ...res, timestamp: Date.now() });
+      addToast({
+        title: `[${res.code}] Print Error`,
+        message: res.message,
+        type: 'error',
+      });
+      return;
+    }
+
+    // 2. Pre-flight check: printer connection enabled
+    if (printerConnection === 'disabled') {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_PRINTER_DISABLED);
+      setTestPrintResult({ ...res, timestamp: Date.now() });
+      addToast({
+        title: `[${res.code}] Print Error`,
+        message: res.message,
+        type: 'error',
+      });
+      return;
+    }
+
+    // 3. Pre-flight check: network printer must have IP / host
+    if (printerConnection === 'network' && !printerDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_HOST);
+      setTestPrintResult({ ...res, timestamp: Date.now() });
+      addToast({
+        title: `[${res.code}] Print Error`,
+        message: res.message,
+        type: 'error',
+      });
+      return;
+    }
+
+    // 4. Pre-flight check: USB/Serial printer path
+    if ((printerConnection === 'usb' || printerConnection === 'serial') && !printerDevicePath.trim()) {
+      const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_MISSING_PORT);
+      setTestPrintResult({ ...res, timestamp: Date.now() });
+      addToast({
+        title: `[${res.code}] Print Error`,
+        message: res.message,
+        type: 'error',
+      });
+      return;
+    }
+
     setTestingPrint(true);
+    setTestPrintResult(null);
     const start = Date.now();
     try {
       const currency = settings.store.currency || 'IDR';
-      await printSalesReceipt(sessionToken, {
+      const printRes = await printSalesReceipt(sessionToken, {
         receiptNumber: '01-01-260929-01-000042',
         date: new Date().toLocaleDateString(),
         subtotal: { minorUnits: 30000, currency },
@@ -436,27 +489,58 @@ export default function RestaurantReceiptsScreen({
         ],
         ...(tablesEnabled && showTableNumber ? { tableNumber: 'Table 1' } : {}),
       });
+
       const elapsed = Date.now() - start;
       if (elapsed < 500) {
         await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
       }
-      addToast({
-        message: l10n.getString('restaurant-test-print-success'),
-        type: 'success',
-      });
-    } catch {
+
+      if (printRes && printRes.printed === false) {
+        const res = formatTestPrintResult(TEST_PRINT_CODES.ERR_UNCONFIRMED);
+        setTestPrintResult({ ...res, timestamp: Date.now() });
+        addToast({
+          title: `[${res.code}] Print Error`,
+          message: res.message,
+          type: 'error',
+        });
+      } else {
+        const res = formatTestPrintResult(TEST_PRINT_CODES.SUCCESS);
+        setTestPrintResult({ ...res, timestamp: Date.now() });
+        addToast({
+          title: `[${res.code}] Print Success`,
+          message: res.message,
+          type: 'success',
+        });
+      }
+    } catch (err) {
       const elapsed = Date.now() - start;
       if (elapsed < 500) {
         await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
       }
+
+      const classified = classifyTestPrintError(err);
+      const res = formatTestPrintResult(classified.code, classified.detail);
+      setTestPrintResult({ ...res, timestamp: Date.now() });
       addToast({
-        message: l10n.getString('restaurant-test-print-failed'),
+        title: `[${res.code}] Print Error`,
+        message: res.message,
         type: 'error',
       });
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, tablesEnabled, showTableNumber, showItemNotes, l10n, addToast]);
+  }, [
+    sessionToken,
+    printerConnection,
+    printerDevicePath,
+    settings.store.currency,
+    showTax,
+    taxRatePercent,
+    tablesEnabled,
+    showTableNumber,
+    showItemNotes,
+    addToast,
+  ]);
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -999,6 +1083,28 @@ export default function RestaurantReceiptsScreen({
                 <Localized id="restaurant-test-print">Test Print Receipt</Localized>
               </span>
             </button>
+
+            {/* Test Print Result Status Card */}
+            {testPrintResult && (
+              <div
+                className={`resto-test-print-status resto-test-print-status--${testPrintResult.type}`}
+                role="status"
+                aria-live="polite"
+                data-testid="restaurant-receipts-test-print-status"
+              >
+                <div className="resto-test-print-status__badge-row">
+                  <span className="resto-test-print-status__badge">
+                    {testPrintResult.code}
+                  </span>
+                  <span className="resto-test-print-status__label">
+                    {testPrintResult.type === 'success' ? 'SUCCESS' : 'ERROR'}
+                  </span>
+                </div>
+                <p className="resto-test-print-status__msg">
+                  {testPrintResult.message}
+                </p>
+              </div>
+            )}
           </div>
         </aside>
 

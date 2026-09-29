@@ -620,6 +620,81 @@
   cursor: not-allowed;
 }
 
+/* Test Print Result Status Card */
+
+.resto-test-print-status {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+}
+
+.resto-test-print-status--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
+}
+
+.resto-test-print-status--error {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+}
+
+.resto-test-print-status__badge-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.resto-test-print-status__badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  letter-spacing: 0.02em;
+}
+
+.resto-test-print-status--success .resto-test-print-status__badge {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.resto-test-print-status--error .resto-test-print-status__badge {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.resto-test-print-status__label {
+  font-size: var(--text-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resto-test-print-status--success .resto-test-print-status__label {
+  color: var(--color-success);
+}
+
+.resto-test-print-status--error .resto-test-print-status__label {
+  color: var(--color-danger);
+}
+
+.resto-test-print-status__msg {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  margin: 0;
+  color: var(--color-fg);
+  word-break: break-word;
+}
+
 /* ── Right Column: Settings Form Controls ─────────────────── */
 
 .restaurant-settings-column {

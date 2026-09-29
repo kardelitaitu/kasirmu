@@ -42,6 +42,17 @@ vi.mock('@/api/hardware', async () => {
   };
 });
 
+vi.mock('@/api/sales', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/sales')>();
+  return {
+    ...actual,
+    printSalesReceipt: vi.fn().mockResolvedValue({ printed: true }),
+  };
+});
+
+import { printSalesReceipt } from '@/api/sales';
+import { TEST_PRINT_CODES } from '@/features/restaurant/screens/receiptLogic';
+
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -267,6 +278,104 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     await user.type(line2Input, 'ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLMEXTRA');
     expect(line2Input.value).toBe('ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLM');
     expect(line2Input.value.length).toBe(49);
+  });
+});
+
+describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
+  it('displays PRN_SUCCESS_200 and success message when test print succeeds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockResolvedValueOnce({ printed: true });
+    await renderScreen();
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--success');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.SUCCESS)).toBeInTheDocument();
+    expect(within(statusEl).getByText(/Test receipt was sent to the printer successfully/i)).toBeInTheDocument();
+  });
+
+  it('produces PRN_ERR_DISABLED when printer connection is set to disabled', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const connSelect = document.querySelector('#resto-hw-printer-conn') as HTMLSelectElement;
+    await user.selectOptions(connSelect, 'disabled');
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--error');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_DISABLED)).toBeInTheDocument();
+    expect(within(statusEl).getByText(/Receipt printer is currently disabled/i)).toBeInTheDocument();
+  });
+
+  it('produces PRN_ERR_MISSING_HOST when network printer has empty host', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const connSelect = document.querySelector('#resto-hw-printer-conn') as HTMLSelectElement;
+    await user.selectOptions(connSelect, 'network');
+
+    const hostInput = screen.getByLabelText(/Printer IP \/ Host/i) as HTMLInputElement;
+    await user.clear(hostInput);
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--error');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_MISSING_HOST)).toBeInTheDocument();
+  });
+
+  it('produces PRN_ERR_NOT_FOUND when printer driver is not registered', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockRejectedValueOnce(new Error('no receipt printer registered'));
+    await renderScreen();
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--error');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PRINTER_NOT_FOUND)).toBeInTheDocument();
+    expect(within(statusEl).getByText(/No receipt printer is registered or detected/i)).toBeInTheDocument();
+  });
+
+  it('produces PRN_ERR_PAPER_FAULT when printer is out of paper or cover open', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockRejectedValueOnce(new Error('Printer is not ready: check paper supply and cover'));
+    await renderScreen();
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--error');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_PAPER_FAULT)).toBeInTheDocument();
+    expect(within(statusEl).getByText(/Printer fault: check paper roll supply, cover latch, or paper jam/i)).toBeInTheDocument();
+  });
+
+  it('produces PRN_ERR_TIMEOUT when connection times out', async () => {
+    const user = userEvent.setup();
+    vi.mocked(printSalesReceipt).mockRejectedValueOnce(new Error('TCP socket timed out connecting to 192.168.1.100'));
+    await renderScreen();
+
+    const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
+    await user.click(testPrintBtn);
+
+    const statusEl = await screen.findByTestId('restaurant-receipts-test-print-status');
+    expect(statusEl).toBeInTheDocument();
+    expect(statusEl).toHaveClass('resto-test-print-status--error');
+    expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_TIMEOUT)).toBeInTheDocument();
+    expect(within(statusEl).getByText(/Printer communication timed out/i)).toBeInTheDocument();
   });
 });
 
