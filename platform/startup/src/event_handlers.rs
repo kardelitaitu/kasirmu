@@ -1,6 +1,6 @@
 //! Shared application-level event handlers.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: platform-startup (event_handlers) | status: SAFE | lint: CLEAN
 findings: six handlers share a uniform lock/Store/enqueue-or-audit pattern with poison-safe mapping and structured error logs; sale completions enqueued at SyncPriority::Critical (P-2, documented); audit entries system-initiated; no unsafe/no SQL interpolation. COR-33 already resolved: inline tests were extracted to sibling event_handlers_tests.rs (file is now 479 lines, not 1,219).
 next: none | perf: handlers hold the shared DB mutex briefly

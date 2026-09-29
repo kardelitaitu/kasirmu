@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent (consolidated from 25-07-26 + 12-07-27 stamps)
+last audited (date unknown) by DSH-Agent (consolidated from 25-07-26 + 12-07-27 stamps)
 crate: desktop-tauri | status: SAFE | lint: CLEAN
 findings: DB connection with foreign_keys ON + WAL (documented); kernel Drop with bounded lock-retry; test-only in-memory mock constructor. Prior findings preserved: unsafe env::set_var removed (C-2), terminal_id typed field, M-4 logging, M-5 plugin task handle. 0 production unwrap/expect (the in-memory Connection::open_in_memory().unwrap() at state.rs is test-constructor scope).
 next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)

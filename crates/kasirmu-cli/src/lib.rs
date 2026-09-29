@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-cli | status: SAFE | lint: CLEAN
 findings: #![deny(unsafe_code)] at crate root — 0 unsafe blocks. Pure CLI orchestration (migrations, backup, export, smoke). 4 production .unwrap() in seed_demo.rs are a dev-only demo-data generator (infallible from_hms_opt with valid ranges; hours/quantity bounds). No defects found.
 next: None | perf: CLI runs are ephemeral; no long-lived allocations.

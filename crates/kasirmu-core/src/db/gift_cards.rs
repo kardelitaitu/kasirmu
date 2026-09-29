@@ -1,8 +1,8 @@
 //! Gift cards CRUD — issue, redeem, top-up, freeze, balance checks.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (gift_cards) | status: SAFE | lint: CLEAN
-findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED DD-MM-YY — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED DD-MM-YY — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 RESOLVED 2026-09-29 — the plaintext PIN was REMOVED, not hashed: it had no verifier anywhere and `skip_serializing` meant it could not even be read back, so the column carried a secret nothing could check (migration 20261015_gift_cards_drop_pin.sql).
+findings: stored-value paths sound (PA-01 atomic conditional UPDATE both directions with i64::MAX overflow guard on top-up; in-tx balance re-read keeps ledger rows accurate under concurrency; expiry parse-fail treats card as expired — fail-safe; RUST-07 recoverable lookups documented). COR-15 FIXED (date unknown) — partial UNIQUE index uq_gift_card_redeem_sale (migration 20260901) closes the redeem idempotency gap under sync replay. COR-16 FIXED (date unknown) — list_gift_cards search + issued_to now escape LIKE wildcards (ESCAPE '\', same as customers/audit). COR-17 RESOLVED 2026-09-29 — the plaintext PIN was REMOVED, not hashed: it had no verifier anywhere and `skip_serializing` meant it could not even be read back, so the column carried a secret nothing could check (migration 20261015_gift_cards_drop_pin.sql).
 next: none | perf: N+1 txn fetch in list_gift_cards is bounded at 5/card
 */
 

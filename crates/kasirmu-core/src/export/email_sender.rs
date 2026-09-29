@@ -1,9 +1,9 @@
 //! Shared email scheduling & sending logic — used by both desktop-client
 //! and cloud-server.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (email_sender) | status: SAFE | lint: CLEAN
-findings: COR-34 FIXED DD-MM-YY — build_smtp_transport now refuses credentialed plaintext SMTP (fail-closed: use_tls=false + port!=465 + creds present → error instead of leaking credentials via builder_dangerous). Timezone resolver is a ~20-zone fixed-offset table with no DST (europe/london ≈ UTC, documented); unknown tz falls back to UTC with a warn (COR-21 family); 2-minute send window + same-date dedup means an app closed at send time skips the day (INFO).
+findings: COR-34 FIXED (date unknown) — build_smtp_transport now refuses credentialed plaintext SMTP (fail-closed: use_tls=false + port!=465 + creds present → error instead of leaking credentials via builder_dangerous). Timezone resolver is a ~20-zone fixed-offset table with no DST (europe/london ≈ UTC, documented); unknown tz falls back to UTC with a warn (COR-21 family); 2-minute send window + same-date dedup means an app closed at send time skips the day (INFO).
 next: none | perf: N/A
 */
 //!

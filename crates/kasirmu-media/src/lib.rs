@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks (earlier risk sweep counted comment text "no unsafe" — corrected); transforms guarded: decompression-bomb caps (max_pixels/max_side/max_input_bytes) enforced via header-only probe before decode, zero-size sources rejected, crop math saturating with solid-colour trim guard, single-decode pipeline (M-2). Storage backends documented PLANNED stubs returning NotImplemented. No defects found. NOTE 2026-09-30: the `#![deny(unsafe_code)]` below this stamp was INERT until that date — a malformed comment merge (a closing delimiter immediately followed by an opening one, on line 6) had swallowed the attribute into a block comment, so the crate compiled with no unsafe lint at all. Restored as a real inner attribute; the `0 unsafe blocks` above is now enforced rather than asserted.
 next: none — storage persistence still planned | perf: decode-once pipeline; N/A elsewhere

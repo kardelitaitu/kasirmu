@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-hal | status: SAFE | lint: CLEAN
 findings: 0 actual unsafe blocks. #![deny(unsafe_code)] at crate root (RUST-06). Mock driver's .expect("poisoned") calls on Mutex locks are documented as test-double convention (mock always compiled per AGENTS.md). No other production unwrap/expect. Registry uses per-category RwLock with fail-open discovery; all 6 hardware traits have mock implementations. The EDC terminal slot was unified 31-08-26 (closing the bypass). WeightScale discovery gap documented in registry stamp.
 next: WeightScale discovery path still open; otherwise stable | perf: N/A

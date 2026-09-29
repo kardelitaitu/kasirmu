@@ -1,7 +1,7 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: foundation (percentage.rs) | status: SAFE | lint: CLEAN
-findings: exemplary — MONEY-AUDIT-2 overflow-free decomposition verified (100% of i64::MAX = i64::MAX, tested at edges); total arithmetic for any i64 x 0..=100; bounded u8 construction incl. serde path. COR-33 FIXED DD-MM-YY — inline tests moved to sibling percentage_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
+findings: exemplary — MONEY-AUDIT-2 overflow-free decomposition verified (100% of i64::MAX = i64::MAX, tested at edges); total arithmetic for any i64 x 0..=100; bounded u8 construction incl. serde path. COR-33 FIXED (date unknown) — inline tests moved to sibling percentage_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
 next: none | perf: two extra mul/add
 */
 //! Percentage value object — a bounded 0–100 integer type.

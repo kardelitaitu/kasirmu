@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-security | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks, 0 production unwrap/expect. Keyring trait + InMemoryKeyring + platform dispatch verified; SEC-4 rotate_key atomic (park -> archive -> promote); SEC-6 partially addressed (raw entropy zeroized, hex key in Zeroizing; SecretString for get/set deferred — OS credential stores copy internally). SSL/TLS helpers, mask, error taxonomy verified. 100 tests pass (+7 doctests).
 next: SEC-6 residual — SecretString for the Keyring get/set surface | perf: N/A

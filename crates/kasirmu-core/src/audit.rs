@@ -1,7 +1,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: append-only audit entry type sound; COR-1 FIXED DD-MM-YY (DSH-Agent) — id field doc updated to UUID v7, matching the constructor's ADR #6 generation
+findings: append-only audit entry type sound; COR-1 FIXED (date unknown, DSH-Agent) — id field doc updated to UUID v7, matching the constructor's ADR #6 generation
 next: fix field doc | perf: N/A
 */
 //! Audit log — immutable, append-only record of sensitive actions.

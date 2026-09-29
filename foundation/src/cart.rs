@@ -1,7 +1,7 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: foundation (cart.rs) | status: SAFE | lint: CLEAN
-findings: exemplary — MONEY-AUDIT-3 fixes verified intact (CartLine::total fails closed on serde-bypassed qty<=0; discount_amount never masks with .or(Some(zero))); fixed discount capped via Money::min; debug_assert currency guards for direct-field mutation. COR-33 FIXED DD-MM-YY — ~850 lines of inline tests moved to sibling cart_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
+findings: exemplary — MONEY-AUDIT-3 fixes verified intact (CartLine::total fails closed on serde-bypassed qty<=0; discount_amount never masks with .or(Some(zero))); fixed discount capped via Money::min; debug_assert currency guards for direct-field mutation. COR-33 FIXED (date unknown) — ~850 lines of inline tests moved to sibling cart_tests.rs (per AGENTS.md: "never put unit tests inside production .rs files").
 next: none | perf: discount folds lines once
 */
 //! Cart and CartLine — the in-memory sale pipeline.

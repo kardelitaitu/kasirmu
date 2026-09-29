@@ -1,8 +1,8 @@
 //! Replication — orchestrates push and pull sync cycles.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: platform-sync (replication) | status: SAFE | lint: CLEAN
-findings: clean — ReplicationResult counts struct only; orchestration lives in the engine and daemon. COR-33 FIXED DD-MM-YY — inline tests moved to sibling replication_tests.rs.
+findings: clean — ReplicationResult counts struct only; orchestration lives in the engine and daemon. COR-33 FIXED (date unknown) — inline tests moved to sibling replication_tests.rs.
 next: none | perf: N/A
 */
 //!

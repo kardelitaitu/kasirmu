@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: 0 unsafe blocks. 12 production .expect() calls in metrics.rs — all prometheus metric registration with literal static opts (documented-invariant: fresh construction + registration cannot fail at runtime; standard prometheus pattern). Parameterized SQL queries, integer minor units throughout. No defects found.
 next: none | perf: N/A

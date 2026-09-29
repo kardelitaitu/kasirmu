@@ -1,6 +1,6 @@
 //! kasir.mu Sync Engine
 /*
-last audited DD-MM-YY by DSH-Agent (re-review)
+last audited (date unknown) by DSH-Agent (re-review)
 crate: platform-sync | status: SAFE | lint: CLEAN
 findings: verified exemplary — SYNC-01 durable pull anchor with MONOTONIC advancement, replay-safe apply_remote_atomic with idempotency receipts, SYNC-02 shared conflict resolver (ADR-21: sale status DAG, version LWW, CRDT merge), SYNC-06 pin_hash never travels, RUST-04 snapshot pre-validation, per-batch independent commits. TLS verified: rustls + native roots + SslMode::Require (fail-closed, no certificate bypass). 0 unsafe blocks. 1 production expect (transport.rs new() — documented RUST-05 invariant wrapper). COR-33 already resolved: lib.rs is 648 lines with sibling lib_tests.rs (the 25-07-26 "production-after-tests" note was stale).
 next: none | perf: 64KB priority-sorted batches

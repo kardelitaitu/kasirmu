@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-lua | status: SAFE | lint: CLEAN
 findings: 2 actual unsafe blocks verified — both `unsafe impl Send/Sync for LuaRuntime` with item-scoped #[allow(unsafe_code)] + documented SAFETY rationale (mlua is Send+Sync; LuaRuntime holds an Arc<Mutex<...>>) — crate root #![deny(unsafe_code)] holds. LUA-3 RESOLVED — removed detect_overwrites(): dead code (never called anywhere) whose overwrite detection was a no-op (counted duplicates in the input list, not VM overwrites). LUA-2 already fixed (percent range at parse site). Sandbox hardening verified: io/loadfile/dofile/require/package/debug removed, os reduced, 10 MiB memory cap, 100K instruction hook, MONEY-05 float hand-off documented. Default::default() .expect() is documented-infallible (LuaRuntime::new cannot fail).
 next: none — crate stable | perf: N/A

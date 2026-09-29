@@ -1,8 +1,8 @@
 //! Email report delivery — SMTP configuration and report email generation.
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (email_report) | status: SAFE | lint: CLEAN
-findings: COR-36 FIXED DD-MM-YY — render_text now truncates product names at char boundaries (char_indices instead of &row.name[..21] byte slicing, which panicked on multi-byte UTF-8); regression test updated from catch_unwind-panic to assert safe truncation. HTML path escapes all user-controlled cells properly; SMTP password encrypted at rest via crate::crypto with transparent decrypt and documented legacy-plaintext fallback (test-pinned).
+findings: COR-36 FIXED (date unknown) — render_text now truncates product names at char boundaries (char_indices instead of &row.name[..21] byte slicing, which panicked on multi-byte UTF-8); regression test updated from catch_unwind-panic to assert safe truncation. HTML path escapes all user-controlled cells properly; SMTP password encrypted at rest via crate::crypto with transparent decrypt and documented legacy-plaintext fallback (test-pinned).
 next: none | perf: N/A
 */
 //!

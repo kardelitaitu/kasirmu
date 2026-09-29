@@ -1,5 +1,5 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited (date unknown) by DSH-Agent
 crate: kasirmu-notification | status: SAFE | lint: CLEAN
 findings: 0 production unsafe blocks — the only unsafe is test-only std::env::set_var/remove_var in whatsapp_tests.rs (serial_test-gated, SAFETY documented). Production lock().unwrap() confined to mock.rs (documented test-double pattern). Verified webhook HMAC verification (whatsapp.rs:328) and mock driver. No defects found.
 next: none | perf: N/A
