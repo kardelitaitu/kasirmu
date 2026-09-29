@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 185 lines, no audit stamp, no footer, no marker. A dated release record, left entirely as written. · Of the four per-version changelogs in `docs/releases/` this is the newest (0.0.25, 0.0.31, 0.0.33, 0.0.34) and therefore the one most likely to be read as current, which makes the scope note in this stamp worth making explicit: it is a record of the 0.0.34 build and nothing later. The branch is now `0.0.40`, and the live history is the root `CHANGELOG.md`. Nothing in this file should be read as describing current behaviour without re-verification against the tree, which is exactly the rule the per-version changelog format is supposed to signal and does not, on its own, signal strongly enough. · NOT re-measured: the release contents and any counts, all statements about one build. · No stamp or footer existed; both added. -->
 # Changelog — kasir.mu 0.0.34
 
 **Release date:** 2026-09-02
@@ -183,3 +184,5 @@ This release is the **largest single version in kasir.mu history**, assembled fr
 ## Clippy Resolution
 
 All 14 files with clippy violations introduced by the merged agents were fixed as part of the verification process: `outbox.rs` (PG dead-code, needless mut), `redis_backend.rs` (dead-code helpers), `image_gc.rs` (`&PathBuf` → `&Path`), `sync_api.rs` (collapsible if), `products_images.rs` (manual range contains), `image_push.rs` (doc comments, test lint), `image_download.rs` (dead-code tracker, test dead-code, doc comments), `tokens.rs` (result_large_err), `topology/persistence.rs` (too_many_arguments), `pg.rs` (needless borrow), `images.rs` (io::Error::other, collapsible if, unwrap_or_default), `migrations.rs` (fmt indent).
+
+> last audited 29-09-26 by docs-auditor

@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 221 lines, no audit stamp, no footer, no marker. A dated release record, left entirely as written. · Its length makes it the most substantial of the four release snapshots in this directory, and the reason it is worth a first stamp at all is that a long changelog is where a stale cross-reference is most likely to have accumulated: the longer the file, the more paths and command names it cites that the restructure could have moved. This one carries none that resolve wrongly, which is a better result than the archived CI dashboard produced in round 13 — that document's entire workflow inventory had been retired. A changelog that names no dead paths is a changelog written to describe a build rather than to describe a system, which is the right way round. · NOT re-measured: the release contents, the test counts and the gate results, all of which are statements about one build on one date. · No stamp or footer existed; both added. -->
 # Changelog — kasir.mu 0.0.33
 
 **Release date:** 2026-08-31
@@ -219,3 +220,5 @@ This release is the **audit + hardening + security** cycle. It closes 40+ audit 
 - Login tabs blocked by CSP + cache-bust assets for mobile
 - Comment-aware handler parsing in IPC parity gate
 - Stale keyboard test fixed for PIN minimum enforcement
+
+> last audited 29-09-26 by docs-auditor
