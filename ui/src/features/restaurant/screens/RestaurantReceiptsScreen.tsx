@@ -1278,17 +1278,17 @@ export default function RestaurantReceiptsScreen({
               <div className="resto-segmented-group" role="group" aria-label={l10n.getString('workspace-pos-paper-width') || 'Paper Width'}>
                 <button
                   type="button"
-                  className={`resto-segmented-btn ${paperWidth === 'standard' ? 'resto-segmented-btn--active' : ''}`}
-                  onClick={() => setPaperWidth('standard')}
-                >
-                  <Localized id="restaurant-preview-paper-width-standard">80 mm (Standard)</Localized>
-                </button>
-                <button
-                  type="button"
                   className={`resto-segmented-btn ${paperWidth === 'narrow' ? 'resto-segmented-btn--active' : ''}`}
                   onClick={() => setPaperWidth('narrow')}
                 >
                   <Localized id="restaurant-preview-paper-width-narrow">58 mm (Compact)</Localized>
+                </button>
+                <button
+                  type="button"
+                  className={`resto-segmented-btn ${paperWidth === 'standard' ? 'resto-segmented-btn--active' : ''}`}
+                  onClick={() => setPaperWidth('standard')}
+                >
+                  <Localized id="restaurant-preview-paper-width-standard">80 mm (Standard)</Localized>
                 </button>
               </div>
             </div>
@@ -1778,8 +1778,8 @@ export default function RestaurantReceiptsScreen({
                 value={printerPaperSize}
                 onChange={handlePrinterPaperSizeChange}
                 options={[
-                  { value: '80', label: '80 mm' },
                   { value: '58', label: '58 mm' },
+                  { value: '80', label: '80 mm' },
                 ]}
               />
             </div>
