@@ -754,24 +754,34 @@ The unified image runs three processes under supervisord (caddy, license,
 sync); all write to the container's stdout/stderr, which Northflank
 captures and surfaces in **Dashboard → service → Logs**.
 
-**Everything below is a hosted-service diagnostic, and that is a limitation of
-the clients, not of this page.** No shipped binary writes a persistent local
-log: both Tauri apps initialise logging with `kasirmu_logging::try_init()`
-(`apps/desktop-tauri/src/lib.rs:99`, `apps/mobile-tauri/src/lib.rs:69`),
-which installs an `EnvFilter` + `fmt` subscriber and **no writer**
-(`crates/kasirmu-logging/src/lib.rs:78-89`, no `.with_writer`), so stdout goes wherever the OS puts it
-— which for a double-clicked desktop build is nowhere. The two entry points
-that would have created a file, `init_with_file` and `init_json_with_file`
-(`crates/kasirmu-logging/src/lib.rs:184`, `:238`), have **zero callers outside their
-own tests**; `log_dir` / `LogRoot` / `app_log` / `path_resolver` return **0
-matches across `apps/`**, and the EventLog backend is never wired by any
-binary either. So there is no on-device log file to open, and nothing in this
-section can be run on a till or a tablet.
+**Client logs are on the device since 2026-09-29 — this section says where.**
+Both Tauri apps initialise logging as the FIRST statement of their `setup`
+ closure via `kasirmu_logging::try_init_with_file_or_stdout(dir, "kasirmu", 30)`
+(`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`). The helper
+resolves `app.path().app_log_dir()`, runs the LOG-2 writability pre-flight and
+starts an hourly rolling file sink with 30-day retention; if the directory
+cannot be prepared it reports on stderr and falls back to stdout rather than
+going silent. Where the file is:
 
-The tablet is worse than unlogged: it is **unobservable by construction**.
-Android does not persist its logcat, no log-pull ships, and the device never
-reaches the container's stdout — so a field issue on a tablet cannot be
-diagnosed from logs at all, only from the SQL below and from reproducing it.
+| Client | Log directory |
+|---|---|
+| Windows | `%LOCALAPPDATA%\<bundle identifier>\logs\` |
+| Linux | `<local data dir>/<bundle identifier>/logs/` |
+| macOS | `~/Library/Logs/<bundle identifier>/` |
+| Android tablet | `<app config dir>/logs/` — app-private storage, so a debuggable build via `adb run-as`, or root, to read it |
+
+Re-derive the call sites with
+`grep -rn 'try_init_with_file_or_stdout' --include='*.rs' apps/` → the two
+shells. `apps/cloud-server` deliberately stays on `try_init_json()` (stdout):
+the container's stdout is already collected, and a file written inside the
+container would die with it. The `init_syslog` and `init_eventlog` sinks no
+longer exist — both were deleted 2026-09-29 (C29 / D13) as unwired and
+redundant with what the host already captures.
+
+The tablet now writes the same rolling file, but nothing **ships** it: Android
+does not persist its logcat, no log-pull runs, and the device never reaches the
+container's stdout — so pulling a tablet's log still needs physical access to
+the directory above, while desktop support can simply ask for the file.
 
 **Recommended log format:** set `OZ_LOG_FORMAT=json` in the service env
 (§8 table) so the Rust cloud-server emits structured, queryable log lines
@@ -1578,12 +1588,13 @@ caller logs, and the app starts on the existing database either way.
 | `Restored` | The candidate was promoted before the database was opened. | `info`: "pending restore request consumed — the database was replaced before it was opened" |
 | `Refused` | The request exists but was not consumed; the app boots on the existing database and the request stays. | `error`: "a pending restore request was refused; booting on the existing database and leaving the request in place" |
 
-> ⚠️ **There is no log file to read these in.** Both shells call
-> `kasirmu_logging::try_init()` (desktop `:108`, tablet `:82`), which is stdout-only. The file
-> sinks (`try_init_with_file` / `try_init_json_with_file`) have **no production caller** — the
-> only references outside their own crate are its tests
-> (`crates/kasirmu-logging/src/lib_tests.rs:201`, `:229`, `:257`). Watch the app's console
-> output, or start it from a terminal.
+> **Where these lines live:** in a log file on the device. Both shells
+> initialise logging in their `setup` closure via
+> `kasirmu_logging::try_init_with_file_or_stdout(...)` (desktop and tablet
+> `apps/*/src/lib.rs`), which writes hourly rolling files into the platform log
+> directory — §8.6 has the per-platform table — and falls back to stdout only
+> when that directory cannot be prepared. `apps/cloud-server` stays on
+> `try_init_json()` (stdout) because the container already collects it.
 
 A `Refused` reason always carries the verdict name and the validator's own sentence
 (`apps/desktop-tauri/src/recovery.rs:127-135`), e.g.

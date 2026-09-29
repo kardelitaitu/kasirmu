@@ -201,37 +201,33 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] File writer with rotation (`kasirmu_logging::init_with_file()`, `kasirmu_logging::init_json_with_file()`)
     - Uses `tracing-appender` for hourly rolling files
     - Spawns background cleanup thread for log retention (configurable days)
-    - **Implemented, never wired — corrected 2026-09-12.** The two sentences
-      above are true of the crate and are kept checked: the functions exist,
-      rotate hourly, run the retention cleanup thread, and are exercised by
-      `lib_tests`. What no shipped binary does is **call** them. `git grep` for
-      `init_with_file` / `init_json_with_file` across the tree returns their
-      definitions and doc examples in `crates/kasirmu-logging`, this box, and
-      `docs/operations/runbook.md` §8.6 — no hit under `apps/`, `modules/` or
-      `platform/`, and the `try_*` variants are called only from the crate's own
-      tests. Both Tauri clients initialise with `kasirmu_logging::try_init()`
-      (`apps/desktop-tauri/src/lib.rs`, `apps/mobile-tauri/src/lib.rs`), which
-      installs an `EnvFilter` + `fmt` subscriber with **no writer**, so a
-      double-clicked desktop build discards its stdout and **no POS device has a
-      log file to open.** Name the missing call site: a client `setup` calling
-      `init_with_file(app_log_dir, "oz-pos", retention_days)` — there is no
-      `log_dir` / `LogRoot` / `app_log` / `path_resolver` anywhere in `apps/` to
-      hand it, so the call site needs a directory resolver with it. Not the same
-      as "no file writer": `docs/operations/runbook.md` §8.6 carries the
-      consequence for an operator.
-- [x] Syslog output (Linux) — `kasirmu_logging::syslog::init_syslog()`
-    - Uses `libc` FFI for syslog API
-    - Combined subscriber: stdout + syslog via `tracing_subscriber::registry()`
-    - Configurable facility (local0–local7, daemon, user, etc.)
-    - **Implemented, never wired — corrected 2026-09-12.** Capability as
-      described: true, tested in `syslog_tests`, and left checked. `git grep`
-      `init_syslog` returns its definition, its module doc example and that
-      test file only — nothing in `apps/`, `modules/` or `platform/` calls it,
-      including `apps/cloud-server`, which is the one Linux process that ships
-      and which picks `try_init()` / `try_init_json()` instead. So no deployment
-      emits to a syslog daemon today; the container's stdout is the whole
-      surface (see runbook §8.6).
-- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — `kasirmu_logging::eventlog::init_eventlog()`
+    - **WIRED 2026-09-29 — the gap this bullet recorded is closed.** Both Tauri
+      shells now call `kasirmu_logging::try_init_with_file_or_stdout(dir,
+      "kasirmu", 30)` as the first statement of their `setup` closure (desktop
+      `apps/desktop-tauri/src/lib.rs`, tablet `apps/mobile-tauri/src/lib.rs`),
+      where `dir` comes from `app.path().app_log_dir()` — the platform resolver
+      (`%LOCALAPPDATA%\<id>\logs` on Windows, `<local data dir>/<id>/logs` on
+      Linux, `~/Library/Logs/<id>` on macOS, `<config dir>/logs` on Android).
+      Hourly rolling files, 30-day retention, the LOG-2 directory pre-flight,
+      and a stdout fallback when that directory cannot be prepared.
+      Re-derive the call sites: `grep -rn 'try_init_with_file_or_stdout'
+      --include='*.rs' apps/` → the two shells only. The history above this
+      note stood until 2026-09-29 and is kept because it was true when written:
+      the functions existed and were tested while no shipped binary called
+      them, and the missing piece was always a `setup`-scope directory
+      resolver (`log_dir` / `LogRoot` / `app_log` did not exist anywhere
+      under `apps/` before this change).
+- [x] ~~Syslog output (Linux) — `kasirmu_logging::syslog::init_syslog()`~~ **deleted 2026-09-29 (C29 / D13)**
+    - Was: `libc` FFI to syslog, an stdout + syslog combined subscriber, and a
+      configurable facility (local0–local7, daemon, user, …) — implemented and
+      tested in `syslog_tests`, but **never wired**: `git grep init_syslog`
+      returned only its definition, doc example and tests, with no caller in
+      `apps/`, `modules/` or `platform/`, including `apps/cloud-server`, whose
+      container stdout already carries everything the sink would have
+      duplicated. Redundant-and-inert, so D13 deleted it; the file writer
+      above is the one sink that was NOT redundant with stdout, which is why it
+      was wired instead of deleted (runbook §8.6).
+- [x] ~~Windows Event Log output~~ **Windows debug-output** sink — ~~`kasirmu_logging::eventlog::init_eventlog()`~~ **deleted 2026-09-29 (C29 / D13)**
     - Uses `OutputDebugStringW` via windows-sys FFI
     - Combined subscriber: stdout + debug output via registry()
     - **Title corrected 2026-09-12, and also never wired.** Two separate
@@ -251,11 +247,12 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
       `apps/desktop-tauri`, the only Windows binary that ships, which calls
       `try_init()`.
     - So the accurate statement of what a Windows field install gives you:
-      **no log file, no Event Log entry, and no debug channel** — one discarded
-      stdout stream. Anything reading this box as "Windows logs exist" is wrong
-      twice over.
-    - Kept checked as a delivered *capability* (it compiles, is tested, and
-      works when called); the wiring and the name were the lies, not the code.
+      **a rolling log file** (since 2026-09-29, `%LOCALAPPDATA%\<id>\logs`),
+      and still no Event Log entry and no debug channel — those two sinks were
+      deleted the same day the file sink was wired (C29 / D13).
+    - Historical record, superseded 2026-09-29: the sink was delivered as a
+      *capability* while never installed, and the wiring and the name were the
+      lies, not the code. The deletion closed both.
 - [x] Shared `MessageVisitor` for field formatting (extracted to `visitor.rs`)
 
 ### Testing

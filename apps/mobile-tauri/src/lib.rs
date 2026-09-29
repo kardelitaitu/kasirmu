@@ -93,8 +93,13 @@ pub fn run() {
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 
-    // Use try_init so test builds that lack WebView2Loader.dll don't
-    // panic when logging is already initialised by the test harness.
+    // Structured logging is initialised in the `setup` closure below (see the
+    // note there): the file sink needs the platform-resolved log directory, so
+    // it cannot run here. Test builds compile that closure out under
+    // #[cfg(not(test))], so the stdout initialiser is kept for this path only —
+    // and it is `try_`, not `init`, so a test harness that already set a
+    // subscriber cannot make run() panic.
+    #[cfg(test)]
     let _ = kasirmu_logging::try_init();
     #[cfg(not(test))]
     {
@@ -112,6 +117,29 @@ pub fn run() {
             // a real cache path first. See the module note in Cargo.toml.
             .plugin(tauri_plugin_fs::init())
             .setup(|app| {
+                // ── Structured logging: file sink first, stdout fallback ──────
+                // Wiring landed 2026-09-29. On Android the resolved directory is
+                // the platform config dir + `/logs`, i.e. app-private storage —
+                // which is what finally makes a tablet field issue diagnosable:
+                // before this, the tablet was unobservable by construction (no
+                // stdout capture, no logcat persistence, no log pull). LOG-2's
+                // pre-flight decides, and stdout is the fallback rather than
+                // silence.
+                let log_dir = match app.path().app_log_dir() {
+                    Ok(dir) => Some(dir),
+                    Err(error) => {
+                        eprintln!(
+                            "[kasirmu] app log dir unavailable ({error}); logging to stdout only"
+                        );
+                        None
+                    }
+                };
+                let _ = kasirmu_logging::try_init_with_file_or_stdout(
+                    log_dir.as_deref(),
+                    "kasirmu",
+                    30,
+                );
+
                 // ── Pending restore request (C8, slice S4b) ───────────────────
                 // Consumed BEFORE `AppState::new` below, which opens the database
                 // and runs migrations. This is the only moment the swap is safe:

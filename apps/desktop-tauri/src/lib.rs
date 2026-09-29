@@ -119,10 +119,13 @@ pub fn run() {
     // Initialise tokio-console before any other tracing setup.
     platform_startup::console::init_console_subscriber();
 
-    // Initialise structured logging early so the very first line of Tauri
-    // output is captured. Uses try_init so a second invocation (e.g.
-    // by a plugin or test harness) does not panic.
-    let _ = kasirmu_logging::try_init();
+    // Structured logging is initialised in the `setup` closure below — see
+    // the note there. It used to live here, as `kasirmu_logging::try_init()`,
+    // which writes to stdout only: captured nowhere on a double-clicked
+    // install. The file sink needs a writable per-install directory, and the
+    // only resolver that knows the right path on every platform needs an
+    // `AppHandle`, which does not exist until `setup`. Nothing logs between
+    // here and there.
 
     let result: Result<(), AppError> = tauri::Builder::default()
         // NOTE: the single-instance guard is NOT a plugin. `single_instance::acquire()` above runs
@@ -136,6 +139,28 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // ── Structured logging: file sink first, stdout fallback ──────
+            // Wiring landed 2026-09-29. `try_init_with_file_or_stdout` runs
+            // the LOG-2 directory pre-flight and keeps the first working sink:
+            // the platform-resolved log dir (rolling hourly files, 30-day
+            // retention) when it is writable, stdout when it is not. This is
+            // the first statement so every later log line in `setup` — recovery,
+            // at-rest key, migrations — reaches the file.
+            let log_dir = match app.path().app_log_dir() {
+                Ok(dir) => Some(dir),
+                Err(error) => {
+                    eprintln!(
+                        "[kasirmu] app log dir unavailable ({error}); logging to stdout only"
+                    );
+                    None
+                }
+            };
+            let _ = kasirmu_logging::try_init_with_file_or_stdout(
+                log_dir.as_deref(),
+                "kasirmu",
+                30,
+            );
+
             // ── Pending restore request (C8, slice S4a) ───────────────────
             // Consumed BEFORE `AppState::new` below, which opens the database
             // and runs migrations. This is the only moment the swap is safe:

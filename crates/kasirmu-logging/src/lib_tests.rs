@@ -327,6 +327,43 @@ fn log_dir_is_created_when_missing() {
     std::fs::remove_dir_all(&base).ok();
 }
 
+// ── Client initialiser: file sink first, stdout fallback ─────────────
+//
+// `try_init_with_file_or_stdout` is what both Tauri shells call. These two
+// cases pin the FALLBACK policy: an unusable directory must degrade to stdout
+// (reported on stderr) rather than surface `LogDirUnusable` to a shell that
+// has no one to give it to, and `None` must be the plain stdout path. Both run
+// under L1_LOCK because the global subscriber is process-wide, and both assert
+// only on WHICH error escapes — whether the subscriber was already taken by a
+// sibling test is not this function's contract.
+
+#[test]
+fn client_init_falls_back_to_stdout_when_the_dir_is_unusable() {
+    let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = std::env::temp_dir().join(format!("kasirmu-logging-client-{}", std::process::id()));
+    std::fs::write(&path, b"file where a directory belongs").unwrap();
+
+    let result = crate::try_init_with_file_or_stdout(Some(&path), "client", 0);
+
+    assert!(
+        !matches!(result, Err(LoggingError::LogDirUnusable(_))),
+        "an unusable dir must fall back to stdout, not escape as LogDirUnusable: {result:?}"
+    );
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn client_init_without_a_dir_is_the_plain_stdout_path() {
+    let _l1 = L1_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let result = crate::try_init_with_file_or_stdout(None, "client", 0);
+
+    assert!(
+        !matches!(result, Err(LoggingError::LogDirUnusable(_))),
+        "None means no directory was requested, so LogDirUnusable is impossible: {result:?}"
+    );
+}
+
 // ── RUST_LOG handling: "not set" is not a parse failure ─────────────
 //
 // `EnvFilter::try_from_default_env()` cannot tell an absent variable from a bad

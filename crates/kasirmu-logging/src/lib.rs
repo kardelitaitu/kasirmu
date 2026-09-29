@@ -16,25 +16,30 @@ next: none | perf: N/A
 //!   production environments where logs are shipped to ELK/Loki.
 //! - [`init_with_file`] — human-readable text + rolling file writer.
 //! - [`init_json_with_file`] — JSON + rolling file writer.
+//! - [`try_init_with_file_or_stdout`] — what the shells actually call:
+//!   file sink when the log directory resolves, stdout otherwise.
 //!
 //! # Which initialisers are actually wired, stated because it is not obvious
 //!
-//! **The two FILE initialisers have no production caller.** Measured 2026-09-30
-//! (C29 / decision D13): the only initialisers called by any shipped binary are
-//! [`try_init`] (desktop `apps/desktop-tauri/src/lib.rs`, mobile
-//! `apps/mobile-tauri/src/lib.rs`) and [`try_init_json`] (cloud-server
-//! `apps/cloud-server/src/main.rs`), all of which write to **stdout**. Nothing in
-//! the tree calls [`init_with_file`], [`try_init_with_file`],
-//! [`init_json_with_file`] or [`try_init_json_with_file`] outside this crate's own
-//! tests, which DO call them directly and are why they cannot simply be removed.
+//! **Both Tauri shells call [`try_init_with_file_or_stdout`] from their `setup`
+//! closure** (desktop `apps/desktop-tauri/src/lib.rs`, tablet
+//! `apps/mobile-tauri/src/lib.rs`): the rolling file sink when the platform
+//! resolves a writable per-install log directory (`app.path().app_log_dir()` →
+//! `%LOCALAPPDATA%\<id>\logs` on Windows, `<local data dir>/\<id>\logs` on
+//! Linux, `~/Library/Logs/<id>` on macOS, `<config dir>/logs` on Android), and [`try_init`] (stdout) whenever it
+//! cannot. `apps/cloud-server` keeps [`try_init_json`] (stdout) deliberately — a
+//! container's stdout is already collected by supervisord/Northflank, and a file
+//! written inside the container would die with it.
 //!
-//! They are kept, and kept labelled, under D13's rule — *redundant-and-inert is
-//! deleted; unwired-but-implemented is kept and labelled honestly*. They fall on
-//! the KEEP side for a reason the deleted syslog/eventlog pair did not: file
-//! logging is **not redundant** with stdout on a desktop install, where stdout is
-//! captured by nothing, so this is a real capability that simply is not switched
-//! on yet — unlike a syslog sink, which duplicated what the container already
-//! collects. Retaining them is a deliberate decision, not an oversight.
+//! The wiring landed 2026-09-29. Before it, both shells called [`try_init`] in
+//! `run()` before the Tauri builder, which writes to **stdout only** — captured
+//! nowhere on a double-clicked desktop build, so a field incident left no log
+//! file to open. The file sink could not simply stay in `run()`: it needs a
+//! writable per-install directory, and the only resolver that knows the right
+//! path on every platform needs an `AppHandle`, which does not exist until
+//! `setup`. Hence the combined initialiser, which keeps the good half of the old
+//! ordering — logging is initialised once, early, and a directory that cannot be
+//! prepared falls back to stdout (LOG-2) instead of going silent.
 //!
 //! # No platform-specific sinks
 //!
@@ -131,6 +136,46 @@ pub fn try_init() -> Result<(), LoggingError> {
         .try_init()
         .map_err(|e| LoggingError::InitFailed(format!("{e}")))?;
     Ok(())
+}
+
+/// Initialise client logging: the rolling file sink when `log_dir` is usable,
+/// stdout when it is not.
+///
+/// This is the entry point both Tauri shells call from their `setup` closure,
+/// where the platform log directory can be resolved (`app.path().app_log_dir()`).
+/// The policy it encodes is *a working log beats the ideal log*:
+///
+/// 1. `log_dir` is `None` (the resolver failed) → [`try_init`], stdout only.
+/// 2. `Some(dir)` but the directory cannot be prepared
+///    ([`LoggingError::LogDirUnusable`]) → report it on stderr, then fall back
+///    to [`try_init`]. The LOG-2 pre-flight exists precisely so this failure is
+///    observable, so it is printed rather than swallowed; stderr, not
+///    `tracing::warn!`, because the subscriber is not installed yet and an
+///    event here would be dropped — the exact failure this function prevents.
+/// 3. Any other error (the global subscriber is already set) is passed through
+///    untouched: a second initialiser cannot improve the situation, and
+///    reporting a duplicate as a directory problem would misdirect the reader.
+///
+/// Returns `Err` only for case 3 (and for case 2 when stdout is also taken).
+pub fn try_init_with_file_or_stdout(
+    log_dir: Option<&std::path::Path>,
+    file_prefix: &str,
+    retention_days: u32,
+) -> Result<(), LoggingError> {
+    if let Some(dir) = log_dir {
+        let dir_str = dir.to_string_lossy();
+        match try_init_with_file(&dir_str, file_prefix, retention_days) {
+            Ok(()) => return Ok(()),
+            Err(LoggingError::LogDirUnusable(e)) => {
+                eprintln!(
+                    "[kasirmu-logging] log dir {} unusable ({e}); falling back to stdout",
+                    dir.display()
+                );
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    try_init()
 }
 
 /// Non-panicking variant of [`init_json`].
