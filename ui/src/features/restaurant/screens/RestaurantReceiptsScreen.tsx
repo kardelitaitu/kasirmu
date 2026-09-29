@@ -724,7 +724,6 @@ export default function RestaurantReceiptsScreen({
                             </div>
                           )}
                         </div>
-                        <div className="resto-receipt-header-spacer" aria-hidden="true" />
                       </div>
                     )
                   ) : (

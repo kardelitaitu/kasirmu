@@ -248,36 +248,37 @@
   text-align: center;
 }
 
-/* Receipt Header (Balanced 3-column row: Logo / Centered Title / Counter-Spacer) */
+/* Receipt Header (Adaptive 2-column: 35% logo / 65% text) */
 .resto-receipt-header-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding-top: 2px;
+  width: 100%;
   margin-bottom: 6px;
+  box-sizing: border-box;
 }
 
 .resto-receipt-header-row--right {
   flex-direction: row-reverse;
 }
 
-.resto-receipt-header-logo-col,
-.resto-receipt-header-spacer {
-  flex: 0 0 44px;
-  width: 44px;
-  box-sizing: border-box;
-}
-
 .resto-receipt-header-logo-col {
+  flex: 0 0 35%;
+  width: 35%;
+  max-width: 35%;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 2px 0 2px 4px;
+  box-sizing: border-box;
+}
+
+.resto-receipt-header-row--right .resto-receipt-header-logo-col {
+  padding: 2px 4px 2px 0;
 }
 
 .resto-receipt-header-logo-col .resto-receipt-logo {
-  max-width: 40px;
-  max-height: 38px;
+  max-width: 100%;
+  max-height: 48px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -285,26 +286,23 @@
   display: block;
 }
 
-.resto-receipt-paper--58mm .resto-receipt-header-logo-col,
-.resto-receipt-paper--58mm .resto-receipt-header-spacer {
-  flex: 0 0 34px;
-  width: 34px;
-}
-
 .resto-receipt-paper--58mm .resto-receipt-header-logo-col .resto-receipt-logo {
-  max-width: 32px;
-  max-height: 30px;
+  max-height: 38px;
 }
 
 .resto-receipt-header-text-col {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 65%;
+  width: 65%;
+  max-width: 65%;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   text-align: center;
+  padding: 2px 4px;
   box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .resto-receipt-header-line {
@@ -312,6 +310,7 @@
   color: var(--receipt-paper-ink-soft);
   line-height: 1.15;
   word-break: break-word;
+  overflow-wrap: break-word;
   text-align: center;
   width: 100%;
   margin-bottom: 0;
@@ -325,6 +324,8 @@
   margin-bottom: 1px;
   text-align: center;
   width: 100%;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .resto-receipt-meta {
