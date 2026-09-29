@@ -719,3 +719,68 @@ fn install_key_round_trips_and_is_not_interchangeable() {
         "the public-constant derivation must not open an install-key row"
     );
 }
+
+// ── C14(a): the local-API secret family ──────────────────────────────
+
+/// The new family round-trips and is not interchangeable with its siblings.
+#[test]
+fn local_api_secret_round_trips_and_is_not_interchangeable() {
+    let secret = "0123456789abcdef".repeat(4); // the exact legacy shape, 64 hex
+    let ciphertext = encrypt_local_api_secret(&secret).expect("encrypt");
+
+    assert_ne!(ciphertext, secret, "the stored form must not be the secret");
+    assert_eq!(
+        decrypt_local_api_secret(&ciphertext).expect("decrypt"),
+        secret
+    );
+
+    // Domain separation: a sibling reader must not open this family's row.
+    assert!(decrypt_lan_psk(&ciphertext).is_err());
+    assert!(decrypt_sync_api_key(&ciphertext).is_err());
+    assert!(decrypt_smtp_at_rest(&ciphertext).is_err());
+}
+
+/// **The C14(a) hazard, pinned.** The legacy plaintext shape PASSES the crate's
+/// only shape test, so a passthrough gated on it would never fire — every
+/// pre-upgrade row would surface as a decrypt ERROR instead of reading. This
+/// asserts the collision, asserts the resulting failure, and asserts that the
+/// ciphertext this family writes can never be mistaken for the legacy shape
+/// (which is what lets the caller discriminate *positively*).
+#[test]
+fn local_api_secret_legacy_shape_collides_with_the_shape_test() {
+    let legacy = "0123456789abcdef".repeat(4);
+    assert_eq!(legacy.len(), 64);
+
+    // 1. The collision: the legacy value IS "ciphertext-shaped" to the repo's
+    //    only predicate, because 64 hex chars are valid base64 and decode to 48
+    //    bytes — past the 12 nonce + 16 tag bar. This is exactly why the generic
+    //    fail-closed reader cannot serve this family.
+    assert!(
+        looks_like_ciphertext(&legacy),
+        "a 64-char hex secret passes looks_like_ciphertext; if this ever goes \
+         false, the generic reader would still be the wrong design here"
+    );
+
+    // 2. And it genuinely does NOT decrypt under this family's key — so the
+    //    generic reader would have failed closed on every existing install.
+    assert!(
+        decrypt_local_api_secret(&legacy).is_err(),
+        "the legacy plaintext must not decrypt; this error is what the generic \
+         reader would have surfaced as a bricked local API"
+    );
+
+    // 3. The ciphertext is 12 + 64 + 16 = 92 bytes -> 124 base64url chars, so it
+    //    is disjoint from the 64-char legacy shape on BOTH length and alphabet.
+    let ciphertext = encrypt_local_api_secret(&legacy).expect("encrypt");
+    assert_ne!(
+        ciphertext.len(),
+        64,
+        "ciphertext length must be disjoint from the legacy shape"
+    );
+    assert!(
+        !ciphertext
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+        "ciphertext must never look like lowercase hex"
+    );
+}

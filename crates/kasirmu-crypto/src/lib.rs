@@ -439,6 +439,13 @@ const SMTP_AT_REST_DOMAIN: &[u8] = b"oz-pos.smtp-at-rest.v1:";
 /// User-profile at-rest domain-separation prefix.
 const PROFILE_AT_REST_DOMAIN: &[u8] = b"oz-pos.user-profile-at-rest.v1:";
 
+/// Local-API signing-secret at-rest domain-separation prefix.
+///
+/// C14(a): `local_api.secret` was the last credential stored as plaintext, so
+/// it rode every `.db` / `.backup.db` snapshot in the clear. It is the HS256
+/// signing key for the local REST API and doubles as the operator `X-Admin-Key`.
+const LOCAL_API_SECRET_DOMAIN: &[u8] = b"oz-pos.local-api-secret.v1:";
+
 // ── Machine-bound (API key / SMTP password) ──────────────────────────
 
 /// Encrypt an API key with a machine-bound key.
@@ -594,6 +601,39 @@ pub fn decrypt_lan_psk(encrypted_b64: &str) -> Result<String, CryptoError> {
     decrypt_with_candidates(
         encrypted_b64,
         &candidate_keys(LAN_PSK_DOMAIN, |d| derive_key(d, "static")),
+    )
+}
+
+/// Encrypt the local API's per-install signing secret for at-rest storage
+/// (static key, portable).
+///
+/// C14(a). Until this family existed the secret was written by a bare
+/// `Settings::set`, so it was cleartext in `settings.value` and in every
+/// unfiltered `.db` / `.backup.db` snapshot. It is the HS256 signing key for
+/// every token the local REST API mints, and the same value is the operator
+/// `X-Admin-Key`, so one leak is two authorities.
+pub fn encrypt_local_api_secret(plaintext: &str) -> Result<String, CryptoError> {
+    let key = portable_key(LOCAL_API_SECRET_DOMAIN, |d| derive_key(d, "static"));
+    encrypt(plaintext, &key)
+}
+
+/// Decrypt a local-API secret previously encrypted with
+/// [`encrypt_local_api_secret`].
+///
+/// This is the branch-tolerant read (install key, then legacy, then master) and
+/// nothing more. **It deliberately does NOT pass legacy plaintext through**, and
+/// the reason is specific to this family: the crate's only shape test,
+/// [`looks_like_ciphertext`], is TRUE for the value this family has always
+/// stored. A legacy secret is 64 lowercase hex characters — valid base64, and
+/// decoding to 48 bytes, well past the 12 + 16 bar — so a passthrough gated on
+/// that predicate would never fire and every pre-upgrade row would surface as a
+/// decrypt ERROR. The family-specific legacy discriminator therefore lives with
+/// the caller, which can state it positively:
+/// `platform_core::settings::Settings::get_local_api_secret`.
+pub fn decrypt_local_api_secret(encrypted_b64: &str) -> Result<String, CryptoError> {
+    decrypt_with_candidates(
+        encrypted_b64,
+        &candidate_keys(LOCAL_API_SECRET_DOMAIN, |d| derive_key(d, "static")),
     )
 }
 
