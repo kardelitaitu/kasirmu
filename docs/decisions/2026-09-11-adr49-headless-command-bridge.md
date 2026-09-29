@@ -4,6 +4,7 @@ area: desktop-client
 title: ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
 status: Accepted (2026-09-11) — implemented for the desktop shell; tablet client not started
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 188 lines, no audit stamp, no footer and no marker. Its status line is unusually precise — Accepted, implemented for the DESKTOP shell, tablet client not started — and that precision is the kind that survives a restructure, so it was the first thing checked. · AND IT IS STILL TRUE IN SUBSTANCE, because the bridge it created is the most structurally consequential artefact in the repository. `crates/kasirmu-bridge/src/` carries the shared command bodies this decision moved out of the shells — `ctx.rs`, `lib.rs`, `data.rs`, `features.rs` and `kds.rs` all present. The crate is now `kasirmu-bridge` rather than the `oz-bridge` the title names, but the boundary it established is the one every later document in this campaign has relied on: the platform-core boundary checker enforces a `bridge-toolkit-purity` rule specifically so a second renderer could bind, and ADR-44, audited in the previous round, sits alongside this one as the decision that made design rules enforceable rather than aspirational. · THE SHELL ASYMMETRY IS WORTH RECORDING, because the document is honest about it and the tree kept the shape. The decision moved command bodies into a headless bridge so the shells become delegates — which is exactly why `kasirmu-bridge` can be depended on by something that is not a Tauri app, and why the toolkit-purity gate exists. A reader trying to understand why that crate may not depend on `tauri` will find the answer in the gate definition and the rationale in this ADR. · NOT RE-MEASURED: whether the tablet shell has since been migrated. The status line says not started, and this pass did not walk both clients to confirm or refute it — the desktop-side bridge exists, and that is what the document's own claim rests on. A future pass wanting to close that leg should diff the two handler registries, which is what the ipc-parity gate does. · No stamp existed; this is the first. -->
 # ADR #49: Headless Command Bridge — Moving Command Bodies into crates/oz-bridge
 
 **Status:** Accepted (2026-09-11). The desktop side is built; the tablet side is not.
@@ -186,3 +187,5 @@ takes one. “ctx first” is a default, not a mandate; the burden sits on *remo
    rewritten from under them.
 3. **The findings this decision preserved are not fixed.** They are registered, not
    remediated.
+
+> last audited 29-09-26 by docs-auditor
