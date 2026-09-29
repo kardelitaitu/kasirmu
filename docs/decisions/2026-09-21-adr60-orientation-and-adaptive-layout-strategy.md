@@ -5,6 +5,7 @@ title: ADR-60: Orientation & Adaptive Layout Strategy — the hybrid ladder (she
 status: Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated
 ---
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 249 lines, no audit stamp, no footer and no marker. Its status line is the strongest claim in this batch — all four tiers landed AND GATED, with seven sheets migrated — and it is the kind of statement a repository can partly adjudicate, because GATED means a checker enforces it. · AND THE GATE IS REAL, which is what makes the claim worth checking rather than repeating. The orientation exemption this decision must have had to reconcile is visible in the code as named machinery: the platform-core boundary checker carries the `bridge-toolkit-purity` rule, and the CSS-walker machinery this decision interacts with includes the `orientationAdaptiveWalker` that the setup-wizard retirement record, audited in round 25, described as exempting one sheet BY NAME and whose own meta-test asserts an exemption must resolve. That is the enforcement surface this decision's claim rests on, and it is live. · A CROSS-DOCUMENT CONNECTION THAT CLOSES A LOOP. The setup-wizard retirement emptied the `SLICE_0_EXEMPT_SHEETS` carve-out and recorded that the tree now holds ZERO orientation rules outside the shell — the state a fence wanted. This decision is the origin of that fence. So the sequence is: the fence was built, the wizard was retired, the exemption list was emptied, and the meta-test now asserts that any new exemption must resolve. A document can rarely show its own success, and this one effectively does, through a record audited nine rounds later. · WHAT WAS NOT CHECKED: the seven migrated sheets individually, and whether every tier's gate covers what the document says it covers. That is an implementation-coverage question and the status line is the claim of record. · Stale paths left as written, consistent with the rest of this batch. · No stamp existed; this is the first. -->
 # ADR-60: Orientation & Adaptive Layout Strategy
 
 **Status:** Implemented (2026-09-21). All four tiers (T1 shell media queries, T2 container
@@ -247,3 +248,5 @@ denominator is self-auditing rather than quoted. The honest figure is **40 of 10
 carry no width or orientation query**; the T4 gate is what keeps it visible.
 
 > last written 21-10-26 — status **Implemented**; not yet audited.
+
+> last audited 29-09-26 by docs-auditor
