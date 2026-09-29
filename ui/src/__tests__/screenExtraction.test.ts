@@ -295,7 +295,19 @@ const SCREENS: ScreenEntry[] = [
     // EXTERNAL_CLASS_LEDGER entry below for the measurement. The stack is a
     // SIBLING of this page under #root, so its class can never appear in this
     // screen's markup.
-    externalClasses: ['memo-stack'],
+    //
+    // `segmented-tab` is the second whole-name mute, and it is the composed-child
+    // shape rather than a sibling one: this sheet carries a scoped override at
+    // :160 — `.staff-mgmt-header .segmented-tab[role="tab"]` drops the shared
+    // strip's extra track padding so the header settles on the touch-target token
+    // — while the class itself is defined once in components/SegmentedTabs.css:118
+    // and rendered by the shared <SegmentedTabs> that StaffTabs.tsx:74 composes.
+    // The walk reads this entry's markup plus additionalTsx, and additionalTsx
+    // DOES include StaffTabs.tsx (:290) — but that file renders the component,
+    // it never spells `segmented-tab`, so the base stays unseen from here and the
+    // rule reads dead without the mute. A prefix would over-reach: it would excuse
+    // any future segmented-* name in this sheet, and only this one is claimed.
+    externalClasses: ['memo-stack', 'segmented-tab'],
   },
 
   // ── Setup ─────────────────────────────────────────────
@@ -997,6 +1009,19 @@ const SCREENS: ScreenEntry[] = [
     name: 'PaymentModal',
     tsx: 'sales/PaymentModal.tsx',
     css: ['sales/PaymentModal.css'],
+    // CARD_TENDER_PANEL: the EDC terminal selector renders `btn btn--sm
+    // btn--primary/--secondary` for its terminal chips (CardTenderPanel.tsx:104)
+    // and the modal shell renders `btn` on its own actions. The whole family is
+    // defined once in theme/components.css, which BOTH entry points import
+    // (main.tsx:7 desktop, main.mobile.tsx:20 tablet), so those four names are a
+    // real global dependency rather than a rule this feature's sheet owes — the
+    // same cite, for the same reason, that eight other entries already carry
+    // (:266 PosScreen, :316 KdsScreen, :337 CustomerManagementScreen and
+    // siblings). Case 1 resolves against css UNION parentCss, so the cite answers
+    // the used-vs-defined question; cases 2 and 3 keep walking PaymentModal.css
+    // alone, so the shared sheet is never graded for dead or duplicate rules
+    // through this entry.
+    parentCss: ['../theme/components.css'],
     dynamicClassPrefixes: [ 'payment-overlay--enter', 'payment-overlay--exit', 'payment-modal--enter', 'payment-modal--exit'],
     additionalTsx: [
       'sales/payment/CashTenderPanel.tsx',
@@ -1280,6 +1305,55 @@ const SCREENS: ScreenEntry[] = [
 
   // ── Restaurant ─────────────────────────────────────────
   {
+    // The restaurant POS settings sub-screens landed by b3e68d5c7
+    // ("feat(resto-pos): add receipts and payments configuration sub-screens",
+    // 2026-09-29) with a SHARED sheet and no SCREENS entries, which is the one
+    // shape the coverage case refuses: a new stylesheet may not join
+    // BASELINE_UNCITED, so its css, tsx and entries have to land together.
+    // Both screens are mounted from sales/PosScreen.tsx:663/:684 behind the
+    // `restaurant` workspace type, so they are reachable, not dead.
+    //
+    // css is the SHARED sheet and both entries cite it: that is what the sheet
+    // is for (its own header says so), and the two screens each own no sheet of
+    // their own. Cases 2 and 3 walk that one sheet per entry, so a name only the
+    // OTHER screen renders reads dead here — restaurant-rail-* and
+    // restaurant-static-qr-box are the current examples, defined for the
+    // payments rail and claimed by the Payments entry below rather than muted
+    // in this one. Nothing is exempted in either entry.
+    name: 'RestaurantReceiptsScreen',
+    tsx: 'restaurant/screens/RestaurantReceiptsScreen.tsx',
+    css: ['restaurant/screens/RestaurantSettingsScreens.css'],
+    // The sheet is SHARED with RestaurantPaymentsScreen, and the dead-class walk
+    // reads this entry's markup plus additionalTsx — so the rail, QR and loading
+    // names live only in the sibling and would grade as dead from here. Listing
+    // the sibling is the line-82 rule for markup that belongs to the same
+    // change-set: "when markup moves OUT of a registered screen, append the
+    // receiving component to that entry's additionalTsx in the same change-set".
+    // Both screens landed together in b3e68d5c7 against this one sheet, and each
+    // entry names the other's file rather than muting 9 rules one by one.
+    additionalTsx: ['restaurant/screens/RestaurantPaymentsScreen.tsx'],
+    // The settings-field / settings-form / settings-toggle family is defined
+    // once in settings/SettingsPage.css and imported by the settings shell this
+    // screen deliberately reuses. Same cite, same reason, as the four settings
+    // cards (:1385 StatutoryNumberingCard and siblings).
+    parentCss: ['settings/SettingsPage.css'],
+  },
+  {
+    // See the RestaurantReceiptsScreen note above for the shared-sheet ruling.
+    // This entry is the one that renders the rail rows: the markup now carries
+    // restaurant-rails-list / -rail-row / -rail-info / -rail-label / -rail-code /
+    // -rail-actions / -rail-remove and restaurant-static-qr-box, which is what
+    // those rules were written for. Until 2026-09-29 the markup kept the same
+    // design as inline style objects and used a `button button--ghost` element
+    // whose class this repo does not define, so the sheet graded as eight dead
+    // rules and three undefined names at once. Wiring the names up fixed both
+    // directions; no exemption was needed or added.
+    name: 'RestaurantPaymentsScreen',
+    tsx: 'restaurant/screens/RestaurantPaymentsScreen.tsx',
+    css: ['restaurant/screens/RestaurantSettingsScreens.css'],
+    parentCss: ['settings/SettingsPage.css'],
+  },
+  {
     name: 'RestaurantMenu',
     tsx: 'restaurant/RestaurantMenu.tsx',
     css: ['restaurant/RestaurantMenu.css'],
@@ -1432,9 +1506,62 @@ const SCREENS: ScreenEntry[] = [
     css: ['settings/screens/screens-placeholder.css'],
   },
   {
+    // MIGRATED from the scaffold set (2026-09-29): the screen now composes the
+    // real EdcTerminalsCard as its body, the same way SystemDiagnosticsScreen
+    // composes DiagnosticsSection. It keeps the scaffold shell — heading, the
+    // migration note, and `section.settings-screen-placeholder` — because
+    // SettingsPage.test.tsx:420 requires every settings body to BE that section,
+    // so the wrapper is NOT dropped and the placeholder sheet stays cited.
+    //
+    // A `settings-screen` div used to sit here instead. No sheet defined that
+    // class: the div carried its own inline padding and a hardcoded maxWidth,
+    // and it made the scaffold's own title and note unreachable. The class was
+    // reported as used-but-undefined and its three placeholder siblings as dead
+    // — one wrong wrapper, two findings.
+    //
+    // additionalTsx, not a borrowed cite: the screen renders no edc-terminals-*
+    // markup of its own, so the walk has to read the card's file to see the
+    // names it really uses. Without it, citing EdcTerminalsCard.css grades that
+    // sheet's whole inventory (26 names) as dead.
     name: 'DevicesConnectivityScreen',
     tsx: 'settings/screens/DevicesConnectivityScreen.tsx',
-    css: ['settings/screens/screens-placeholder.css'],
+    css: ['settings/screens/screens-placeholder.css', 'settings/components/EdcTerminalsCard.css'],
+    additionalTsx: ['settings/components/EdcTerminalsCard.tsx'],
+    // The card builds its state chips by interpolation — `edc-badge--${t.connectionType}`
+    // and `edc-badge--${isActive ? 'active' : 'inactive'}` at
+    // EdcTerminalsCard.tsx:271/:276, and `edc-status-indicator--${currentStatus}`
+    // at :290. The static parser sees only the base, so the modifier rules in
+    // EdcTerminalsCard.css read dead without the prefixes. Named individually
+    // rather than as a bare `edc-badge--` / `edc-status-indicator--` prefix: the
+    // sheet defines exactly these, and a family prefix would excuse any future
+    // modifier nobody renders.
+    dynamicClassPrefixes: [
+      'edc-badge--wired',
+      'edc-badge--wireless',
+      'edc-badge--active',
+      'edc-badge--inactive',
+      'edc-status-indicator--ready',
+      'edc-status-indicator--busy',
+      'edc-status-indicator--offline',
+      'edc-status-indicator--error',
+    ],
+    // The active/inactive badge reads `edc-badge--${t.isActive ? 'active' : 'inactive'}`
+    // (EdcTerminalsCard.tsx:276). The template head yields the base
+    // `edc-badge--` and the ternary's two string literals are lifted as BARE
+    // class names, so the parser reports `active` and `inactive` as undefined
+    // while the composite actually rendered is `edc-badge--active` /
+    // `edc-badge--inactive`. BOTH halves are needed and neither is redundant:
+    // the two prefixes above keep the sheet's real rules from grading dead, and
+    // these two fragments stop the ternary's literals being read as class names
+    // the sheet must define. Measured, not assumed — dropping the prefixes
+    // prints "Dead classes: edc-badge--active, edc-badge--inactive" and dropping
+    // the fragments prints them as used-but-undefined.
+    knownDynamicFragments: ['active', 'inactive'],
+    // The card reuses the settings form vocabulary — settings-field,
+    // -label, -input, -toggle and its -switch/-slider, plus settings-form — all
+    // defined once in SettingsPage.css, which the settings shell imports. The
+    // same cite the four settings cards and both restaurant screens carry.
+    parentCss: ['settings/SettingsPage.css'],
   },
   {
     name: 'BusinessDefaultsScreen',
@@ -2188,6 +2315,11 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     entry: 'KdsScreen',
     value: 'no-anim',
     reason: 'non-JSX: applied to document.body by classList.toggle at features/kds/KdsScreen.tsx:93-94, outside every component JSX and every prefix shape',
+  },
+  {
+    entry: 'StaffManagementScreen',
+    value: 'segmented-tab',
+    reason: 'composed child: defined once at components/SegmentedTabs.css:118, rendered by the shared <SegmentedTabs> that staff/components/StaffTabs.tsx:74 composes; this entry\'s own sheet carries a scoped override for it at StaffManagementScreen.css:160, so the rule lives in the citing sheet while the name never appears in any walked TSX — StaffTabs.tsx renders the component without spelling the class',
   },
 ];
 
