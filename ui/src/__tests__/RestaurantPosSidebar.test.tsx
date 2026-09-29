@@ -29,6 +29,7 @@ const mockActiveWorkspace = vi.hoisted(() => ({ current: 'restaurant-pos' }));
 const mockLogout = vi.hoisted(() => vi.fn());
 const mockGoToWorkspacePicker = vi.hoisted(() => vi.fn());
 const mockGetActiveShift = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockIsManager = vi.hoisted(() => ({ current: false }));
 
 vi.mock('@/contexts/WorkspaceContext', () => ({
   useWorkspace: () => ({
@@ -66,13 +67,13 @@ vi.mock('@/hooks/useWorkspaceNav', () => ({
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
-    session: { user_id: 'user-1', username: 'test', role_name: 'cashier', token: 't', role_id: 'r', display_name: 'Test' },
+    session: { user_id: 'user-1', username: 'test', role_name: mockIsManager.current ? 'manager' : 'cashier', token: 't', role_id: 'r', display_name: 'Test' },
     loading: false,
     error: null,
     login: vi.fn(),
     logout: mockLogout,
     clearError: vi.fn(),
-    isManager: false,
+    isManager: mockIsManager.current,
     isOwner: false,
   }),
 }));
@@ -129,6 +130,7 @@ describe('RestaurantPosSidebar', () => {
     mockLogout.mockClear();
     mockGoToWorkspacePicker.mockClear();
     mockGetActiveShift.mockReset().mockResolvedValue(null);
+    mockIsManager.current = false;
   });
 
   it('hides the CartPanel when restaurant sidebar is toggled open and restores it when closed', async () => {
@@ -382,6 +384,62 @@ describe('RestaurantPosSidebar', () => {
     // '0.0.0' placeholder here — this asserts the line renders, not its value.
     expect(within(footer).getByText(/^v\d/)).toBeInTheDocument();
     expect(within(footer).getByText(/All rights reserved/)).toBeInTheDocument();
+  });
+
+  it('greys out Receipts and Payments buttons with Manager+ badge when cashier is not a manager', async () => {
+    const user = userEvent.setup();
+    mockIsManager.current = false;
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
+    await user.click(toggleBtn);
+
+    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+
+    expect(receiptsBtn).toBeDisabled();
+    expect(receiptsBtn).toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(receiptsBtn).getByText('Manager+')).toBeInTheDocument();
+
+    expect(paymentsBtn).toBeDisabled();
+    expect(paymentsBtn).toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(paymentsBtn).getByText('Manager+')).toBeInTheDocument();
+  });
+
+  it('enables Receipts and Payments for manager and opens full-page sub-screen with back button', async () => {
+    const user = userEvent.setup();
+    mockIsManager.current = true;
+    await renderWithProviders(<PosScreen />, salesFtl, productsFtl, inventoryFtl, settingsFtl);
+
+    const toggleBtn = document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement;
+    await user.click(toggleBtn);
+
+    const receiptsBtn = screen.getByRole('button', { name: /Receipts/i });
+    expect(receiptsBtn).not.toBeDisabled();
+    expect(receiptsBtn).not.toHaveClass('restaurant-sidebar-item--disabled');
+    expect(within(receiptsBtn).queryByText('Manager+')).toBeNull();
+
+    // Click Receipts opens the full-page sub-screen
+    await user.click(receiptsBtn);
+    expect(screen.getByText('Receipt & Printer Settings')).toBeInTheDocument();
+
+    // Click Back returns to POS
+    const backBtn = screen.getByRole('button', { name: /Back/i });
+    expect(backBtn).toBeInTheDocument();
+    await user.click(backBtn);
+    expect(screen.queryByText('Receipt & Printer Settings')).toBeNull();
+
+    // Open sidebar again and test Payments sub-screen
+    await user.click(document.querySelector('.restaurant-sidebar-btn') as HTMLButtonElement);
+    const paymentsBtn = screen.getByRole('button', { name: /Payments/i });
+    expect(paymentsBtn).not.toBeDisabled();
+    await user.click(paymentsBtn);
+    expect(screen.getByText('Payment Settings')).toBeInTheDocument();
+
+    // Click Back returns to POS
+    const paymentsBackBtn = screen.getByRole('button', { name: /Back/i });
+    await user.click(paymentsBackBtn);
+    expect(screen.queryByText('Payment Settings')).toBeNull();
   });
 });
 

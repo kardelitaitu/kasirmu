@@ -14,6 +14,8 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import TableManagementScreen from '@/features/tables/TableManagementScreen';
 import SalesHistoryScreen from '@/features/sales/SalesHistoryScreen';
+import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
+import RestaurantPaymentsScreen from '@/features/restaurant/screens/RestaurantPaymentsScreen';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 
@@ -175,6 +177,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
   const [showTables, setShowTables] = useState(false);
   const [showSalesHistory, setShowSalesHistory] = useState(false);
   const [showStockInquiry, setShowStockInquiry] = useState(false);
+  const [showReceiptsSettings, setShowReceiptsSettings] = useState(false);
+  const [showPaymentsSettings, setShowPaymentsSettings] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
   const [showDiscountInput, setShowDiscountInput] = useState(false);
   const [showPromotions, setShowPromotions] = useState(false);
@@ -651,6 +655,48 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     );
   }
 
+  // ── Sub-screen: Restaurant Receipts Settings ─────────────────
+  if (showReceiptsSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantReceiptsScreen onBack={() => setShowReceiptsSettings(false)} />
+        </div>
+        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
+          <button
+            type="button"
+            className="pos-cart-pay-btn"
+            onClick={() => setShowReceiptsSettings(false)}
+            style={{ width: '100%' }}
+          >
+            &larr; {l10n.getString('back')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Sub-screen: Restaurant Payments Settings ─────────────────
+  if (showPaymentsSettings) {
+    return (
+      <div className="pos-screen">
+        <div style={{ flex: 1, overflow: 'auto' }}>
+          <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
+        </div>
+        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
+          <button
+            type="button"
+            className="pos-cart-pay-btn"
+            onClick={() => setShowPaymentsSettings(false)}
+            style={{ width: '100%' }}
+          >
+            &larr; {l10n.getString('back')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Sub-screen: Settings (4-tab-routing) ──────────────────────
   // Same pattern as the desktop `RetailOptionsScreen`: four tabs
   // (Appearance / Features / Data / Sync) that route to the
@@ -742,6 +788,8 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     onOpenTables: () => setShowTables(true),
     onOpenHistory: () => setShowSalesHistory(true),
     onOpenKitchenDisplay: () => onNavigate?.('kds'),
+    onOpenReceipts: () => setShowReceiptsSettings(true),
+    onOpenPayments: () => setShowPaymentsSettings(true),
     onRequestExit: handleRequestExit,
   };
 
@@ -759,6 +807,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             profile={restaurantProfile}
             onChangePhoto={() => { void handleChangePhoto(); }}
             onRequestExit={handleRequestExit}
+            isManager={isManager}
           />
         ) : (
           <ProductLookupScreen onAddProduct={handleAddProduct} />

@@ -38,6 +38,8 @@ export interface RestaurantMenuProps {
   onChangePhoto?: (() => void) | undefined;
   /** Request exit from workspace; handled by host to check shifts. */
   onRequestExit?: () => void;
+  /** Override manager status for sidebar permissions. */
+  isManager?: boolean | undefined;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -158,6 +160,7 @@ export default function RestaurantMenu({
   profile,
   onChangePhoto,
   onRequestExit,
+  isManager,
 }: RestaurantMenuProps) {
   const { l10n } = useLocalization();
   const { sessionToken } = useWorkspace();
@@ -484,6 +487,7 @@ export default function RestaurantMenu({
         profile={profile}
         onChangePhoto={onChangePhoto}
         onRequestExit={onRequestExit}
+        isManager={isManager}
       />
 
       {/* ── Category pills ─────────────────────────── */}

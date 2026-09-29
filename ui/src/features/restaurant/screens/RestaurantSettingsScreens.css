@@ -1,0 +1,125 @@
+/* ============================================================
+ * Restaurant Settings Screens (Receipts & Payments)
+ * ============================================================ */
+
+.restaurant-settings-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px) var(--space-6, 24px);
+  max-width: 840px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+  color: var(--color-fg, #111);
+}
+
+.restaurant-settings-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding-bottom: var(--space-3, 12px);
+  border-bottom: 1px solid var(--color-border, #e5e5e5);
+}
+
+.restaurant-settings-title {
+  margin: 0;
+  font-size: var(--text-2xl, 1.5rem);
+  font-weight: 700;
+  color: var(--color-fg, #111);
+}
+
+.restaurant-settings-subtitle {
+  margin: 0;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--color-fg-secondary, #666);
+}
+
+.restaurant-settings-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.restaurant-settings-card-header h2 {
+  margin: 0;
+  font-size: var(--text-base, 1rem);
+  font-weight: 600;
+  color: var(--color-fg, #111);
+}
+
+.restaurant-settings-card-header p {
+  margin: 2px 0 0;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-fg-muted, #888);
+}
+
+.restaurant-settings-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3, 12px);
+  padding-top: var(--space-2, 8px);
+}
+
+/* Local payment rails list inside Payments screen */
+.restaurant-rails-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+.restaurant-rail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--color-bg-elevated, #fafafa);
+  border: 1px solid var(--color-border, #e5e5e5);
+  border-radius: var(--radius-md, 6px);
+  gap: var(--space-2, 8px);
+}
+
+.restaurant-rail-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+}
+
+.restaurant-rail-label {
+  font-weight: 500;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.restaurant-rail-code {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-fg-muted, #888);
+  font-family: var(--font-mono, monospace);
+  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.05));
+  padding: 1px 5px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+.restaurant-rail-add {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+  align-items: center;
+}
+
+.restaurant-rail-add input {
+  flex: 1;
+}
+
+.restaurant-static-qr-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  margin-top: var(--space-2, 8px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.03));
+  border-radius: var(--radius-md, 6px);
+}
