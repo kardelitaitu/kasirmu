@@ -1213,7 +1213,18 @@ export default function RestaurantReceiptsScreen({
         {/* ── Right Column: Configuration Controls ──────────── */}
         <main className="restaurant-settings-column">
           {/* ── Card 1: Receipt Format & Margins ───────────────── */}
-          <Card shadow="sm">
+          <Card
+            shadow="sm"
+            header={
+              <div className="restaurant-settings-card-header">
+                <div>
+                  <h2 className="settings-section-title">
+                    <Localized id="restaurant-receipt-format-heading">Receipt Format</Localized>
+                  </h2>
+                </div>
+              </div>
+            }
+          >
             {/* Business Logo Section */}
             <div className="resto-logo-section">
               <div className="resto-toggle-title">
