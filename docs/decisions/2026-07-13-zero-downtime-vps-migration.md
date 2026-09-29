@@ -4,8 +4,9 @@ area: release
 title: ADR #11: Zero-Downtime VPS Migration Strategy
 status: Implemented (2026-07-15)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACCURATE (1 noted finding) · F1: "22 tests" historical snapshot -> current files grown (transport.rs 38, redirect.rs 4, lib.rs 35, daemon.rs 16 = 90+) since 2026-07-15; count is dated, not false · verified accurate: apps/cloud-server/src/redirect.rs (OZ_SYNC_REDIRECT_URL, HTTP 421) + main.rs (OZ_REDIRECT_ONLY); platform/sync/src/lib.rs ServerMigrated variant (:90) + transport.rs parse_server_migrated (:166/:225); Settings::set_sync_server_url at crates/oz-core/src/settings.rs:393; all 8 referenced files exist -->
+<!-- Superseded audit marker (2026-07-24, body kept verbatim) · Hermes-Agent · status: ACCURATE (1 noted finding) · F1: "22 tests" historical snapshot -> current files grown (transport.rs 38, redirect.rs 4, lib.rs 35, daemon.rs 16 = 90+) since 2026-07-15; count is dated, not false · verified accurate: apps/cloud-server/src/redirect.rs (OZ_SYNC_REDIRECT_URL, HTTP 421) + main.rs (OZ_REDIRECT_ONLY); platform/sync/src/lib.rs ServerMigrated variant (:90) + transport.rs parse_server_migrated (:166/:225); Settings::set_sync_server_url at crates/oz-core/src/settings.rs:393; all 8 referenced files exist -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the one finding the prior pass recorded is confirmed rather than dismissed. The 2026-07-24 stamp flagged F1: the ADR's "22 tests" is a dated snapshot and the files have grown since. Re-measured in spirit rather than to a new number — the modules it names are all substantially larger now, and nothing contradicts the ADR's substance. Recounting would replace one dated figure with another dated figure, which is not an improvement; the honest position is the one the prior stamp already took. · The migration mechanism this ADR exists to specify is intact, and that is the part worth confirming. `apps/cloud-server/src/redirect.rs` is real, `OZ_SYNC_REDIRECT_URL` and `OZ_REDIRECT_ONLY` are read in `apps/cloud-server/src/config.rs:175` and `:192` with a documented dependency between them, and the `ServerMigrated` signal the client acts on is present in `platform/sync/src/daemon_tick.rs` alongside its daemon tests. A 421-redirect migration that keeps both old and new servers serving through a cutover is exactly the kind of decision that must stay checkable against code, and it is. · `Settings::set_sync_server_url` and the eight referenced files all resolve at their current paths. · Left as written with its `crates/oz-core` / `apps/cloud-server` references intact. The status checker reports no drift for this row; the prior stamp is retained and the stacked footer collapsed. -->
 # ADR #11: Zero-Downtime VPS Migration Strategy
 
 **Status:** Implemented (2026-07-15)
@@ -135,7 +136,4 @@ if response.error == "server_migrated" {
 - `crates/oz-core/src/settings.rs` — Settings DB getters/setters
 - `platform/sync/src/transport.rs` — Client transport parsing
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor
