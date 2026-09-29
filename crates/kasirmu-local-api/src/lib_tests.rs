@@ -71,6 +71,78 @@ fn secret_is_generated_once_and_stable() {
     assert_eq!(first, second, "second load must not rotate the secret");
 }
 
+/// **C14(a): the secret is ciphertext at rest, and a legacy plaintext row is
+/// migrated rather than bricked.**
+///
+/// The two halves pull against each other — the value must stop being cleartext
+/// in `settings.value`, *and* every already-shipped install must keep reading the
+/// secret it has — and the migration is what reconciles them. So both are
+/// asserted here, through the public door rather than by calling the helper.
+#[test]
+fn secret_is_encrypted_at_rest_and_a_legacy_plaintext_row_migrates() {
+    let conn = kasirmu_core::migrations::fresh_db();
+
+    // 1. A generated secret is NOT stored as itself.
+    let secret = load_or_create_secret(&conn).unwrap();
+    let stored = kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+        .unwrap()
+        .expect("the row exists");
+    assert_ne!(
+        stored, secret,
+        "the secret must not sit in settings.value as cleartext"
+    );
+    assert_ne!(
+        stored.len(),
+        64,
+        "the stored form must be the ciphertext envelope, not the 64-char hex secret"
+    );
+    assert!(!stored.bytes().all(|b| b.is_ascii_hexdigit()));
+    assert_eq!(
+        load_or_create_secret(&conn).unwrap(),
+        secret,
+        "and it must still read back as the secret"
+    );
+
+    // 2. A LEGACY plaintext row — what every shipped install has — is migrated on
+    //    the next load, and the caller sees an unchanged value.
+    let legacy = "0123456789abcdef".repeat(4); // exactly 64 lowercase hex
+    kasirmu_core::Settings::set(&conn, SETTINGS_SECRET, &legacy).unwrap();
+    assert_eq!(
+        load_or_create_secret(&conn).unwrap(),
+        legacy,
+        "a legacy plaintext secret must still be returned — this is the case the \
+         generic fail-closed reader would have bricked"
+    );
+    let migrated = kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+        .unwrap()
+        .expect("the row still exists");
+    assert_ne!(
+        migrated, legacy,
+        "the legacy plaintext row must have been re-persisted encrypted"
+    );
+
+    // The migration is idempotent: a second boot must not re-encrypt.
+    assert_eq!(load_or_create_secret(&conn).unwrap(), legacy);
+    assert_eq!(
+        kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+            .unwrap()
+            .unwrap(),
+        migrated,
+        "a second boot must leave an already-encrypted row alone"
+    );
+
+    // 3. Rotation writes ciphertext too, and still reads back.
+    let rotated = rotate_secret(&conn).unwrap();
+    assert_ne!(rotated, legacy);
+    assert_eq!(load_or_create_secret(&conn).unwrap(), rotated);
+    assert_ne!(
+        kasirmu_core::Settings::get(&conn, SETTINGS_SECRET)
+            .unwrap()
+            .unwrap(),
+        rotated
+    );
+}
+
 #[tokio::test]
 async fn rotate_secret_replaces_persisted_value_and_invalidates_old_tokens() {
     let conn = kasirmu_core::migrations::fresh_db();

@@ -335,15 +335,40 @@ fn new_secret() -> String {
 
 /// Load the per-install secret, generating and persisting one on first
 /// use.
+///
+/// **Encrypted at rest as of C14(a).** The value used to be written by a bare
+/// `Settings::set`, so it sat in cleartext in `settings.value` and in every
+/// unfiltered `.db` / `.backup.db` snapshot — while doubling as the token
+/// signing key and the operator admin key. Two things happen here now:
+///
+/// 1. A **legacy plaintext row is migrated in place** before it is read, so an
+///    existing install stops leaking on its next boot rather than waiting for an
+///    operator to rotate. The migration is idempotent and cannot double-encrypt:
+///    the ciphertext form (124 base64url chars) and the legacy form (64 lowercase
+///    hex chars) are disjoint on both length and alphabet.
+/// 2. A **newly generated** secret is written through the encrypting setter.
 pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
-    if let Some(existing) = kasirmu_core::Settings::get(conn, SETTINGS_SECRET)
+    match platform_core::settings::Settings::migrate_local_api_secret(conn) {
+        Ok(true) => tracing::info!(
+            "local API: migrated the per-install signing secret to encrypted-at-rest storage (C14a)"
+        ),
+        Ok(false) => {}
+        // A failed migration must not stop the API loading its secret: the read
+        // below still works, and the next boot retries.
+        Err(e) => tracing::warn!(
+            error = %e,
+            "local API: could not migrate the signing secret to encrypted storage; continuing"
+        ),
+    }
+
+    if let Some(existing) = kasirmu_core::Settings::get_local_api_secret(conn)
         .map_err(|e| format!("reading {SETTINGS_SECRET}: {e}"))?
         .filter(|s| !s.trim().is_empty())
     {
         return Ok(existing);
     }
     let secret = new_secret();
-    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set_local_api_secret(conn, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: generated new per-install signing secret");
     Ok(secret)
@@ -356,7 +381,7 @@ pub fn load_or_create_secret(conn: &Connection) -> Result<String, String> {
 /// the recovery path when a backup carrying the old secret leaked).
 pub fn rotate_secret(conn: &Connection) -> Result<String, String> {
     let secret = new_secret();
-    kasirmu_core::Settings::set(conn, SETTINGS_SECRET, &secret)
+    kasirmu_core::Settings::set_local_api_secret(conn, &secret)
         .map_err(|e| format!("persisting {SETTINGS_SECRET}: {e}"))?;
     tracing::info!("local API: signing secret rotated — previously minted tokens are invalid");
     Ok(secret)
