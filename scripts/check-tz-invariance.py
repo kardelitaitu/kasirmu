@@ -80,6 +80,13 @@ TESTS = [
 # passing at some hours and failing at others, which is the worst possible
 # property for a regression gate.
 #
+# COST, since each zone is one full vitest invocation and dev-ci runs them at
+# concurrency 1: adding Honolulu took this from four zones to five, roughly +25% CI
+# wall-clock. Los Angeles is now redundant for the 24-hour property and is kept only
+# for daylight-saving coverage, so it is the line to cut if runtime ever matters. The
+# self-test below asserts which zones are load-bearing, so this trade is checkable
+# rather than remembered.
+#
 # CORRECTED 2026-09-29. This comment previously claimed Los_Angeles (UTC-7)
 # "differs while UTC < 17:00" and that it and Kiritimati together covered all 24
 # hours. Both were wrong: a WEST zone disagrees while UTC is BELOW its offset,
@@ -203,6 +210,18 @@ def self_test() -> int:
     # two windows the whole property rested on and it was not. It stays in ZONES for
     # real-world coverage (a zone developers actually run in, and the only one that
     # crosses a daylight-saving boundary), not because the arithmetic needs it.
+    #
+    # THE COST OF KEEPING IT, which was not written down when Honolulu was added. This
+    # gate runs one full vitest invocation PER ZONE, so going from four zones to five
+    # cost roughly 25% more wall-clock in CI (dev-ci runs at concurrency 1, so the zones
+    # are sequential). That was accepted without saying so, which is not a decision,
+    # it is an omission. The trade is explicit here so it can be revisited:
+    #   keep LA  -> the only DST-crossing zone is exercised, at ~25% CI time
+    #   drop LA  -> back to four zones and no cost, losing DST coverage entirely
+    # The sensitivity property is satisfied either way, which is exactly why the
+    # choice is about coverage and cost rather than correctness. If this gate's
+    # runtime ever becomes the thing that needs attention, LA is the line to cut and
+    # nothing else.
     without_la = {k: v for k, v in ZONE_OFFSETS.items() if k != "America/Los_Angeles"}
     want("Los Angeles is redundant for sensitivity", sensitivity_gap(without_la), [])
 
