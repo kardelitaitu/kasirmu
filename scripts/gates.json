@@ -767,7 +767,7 @@
         "runner commands self-test", "runner claims self-test",
         "testid self-test", "release version self-test",
         "updater compat self-test", "updater signature self-test",
-        "quota coverage self-test"
+        "quota coverage self-test", "selftest sweep self-test"
       ] }
     },
     {
@@ -779,7 +779,7 @@
         "ipc invoke token parity", "windows config drift",
         "feature registry parity", "no-hardcoded-money-format",
         "flaky quarantine", "deployment verification", "chokepoints",
-        "runner commands", "runner claims"
+        "runner commands", "runner claims", "selftest sweep"
       ] },
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },

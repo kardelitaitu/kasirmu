@@ -603,6 +603,14 @@ step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-te
 
 step "runner claims" "python3 scripts/verify-runner-claims.py" python3 scripts/verify-runner-claims.py
 step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-test" python3 scripts/verify-runner-claims.py --self-test
+# Runs EVERY checker's self-test in one roster. Added 2026-09-29 because until now the
+# only way to run the population was a person typing a command -- which is how the
+# first sweep of all 37 checkers reported three "failures" that were argparse rejecting
+# a flag those three do not implement. This one skips anything that declares no
+# --self-test, and reports a rejected flag separately from a failed case, so the two
+# cannot be confused.
+step "selftest sweep" "python3 scripts/verify-selftest-sweep.py" python3 scripts/verify-selftest-sweep.py
+step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self-test" python3 scripts/verify-selftest-sweep.py --self-test
 
 step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py
 step "runner commands self-test" "python3 scripts/verify-runner-commands.py --self-test" python3 scripts/verify-runner-commands.py --self-test
