@@ -159,13 +159,20 @@ def main() -> int:
         # FLIP CONDITION: scripts/profile.sh parses. Until then this stays advisory,
         # and the finding is printed on every run so it cannot be forgotten.
         #
-        # WHAT IS KNOWN about profile.sh, for whoever picks it up: every block keyword
-        # balances (measured: if/fi, case/esac, while/do/done all net to depth 0 at EOF),
-        # every single- and double-quote line is even, and every $( has its ). So the
-        # imbalance is NOT a missing fi and NOT an unterminated string -- which leaves
-        # bytes the eye does not see: a stray control character, or CRLF endings turning
-        # "then" into "then\r". Check line endings first; that is the likeliest cause and
-        # the cheapest to fix.
+        # WHAT IS RULED OUT about scripts/profile.sh, measured 2026-09-29, so the
+        # next person does not re-derive it:
+        #   * a missing fi -- block depth nets to 0 at EOF (if/fi, case/esac, while/do/done)
+        #   * an unterminated quote -- every line has an even count of ' and of "
+        #   * an unterminated $( -- all 24 apparent mismatches are plain ) in comments,
+        #     case patterns and array literals
+        #   * CRLF -- no CR in the file as read
+        #   * non-ASCII -- an ASCII-folded copy of the file fails at the SAME line 216, so
+        #     the box-drawing comment rules are not the cause
+        # Note the trap: a naive per-line strip of #.*$ eats the $# in
+        #   while [[ $# -gt 0 ]]; do
+        # and makes this file look badly unbalanced. Strip FULL-LINE comments only.
+        # What is left is the grammar itself, so re-read the raw bytes around any suspect
+        # line rather than the rendered text.
         print("verify-shell-syntax: ADVISORY (not blocking) — see FLIP CONDITION above.")
         return 0
     print(f"verify-shell-syntax: OK — {checked} shell entry point(s) parse.")
