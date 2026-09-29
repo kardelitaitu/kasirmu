@@ -2129,6 +2129,14 @@ fn plugin_dir(name: &str, lua: &str, permissions: &[&str]) -> tempfile::TempDir 
     )
     .unwrap();
     std::fs::write(plugin_dir.join("script.lua"), lua).unwrap();
+    // Approve exactly what the manifest declares: the operator grant gate (C2)
+    // refuses a plugin whose permissions were never approved, and these tests
+    // are about the checkout money boundary, not about the gate itself.
+    std::fs::write(
+        dir.path().join("plugin-grants.json"),
+        format!("{{\"schema_version\":1,\"grants\":{{\"{name}\":[{perms}]}}}}"),
+    )
+    .unwrap();
     dir
 }
 

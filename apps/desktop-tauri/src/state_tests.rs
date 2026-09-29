@@ -210,6 +210,15 @@ required_permissions = ["cart:read", "cart:write"]
     )
     .unwrap();
     std::fs::write(plugin_dir.join("main.lua"), script).unwrap();
+    // Approve what the manifest declares: the operator grant gate (C2) refuses
+    // an unapproved permission, and this fixture exists to exercise the WATCHER,
+    // not the gate. Written first so the test can then prove that editing the
+    // script (not the grant) is what gets refused.
+    std::fs::write(
+        root.join("plugin-grants.json"),
+        r#"{"schema_version":1,"grants":{"test-plugin":["cart:read","cart:write"]}}"#,
+    )
+    .unwrap();
 }
 
 /// The watcher observes a change and REFUSES it: the live manager keeps serving
@@ -258,6 +267,16 @@ version = "1.0.0"
 [permissions]
 required_permissions = ["cart:read"]
 "#,
+    )
+    .unwrap();
+
+    // The new plugin must also be approved, or the non-vacuity re-load below
+    // would fail on the grant gate rather than on the change this test is
+    // about. Granting it here keeps that re-load a measure of "the set changed",
+    // which is what the assertion needs.
+    std::fs::write(
+        tmp.path().join("plugin-grants.json"),
+        r#"{"schema_version":1,"grants":{"test-plugin":["cart:read","cart:write"],"evil-plugin":["cart:read"]}}"#,
     )
     .unwrap();
 

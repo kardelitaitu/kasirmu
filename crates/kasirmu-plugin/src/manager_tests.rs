@@ -6,6 +6,13 @@ use std::path::PathBuf;
 /// Create a temp plugin directory with `plugin.toml` and `script.lua`,
 /// declaring the given `required_permissions`.
 /// Returns (TempDir, plugins_root_dir) — the TempDir must be kept alive.
+///
+/// Also writes a `plugin-grants.json` approving exactly the declared
+/// permissions. The operator grant gate (C2) refuses a plugin whose
+/// permissions were never approved, so a fixture that declared permissions
+/// without granting them would now fail to load — and every test here is about
+/// hook behaviour, not about the gate. The gate itself, including the refusal
+/// case, is tested in `grants_tests.rs`.
 fn create_plugin_dir(
     name: &str,
     lua_content: &str,
@@ -26,8 +33,60 @@ fn create_plugin_dir(
     std::fs::write(plugin_dir.join("plugin.toml"), manifest).unwrap();
     std::fs::write(plugin_dir.join("script.lua"), lua_content).unwrap();
 
+    // Approve exactly what the manifest declares (see the doc comment above).
+    std::fs::write(
+        dir.path().join(crate::grants::GRANTS_FILE_NAME),
+        format!("{{\"schema_version\":1,\"grants\":{{\"{name}\":[{perms_list}]}}}}"),
+    )
+    .unwrap();
+
     let plugins_root = dir.path().to_path_buf();
     (dir, plugins_root)
+}
+
+/// Approve the declared permissions of EVERY plugin directory under
+/// `plugins_root`, writing one `plugin-grants.json`.
+///
+/// Scans the directory rather than taking a plugin name, so a multi-plugin
+/// fixture is approved in one call and the file is built once — no merge, no
+/// chance of a later call withdrawing an earlier approval.
+fn grant_all_declared(plugins_root: &std::path::Path) {
+    let mut map = serde_json::Map::new();
+    for entry in std::fs::read_dir(plugins_root).unwrap() {
+        let entry = entry.unwrap();
+        let manifest_path = entry.path().join("plugin.toml");
+        let Ok(manifest) = std::fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let name = manifest
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("name = "))
+            .map(|v| v.trim().trim_matches('"').to_string());
+        let Some(name) = name else { continue };
+
+        // The `required_permissions` array may span MANY lines (the
+        // all-permission-types fixture does), so take everything from the key
+        // to the closing bracket rather than assuming one line.
+        let perms: Vec<serde_json::Value> = manifest
+            .split("required_permissions")
+            .nth(1)
+            .and_then(|rest| rest.split('[').nth(1))
+            .and_then(|rest| rest.split(']').next())
+            .unwrap_or("")
+            .split(',')
+            .map(|s| s.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .map(serde_json::Value::String)
+            .collect();
+
+        map.insert(name, serde_json::Value::Array(perms));
+    }
+    let doc = serde_json::json!({ "schema_version": 1, "grants": map });
+    std::fs::write(
+        plugins_root.join(crate::grants::GRANTS_FILE_NAME),
+        serde_json::to_string_pretty(&doc).unwrap(),
+    )
+    .unwrap();
 }
 
 /// Helper to build a single `CartLineData`.
@@ -151,6 +210,8 @@ required_permissions = ["cart:read"]
         .unwrap();
         let _ = i; // suppress warning
     }
+    // Approve both plugins' declared permissions (C2 grant gate).
+    grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
     assert!(mgr.drain_pending_discounts().is_empty());
 }
@@ -206,6 +267,7 @@ required_permissions = [
 "#,
     )
     .unwrap();
+    grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
     assert!(mgr.drain_pending_discounts().is_empty());
 }
@@ -291,7 +353,13 @@ fn plugin_manager_new_with_invalid_lua_syntax() {
 #[test]
 fn plugin_manager_new_with_real_example_discount_plugin() {
     // Use the real example-discount plugin from the workspace.
-    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples");
+    //
+    // The path is the PLUGIN directory, not `scripts/examples`: the operator
+    // grant file (C2) is resolved inside the directory handed to
+    // `PluginManager::new`, so pointing at the parent would look for a grants
+    // file that has no business existing there.
+    let plugins_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples/example-discount");
     let mgr = PluginManager::new(&plugins_dir).unwrap();
     // The example-discount registers a hook, no top-level discount push.
     let discounts = mgr.drain_pending_discounts();
@@ -305,7 +373,8 @@ fn real_example_plugin_hook_executes_without_error() {
     // The plugin applies a 10% discount on Tuesdays (wday == 3),
     // so the discount may or may not be created depending on the
     // current day — this test verifies the hook machinery works.
-    let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples");
+    let plugins_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/examples/example-discount");
     let mgr = PluginManager::new(&plugins_dir).unwrap();
 
     let lines = [line("TEST", 1, 1000, "USD")];
@@ -715,6 +784,7 @@ fn cross_plugin_globals_do_not_overwrite() {
     // each plugin's function intact, so firing runs BOTH hooks.
     let dir = tempfile::tempdir().unwrap();
     create_isolation_pair(dir.path());
+    grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
 
     mgr.fire_sale_before_complete(&[line("X", 1, 1000, "USD")], 1000, "USD", "u1")
@@ -772,6 +842,7 @@ fn hook_order_is_deterministic_by_plugin_id() {
             .unwrap();
     }
 
+    grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
     mgr.fire_sale_before_complete(&[line("X", 1, 1000, "USD")], 1000, "USD", "u1")
         .unwrap();
@@ -813,6 +884,7 @@ fn legacy_validate_order_aggregates_per_plugin() {
             .unwrap();
     }
 
+    grant_all_declared(dir.path());
     let mgr = PluginManager::new(dir.path()).unwrap();
     let errors = mgr.validate_order(&[], 0, "USD").unwrap();
     assert_eq!(errors.len(), 2);
