@@ -10,6 +10,21 @@ category names) are reported as UNBOUNDED on purpose: no static check can
 cover them, so the code must degrade gracefully instead.
 
 Usage: python dyn_cover.py <repo_root>
+
+UNWIRED, AND IT IS NOT IDLE -- measured 2026-09-29. Open finding GI-4 lists this among
+seven checkers no runner invokes, and framed "wire it up" as an oversight to repair. It
+is not: run by hand it exits 1 and reports a LIVE GAP. The "setup feature label" family
+builds 27 ids by template literal (setup-feature-analytics-label,
+setup-feature-audit-log-label, ...) and NONE of them exist in the English bundle. Every
+other family it covers reports OK. So the concern this file was written for is current
+and unreported, which is worse than an obsolete checker: a reader grepping for
+verify- finds a working gate and concludes the gap is covered.
+
+NOT WIRED YET, DELIBERATELY. Wiring it as a blocking step would turn every check.sh run
+red over 27 missing translations, and shipping that without fixing the ids is the
+out-of-the-gate-gets-muted failure this repo has already paid for. The fix is 27 lines in
+the .ftl bundle; the wiring is one step beside it. Whoever lands the translations should
+do both, and can confirm the gap is closed by running this file directly.
 """
 # Promoted from the 2026-09-03 Fluent page audit; see
 # docs/records/fluent-page-audit.md for why this check exists.
