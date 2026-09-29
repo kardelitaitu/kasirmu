@@ -17,6 +17,8 @@ next: none — crate stable | perf: SQL validation uses compiled regexes — neg
 pub mod db;
 /// Plugin error types.
 pub mod error;
+/// Operator grant store for plugin permissions (C2 / D7).
+pub mod grants;
 /// Plugin loading and scanning.
 pub mod loader;
 /// Runtime plugin manager with Lua sandbox.
@@ -27,6 +29,7 @@ pub mod manifest;
 pub mod package;
 
 pub use error::PluginError;
+pub use grants::{PluginGrants, ungranted};
 pub use loader::{LoadedPlugin, PluginRegistry, hash_plugin_set, load_plugins};
 pub use manager::PluginManager;
 pub use manifest::PluginManifest;

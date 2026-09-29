@@ -155,6 +155,65 @@ impl PluginManager {
             }
         }
 
+        // ── Operator grant gate (C2 / D7) ───────────────────────────
+        // The whitelist above answers "is this a real permission?"; it cannot
+        // answer "did the operator approve it for THIS plugin?", because the
+        // list is written by the plugin author. Without the gate below a
+        // plugin shipping `required_permissions = ["cart:write"]` receives the
+        // discount bindings with no human in the loop — the self-declaration
+        // D7 rules must become an operator grant.
+        //
+        // Loaded AFTER the whitelist so a malformed grants file cannot mask an
+        // invalid manifest: the more specific diagnosis wins.
+        let grants = crate::grants::load(plugins_dir)?;
+        let grants_path = crate::grants::PluginGrants::path_in(plugins_dir);
+        let mut ungranted_any: Vec<(String, Vec<String>)> = Vec::new();
+        for plugin in &registry.plugins {
+            let id = &plugin.manifest.plugin.name;
+            let missing = crate::grants::ungranted(
+                &plugin.manifest.permissions.required_permissions,
+                grants.granted_for(id),
+            );
+            if !missing.is_empty() {
+                ungranted_any.push((id.clone(), missing.iter().map(ToString::to_string).collect()));
+            }
+        }
+        if !ungranted_any.is_empty() {
+            // Fail closed, and name the remedy concretely: the operator has to
+            // be able to paste the fix, not go hunting for the file's shape.
+            let detail = ungranted_any
+                .iter()
+                .map(|(id, perms)| {
+                    format!(
+                        "'{id}' needs [{}]",
+                        perms
+                            .iter()
+                            .map(|p| format!("\"{p}\""))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(PluginError::Manifest(format!(
+                "plugin permissions were not granted by the operator — refused. {detail}. \
+                 Record the approval in {} as: \
+                 {{ \"schema_version\": {}, \"grants\": {{ \"<plugin-id>\": [\"<permission>\"] }} }}",
+                grants_path.display(),
+                crate::grants::SUPPORTED_SCHEMA_VERSION_PUBLIC,
+            )));
+        }
+        // Every plugin that reached here has granted == declared, so the
+        // capability-gated `oz` table built below from `required_permissions`
+        // IS the granted set. The gate is deliberately single-source: adding a
+        // second filter over that table would let the two disagree, and the
+        // rejection above is the only place the decision is made.
+        tracing::debug!(
+            plugins = registry.plugins.len(),
+            grants_file = %grants_path.display(),
+            "plugin permission grants verified"
+        );
+
         let runtime = LuaRuntime::new().map_err(|e| PluginError::Lua(e.to_string()))?;
 
         let hook_names: Arc<Mutex<HashMap<String, Vec<HookRef>>>> =
