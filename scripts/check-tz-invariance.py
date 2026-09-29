@@ -15,6 +15,7 @@ import io
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -198,6 +199,72 @@ def self_test() -> int:
     return 0
 
 
+def honoured_offset(tz: str) -> int:
+    """Seconds the host's local time sits WEST of UTC after applying TZ=tz.
+
+    0 means the host did not move: either the zone is UTC, or the name is unknown and
+    the platform fell back. Those two are indistinguishable from the offset alone, which
+    is why the caller treats a ZERO offset as a failure for any zone that should not be
+    UTC -- an unresolvable name is the only other way to get there.
+
+    Uses time.tzset, which is Unix-only; see zone_probe() for what happens without it.
+    """
+    saved = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = tz
+        time.tzset()
+        return time.timezone
+    finally:
+        if saved is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = saved
+        time.tzset()
+
+
+def zone_probe() -> int:
+    """Fail if any zone in ZONES is not honoured by this host, BEFORE the vitest run.
+
+    Added 2026-09-29 alongside the Honolulu fix, because that fix could otherwise be
+    undone invisibly. If a zone name is unknown, Node does not error -- it falls back and
+    the vitest run happens under UTC or system local time while still reporting PASS.
+    That is the SAME blind spot the ZONES arithmetic exists to close, arriving by a
+    different route: a typo, or a zone missing from a minimal tzdata, would silently
+    remove a sensitivity window and leave every other gate green. The sensitivity
+    self-test cannot see it, because it checks the ARITHMETIC, not whether the host
+    honours the name.
+
+    Ordering is the point: this costs microseconds, while the run below costs one
+    vitest invocation per zone. Learning a zone is dead after four expensive runs wastes
+    a CI job to discover what a free check already knew.
+
+    The test is that a non-UTC zone must SHIFT local time. A zero offset is the only
+    signature an unresolvable name can produce, since UTC is the universal fallback.
+    On a platform without time.tzset this reports that it SKIPPED rather than
+    pretending to have verified anything -- a check that silently no-ops is the same
+    class of quiet it exists to prevent.
+    """
+    if not hasattr(time, "tzset"):
+        print("check-tz-invariance: zone preflight SKIPPED -- time.tzset is unavailable"
+              " here, so zone names were NOT verified before running. The sensitivity"
+              " arithmetic is still checked by --self-test; only host honouring is unverified.")
+        return 0
+    dead: list[str] = []
+    for tz in ZONES:
+        if tz == "UTC":
+            continue
+        if honoured_offset(tz) == 0:
+            dead.append(tz)
+    if dead:
+        print("check-tz-invariance: zone preflight FAILED -- this host does not honour: "
+              + ", ".join(dead))
+        print("  A zone that does not resolve runs under a fallback and still passes, which"
+              " silently removes a sensitivity window. Fix the name or the tzdata before"
+              " trusting a green here.")
+        return 1
+    print(f"check-tz-invariance: zone preflight OK -- {len(ZONES)} zone(s) honoured.")
+    return 0
+
 # Dispatch ABOVE the module-level vitest run further down this file. Placing it there
 # rather than at the bottom is the whole reason --self-test is safe here: every other
 # checker dispatches from main(), and this file has no main(), because its four vitest
@@ -244,6 +311,10 @@ def check_zone(tz: str) -> tuple[str, str, bool]:
 
 is_ci = os.environ.get("CI") is not None
 max_concurrency = 1 if is_ci else 2
+
+# Preflight BEFORE the expensive loop: a dead zone name must be caught here, not
+# after one vitest invocation per zone has already been spent.
+zone_probe()
 
 print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
 with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
