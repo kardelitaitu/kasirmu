@@ -699,13 +699,39 @@ def self_test() -> int:
         # Remove one record and require its hook step to surface. This is the whole
         # point of the check: an absent gate must become visible, not silently
         # unpoliced.
-        trimmed = [g for g in full if g["id"] != "bundle-parity"]
-        assert len(trimmed) == len(full) - 1, "bundle-parity not in the manifest"
+        # TRIM EVERY gate that covers the step, not just one. This used to remove
+        # only "bundle-parity" and expect the hook step to orphan -- which stopped being
+        # true on 2026-09-29 when the "bundle parity self-test" step was added to
+        # check.sh and registered in gates.json. That step's own command invokes
+        # verify-bundle-parity.py, so the script was still covered by a DIFFERENT record
+        # and the hook step was correctly reported as NOT orphaned. The case's premise
+        # died; the code was right. Two rounds were spent blaming the wrong thing (a
+        # _note prose scrape) before the label mapping was read.
+        #
+        # Removing every covering record is the honest version of the original intent:
+        # an absent gate must become visible, and visibility means nothing still points
+        # at the script.
+        bundle_gate = next(g for g in full if g["id"] == "bundle-parity")
+        companion = next((g for g in full
+                          if any("bundle parity self-test" in str(x)
+                                 for v in (g.get("runners") or {}).values()
+                                 for x in (v if isinstance(v, list) else [v]))), None)
+        drop = {"bundle-parity"} | ({"checker-selftest-companions"}
+                                     if companion is not None else set())
+        trimmed = [g for g in full if g["id"] not in drop]
+        assert len(trimmed) == len(full) - len(drop), "expected to trim both records"
         orph = hook_step_orphans(trimmed)
-        check("deleting the bundle-parity record orphans hook step 4",
+        check("deleting every bundle-parity record orphans hook step 4",
               any("Bundle parity" in o for o in orph), True)
         check("  ... and names the script that lost its cover",
               any("verify-bundle-parity.py" in o for o in orph), True)
+        # And the control that proves WHY it needed both: with the companion still
+        # present, the step is legitimately covered and must NOT be called an orphan.
+        if companion is not None:
+            only_one = [g for g in full if g["id"] != "bundle-parity"]
+            check("  ... and a surviving companion keeps it covered",
+                  any("Bundle parity" in o for o in hook_step_orphans(only_one)), False)
+        _ = bundle_gate
         # An empty manifest must not read as "nothing orphaned".
         check("an empty manifest orphans every scripted step",
               len(hook_step_orphans([])) > 0, True)
