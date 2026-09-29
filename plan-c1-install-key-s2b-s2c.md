@@ -1,17 +1,15 @@
 # C1 S2b / S2c — per-install at-rest key: implementation plan
 
 <!-- Plan token kept: `plan-` (AGENTS.md §7.4 — the docs-auditor exempts this name
-     from check-dead-refs.py). This is a PLAN, not a record of work done. Nothing
-     in it has been implemented. It is deliberately NOT named `done-*`. -->
-
-<!-- Plan token kept: `plan-` (AGENTS.md §7.4 — the docs-auditor exempts this name
-     from check-dead-refs.py). This is a PLAN, not a record of work done. S2b-1 has
-     since landed (2026-09-29) and is marked below; S2b-2 and S2c have not. It is
-     deliberately NOT named `done-*`. -->
+     from check-dead-refs.py). This is a PLAN, not a record of work done. S2b-1 and
+     S2b-2a have since landed (2026-09-29) and are marked below; S2b-2b and S2c have
+     not. It is deliberately NOT named `done-*`. -->
 
 **Status:** IN PROGRESS. **S2b-1 (the injection seam) IMPLEMENTED 2026-09-29** — it
 changes no runtime behaviour, which is what the slice was scoped to guarantee.
-**S2b-2 (keychain resolution + boot injection) and S2c (`oz rekey`) NOT STARTED.**
+**S2b-2a (the keychain half: durability + generate-once resolution) IMPLEMENTED
+2026-09-29.** **S2b-2b (the shells' boot injection) and S2c (`oz rekey`) NOT STARTED** —
+S2b-2b needs a lease on `apps/*-tauri`, which are other lanes' exclusive paths.
 Written 2026-09-29. The §8 questions are now ANSWERED — see §8.
 **Branch:** `0.0.40` (do not create or switch branches).
 **Checklist item:** C1 (`manager-codebase-review-checklist.md`), slices S2b and S2c.
@@ -157,6 +155,41 @@ desktop `apps/desktop-tauri/src/lib.rs` setup closure, mobile `:114`. Each resol
 (H3 guard); then calls `set_install_key` before any DB access.
 *Gate:* boot with no keychain entry generates and logs; boot with a durable-unavailable
 keyring falls back and logs; H2/H3/H4 tests green.
+
+#### S2b-2a — the keychain-half prerequisite ✅ **DONE 2026-09-29** (commit `f2932f6f8`)
+
+**The slice as written above was not implementable, and this is why.** It requires the
+shells to "generate one only when the keyring is durable" — but nothing could answer that
+question: `default_keyring()` returns a `Box<dyn Keyring>` and there was **no durability
+signal anywhere in the crate**. A boot path had no way to tell the OS credential store from
+the in-memory fallback that empties on every launch.
+
+Landed in `crates/kasirmu-security` (unclaimed by any lane, and the only crate that may host
+it — `kasirmu-crypto` and `kasirmu-security` are deliberate siblings):
+
+- `Keyring::is_durable()` — **fail-closed default `false`**, so a backend must opt in; `true`
+  in the Windows/Linux/macOS backends, explicit `false` beside the map in `InMemoryKeyring`.
+- `install_key::{INSTALL_KEY_ENTRY, resolve_install_key, InstallKeyResolution,
+  InstallKeySource}` — **generate-once** resolution. Present-and-well-formed → `Loaded`,
+  nothing written. Present-but-malformed → **error, never regenerated** (a value that cannot
+  be parsed may still decrypt existing rows). Absent → generate only on a durable store, else
+  `RefusedNonDurableKeyring`, which is deliberately **not an error** so a dev machine or CI
+  runner still starts.
+- Deliberately **not** `rotate_key`: it overwrites on every call, so a boot path using it
+  would mint a new secret each launch and orphan the previous rows.
+- `InstallKeyResolution`'s `Debug` is **hand-written to redact the secret** — the C89 class,
+  where a derived `Debug` printed credentials.
+
+The audit stamp's "88 tests pass" was already 6 low; corrected to the measured 100.
+
+#### S2b-2b — the boot half ⏸️ **BLOCKED on a lane lease**
+
+Wiring `resolve_install_key` into the two shells' setup closures.
+`apps/desktop-tauri/**` and `apps/mobile-tauri/**` are the **Desktop shell** and **Tablet**
+lanes' exclusive paths, and the Desktop shell lane was mid-refactor on `state.rs`/`state/`
+when this was written. Do not start it without the lease; the security half above is the part
+that could be landed without one. It also carries §8.4's **debug-only static fallback**,
+which needs a release-profile run to falsify.
 
 **S2c — `oz rekey`.**
 New CLI subcommand re-writes every at-rest row under a newly rotated key. Needs
