@@ -34,10 +34,20 @@ WF = ROOT / ".github" / "workflows"
 
 
 def live_workflows() -> list[Path]:
-    """Top-level *.yml only. Files under attic/ are retired and GitHub never runs them."""
+    """Every top-level .yml AND .yaml. Files under attic/ are retired and never run.
+
+    Both extensions because that is GitHub's rule, not a guess and not a snapshot: it
+    executes any .yml or .yaml at the top of .github/workflows/. This globbed *.yml
+    only, which happens to be right today because all four live workflows use that
+    extension, and would have silently skipped a .yaml one added tomorrow. Same shape
+    as the VENDORED directory list in verify-shell-syntax, which is why that was replaced
+    by git ls-files: an extension list that must be maintained to stay true is a pending
+    failure, and a failure nobody is told about.
+    """
     if not WF.is_dir():
         return []
-    return sorted(p for p in WF.glob("*.yml") if p.is_file())
+    return sorted(p for p in list(WF.glob("*.yml")) + list(WF.glob("*.yaml"))
+                  if p.is_file())
 
 
 def check(path: Path) -> str:
