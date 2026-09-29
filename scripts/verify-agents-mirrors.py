@@ -219,7 +219,7 @@ MIRRORS = ["AGENTS.md"]
 # carried the wrong total for two releases (the audit that produced rule 7), and none of
 # them is a mirror, so a MIRRORS-only walk would leave the rot exactly where it was.
 PROSE_FILES = MIRRORS + ["scripts/check.sh", "docs/operations/agent-gates.md",
-                         "CONTRIBUTING.md", "scripts/check.ps1"]
+                         "CONTRIBUTING.md", "scripts/check.ps1", "scripts/lint-i18n.sh"]
 
 # The LIVE carriers of the same claims, measured rather than assumed: each is a file
 # that states a job total or a "mirrors <target>" TODAY, and none of them was policed.
@@ -654,6 +654,58 @@ def pair_groups(m: re.Match) -> tuple[str | None, str]:
     return (m.group(2), m.group(3) or "")
 
 
+# Count claims about WORKFLOWS, not jobs. Added 2026-09-29 after three files
+# asserted the wrong number of live workflows for months:
+#   scripts/check.sh      "the two live ones are dev-ci.yml and release.yml"
+#   scripts/check.ps1     the same sentence, in the PowerShell twin
+#   scripts/lint-i18n.sh  "in .github/workflows/dev-ci.yml -- the only live workflow"
+# All three are in this file's policeable set, and rule (7) read none of them: the
+# existing total parser keys on the noun JOB, and a workflow count is a different claim.
+# android.yml was reinstated by a9dca0610 and website.yml was never retired, so "two"
+# has been wrong since the reinstatement.
+#
+# "ones" is accepted because that is the form the defects actually took -- "the two
+# live ones" reads naturally and says the same thing, so a parser that only accepts
+# "workflows" would have missed all three. It requires "live" in the same phrase, which
+# is what keeps it from matching an ordinary "the two ones below".
+# The capture is ([a-z]+|\d+) rather than \d+ because the shapes that actually
+# occurred are WORD numerals -- "There are two live workflows", "the four live workflow
+# files", "the one live workflow". A digits-only pattern parsed none of them, which the
+# self-test caught before this shipped. WORD_NUM does the filtering: a word that is not
+# a numeral ("the", "only") resolves to None and is skipped, so widening the capture
+# cannot match an ordinary sentence.
+# Only TWO patterns, because "the four live workflow files" is matched by the FIRST
+# one alone: workflows? stops at "workflow" and the trailing " files" is simply not
+# consumed. A third pattern for the "files" spelling looked necessary and was not --
+# it fired on the same text as the first, yielding the same claim twice and failing
+# the "exactly one claim per sentence" contract every other parser here keeps.
+WORKFLOW_COUNT_RES = [
+    re.compile(r"\b([a-z]+|\d+)\s+live\s+workflows?\b", re.I),
+    re.compile(r"\b([a-z]+|\d+)\s+live\s+ones?\b", re.I),
+]
+
+
+def workflow_count_claims(text: str) -> list[tuple[int, int]]:
+    """[(line, claimed live-workflow total)] -- the workflow-count sibling of
+    job_total_claims(). Deliberately narrower than its sibling: it requires the word
+    "live", because "the two workflows" can mean two named ones inside a paragraph and
+    is not a claim about what CI runs. HISTORICAL_MARKERS are skipped for the same
+    reason every other rule here skips them -- a dated record is evidence, not a claim.
+    """
+    out: list[tuple[int, int]] = []
+    for ln, line in enumerate(text.splitlines(), 1):
+        if any(marker in line.lower() for marker in HISTORICAL_MARKERS):
+            continue
+        for rx in WORKFLOW_COUNT_RES:
+            for m in rx.finditer(line):
+                n = WORD_NUM.get(m.group(1).lower())
+                if n is None and m.group(1).isdigit():
+                    n = int(m.group(1))
+                if n is not None:
+                    out.append((ln, n))
+    return out
+
+
 def contradictory_pairs(text: str) -> list[tuple[int, int, str]]:
     """[(line, claimed, reading)] where ONE claim was written two ways that disagree.
 
@@ -731,6 +783,26 @@ def job_total_findings(text: str, rel: str, wfs: dict[str, str],
             f"{word} where the numeral reads another value (phrase: {reading!r}), so the "
             "claim is graded on the word and the sentence is wrong either way")
     return findings
+
+
+def workflow_count_findings(text: str, rel: str, live_total: int) -> list[str]:
+    """Findings for a live-WORKFLOW count that disagrees with the tree.
+
+    The sibling of job_total_findings, and deliberately blind to which workflow is
+    named: "the two live ones are dev-ci.yml and release.yml" is a claim about how many
+    workflows run, not about one of them, so there is no scope to resolve. Graded
+    against the number of live .yml files at the top level of .github/workflows --
+    attic/*.yml.bak are retired by definition and are not counted.
+    """
+    out: list[str] = []
+    for ln, claimed in workflow_count_claims(text):
+        if not live_total:
+            out.append(f"{rel}:{ln}: claims {claimed} live workflows, but none could be"
+                       f" read -- this is a ground-truth gap, not a wrong number")
+        elif claimed != live_total:
+            out.append(f"{rel}:{ln}: claims {claimed} live workflows, but {live_total} are"
+                       f" live; count them with: ls .github/workflows/*.yml")
+    return out
 
 
 def mirror_target_findings(text: str, rel: str, wfs: dict[str, str],
@@ -1782,6 +1854,7 @@ def scan(root: Path, head_hook_text: str | None = None,
         if not text:
             continue
         problems.extend(job_total_findings(text, rel, wfs, per_jobs))
+        problems.extend(workflow_count_findings(text, rel, len(wfs)))
         problems.extend(mirror_target_findings(text, rel, wfs, per_jobs))
 
     # (4) SKILL FILES. A mirror must state the count; a skill need not mention it at all.
@@ -2865,6 +2938,32 @@ def _self_test_cases() -> int:
               f" all parse ({len(shapes18c)} shapes, one claim each)")
     else:
         print(f"  MISSED  {MIRRORS[0]:20s} these shapes still parse to no claim: {bad18c}")
+        bad += 1
+
+    # (18f) A live-WORKFLOW COUNT. Rule (7) read JOB totals only, so "the two live
+    # ones are dev-ci.yml and release.yml" parsed to nothing -- and that sentence sat
+    # in scripts/check.sh and its PowerShell twin for months after android.yml was
+    # reinstated. Each shape below is one that was actually missed.
+    wf_bad = [
+        s for s, want in (
+            ("# the two live ones are dev-ci.yml and release.yml", 2),
+            ("# There are two live workflows, not three.", 2),
+            ("# the four live workflow files ship caddy and rust", 4),
+            ("# only the one live workflow runs this", 1),
+        ) if [c for _, c in workflow_count_claims(s)] != [want]
+    ]
+    # And the finding must FIRE, not merely parse: graded against four live workflows,
+    # a claim of two is a finding. A rule that parses but never reports is the
+    # "checker that cannot run looks exactly like one that found nothing" failure.
+    wf_fires = bool(workflow_count_findings(
+        "# the two live ones are dev-ci.yml and release.yml", "x.sh", 4))
+    wf_quiet = not workflow_count_findings("# there are four live workflows", "x.sh", 4)
+    if not wf_bad and wf_fires and wf_quiet:
+        print(f"  CAUGHT  {'workflow count':20s} four shapes parse, a wrong count FIRES, and a"
+              " correct one stays quiet")
+    else:
+        print(f"  MISSED  {'workflow count':20s} unparsed={wf_bad}, fires={wf_fires},"
+              f" quiet-on-correct={wf_quiet}")
         bad += 1
 
     # (18d) A WORD RESTATED AS A NUMERAL. "eleven (11) jobs" read as nothing at all;
