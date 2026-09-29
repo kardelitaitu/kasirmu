@@ -90,8 +90,10 @@ COPY apps/cloud-server/Cargo.toml apps/cloud-server/
 # line ~119 is the source of truth and fails the image on any error. The
 # unbounded `|| true` from the audit was replaced with an explicit, logged
 # best-effort marker so a broken cache layer is diagnosable while still
-# never blocking a valid image. Workspace/priming consistency is enforced
-# by scripts/verify-dockerfile-workspace.py in CI.
+# never blocking a valid image. Workspace/priming consistency is enforced by
+# scripts/verify-dockerfile-workspace.py, via the LOCAL MATRIX (scripts/check.sh) --
+# corrected 2026-09-29, this said "in CI", which was never true: the checker was
+# unwired entirely until that date, and is not named by any live workflow even now.
 RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-logging/src \
              crates/kasirmu-hal/src crates/kasirmu-lua/src crates/kasirmu-notification/src \
              crates/kasirmu-plugin/src crates/kasirmu-security/src crates/kasirmu-payment/src \
