@@ -268,15 +268,24 @@ fi
 if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2>&1; then
     # `cargo llvm-cov nextest`, not plain `cargo llvm-cov`. The plain form drives `cargo
     # test`, which cannot see the nextest test group (.config/nextest.toml) that serializes
-    # the shared-Postgres tests, and has NO per-test timeout. Both were measured on
-    # 2026-09-29: the plain form first died on
+    # the shared-Postgres tests, and has no per-test timeout at all. The first half is
+    # measured: the plain form died on
     # `sync_store::tests::pg_integration_conflict_detection_end_to_end` (apps/cloud-server/
-    # src/sync_store_tests.rs:1256) -- one of the very tests that group serializes -- and
-    # once that was handled it HUNG on a kasirmu-bridge test binary that burned 14,873
-    # CPU-seconds in 15 minutes of wall clock, with nothing able to kill it. The nextest
-    # subcommand keeps the group, the 120s slow-timeout and per-test process isolation, so
-    # neither failure mode can recur. One invocation, not the two-pass split this step
-    # briefly carried.
+    # src/sync_store_tests.rs:1256), one of the very tests that group serializes, and the
+    # floors then went ungraded behind a warning. The second half is a property, not an
+    # observation: `cargo test` has no timeout, so a wedged test COULD hold this step (and
+    # therefore the whole gate) forever. The nextest subcommand keeps the group, the 120s
+    # slow-timeout and per-test process isolation, and measured 773s for the full workspace
+    # against the plain form's single-invocation failure. One invocation, not the two-pass
+    # split this step briefly carried.
+    #
+    # CORRECTION 2026-09-29: an earlier version of this comment claimed the plain form
+    # HUNG, on a bridge test binary that "burned 14,873 CPU-seconds in 15 minutes". That
+    # was wrong and the measurement says so: a serial bridge run completed 904 of its 1422
+    # tests in a 900s timeout (~1s each, slow not stuck), and ~15,000 CPU-seconds across
+    # 16 threads over 15 minutes is ordinary for a suite that needs 960s under nextest. I
+    # killed a run that was still working. The reason to use nextest stands on the measured
+    # race, not on a hang that never happened.
     if cargo llvm-cov nextest \
         --workspace --all-features \
         --exclude kasirmu-app --exclude kasirmu-mobile \
