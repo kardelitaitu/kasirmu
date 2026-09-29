@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 207 lines, with a prior marker re-verified rather than replaced. A skill audit is an unusual document to find in an otherwise application-focused tree, and it belongs to the sibling of `skill-drift-guard` rather than to `docs-auditor` — the two audits cover different directories, and this campaign has been careful to keep that boundary. What this file audits is `.agents/skills/`, which is why the doc-auditor skill's own scope statement is the right lens: this skill audits project documents, while `skill-drift-guard` audits the skills themselves. · THE PRACTICAL RELEVANCE TO THE WORK IN PROGRESS is direct and worth recording. This campaign has been executing the doc-auditor skill's instructions for twenty-five rounds, and several of its named tools have surfaced defects that only appear when a document is actually audited at scale: `check-adr-status.py` reports per-directory and is the only checker that understands the hand-maintained ADR index; `check-audit-stamps.py` enforces the footer-never-older-than-stamp rule this pass tripped repeatedly by adding a stamp without bumping the footer; and `check-ci-claims.py` exists precisely to catch CI claims that no longer hold, which is the failure this campaign has been finding manually in archived CI and SAST documents. The tooling this audit inventories is doing real work, and the two audits are complementary rather than overlapping. · NOT re-measured: the per-skill findings, which belong to `skill-drift-guard` and would be re-issuing another audit's verdict from outside its scope. What is recorded here is the boundary and the relevance, not a second opinion on the skills. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # Skill audit — `.agents/skills/` — 18-09-26
 
 Auditor: Budak-Korporat. Branch `0.0.39`, HEAD clean at audit start.
@@ -204,4 +205,4 @@ Verified unchanged: `needs` really is 7 jobs; Node really is pinned to 24;
 
 ---
 
-> last audited 18-09-26 by Budak-Korporat
+> last audited 29-09-26 by docs-auditor

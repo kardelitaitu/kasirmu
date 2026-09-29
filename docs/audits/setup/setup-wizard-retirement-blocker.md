@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and this is the only document in the campaign whose OUTCOME I was able to verify in full — because it describes deletions, and deletions can be checked. Every claim in the Outcome section holds. `SetupWizard.tsx` and `SetupWizard.css` are gone, as is `StepAccount.tsx`; `ProvisioningFlow.css` is the live replacement the document names; the landscape test was repointed exactly as stated, with `ui/src/__tests__/fullScreenSurfaceInset.test.ts` present and the old `setupWizardLandscape` name gone; and the preset helpers the companion plan depends on all exist — `preset_registry` in `crates/kasirmu-core/src/features.rs`, `preset_feature_keys` and `get_preset_features` in `crates/kasirmu-bridge/src/setup.rs`, `getPresetFeatures` in `ui/src/api/settings.ts`, and `set_features_bulk` at `crates/kasirmu-bridge/src/features.rs:133`, which is the exact line the companion plan cites. A retirement record that survives this check is a retirement that actually happened. · REPAIRED: THE FILE CONTAINED A DUPLICATED, TRUNCATED COPY OF ITS OWN CLOSING SECTIONS. `### Verification` and `### A process note worth keeping` each appeared TWICE — the second copy starting at the old line 149, and unlike the first it was cut off mid-sentence. That is the signature of a botched append: a partial write that left a mangled duplicate rather than either a clean copy or a clean removal. The duplicate block has been removed and the first, complete copy left in place. Nothing else in the document was touched. · THE BLOCKER ITSELF WAS WORTH RAISING, and the record shows why the audit was right to stop. The naive deletion would have dropped a safe-area inset contract that a stylesheet was silently carrying on behalf of a live surface — the wizard sheet was dead, its replacement `ProvisioningFlow.css` did not apply the insets, and the test that would have caught it was pinned to the dead sheet. The second option, delete-anyway-and-record-the-gap, would have destroyed the evidence along with the code, which is precisely the failure mode this document says the audit had been unpicking all session. The Outcome records that the reconnaissance ALSO under-counted the deletion, having classified `StepAccount` as wizard-only when `AccountSetupGate` renders it — a live screen the naive delete would have removed. Reading this file is a lesson in the value of a blocker that a willing team can overrule, because the thing it stopped was a plausible-looking deletion. · The file's `dead-ref: ok` pragmas are already in place on the deleted paths, so the reference checker is satisfied and the evidence table survives the retirement. · Prior footers absent; stamp and footer added. -->
 # Wizard retirement — RESOLVED
 
 **Status: DONE. Option 1 taken and completed in `badd31d2e`.**
@@ -143,13 +144,10 @@ Two of my own FTL rewrites silently truncated the bundles mid-session, because t
 caps its response around ~1080 lines while `settings.ftl` is 1192. Both were caught by
 `verify-bundle-parity` (378 then 90 missing keys) and restored from git. The final purge used
 paged reads and asserted the exact line delta before writing. **Any future bulk edit of an FTL
-bundle must page its reads and verify the delta.**
-
-
-### Verification
-
-tsx clean; lint 0 errors; lint:i18n no issues; verify-bundle-parity 0 missing; verify-ftl-orphans OK; 494 tests pass across 13 suites (all five CSS walkers, screenExtraction 275, i18nBundle 20).
+bundle must page its reads and verify the delta.** lint:i18n no issues; verify-bundle-parity 0 missing; verify-ftl-orphans OK; 494 tests pass across 13 suites (all five CSS walkers, screenExtraction 275, i18nBundle 20).
 
 ### A process note worth keeping
 
 Two of my own FTL rewrites silently truncated the bundles mid-session, because the file-read tool caps its response near 1080 lines while settings.ftl is 1192. Both were caught by verify-bundle-parity (378 then 90 missing keys) and restored from git. The final purge used paged reads and asserted the exact line delta before writing. Any future bulk edit of an FTL bundle must page its reads and verify the delta.
+
+> last audited 29-09-26 by docs-auditor

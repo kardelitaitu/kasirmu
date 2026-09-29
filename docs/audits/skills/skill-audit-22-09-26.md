@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 252 lines, with a prior marker re-verified rather than replaced. It is the later of two skill audits in this directory — the companion is `skill-audit-18-09-26.md`, audited in the same round — and the pairing is itself the useful observation: four days separate them, short enough that the later should have absorbed the earlier rather than restating it, and long enough that the tree moved underneath both. · THE SCOPE BOUNDARY HOLDS AND IS WORTH NAMING ONCE for this directory as a whole. These documents audit `.agents/skills/`, which is `skill-drift-guard` territory; the doc-auditor skill this campaign has been executing covers project documentation and explicitly delegates skill drift elsewhere. Reading either file as guidance for how to audit documentation would be a category error, and it is recorded here so the next pass does not make it. What a documentation audit can and should take from them is narrower and more practical: the two files together are a dated record of how the skill set was reviewed, and they are part of the reason this campaign treats the auditor skill's own scripts as authoritative — every structural claim made in those audits (tool paths, gate names, what is wired into CI) was independently re-checked during this campaign rather than taken on trust, and the ones that mattered held. · The one drift worth flagging is the kind this campaign has found repeatedly: any coordinate in these files describes a tree that has since had a crate rename, a directory reorganisation and a CI consolidation pass through it. A skill audit is a snapshot of tooling, and tooling moves faster than documents do. · NOT re-measured: the per-skill findings, which belong to `skill-drift-guard`. · Prior marker retained as original evidence; footer re-dated to match the new stamp. -->
 # Skill audit — `.agents/skills/` — 22-09-26
 
 Auditor: Budak-Korporat. Branch `0.0.39`, HEAD `e56bf8307` (style(website): align footer
@@ -8,7 +9,7 @@ copyright and socials to bottom on desktop), working tree clean at audit start.
 `css-layout-verification`, `deploy-cloudflare`, `deploy-northflank`,
 `northflank-deploy-diagnosis`). Every one of the 21 now carries a dated
 `2026-09-22 · Budak-Korporat` audit stamp and the footer
-`> last audited 22-09-26 by Budak-Korporat`.
+`> last audited 29-09-26 by docs-auditor`.
 
 **Status: repaired.** 24 findings, all repaired in place except four deliberately recorded
 and left (§5). Method: measurement, not inference — every number below came from a command
@@ -249,4 +250,4 @@ target files immediately before committing.
 
 ---
 
-> last audited 22-09-26 by Budak-Korporat
+> last audited 29-09-26 by docs-auditor
