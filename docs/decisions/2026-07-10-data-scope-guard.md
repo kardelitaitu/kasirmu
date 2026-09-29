@@ -4,8 +4,9 @@ area: architecture
 title: ADR #7: Data Scope Guard & Query Enforcement
 status: Implemented (2026-07-10)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · resolve_scope() verified at apps/desktop-client/src/state.rs:310; scripts/verify-no-raw-params.sh exists; ui/src/contexts/WorkspaceContext.tsx exists; adjust_stock_scoped present with #[deprecated] old variant (commands/products.rs:92) — the _scoped migration pattern matches; the 84-command migration count is internally consistent with the repo's _scoped variants and the grep-based guard returns 0 violations · Status "Implemented (2026-07-10)" consistent · Custom Clippy lint left as future enhancement (doc says so) -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · resolve_scope() verified at apps/desktop-client/src/state.rs:310; scripts/verify-no-raw-params.sh exists; ui/src/contexts/WorkspaceContext.tsx exists; adjust_stock_scoped present with #[deprecated] old variant (commands/products.rs:92) — the _scoped migration pattern matches; the 84-command migration count is internally consistent with the repo's _scoped variants and the grep-based guard returns 0 violations · Status "Implemented (2026-07-10)" consistent · Custom Clippy lint left as future enhancement (doc says so) -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and the one ADR in this batch whose central mechanism is still exactly where the record says it is. `resolve_scope` is live at `apps/desktop-tauri/src/state.rs:649` with a dedicated regression test beside it (`state_tests.rs:77`, `resolve_scope_isolates_store_databases`), and the same function now also exists in the bridge layer at `crates/kasirmu-bridge/src/ctx.rs:366` — a second implementation that did not exist when this ADR was written, following the command-body move under ADR #49. That duplication deserves a reader's attention: the store-scoping resolution this ADR defines now exists in two places and the ADR says nothing about it. Not a finding against this document — it is the expected consequence of a later architectural decision — but it belongs somewhere, and this is the document that states what the guard IS. · The guard script the stamp verified, `scripts/verify-no-raw-params.sh`, still exists, and the `_scoped` migration pattern it protects is now load-bearing well beyond this ADR: the conditional-scoping record audited in this campaign inventories 19 ternary fallback sites and six ungated calls of exactly this class, which is this ADR's subject matter one layer up. The two documents should be read together. · `WorkspaceContext` exists at its current path, and the deprecated unscoped variants the stamp confirmed are still deprecated rather than removed. · Body left as written with its `apps/desktop-client` and `crates/oz-core` references intact, for the same reason as its siblings: this is the record of a decision, not a map of the tree. The prior stamp is retained and the stacked footer collapsed. -->
 # ADR #7: Data Scope Guard & Query Enforcement
 
 **Status:** Implemented (2026-07-10)
@@ -209,7 +210,4 @@ This lint runs in CI but is **not** enforced locally during development (to avoi
 - `ui/src/api/products.ts` — Frontend API wrapper (`listProductsScoped`)
 - `ui/src/contexts/WorkspaceContext.tsx` — Session token lifecycle
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor

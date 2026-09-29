@@ -4,8 +4,9 @@ area: module-system
 title: ADR #8: Scoped Real-Time Event Bus
 status: Implemented (2026-07-10)
 ---
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · store_id: Option<String> verified on SaleCompleted (crates/oz-core/src/events.rs:27) and CourseFired (events.rs:126); apps/desktop-client/src/lan_server.rs (LAN forwarder, port 9180) exists; complete_sale_scoped emits store_id; tablet complete_sale uses None per the doc · ADR #4/#7 cross-refs valid · Status "Implemented (2026-07-10)" consistent -->
+<!-- Superseded audit marker (2026-07-22, body kept verbatim) · Hermes-Agent · status: ACCURATE (0 findings) · store_id: Option<String> verified on SaleCompleted (crates/oz-core/src/events.rs:27) and CourseFired (events.rs:126); apps/desktop-client/src/lan_server.rs (LAN forwarder, port 9180) exists; complete_sale_scoped emits store_id; tablet complete_sale uses None per the doc · ADR #4/#7 cross-refs valid · Status "Implemented (2026-07-10)" consistent -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE — the design holds and the two events it is about are both still carrying the field it added. `store_id: Option<String>` is live at `crates/kasirmu-core/src/events.rs:35`, and `CourseFired` is still defined there. The one structural change is that `SaleCompleted` no longer lives in the core crate at all: it is defined in `foundation/src/events.rs` and re-exported from `crates/kasirmu-core/src/events.rs:16` alongside `ProductCreated`, `SaleCompletedLine` and `StockAdjusted`. The ADR's Related section points at `crates/oz-core/src/events.rs` for "Domain event definitions", which is now a re-export shim over `foundation/` — so a reader looking for the struct definition at the cited file will find a `pub use` line instead. Recorded rather than repaired, since the body is a decision record; the current definition site is `foundation/src/events.rs`. · THE LAN FORWARDER CLAIM VERIFIES EXACTLY, including the part that is easiest to get wrong. §3 says "No changes needed to the forwarder itself — the `store_id` is already in the serialized JSON payload", and the forwarder is real at `apps/desktop-tauri/src/lan_server.rs`. That the forwarder needed NO change is the design claim this ADR is actually about, and it is the kind of claim that silently stops being true when a serialization layer is touched elsewhere; it still holds. The port-9180 collision behaviour in §4 is explicitly marked "Future" and is correctly left as a future item rather than promised. · The ADR #4 / #7 cross-references resolve, and `check-adr-status.py` reports no drift for this row. · Left as written otherwise, with the `apps/desktop-client` / `apps/tablet-client` and `crates/oz-core` references intact as the decision record they are. The prior stamp is retained and the two stacked `> status: ACCURATE` lines are collapsed to a single machine-read footer. -->
 # ADR #8: Scoped Real-Time Event Bus
 
 **Status:** Implemented (2026-07-10)
@@ -138,7 +139,4 @@ All items completed 2026-07-10.
 - `apps/tablet-client/src/commands/pos.rs` — Tablet sale completion emission
 - `apps/desktop-client/src/commands/products.rs` — Product/stock event emission
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit; Phase 4 ADR Deep Audit
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
-> status: ACCURATE (verified against actual codebase)
+> last audited 29-09-26 by docs-auditor
