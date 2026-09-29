@@ -10,9 +10,9 @@
 // (group-hover): a coloured <img> sits underneath the mask; when the card
 // is hovered the mask fades out and the coloured logo appears.
 //
-// The remaining platforms (macOS, Linux, iOS) stay as hand-drawn
-// stroke-only (outline) SVGs with `currentColor`, since we have no brand
-// asset for them yet.
+// macOS renders the Apple silhouette filled with `currentColor`.
+// The remaining platforms (Linux, iOS) stay as hand-drawn
+// stroke-only (outline) SVGs with `currentColor`.
 import windowsLogo from '../assets/logo-os-windows.svg?url';
 import androidLogo from '../assets/logo-os-android.svg?url';
 
@@ -36,7 +36,7 @@ const brandAsset: Record<string, string> = {
 };
 
 const applePath =
-  'M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702';
+  'M10.167 3.242c.435-.523.742-1.24.742-1.958 0-.105-.008-.202-.03-.284-.704.03-1.55.47-2.06 1.069-.397.448-.772 1.173-.772 1.891 0 .112.023.217.03.254.045.008.12.015.188.015.636 0 1.43-.419 1.902-.987zm.495 1.144c-1.057 0-1.918.643-2.465.643-.591 0-1.355-.606-2.284-.606C4.168 4.423 2.4 5.866 2.4 8.58c0 1.697.652 3.49 1.46 4.642C4.557 14.193 5.164 15 6.04 15c.869 0 1.251-.575 2.33-.575 1.093 0 1.333.56 2.292.56.95 0 1.587-.867 2.18-1.727.673-.986.95-1.943.958-1.988-.053-.015-1.873-.755-1.873-2.833 0-1.794 1.431-2.6 1.513-2.66-.943-1.354-2.381-1.391-2.778-1.391z';
 ---
 
 {
@@ -117,12 +117,8 @@ const applePath =
       )}
       {platform === 'macos' && (
         <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+          viewBox="0 0 16 16"
+          fill="currentColor"
           class={className}
           aria-hidden="true"
         >
