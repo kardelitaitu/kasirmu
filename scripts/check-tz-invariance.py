@@ -317,8 +317,9 @@ def zone_probe() -> int:
 
 # Dispatch ABOVE the module-level vitest run further down this file. Placing it there
 # rather than at the bottom is the whole reason --self-test is safe here: every other
-# checker dispatches from main(), and this file has no main(), because its four vitest
-# invocations execute on import.
+# checker dispatches from main(), and this file has no main(), because one vitest
+# invocation per zone executes on import. Five zones, not four: Pacific/Honolulu was
+# added 2026-09-29 to close a 07:00-10:00 blind spot the original four left open.
 if "--self-test" in sys.argv:
     sys.exit(self_test())
 
@@ -364,7 +365,13 @@ max_concurrency = 1 if is_ci else 2
 
 # Preflight BEFORE the expensive loop: a dead zone name must be caught here, not
 # after one vitest invocation per zone has already been spent.
-zone_probe()
+#
+# sys.exit(zone_probe()), NOT a bare call: zone_probe returns 1 to mean "stop", and a
+# discarded return value would print the failure and then run the expensive loop anyway
+# -- a preflight that warns and proceeds is not a preflight. Exiting here is also the
+# only place a non-zero code can reach the caller, since this file has no main().
+if zone_probe() != 0:
+    sys.exit(1)
 
 print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
 with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
