@@ -97,6 +97,27 @@ simulator over the existing transport, so the state machine — timeout, retry,
 cancel, receipt, fail-closed on an incomplete read — is covered by tests that
 need no vendor at all.
 
+### Full execution 2026-09-29 — loopback simulator & protocol codec completed
+
+The loopback simulator and binary protocol framing engine are fully implemented and verified:
+- **Wire Framing Protocol Codec (`LoopbackCodec`):** Implemented in `crates/kasirmu-hal/src/drivers/edc/protocol/loopback.rs` conforming to `ProtocolCodec`. Implements standard POS framing `<STX><LEN><CMD><PAYLOAD><ETX><LRC>` with XOR longitudinal redundancy check (LRC). Validates message lengths, detects frame truncation, rejects corrupted LRCs, and encodes approval/decline/error frames.
+- **Configurable `LoopbackEdcTerminal`:** Enhanced in `crates/kasirmu-hal/src/drivers/edc/loopback.rs` with `from_address(address)` supporting URI schemes:
+  - `loopback` (default approval)
+  - `loopback://decline?reason=...`
+  - `loopback://timeout`
+  - `loopback://offline`
+  - `loopback://fault?code=...&msg=...`
+  - `loopback://busy`
+  - query parameter `delay_ms=...` to simulate cardholder tap and network latency.
+  - dynamic `set_status(...)` override and `set_delay(...)`.
+- **System Integration:**
+  - `DriverRegistry::register_loopback_terminal` and `register_loopback_terminal_with` in `kasirmu-hal`.
+  - `TerminalConnection::Loopback { address }` in `kasirmu-hal::bootstrap`.
+  - Port-claim neutrality: loopback terminals do not claim physical serial ports or TCP ports.
+  - Startup detection in `platform-startup::hardware`.
+  - Dynamic registration in `kasirmu-bridge::sync_terminal_driver`.
+- **Verification:** 53 unit tests in `kasirmu-hal` and 5 bridge integration tests pass cleanly, covering frame encoding/decoding, corrupt byte rejection, URI parsing, artificial delay, dynamic status overrides, and end-to-end payment simulation.
+
 ---
 
 ## Q4 — the breaker key the R9(b) wiring just chose (recorded, not asked)
