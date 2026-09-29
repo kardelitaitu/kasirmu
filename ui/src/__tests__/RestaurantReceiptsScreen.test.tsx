@@ -19,6 +19,29 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }));
 
+// Make the async settings/user-preference + hardware API calls resolve in tests
+// so the save flow completes deterministically.
+vi.mock('@/api/settings', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/settings')>();
+  return {
+    ...actual,
+    getUserPreferencesScoped: vi.fn().mockResolvedValue({}),
+    setUserPreferencesScoped: vi.fn().mockResolvedValue(undefined),
+    getReceiptSettingsScoped: vi.fn().mockResolvedValue({ showTableNumber: false }),
+    setReceiptSettingsScoped: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
+vi.mock('@/api/hardware', async () => {
+  const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
+  return {
+    ...actual,
+    listDisplays: vi.fn(() => Promise.resolve([])),
+    displayShow: vi.fn(() => Promise.resolve()),
+    displayClear: vi.fn(() => Promise.resolve()),
+  };
+});
+
 import salesFtl from '@/locales/sales.ftl?raw';
 import productsFtl from '@/locales/products.ftl?raw';
 import inventoryFtl from '@/locales/inventory.ftl?raw';
@@ -26,7 +49,7 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 
 const FTL = [salesFtl, productsFtl, inventoryFtl, settingsFtl];
 
-const renderScreen = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void } = {}) =>
+const renderScreen = (props: { tablesEnabled?: boolean; terminalId?: string; onBack?: () => void; onSaved?: () => void } = {}) =>
   renderWithProviders(<RestaurantReceiptsScreen {...props} />, ...FTL);
 
 describe('RestaurantReceiptsScreen — margins & geometry', () => {
@@ -186,9 +209,10 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it('saves a dirty change when Save is clicked and clears the unsaved indicator', async () => {
+  it('saves a dirty change when Save is clicked and calls onSaved', async () => {
     const user = userEvent.setup();
-    await renderScreen();
+    const onSaved = vi.fn();
+    await renderScreen({ onSaved });
 
     // The Save button is disabled until a change makes the screen dirty.
     const saveBtn = screen.getByRole('button', { name: /Save/i });
@@ -201,8 +225,10 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
 
     await user.click(saveBtn);
 
+    // The mocked settings/hardware APIs resolve, so the save completes and
+    // calls onSaved — a deterministic assertion (no timing race on `disabled`).
     await waitFor(() => {
-      expect(saveBtn).toBeDisabled();
+      expect(onSaved).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -215,6 +241,32 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     const label = testPrintBtn.querySelector('.resto-test-print-label');
     expect(label).toBeInTheDocument();
     expect(label).toHaveTextContent(/Test Print/i);
+  });
+
+  it('enforces maximum character limits on header title and lines', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const titleInput = screen.getByLabelText(/Receipt Title/i) as HTMLInputElement;
+    await user.clear(titleInput);
+    // 30 characters typed, should truncate to 26
+    await user.type(titleInput, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ1234');
+    expect(titleInput.value).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+    expect(titleInput.value.length).toBe(26);
+
+    const line1Input = screen.getByLabelText(/Header Line 1/i) as HTMLInputElement;
+    await user.clear(line1Input);
+    // 55 characters typed, should truncate to 49
+    await user.type(line1Input, 'ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLMEXTRA');
+    expect(line1Input.value).toBe('ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLM');
+    expect(line1Input.value.length).toBe(49);
+
+    const line2Input = screen.getByLabelText(/Header Line 2/i) as HTMLInputElement;
+    await user.clear(line2Input);
+    // 55 characters typed, should truncate to 49
+    await user.type(line2Input, 'ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLMEXTRA');
+    expect(line2Input.value).toBe('ABCDEFGHIJKLMNOPZRTSUVWXYZ1234567890ABCDEFGHIJKLM');
+    expect(line2Input.value.length).toBe(49);
   });
 });
 

@@ -42,6 +42,9 @@ const FALLBACK_SETTINGS = {
   store: { name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' },
 };
 
+export const MAX_HEADER_TITLE_LENGTH = 26;
+export const MAX_HEADER_LINE_LENGTH = 49;
+
 export interface RestaurantReceiptsScreenProps {
   terminalId?: string;
   onSaved?: () => void;
@@ -134,8 +137,8 @@ export default function RestaurantReceiptsScreen({
     if (settings.store.logo) {
       setBusinessLogo(settings.store.logo);
     }
-    const initialTitle = settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT';
-    const initialLine1 = settings.store.address ?? '';
+    const initialTitle = (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT').slice(0, MAX_HEADER_TITLE_LENGTH);
+    const initialLine1 = (settings.store.address ?? '').slice(0, MAX_HEADER_LINE_LENGTH);
     setHeaderTitle(initialTitle);
     setHeaderLine1(initialLine1);
     setHeaderLine2('');
@@ -143,11 +146,11 @@ export default function RestaurantReceiptsScreen({
     // Load extra toggles from local preferences
     try {
       const localTitle = localStorage.getItem('resto_rcpt_header_title');
-      if (localTitle !== null) setHeaderTitle(localTitle);
+      if (localTitle !== null) setHeaderTitle(localTitle.slice(0, MAX_HEADER_TITLE_LENGTH));
       const localL1 = localStorage.getItem('resto_rcpt_header_line1');
-      if (localL1 !== null) setHeaderLine1(localL1);
+      if (localL1 !== null) setHeaderLine1(localL1.slice(0, MAX_HEADER_LINE_LENGTH));
       const localL2 = localStorage.getItem('resto_rcpt_header_line2');
-      if (localL2 !== null) setHeaderLine2(localL2);
+      if (localL2 !== null) setHeaderLine2(localL2.slice(0, MAX_HEADER_LINE_LENGTH));
       const localFontSize = localStorage.getItem('resto_rcpt_font_size');
       if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
         setFontSize(localFontSize as ReceiptFontSize);
@@ -182,13 +185,13 @@ export default function RestaurantReceiptsScreen({
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
           if (p['resto_rcpt_header_title'] !== undefined) {
-            setHeaderTitle(p['resto_rcpt_header_title']);
+            setHeaderTitle(p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH));
           }
           if (p['resto_rcpt_header_line1'] !== undefined) {
-            setHeaderLine1(p['resto_rcpt_header_line1']);
+            setHeaderLine1(p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH));
           }
           if (p['resto_rcpt_header_line2'] !== undefined) {
-            setHeaderLine2(p['resto_rcpt_header_line2']);
+            setHeaderLine2(p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH));
           }
           if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
             setLogoPosition(p['resto_rcpt_logo_pos'] as ReceiptLogoPosition);
@@ -1103,45 +1106,63 @@ export default function RestaurantReceiptsScreen({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div>
-                  <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
-                    <Localized id="restaurant-header-title-label">Receipt Title</Localized>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                    <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                      <Localized id="restaurant-header-title-label">Receipt Title</Localized>
+                    </label>
+                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                      {headerTitle.length}/{MAX_HEADER_TITLE_LENGTH}
+                    </span>
+                  </div>
                   <input
                     id="resto-header-title"
                     type="text"
+                    maxLength={MAX_HEADER_TITLE_LENGTH}
                     className="resto-margin-input"
                     style={{ width: '100%', boxSizing: 'border-box' }}
                     placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
                     value={headerTitle}
-                    onChange={(e) => setHeaderTitle(e.target.value)}
+                    onChange={(e) => setHeaderTitle(e.target.value.slice(0, MAX_HEADER_TITLE_LENGTH))}
                   />
                 </div>
                 <div>
-                  <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
-                    <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                    <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                      <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
+                    </label>
+                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                      {headerLine1.length}/{MAX_HEADER_LINE_LENGTH}
+                    </span>
+                  </div>
                   <input
                     id="resto-header-line1"
                     type="text"
+                    maxLength={MAX_HEADER_LINE_LENGTH}
                     className="resto-margin-input"
                     style={{ width: '100%', boxSizing: 'border-box' }}
                     placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
                     value={headerLine1}
-                    onChange={(e) => setHeaderLine1(e.target.value)}
+                    onChange={(e) => setHeaderLine1(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
                   />
                 </div>
                 <div>
-                  <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
-                    <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                    <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                      <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
+                    </label>
+                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                      {headerLine2.length}/{MAX_HEADER_LINE_LENGTH}
+                    </span>
+                  </div>
                   <input
                     id="resto-header-line2"
                     type="text"
+                    maxLength={MAX_HEADER_LINE_LENGTH}
                     className="resto-margin-input"
                     style={{ width: '100%', boxSizing: 'border-box' }}
                     placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
                     value={headerLine2}
-                    onChange={(e) => setHeaderLine2(e.target.value)}
+                    onChange={(e) => setHeaderLine2(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
                   />
                 </div>
               </div>
