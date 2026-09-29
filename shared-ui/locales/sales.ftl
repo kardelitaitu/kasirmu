@@ -102,6 +102,7 @@ payment-edc-declined = Card declined
 payment-edc-not-ready = Card terminal is not ready ({ $status })
 payment-edc-failed = Card payment failed: { $reason }
 payment-edc-dismiss = Back to payment
+payment-edc-select-terminal = Select Card Terminal
 payment-qris-scan = Scan with your payment app
 payment-qris-waiting = Waiting for payment...
 payment-qris-manual-confirm = I received the payment

@@ -593,6 +593,7 @@ payment-edc-declined = Kartu ditolak
 payment-edc-not-ready = Terminal kartu belum siap ({ $status })
 payment-edc-failed = Pembayaran kartu gagal: { $reason }
 payment-edc-dismiss = Kembali ke pembayaran
+payment-edc-select-terminal = Pilih Terminal Kartu
 payment-toast-currency-failed = Gagal memuat data mata uang
 payment-toast-customers-failed = Gagal memuat pelanggan
 payment-toast-loyalty-failed = Gagal memuat akun loyalitas

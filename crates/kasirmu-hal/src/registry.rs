@@ -145,6 +145,11 @@ impl DriverRegistry {
         self.terminals.write().await.insert(id.to_owned(), driver);
     }
 
+    /// Unregister an EDC card-payment terminal under `id`.
+    pub async fn unregister_terminal(&self, id: &str) {
+        self.terminals.write().await.remove(id);
+    }
+
     /// Look up an EDC terminal by id. Returns `None` if none is registered.
     pub async fn terminal(&self, id: &str) -> Option<Arc<dyn EdcTerminal>> {
         self.terminals.read().await.get(id).cloned()

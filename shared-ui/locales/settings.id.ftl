@@ -1108,3 +1108,31 @@ setup-mobile-code-step3 = Klik link ini :
 setup-mobile-code-copy = Copy
 setup-mobile-code-copied = Tersalin!
 
+# EDC Terminals Settings
+settings-edc-title = Terminal Kartu EDC
+settings-edc-description = Konfigurasikan terminal pembayaran EDC fisik untuk pemrosesan kartu.
+settings-edc-add = Tambah Terminal EDC
+settings-edc-edit = Edit Terminal EDC
+settings-edc-delete = Hapus
+settings-edc-test = Uji Koneksi
+settings-edc-testing = Menguji…
+settings-edc-empty = Belum ada terminal kartu EDC yang dikonfigurasi.
+settings-edc-status-ready = Siap
+settings-edc-status-busy = Sibuk
+settings-edc-status-offline = Terputus
+settings-edc-status-error = Galat
+settings-edc-field-name = Nama Terminal
+settings-edc-field-connection = Tipe Koneksi
+settings-edc-field-transport = Protokol Transport
+settings-edc-field-address = Alamat Perangkat / Port
+settings-edc-field-vendor = Vendor Perangkat
+settings-edc-field-model = Model Terminal
+settings-edc-field-active = Aktif untuk Pembayaran
+settings-edc-conn-wired = Kabel (Wired)
+settings-edc-conn-wireless = Nirkabel (Wireless)
+settings-edc-default-select = Terminal EDC Standar Kasir Ini
+settings-edc-default-auto = Otomatis (Pertama Dibuat)
+settings-edc-saved = Terminal EDC berhasil disimpan.
+settings-edc-deleted = Terminal EDC berhasil dihapus.
+settings-edc-delete-confirm = Apakah Anda yakin ingin menghapus terminal EDC ini?
+

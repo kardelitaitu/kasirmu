@@ -49,11 +49,11 @@
  * `Number(...)` conversion above, moved unchanged. No float was introduced,
  * removed or reordered, and no amount is parsed or summed in this file.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { requiredLocalized } from '@/components';
 import type { useToast } from '@/components/Toast';
-import { edcSale, edcTerminalStatusScoped } from '@/api/edc';
+import { edcSale, edcTerminalStatusScoped, listEdcTerminalsScoped, type EdcTerminalDto } from '@/api/edc';
 import type { CompleteSaleResult } from '@/api/sales';
 import { plainErrorMessage } from '@/utils/app-error';
 
@@ -85,6 +85,8 @@ export interface UseEdcTenderPhaseParams {
   addToast: AddToast;
   /** The shell's processing flag - the button spinner is not this atom's to own. */
   setProcessing: Dispatch<SetStateAction<boolean>>;
+  /** Register-local preferred default terminal ID from LocalPrefs (optional). */
+  defaultTerminalId?: string | undefined;
 }
 
 /**
@@ -101,14 +103,48 @@ export function useEdcTenderPhase({
   l10nRef,
   addToast,
   setProcessing,
+  defaultTerminalId,
 }: UseEdcTenderPhaseParams) {
   const [edc, setEdc] = useState<{
     phase: 'preflight' | 'waiting' | 'declined';
     reason?: string | undefined;
   } | null>(null);
 
-  const handleTerminalPay = useCallback(async () => {
+  const [terminals, setTerminals] = useState<EdcTerminalDto[]>([]);
+  const [selectedTerminalId, setSelectedTerminalId] = useState<string | null>(
+    defaultTerminalId ?? null,
+  );
+
+  // Sync / fetch active terminals when sessionToken is present
+  useEffect(() => {
+    if (!sessionToken) return;
+    let active = true;
+    listEdcTerminalsScoped(sessionToken)
+      .then((rows) => {
+        if (!active) return;
+        const activeRows = rows.filter((r) => r.isActive);
+        setTerminals(activeRows);
+        setSelectedTerminalId((prev) => {
+          if (prev && activeRows.some((r) => r.id === prev)) {
+            return prev;
+          }
+          if (defaultTerminalId && activeRows.some((r) => r.id === defaultTerminalId)) {
+            return defaultTerminalId;
+          }
+          return activeRows[0]?.id ?? null;
+        });
+      })
+      .catch(() => {
+        // Non-fatal if listing fails (fallback to default alias)
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionToken, defaultTerminalId]);
+
+  const handleTerminalPay = useCallback(async (targetTerminalId?: string | null) => {
     setProcessing(true);
+    const terminalIdToUse = targetTerminalId !== undefined ? targetTerminalId : selectedTerminalId;
     try {
       // Preflight is `edc_terminal_status_scoped`: the never-shipped
       // `test_edc_connection_scoped` (agents-2 residual) is decided INTO this
@@ -117,7 +153,7 @@ export function useEdcTenderPhase({
       // back to manual card — desktop-only expressed as degradation, not
       // platform-sniffing.
       setEdc({ phase: 'preflight' });
-      const status = await edcTerminalStatusScoped(sessionToken!);
+      const status = await edcTerminalStatusScoped(sessionToken!, terminalIdToUse);
       if (status.status !== 'ready') {
         setEdc(null);
         addToast({
@@ -137,6 +173,7 @@ export function useEdcTenderPhase({
         sessionToken!,
         Number(effectiveTotalInCartCurrency),
         cartCurrency,
+        terminalIdToUse,
       );
       if (!result.success) {
         setEdc({ phase: 'declined', reason: result.message });
@@ -175,9 +212,16 @@ export function useEdcTenderPhase({
     }
   // l10nRef and setProcessing are appended for the reason in the module doc:
   // received reactive values, referentially stable, so no identity change.
-  }, [sessionToken, effectiveTotalInCartCurrency, cartCurrency, buildGatewaySale, settleGatewaySale, addToast, l10nRef, setProcessing]);
+  }, [sessionToken, selectedTerminalId, effectiveTotalInCartCurrency, cartCurrency, buildGatewaySale, settleGatewaySale, addToast, l10nRef, setProcessing]);
 
   const handleTerminalDismiss = useCallback(() => setEdc(null), []);
 
-  return { edc, handleTerminalPay, handleTerminalDismiss };
+  return {
+    edc,
+    handleTerminalPay,
+    handleTerminalDismiss,
+    terminals,
+    selectedTerminalId,
+    setSelectedTerminalId,
+  };
 }

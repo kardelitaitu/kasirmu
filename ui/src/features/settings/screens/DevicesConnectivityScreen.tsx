@@ -1,32 +1,15 @@
-//! DevicesConnectivityScreen — blank Settings screen scaffold (settings rebuild).
+//! DevicesConnectivityScreen — Hardware and connectivity management in Settings.
 //!
-//! Migration provenance (orchestrator contract, settings-screens phase):
-//! Content moves here from `features/settings/sections/LocalApiSection.tsx` plus the device surfaces under `features/terminals/`.
-//! Intentionally renders no controls: this file exists so the route/placeholder is
-//! honest about its state, and every scaffold in this folder shares one stylesheet
-//! (`./screens-placeholder.css`) so the placeholder looks identical everywhere.
-//!
-//! Copy is Fluent-only: `settings-nav-*` for the title, plus the two shared
-//! placeholder notes. Both keys exist in `settings.ftl` and `settings.id.ftl`.
+//! Hosts the EDC Card Terminals configuration card for managing physical payment
+//! terminals and driver bindings.
 
-import { Localized } from '@fluent/react';
-import './screens-placeholder.css';
+import { EdcTerminalsCard } from '../components/EdcTerminalsCard';
 
-/** Placeholder for Settings → Devices Connectivity. */
+/** Devices & Connectivity settings screen: manages card payment terminals and hardware connectivity. */
 export function DevicesConnectivityScreen() {
   return (
-    <section className="settings-screen-placeholder">
-      <h1 className="settings-screen-placeholder-title">
-        <Localized id="settings-nav-devices-connectivity">Devices Connectivity</Localized>
-      </h1>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-placeholder">This page is being rebuilt.</Localized>
-      </p>
-      <p className="settings-screen-placeholder-note">
-        <Localized id="settings-screen-migrating">
-          Existing settings content will move here selectively.
-        </Localized>
-      </p>
-    </section>
+    <div className="settings-screen" style={{ padding: 'var(--space-6)', maxWidth: 1000 }}>
+      <EdcTerminalsCard />
+    </div>
   );
 }

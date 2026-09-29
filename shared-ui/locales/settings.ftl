@@ -1126,3 +1126,31 @@ setup-mobile-code-step3 = Click this link:
 setup-mobile-code-copy = Copy
 setup-mobile-code-copied = Copied!
 
+# EDC Terminals Settings
+settings-edc-title = EDC Card Terminals
+settings-edc-description = Configure physical EDC payment terminals for card processing.
+settings-edc-add = Add EDC Terminal
+settings-edc-edit = Edit EDC Terminal
+settings-edc-delete = Delete
+settings-edc-test = Test Connection
+settings-edc-testing = Testing…
+settings-edc-empty = No EDC card terminals configured yet.
+settings-edc-status-ready = Ready
+settings-edc-status-busy = Busy
+settings-edc-status-offline = Offline
+settings-edc-status-error = Error
+settings-edc-field-name = Terminal Name
+settings-edc-field-connection = Connection Type
+settings-edc-field-transport = Transport
+settings-edc-field-address = Device Address / Port
+settings-edc-field-vendor = Hardware Vendor
+settings-edc-field-model = Terminal Model
+settings-edc-field-active = Active for Payment
+settings-edc-conn-wired = Wired
+settings-edc-conn-wireless = Wireless
+settings-edc-default-select = Register Default EDC Terminal
+settings-edc-default-auto = Auto (Earliest Created)
+settings-edc-saved = EDC Terminal saved successfully.
+settings-edc-deleted = EDC Terminal deleted.
+settings-edc-delete-confirm = Are you sure you want to delete this EDC terminal?
+

@@ -852,7 +852,14 @@ export default function PaymentModal({
   // in place. The overlay JSX and the terminalPending read still consume `edc`
   // from here, and the gateway front/tail stay shell-owned and are passed down
   // exactly as useGatewayQr and useAutoQr receive them.
-  const { edc, handleTerminalPay, handleTerminalDismiss } = useEdcTenderPhase({
+  const {
+    edc,
+    handleTerminalPay,
+    handleTerminalDismiss,
+    terminals: edcTerminals,
+    selectedTerminalId: edcSelectedTerminalId,
+    setSelectedTerminalId: setEdcSelectedTerminalId,
+  } = useEdcTenderPhase({
     sessionToken,
     effectiveTotalInCartCurrency,
     cartCurrency,
@@ -1687,6 +1694,9 @@ export default function PaymentModal({
                     terminalPending={edc !== null}
                     autoQrPending={autoQr !== null}
                     onTerminalPay={handleTerminalPay}
+                    terminals={edcTerminals}
+                    selectedTerminalId={edcSelectedTerminalId}
+                    onSelectTerminal={setEdcSelectedTerminalId}
                   />
                 )}
 

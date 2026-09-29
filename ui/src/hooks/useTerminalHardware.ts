@@ -45,6 +45,7 @@ export interface LocalPrefs {
   soundVolume: number;
   darkMode: boolean;
   scaleAutoZero: boolean;
+  defaultEdcTerminalId?: string | undefined;
 }
 
 export interface TerminalHardwareProfile {
@@ -82,6 +83,7 @@ const DEFAULT_LOCAL_PREFS: LocalPrefs = {
   soundVolume: 80,
   darkMode: false,
   scaleAutoZero: true,
+  defaultEdcTerminalId: '',
 };
 
 /** Create a default profile for a given terminal. */
