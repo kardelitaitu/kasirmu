@@ -126,6 +126,7 @@ step "ipc parity" "python3 scripts/verify-ipc-parity.py" python3 scripts/verify-
 # session_token without carrying a sessionToken payload (the round-AC edc
 # class). Union semantics across desktop + tablet shells.
 step "ipc invoke token parity" "python3 scripts/verify-invoke-parity.py" python3 scripts/verify-invoke-parity.py
+step "ipc invoke token parity self-test" "python3 scripts/verify-invoke-parity.py --self-test" python3 scripts/verify-invoke-parity.py --self-test
 
 # ipc-parity-allowlist.json records "UI command strings not yet registered in this shell", which
 # covers two very different things: an ambient call sitting in an ADR #7 else-branch (dead surface,
@@ -168,6 +169,7 @@ step "auditor self-tests" "sh scripts/check-auditor-selftests.sh" sh scripts/che
 # source files and a plan claimed it ran "in CI" -- and the unified image was in fact
 # unbuildable from 2026-09-13 to 2026-09-18 with nothing to catch it.
 step "dockerfile workspace" "python3 scripts/verify-dockerfile-workspace.py" python3 scripts/verify-dockerfile-workspace.py
+step "dockerfile workspace self-test" "python3 scripts/verify-dockerfile-workspace.py --self-test" python3 scripts/verify-dockerfile-workspace.py --self-test
 step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check-unified-routes.mjs
 
 # ── Money formatting gate (IDR/JPY/KWD exp-2 regression guard) ───────────
@@ -175,6 +177,7 @@ step "unified routes" "node scripts/check-unified-routes.mjs" node scripts/check
 # format strings instead of foundation::format_minor(). Pure python — no
 # toolchain deps, so it stays fast.
 step "no-hardcoded-money-format" "python3 scripts/verify-no-hardcoded-money-format.py" python3 scripts/verify-no-hardcoded-money-format.py
+step "no-hardcoded-money-format self-test" "python3 scripts/verify-no-hardcoded-money-format.py --self-test" python3 scripts/verify-no-hardcoded-money-format.py --self-test
 
 # ── Test shadow-copy gate ──────────────────────────────────────────────
 # A test file that redeclares a production function and asserts against its
@@ -184,6 +187,7 @@ step "no-hardcoded-money-format" "python3 scripts/verify-no-hardcoded-money-form
 # test named "rejects when order is in-flight" validated a rule the app does
 # not implement. Pure python, no toolchain deps.
 step "test shadow copies" "python3 scripts/verify-test-shadow-copies.py" python3 scripts/verify-test-shadow-copies.py
+step "test shadow copies self-test" "python3 scripts/verify-test-shadow-copies.py --self-test" python3 scripts/verify-test-shadow-copies.py --self-test
 
 # Workspace-wide test via cargo-nextest — runs each test in its own process
 # for 4.5× faster re-runs after compilation. Also run doctests separately
@@ -301,6 +305,7 @@ if command -v cargo-llvm-cov >/dev/null 2>&1 && command -v llvm-cov >/dev/null 2
         --exclude kasirmu-app --exclude kasirmu-mobile \
         --json --output-path coverage-probe.json >/dev/null 2>&1; then
         step "coverage floors" "scripts/coverage-floors.json (ratchet)" python3 scripts/verify-coverage-floors.py
+        step "coverage floors self-test" "python3 scripts/verify-coverage-floors.py --self-test" python3 scripts/verify-coverage-floors.py --self-test
     else
         echo -e "${YELLOW}⚠ cargo llvm-cov could not complete (a failing test aborts it) — floors NOT checked${NC}"
     fi
@@ -506,6 +511,7 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     step "ftl orphans" "python3 scripts/verify-ftl-orphans.py --self-test" \
         python3 scripts/verify-ftl-orphans.py --self-test
     step "feature registry parity" "python3 scripts/verify-feature-registry.py" python3 scripts/verify-feature-registry.py
+step "feature registry parity self-test" "python3 scripts/verify-feature-registry.py --self-test" python3 scripts/verify-feature-registry.py --self-test
     # Topology contract parity — the vendored kasirmu-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).
     step "topology contract parity" "python3 scripts/verify-topology-parity.py" python3 scripts/verify-topology-parity.py
@@ -542,6 +548,15 @@ step "website assets" "python3 scripts/verify-website-assets.py" python3 scripts
 
 # ── Plugin guide / API parity (PLG-10 tail; Rust-side, always runs) ─────
 step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" python3 scripts/verify-plugin-guide-parity.py
+
+# Two checkers that had NO check.sh step at all, added 2026-09-29 together with
+# verify-selftests-wired.py, which is what found them: both declared a --self-test
+# that no runner invoked. The meta-gate goes first -- it is what keeps the next
+# one from being the same finding again.
+step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
+step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
+step "deployment verification" "python3 scripts/verify-deployment.py" python3 scripts/verify-deployment.py
+step "deployment verification self-test" "python3 scripts/verify-deployment.py --self-test" python3 scripts/verify-deployment.py --self-test
 # The four parsers' own cases, beside the gate they prove. Pure regexes plus a
 # read-only floor; nothing installed, nothing written.
 step "plugin-guide parity self-test" "python3 scripts/verify-plugin-guide-parity.py --self-test" python3 scripts/verify-plugin-guide-parity.py --self-test
@@ -552,6 +567,7 @@ step "plugin-guide parity self-test" "python3 scripts/verify-plugin-guide-parity
 # prompt) and every source app.manifest must carry asInvoker. The PE scan
 # of actually-built Windows exes is enforced in release.yml's Windows job.
 step "windows config drift" "python3 scripts/verify-windows-config.py" python3 scripts/verify-windows-config.py
+step "windows config drift self-test" "python3 scripts/verify-windows-config.py --self-test" python3 scripts/verify-windows-config.py --self-test
 
 # ── Release toolchain (AUDIT-28 RELEASE-04/05/06) — node self-tests ────
 # Validates the release scripts on every local gate run, not only in CI:
@@ -682,6 +698,7 @@ step "bundle parity self-test" "python3 scripts/verify-bundle-parity.py --self-t
 # Gate: scripts/gates.json -> "pg-schema-drift", "migration-column-types".
 step "pg schema drift" "python3 scripts/generate-pg-migration.py --check" python3 scripts/generate-pg-migration.py --check
 step "migration column types" "python3 scripts/verify-migration-column-types.py" python3 scripts/verify-migration-column-types.py
+step "migration column types self-test" "python3 scripts/verify-migration-column-types.py --self-test" python3 scripts/verify-migration-column-types.py --self-test
 
 # ── Document uniqueness (R36-14) ────────────────────────────────────────────
 # f3d9cca6 moved the repo-root subscription-tiers.md into docs/records/ without

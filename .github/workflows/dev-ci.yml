@@ -1151,6 +1151,19 @@ jobs:
       # a pattern that cannot match turns the OZ_SET case red with "got []".
       - name: Plugin guide parity self-test
         run: python3 scripts/verify-plugin-guide-parity.py --self-test
+
+      # The meta-gate. Added 2026-09-29 after a sweep found TEN verify-*.py declaring
+      # a --self-test that no runner invoked -- including one that had been printing
+      # "nothing calls this flag" in its own report. A self-test nobody runs rots in
+      # silence: the cases still pass by hand and nothing says nobody does.
+      #
+      # It is cheap (reads a few text files, no toolchain) and it is the step that makes
+      # the convention self-enforcing rather than advisory, so it lives here beside the
+      # other static checks rather than only in the manual matrix.
+      - name: Self-tests are wired
+        run: python3 scripts/verify-selftests-wired.py
+      - name: Self-tests are wired self-test
+        run: python3 scripts/verify-selftests-wired.py --self-test
       - name: No raw query params
         run: bash scripts/verify-no-raw-params.sh
       - name: Scoped command coverage
