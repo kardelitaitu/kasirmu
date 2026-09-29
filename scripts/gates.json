@@ -746,6 +746,23 @@
       "_note": "Added 2026-09-29. Answers one question: does a checker's --self-test have a caller? A self-test no runner invokes rots in silence -- the cases still pass by hand and nothing says nobody runs them. Measured when it was written: 24 of 28 scripts/verify-*.py declared a --self-test and NINE were invoked from no runner at all; one of the nine had been printing \"nothing calls this flag\" in its own report. Deliberately narrow: it does not decide WHICH runner should invoke one, or whether a given self-test is any good, and a check.sh-only caller counts. It also ships with the bug class it was written to catch, found in the gate three times before it was right: a COMMENT mentioning the flag counted as a caller; a RETIRED .bak workflow counted as a caller; and the scope covered only verify-*.py, so check-*.py was invisible. Full-line comments are stripped, attic/ is excluded, and the scope is now verify-*/check-*.",
       "runners": { "check.sh": ["self-tests wired", "self-tests wired self-test"] },
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+    },
+    {
+      "id": "checker-selftest-companions",
+      "label": "checker self-test companions",
+      "status": "required",
+      "_note": "Added 2026-09-29. Each step here is the LIVENESS PROOF for a gate named in the same row: the cases that prove the gate can still FAIL, which no bare run of the gate can see. The convention, stated at 'IPC command parity self-test' in dev-ci.yml, is that a checker's self-test lives beside the checker it proves. This row exists because gates.json had no reverse-direction check -- test-runner-labels.py grades gates.json -> check.sh and never asks whether a step that EXISTS has a row -- so wiring them was silent, and an inventory that understates the matrix is the same quiet-drift problem as a gate that cannot see half its input. These were each mutation-proven: a regex or pattern pointed at something that cannot match, which must turn the case red rather than reporting zero. Two of the seventeen (doc uniqueness self-test, release workflow self-test) pre-date this row and were ALREADY unlisted when it was written -- the drift was not introduced by the 2026-09 work, only measured by it.",
+      "runners": { "check.sh": [
+        "bundle parity self-test", "exhaustive-deps ratchet self-test",
+        "plugin-guide parity self-test", "topology contract parity self-test",
+        "ipc invoke token parity self-test", "dockerfile workspace self-test",
+        "no-hardcoded-money-format self-test", "test shadow copies self-test",
+        "feature registry parity self-test", "windows config drift self-test",
+        "migration column types self-test", "coverage floors self-test",
+        "deployment verification self-test", "flaky quarantine self-test",
+        "chokepoints self-test", "doc uniqueness self-test",
+        "release workflow self-test"
+      ] }
     }
   ]
 }
