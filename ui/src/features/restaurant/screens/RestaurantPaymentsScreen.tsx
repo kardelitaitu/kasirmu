@@ -11,7 +11,6 @@ import {
   setLocalPaymentMethodsScoped,
   readStaticQrPayload,
   writeStaticQrPayload,
-  type LocalPaymentRail,
   type LocalPaymentRailArgs,
 } from '@/api/local-payment';
 import {
@@ -20,19 +19,13 @@ import {
   type EdcTerminalDto,
 } from '@/api/edc';
 import SettingsSelect from '@/features/settings/SettingsSelect';
+import { sanitizeRailCode, isCoreRail, mergeCoreRails, computeRailsDirty, type DraftRail } from './paymentRailsLogic';
 import './RestaurantSettingsScreens.css';
 
 export interface RestaurantPaymentsScreenProps {
   terminalId?: string;
   onSaved?: () => void;
   onBack?: () => void;
-}
-
-interface DraftRail {
-  rail_code: string;
-  label: string;
-  is_enabled: boolean;
-  parameters: string;
 }
 
 export function RestaurantPaymentsScreen({
@@ -100,52 +93,11 @@ export function RestaurantPaymentsScreen({
           const rawRails = await getLocalPaymentMethodsScoped(sessionToken, primary.id);
           if (cancelled) return;
 
-          // Standard core methods to ensure exist in the list
-          const coreDefaults: { rail_code: string; label: string; is_enabled: boolean }[] = [
-            { rail_code: 'cash', label: 'Cash', is_enabled: true },
-            { rail_code: 'card', label: 'Card / EDC Terminal', is_enabled: true },
-            { rail_code: 'qris', label: 'QRIS', is_enabled: true },
-            { rail_code: 'open_bill', label: 'Open Bill (Table Tab)', is_enabled: true },
-            { rail_code: 'credit', label: 'Customer Credit', is_enabled: true },
-          ];
-
-          const existingMap = new Map<string, LocalPaymentRail>(
-            (rawRails || []).map((r) => [r.rail_code.toLowerCase(), r]),
-          );
-
-          const merged: DraftRail[] = [];
-          for (const def of coreDefaults) {
-            const match = existingMap.get(def.rail_code);
-            if (match) {
-              merged.push({
-                rail_code: match.rail_code,
-                label: match.label || def.label,
-                is_enabled: match.is_enabled,
-                parameters: match.parameters || '{}',
-              });
-              existingMap.delete(def.rail_code);
-            } else {
-              merged.push({
-                rail_code: def.rail_code,
-                label: def.label,
-                is_enabled: def.is_enabled,
-                parameters: '{}',
-              });
-            }
-          }
-
-          // Append any remaining custom rails
-          for (const rem of existingMap.values()) {
-            merged.push({
-              rail_code: rem.rail_code,
-              label: rem.label,
-              is_enabled: rem.is_enabled,
-              parameters: rem.parameters || '{}',
-            });
-          }
-
-          setDrafts(merged);
-          originalsRef.current.drafts = merged.map((d) => ({ ...d }));
+          // Standard core methods + any custom rails are merged by the pure
+          // paymentRailsLogic helper (unit-tested).
+          const mergedDrafts = mergeCoreRails(rawRails);
+          setDrafts(mergedDrafts);
+          originalsRef.current.drafts = mergedDrafts.map((d) => ({ ...d }));
         }
       } catch {
         addToast({
@@ -165,22 +117,12 @@ export function RestaurantPaymentsScreen({
 
   const dirty = useMemo(() => {
     void dirtyVersion;
-    if (defaultEdcTerminalId !== originalsRef.current.defaultEdcTerminalId) return true;
-    if (drafts.length !== (originalsRef.current.drafts?.length ?? 0)) return true;
-    for (let i = 0; i < drafts.length; i++) {
-      const a = drafts[i];
-      const b = originalsRef.current.drafts?.[i];
-      if (!a || !b) return true;
-      if (
-        a.rail_code !== b.rail_code ||
-        a.label !== b.label ||
-        a.is_enabled !== b.is_enabled ||
-        a.parameters !== b.parameters
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return computeRailsDirty(
+      originalsRef.current.drafts ?? [],
+      drafts,
+      originalsRef.current.defaultEdcTerminalId,
+      defaultEdcTerminalId,
+    );
   }, [drafts, defaultEdcTerminalId, dirtyVersion]);
 
   const handleToggleRail = (index: number, checked: boolean) => {
@@ -208,7 +150,7 @@ export function RestaurantPaymentsScreen({
   };
 
   const handleAddCustomRail = useCallback(() => {
-    const code = newCode.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const code = sanitizeRailCode(newCode);
     const label = newLabel.trim();
     if (!code || !label) return;
     if (drafts.some((d) => d.rail_code.toLowerCase() === code)) return;
@@ -399,9 +341,7 @@ export function RestaurantPaymentsScreen({
         <div className="settings-form">
           <div className="restaurant-rails-list">
           {drafts.map((rail, index) => {
-            const isCore = ['cash', 'card', 'qris', 'open_bill', 'credit'].includes(
-              rail.rail_code.toLowerCase(),
-            );
+            const isCore = isCoreRail(rail.rail_code);
             return (
               <div className="restaurant-rail-row" key={rail.rail_code}>
                 <div className="restaurant-rail-info">
