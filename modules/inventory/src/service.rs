@@ -1,15 +1,14 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-inventory slice A: service verified)
 crate: modules-inventory | status: SAFE | lint: CLEAN
-findings: clean — thin orchestration with tx-scoped adjust_stock; sibling tests file per AGENTS.md convention
+findings: get_product is the whole live surface; the sibling get_stock/adjust_stock pair was dead AND untestable (planned-schema columns), removed 2026-09-29 with the coverage floor that exposed it
 next: none | perf: N/A
 */
 //! Inventory Service — product catalog and stock adjustment orchestration.
 
 use crate::error::InventoryError;
-use crate::models::{Inventory, Product};
+use crate::models::Product;
 use crate::repository::InventoryRepository;
-use foundation::Sku;
 use rusqlite::Connection;
 
 /// Service encapsulating product and inventory domain operations.
@@ -22,26 +21,16 @@ impl InventoryService {
         repo.get_product(id)
     }
 
-    /// Retrieve inventory stock level for a SKU.
-    pub fn get_stock(conn: &Connection, sku: &Sku) -> Result<Option<Inventory>, InventoryError> {
-        let repo = InventoryRepository::new(conn);
-        repo.get_stock(sku)
-    }
-
-    /// Adjust stock level for a product.
-    pub fn adjust_stock(
-        conn: &mut Connection,
-        sku: &Sku,
-        delta: i64,
-    ) -> Result<(), InventoryError> {
-        let tx = conn.transaction()?;
-        {
-            let repo = InventoryRepository::new(&tx);
-            repo.adjust_stock_tx(&tx, sku, delta)?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
+    // `get_stock` and `adjust_stock` were REMOVED here on 2026-09-29, and this note is why.
+    // Both were dead (no caller anywhere in the tree -- only `get_product` is used, by
+    // `tests/boundary_contract.rs` and the tests below) AND untestable: their columns
+    // (`inventory.sku`, `inventory.low_stock_threshold`) are planned-schema columns that
+    // the migrations do not carry, which the previous note in `service_tests.rs` admitted
+    // while the module's audit stamp still claimed "thin orchestration with tx-scoped
+    // adjust_stock". Unreachable code cannot be covered, so leaving it in place held
+    // `modules-inventory` at 70.7% against a 76.0% floor (scripts/coverage-floors.json).
+    // The canonical stock paths live in kasirmu-core's db layer; if an InventoryService
+    // stock API is ever wanted, it arrives with the migration and its tests together.
 }
 
 #[cfg(test)]
