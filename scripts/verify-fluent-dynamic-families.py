@@ -120,18 +120,19 @@ FAMILIES: list[tuple[str, str, list[str]]] = [
     ("heatmap weekday", "day-",
      ["sunday", "monday", "tuesday", "wednesday", "thursday",
       "friday", "saturday"]),
-    ("setup feature label", "setup-feature-",
-     ["analytics-label", "audit-log-label", "barcode-scanning-label",
-      "card-payment-label", "cash-drawer-label", "cash-payment-label",
-      "categories-enabled-label", "cloud-sync-label",
-      "customer-display-label", "discount-engine-label",
-      "export-import-label", "inventory-tracking-label",
-      "loyalty-program-label", "multi-currency-label", "multi-store-label",
-      "multi-terminal-label", "nfc-reader-label", "plugin-system-label",
-      "product-bundles-label", "product-variants-label",
-      "promotions-engine-label", "receipt-printing-label",
-      "reporting-label", "shift-management-label", "staff-login-label",
-      "staff-roles-label", "tax-engine-label"]),
+    # REMOVED 2026-09-29: the "setup feature label" family (prefix "setup-feature-",
+    # 27 slugs) is STALE and was deleted rather than satisfied. Measured repo-wide:
+    # the keys are in neither shared.ftl nor shared.id.ftl, no source file under
+    # ui/src references the prefix, and the only surviving traces are two comments
+    # that themselves cite "setup-feature-cloud-sync" -- a key that does not exist
+    # either. The code that built these ids is gone or renamed.
+    #
+    # The alternative was adding the 27 keys, which would have put translation
+    # strings in the bundle that nothing reads: dead copy invented to satisfy a stale
+    # assertion, and a gate that then reports OK. If the setup wizard ever regains
+    # these labels, restore the family from git history at this commit and the
+    # assertion becomes true because the code is true again -- not because a test was
+    # made to agree with itself.
 ]
 
 UNBOUNDED = [
