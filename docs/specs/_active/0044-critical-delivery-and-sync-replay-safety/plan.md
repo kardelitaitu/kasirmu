@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: ACCURATE (0 major, 1 minor — repaired here) · Audited on branch 0.0.40. Every anchor re-measured at the source line, not quoted. MATCH: the "event bus catches individual handler failures and continues" premise holds — `platform/kernel/src/event_bus.rs:254-282` invokes each handler inside `std::panic::catch_unwind`, logs a failed handler as "event handler failed (continuing)" and a panicking one as "event handler panicked (continuing)", and neither arm breaks the loop. MATCH: the `sync_applied_items` receipt table exists (`crates/kasirmu-core/migrations/20260813_init.sql`, registry `crates/kasirmu-core/src/migrations.rs`). MATCH: "the existing standalone `apply_remote` remains available" — it is still a public fn at `platform/sync/src/queue.rs:559`. Repaired 1 (minor): the doc named `apply_remote_atomic` as the daemon's call, but the production call site is `platform/sync/src/daemon_tick.rs:686` → `queue.apply_remote_atomic_full(store, item)`. Both names are real public fns (`platform/sync/src/queue.rs:196` and `:219`), so the reference never dangled; it was a stale name, and a plan that tells a reader which fn owns the transaction boundary has to name the right one. · NOT re-measured: the "checkout commands publish after their local sale transaction commits" half of the opening premise — that traces into the sale commit path and is a claim about ORDER, not existence, so it needs a flow trace rather than a symbol search. · Deliberately not renamed: the `oz-core` crate this spec's sibling validation.md still names no longer exists (see docs/specs/_active/0044-critical-delivery-and-sync-replay-safety/validation.md); plan.md itself names no crate, so it needs no edit on that axis. -->
+
 # Critical delivery and sync replay safety
 
 ## Decision boundary
@@ -18,7 +20,7 @@ that API stable and hardens the separate sync replay boundary first.
 6. Leave the pull anchor unchanged when an item fails.
 
 The existing standalone `apply_remote` remains available for isolated callers and
-compatibility tests. The daemon uses `apply_remote_atomic` so production replay
+compatibility tests. The daemon uses `apply_remote_atomic_full` so production replay
 handling has one explicit transaction boundary.
 
 ## Phase 2 — tests and observability
@@ -48,3 +50,5 @@ work rather than making the in-process bus globally fail-fast.
 - Persist retry state and operator-visible failure reasons.
 - Add crash/restart and concurrent-consumer tests.
 - Reconcile desktop and tablet sync paths around the same application service.
+
+> last audited 29-09-26 by docs-auditor
