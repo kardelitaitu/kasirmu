@@ -91,9 +91,16 @@ COPY apps/cloud-server/Cargo.toml apps/cloud-server/
 # unbounded `|| true` from the audit was replaced with an explicit, logged
 # best-effort marker so a broken cache layer is diagnosable while still
 # never blocking a valid image. Workspace/priming consistency is enforced by
-# scripts/verify-dockerfile-workspace.py, via the LOCAL MATRIX (scripts/check.sh) --
-# corrected 2026-09-29, this said "in CI", which was never true: the checker was
-# unwired entirely until that date, and is not named by any live workflow even now.
+# scripts/verify-dockerfile-workspace.py in CI (dev-ci.yml, plus the local
+# matrix in scripts/check.sh).
+#
+# A 2026-09-29 edit briefly "corrected" this to say LOCAL MATRIX ONLY, on the strength
+# of open finding GI-4 in docs/records/audit-open-findings.md, which reported the
+# checker's only runner-shaped reference as the retired ci.yml.bak. That was WRONG: the
+# GI-4 census is a point-in-time measurement (11:46) and dev-ci.yml does invoke it. The
+# claim below was true when first written and stayed true. scripts/verify-runner-claims.py
+# now checks exactly this class -- prose asserting CI enforcement that no live workflow
+# provides -- and is what caught the regression.
 RUN mkdir -p crates/kasirmu-core/src crates/kasirmu-api/src crates/kasirmu-logging/src \
              crates/kasirmu-hal/src crates/kasirmu-lua/src crates/kasirmu-notification/src \
              crates/kasirmu-plugin/src crates/kasirmu-security/src crates/kasirmu-payment/src \

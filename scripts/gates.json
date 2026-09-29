@@ -764,7 +764,7 @@
         "deployment verification self-test", "flaky quarantine self-test",
         "chokepoints self-test", "doc uniqueness self-test",
         "release workflow self-test", "tz invariance self-test",
-        "runner commands self-test"
+        "runner commands self-test", "runner claims self-test"
       ] }
     },
     {
@@ -776,7 +776,7 @@
         "ipc invoke token parity", "windows config drift",
         "feature registry parity", "no-hardcoded-money-format",
         "flaky quarantine", "deployment verification", "chokepoints",
-        "runner commands"
+        "runner commands", "runner claims"
       ] },
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
