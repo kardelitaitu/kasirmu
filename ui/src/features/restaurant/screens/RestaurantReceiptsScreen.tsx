@@ -1160,8 +1160,7 @@ export default function RestaurantReceiptsScreen({
                   </div>
                   <input
                     type="text"
-                    className="resto-margin-input"
-                    style={{ marginTop: '4px', fontSize: '11px' }}
+                    className="resto-text-input"
                     placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
                     value={businessLogo.startsWith('data:') ? 'Custom uploaded image' : businessLogo}
                     onChange={(e) => {
@@ -1206,17 +1205,17 @@ export default function RestaurantReceiptsScreen({
             </div>
 
             {/* Header Configuration (Title, Line 1, Line 2) */}
-            <div style={{ marginBottom: 'var(--space-3)' }}>
-              <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
+            <div style={{ marginBottom: 'var(--space-4)' }}>
+              <div className="resto-toggle-title" style={{ marginBottom: 'var(--space-2)' }}>
                 <Localized id="restaurant-header-config-heading">Receipt Header Details</Localized>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
                     <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
                       <Localized id="restaurant-header-title-label">Receipt Title</Localized>
                     </label>
-                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                    <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
                       {headerTitle.length}/{MAX_HEADER_TITLE_LENGTH}
                     </span>
                   </div>
@@ -1224,19 +1223,18 @@ export default function RestaurantReceiptsScreen({
                     id="resto-header-title"
                     type="text"
                     maxLength={MAX_HEADER_TITLE_LENGTH}
-                    className="resto-margin-input"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    className="resto-text-input"
                     placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
                     value={headerTitle}
                     onChange={(e) => setHeaderTitle(e.target.value.slice(0, MAX_HEADER_TITLE_LENGTH))}
                   />
                 </div>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
                     <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
                       <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
                     </label>
-                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                    <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
                       {headerLine1.length}/{MAX_HEADER_LINE_LENGTH}
                     </span>
                   </div>
@@ -1244,19 +1242,18 @@ export default function RestaurantReceiptsScreen({
                     id="resto-header-line1"
                     type="text"
                     maxLength={MAX_HEADER_LINE_LENGTH}
-                    className="resto-margin-input"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    className="resto-text-input"
                     placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
                     value={headerLine1}
                     onChange={(e) => setHeaderLine1(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
                   />
                 </div>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
                     <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
                       <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
                     </label>
-                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>
+                    <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
                       {headerLine2.length}/{MAX_HEADER_LINE_LENGTH}
                     </span>
                   </div>
@@ -1264,8 +1261,7 @@ export default function RestaurantReceiptsScreen({
                     id="resto-header-line2"
                     type="text"
                     maxLength={MAX_HEADER_LINE_LENGTH}
-                    className="resto-margin-input"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    className="resto-text-input"
                     placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
                     value={headerLine2}
                     onChange={(e) => setHeaderLine2(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
@@ -1765,8 +1761,7 @@ export default function RestaurantReceiptsScreen({
                 <input
                   id="resto-hw-printer-path"
                   type="text"
-                  className="resto-margin-input"
-                  style={{ width: '100%', boxSizing: 'border-box' }}
+                  className="resto-text-input"
                   placeholder={printerConnection === 'network' ? '192.168.1.100:9100' : 'COM3 or /dev/ttyUSB0'}
                   value={printerDevicePath}
                   onChange={(e) => handlePrinterDevicePathChange(e.target.value)}
@@ -1816,8 +1811,7 @@ export default function RestaurantReceiptsScreen({
                   <input
                     id="resto-hw-kitchen-path"
                     type="text"
-                    className="resto-margin-input"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    className="resto-text-input"
                     placeholder="192.168.1.101:9100"
                     value={kitchenDevicePath}
                     onChange={(e) => handleKitchenDevicePathChange(e.target.value)}
