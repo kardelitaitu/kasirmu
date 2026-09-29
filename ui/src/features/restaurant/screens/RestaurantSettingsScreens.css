@@ -736,13 +736,13 @@
   border-radius: var(--radius-md);
 }
 
-/* Business Logo in Preview & Settings.
-   This was a pair: `.resto-receipt-logo-wrap` (a centred flex row) wrapping
-   `.resto-receipt-logo`. f2c3339c3 replaced the centred layout with the 2-column
-   header (`resto-receipt-header-row` > `-logo-col` + `-text-col`), which positions
-   the logo itself, so the wrapper lost its only consumer and is deleted rather
-   than left as a rule nothing can reach. `.resto-receipt-logo` stays: the <img>
-   still carries it. */
+/* Business Logo in Preview & Settings */
+.resto-receipt-logo-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
 .resto-receipt-logo {
   max-width: 56px;
   max-height: 56px;

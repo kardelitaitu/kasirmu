@@ -592,5 +592,52 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(within(textCol as HTMLElement).getByText('Jl. Sudirman 45, Jakarta')).toBeInTheDocument();
     expect(within(textCol as HTMLElement).getByText('Tel: 021-123456')).toBeInTheDocument();
   });
+
+  it('allows configuring logo position to top, left, and right', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Enter a business logo (via text input)
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    // Default position is 'left'
+    let headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).not.toHaveClass('resto-receipt-header-row--right');
+
+    // Switch to 'top' position
+    const topBtn = screen.getByRole('button', { name: 'Top' });
+    await user.click(topBtn);
+
+    expect(document.querySelector('.resto-receipt-header-row')).toBeNull();
+    const logoWrap = document.querySelector('.resto-receipt-logo-wrap');
+    expect(logoWrap).toBeInTheDocument();
+
+    // Switch to 'right' position
+    const rightBtn = screen.getByRole('button', { name: 'Right' });
+    await user.click(rightBtn);
+
+    headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).toHaveClass('resto-receipt-header-row--right');
+    expect(document.querySelector('.resto-receipt-logo-wrap')).toBeNull();
+
+    // Switch back to 'left' position
+    const leftBtn = screen.getByRole('button', { name: 'Left' });
+    await user.click(leftBtn);
+
+    headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).not.toHaveClass('resto-receipt-header-row--right');
+  });
 });
+
 
