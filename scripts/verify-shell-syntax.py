@@ -147,14 +147,25 @@ def main() -> int:
             for line in why.splitlines()[:6]:
                 print("    " + line)
     if found:
-        # ADVISORY, not blocking, and that is a deliberate recorded state rather than a
-        # softening. This gate arrived red on scripts/profile.sh (line 216, unexpected
-        # end of file) and could not be shipped blocking: a red check.sh fails for
-        # everyone on every run, and a gate that is always red gets muted, which loses
-        # the finding AND the gate. The repo already has this shape --
-        # verify-ci-docs-drift shipped checks as "informational" and flipped them to
-        # blocking once the findings were answered, and the flip condition is written
-        # into the row.
+        # Was advisory 2026-09-29 for one round while scripts/profile.sh was red, then
+        # FLIPPED TO BLOCKING in the same day once the cause was found and fixed. The
+        # advisory window existed because a red check.sh fails for everyone on every
+        # run, and a gate that is always red gets muted -- losing the finding AND the
+        # gate. It was not a softening: the finding printed on every run throughout, and
+        # the flip condition was written down before the fix existed.
+        #
+        # THE BUG THAT COST THE WINDOW, because it will recur: profile.sh line 151 read
+        # `fi# -- Build and run command`. Bash only treats # as a comment when it
+        # STARTS a word, so `fi#` lexes as one token, not as `fi` plus a comment. The
+        # enclosing `if` therefore never got its `fi`, and bash reported the failure at
+        # END OF FILE -- 65 lines away from the cause, with every keyword, quote, brace
+        # and $( in the file balancing. A defect that reports 65 lines from its cause is
+        # the reason this gate exists: without `sh -n` nothing would have run, so nothing
+        # would have said so.
+        #
+        # THE MEASUREMENT TRAP that hid it for a round: a per-line strip of #.*$ to drop
+        # comments eats the `$#` in `while [[ $# -gt 0 ]]; do`, deleting the loop and
+        # making the file look badly unbalanced. Strip FULL-LINE comments only.
         #
         # FLIP CONDITION: scripts/profile.sh parses. Until then this stays advisory,
         # and the finding is printed on every run so it cannot be forgotten.

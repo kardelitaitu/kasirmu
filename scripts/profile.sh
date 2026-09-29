@@ -148,7 +148,8 @@ if [[ -n "$PID" && $ROOT == false ]]; then
     echo -e "${YELLOW}NOTE: PID profiling on Linux requires CAP_SYS_PTRACE or root.${NC}"
     echo -e "${YELLOW}      If perf_event_open fails, re-run with --root.${NC}"
     echo ""
-fi# ── Build and run command ──────────────────────────────────────────────
+fi
+# ── Build and run command ────────────────────────────────────────────────
 
 echo ""
 echo -e "${CYAN}=============================================${NC}"
