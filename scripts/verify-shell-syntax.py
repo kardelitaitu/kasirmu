@@ -38,16 +38,32 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
+# Vendored trees are not this repo's shell and must never fail its gate. node_modules
+# alone holds two dozen .sh files from playwright and cytoscape, and a syntax rule
+# judged against a third party's script is a false positive waiting to happen.
+VENDORED = ("node_modules", ".git", "target", "dist", "build", ".venv", "vendor")
+
+
 def targets() -> list[Path]:
+    """Every first-party shell file in the repo, not just scripts/ and .githooks/.
+
+    The first version of this gate scanned two directories and I wrote that limitation
+    into its own docstring as a KNOWN GAP -- the same mistake the self-test meta-gate had
+    one round earlier, and a gate whose scope is narrower than the thing it polices
+    cannot see the rot. The eleven first-party scripts it missed included
+    apps/unified/healthcheck.sh and apps/unified/docker-entrypoint.sh, which run IN THE
+    PRODUCTION CONTAINER: a syntax error there is not a broken dev tool, it is an
+    image that will not come up. Those are now covered.
+    """
     out: list[Path] = []
-    scripts = ROOT / "scripts"
-    if scripts.is_dir():
-        out += sorted(p for p in scripts.glob("*.sh") if p.is_file())
-    hooks = ROOT / ".githooks"
-    if hooks.is_dir():
-        out += sorted(p for p in hooks.iterdir()
-                     if p.is_file() and not p.name.endswith(".sample"))
-    return out
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames
+                       if d.lower() not in VENDORED and not d.startswith(".git")]
+        for fn in sorted(filenames):
+            if not fn.endswith(".sh") or fn.endswith(".sample"):
+                continue
+            out.append(Path(dirpath) / fn)
+    return sorted(out)
 
 
 def parser_for(path: Path) -> list[str]:
@@ -115,6 +131,28 @@ def self_test() -> int:
         # A missing PARSE message is as much a defect as a missing detection: a gate
         # that reports "does not parse" for a file it could not read teaches its reader
         # to ignore it. Covered by the second case above, which asserts why is non-empty.
+
+        # THE REGRESSION THIS GATE WAS BORN FROM, kept as a case so it can never come
+        # back silently. Bash treats # as a comment only when it STARTS a word, so a
+        # "fi" written flush against its trailing comment lexes as ONE token, the
+        # enclosing if never closes, and the parser reports the failure at END OF FILE
+        # -- 65 lines away, with every keyword, quote, brace and $( in the file
+        # balancing. That is the whole reason this file exists: the defect was
+        # invisible to reading and to every balance check, and only "bash -n" saw it.
+        glued = "#!/usr/bin/env bash\nif [[ 1 -eq 1 ]]; then\n  echo yes\nfi# trailing comment\n"
+        scratch.write_text(glued, encoding="utf-8", newline="\n")
+        ok, _why = check(scratch)
+        if ok:
+            bad.append("a 'fi' glued to a trailing comment must NOT parse "
+                       "(# starts a comment only at a word boundary)")
+
+        # The same file with the separator restored DOES parse, so the case above is
+        # pinning the lexer and not something incidental about the fixture.
+        fixed = glued.replace("fi# trailing comment", "fi\n# trailing comment")
+        scratch.write_text(fixed, encoding="utf-8", newline="\n")
+        ok, why = check(scratch)
+        if not ok:
+            bad.append("the same file with fi separated from its comment must parse: " + why)
     finally:
         if scratch.exists():
             scratch.unlink()
@@ -124,7 +162,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (3 cases, no files left behind)")
+    print("SELF-TEST OK (5 cases, no files left behind)")
     return 0
 
 
