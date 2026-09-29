@@ -44,9 +44,25 @@ RUNNERS = (
     ROOT / ".github" / "workflows",
     ROOT / "scripts" / "check.sh",
     ROOT / "scripts" / "check.ps1",
+    # The pre-commit hook too, and not because it invokes checkers: it does not. It
+    # carries a user-facing error string telling a developer to run
+    # "python3 scripts/generate-pg-migration.py", and that guidance goes stale on a
+    # rename exactly like a step does. A runner list is a list of places a reader is
+    # told to run something, not a list of places a program is executed.
+    ROOT / ".githooks" / "pre-commit",
 )
 # The interpreter token varies by runner: literal python3/node/bash in the shell and
 # the workflows, $pythonCommand/$npmCommand in the PowerShell twin.
+#
+# NOT EVERY LIST HERE IS A SMELL, and the distinction was checked rather than assumed.
+# The VENDORED directory list in verify-shell-syntax was a smell and was replaced by
+# `git ls-files`: directory names are an OPEN vocabulary and a snapshot of one goes
+# stale silently. Interpreter names are a CLOSED vocabulary -- there are only so many
+# ways to ask a machine to run a file -- so an explicit list is the honest
+# representation, and being wrong about it fails loudly (a missed token reports nothing)
+# rather than quietly. Verified against the tree 2026-09-29: the only leading tokens on
+# "run: ... scripts/" lines are python3 (56), bash (18), node (11), python (3) and sh (1),
+# all covered; no npx, pnpm, deno, bun or cargo form names a scripts/ path anywhere.
 COMMAND_RE = re.compile(
     r"(?:python3|python|node|bash|sh|\$pythonCommand|\$npmCommand)"
     r"\s+(?:-[A-Za-z-]+\s+)*"          # flags such as --silent
