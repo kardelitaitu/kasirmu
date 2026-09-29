@@ -7,8 +7,15 @@
 # lint-i18n — and it never calls check.sh. So a red pre-push is not a failure of
 # this matrix, and a green push does not mean these steps ran.
 # Nothing here mirrors .github/workflows/ci.yml either: that workflow was
-# retired to ci.yml.bak in 23c96330, and the two live ones are dev-ci.yml (PRs
-# and pushes to main) and release.yml (v* tags). See docs/operations/ci-pipeline.md.
+# retired to ci.yml.bak in 23c96330. There are FOUR live workflows, not two, and
+# this line said "two" for months after the other two were reinstated:
+#   dev-ci.yml    PRs and pushes to main
+#   release.yml   v* tags
+#   android.yml   restored by a9dca0610
+#   website.yml   marketing site deploy
+# Count them rather than trust this comment:
+#   ls .github/workflows/*.yml
+# See docs/operations/ci-pipeline.md, which has said four throughout.
 #
 # Usage:  bash scripts/check.sh
 #         (run from the workspace root)
