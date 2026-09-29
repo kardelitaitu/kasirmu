@@ -133,6 +133,25 @@ fn line_item_dto_deserialize() {
     assert_eq!(item.name, "Coffee");
     assert_eq!(item.quantity, 2);
     assert!(item.tax_amount.is_none());
+    // Asserted for the same reason as `tax_amount` above: this test is what forces a
+    // NEW optional field to be read rather than merely declared. `note` was added to
+    // `LineItemDto` with `#[serde(default)]` and to the HAL's `receipt::LineItem`, but
+    // the tablet's constructor kept the three old fields and dropped it — the payload
+    // deserialised fine, so nothing here went red, and the tablet silently printed no
+    // order notes while desktop did. A `None` from a payload that omits the key is
+    // also the contract the UI relies on when it sends no note.
+    assert!(item.note.is_none());
+}
+
+#[test]
+fn line_item_dto_carries_the_order_note_when_sent() {
+    let json = r#"{"name":"Nasi Goreng","quantity":1,"unitPrice":{"minor_units":25000,"currency":"IDR"},"totalPrice":{"minor_units":25000,"currency":"IDR"},"note":"pedas"}"#;
+    let item: LineItemDto = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        item.note.as_deref(),
+        Some("pedas"),
+        "the UI sends `note` and the HAL prints it under the item, so the DTO must keep it"
+    );
 }
 
 #[test]
