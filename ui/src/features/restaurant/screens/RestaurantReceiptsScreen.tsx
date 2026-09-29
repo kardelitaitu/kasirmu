@@ -744,19 +744,19 @@ export default function RestaurantReceiptsScreen({
                     </div>
                   )}
 
-                  {/* Metadata (Date/Time, Code, Staff, Table) */}
+                  {/* Metadata (Date/Time, Staff, Code, Table) */}
                   <div className="resto-receipt-center">
-                    {/* Timestamp & Receipt Code */}
-                    {(showDateTime || showReceiptCode) && (
+                    {/* Row 1: Timestamp & Staff Name */}
+                    {(showDateTime || showStaffName) && (
                       <div className="resto-receipt-meta">
                         {showDateTime ? <span>29/09/2026 21:15</span> : <span />}
-                        {showReceiptCode ? <span>01-01-260929-01-000042</span> : <span />}
+                        {showStaffName ? <span>{staffDisplayName}</span> : <span />}
                       </div>
                     )}
-                    {/* Staff Name & Table Number */}
-                    {(showStaffName || (tablesEnabled && showTableNumber)) && (
+                    {/* Row 2: Receipt Code & Table Number */}
+                    {(showReceiptCode || (tablesEnabled && showTableNumber)) && (
                       <div className="resto-receipt-meta" style={{ marginTop: '2px' }}>
-                        {showStaffName ? <span>Staff: {staffDisplayName}</span> : <span />}
+                        {showReceiptCode ? <span>01-01-260929-01-000042</span> : <span />}
                         {(tablesEnabled && showTableNumber) ? <span className="resto-receipt-table-pill">TABLE 4</span> : <span />}
                       </div>
                     )}
