@@ -491,8 +491,13 @@ fn the_static_fallback_is_never_the_writer_when_an_install_key_exists() {
     // 2. H4's requirement: the static derivation stays readable for rows written
     //    before the upgrade. This is the half that makes the clause a SCOPE and
     //    not a deletion.
-    let candidates =
-        candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    let candidates = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        None,
+        None,
+        derive_static_key,
+    );
     assert!(
         candidates.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
         "the static derivation must remain a READ candidate (H4) -- a fix that \
@@ -545,7 +550,7 @@ fn install_key_enters_the_candidate_list_only_when_installed_and_goes_first() {
     let derived = install_key(SMTP_AT_REST_DOMAIN, &secret);
 
     // Not installed: the pre-seam list, in the pre-seam order.
-    let without = candidate_keys_from(SMTP_AT_REST_DOMAIN, None, None, derive_static_key);
+    let without = candidate_keys_from(SMTP_AT_REST_DOMAIN, None, None, None, derive_static_key);
     assert_eq!(
         without,
         vec![derive_static_key(SMTP_AT_REST_DOMAIN)],
@@ -558,7 +563,13 @@ fn install_key_enters_the_candidate_list_only_when_installed_and_goes_first() {
     );
 
     // Installed: present, first, and without dropping the legacy branch.
-    let with = candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&secret), None, derive_static_key);
+    let with = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&secret),
+        None,
+        None,
+        derive_static_key,
+    );
     assert_eq!(
         with.first(),
         Some(&derived),
@@ -567,6 +578,97 @@ fn install_key_enters_the_candidate_list_only_when_installed_and_goes_first() {
     assert!(
         with.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
         "widening for reading must not drop the legacy branch"
+    );
+}
+
+/// The previous-key slot is a READ candidate and never a writer (C1 slice S2c).
+///
+/// A rotation promotes the NEW key and parks the OLD one in the previous slot, so
+/// mid-sweep a row exists under either. This pins the two halves that make that
+/// safe, and the reason a partial sweep is a brick rather than a warning.
+#[test]
+fn a_previous_install_key_is_a_read_candidate_and_never_a_writer() {
+    let old = [1u8; 32];
+    let new = [2u8; 32];
+    let old_derived = install_key(SMTP_AT_REST_DOMAIN, &old);
+    let new_derived = install_key(SMTP_AT_REST_DOMAIN, &new);
+
+    // Reading mid-rotation: current first, previous second, legacy still present.
+    let keys = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&new),
+        Some(&old),
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        keys.first(),
+        Some(&new_derived),
+        "the current key is tried before the outgoing one"
+    );
+    assert_eq!(
+        keys.get(1),
+        Some(&old_derived),
+        "the outgoing key is the other key a mid-sweep row can be under, so it is tried second"
+    );
+    assert!(
+        keys.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "adding the previous branch must not drop the legacy branch (hazard H4)"
+    );
+
+    // A write must use the CURRENT key. `portable_key_from` has no previous slot
+    // to consult at all, which is the structural half of this guarantee; the
+    // behavioural half is that the outgoing derivation cannot be produced here.
+    let written = portable_key_from(SMTP_AT_REST_DOMAIN, Some(&new), None, derive_static_key);
+    assert_eq!(written, new_derived, "a write uses the current key");
+    assert_ne!(
+        written, old_derived,
+        "the outgoing key must never win a write, or a rekey that died half way \
+         would leave the survivors split across two writers"
+    );
+
+    // The point of the slot, end to end: a row written under the outgoing key must
+    // still open mid-rotation, and must NOT open once that key is retired.
+    let row = encrypt("legacy-row", &old_derived).expect("encrypt under the outgoing key");
+    assert_eq!(
+        decrypt_with_candidates(&row, &keys).expect("the mid-rotation reader opens it"),
+        "legacy-row",
+        "a row still under the outgoing key must read while the rotation is in flight"
+    );
+    assert!(
+        decrypt_with_candidates(&row, &[new_derived, derive_static_key(SMTP_AT_REST_DOMAIN)])
+            .is_err(),
+        "and it must FAIL once the outgoing key is retired — which is exactly why \
+         `oz rekey` must sweep every install-key-derived row before retiring it"
+    );
+}
+
+/// Outside a rotation the previous slot is absent, so the candidate list is
+/// byte-identical to the pre-S2c list and no family gains a derivation its writer
+/// never used.
+#[test]
+fn the_previous_branch_adds_nothing_outside_a_rotation() {
+    let current = [3u8; 32];
+    let steady = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&current),
+        None,
+        None,
+        derive_static_key,
+    );
+    assert_eq!(
+        steady,
+        vec![
+            install_key(SMTP_AT_REST_DOMAIN, &current),
+            derive_static_key(SMTP_AT_REST_DOMAIN),
+        ],
+        "with no previous key the list must be exactly [install, legacy]; the new \
+         branch must not perturb the steady state"
+    );
+    assert!(
+        !previous_install_key_derivation_active(),
+        "nothing installs a previous key in the unit-test binary; if this is now \
+         true, a case primed the process global and poisoned its siblings"
     );
 }
 
@@ -649,8 +751,13 @@ fn install_key_rows_read_and_legacy_rows_survive_the_upgrade() {
     // H1: written AFTER, under the installed key.
     let install_row = encrypt("written-after-upgrade", &derived).unwrap();
 
-    let candidates =
-        candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    let candidates = candidate_keys_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        None,
+        None,
+        derive_static_key,
+    );
     assert_eq!(
         decrypt_smtp_at_rest_under(&legacy_row, &candidates).expect("legacy row must still read"),
         "written-before-upgrade",

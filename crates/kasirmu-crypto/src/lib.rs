@@ -240,9 +240,9 @@ fn portable_key_with(
 }
 
 /// Every key a `domain` row may have been written under, in try order: the
-/// per-install key when this process has one, then the family's `legacy`
-/// derivation, then the master-key HMAC derivation when a master key decodes to
-/// 32 bytes.
+/// per-install key when this process has one, the **previous** per-install key when
+/// a rotation is in flight (S2c), then the family's `legacy` derivation, then the
+/// master-key HMAC derivation when a master key decodes to 32 bytes.
 ///
 /// This is [`portable_key`] widened for READING only. Writes still call
 /// [`portable_key`], so bytes written today are byte-identical; a reader that
@@ -254,8 +254,15 @@ fn portable_key_with(
 /// install immediately, on its own rows.
 fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8; 32]> {
     let install = install_key_from_process();
+    let previous = previous_install_key_from_process();
     let master = master_key_from_env();
-    candidate_keys_from(domain, install.as_ref(), master.as_ref(), legacy)
+    candidate_keys_from(
+        domain,
+        install.as_ref(),
+        previous.as_ref(),
+        master.as_ref(),
+        legacy,
+    )
 }
 
 /// [`candidate_keys`] with every key source injected. See that function for the
@@ -263,10 +270,11 @@ fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8;
 fn candidate_keys_from(
     domain: &[u8],
     install: Option<&[u8; 32]>,
+    previous: Option<&[u8; 32]>,
     master: Option<&[u8; 32]>,
     legacy: impl Fn(&[u8]) -> [u8; 32],
 ) -> Vec<[u8; 32]> {
-    let mut keys = Vec::with_capacity(3);
+    let mut keys = Vec::with_capacity(4);
     // The install branch is tried FIRST: it is the newest derivation, so it is
     // the one a row written since the upgrade is most likely to be under. The
     // legacy-then-master tail keeps the order it had before this slice, so a
@@ -277,6 +285,13 @@ fn candidate_keys_from(
     // decides nothing but the failure message, and preserving it is the strictly
     // smaller change.
     if let Some(secret) = install {
+        keys.push(hmac_key(secret, domain));
+    }
+    // The previous key is tried SECOND, immediately after the current one: during
+    // a rotation it is the other key a row can be under, and it is closer in time
+    // than the legacy/master tail. It is absent outside a rotation, so this branch
+    // adds nothing in the steady state and the list is unchanged there.
+    if let Some(secret) = previous {
         keys.push(hmac_key(secret, domain));
     }
     keys.push(legacy(domain));
@@ -391,6 +406,49 @@ fn install_key_from_process() -> Option<[u8; 32]> {
 #[must_use]
 pub fn install_key_derivation_active() -> bool {
     install_key_from_process().is_some()
+}
+
+/// The **previous** per-install at-rest key, installed only while a rotation is in
+/// flight (C1 slice S2c).
+///
+/// `oz rekey` parks the outgoing key here and promotes the new one into
+/// [`INSTALL_KEY`], so a rotation interrupted at any instant leaves every row
+/// readable: rows still under the old key decrypt through this slot, rows already
+/// re-encrypted decrypt through the new one. That is the whole reason the rotation
+/// order is "park the OLD key, promote the NEW one" rather than the reverse — see
+/// `plan-c1-install-key-s2b-s2c.md` §6 S2c.
+///
+/// **It is a READ-ONLY slot and is deliberately NOT consulted by [`portable_key`].**
+/// A write must always use the current key; if the old key could win a write, a
+/// rekey that died half way would leave the surviving rows split across two
+/// writers, which is hazard H1 (candidate branch and write arm ship together) read
+/// in the other direction. It is absent in the steady state, so a process that never
+/// rotates builds a byte-identical candidate list.
+static PREVIOUS_INSTALL_KEY: OnceLock<[u8; 32]> = OnceLock::new();
+
+/// Install the previous per-install key for the duration of a rotation.
+/// Idempotent; the first call wins, exactly as [`set_install_key`] does.
+///
+/// Returns `true` when this call installed it. A `false` means a previous key was
+/// already present, which in a single-shot `oz rekey` process means the rotation was
+/// already primed — not a failure. The key is never logged, printed or returned.
+pub fn set_previous_install_key(secret: [u8; 32]) -> bool {
+    PREVIOUS_INSTALL_KEY.set(secret).is_ok()
+}
+
+/// The previous per-install key installed into this process, if any.
+fn previous_install_key_from_process() -> Option<[u8; 32]> {
+    PREVIOUS_INSTALL_KEY.get().copied()
+}
+
+/// Whether a rotation is primed in this process — i.e. whether
+/// [`set_previous_install_key`] has installed an outgoing key.
+///
+/// A read-only diagnostic mirroring [`install_key_derivation_active`]: it reports
+/// which candidate list this process will build and never any key material.
+#[must_use]
+pub fn previous_install_key_derivation_active() -> bool {
+    previous_install_key_from_process().is_some()
 }
 
 /// Internal: decrypt with the first candidate key that authenticates.
