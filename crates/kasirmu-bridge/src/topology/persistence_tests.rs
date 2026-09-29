@@ -220,19 +220,36 @@ fn validate_warehouse_quota_free_tier_two_warehouses_rejected() {
 fn validate_warehouse_quota_plus_and_pro_are_also_zero() {
     use kasirmu_core::subscription::SubscriptionTier;
     // Store/Plus/Pro tiers keep every other workspace type, but not warehouses:
-    // the gate moved to Premium+ for all three together.
+    // the gate moved to Premium+ for all three together. Free is asserted in its
+    // own cases above; these three are the rest of the sub-Premium band.
     let nodes = vec![wh_node("n1")];
-    for tier in [
-        SubscriptionTier::OneTime,
-        SubscriptionTier::Plus,
-        SubscriptionTier::Pro,
-    ] {
+    for tier in [SubscriptionTier::Plus, SubscriptionTier::Pro] {
         let err = validate_warehouse_quota(&nodes, &tier).unwrap_err();
         assert!(
             format!("{err}").contains("limit 0"),
             "tier {tier:?} must cap at 0"
         );
     }
+}
+
+/// The legacy `OneTime` variant is gated exactly like the live sub-Premium tiers.
+///
+/// Separated from the case above rather than folded into its array, because
+/// `OneTime` carries `#[deprecated]` ("legacy perpetual license — kept only for
+/// database back-compat") and clippy's `-D warnings` lane refuses the reference.
+/// The assertion is still worth making — a row written before the Premium+ ruling
+/// can still hold this tier in the field, and the quota path must not let it
+/// through — so the deprecation is acknowledged here instead of avoided.
+#[test]
+#[allow(deprecated)]
+fn validate_warehouse_quota_legacy_one_time_is_also_zero() {
+    use kasirmu_core::subscription::SubscriptionTier;
+    let nodes = vec![wh_node("n1")];
+    let err = validate_warehouse_quota(&nodes, &SubscriptionTier::OneTime).unwrap_err();
+    assert!(
+        format!("{err}").contains("limit 0"),
+        "legacy OneTime must cap at 0"
+    );
 }
 
 #[test]
