@@ -730,14 +730,16 @@
       "label": "shell syntax",
       "status": "required",
       "_note": "Added 2026-09-29. A shell file that does not parse does not RUN, so every step inside it is skipped and nothing reports that; the pre-commit hook case is sharper, because a hook that cannot parse stops gating everything it was written to gate. sh -n parses without executing, so this is safe to run first, on a bare checkout, and cannot have side effects. Paid for itself on its first run: scripts/profile.sh line 151 read \"fi# -- Build and run command\", and since bash treats # as a comment only when it STARTS a word, \"fi#\" lexes as one token, the enclosing if never closed, and bash reported it at END OF FILE 65 lines away with every keyword, quote, brace and $( in the file balancing. Covers all first-party .sh repo-wide and excludes vendored trees.",
-      "runners": { "check.sh": ["shell syntax", "shell syntax self-test"] }
+      "runners": { "check.sh": ["shell syntax", "shell syntax self-test"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
       "id": "workflow-syntax",
       "label": "workflow syntax",
       "status": "required",
       "_note": "Added 2026-09-29, the shell gate's sibling. A .github/workflows/*.yml that is not valid YAML runs NO JOBS AT ALL: GitHub reports the workflow errored and executes none of them, so the failure presents as a green PR that stopped checking rather than a red one. Only release.yml had a syntax check before this (verify-release-workflow.py); dev-ci.yml, android.yml and website.yml had none. Also rejects three shapes that are valid YAML but invalid as workflows -- non-mapping top level, no jobs key, and jobs that is empty or a list -- because \"it parsed\" is the most misleading possible green. Refuses to report clean when it finds no workflows (exit 2). The attic is excluded deliberately: a retired .bak is never executed.",
-      "runners": { "check.sh": ["workflow syntax", "workflow syntax self-test"] }
+      "runners": { "check.sh": ["workflow syntax", "workflow syntax self-test"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
       "id": "selftests-wired",
