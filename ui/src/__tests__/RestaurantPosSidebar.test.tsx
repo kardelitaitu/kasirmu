@@ -553,7 +553,7 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(screen.getByText('TABLE 4')).toBeInTheDocument();
   });
 
-  it('renders left-aligned logo and right-aligned title and lines when logo is enabled', async () => {
+  it('renders logo in left column and centered title and lines in right column when logo is enabled', async () => {
     const user = userEvent.setup();
     await renderWithProviders(
       <RestaurantReceiptsScreen tablesEnabled={true} />,
