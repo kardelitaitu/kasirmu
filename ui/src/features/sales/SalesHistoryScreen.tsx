@@ -27,7 +27,7 @@ import { Badge } from '@/components/Badge';
 import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSwipe } from '@/hooks/useSwipe';
-import { l10nErrorMessage } from '@/utils/app-error';
+import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
@@ -578,11 +578,16 @@ export default function SalesHistoryScreen() {
         type: 'success',
       });
     } catch (err) {
-      setStampError(err instanceof Error ? err.message : String(err));
+      // ERR-10: the raw backend message used to go straight into this state and
+      // was then rendered inside the stamp modal, so a failed stamp showed the
+      // operator backend text instead of a mapped, localized sentence. The
+      // void path twelve lines up (:349) already used l10nErrorMessage; this
+      // arm and the pengganti toast below were the two that missed the sweep.
+      setStampError(l10nErrorMessage(err, l10n, 'sales-history-stamp-error'));
     } finally {
       setStamping(false);
     }
-  }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast]);
+  }, [detail, sessionToken, stampNsfp, stampKodeTransaksi, invalidateCache, load, addToast, l10n]);
 
   const handleCreatePengganti = useCallback(async () => {
     if (!detail || !sessionToken || !detail.fakturPajak) return;
@@ -598,13 +603,17 @@ export default function SalesHistoryScreen() {
       });
     } catch (err) {
       addToast({
-        message: err instanceof Error ? err.message : String(err),
+        // ERR-10: this arm used to interpolate the raw thrown message into the
+        // toast, putting backend text in front of the operator. plainErrorMessage
+        // maps a typed AppError to its user-safe sentence and falls back
+        // otherwise — the same normalizer the rest of the swept screens use.
+        message: plainErrorMessage(err, l10n.getString('sales-history-pengganti-error')),
         type: 'error',
       });
     } finally {
       setPenggantiLoading(false);
     }
-  }, [detail, sessionToken, invalidateCache, load, addToast]);
+  }, [detail, sessionToken, invalidateCache, load, addToast, l10n]);
 
   // ── Refund handlers ──────────────────────────────────────────
   const openRefund = useCallback(() => {

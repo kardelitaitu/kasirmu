@@ -317,6 +317,11 @@ sales-history-void-reason-placeholder =
     .placeholder = e.g. Customer cancellation
 sales-history-void-default-reason = Voided from sales history
 sales-history-void-error = Failed to void order
+# Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10: the
+# raw backend message used to be rendered here instead).
+sales-history-stamp-error = Failed to stamp the e-Faktur NSFP
+# Toast shown when creating a Faktur Pengganti fails.
+sales-history-pengganti-error = Failed to create the Faktur Pengganti
 
 # Sales History export
 sales-history-export-id = Sale ID

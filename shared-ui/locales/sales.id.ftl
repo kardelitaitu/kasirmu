@@ -283,6 +283,10 @@ sales-history-void-reason-placeholder =
     .placeholder = mis. Pembatalan pelanggan
 sales-history-void-default-reason = Dibatalkan dari riwayat penjualan
 sales-history-void-error = Gagal membatalkan pesanan
+# Shown inside the e-Faktur stamp modal when the NSFP write fails (ERR-10).
+sales-history-stamp-error = Gagal membubuhkan NSFP e-Faktur
+# Toast shown when creating a Faktur Pengganti fails.
+sales-history-pengganti-error = Gagal membuat Faktur Pengganti
 sales-history-export-id = ID Penjualan
 sales-history-export-date = Tanggal
 sales-history-export-total = Total
