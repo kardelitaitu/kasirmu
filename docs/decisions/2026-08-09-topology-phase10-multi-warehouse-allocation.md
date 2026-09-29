@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: ACCURATE — 0 findings, no repairs needed · Audited on branch 0.0.40. Clean pass, with one schema claim worth spelling out because the whole contract hangs on it. Allocation step 5 — "persist every location/quantity pair in `sales.deduction_locations` so refunds and voids restore the original sources" — is backed by a real column: `deduction_locations TEXT` at `crates/kasirmu-core/migrations/20260813_init.sql:618`, on the `sales` table, and it is the same column ADR-19's status record (audited earlier in this pass) names as the FIFO void/refund source, so the two records agree rather than competing. Step 4's "one SQLite transaction" is consistent with `TransactionBehavior::Immediate` guarding the deduction path in `crates/kasirmu-core/src/db/sales_lifecycle.rs` (`:180` among the call sites). The Verification bullet "All `db::sales::tests` pass (96 tests)" is still a LIVE filter path, not a stale one: `crates/kasirmu-core/src/db/sales.rs` declares `mod tests` wired to the sibling `sales_tests.rs` per the project convention, so `db::sales::tests` resolves — the 96 figure itself is a 2026-08-09 count and is left as the record of that run, since re-counting it now would be measuring a tree that has moved a lot since. The `stock-routing` relationship Phase 9 introduced and Phase 10 consumes is real in `crates/kasirmu-bridge/src/pos.rs` and `crates/kasirmu-bridge/src/pos_tests.rs`, and the "Dedicated limitation" about a single `deduction_location_id` on the cart API is a scope statement rather than a verifiable code fact, so it is left as written. · No stamp or footer existed on this file before this pass. -->
+
 # ADR: Topology Phase 10 — Multi-Warehouse Stock Allocation
 
 **Date:** 2026-08-09
@@ -33,3 +35,5 @@ The cart API still exposes one `deduction_location_id` for compatibility and the
 - All `db::sales::tests` pass (96 tests).
 - Desktop runtime-plan route-order test passes.
 - Rust formatting passes.
+
+> last audited 29-09-26 by docs-auditor
