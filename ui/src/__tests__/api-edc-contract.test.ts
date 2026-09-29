@@ -18,10 +18,30 @@ describe('edc.ts API contract', () => {
     vi.clearAllMocks();
   });
 
-  it('edcTerminalStatus calls the status command with no args', async () => {
+  // Updated 2026-09-29 (was: "calls the status command with no args"). The
+  // wrapper gained an optional `terminalId` in 8d3222d37 ("edc: implement
+  // multi-terminal binding routing and UI selection"), and that commit left this
+  // pin asserting the pre-multi-terminal shape — `toHaveBeenCalledWith('edc_terminal_status')`
+  // with ONE argument, while the wrapper now always passes an args object. The
+  // wrapper is right and the pin was stale: edc.ts's own header states the
+  // contract ("Omitted or null terminalId falls back to the default configured
+  // terminal"), and the Rust command takes `terminal_id: Option<String>`
+  // (commands/edc.rs:32), so an explicit undefined and an omitted property are
+  // the same request. Both arms are pinned below so neither reading can drift.
+  it('edcTerminalStatus defaults to the configured terminal when given no id', async () => {
     mockInvoke.mockResolvedValue({ status: 'ready' });
     await edcTerminalStatus();
-    expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status');
+    expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status', {
+      terminalId: undefined,
+    });
+  });
+
+  it('edcTerminalStatus forwards an explicit terminal id', async () => {
+    mockInvoke.mockResolvedValue({ status: 'ready' });
+    await edcTerminalStatus('term-2');
+    expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status', {
+      terminalId: 'term-2',
+    });
   });
 
   it('edcTerminalStatusScoped sends the session token (checkout pre-flight)', async () => {
@@ -29,6 +49,15 @@ describe('edc.ts API contract', () => {
     await edcTerminalStatusScoped('tok');
     expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status_scoped', {
       sessionToken: 'tok',
+    });
+  });
+
+  it('edcTerminalStatusScoped forwards the session token and an explicit id', async () => {
+    mockInvoke.mockResolvedValue({ status: 'ready' });
+    await edcTerminalStatusScoped('tok', 'term-2');
+    expect(mockInvoke).toHaveBeenCalledWith('edc_terminal_status_scoped', {
+      sessionToken: 'tok',
+      terminalId: 'term-2',
     });
   });
 
