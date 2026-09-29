@@ -136,7 +136,26 @@ mod debt;
 /// together and records the reason in docs/records/JOURNAL.md, which is what the ceiling
 /// pin asks of a RISE. The provenance is the point: this pass records what landed, it
 /// does not approve it.
-const REGISTERED_FLOOR: usize = 475;
+///
+/// The 475 -> 481 step, 2026-09-29. Six commands landed across two feature commits,
+/// and neither moved this floor nor the generated ledger, so both legs were red at
+/// HEAD:
+///   * `8d3222d37` (feat(edc): implement multi-terminal binding routing and UI
+///     selection) registered `edc::list_edc_terminals_scoped`,
+///     `edc::create_edc_terminal_scoped`, `edc::update_edc_terminal_scoped` and
+///     `edc::delete_edc_terminal_scoped` — the per-terminal CRUD pair behind the
+///     terminal picker.
+///   * `7e2ddcbe5` (feat(bridge): expose e-faktur stamping and pengganti endpoints)
+///     registered `history::stamp_faktur_pajak_scoped` and
+///     `history::create_faktur_pengganti_scoped` — the DJP e-Faktur write doors.
+///
+/// Unlike the 472 -> 475 step above, **all six arrive GATED** and therefore move no
+/// ceiling and no ledger row: `edc::*` carries `SETTINGS_READ`/`SETTINGS_EDIT` and
+/// `history::*` carries `SALES_PROCESS`, so the regeneration below rewrote only
+/// `REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows identical. That is why
+/// this step touches the floor alone: there is no new debt to record, only new
+/// registrations to count. Provenance recorded in docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 481;
 /// How far the GENERATED ledger's total may lag the tree before the ledger is overdue a
 /// regeneration. It is not slack on this floor — the floor is measured, not padded — and
 /// the hard pin on the ledger's own rows is

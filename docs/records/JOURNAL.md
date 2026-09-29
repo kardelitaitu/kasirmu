@@ -13196,9 +13196,41 @@ After adding `.optional()?`, the test passed cleanly along with all 12 shortfall
 
 **Commits:** this entry + the fix land in the pathspec commit below.
 
+### 2026-09-29 — Registration ratchet: floor 475 -> 481 for the EDC CRUD and e-Faktur doors
 
+**Problem:** Two feature commits registered six desktop commands and moved neither
+`REGISTERED_FLOOR` nor the generated debt ledger, so
+`drift_pin_registration_floor_is_met` and the ledger's own total were red at HEAD. The
+floor leg reads the tree on purpose — the only way it can fail is that names were
+registered — which is exactly what happened.
 
+**What landed:**
 
+- `8d3222d37` (feat(edc): implement multi-terminal binding routing and UI selection)
+  registered `edc::list_edc_terminals_scoped`, `edc::create_edc_terminal_scoped`,
+  `edc::update_edc_terminal_scoped`, `edc::delete_edc_terminal_scoped`.
+- `7e2ddcbe5` (feat(bridge): expose e-faktur stamping and pengganti endpoints)
+  registered `history::stamp_faktur_pajak_scoped`, `history::create_faktur_pengganti_scoped`.
+
+**All six arrive GATED**, which is the difference from the 472 -> 475 step: `edc::*`
+carries `SETTINGS_READ`/`SETTINGS_EDIT` and `history::*` carries `SALES_PROCESS`. So no
+ceiling and no ledger row moved — regenerating the ledger rewrote only
+`REGISTERED_TOTAL` (475 -> 481) and left all 68 debt rows byte-identical. This pass
+records what landed; it does not approve it.
+
+**Also fixed in the same pass:** four `gate_audit` census pins had drifted from source
+and one had never matched. Re-measured, not copied from the red message — desktop `edc`
+3 -> 8 calls and +`SETTINGS_EDIT`/`SETTINGS_READ`; desktop `history` 5 -> 7
+(+`SALES_PROCESS`). Tablet `history` 5 -> 7 (+`SALES_PROCESS`); tablet `categories`
+count 1 -> 3 with `PRODUCTS_READ` deliberately NOT added (its only occurrence is prose
+the census skips); tablet `tax` count 1 -> 8. The `rust-doc` gate was red on seven
+intra-doc errors across five crates and is now green.
+
+**Verified:** Reran the generator (`KASIRMU_REGENERATE_GATE_LEDGER=1`) rather than
+typing rows, as its header requires; 68 rows / 481 registered. `cargo test -p kasirmu-app
+--lib commands::registration_gate_tests` → 14 passed. `cargo test -p kasirmu-app --test
+gate_audit` → 3 passed. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps` →
+clean. `cargo fmt --all --check` and workspace clippy `-D warnings` → clean.
 
 
 
