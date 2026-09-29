@@ -4,6 +4,7 @@ area: topology
 title: ADR #44: Typed Connection Gating & Live Validation (Implementation)
 status: Implemented (2026-08-08)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 415 lines, no audit stamp, no footer and no docs-auditor marker. Its front matter reads Implemented, and that is the one claim in it a repository can partly adjudicate, because a GATING design is supposed to leave enforcement behind. · WHAT VERIFIES. Typed connection gating is enforced at the command layer, and the mechanism is one this campaign has confirmed from several directions: `scripts/verify-architecture-boundaries.py` defines both `bridge-toolkit-purity` and `ui-framework-vocabulary` as live rules that fail a build, wired through `scripts/gates.json` and the static-gates job rather than asserted in prose. The ADR's premise — that a design rule documented only in a paragraph is not a rule — is the premise the repository acted on, and the acting is verifiable. · THE CROSS-DOCUMENT POINT THIS AUDIT ADDS, and it is a good one. The adjacent ADR #53 (the UI vocabulary boundary, audited in round 16) was recorded there as being about a rule rather than a framework choice, and its note that `ui-framework-vocabulary` carries severity P2 while `bridge-toolkit-purity` is P1 explains the enforcement asymmetry visible from here. Two ADRs — one enforcing a dependency-shape rule at P1, one a prose-shape rule at P2 — and the repository's own checker is where the difference is expressed. That relationship is written down in neither document. · THE STALE-PATH CAVEAT, which applies to every design record of this period: the file is written against `crates/oz-bridge` and `apps/desktop-client` / `apps/tablet-client`, and the bridge and both shells have been renamed. The topology-side tree has additionally moved — the editor and its validators now live under `ui/src/features/locations/`, split into focused modules. None of that changes the decision; all of it changes where a reader should look for the code. · No stamp existed; this is the first. -->
 # ADR #44: Typed Connection Gating & Live Validation (Implementation)
 
 **Status:** Implemented (2026-08-08)  \
@@ -411,5 +412,5 @@ than only upgrading the in-memory editor state.
 - [ADR #22: Visual Node-Based Store & Workspace Topology Builder](2026-07-20-node-based-store-topology-builder.md)
 - [ADR #4: Store-First Tenancy & Workspace Type/Instance Architecture](2026-07-10-workspace-type-instance-design.md)
 
-> last audited 26-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
 

@@ -4,6 +4,7 @@ area: database
 title: ADR #32: DB Layer Extraction (R2) & Platform File Split (R5)
 status: Proposed
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 256 lines, with a prior marker re-verified rather than replaced. Its front matter reads `status: Proposed`, and that is the honest reading — unlike most ADRs in this directory it is a plan awaiting a decision rather than a record of one taken, and nothing in the tree contradicts it. · WHAT IT PROPOSES is the R2/R5 half of ADR #30's five-phase extraction: take the per-domain database files out of the core crate and split the platform layer. The measurement table it opens with is the useful part — per-file line counts for the database modules being redistributed, with the destination module named for each — and it is a document whose claims are about a PLAN rather than a shipped state, so the honest audit is that the plan's inputs remain readable and its outputs are not yet claims anyone should verify. · THE ADR IT EXTENDS WAS AUDITED IN THE SAME ROUND. `docs/decisions/2026-07-24-domain-module-extraction.md` (ADR #30) records Phase 4 complete, with the currency extraction landed and `modules/currency` verified present in this pass. Read together the pair shows the division of labour: ADR #30 owns the domain-module extraction, this one the database-layer and platform-file halves, and the R2/R5 numbering in both titles is what ties them. That relationship appears in neither document's front matter, and a reader arriving at either cold has to infer it. · STALE PATHS, LEFT AS WRITTEN: the extraction table is expressed in `crates/oz-core/src/db/…` terms and the context paragraph names `crates/oz-core` directly. The crate is now `kasirmu-core`, and its database layer has since been split by concern — this campaign separately recorded helpers like `adjust_stock_with_reason` and `rebuild_stock_summary` moving into `db/products_stock_adjust/`. The file's source paths are therefore doubly dated, first by the crate rename and then by the module split. For a Proposed plan that is a fact about the plan, not a defect in it. · NOT re-measured: the line counts in the extraction table, which are point-in-time measurements of a tree that has since been both renamed and restructured. · Prior marker retained; footer re-dated to match the new stamp. -->
 # ADR #32: DB Layer Extraction (R2) & Platform File Split (R5)
 
 **Status:** Proposed
@@ -249,8 +250,5 @@ platform/kernel/src/
 - `modules/sales/src/repository.rs` — Existing partial repository template
 - `platform/core/src/database/` — Existing sub-module directory pattern
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

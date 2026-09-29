@@ -4,8 +4,9 @@ area: module-system
 title: ADR #30: Domain Module Extraction & oz-core Decomposition
 status: Accepted — Phase 4 (Currency) Complete (2026-07-25)
 ---
-<!-- Audit stamp: 2026-07-24 · Hermes-Agent · status: ACTIVE · ADR #30: Domain Module Extraction & oz-core Decomposition -->
+<!-- Superseded audit marker (2026-07-24 · Hermes-Agent, body kept verbatim) · retained · status: ACTIVE · ADR #30: Domain Module Extraction & oz-core Decomposition -->
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and its Phase 4 completion claim is verifiable rather than merely asserted. The status line says Phase 4 (Currency) Complete, and the body records what moved: `ExchangeRateRow`, `CurrencyRepository` and `CurrencyError` relocated to `modules/currency`. That module exists, with a real `src/lib.rs`, alongside `modules/sales` — so the extraction this ADR set out to do produced the structure it specified, and the two crates this campaign has leaned on most heavily (`modules/currency` for the statutory-rounding resolver chain, `modules/sales` for the deduction model) are both products of it. · THE 3-TIER INTERNAL STRUCTURE IT MANDATES is the part that most often degrades in practice, and it is worth checking whether the modules actually follow it rather than assuming: the spec requires `models/`, `repositories/`, `services/` and `lib.rs` per module. Whether each module complies to the letter is a code-shape question this pass did not walk module by module — recorded as the limit rather than implied as verified. What IS verified is that the extraction targets named in the five phases (`modules/sales`, `modules/inventory`, `modules/crm`, `modules/loyalty`, and the finance group) exist as modules. · THE 5-PHASE PLAN AND ITS STATED CONSTRAINT are the durable part, and the constraint was the thoughtful choice: extraction proceeds in vertical slices specifically to hold `cargo test --workspace` at 100% and avoid breaking IPC contracts mid-migration. A refactor this size is usually done by moving code and fixing the fallout; sequencing it so the suite never goes red is a different discipline, and it is what makes a record like this safe to act from later. · PRE-RESTRUCTURE PATHS LEFT AS WRITTEN: the body is written throughout against `crates/oz-core` and `apps/desktop-client` / `apps/tablet-client`, and its tag list includes `oz-core`. Those are the names the decision was recorded under; the modules it produced are addressed by their current names in every document this campaign has audited since. · Prior stamp retained; footer re-dated. -->
 # ADR #30: Domain Module Extraction & oz-core Decomposition
 
 **Status:** Accepted — Phase 4 (Currency) Complete (2026-07-25)  
@@ -109,8 +110,5 @@ To maintain 100% test suite pass rates (`cargo test --workspace`) and non-breaki
 - [ARCHITECTURE.md](../../ARCHITECTURE.md) — Target architecture specification
 - [ADR #1: Module System Design](2026-01-15-module-system-design.md)
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 
