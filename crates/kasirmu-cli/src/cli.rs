@@ -103,6 +103,9 @@ pub enum Command {
     /// Report (read-only) where stock_summary disagrees with the stock_movements ledger.
     #[command(long_about = crate::commands::stock_variance::LONG_HELP)]
     StockVariance(StockVarianceArgs),
+    /// Rotate the per-install at-rest key and re-encrypt every row sealed under it.
+    #[command(long_about = crate::commands::rekey::LONG_HELP.as_str())]
+    Rekey(RekeyArgs),
 }
 
 #[derive(Debug, Args)]
@@ -137,6 +140,14 @@ pub struct StockVarianceArgs {
     /// Maximum rows to return. The report's hard ceiling is 1000.
     #[arg(long, default_value = "100")]
     pub limit: i64,
+}
+
+#[derive(Debug, Args)]
+pub struct RekeyArgs {
+    /// Perform the rotation. Without this flag the command only reports what is
+    /// in scope and touches neither the keychain nor a row.
+    #[arg(long)]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Args)]

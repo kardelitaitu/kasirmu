@@ -18,6 +18,12 @@ workspace = true
 [dependencies]
 foundation = { workspace = true }
 kasirmu-core = { workspace = true }
+# `oz rekey` (C1 slice S2c) is the one command that touches the OS keychain: the
+# per-install at-rest key lives there and nowhere else. Deliberately NOT
+# `kasirmu-crypto`: that crate is already reachable through the full re-export at
+# `kasirmu_core::crypto`, which is how every other lane in this crate reaches it,
+# so a second edge would only add a way for the two to diverge.
+kasirmu-security = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 clap = { workspace = true }

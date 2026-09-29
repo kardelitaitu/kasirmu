@@ -8,7 +8,7 @@ next: none | perf: N/A
 //!
 //! Subcommand handlers live in per-family modules (`db`, `backup`,
 //! `catalog`, `product`, `sale`, `customer`, `user`, `kasirpkg`,
-//! `credential_deltas`, `stock_variance`); this
+//! `credential_deltas`, `stock_variance`, `rekey`); this
 //! module owns database opening, the clap dispatch entry point, and the
 //! re-exports that keep the sibling `commands_tests.rs` family-wide.
 
@@ -27,6 +27,7 @@ pub(crate) mod customer;
 pub(crate) mod db;
 pub(crate) mod kasirpkg;
 pub(crate) mod product;
+pub(crate) mod rekey;
 pub(crate) mod sale;
 pub(crate) mod stock_variance;
 pub(crate) mod user;
@@ -41,6 +42,7 @@ pub(crate) use customer::*;
 pub(crate) use db::*;
 pub(crate) use kasirpkg::*;
 pub(crate) use product::*;
+pub(crate) use rekey::*;
 pub(crate) use sale::*;
 pub(crate) use stock_variance::*;
 pub(crate) use user::*;
@@ -91,6 +93,34 @@ pub(crate) fn open_store_for_credential_deltas(path: &str) -> Result<Connection>
     }
     open_db(path)
 }
+
+/// Open the store for `rekey` ONLY, refusing a `--db` path this command would
+/// have to CREATE before `open_db` gets the chance to do it.
+///
+/// The same footgun as `credential-deltas`, with a sharper edge: `--db` defaults
+/// to ./kasir.db in the CURRENT directory and `Connection::open` CREATES a
+/// missing path, so a mistyped database would be opened as an empty file, the
+/// rotation would find nothing to sweep, and the command would report a
+/// successful rotation of a store it had just made. A rotation is a write, so
+/// there is no "merely misleading report" version of this failure.
+///
+/// Scoped to this one subcommand for the same reason it is scoped there:
+/// `migrate`, `init-db` and `restore` legitimately PROVISION a database on first
+/// run, so pushing this check into the shared `open_db` would convert a
+/// one-command footgun into a first-run outage for the rest of the tool.
+pub(crate) fn open_store_for_rekey(path: &str) -> Result<Connection> {
+    if !std::path::Path::new(path).is_file() {
+        anyhow::bail!(
+            "kasir rekey never opens a store it would have to create: no database exists at \
+             {path}. --db defaults to ./kasir.db in the CURRENT directory, so a mistyped or \
+             relative path lands here as a file that is not there, and rotating a store that was \
+             just created would report success against nothing. If you meant to rotate a live \
+             store, take a copy first and run against the copy: kasir backup --output <copy.db>, \
+             then kasir rekey --db <copy.db> --confirm. Nothing was created, read, or rotated."
+        );
+    }
+    open_db(path)
+}
 /// Parse CLI arguments and dispatch to the matching subcommand.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -104,6 +134,10 @@ pub fn run() -> Result<()> {
         // A variance report over a file the command just created would read as a
         // clean ledger. Same footgun, same guard — see open_store_for_stock_variance.
         Some(Command::StockVariance(_)) => open_store_for_stock_variance(&cli.db)?,
+        // A rotation is a WRITE: rotating a file this command just created would
+        // report success against nothing. Same footgun, same guard — see
+        // open_store_for_rekey.
+        Some(Command::Rekey(_)) => open_store_for_rekey(&cli.db)?,
         _ => open_db(&cli.db)?,
     };
 
@@ -132,6 +166,7 @@ pub fn run() -> Result<()> {
         Some(Command::SeedDemo(args)) => run_seed_demo(&conn, &args),
         Some(Command::CredentialDeltas(args)) => run_credential_deltas(&conn, &args),
         Some(Command::StockVariance(args)) => run_stock_variance(&conn, &args),
+        Some(Command::Rekey(args)) => run_rekey(&conn, &args),
         None => {
             let mut cmd = Cli::command();
             cmd.print_help()?;
