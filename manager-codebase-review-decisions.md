@@ -1,9 +1,9 @@
-# Owner Decisions - D1 to D13
+# Owner Decisions - D1 to D14
 
 **Date:** 2026-09-24 (rulings); status surface reviewed 2026-09-29. **Version:** 0.0.40.
 **Status:** D1-D11 are ruled — none is open. D10 is *partially* open by
 design: its A-vs-B choice is a commercial call the manager explicitly declined to make
-("it touches pricing copy, which I cannot see from the code"). **D12 and D13 were added
+("it touches pricing copy, which I cannot see from the code"). **D12, D13 and D14 were added
 2026-09-29 and ARE open — they are asks, not rulings, and each blocks a named item.**
 
 Companion to manager-codebase-review.md and manager-codebase-review-checklist.md. Each decision was analysed by a worker that traced the code before forming a view; every option below is priced against facts cited as file:line, and the recommendation is the manager's, not the analyst's. Three of these analyses **changed the review's own advice**, and those corrections are recorded at the end.
@@ -25,6 +25,7 @@ Companion to manager-codebase-review.md and manager-codebase-review-checklist.md
 | D9 | Desktop tenancy | **The desktop store DB is single-tenant by construction; the cloud applies the tenant at ingest** - do not thread a tenant into the terminal writers | S-M at the ingest boundary | High - the cloud quota detector scores a paying tenant 0 locations and the popularity roll-up reads nothing, both silently |
 | **D12** | **C35: build the terminal-tenant parameterization, or drop it?** | **Drop it, or re-scope to D9's ingest boundary** — C35's scheduled shape is the one D9 rules out, and it would make the app refuse to boot | XS to decide; S-M if re-scoped to ingest | **High — OPEN, and the item currently mis-cites D9 as having decided *for* it** |
 | **D13** | **Inert-but-intended surface: delete or keep?** | **Per-surface ruling needed** — `register_scale`, the syslog/eventlog/file sinks and `kasirmu-media` reach nothing, but each has a different reason and one is a documented Phase-2 seam | S per surface | Medium — OPEN, blocks C29 |
+| **D14** | **C14(b): split the local-API admin key from the signing secret, and build the surface it needs?** | **A or C, never B** — splitting without the operator surface is inert AND doubles the plaintext copies | M–L if C | Medium — OPEN, blocks C14(b) |
 
 ---
 
@@ -291,7 +292,7 @@ Everything above was established read-only: no build, no test execution, no depl
 
 ---
 
-# Open asks - D12 to D13
+# Open asks - D12 to D14
 
 Added 2026-09-29. **These are asks, not rulings** — each names one decision that is genuinely the owner's to make, and each currently blocks a named checklist item. They are recorded here rather than only in a report so the ask survives the session that raised it.
 
@@ -325,3 +326,21 @@ Added 2026-09-29. **These are asks, not rulings** — each names one decision th
 | **`kasirmu-media`** | **STILL PRESENT — zero code dependents** | The item's "dummy hole" claim was **FALSE** and is corrected in the checklist: this is debt, not a contradiction. **The workspace-`exclude` remedy is also factually wrong** — the manifest inherits `workspace = true` for six keys, so excluding it without deleting the directory fails outright. The real removal is ~11 edit sites across 7 files (root `Cargo.toml:63`, the crate directory, `deny.toml:142-146`, three Dockerfile lines, `ARCHITECTURE.md:405`) |
 
 **Recommendation: one ruling covers the remaining two only if the answer is "keep inert surface".** If it is "delete", the order is the two logging sinks first (self-contained, but remember the doctest and the test-pinned FILE variants are a different group), then `kasirmu-media` (the multi-file one, and the one where a documented Phase-2 seam means deleting it is a statement that Phase 2 is not happening). **Note also that C29's own "(13)" count matches nothing** — the item names 7 surfaces and `manager-codebase-review.md` §13's table has 10 rows, so any ruling should also settle which list is authoritative.
+
+## D14 - C14(b): split the local-API admin key from the signing secret? And build the surface it needs?
+
+**Why this is here.** C14(b) is one of the two clauses of C14 that are still open, and it is **not** an engineering blocker — it is a product-surface decision. The finding is real and confirmed at source this pass: `crates/kasirmu-local-api/src/lib.rs:431` and `:434` clone **the same string** into two capability tiers (`admin_key: Some(secret.clone())`, `api_secret: secret.clone()`), so possessing either grants the other. `api_secret` is the HS256 signing key that validates every minted token; `admin_key` is the operator header checked across the admin routes. Those are different authorities over one secret.
+
+**The trap, which is why this needs a ruling rather than a patch.** A technically safe migration *is* expressible — keep `api_secret` on the existing `local_api.secret` so already-minted JWTs keep verifying, add `local_api.admin_key`, seed it from the old secret on first run — and **it buys nothing**: every existing install would hold `admin_key == api_secret` forever, so the split is inert until the two can actually diverge. Worse, a half-split puts a **second plaintext copy of the same secret** into `settings.value`, doubling the at-rest and `.backup.db` exposure (verified this pass: no `local_api.admin_key` or `SETTINGS_ADMIN_KEY` exists anywhere in the tree, so there is still exactly one key).
+
+So (b) is only worth doing **together with** the operator surface that lets the keys diverge — a new IPC command, a Settings control, and locale strings. That surface does not exist, which makes this a product decision, not a refactor.
+
+**A second, sharper question the implementer must not answer by accident: what does the existing "Rotate secret" button rotate?** One button (`ui/src/features/settings/sections/LocalApiSection.tsx:298-311`) today rotates both roles, and its warning says it "invalidates every minted token immediately and changes the operator key". With two keys it must either rotate both (buying nothing) or one (a silent behaviour change leaving the other un-rotatable). **And an invariant that must be written down before any code: the SIGNING key keeps the old value and the NEW key is the admin key.** Reversed, every minted token dies on rotation.
+
+| Option | What it means | Pros | Cons |
+|---|---|---|---|
+| **A. Leave it** | Record the conflation as accepted for a loopback-only, default-off, zero-IPC surface | Zero risk; matches every shipped configuration; the reachability is genuinely near-nil (binds `127.0.0.1`, empty CORS, requires `local_api.enabled == "1"`, and is exposed through no Tauri command) | One secret still grants two authorities, and the whole-file `.backup.db` copy carries it in plaintext |
+| **B. Split now, no surface** | Add `local_api.admin_key` and seed it from the old secret | Mechanically safe; already-minted tokens keep verifying | **The split is inert forever** on existing installs, and it adds a second plaintext copy of the same secret — strictly worse until the keys can differ |
+| **C. Split WITH the operator surface** | Add the key, the seed migration, an IPC command, a Settings control and strings, and decide the rotation semantics | The only option that makes the split mean anything; closes (b) properly | The largest of the three; needs the two questions above answered first |
+
+**Recommendation: A or C — not B, which is the one option that costs exposure and buys nothing.** I am not choosing between A and C unilaterally, because C commits to building a Settings surface and to a rotation-semantics change, and both are product calls. **Separately: C14(a) is NOT part of this ask** — it is one-way dependent on C1's S2b landing and is tracked there.
