@@ -21,6 +21,14 @@ A .yml.bak contributes nothing, because GitHub only reads *.yml. Docs may still 
 retirement, so a line already hedged in the right direction is not a finding. Suppress
 deliberate historical text with  <!-- ci-claim: ok: reason -->  on the line or above it.
 
+WHAT IS NOT A FINDING, and each of these was a false positive here before it was a rule:
+  * a real STEP name. A doc saying the ci-docs-drift job's `drift` step "ends on a PASS
+    assertion" describes a step, and grading that name against the JOB set invented a
+    phantom job. Job-claims and step-claims are separate assertions and are tested apart.
+  * a manager-journal record. manager-journal-<topic>.md is a DATED RECORD whose purpose is
+    often to name something that is broken; grading it as current guidance produces a
+    finding against the thing that correctly reported the problem.
+
 Usage: check-ci-claims.py [--verbose] [--self-test]
 Exit 0 clean, 1 findings, 2 if no live workflow or job could be read - a CI checker that
 sees nothing must never report clean.
