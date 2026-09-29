@@ -469,6 +469,7 @@ type FamilyDecrypt = fn(&str) -> Result<String, kasirmu_core::crypto::CryptoErro
 ///     sync_terminal_secret  encrypt_sync_terminal_secret  -> SYNC_TERMINAL_SECRET
 ///     pg_sync.password      encrypt_pg_sync_password      -> PG_SYNC_PASSWORD
 ///     rate_sync.api_key     encrypt_rate_api_key          -> RATE_SYNC_API_KEY
+///     local_api.secret      encrypt_local_api_secret      -> LOCAL_API_SECRET
 ///
 ///   PORTABLE, asked here as of this commit (see why below):
 ///     lan_server.psk        encrypt_lan_psk               -> LAN_SERVER_PSK
@@ -497,6 +498,17 @@ type FamilyDecrypt = fn(&str) -> Result<String, kasirmu_core::crypto::CryptoErro
 /// tell, which is precisely what it cannot do for a machine-bound row — the reason
 /// the two cases get different forms, not the same one.
 ///
+/// local_api.secret is ASKED as of C14(a), and it too used to be listed elsewhere for
+/// a reason that was wrong, so the move is recorded rather than quietly made. It sat in
+/// `sealed_in_another_lane`, described as "sealed by the bridge". Neither half held: the
+/// bridge never sealed it (kasirmu-local-api wrote it with a bare `Settings::set`, so it
+/// sat in cleartext), and the Indeterminate answer that produced was a FALSE NEGATIVE —
+/// a real cleartext credential that never reached the cleartext headline, because
+/// Indeterminate is not cleartext by construction. C14(a) then gave the key a PORTABLE
+/// family of its own (`encrypt_local_api_secret`, static-derived, no machine binding),
+/// which this process CAN open, so it belongs here. Its legacy form needs one extra
+/// guard the other families do not: see `legacy_plaintext_shape`.
+///
 /// SEPARATED BY KEY, NOT BY BYTES, which is load-bearing for how the form column is
 /// read: every portable family uses the SAME envelope, base64url(nonce || ciphertext
 /// || tag) with no prefix, no version and no key id (crates/kasirmu-crypto/src/lib.rs:13,
@@ -515,27 +527,35 @@ fn credential_family(key: &str) -> Option<FamilyDecrypt> {
         keys::PG_SYNC_PASSWORD => Some(kasirmu_core::crypto::decrypt_pg_sync_password),
         keys::RATE_SYNC_API_KEY => Some(kasirmu_core::crypto::decrypt_rate_api_key),
         keys::LAN_SERVER_PSK => Some(kasirmu_core::crypto::decrypt_lan_psk),
+        keys::LOCAL_API_SECRET => Some(kasirmu_core::crypto::decrypt_local_api_secret),
         _ => None,
     }
 }
 
-/// Keys this build cannot seal but ANOTHER lane can with a key of its own:
-/// local_api.secret is sealed by the bridge, and smtp_config is a JSON envelope
-/// whose password FIELD is sealed while the rest of the row is in the clear.
-/// Neither is openable from here, so both answer Indeterminate rather than a
-/// guess about their bytes. Machine-bound families are NOT this predicate's
-/// business: they answer MachineBoundUntested before classification gets here.
-/// The settings keys whose family needs the installation fingerprint, read off
-/// the enumeration on credential_family: api_key is the live one, smtp_password
-/// has no caller left in the tree.
+/// Keys whose family needs the installation fingerprint, read off the
+/// MACHINE-BOUND block of the enumeration on `credential_family`: `api_key` is
+/// the live one, `smtp_password` has no caller left in the tree. The value is
+/// never looked at — the key alone decides, because this tool must not read the
+/// fingerprint in order to open tenant credentials.
 fn sealed_by_machine_bound_family(key: &str) -> bool {
     use kasirmu_core::settings::keys;
     matches!(key, keys::LICENSE_API_KEY)
 }
 
+/// Keys this build cannot open as a whole row even though a family seals PART of
+/// them: smtp_config is a JSON envelope whose password FIELD is sealed while the
+/// rest of the row is in the clear, so neither "encrypted" nor "cleartext"
+/// describes the row and it answers Indeterminate rather than a guess.
+///
+/// `local_api.secret` used to be listed here too, described as "sealed by the
+/// bridge". That claim was wrong twice over and is recorded rather than quietly
+/// deleted: the bridge never sealed it (so it sat in cleartext), and the
+/// Indeterminate answer it produced hid that cleartext from the headline — a false
+/// negative on a live credential. C14(a) gave the key a portable family this
+/// process can open, so it moved to `credential_family`, where it is actually asked.
 fn sealed_in_another_lane(key: &str) -> bool {
     use kasirmu_core::settings::keys;
-    matches!(key, keys::LOCAL_API_SECRET | keys::SMTP_CONFIG)
+    matches!(key, keys::SMTP_CONFIG)
 }
 
 /// A local restatement of the PRIVATE kasirmu_crypto::looks_like_ciphertext, copied
@@ -548,6 +568,28 @@ fn looks_like_ciphertext_shape(value: &str) -> bool {
     const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=_-";
     // A 12-byte nonce plus a 16-byte tag is 38 base64 characters at minimum.
     value.len() >= 38 && value.chars().all(|c| ALPHABET.contains(c))
+}
+
+/// The ONE family whose LEGACY plaintext is itself base64-shaped, so the shape test
+/// above would label it INVALID-CIPHERTEXT and drop it out of the cleartext headline —
+/// a false negative on a real credential, the exact defect this census exists to
+/// prevent. `local_api.secret` is generated as 32 random bytes hex-encoded
+/// (kasirmu-local-api/src/lib.rs `new_secret`), so its pre-C14(a) plaintext is exactly
+/// 64 lowercase hex characters: length >= 38 and every character inside the base64
+/// alphabet, which passes `looks_like_ciphertext_shape`. A real ciphertext for this
+/// family is base64url of nonce(12)||payload||tag(16) — for a 64-char plaintext that is
+/// 124 chars and NOT all-hex — so the two forms are disjoint on BOTH length and
+/// alphabet. This positive test is what keeps a legacy row counted; the family's own
+/// decrypt deliberately does not pass legacy plaintext through (kasirmu-crypto/src/lib.rs
+/// `decrypt_local_api_secret`), because the crate's shared shape test cannot tell the
+/// two apart either.
+fn legacy_plaintext_shape(key: &str, value: &str) -> bool {
+    use kasirmu_core::settings::keys;
+    key == keys::LOCAL_API_SECRET
+        && value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Classify one stored value. It reads the value and returns only a form:
@@ -581,6 +623,9 @@ fn classify_stored_value(key: &str, value: &str) -> StoredForm {
     }
     match decrypt(value) {
         Ok(_) => StoredForm::Encrypted,
+        // Before the shape test, because for this one family the legacy plaintext
+        // IS base64-shaped and would otherwise be misfiled as INVALID.
+        Err(_) if legacy_plaintext_shape(key, value) => StoredForm::LegacyPlaintext,
         Err(_) if looks_like_ciphertext_shape(value) => StoredForm::Invalid,
         Err(_) => StoredForm::LegacyPlaintext,
     }
