@@ -11,7 +11,7 @@
 // is hovered the mask fades out and the coloured logo appears.
 //
 // macOS renders the Apple silhouette filled with `currentColor`.
-// Linux renders Tux the penguin.
+// Linux renders Tux the penguin (monochrome by default, full color on hover).
 // iOS stays as a hand-drawn stroke-only (outline) SVG with `currentColor`.
 import windowsLogo from '../assets/logo-os-windows.svg?url';
 import androidLogo from '../assets/logo-os-android.svg?url';
@@ -124,7 +124,7 @@ const applePath =
         <svg
           viewBox="0 0 16 16"
           fill="none"
-          class={className}
+          class:list={[className, 'grayscale transition-all duration-200 group-hover:grayscale-0']}
           aria-hidden="true"
         >
           <path fill="#202020" d="M13.338 12.033c-.1-.112-.146-.319-.197-.54-.05-.22-.107-.457-.288-.61v-.001a.8.8 0 0 0-.223-.134c.252-.745.153-1.487-.1-2.157-.312-.823-.855-1.54-1.27-2.03-.464-.586-.918-1.142-.91-1.963.014-1.254.138-3.579-2.068-3.582q-.135 0-.28.012c-2.466.198-1.812 2.803-1.849 3.675-.045.638-.174 1.14-.613 1.764-.515.613-1.24 1.604-1.584 2.637-.162.487-.24.984-.168 1.454a1 1 0 0 0-.064.063c-.151.161-.263.357-.388.489-.116.116-.282.16-.464.225-.183.066-.383.162-.504.395v.001a.7.7 0 0 0-.077.339c0 .108.016.217.032.322.034.22.068.427.023.567-.144.395-.163.667-.061.865.102.199.31.286.547.335.473.1 1.114.075 1.619.342l.043-.082-.043.082c.54.283 1.089.383 1.526.284a.99.99 0 0 0 .706-.552c.342-.002.717-.146 1.318-.18.408-.032.918.145 1.503.113a.8.8 0 0 0 .068.183l.001.001c.227.455.65.662 1.1.627s.928-.301 1.315-.762l-.07-.06.07.06c.37-.448.982-.633 1.388-.878.203-.123.368-.276.38-.499s-.118-.471-.418-.805" />
