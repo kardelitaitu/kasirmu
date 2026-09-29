@@ -1873,38 +1873,46 @@ in this commit:
 
 | | count |
 |---|---|
-| total findings | **3,669** |
-| documentation prose | **2,917** (79%) — `missing_errors_doc` 1,723, `doc_markdown` 796, `must_use_candidate` 390, `missing_panics_doc` 8 |
-| real | **752** |
-| — auto-fixable (clippy's own `MachineApplicable`) | **383** |
-| — needs judgement | **369** |
+| total findings | **3,439** |
+| documentation prose | **2,702** (79%) — `missing_errors_doc` 1,556, `doc_markdown` 772, `must_use_candidate` 368, `missing_panics_doc` 6 |
+| real | **737** |
+| — auto-fixable (clippy's own `MachineApplicable`) | **380** |
+| — needs judgement | **357** |
 
-The old two-crate figure of 2,494 was low by ~1,300, and it was never a per-crate number: the
+**Scope trap, and it is worth more than the number itself.** A lint flag placed after the `--`
+separator applies to **every unit in the build graph**, not just the crate named by `-p`. The
+first run of this measurement reported 3,669, which silently included `platform-core` (187),
+`modules-currency` (24) and `kasirmu-crypto` (19). The figures above are filtered to
+`crates/kasirmu-core/` by file path. **Filter by path — the raw total is not the crate's.**
+
+The old two-crate figure of 2,494 was low by ~950, and it was never a per-crate number: the
 grouped summary clippy prints **undercounts**, the same effect recorded above at 195-vs-220.
-**3,669 is the number to plan against.**
+**3,439 is the number to plan against.**
 
-Three groups inside the 369 need a ruling rather than an edit:
+Three groups inside the 357 need a ruling rather than an edit:
 
 - **`too_many_lines` — 61.** Every site is a function to split, and in `kasirmu-core` those are
   money and DB paths. This is refactoring with real risk, not lint tidying.
-- **`unused_self` 18 + `needless_pass_by_value` 21 + `ref_option` 2 — 41 sites where the
-  suggested fix changes a PUBLIC SIGNATURE.** `kasirmu-core` is depended on by most of the
-  workspace, so each one ripples; these are the sites a later change can silently invalidate.
-- **`similar_names` 17 and `unreadable_literal` 34** — plausibly deliberate here (money in
-  minor units). Separately, `wildcard_imports` 16 is *auto-fixable but must not be applied
-  blind*: those sites are `use super::*` in the extracted test files, which is the COR-33
+- **`unused_self` 18 + `needless_pass_by_value` 20 + `ref_option` 2 — 40 findings across 20
+  unique sites, where the suggested fix changes a PUBLIC SIGNATURE.** `kasirmu-core` is depended
+  on by most of the workspace, so each one ripples; they are also the sites a later change can
+  silently invalidate, which is why they go first.
+- **`similar_names` 17 and `unreadable_literal` 34** — plausibly deliberate here (money in minor
+  units). Separately, `wildcard_imports` 16 is *auto-fixable but must not be applied blind*:
+  those sites are `use super::*` in the extracted test files, which is the COR-33
   test-extraction pattern's own shape.
 
 **Progress already banked:** `float_cmp` and `cast_precision_loss` are now **0** in
 `kasirmu-core` (they were 22 and 56), so rounds 1–5's correctness sweep did land. The cast
 family that remains is 42 sites.
 
-**Recommended sequence, so the next lane does not re-derive it:** enable pedantic with the four
-doc lints allowed (the recipe is proven and takes minutes), land the 383 auto-fixable sites plus
-the ~93 mechanical-but-not-auto ones (`format_push_string` 39, `manual_let_else` 37,
-`items_after_statements` 17), then work the 369 by group — starting with the 41
-signature-changing sites. **Do not enable the crate and allow `too_many_lines` and the casts
-wholesale**: that would contradict `foundation`, where both classes were fixed outright.
+**Recommended sequence, so the next lane does not re-derive it:** clear the 20
+signature-changing sites first, then enable pedantic with the four doc lints allowed, land the
+380 auto-fixable sites plus the ~91 mechanical-but-not-auto ones (`format_push_string` 38,
+`manual_let_else` 36, `items_after_statements` 17), and allow the remaining judgement classes by
+name with their counts so the debt stays visible. **Do not enable the crate and allow
+`too_many_lines` and the casts wholesale**: that would contradict `foundation`, where both
+classes were fixed outright.
 
 The original staging below is kept for the reasoning it records — why each item
 came where it did — with its outcome marked. Read it as history, not a plan.
