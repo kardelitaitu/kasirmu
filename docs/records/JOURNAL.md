@@ -1,4 +1,35 @@
 
+## 2026-09-29 — The modules-inventory coverage floor was dead code, not missing tests
+
+**What the gate said.** `modules-inventory: 70.7% < floor 76.0%` (176/249 lines), while the manifest's own
+`_measured` recorded 78.4. The floor had been calibrated when the crate still held the inventory models and
+their 738 lines of tests; the COR-7 refactor (`a0427851d`) moved both down to `foundation`, leaving a smaller,
+differently-shaped surface behind.
+
+**What was actually wrong.** Six methods across two layers, none of them runnable:
+
+- `InventoryService::get_stock` / `adjust_stock` (`74890b7f2`) — no caller anywhere, and the sibling test's own
+  note said their columns were "planned-schema columns not yet in the current migration".
+- `InventoryRepository::get_stock` / `adjust_stock_tx` (`8c1310db8`) — `repository_tests.rs:143` said outright
+  that `inventory.sku` and `inventory.low_stock_threshold` "do not exist in the current migration schema", and
+  with the service wrappers gone they had no caller either. Their SQL could not execute.
+
+Two prose references in `foundation/src/inventory_proptests.rs:21` and `:117` named the pair as a live example,
+and `tests/boundary_contract.rs` listed them as "intentionally NOT pinned"; all three were corrected rather than
+left to rot. Coverage went 70.7% → 75.2% after the first removal, and the second removes the rest of the
+uncovered lines the report counted as zero.
+
+**Why deletion and not tests.** These lines were not untested, they were unreachable — SQL against columns the
+migrations never created. `scripts/coverage-floors.json` says lowering a floor "is the failure this gate exists
+to catch", so re-baselining was the wrong instrument. They arrive with the migration, tests included, or not at
+all.
+
+**And a ruling on the root scratch files, since two rules disagreed.** `.gitignore:166-169` blesses dot-prefixed
+agent scratch and names both `.tmp-build/` AND a root file (`.tmp-28-a.txt`); the root-policy gate deliberately
+rejects stray root FILES, because that is the one junk class no git-based check can see. Both can hold if the
+shape is a dot-DIRECTORY: scratch belongs in `.tmp-build/` or similar, never as a `.tmp-*.txt` at the root.
+`.gitignore` now says so. The matching line in AGENTS.md is owed but not written — that file is dirty by another
+session this round, and a pathspec commit would sweep their edit in.
 ## 2026-09-29 — CORRECTION: CI has always run the app suites; the gap was local only
 
 **What I got wrong, and how.** The note I added to `scripts/check.sh` this session says the two
