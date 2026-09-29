@@ -8,9 +8,12 @@
 **Status:** IN PROGRESS. **S2b-1 (the injection seam) IMPLEMENTED 2026-09-29** — it
 changes no runtime behaviour, which is what the slice was scoped to guarantee.
 **S2b-2a (the keychain half: durability + generate-once resolution) IMPLEMENTED
-2026-09-29.** **S2b-2b (the shells' boot injection) and S2c (`oz rekey`) NOT STARTED** —
-S2b-2b needs a lease on `apps/*-tauri`, which are other lanes' exclusive paths.
-Written 2026-09-29. The §8 questions are now ANSWERED — see §8.
+2026-09-29** (`f2932f6f8`). **S2b-2b (the shells' boot injection) IMPLEMENTED 2026-09-29**
+(`625c47290`, `5813b9208`) — this header previously said NOT STARTED and cited a lane lease
+that did not exist; see §6 S2b-2b for the retraction. **The §7 release-build clause is
+RE-SCOPED (§10, option (a), 2026-09-29) and is the one part of C1 still open, together with
+S2c (`oz rekey`).** Written 2026-09-29. The §8 questions are ANSWERED — see §8, with §8.4
+superseded by §10.
 **Branch:** `0.0.40` (do not create or switch branches).
 **Checklist item:** C1 (`manager-codebase-review-checklist.md`), slices S2b and S2c.
 **Owner decision:** D1, **ruled** — option D (per-install key in the OS keychain,
@@ -241,12 +244,15 @@ derivation still decrypts after the key exists."*
 - [x] **A key written to the OS keychain at boot and read back on the next boot.**
       DONE — S2b-2a (`f2932f6f8`) resolves it generate-once; S2b-2b (`625c47290`,
       `5813b9208`) installs it in both shells before the store opens.
-- [ ] **The static fallback is unreachable in a release build.** This needs a build-time
-      assertion, not a runtime one — likely `#[cfg(not(debug_assertions))]` plus a
-      `compile_error!` if `derive_static_key` is reachable, or a release-only test. **This
-      is the least-specified part of the item and needs a design decision during S2b-2.**
-      **⚠️ IT CONTRADICTS §5's H2 AS WRITTEN — see §10. Do not implement the hard-error
-      reading without reading §10 first.**
+- [ ] **The static fallback is unreachable in a release build.** **RE-SCOPED 2026-09-29
+      (§10, option (a)) — the clause now reads: *"in a release build the static fallback is
+      never the WRITER whenever a durable keychain exists"*, surviving only as a read
+      candidate for pre-upgrade rows (H4 requires it).** It is **not** a build-time gate and
+      cannot be: `derive_static_key` must stay compiled for H4's legacy read path, so no
+      `compile_error!` can express it. The assertion is **behavioural** — a test over the
+      injectable cores asserting the install key wins the write arm while the static
+      derivation remains in the read candidate list — and it inverts the existing tripwire
+      pin in the same change. §8.4's hard-error reading is **retracted**; see §10 for why.
 - [ ] A row written under the legacy derivation still decrypts after the key exists (H4).
       **Satisfied structurally by S2b-1** (the install arm is first for writes, last for
       reads; `candidate_keys` keeps the legacy tail) and pinned by
@@ -303,6 +309,29 @@ also why this clause is the only part of C1 that cannot be closed from the check
 and tested. This clause is left for a decision rather than guessed at, because guessing wrong
 here stops the application from starting.
 
+**ANSWERED 2026-09-29: option (a) — the clause is re-scoped, and §8.4's hard-error reading is
+retracted.** The re-scoped clause is:
+
+> **In a release build, the static fallback is never the WRITER whenever a durable keychain
+> exists.** It survives only as a **read candidate** for rows written before the upgrade,
+> which H4 requires.
+
+Why (a) and not (b): the hard-error reading contradicts §5's H2, and the collision is the
+default path rather than an exotic one — **zero** shipped config sets `KASIRMU_MASTER_KEY` or
+`OZ_MASTER_KEY`, so on any machine without a durable keychain the release arm *is*
+`derive_static_key`, and (b) would stop every such install and every CI runner from booting.
+That converts an at-rest exposure into an availability outage, which is the trade D1 already
+refused when it rejected option B.
+
+**And it cannot be a build gate, which is why §7's wording changes.** `derive_static_key` must
+stay **compiled** for H4's legacy read path, so no `compile_error!` can express this. The
+assertion must be **behavioural** — a test that drives the injectable cores
+(`portable_key_from` / `candidate_keys_from`) and asserts that a present install key wins the
+*write* arm while the static derivation is still present in the *read* candidate list. The
+existing tripwire pin
+(`the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable`) is **inverted in
+the same change**, as §8.4 said it must be.
+
 ## 8. Owner questions — ANSWERED 2026-09-29
 
 All four were answered by taking the plan's own recommendation. Recorded here so the
@@ -332,6 +361,9 @@ next reader does not re-ask them.
    (`the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable`) stays
    as the deliberate tripwire the plan asked for: it must go red when this lands, and
    be inverted in the same change.
+   **⚠️ THIS ANSWER WAS SUPERSEDED 2026-09-29 — see §10.** The hard-error reading
+   contradicts §5's H2 and is retracted in favour of §10's option (a); the tripwire
+   pin is still inverted, but against the re-scoped clause, not this one.
 
 ## 9. Production blast radius (why the ordering in §6 matters)
 

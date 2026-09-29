@@ -312,6 +312,17 @@ Added 2026-09-29. **These are asks, not rulings** — each names one decision th
 
 **Recommendation: A or B, and not C.** I am not taking this unilaterally because it changes what a P1 item means — A retires it, B rewrites it. **One caveat, stated so this is not over-read:** D9's own text says *"Confirm A against the pending researcher finding on the outbox tenant before scoping it"*, and D9's (a)/(b) investigation was recorded as running. If that finding landed and changed the ruling, this ask should be re-checked against it.
 
+**ANSWERED 2026-09-29: option A — C35 is closed as superseded by D9.** The caveat above
+has since been resolved and it does not change the ruling, so it is not an open dependency
+any more: the outbox carries the **sale's** tenant (`offline/enqueue.rs:247`, `:311`, `:365`,
+`:402` all read `COALESCE(tenant_id, 'default') FROM sales`), and on the desktop the sale row
+is `'default'` — i.e. another literal, which is D9's *second* branch, so the remedy is the
+ingest boundary and C stays refused. **C35's premise — that D9 had already decided the
+parameterization — is retracted**, and the item closes with that retraction on the record
+rather than being silently dropped. The FK wall stays unreachable until some writer stamps a
+parent row, which D9 forbids; if one ever appears this re-opens on **that code trigger**, not
+on an owner answer. D12 needs no further owner input.
+
 ## D13 - Inert-but-intended surface: delete it, or keep it?
 
 **Why this is here.** C29's own re-verification moved every candidate from "mechanical deletion" to "needs a decision": one is a documented Phase-2 seam, one is test-pinned, and one is a multi-file removal with a live Dockerfile dependency. **Two of the four candidates have since been deleted** (`44e7be9cd`, 2026-09-29: `register_scale` and the empty `commands/plugins.rs`), so this ask is now smaller than the item records and is stated against what remains.
@@ -326,6 +337,32 @@ Added 2026-09-29. **These are asks, not rulings** — each names one decision th
 | **`kasirmu-media`** | **STILL PRESENT — zero code dependents** | The item's "dummy hole" claim was **FALSE** and is corrected in the checklist: this is debt, not a contradiction. **The workspace-`exclude` remedy is also factually wrong** — the manifest inherits `workspace = true` for six keys, so excluding it without deleting the directory fails outright. The real removal is ~11 edit sites across 7 files (root `Cargo.toml:63`, the crate directory, `deny.toml:142-146`, three Dockerfile lines, `ARCHITECTURE.md:405`) |
 
 **Recommendation: one ruling covers the remaining two only if the answer is "keep inert surface".** If it is "delete", the order is the two logging sinks first (self-contained, but remember the doctest and the test-pinned FILE variants are a different group), then `kasirmu-media` (the multi-file one, and the one where a documented Phase-2 seam means deleting it is a statement that Phase 2 is not happening). **Note also that C29's own "(13)" count matches nothing** — the item names 7 surfaces and `manager-codebase-review.md` §13's table has 10 rows, so any ruling should also settle which list is authoritative.
+
+**ANSWERED 2026-09-29: the codebase does not keep inert surface — but "inert" and "unwired"
+are not the same thing, and the two remaining candidates fall on different sides of that line.**
+
+- **syslog / eventlog sinks → DELETE.** Zero callers, and **redundant**: both shells already
+  call `try_init()` (stdout), which the container and the system already capture, so nothing
+  is lost by removing them. The `no_run` doctest at `syslog.rs:20` / `eventlog.rs:21`
+  advertises a usage that does not exist — the defect class this review is about. Removal
+  takes the module, its `#[path]` test sibling and the `pub mod` declaration together.
+- **`kasirmu-media` → KEEP, reclassified from "Phase-2 seam" to "implemented-but-unwired".**
+  This is the deliberate, conservative half. Its transforms are implemented and audited
+  (`thumbnail`/`compress`/`crop`, crate status SAFE), it is the **only** image pipeline in the
+  tree, and the product needs product photos whether or not a plan schedules it — so deleting
+  it discards capability rather than resolving a contradiction. What is *not* defensible is
+  its own doc advertising a Phase 2 that no plan contains, so that claim is corrected
+  instead. Its removal, if ever wanted, remains the ~11-site/7-file job this ask priced (root
+  `Cargo.toml:63`, `deny.toml:142-146`, three lines in **each** of the two Dockerfiles,
+  `ARCHITECTURE.md:409`).
+
+**Applied by class, not by list.** `todo-optimize-crates.md:709` measures `kasirmu-reporting`
+in the *same* class as `kasirmu-media` ("no production caller — own tests only"), yet C29's
+list omits it. So the ruling above is stated as a **rule** — *redundant-and-inert is deleted;
+unwired-but-implemented is kept and labelled honestly* — and the next candidate is judged by
+that rule rather than by whether a list happened to name it. **Also settled, because this ask
+asked for it:** the "(13)" is a **section pointer**, not a count, and §13's table holds **11**
+rows (see the verification addendum above), so there is no list-authority question left open.
 
 ## D14 - C14(b): split the local-API admin key from the signing secret? And build the surface it needs?
 
@@ -344,6 +381,20 @@ So (b) is only worth doing **together with** the operator surface that lets the 
 | **C. Split WITH the operator surface** | Add the key, the seed migration, an IPC command, a Settings control and strings, and decide the rotation semantics | The only option that makes the split mean anything; closes (b) properly | The largest of the three; needs the two questions above answered first |
 
 **Recommendation: A or C — not B, which is the one option that costs exposure and buys nothing.** I am not choosing between A and C unilaterally, because C commits to building a Settings surface and to a rotation-semantics change, and both are product calls. **Separately: C14(a) is NOT part of this ask** — it is one-way dependent on C1's S2b landing and is tracked there.
+
+**ANSWERED 2026-09-29: option A — the conflation is accepted, and (b) is closed as
+deliberately not worth doing.** The reason is that the split buys nothing without the
+operator surface, and building that surface (option C) is a product commitment to a new
+Settings control plus a rotation-semantics change that no shipped configuration needs: the
+local API binds `127.0.0.1`, CORS is empty, it requires `local_api.enabled == "1"`, and it is
+exposed through no Tauri command. **Option B is refused on the record** — it is the one
+option that adds a *second* plaintext copy of the same secret to `settings.value` and to
+every `.backup.db` while the two keys can never diverge. The finding is kept rather than
+dropped: the conflation is now an **accepted** risk with its reachability written down, which
+is a different thing from an unnoticed one. If a future feature exposes the local API beyond
+loopback, this re-opens on that trigger. **C14(a) is separate and is now unblocked** — C1 S2b
+landed (S2b-2a `f2932f6f8`, the bridge half of S2b-2b `625c47290`), which was its stated
+dependency. D14 needs no further owner input.
 
 ---
 
