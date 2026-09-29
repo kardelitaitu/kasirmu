@@ -1052,6 +1052,17 @@ jobs:
             --include-getstring --include-nav-keys --include-key-fields \
             --include-dynamic-literals --include-id-maps --check-domain-pairs \
             --scan-dirs features,components,app,theme,registries,contexts,hooks
+
+      # This checker's own extractor cases, in the same job as the gate it proves --
+      # the convention stated at "IPC command parity self-test" (7c). Blocking, for
+      # the reason that comment gives. The failure specific to THIS gate is that its
+      # whole job is regex extraction: if a pattern stops matching, every extractor
+      # returns nothing, the step prints "0 missing key(s)" and goes green on a tree
+      # it is no longer reading. No bare run of the checker can see that class --
+      # the cases below were proven by mutation (a pattern that cannot match turns
+      # case 1 red with "expected [...], got []", exit 1).
+      - name: i18n bundle parity self-test
+        run: python3 scripts/verify-bundle-parity.py --self-test
       # These two lived in ci.yml, which 23c96330 retired to .bak, and neither was
       # ever restored -- so for two releases the ONLY guard was the opt-in
       # pre-commit hook. core.hooksPath is set by scripts/setup-dev.ps1 and is not

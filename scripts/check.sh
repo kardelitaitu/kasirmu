@@ -653,6 +653,12 @@ step "runner labels" "python3 scripts/test-runner-labels.py" python3 scripts/tes
 
 # Gate: scripts/gates.json -> "bundle-parity".
 step "bundle parity" "python3 scripts/verify-bundle-parity.py --scan-dirs features,components,app,theme,registries,contexts,hooks" python3 scripts/verify-bundle-parity.py --include-getstring --include-nav-keys --include-key-fields --include-dynamic-literals --include-id-maps --check-domain-pairs --scan-dirs features,components,app,theme,registries,contexts,hooks
+# The extractor's own cases, beside the gate they prove — the same shape as the
+# "ci docs drift self-test" step above. Added 2026-09-29 with the --self-test flag:
+# before it, this checker had no test of any kind, and its whole job is regex
+# extraction, so a pattern that stopped matching would report "0 missing key(s)"
+# and pass on a tree it was no longer reading.
+step "bundle parity self-test" "python3 scripts/verify-bundle-parity.py --self-test" python3 scripts/verify-bundle-parity.py --self-test
 
 # ── Migration correctness (steps 6 and 7 of the pre-commit hook) ───────────
 # Both lived in ci.yml, retired to .bak by 23c96330, and were never restored in
