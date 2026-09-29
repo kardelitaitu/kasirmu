@@ -180,6 +180,61 @@ pub fn run() {
                 }
             }
 
+            // ── Per-install at-rest key (C1, slice S2b-2b) ────────────────
+            // Installed BEFORE `AppState::new` below, which opens the database
+            // and is followed by the daemons that decrypt portable credentials
+            // (sync API key, terminal secret, PG password, rate key, LAN PSK,
+            // SMTP password, and the two PII columns).
+            //
+            // ORDER IS LOAD-BEARING. `portable_key` selects the derivation at
+            // call time, so a read that happens before this line uses the legacy
+            // derivation; on an install that already has rows written under the
+            // per-install key, that read FAILS for data which is perfectly
+            // intact. Installing late is worse than not installing at all.
+            //
+            // Synchronous, and every outcome is logged rather than propagated: a
+            // machine with no usable keychain must still start, because with no
+            // key installed the at-rest families derive exactly as they did
+            // before this seam existed. See `kasirmu_bridge::security`.
+            match kasirmu_bridge::security::install_at_rest_key() {
+                kasirmu_bridge::security::InstallKeyOutcome::Ready { installed_now, source } => {
+                    tracing::info!(
+                        installed_now,
+                        source = ?source,
+                        "per-install at-rest key installed"
+                    );
+                }
+                kasirmu_bridge::security::InstallKeyOutcome::RefusedNonDurableKeyring => {
+                    // Hazard H3. Not an error: the keyring on this machine
+                    // cannot hold a key across a restart, so generating one
+                    // would orphan every row written under it — including two
+                    // families that have no production setter to re-enter.
+                    tracing::warn!(
+                        "the OS keychain is not durable on this machine, so no \
+                         per-install at-rest key was created; at-rest values keep \
+                         using the previous derivation"
+                    );
+                }
+                kasirmu_bridge::security::InstallKeyOutcome::Unavailable(reason) => {
+                    tracing::warn!(
+                        reason = %reason,
+                        "could not reach the OS keychain for the per-install at-rest \
+                         key; at-rest values keep using the previous derivation"
+                    );
+                }
+                // `InstallKeyOutcome` is `#[non_exhaustive]`, so a future variant
+                // must not break this build. Nothing here is fatal by design, so
+                // an unknown arm degrades to the same safe statement as the two
+                // above rather than aborting a boot it cannot classify.
+                other => {
+                    tracing::warn!(
+                        outcome = ?other,
+                        "unrecognised per-install at-rest key outcome; at-rest values \
+                         keep using the previous derivation"
+                    );
+                }
+            }
+
             let state = AppState::new(app.handle())
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
