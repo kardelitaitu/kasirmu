@@ -1928,7 +1928,7 @@ Commit `style(core): enable clippy::pedantic at the crate root (P2-5)`.
 | | count |
 |---|---|
 | distinct baseline (deduped — see the correction above) | **1,902** |
-| covered by the 17 named allows | **1,621** |
+| covered by the 20 named allows | **1,621** |
 | fixed | **281** |
 
 The allows live at the crate root of `crates/kasirmu-core/src/lib.rs`, each with its count and
@@ -1986,7 +1986,7 @@ came where it did — with its outcome marked. Read it as history, not a plan.
 5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **DONE 2026-09-29.** P2-4 and
    P2-6 were already closed. P2-5: `foundation` DONE 2026-09-29 (149 → 0, acceptance
    exit 0) and `kasirmu-core` DONE 2026-09-29 (**1,902 distinct → 0**: 1,621 covered by
-   17 named allows, 281 fixed, acceptance exit 0). The blocker recorded here earlier was
+   20 named allows, 281 fixed, acceptance exit 0). The blocker recorded here earlier was
    a false one — the manifest cannot hold `[lints.clippy]` beside
    `[lints] workspace = true`, but a crate-root attribute can, and it composes with the
    workspace table instead of opting out of it. No architecture decision was ever
