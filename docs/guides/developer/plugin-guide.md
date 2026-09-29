@@ -29,8 +29,41 @@ hooks = ["sale.before_complete"]
 [permissions]
 # REQUIRED: at least one permission must be declared, and every permission
 # must be recognised — unknown permissions reject the plugin.
+# Declaring is not enough: the OPERATOR must also approve each one in
+# plugin-grants.json, or the plugin is refused. See "Operator approval" below.
 required_permissions = ["cart:read", "cart:write", "system:time", "log:write"]
 ```
+
+### Operator approval (`plugin-grants.json`)
+
+A plugin's `required_permissions` list is **self-declared** — the plugin author
+writes it. Since 2026-09-29 it is also an **operator grant**: the loader refuses
+any plugin whose declared permissions the operator has not approved, and says
+so by name in the log.
+
+The approval lives beside the plugins, in the same directory
+`PluginManager::new` is given (on the desktop shell, `<app_data_dir>/plugins/`):
+
+```json
+{
+  "schema_version": 1,
+  "grants": {
+    "example-discount": ["cart:read", "cart:write", "system:time", "log:write"]
+  }
+}
+```
+
+⚠️ **Upgrading an existing install.** An install that already has plugins will
+refuse to load all of them until this file exists, because nothing was ever
+approved on the record. That is the intended fail-closed default, not a bug.
+The log names the file, the plugin and each missing permission, and prints the
+JSON shape to paste. **There is no file = nothing loads.**
+
+**What this does and does not buy you.** It turns a self-declaration into an
+explicit, auditable approval, and it fails closed by default. It is **not**
+tamper resistance: `plugin-grants.json` sits in the plugins directory, so
+anyone who can add a plugin can add a grant for it. Protecting against that
+needs signed manifests, which are not implemented.
 
 ### Available permissions
 
@@ -193,8 +226,10 @@ Key requirements:
 1. Create a directory in `plugins/`
 2. Write your `plugin.toml` (including at least one `required_permissions`)
 3. Write your Lua scripts
-4. Restart kasir.mu to load the plugin
-5. Check the logs for any load errors
+4. **Approve the permissions** in `plugins/plugin-grants.json` (see
+   "Operator approval" above) — without this the plugin is refused
+5. Restart kasir.mu to load the plugin
+6. Check the logs for any load errors
 
 ## Testing Plugins
 
