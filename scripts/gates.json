@@ -774,6 +774,16 @@
         "feature registry parity", "no-hardcoded-money-format",
         "flaky quarantine", "deployment verification", "chokepoints"
       ] }
+    },
+    {
+      "id": "local-matrix-unlisted-gates",
+      "label": "local-matrix unlisted gates",
+      "status": "required",
+      "_note": "Added 2026-09-29. Pre-existing drift, NOT introduced by the 2026-09 work: four steps that run a real check had no row, so the inventory understated the matrix. Classified by reading what each step actually runs rather than by its name, because the names are not reliable here -- 'updater manifest generator' runs a --self-test, and 'script tests' runs a test runner, so neither is a gate and neither belongs in a gate row -- 'updater manifest generator' is listed under checker-selftest-companions instead, because it invokes generate-latest-json.mjs --self-test. Also deliberately NOT here: for the same reason npm ci and test workspace (nextest) are not: 'migration smoke test' and 'migration idempotency' both invoke the SAME cargo run, so they are two EXERCISES of one command rather than two gates, and listing them would imply two independent checks where there is one.",
+      "runners": { "check.sh": [
+        "clippy workspace", "no-raw-params (ADR #7 Phase 4)",
+        "skill-drift-guard"
+      ] }
     }
   ]
 }
