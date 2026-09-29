@@ -301,17 +301,25 @@
   "pricingPage": {
     "title": "Harga",
     "subtitle": "Setiap paket bisa dipakai penuh tanpa internet. Tingkatkan untuk lebih banyak toko, register, dan otomatisasi.",
-    "trust1": "Garansi uang kembali 30 hari",
+    "trust1": "Garansi uang kembali 14 hari",
     "trust2": "Batalkan kapan saja",
     "note": "Lisensi satu kali (perpetual) belum tersedia — lihat peta jalan.",
     "comparison": "Perbandingan fitur antar paket",
     "mostPopular": "Populer",
+    "feature": "Fitur",
+    "included": "Termasuk",
+    "notIncluded": "Tidak termasuk",
+    "planPricing": "Harga paket",
+    "twoMonthsFree": "2 bulan gratis",
+    "qrisNote": "*QRIS memerlukan National Merchant ID (NMID), didapat dengan mendaftarkan usaha Anda ke bank.",
+    "midtransNote": "*Memerlukan akun Midtrans.",
+    "stripeNote": "*Masih dalam pengerjaan — persyaratan penyiapan Stripe belum final.",
     "billing": {
       "label": "Periode penagihan",
       "monthly": "Bulanan",
       "yearly": "Tahunan",
-      "yearlyNote": "Hemat 17%",
-      "billedYearly": "Ditagih tahunan · Hemat 17%"
+      "yearlyNote": "2 bulan gratis",
+      "billedYearly": "Ditagih tahunan · 2 bulan gratis"
     }
   },
   "download": {
@@ -787,7 +795,7 @@
       "faq": [
         {
           "q": "Apakah QRIS tersedia di paket gratis?",
-          "a": "Ya. QRIS statis + dinamis tersedia di semua paket kasir.mu, termasuk Gratis selamanya."
+          "a": "Ya — QRIS statis (stiker tercetak) dan QRIS nominal dinamis sama-sama bisa dipakai di semua paket kasir.mu, termasuk Gratis selamanya."
         },
         {
           "q": "Apa bedanya QRIS statis dan dinamis?",
@@ -852,7 +860,7 @@
       "how": [
         "Unduh penginstal Windows dan jalankan — pemasangan hanya untuk akun pengguna Anda sendiri, jadi tidak butuh hak administrator.",
         "Buka aplikasi dan isi nama usaha serta mata uang bawaan; keduanya bisa diubah kapan saja di pengaturan.",
-        "Langsung catat penjualan: paket Gratis dimulai pada peluncuran pertama — satu toko, satu register, satu workspace gudang, dan riwayat penjualan 3 bulan."
+        "Langsung catat penjualan: paket Gratis dimulai pada peluncuran pertama — satu toko, satu register, dan riwayat penjualan 3 bulan."
       ]
     },
     "murah": {
@@ -1028,7 +1036,7 @@
         },
         {
           "title": "Gudang",
-          "description": "Kelola stok lintas hingga 3 gudang dalam satu ruang kerja."
+          "description": "Kelola stok lintas gudang dalam satu ruang kerja — ruang kerja gudang mulai paket Premium."
         },
         {
           "title": "Tanpa internet",
@@ -1186,8 +1194,8 @@
       "label": "Gudang & Stok",
       "title": "Sinkronisasi Multi-Gudang & Manajemen Stok",
       "tagline": "Manajemen gudang murni, transfer stok, pelacakan barcode, dan sinkronisasi multi-fasilitas — tanpa beban sistem POS.",
-      "tierAnchor": "pro",
-      "ctaPrimary": "Lihat paket Pro",
+      "tierAnchor": "premium",
+      "ctaPrimary": "Lihat paket Premium",
       "features": [
         {
           "title": "Sinkronisasi Multi-Fasilitas",

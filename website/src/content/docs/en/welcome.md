@@ -51,9 +51,9 @@ workspace, and tune features per device. See [Terminals](../terminals/) and
 
 ## Plans & pricing
 
-kasir.mu is **free forever** to get started — one store, one register, one
-warehouse, and 3 months of sales history. Paid plans add more stores,
-registers, and warehouses, plus QRIS payments, cloud sync, and automation.
+kasir.mu is **free forever** to get started — one store, one register, and
+3 months of sales history. Paid plans add more stores and registers, plus QRIS
+payments, cloud sync, and automation; warehouse workspaces come with Premium.
 See [Licensing & Plans](../licensing/).
 
 ## Where to start

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { pricingFor, featureRowsFor } from '../../content/pricing';
 import { pricing as enPricing } from '../../content/pricing/en';
 import { pricing as idPricing } from '../../content/pricing/id';
@@ -16,6 +18,29 @@ import type { TierKey, BillingPeriod } from '../../content/pricing/types';
 const LOCALES = ['en', 'id'] as const;
 const PERIODS: BillingPeriod[] = ['monthly', 'yearly'];
 const PAID_TIERS: TierKey[] = ['plus', 'pro', 'premium'];
+
+/**
+ * Both dictionaries as data, plus a flattener for them.
+ *
+ * The vocabulary pins below have to see PROSE — a landing page's FAQ answer, for
+ * instance — not just the structured pricing content, or a spelling can be fixed
+ * on the cards while a dictionary string keeps the old one. Parsed once here for
+ * the whole file; the yearly-copy block reads the same object.
+ */
+const DICTS = {
+  en: JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'en.json'), 'utf-8')),
+  id: JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'i18n', 'id.json'), 'utf-8')),
+};
+
+/** Every string leaf of a nested dictionary, so a scan reaches prose and arrays. */
+function stringLeaves(value: unknown, out: string[] = []): string[] {
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) value.forEach((entry) => stringLeaves(entry, out));
+  else if (value !== null && typeof value === 'object') {
+    Object.values(value).forEach((entry) => stringLeaves(entry, out));
+  }
+  return out;
+}
 
 describe('pricingFor selector', () => {
   it('maps en → USD content and id → IDR content', () => {
@@ -108,27 +133,91 @@ describe('tier shape invariants', () => {
     }
   });
 
-  it('free plan includes QRIS payments but no cloud sync (both card and comparison table)', () => {
+  it('free plan advertises dynamic QRIS and keeps data local (card and table agree)', () => {
     // The home page Free card and the full pricing comparison table must
-    // agree: Free = QRIS at the counter (no extra hardware) but data stays
-    // local — cloud sync is a paid-tier differentiator. Drift between the
-    // tier.features list and featureRows previously showed ✓ on the home
-    // card while the table said ✗ (and vice versa), contradicting itself.
-    const LABEL_EN = { card: 'Static + dynamic QRIS', table: 'Static + dynamic QRIS' };
-    const LABEL_ID = { card: 'QRIS statis + dinamis', table: 'QRIS statis + dinamis' };
+    // agree. Two claims are pinned, one per surface: the card carries the
+    // dynamic-QRIS bullet, the table carries the gates, and cloud sync is the
+    // paid-tier differentiator on both. Drift between the tier.features list and
+    // featureRows previously showed ✓ on the home card while the table said ✗
+    // (and vice versa), contradicting itself.
+    //
+    // WHAT IS NO LONGER HERE: the card used to be pinned as listing static
+    // (printed) QRIS at the counter. That bullet was removed — it spent a row on
+    // something every plan includes, and the dynamic-QRIS bullet below carries
+    // the payment story. Static QRIS stays ungated (asserted at the end of this
+    // test), so its absence from the CARD is a presentation choice now, not an
+    // entitlement claim, and the one-directional assertion is the honest one.
     for (const locale of LOCALES) {
       const pricing = locale === 'en' ? enPricing : idPricing;
       const rows = featureRowsFor(locale);
-      const labels = locale === 'en' ? LABEL_EN : LABEL_ID;
+      const cloudLabel = locale === 'en' ? 'Cloud sync' : 'Sinkron cloud';
+      const staticQris = locale === 'en' ? 'Static QRIS at the counter' : 'QRIS statis di kasir';
+      const dynamicQris = locale === 'en' ? 'Dynamic QRIS' : 'QRIS dinamis';
       const free = pricing.find((t) => t.tierKey === 'free')!;
-      const qris = free.features.find((f) => f.label === labels.card)!;
-      const cloud = free.features.find((f) => f.label === (locale === 'en' ? 'Cloud sync' : 'Sinkron cloud'))!;
-      expect(qris.included, `${locale} free card QRIS`).toBe(true);
-      expect(cloud.included, `${locale} free card cloud sync`).toBe(false);
-      const qrisRow = rows.find((r) => r.label === labels.table)!;
-      const cloudRow = rows.find((r) => r.label === (locale === 'en' ? 'Cloud sync' : 'Sinkron cloud'))!;
-      expect(qrisRow.values.free, `${locale} free table QRIS`).toBe(true);
-      expect(cloudRow.values.free, `${locale} free table cloud sync`).toBe(false);
+      expect(
+        free.features.find((f) => f.label === dynamicQris)?.included,
+        `${locale} free card dynamic QRIS`,
+      ).toBe(true);
+      expect(
+        free.features.find((f) => f.label === cloudLabel)!.included,
+        `${locale} free card cloud sync`,
+      ).toBe(false);
+      expect(rows.find((r) => r.label === cloudLabel)!.values.free, `${locale} free table cloud sync`).toBe(false);
+      // Static QRIS is deliberately NOT a gated row: subscription-tiers.md §3
+      // "Payments" grants it on every plan, so a ✗ column for it would be a lie.
+      expect(rows.some((r) => r.label === staticQris), `${locale} no gated static-QRIS row`).toBe(false);
+    }
+  });
+
+  it('payment rails open where the recorded product decision says', () => {
+    // Authority, in order: subscription-tiers.md §3 "Payments" (the published
+    // matrix) and SubscriptionTier::supports_qris / supports_stripe in
+    // crates/kasirmu-core/src/subscription/tier.rs (what the app enforces).
+    // supports_stripe() is Pro+; the Midtrans wallet/card gateway is Plus+.
+    //
+    // Dynamic amount QRIS is the recorded EXCEPTION. The owner ruled it
+    // available on Free on 2026-09-29, which is what the QRIS landing page
+    // ("Both ship on every plan, including Free") and the docs' licensing
+    // matrix ("QRIS: ✓ (static + dynamic)" on the Free column) already said —
+    // the pricing table was the outlier. THE ENTITLEMENT LAYER HAS NOT MOVED:
+    // `supports_qris()` is still false for Free/OneTime and the POS still gates
+    // the QRIS tender behind an upgrade prompt, so this row and the app disagree
+    // until that lands. The change was ordered website-first.
+    //
+    // That is why this asserts a DECISION rather than an enforcement: the two
+    // stop being the same thing here, and a silent revert in either direction is
+    // a product change, not a cleanup.
+    const RAILS: Record<(typeof LOCALES)[number], { label: string; from: TierKey }[]> = {
+      en: [
+        { label: 'Dynamic amount QRIS*', from: 'free' },
+        { label: 'Midtrans Gateway (e-wallet, debit/credit cards)*', from: 'plus' },
+        { label: 'Stripe Gateway (WIP)*', from: 'pro' },
+      ],
+      id: [
+        { label: 'QRIS nominal dinamis*', from: 'free' },
+        { label: 'Gateway Midtrans (e-wallet, kartu debit/kredit)*', from: 'plus' },
+        { label: 'Gateway Stripe (WIP)*', from: 'pro' },
+      ],
+    };
+    const ORDER: TierKey[] = ['free', 'plus', 'pro', 'premium', 'enterprise'];
+    for (const locale of LOCALES) {
+      const rows = featureRowsFor(locale);
+      for (const rail of RAILS[locale]) {
+        const row = rows.find((r) => r.label === rail.label);
+        expect(row, `${locale}: row "${rail.label}" exists`).toBeDefined();
+        const opens = ORDER.indexOf(rail.from);
+        for (const [i, tier] of ORDER.entries()) {
+          expect(row!.values[tier], `${locale}: "${rail.label}" ${tier}`).toBe(i >= opens);
+        }
+      }
+      // Every marked row has a legend: `*` is the only thing tying a row to its
+      // note, and the rows' order is the only thing tying it to the right one.
+      for (const rail of RAILS[locale]) {
+        expect(rail.label.endsWith('*'), `${locale}: "${rail.label}" carries the marker`).toBe(true);
+      }
+      // Stripe is advertised at Pro+ but is not shippable yet; the label says so
+      // rather than letting a ✓ read as "available today".
+      expect(RAILS[locale][2].label, `${locale} Stripe row is flagged`).toContain('WIP');
     }
   });
 
@@ -146,11 +235,12 @@ describe('tier shape invariants', () => {
     expect(idLabels.some((label) => /\btoko\b/i.test(label))).toBe(false);
     expect(enLabels).toContain('1 location');
     expect(enLabels).toContain('Locations');
-    expect(enLabels).toContain('1 warehouse workspace');
+    // The warehouse noun lives on the comparison row only now: the cards stopped
+    // listing a warehouse bullet when the feature moved to Premium (2026-09-29),
+    // so there is no "1 warehouse workspace" card label left to pin.
     expect(enLabels).toContain('Warehouse workspaces');
     expect(idLabels).toContain('1 lokasi');
     expect(idLabels).toContain('Lokasi');
-    expect(idLabels).toContain('1 ruang kerja gudang');
     expect(idLabels).toContain('Ruang kerja gudang');
   });
 
@@ -168,7 +258,7 @@ describe('tier shape invariants', () => {
     ];
     expect(idLabels).toContain('Ruang kerja gudang');
     expect(idLabels).toContain('Layar Dapur (KDS)');
-    expect(idLabels).toContain('Kartu debit & kredit (Stripe)');
+    expect(idLabels).toContain('Gateway Stripe');
     expect(idLabels).toContain('Memo');
     expect(idLabels).toContain('2 register');
     expect(idLabels.some((label) => /workspace/i.test(label))).toBe(false);
@@ -186,6 +276,37 @@ describe('tier shape invariants', () => {
     const whitelabel = idLabels.filter((label) => /white-?label/i.test(label));
     expect(whitelabel.length).toBeGreaterThan(0);
     expect(whitelabel.every((label) => !label.includes('white-label'))).toBe(true);
+  });
+
+  it('spells e-wallet the hyphenated way on every surface, both locales', () => {
+    // Same rule as whitelabel above, opposite winner, wider net: the pricing
+    // table glossed the Midtrans row as "eWallet" while the plan cards, both
+    // dictionaries' prose and the in-app docs all wrote "e-wallet". One token,
+    // one spelling — the hyphenated form wins because it is the one readers meet
+    // everywhere else; the table was the only holdout. The row label is also the
+    // `*` legend's subject, so it is quoted word-for-word in the payment-rails
+    // test above and in the note under the table: all three move together.
+    //
+    // What "surface" means: every plan-card bullet and comparison-row label in
+    // BOTH locales, plus every string leaf of both dictionaries — prose, FAQ
+    // answers and headings alike, so a heading's "E-Wallets" counts as the same
+    // spelling (the match is case-insensitive). OUT OF SCOPE on purpose:
+    // src/lib/search-index.ts carries "ewallet" as a query keyword rather than a
+    // shipping label, and the admin bundle under public/ is a separate build.
+    const surfaces = [
+      ...[...enPricing, ...idPricing].flatMap((tier) => tier.features.map((feature) => feature.label)),
+      ...[...featureRowsFor('en'), ...featureRowsFor('id')].map((row) => row.label),
+      ...stringLeaves(DICTS.en),
+      ...stringLeaves(DICTS.id),
+    ];
+    // Guard against a scan that quietly matches nothing (the whitelabel test's
+    // shape): if the token leaves the site altogether, this pin is dead and
+    // should be deleted rather than left green.
+    const mentions = surfaces.filter((surface) => /e-?wallet/i.test(surface));
+    expect(mentions.length).toBeGreaterThan(0);
+    for (const mention of mentions) {
+      expect(mention, `"${mention.slice(0, 60)}" is spelled with a hyphen everywhere else`).toMatch(/e-wallet/i);
+    }
   });
 
   it('Memo is Pro+ (card and comparison table agree, both locales)', () => {
@@ -251,13 +372,52 @@ describe('featureRowsFor', () => {
   });
 });
 
+describe('yearly saving copy (subscription-tiers.md §2)', () => {
+  // §2 markets the annual plan as "2 months free" (pay 10, get 12) and — in
+  // as many words — "never as a percentage discount". The billing toggle used
+  // to say "17% off" / "Hemat 17%" while the cards and the comparison table's
+  // price row each said "2 months free": three surfaces, two different numbers
+  // for one saving, and the percentage is also just wrong (10 of 12 is 16.7%,
+  // not 17%). Pin the wording where the numbers live, and close the door on a
+  // percentage creeping back into any pricing string.
+  // The dictionaries are the module-level DICTS above — one parse for the file,
+  // shared with the vocabulary pins.
+  const FREE_MONTHS: Record<(typeof LOCALES)[number], string> = {
+    en: '2 months free',
+    id: '2 bulan gratis',
+  };
+
+  it('states the saving as free months wherever the yearly period is named', () => {
+    for (const locale of LOCALES) {
+      const page = DICTS[locale].pricingPage;
+      expect(page.billing.yearlyNote, `${locale} billing chip`).toBe(FREE_MONTHS[locale]);
+      expect(page.billing.billedYearly, `${locale} card sub-line`).toContain(FREE_MONTHS[locale]);
+      expect(page.twoMonthsFree, `${locale} comparison-table price row`).toBe(FREE_MONTHS[locale]);
+    }
+  });
+
+  it('quotes no percentage anywhere in the pricing copy', () => {
+    for (const locale of LOCALES) {
+      // Scoped to pricingPage: "100% offline" elsewhere on the site is a
+      // different claim and must keep working.
+      const flat = JSON.stringify(DICTS[locale].pricingPage);
+      expect(flat, `${locale} pricingPage quotes a percentage`).not.toContain('%');
+    }
+  });
+});
+
 describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   // Canonical values, in enforcement order:
   // - locations: tierQuotas() in apps/license-server/paddle_webhook.go
   //   (free 1, plus 1, pro 2, premium 5, enterprise 0=unlimited) mirrored by
-  //   SubscriptionTier::max_locations() in crates/kasirmu-core/src/subscription.rs.
+  //   SubscriptionTier::max_locations() in
+  //   crates/kasirmu-core/src/subscription/tier.rs.
   // - terminals/location: tierQuotas max_pos_instances ↔ max_pos_instances().
-  // - warehouse workspaces: max_warehouses() (client-side per the Go comment).
+  // - warehouse workspaces: max_warehouses() is 0 below Premium and
+  //   allows_workspace_type("warehouse") denies the type there (owner ruling
+  //   2026-09-29); the Go tierQuotas `allowed_types` list and the doc matrices
+  //   carry the same zeros. pricing-tier-parity.test.ts re-derives this row from
+  //   the Rust accessors, so it cannot drift from them again.
   // - KDS screens: max_kds_screens() + the kds branch of
   //   enforce_instance_quota (Pro capped at 2; a C3.2 bundle-widened kds
   //   gets the same 2-screen budget); type-gating via allows_workspace_type.
@@ -273,7 +433,7 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   const MATRIX_EN: { label: string; values: Record<TierKey, string | number> }[] = [
     { label: 'Locations', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Unlimited' } },
     { label: 'Terminals (registers) per location', values: { free: 1, plus: 2, pro: 5, premium: 'Unlimited', enterprise: 'Unlimited' } },
-    { label: 'Warehouse workspaces', values: { free: 1, plus: 2, pro: 3, premium: 'Unlimited', enterprise: 'Unlimited' } },
+    { label: 'Warehouse workspaces', values: { free: 0, plus: 0, pro: 0, premium: 'Unlimited', enterprise: 'Unlimited' } },
     { label: 'Kitchen Display screens', values: { free: 0, plus: 0, pro: 2, premium: 'Unlimited', enterprise: 'Unlimited' } },
     { label: 'Max products/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Unlimited' } },
     { label: 'Staff users', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Unlimited' } },
@@ -284,7 +444,7 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
   const MATRIX_ID: { label: string; values: Record<TierKey, string | number> }[] = [
     { label: 'Lokasi', values: { free: 1, plus: 1, pro: 2, premium: 5, enterprise: 'Tanpa batas' } },
     { label: 'Terminal (register) per lokasi', values: { free: 1, plus: 2, pro: 5, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
-    { label: 'Ruang kerja gudang', values: { free: 1, plus: 2, pro: 3, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
+    { label: 'Ruang kerja gudang', values: { free: 0, plus: 0, pro: 0, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
     { label: 'Layar Dapur (KDS)', values: { free: 0, plus: 0, pro: 2, premium: 'Tanpa batas', enterprise: 'Tanpa batas' } },
     { label: 'Max produk/menu', values: { free: 200, plus: 500, pro: 1000, premium: 10000, enterprise: 'Tanpa batas' } },
     { label: 'Staf pengguna', values: { free: 1, plus: 5, pro: 20, premium: 50, enterprise: 'Tanpa batas' } },
@@ -312,10 +472,13 @@ describe('numeric quota matrix (Phase 1 §E verification anchor)', () => {
     // table carries the structured values; drift between the two is the
     // QRIS-class bug the card/table invariant above exists for. Pin the
     // numeric bullets to the table too.
+    // Warehouse workspaces used to sit here as a third pair. It cannot: the
+    // feature moved to Premium on 2026-09-29, so Free has no such card bullet
+    // and the row reads 0 — a bullet pinned against a zero would be the drift
+    // this test exists to catch, not a regression in it.
     const cardQuota: { label: string; row: string; tier: TierKey }[] = [
       { label: '1 location', row: 'Locations', tier: 'free' },
       { label: '1 register', row: 'Terminals (registers) per location', tier: 'free' },
-      { label: '1 warehouse workspace', row: 'Warehouse workspaces', tier: 'free' },
     ];
     const rows = featureRowsFor('en');
     const free = enPricing.find((t) => t.tierKey === 'free')!;

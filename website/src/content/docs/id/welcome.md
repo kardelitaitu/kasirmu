@@ -52,10 +52,10 @@ sesuaikan fitur per perangkat. Lihat [Terminal](../terminals/) dan
 
 ## Paket & harga
 
-kasir.mu **gratis selamanya** untuk memulai — satu toko, satu register, satu
-gudang, dan riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih
-banyak toko, register, dan gudang, plus pembayaran QRIS, sinkron cloud, dan
-otomasi. Lihat [Lisensi & Paket](../licensing/).
+kasir.mu **gratis selamanya** untuk memulai — satu toko, satu register, dan
+riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih banyak toko dan
+register, plus pembayaran QRIS, sinkron cloud, dan otomasi; ruang kerja gudang
+mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
 
 ## Mulai dari sini
 

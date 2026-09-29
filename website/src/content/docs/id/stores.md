@@ -59,7 +59,7 @@ menerapkan tata letak yang sama ke setiap cabang.
 
 Jumlah toko, register, dan gudang ditentukan oleh paket Anda. Editor menandai
 apa pun yang melebihi batas sebelum Anda menerapkannya, dan beberapa gudang
-atau batas kapasitas gudang memerlukan lisensi Pro Tier.
+atau batas kapasitas gudang memerlukan lisensi Premium.
 
 ## Jaga perangkat tetap sinkron
 

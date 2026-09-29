@@ -297,17 +297,25 @@
   "pricingPage": {
     "title": "Pricing",
     "subtitle": "Every plan works fully without internet. Upgrade for more stores, registers, and automation.",
-    "trust1": "30-day money back",
+    "trust1": "14-day money back",
     "trust2": "Cancel anytime",
     "note": "One-time (perpetual) licensing is not available yet — see the roadmap.",
     "comparison": "Feature comparison across plans",
     "mostPopular": "Popular",
+    "feature": "Feature",
+    "included": "Included",
+    "notIncluded": "Not included",
+    "planPricing": "Plan pricing",
+    "twoMonthsFree": "2 months free",
+    "qrisNote": "*QRIS requires a national merchant ID (NMID), obtained by registering your business to the bank.",
+    "midtransNote": "*Requires a Midtrans account.",
+    "stripeNote": "*Work in progress — the Stripe setup requirements are not final yet.",
     "billing": {
       "label": "Billing period",
       "monthly": "Monthly",
       "yearly": "Yearly",
-      "yearlyNote": "17% off",
-      "billedYearly": "Billed yearly · 17% off"
+      "yearlyNote": "2 months free",
+      "billedYearly": "Billed yearly · 2 months free"
     }
   },
   "download": {
@@ -783,7 +791,7 @@
       "faq": [
         {
           "q": "Is QRIS available on the free plan?",
-          "a": "Yes. Static + dynamic QRIS ships on every kasir.mu plan, including Free forever."
+          "a": "Yes — static (printed sticker) and dynamic amount QRIS both work on every kasir.mu plan, including Free forever."
         },
         {
           "q": "What is the difference between static and dynamic QRIS?",
@@ -848,7 +856,7 @@
       "how": [
         "Download the Windows installer and run it — it installs for your own user account, so it needs no administrator rights.",
         "Open the app and set your business name and default currency; both can be changed later in settings.",
-        "Ring up a sale straight away: the free plan starts on first launch — one store, one register, one warehouse workspace, and 3 months of sales history."
+        "Ring up a sale straight away: the free plan starts on first launch — one store, one register, and 3 months of sales history."
       ]
     },
     "murah": {
@@ -1024,7 +1032,7 @@
         },
         {
           "title": "Warehouses",
-          "description": "Route stock across up to 3 warehouses in one workspace."
+          "description": "Route stock across warehouses in one workspace — warehouse workspaces come with Premium."
         },
         {
           "title": "Works offline",
@@ -1182,8 +1190,8 @@
       "label": "Warehouses & Stock",
       "title": "Multi-Warehouse Sync & Stock Management",
       "tagline": "Pure warehousing, stock transfers, barcode tracking, and multi-facility sync — without POS overhead.",
-      "tierAnchor": "pro",
-      "ctaPrimary": "See the Pro plan",
+      "tierAnchor": "premium",
+      "ctaPrimary": "See the Premium plan",
       "features": [
         {
           "title": "Multi-Facility Sync",

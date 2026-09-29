@@ -79,7 +79,7 @@ elsewhere — handy for rolling out the same layout to every branch.
 
 The number of stores, registers, and warehouses is set by your plan tier. The
 editor flags anything that exceeds your limits before you apply it, and
-multiple warehouses or warehouse capacity limits require a Pro tier license.
+multiple warehouses or warehouse capacity limits require a Premium tier license.
 
 ## Keep devices in sync
 

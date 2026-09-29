@@ -45,6 +45,10 @@
   --color-ghost-bg: #F0F1F3;
   --color-chip-bg: #E8E9EC;
   --color-border: #DFE1E6;
+  /* The featured plan's column on the pricing comparison table. A solid value
+     rather than `bg-primary/10` because that column is STICKY: a translucent
+     sticky background lets the rows scrolling under it show through. */
+  --color-plan-tint: #E4EEFD;
   /* Text — light */
   --color-ink: #1A1D23;
   --color-muted: #4A4D54;
@@ -108,6 +112,7 @@
   --color-ghost-bg: #262A34;
   --color-chip-bg: #2A2E39;
   --color-border: #2A2E39;
+  --color-plan-tint: #1E2C44;
   /* Text — dark */
   --color-ink: #E8EAEF;
   --color-muted: #8B93A3;

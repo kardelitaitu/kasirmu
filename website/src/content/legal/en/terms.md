@@ -1,7 +1,7 @@
 ---
 title: Terms of Service
-version: "1.0"
-effective: "August 17, 2026"
+version: "1.1"
+effective: "September 29, 2026"
 ---
 
 These Terms of Service (the "Terms") are a legally binding agreement between you ("you", "your", or the "Customer") and the operator of the kasir.mu service (the "Company", "we", "us", or "our") governing your access to and use of the kasir.mu website, desktop application, cloud services, license server, and related services (together, the "Service").
@@ -35,7 +35,7 @@ We may add, change, or remove features over time. We will try to give reasonable
 2. **Currency and price.** Prices are displayed on the pricing page and at checkout. International customers are billed in US Dollars (USD); customers in Indonesia may be billed in Indonesian Rupiah (IDR). Prices may change over time; changes apply to future billing periods, and we will give notice where required.
 3. **Auto-renewal.** Paid subscriptions renew automatically at the end of each billing period until canceled. You can cancel at any time through your Paddle checkout/account or by contacting support@kasir.mu; access continues until the end of the period you have paid for.
 4. **Taxes.** Applicable taxes (for example VAT/GST/PPN) are added at checkout where required by law, and are collected and remitted by Paddle or by us as applicable.
-5. **Refunds.** If you are not satisfied, you may request a refund within 30 days of your first payment for a plan. Refunds are processed through Paddle's refund mechanism and are subject to Paddle's processes. Beyond the initial 30-day window, refunds are at our sole discretion unless local law requires otherwise.
+5. **Refunds.** If you are not satisfied, you may request a refund within 14 days of your first payment for a plan. Refunds are processed through Paddle's refund mechanism and are subject to Paddle's processes. Beyond the initial 14-day window, refunds are at our sole discretion unless local law requires otherwise.
 6. **Failed or disputed payments.** If a payment fails, is reversed, or is disputed, we may suspend or downgrade access to paid features until the matter is resolved, and unpaid amounts remain due.
 
 ## 5. Cloud sync and your data
@@ -129,4 +129,5 @@ Questions about these Terms: **support@kasir.mu**. To purchase or upgrade a plan
 
 | Version | Effective date | Summary of changes |
 | --- | --- | --- |
+| 1.1 | September 29, 2026 | Refund window changed from 30 days to 14 days. |
 | 1.0 | August 17, 2026 | Initial publication. |

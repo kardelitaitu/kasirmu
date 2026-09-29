@@ -17,7 +17,7 @@ pembayaran QRIS, sinkron cloud, dan skrip — ditampilkan di
 | ------------------- | ------ | ---- | --- | ------- | ---------- |
 | Toko                | 1      | 1    | 2   | 5       | Tanpa batas |
 | Register / toko     | 1      | 2    | 5   | Tanpa batas | Tanpa batas |
-| Gudang              | 1      | 2    | 3   | Tanpa batas | Tanpa batas |
+| Gudang              | Tidak  | Tidak | Tidak | Tanpa batas | Tanpa batas |
 | Staf pengguna       | 1      | 5    | 20  | 50      | Tanpa batas |
 | Riwayat penjualan   | 3 bulan | 1 tahun | 5 tahun | Tanpa batas | Tanpa batas |
 | Pembayaran QRIS     | ✓ (statis + dinamis) | ✓ (statis + dinamis) | ✓ | ✓ | ✓ |
@@ -28,8 +28,8 @@ Paket tahunan = 2 bulan gratis (bayar 10 bulan, dapat 12).
 
 ## Paket Gratis
 
-Paket Gratis bersifat **gratis selamanya** — satu toko, satu register, satu
-gudang, dan riwayat penjualan 3 bulan. Tidak perlu kunci lisensi untuk
+Paket Gratis bersifat **gratis selamanya** — satu toko, satu register, dan
+riwayat penjualan 3 bulan. Tidak perlu kunci lisensi untuk
 memulai: paket Gratis dimulai pada peluncuran pertama, dan Anda dapat naik
 paket kapan saja tanpa menginstal ulang. Setelah 3 bulan, transaksi yang
 lebih lama disembunyikan di balik ajakan naik paket — tidak ada yang

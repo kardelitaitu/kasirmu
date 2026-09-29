@@ -1,7 +1,7 @@
 ---
 title: Syarat dan Ketentuan Layanan
-version: "1.0"
-effective: "17 Agustus 2026"
+version: "1.1"
+effective: "29 September 2026"
 ---
 
 Syarat dan Ketentuan Layanan ini ("Ketentuan") merupakan perjanjian yang mengikat secara hukum antara Anda ("Anda" atau "Pelanggan") dan pengoperasi layanan kasir.mu ("Perusahaan", "kami", atau "kita") yang mengatur akses dan penggunaan Anda atas situs web, aplikasi desktop, layanan cloud, server lisensi, dan layanan terkait kasir.mu (secara bersama-sama, "Layanan").
@@ -35,7 +35,7 @@ Kami dapat menambah, mengubah, atau menghapus fitur dari waktu ke waktu. Kami ak
 2. **Mata uang dan harga.** Harga ditampilkan pada halaman harga dan saat checkout. Pelanggan internasional ditagih dalam Dolar AS (USD); pelanggan di Indonesia dapat ditagih dalam Rupiah Indonesia (IDR). Harga dapat berubah dari waktu ke waktu; perubahan berlaku untuk periode penagihan berikutnya, dan kami akan memberikan pemberitahuan apabila diwajibkan.
 3. **Perpanjangan otomatis.** Langganan berbayar diperpanjang secara otomatis pada akhir setiap periode penagihan hingga dibatalkan. Anda dapat membatalkan kapan saja melalui checkout/akun Paddle Anda atau dengan menghubungi support@kasir.mu; akses berlanjut hingga akhir periode yang telah Anda bayar.
 4. **Pajak.** Pajak yang berlaku (misalnya PPN) ditambahkan saat checkout apabila diwajibkan oleh hukum, dan dipungut serta disetorkan oleh Paddle atau oleh kami sebagaimana berlaku.
-5. **Pengembalian dana.** Jika Anda tidak puas, Anda dapat meminta pengembalian dana dalam 30 hari sejak pembayaran pertama untuk suatu paket. Pengembalian dana diproses melalui mekanisme Paddle dan tunduk pada proses Paddle. Di luar jendela 30 hari awal, pengembalian dana sepenuhnya merupakan kebijaksanaan kami, kecuali hukum setempat mengharuskan lain.
+5. **Pengembalian dana.** Jika Anda tidak puas, Anda dapat meminta pengembalian dana dalam 14 hari sejak pembayaran pertama untuk suatu paket. Pengembalian dana diproses melalui mekanisme Paddle dan tunduk pada proses Paddle. Di luar jendela 14 hari awal, pengembalian dana sepenuhnya merupakan kebijaksanaan kami, kecuali hukum setempat mengharuskan lain.
 6. **Pembayaran gagal atau disengketakan.** Jika pembayaran gagal, dibatalkan, atau disengketakan, kami dapat menangguhkan atau menurunkan akses ke fitur berbayar hingga masalah diselesaikan, dan jumlah yang belum dibayar tetap terutang.
 
 ## 5. Sinkronisasi cloud dan data Anda
@@ -129,4 +129,5 @@ Pertanyaan tentang Ketentuan ini: **support@kasir.mu**. Untuk membeli atau menin
 
 | Versi | Tanggal berlaku | Ringkasan perubahan |
 | --- | --- | --- |
+| 1.1 | 29 September 2026 | Jendela pengembalian dana diubah dari 30 hari menjadi 14 hari. |
 | 1.0 | 17 Agustus 2026 | Publikasi awal. |

@@ -84,9 +84,12 @@ describe('Vertical tier anchors', () => {
     expect(idJson.vertical.restoran.tierAnchor).toBe('premium');
   });
 
-  it('warehouse anchors to Pro tier', () => {
-    expect(enJson.vertical.warehouse.tierAnchor).toBe('pro');
-    expect(idJson.vertical.warehouse.tierAnchor).toBe('pro');
+  it('warehouse anchors to Premium tier', () => {
+    // Warehouse workspaces became Premium-only on 2026-09-29, so the page about
+    // warehousing cannot keep pointing buyers at Pro — a CTA to a tier that does
+    // not include the feature is the same class of error as a stale ✓.
+    expect(enJson.vertical.warehouse.tierAnchor).toBe('premium');
+    expect(idJson.vertical.warehouse.tierAnchor).toBe('premium');
   });
 
   it('all tier anchors are valid pricing section IDs', () => {
