@@ -495,6 +495,13 @@ pub async fn export_eod_report_scoped(
 }
 
 /// Stamp a DJP-approved NSFP onto a completed sale.
+///
+/// `needless_borrow` is allowed to match the five other `*_scoped` bodies above,
+/// which all pass `&db` where `db` is already `&Connection` (`let db = &*db_guard`).
+/// The non-scoped twins are NOT allowed the same lint: they hold a `MutexGuard`, so
+/// `&db` there is a genuine deref. `dropping_references` accompanies it because the
+/// guard is dropped explicitly on the scoped paths.
+#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn stamp_faktur_pajak_scoped(
     session_token: String,
@@ -515,6 +522,9 @@ pub async fn stamp_faktur_pajak_scoped(
 }
 
 /// Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+///
+/// Same `allow` as the sibling scoped bodies — see `stamp_faktur_pajak_scoped`.
+#[allow(clippy::needless_borrow, dropping_references)]
 #[command]
 pub async fn create_faktur_pengganti_scoped(
     session_token: String,
