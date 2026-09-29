@@ -763,7 +763,8 @@
         "migration column types self-test", "coverage floors self-test",
         "deployment verification self-test", "flaky quarantine self-test",
         "chokepoints self-test", "doc uniqueness self-test",
-        "release workflow self-test", "tz invariance self-test"
+        "release workflow self-test", "tz invariance self-test",
+        "runner commands self-test"
       ] }
     },
     {
@@ -774,8 +775,10 @@
       "runners": { "check.sh": [
         "ipc invoke token parity", "windows config drift",
         "feature registry parity", "no-hardcoded-money-format",
-        "flaky quarantine", "deployment verification", "chokepoints"
-      ] }
+        "flaky quarantine", "deployment verification", "chokepoints",
+        "runner commands"
+      ] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
       "id": "local-matrix-unlisted-gates",

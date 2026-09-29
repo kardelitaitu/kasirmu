@@ -583,6 +583,9 @@ step "flaky quarantine self-test" "python3 scripts/verify-flaky-quarantine.py --
 # The self-test is beside it per the convention, and it is the piece that was missing:
 # --self-test used to be REFUSED here, so the strict-argument rule that already had one
 # documented silent fall-through had no way to be tested at all.
+step "runner commands" "python3 scripts/verify-runner-commands.py" python3 scripts/verify-runner-commands.py
+step "runner commands self-test" "python3 scripts/verify-runner-commands.py --self-test" python3 scripts/verify-runner-commands.py --self-test
+
 step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
 step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
 step "deployment verification" "python3 scripts/verify-deployment.py" python3 scripts/verify-deployment.py

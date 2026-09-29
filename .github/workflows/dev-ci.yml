@@ -1160,6 +1160,10 @@ jobs:
       # It is cheap (reads a few text files, no toolchain) and it is the step that makes
       # the convention self-enforcing rather than advisory, so it lives here beside the
       # other static checks rather than only in the manual matrix.
+      - name: Runner commands resolve
+        run: python3 scripts/verify-runner-commands.py
+      - name: Runner commands self-test
+        run: python3 scripts/verify-runner-commands.py --self-test
       - name: Self-tests are wired
         run: python3 scripts/verify-selftests-wired.py
       - name: Self-tests are wired self-test
