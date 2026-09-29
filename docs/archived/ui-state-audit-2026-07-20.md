@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ⚠️ FINDING, pre-existing and never fixed: the P38-3 gap line says "**2 screens use `alert()`**" and then names THREE screens — `TransitAuditScreen`, `ThresholdConfigScreen` and `ShiftBar`. The count and the list contradict each other, and the closing Verdict repeats the wrong number ("2 alert() calls are the only minor polish gap"). Left as written rather than silently renumbered, because for a dated snapshot the honest repair is to record that the document disagreed with itself, not to pick a number and rewrite history around it — and the correct number is genuinely unknowable now (see below). · All three named screens no longer contain an `alert(` call anywhere in the tree, which is the outcome the document itself asked for ("should migrate to toast"), so the gap this record opened has since been closed by ordinary work; the record simply never got a follow-up pass to say so. · LEFT ALONE deliberately: the three pattern counts (204 loading, 58 empty-state, 180 error-handling), the `0.0.14` in the title, and the component paths (`components/Spinner.tsx`, `components/Skeleton.tsx`, `components/Button.tsx`, `components/EmptyState.tsx`, `components/ErrorState.tsx`), which are written root-relative and predate the `ui/src/features/*` restructure. This is an audit snapshot of 2026-07-20; those numbers and paths are its evidence, and restating them against today's tree would make the file a fabrication rather than a record. · The footer this file carried ("ACCURATE (0 findings) · … all file references valid") was replaced rather than kept: with a self-contradicting bullet in the body, "0 findings" was not true, and the footer is the machine-read field that tells tooling a document is clean. -->
 # UI State Audit — 0.0.14
 
 ## P38-1: Loading States
@@ -45,8 +46,5 @@ Notable gaps found and documented:
 
 **Verdict:** ✅ Error handling is robust. 2 alert() calls are the only minor polish gap.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 
