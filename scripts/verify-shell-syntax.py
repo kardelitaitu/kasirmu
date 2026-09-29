@@ -69,12 +69,24 @@ def targets() -> list[Path]:
         tracked = None          # no git: fall back to walking, see VENDORED above
 
     if tracked is not None:
+        # Detected by SHEBANG, not by extension. An extension list is a snapshot of what
+        # this repo happens to name its shell files, and it was wrong: 60 tracked files
+        # carry a shell shebang and the *.sh glob found 53. The seven it missed were
+        # .githooks/commit-msg, .githooks/post-commit and .githooks/pre-push (hooks
+        # pre-commit was name-listed, the other two were not), apps/mobile-tauri/gen/
+        # android/gradlew, and ops/packaging/linux/deb/postinst and prerm -- the last two
+        # run as root during package install and uninstall, where a parse error breaks
+        # the install. A shebang is a FACT about the file; a .sh suffix is a habit.
         for rel in sorted(tracked):
-            name = rel.rsplit("/", 1)[-1]
-            if not name.endswith(".sh") or name.endswith(".sample"):
-                continue
             p = ROOT / rel
-            if p.is_file():
+            if not p.is_file() or rel.endswith(".sample"):
+                continue
+            try:
+                head = p.open("rb").readline(120)
+            except OSError:
+                continue
+            if head.startswith(b"#!") and any(
+                    k in head.decode("utf-8", "replace") for k in ("sh", "bash")):
                 out.append(p)
         return sorted(out)
 
