@@ -179,12 +179,9 @@ impl Store<'_> {
         for row in rows {
             let (resource_id, resource_type, dim_key, severity_key, limit, current, marked_at) =
                 row?;
-            let dimension = match QuotaDimension::from_key(&dim_key) {
-                Some(d) => d,
-                None => {
-                    skipped += 1;
-                    continue;
-                }
+            let Some(dimension) = QuotaDimension::from_key(&dim_key) else {
+                skipped += 1;
+                continue;
             };
             let severity = match severity_key.as_str() {
                 "over" => OverQuotaSeverity::Over,

@@ -50,7 +50,7 @@ fn insert_bundle_row(
             bundle.description,
             bundle.bundle_price_minor,
             bundle.currency,
-            if bundle.active { 1 } else { 0 },
+            i32::from(bundle.active),
             bundle.created_at,
             bundle.updated_at,
         ],
@@ -264,7 +264,7 @@ impl Store<'_> {
                 bundle.description,
                 bundle.bundle_price_minor,
                 bundle.currency,
-                if bundle.active { 1 } else { 0 },
+                i32::from(bundle.active),
                 bundle.updated_at,
             ],
         );

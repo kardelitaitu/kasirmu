@@ -297,8 +297,7 @@ fn recovery_roundtrip_restores_business_data_from_a_backup_of_the_live_db() {
     std::fs::write(&live, b"corrupted: not a database").unwrap();
     assert!(
         Connection::open(&live)
-            .map(|c| Store::new(&c).check_integrity().is_err())
-            .unwrap_or(true),
+            .map_or(true, |c| Store::new(&c).check_integrity().is_err()),
         "the live database must actually be corrupt before we restore"
     );
 

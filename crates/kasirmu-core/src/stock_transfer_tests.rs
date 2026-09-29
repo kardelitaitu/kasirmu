@@ -152,7 +152,7 @@ fn stock_transfer_no_locations() {
 #[test]
 fn stock_transfer_empty_notes() {
     let mut transfer = sample_transfer();
-    transfer.notes = "".into();
+    transfer.notes = String::new();
     let json = serde_json::to_string(&transfer).unwrap();
     let back: StockTransfer = serde_json::from_str(&json).unwrap();
     assert_eq!(back.notes, "");

@@ -214,15 +214,14 @@ impl Store<'_> {
             // the helper warns.
             let tracks_inventory = product_info
                 .as_ref()
-                .map(|(_, pt)| {
+                .is_some_and(|(_, pt)| {
                     crate::product::ProductType::parse_stored_or_default(
                         Some(pt.as_str()),
                         line.sku.as_str(),
                         "Store::complete_sale_with_resolved_shortfalls:sale_line",
                     )
                     .tracks_inventory()
-                })
-                .unwrap_or(false);
+                });
 
             // MSL-28: `?`, not `.unwrap_or_default()`. The recipe read decides
             // whether this line is stock-checked at all (`has_recipe` feeds
@@ -654,7 +653,7 @@ impl Store<'_> {
             })?;
 
         match deduction_locations_json.as_deref() {
-            None | Some("") | Some("null") => {
+            None | Some("" | "null") => {
                 tracing::info!(
                     sale_id,
                     "voiding pending sale without deduction_locations — no location credits to restore"

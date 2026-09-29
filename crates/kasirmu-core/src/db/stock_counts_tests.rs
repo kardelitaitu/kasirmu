@@ -81,7 +81,7 @@ fn list_stock_counts_ordered() {
         count_number: "CNT-001".into(),
         status: StockCountStatus::Draft,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: "2025-01-02T00:00:00.000Z".into(),
         completed_at: None,
@@ -92,7 +92,7 @@ fn list_stock_counts_ordered() {
         count_number: "CNT-002".into(),
         status: StockCountStatus::Completed,
         count_type: CountType::Cyclic,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: "2025-01-01T00:00:00.000Z".into(),
         completed_at: Some(now.clone()),
@@ -120,7 +120,7 @@ fn add_and_get_count_lines() {
         count_number: "CNT-LINES".into(),
         status: StockCountStatus::Draft,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -136,7 +136,7 @@ fn add_and_get_count_lines() {
         expected_qty: 10,
         counted_qty: None,
         difference: 0,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
 
@@ -158,7 +158,7 @@ fn update_count_line() {
         count_number: "CNT-UPDATE".into(),
         status: StockCountStatus::InProgress,
         count_type: CountType::Spot,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -174,7 +174,7 @@ fn update_count_line() {
         expected_qty: 10,
         counted_qty: None,
         difference: 0,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
 
@@ -218,7 +218,7 @@ fn complete_stock_count_creates_adjustments() {
         count_number: "CNT-COMPLETE".into(),
         status: StockCountStatus::InProgress,
         count_type: CountType::Cyclic,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -234,7 +234,7 @@ fn complete_stock_count_creates_adjustments() {
         expected_qty: 10,
         counted_qty: Some(8),
         difference: -2,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
 
@@ -281,7 +281,7 @@ fn next_count_number_generates_sequential() {
         count_number: n1.clone(),
         status: StockCountStatus::Draft,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -306,7 +306,7 @@ fn remove_count_line() {
         count_number: "CNT-REMOVE".into(),
         status: StockCountStatus::Draft,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -322,7 +322,7 @@ fn remove_count_line() {
         expected_qty: 5,
         counted_qty: None,
         difference: 0,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
     assert_eq!(store.get_count_lines(&count_id).unwrap().len(), 1);
@@ -343,7 +343,7 @@ fn complete_already_completed_count_rejected() {
         count_number: "CNT-COMPLETED".into(),
         status: StockCountStatus::Completed,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: Some(now.clone()),
@@ -394,7 +394,7 @@ fn complete_draft_count_allowed() {
         count_number: "CNT-DRAFT-COMPLETE".into(),
         status: StockCountStatus::Draft,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -410,7 +410,7 @@ fn complete_draft_count_allowed() {
         expected_qty: 10,
         counted_qty: Some(12),
         difference: 2,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
 
@@ -445,7 +445,7 @@ fn complete_stock_count_skip_zero_difference() {
         count_number: "CNT-NOCHANGE".into(),
         status: StockCountStatus::InProgress,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -462,7 +462,7 @@ fn complete_stock_count_skip_zero_difference() {
         expected_qty: 10,
         counted_qty: Some(10),
         difference: 0,
-        notes: "".into(),
+        notes: String::new(),
     };
     store.add_count_line(&line).unwrap();
 
@@ -498,7 +498,7 @@ fn complete_stock_count_multiple_lines() {
         count_number: "CNT-MULTI".into(),
         status: StockCountStatus::InProgress,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -515,7 +515,7 @@ fn complete_stock_count_multiple_lines() {
             expected_qty: 10,
             counted_qty: Some(12),
             difference: 2,
-            notes: "".into(),
+            notes: String::new(),
         })
         .unwrap();
     store
@@ -527,7 +527,7 @@ fn complete_stock_count_multiple_lines() {
             expected_qty: 20,
             counted_qty: Some(18),
             difference: -2,
-            notes: "".into(),
+            notes: String::new(),
         })
         .unwrap();
 
@@ -553,7 +553,7 @@ fn complete_stock_count_no_lines() {
         count_number: "CNT-EMPTY".into(),
         status: StockCountStatus::InProgress,
         count_type: CountType::Full,
-        notes: "".into(),
+        notes: String::new(),
         counted_by: None,
         created_at: now.clone(),
         completed_at: None,
@@ -669,7 +669,7 @@ fn list_stock_adjustments_ordered() {
             count_number: format!("CNT-ADJ-{i}"),
             status: StockCountStatus::InProgress,
             count_type: CountType::Full,
-            notes: "".into(),
+            notes: String::new(),
             counted_by: None,
             created_at: now.clone(),
             completed_at: None,
@@ -685,7 +685,7 @@ fn list_stock_adjustments_ordered() {
                 expected_qty: 10,
                 counted_qty: Some(*counted),
                 difference: *counted - 10,
-                notes: "".into(),
+                notes: String::new(),
             })
             .unwrap();
         store.complete_stock_count(&cid, None).unwrap();

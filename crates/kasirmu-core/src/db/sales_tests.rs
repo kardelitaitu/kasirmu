@@ -3981,7 +3981,7 @@ fn list_sales_by_user_filters_correctly() {
     let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
 
     // Create 3 sales: 2 for user-alice, 1 for user-bob.
-    for (uid, _i) in [("alice", 0u32), ("alice", 1), ("bob", 2)].iter() {
+    for (uid, _i) in &[("alice", 0u32), ("alice", 1), ("bob", 2)] {
         let sale = crate::Sale {
             id: uuid::Uuid::now_v7().to_string(),
             status: crate::SaleStatus::Completed,
@@ -4254,7 +4254,7 @@ fn checkout_rejects_unknown_promotion() {
         .compute_checkout_promotions(&mut sale, &["nope".into()], chrono::Utc::now())
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::CoreError::NotFound { ref entity, .. } if entity == &"promotion")
+        matches!(err, crate::error::CoreError::NotFound { entity, .. } if entity == "promotion")
     );
 }
 

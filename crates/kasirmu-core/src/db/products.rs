@@ -284,7 +284,7 @@ impl Store<'_> {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 variant.id, variant.parent_sku, variant.name, variant.sku,
-                price_minor, currency_str, variant.barcode.as_ref().map(|b| b.as_str()),
+                price_minor, currency_str, variant.barcode.as_ref().map(foundation::Barcode::as_str),
                 variant.sort_order, i64::from(variant.is_active),
                 variant.created_at, variant.updated_at,
             ],
@@ -366,7 +366,7 @@ impl Store<'_> {
                 variant.name,
                 price_minor,
                 currency_str,
-                variant.barcode.as_ref().map(|b| b.as_str()),
+                variant.barcode.as_ref().map(foundation::Barcode::as_str),
                 variant.sort_order,
                 i64::from(variant.is_active),
                 variant.sku

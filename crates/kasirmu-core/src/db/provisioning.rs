@@ -711,8 +711,7 @@ fn new_id() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_nanos());
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("loc-{nanos:032x}{seq:04x}")
 }

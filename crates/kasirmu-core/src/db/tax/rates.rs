@@ -299,7 +299,7 @@ impl Store<'_> {
     /// directive, the store preference applies.
     pub fn tax_rate_rounding_mode(&self, rate_id: &str) -> Result<Option<RoundingMode>, CoreError> {
         self.list_tax_rate_rounding_modes(std::slice::from_ref(&rate_id))
-            .map(|modes| modes.get(rate_id).cloned().flatten())
+            .map(|modes| modes.get(rate_id).copied().flatten())
     }
 
     /// Count every reference to a tax rate (TAX-03).

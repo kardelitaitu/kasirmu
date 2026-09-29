@@ -608,7 +608,7 @@ fn franchise_preset_has_expected_features() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "feature StaffRoles requires StaffLogin but it is not in the set")]
 fn from_set_panics_on_missing_dependency() {
     FeatureRegistry::from_set([Feature::StaffRoles]);
 }

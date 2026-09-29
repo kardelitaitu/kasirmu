@@ -404,7 +404,7 @@ fn list_sections_excludes_empty() {
     let mut a = dummy_table("a");
     a.section = "Main".into();
     let mut b = dummy_table("b");
-    b.section = "".into();
+    b.section = String::new();
     s.create_table(&a).unwrap();
     s.create_table(&b).unwrap();
 
@@ -420,7 +420,7 @@ fn create_table_empty_name_rejected() {
     let conn = fresh();
     let s = store(&conn);
     let mut t = dummy_table("t1");
-    t.name = "".into();
+    t.name = String::new();
     let err = s.create_table(&t).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }
@@ -451,7 +451,7 @@ fn update_table_empty_name_rejected() {
     let s = store(&conn);
     let mut t = dummy_table("t1");
     s.create_table(&t).unwrap();
-    t.name = "".into();
+    t.name = String::new();
     let err = s.update_table(&t).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }

@@ -138,7 +138,7 @@ impl SessionContext {
     /// A session with `expires_at: None` is never considered expired.
     pub fn is_expired(&self) -> bool {
         self.expires_at
-            .map(|ts| {
+            .is_some_and(|ts| {
                 // `as_secs()` is u64; `i64::try_from` rather than `as i64` so a
                 // clock past 2262 (where u64 seconds exceed i64) fails the
                 // comparison as expired-true rather than wrapping negative and
@@ -152,7 +152,6 @@ impl SessionContext {
                 let now = i64::try_from(now).unwrap_or(i64::MAX);
                 now >= ts
             })
-            .unwrap_or(false)
     }
 }
 

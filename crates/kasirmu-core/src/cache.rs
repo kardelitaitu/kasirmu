@@ -463,16 +463,13 @@ pub(crate) fn lock_or_report<T>(
     result: Result<T, std::sync::PoisonError<T>>,
     operation: &str,
 ) -> Option<T> {
-    match result {
-        Ok(guard) => Some(guard),
-        Err(_) => {
-            tracing::error!(
-                operation,
-                "Redis connection lock is poisoned; this operation is being \
-                 skipped and the cache will stay degraded until the process restarts"
-            );
-            None
-        }
+    if let Ok(guard) = result { Some(guard) } else {
+        tracing::error!(
+            operation,
+            "Redis connection lock is poisoned; this operation is being \
+             skipped and the cache will stay degraded until the process restarts"
+        );
+        None
     }
 }
 

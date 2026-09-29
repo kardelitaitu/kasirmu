@@ -323,11 +323,11 @@ fn the_two_enumerations_are_exactly_the_declared_members() {
     // what a caller iterates to render a status table, so a member missing
     // from one disappears from the UI with nothing red anywhere.
     assert_eq!(
-        ServiceKind::ALL.map(|kind| kind.as_str()),
+        ServiceKind::ALL.map(super::ServiceKind::as_str),
         ["license_server", "sync", "payment", "device_connectivity"],
     );
     assert_eq!(
-        HealthState::ALL.map(|state| state.as_str()),
+        HealthState::ALL.map(super::HealthState::as_str),
         ["operational", "degraded", "unavailable", "unknown"],
     );
 }
@@ -337,7 +337,7 @@ fn the_severity_ranks_are_four_distinct_values_with_unavailable_worst() {
     // The rank table is the whole aggregation contract, and worst() reads it
     // through <=, so a duplicated or swapped rank changes what a banner says
     // without failing any single-pair comparison above.
-    let mut ranks: Vec<u8> = HealthState::ALL.map(|state| state.severity_rank()).to_vec();
+    let mut ranks: Vec<u8> = HealthState::ALL.map(super::HealthState::severity_rank).to_vec();
     ranks.sort_unstable();
     assert_eq!(ranks, vec![0, 1, 2, 3], "one rank per state");
     let mut by_severity = HealthState::ALL.to_vec();

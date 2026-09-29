@@ -376,7 +376,7 @@ impl crate::db::Store<'_> {
                 .optional()?;
             if let Some(raw) = raw {
                 let map = parse_json_object(&raw, "config")?;
-                let get_bool = |key: &str| map.get(key).and_then(|v| v.as_bool());
+                let get_bool = |key: &str| map.get(key).and_then(serde_json::Value::as_bool);
                 content = Some(ReceiptContent {
                     required_fields: map
                         .get("required_fields")
@@ -407,8 +407,7 @@ impl crate::db::Store<'_> {
             // Legacy fallback: the ten pinned org-global keys.
             let has_any = LEGACY_RECEIPT_KEYS.iter().any(|key| {
                 platform_core::settings::Settings::get(self.conn, key)
-                    .map(|v| v.is_some())
-                    .unwrap_or(false)
+                    .is_ok_and(|v| v.is_some())
             });
             if has_any {
                 content = Some(ReceiptContent {
@@ -462,8 +461,8 @@ impl crate::db::Store<'_> {
                 return Ok(None);
             };
             let map = parse_json_object(raw.as_deref().unwrap_or("{}"), "config")?;
-            let get_i64 = |key: &str| map.get(key).and_then(|v| v.as_i64());
-            let get_bool = |key: &str| map.get(key).and_then(|v| v.as_bool());
+            let get_i64 = |key: &str| map.get(key).and_then(serde_json::Value::as_i64);
+            let get_bool = |key: &str| map.get(key).and_then(serde_json::Value::as_bool);
             Ok(Some(ReceiptLayout {
                 paper_width_mm: width,
                 margin_top_mm: get_i64("margin_top_mm"),
@@ -566,8 +565,7 @@ impl crate::db::Store<'_> {
         .iter()
         .any(|key| {
             platform_core::settings::Settings::get(self.conn, key)
-                .map(|v| v.is_some())
-                .unwrap_or(false)
+                .is_ok_and(|v| v.is_some())
         });
         if layout.paper_width_mm.is_none() {
             let width = platform_core::settings::Settings::get_receipt_paper_width(self.conn)

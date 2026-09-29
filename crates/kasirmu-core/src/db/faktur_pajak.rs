@@ -151,8 +151,8 @@ impl crate::db::Store<'_> {
         let mut map = std::collections::HashMap::new();
         for r in rows {
             let (id, maybe_nsfp, kode, status) = r?;
-            if let Some(nsfp) = maybe_nsfp {
-                if !nsfp.trim().is_empty() {
+            if let Some(nsfp) = maybe_nsfp
+                && !nsfp.trim().is_empty() {
                     let formatted = format_faktur_pajak_17(&kode, &status, &nsfp);
                     map.insert(
                         id,
@@ -164,7 +164,6 @@ impl crate::db::Store<'_> {
                         },
                     );
                 }
-            }
         }
         Ok(map)
     }

@@ -969,11 +969,11 @@ impl TaxRateCandidate {
 pub fn parse_effective_date(value: &str) -> Option<chrono::NaiveDate> {
     let b = value.as_bytes();
     let shape_ok = b.len() == 10
-        && b[..4].iter().all(|c| c.is_ascii_digit())
+        && b[..4].iter().all(u8::is_ascii_digit)
         && b[4] == b'-'
-        && b[5..7].iter().all(|c| c.is_ascii_digit())
+        && b[5..7].iter().all(u8::is_ascii_digit)
         && b[7] == b'-'
-        && b[8..].iter().all(|c| c.is_ascii_digit());
+        && b[8..].iter().all(u8::is_ascii_digit);
     if !shape_ok {
         return None;
     }

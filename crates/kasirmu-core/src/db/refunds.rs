@@ -412,7 +412,7 @@ impl Store<'_> {
         // If deduction_locations is NULL (pre-093 legacy sale), fall
         // back to crediting the canonical default location.
         match deduction_locations_json.as_deref() {
-            None | Some("null") | Some("") => {
+            None | Some("null" | "") => {
                 self.credit_refund_to_default_location(&tx, refund)?;
             }
             Some(locations) => {

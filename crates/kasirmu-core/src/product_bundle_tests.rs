@@ -171,7 +171,7 @@ fn bundle_item_debug() {
     };
     let debug = format!("{item:?}");
     assert!(debug.contains("SKU-001"));
-    assert!(debug.contains("5"));
+    assert!(debug.contains('5'));
 }
 
 #[test]

@@ -189,7 +189,7 @@ impl Store<'_> {
                 &tx,
                 CreateKdsOrderInput {
                     sale_id: sale_id.to_owned(),
-                    store_id: store_id.map(|s| s.to_owned()),
+                    store_id: store_id.map(std::borrow::ToOwned::to_owned),
                     items_summary,
                     item_count,
                     kitchen_zone: zone,
@@ -376,7 +376,7 @@ impl Store<'_> {
             })?;
         let allowed = |from: &str, to: &str| match (from, to) {
             ("pending", "preparing") | ("preparing", "ready") | ("ready", "served") => true,
-            ("pending", "cancelled") | ("preparing", "cancelled") | ("ready", "cancelled") => true,
+            ("pending" | "preparing" | "ready", "cancelled") => true,
             (from, to) if from == to => true,
             _ => false,
         };

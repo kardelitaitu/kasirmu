@@ -60,7 +60,7 @@ fn session_context_debug_output() {
     assert!(debug.contains("s1"));
     assert!(debug.contains("restaurant-pos"));
     assert!(debug.contains("42"));
-    assert!(debug.contains("7"));
+    assert!(debug.contains('7'));
 }
 
 #[test]

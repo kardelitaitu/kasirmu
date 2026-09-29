@@ -546,10 +546,7 @@ impl Store<'_> {
     pub fn get_cloud_export_config(
         &self,
     ) -> Result<Option<cloud_destination::CloudExportConfig>, CoreError> {
-        let raw = match self.get_setting(CLOUD_EXPORT_SETTINGS_KEY)? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
+        let Some(raw) = self.get_setting(CLOUD_EXPORT_SETTINGS_KEY)? else { return Ok(None) };
         let config: cloud_destination::CloudExportConfig =
             serde_json::from_str(&raw).map_err(|e| {
                 CoreError::Internal(format!("failed to deserialize cloud export config: {e}"))
@@ -560,10 +557,7 @@ impl Store<'_> {
     /// Load the report schedule configuration from the settings table.
     /// Returns `None` if no schedule has been saved yet.
     pub fn get_report_schedule(&self) -> Result<Option<ReportScheduleConfig>, CoreError> {
-        let raw = match self.get_setting(REPORT_SCHEDULE_SETTINGS_KEY)? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
+        let Some(raw) = self.get_setting(REPORT_SCHEDULE_SETTINGS_KEY)? else { return Ok(None) };
         let config: ReportScheduleConfig = serde_json::from_str(&raw).map_err(|e| {
             CoreError::Internal(format!("failed to deserialize report schedule: {e}"))
         })?;
@@ -623,7 +617,7 @@ impl Store<'_> {
         }
 
         // Apply limit and offset (clamped to MAX_LIMIT)
-        let limit = req.limit.map(|l| l.min(MAX_LIMIT)).unwrap_or(MAX_LIMIT);
+        let limit = req.limit.map_or(MAX_LIMIT, |l| l.min(MAX_LIMIT));
         let offset = req.offset.unwrap_or(0);
 
         // Build safe SQL — column names come from our whitelist, table name

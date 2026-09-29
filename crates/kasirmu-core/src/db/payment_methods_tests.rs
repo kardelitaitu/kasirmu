@@ -170,7 +170,7 @@ fn write_rejects_blank_codes_labels_duplicates_and_bad_scope() {
             .is_err()
     );
     r.rail_code = "qris".into();
-    r.label = "".into();
+    r.label = String::new();
     assert!(
         store
             .replace_local_payment_methods("legal_entity", "ent-1", &[r], NOW)

@@ -348,10 +348,7 @@ impl Store<'_> {
     /// with an error (F-029).
     /// Returns `None` if no config has been saved yet.
     pub fn get_smtp_config(&self) -> Result<Option<SmtpConfig>, CoreError> {
-        let raw = match self.get_setting(SMTP_CONFIG_SETTINGS_KEY)? {
-            Some(v) => v,
-            None => return Ok(None),
-        };
+        let Some(raw) = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)? else { return Ok(None) };
         let mut config: SmtpConfig = serde_json::from_str(&raw)
             .map_err(|e| CoreError::Internal(format!("failed to deserialize SMTP config: {e}")))?;
         if let Some(ref pwd) = config.password
@@ -459,7 +456,7 @@ impl ReportEmailBuilder {
     /// contains summary tables for all populated report types, rendered
     /// as both HTML and plain-text.
     pub fn build(bundle: &AnalyticsBundle, store_name: &str, date_label: &str) -> ReportEmail {
-        let subject = format!("kasir.mu Report — {store_name} ({date_label})",);
+        let subject = format!("kasir.mu Report — {store_name} ({date_label})");
 
         let html_body = Self::render_html(bundle, store_name, date_label);
         let text_body = Self::render_text(bundle, store_name, date_label);
@@ -485,7 +482,7 @@ impl ReportEmailBuilder {
             sections.push_str(r#"<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d1d5db;font-size:13px;">Date</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Total</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Sales</th>"#);
-            sections.push_str(r#"</tr></thead><tbody>"#);
+            sections.push_str(r"</tr></thead><tbody>");
             for row in &bundle.daily_revenue {
                 sections.push_str(&format!(
                     r#"<tr><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;">{}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;font-variant-numeric:tabular-nums;">{}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">{}</td></tr>"#,
@@ -494,7 +491,7 @@ impl ReportEmailBuilder {
                     row.sale_count,
                 ));
             }
-            sections.push_str(r#"</tbody></table>"#);
+            sections.push_str(r"</tbody></table>");
         }
 
         // Top Products
@@ -510,7 +507,7 @@ impl ReportEmailBuilder {
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Revenue</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Gross Profit</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Margin</th>"#);
-            sections.push_str(r#"</tr></thead><tbody>"#);
+            sections.push_str(r"</tr></thead><tbody>");
             for row in &bundle.top_products {
                 let margin = format!("{:.1}%", row.gross_margin_percent);
                 sections.push_str(&format!(
@@ -523,7 +520,7 @@ impl ReportEmailBuilder {
                     margin,
                 ));
             }
-            sections.push_str(r#"</tbody></table>"#);
+            sections.push_str(r"</tbody></table>");
         }
 
         // Category Breakdown
@@ -537,7 +534,7 @@ impl ReportEmailBuilder {
             sections.push_str(r#"<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #d1d5db;font-size:13px;">Category</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">Revenue</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #d1d5db;font-size:13px;">%</th>"#);
-            sections.push_str(r#"</tr></thead><tbody>"#);
+            sections.push_str(r"</tr></thead><tbody>");
             for row in &bundle.category_breakdown {
                 sections.push_str(&format!(
                     r#"<tr><td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;">{}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">{}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #e5e7eb;font-size:13px;">{:.1}%</td></tr>"#,
@@ -546,7 +543,7 @@ impl ReportEmailBuilder {
                     row.percentage,
                 ));
             }
-            sections.push_str(r#"</tbody></table>"#);
+            sections.push_str(r"</tbody></table>");
         }
 
         // Low Stock Alerts
@@ -560,7 +557,7 @@ impl ReportEmailBuilder {
             sections.push_str(r#"<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #fecaca;font-size:13px;">Product</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #fecaca;font-size:13px;">Stock</th>"#);
             sections.push_str(r#"<th style="padding:8px 12px;text-align:right;border-bottom:2px solid #fecaca;font-size:13px;">Threshold</th>"#);
-            sections.push_str(r#"</tr></thead><tbody>"#);
+            sections.push_str(r"</tr></thead><tbody>");
             for row in &bundle.low_stock_alerts {
                 sections.push_str(&format!(
                     r#"<tr><td style="padding:6px 12px;border-bottom:1px solid #fecaca;font-size:13px;">{} — {}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #fecaca;font-size:13px;font-weight:600;">{}</td><td style="padding:6px 12px;text-align:right;border-bottom:1px solid #fecaca;font-size:13px;">{}</td></tr>"#,
@@ -570,7 +567,7 @@ impl ReportEmailBuilder {
                     row.threshold,
                 ));
             }
-            sections.push_str(r#"</tbody></table>"#);
+            sections.push_str(r"</tbody></table>");
         }
 
         // Hourly Heatmap (compact summary)
@@ -584,7 +581,7 @@ impl ReportEmailBuilder {
                     p.day_of_week, p.hour, p.sale_count,
                 ));
             }
-            sections.push_str(r#"</p>"#);
+            sections.push_str(r"</p>");
         }
 
         let html = format!(
@@ -743,10 +740,10 @@ fn html_escape(s: &str) -> String {
 fn format_amount(minor: i64, currency: &str) -> String {
     // Fall back to USD's exponent (2) if the code doesn't parse.
     let cur = currency.parse::<Currency>().unwrap_or(Currency(*b"USD"));
-    if !currency.is_empty() {
-        format!("{} {}", format_minor(minor, cur), currency)
-    } else {
+    if currency.is_empty() {
         format_minor(minor, cur)
+    } else {
+        format!("{} {}", format_minor(minor, cur), currency)
     }
 }
 

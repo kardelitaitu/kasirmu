@@ -355,7 +355,7 @@ fn create_promotion_empty_name_rejected() {
     let store_db = migrations::fresh_db();
     let store = setup(&store_db);
     let mut p = test_promo("v1");
-    p.name = "".into();
+    p.name = String::new();
     let err = store.create_promotion(&p).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }
@@ -375,7 +375,7 @@ fn create_promotion_empty_type_rejected() {
     let store_db = migrations::fresh_db();
     let store = setup(&store_db);
     let mut p = test_promo("v3");
-    p.promo_type = "".into();
+    p.promo_type = String::new();
     let err = store.create_promotion(&p).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "promo_type"));
 }
@@ -416,7 +416,7 @@ fn update_promotion_empty_name_rejected() {
     let store = setup(&store_db);
     let mut p = test_promo("v7");
     store.create_promotion(&p).unwrap();
-    p.name = "".into();
+    p.name = String::new();
     let err = store.update_promotion(&p).unwrap_err();
     assert!(matches!(err, CoreError::Validation { field, .. } if field == "name"));
 }
@@ -700,7 +700,7 @@ fn apply_missing_promotion_is_not_found() {
     let err = store
         .apply_promotion_to_sale(&sale.id, "nope", chrono::Utc::now())
         .unwrap_err();
-    assert!(matches!(err, CoreError::NotFound { ref entity, .. } if entity == &"promotion"));
+    assert!(matches!(err, CoreError::NotFound { entity, .. } if entity == "promotion"));
 }
 
 #[test]

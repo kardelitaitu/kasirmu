@@ -237,7 +237,7 @@ fn quota_error_register_limit() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Free"));
-    assert!(msg.contains("1"));
+    assert!(msg.contains('1'));
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn quota_error_store_limit() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Pro"));
-    assert!(msg.contains("2"));
+    assert!(msg.contains('2'));
 }
 
 #[test]
@@ -1527,7 +1527,7 @@ fn quota_error_staff_limit_display() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Plus"));
-    assert!(msg.contains("5"));
+    assert!(msg.contains('5'));
     assert!(msg.contains("staff"));
 }
 
@@ -1540,7 +1540,7 @@ fn quota_error_warehouse_limit_display() {
     };
     let msg = err.to_string();
     assert!(msg.contains("Pro"));
-    assert!(msg.contains("3"));
+    assert!(msg.contains('3'));
     assert!(msg.contains("warehouse"));
 }
 

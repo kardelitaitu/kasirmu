@@ -237,7 +237,7 @@ fn blank_legal_entity_id_is_not_an_entity_link() {
     // older writer must not surface as Some("") to an authorization check.
     let cfg = RegionalConfig::resolve(
         "loc-1",
-        Some("".into()),
+        Some(String::new()),
         &[layer(ConfigScope::Location, None, None, None, None)],
     );
     assert_eq!(cfg.legal_entity_id, None);

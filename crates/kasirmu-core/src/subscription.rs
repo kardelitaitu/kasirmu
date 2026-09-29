@@ -446,10 +446,7 @@ impl TenantSubscription {
         }
 
         // No expiry — lifetime/perpetual license.
-        let expires_at = match &self.expires_at {
-            Some(ts) => ts,
-            None => return true,
-        };
+        let Some(expires_at) = &self.expires_at else { return true };
 
         let expiry = match chrono::DateTime::parse_from_rfc3339(expires_at) {
             Ok(dt) => dt.with_timezone(&chrono::Utc),

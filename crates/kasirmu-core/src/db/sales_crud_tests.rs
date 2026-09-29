@@ -162,7 +162,6 @@ fn a_transition_that_lost_the_race_reports_the_conflict() {
             // left to lose. Restage.
             Err(CoreError::Validation { .. }) => {
                 let _ = std::fs::remove_dir_all(&dir);
-                continue;
             }
             // The pre-fix behaviour: the losing transition succeeded and
             // silently discarded the winner's `completed`.

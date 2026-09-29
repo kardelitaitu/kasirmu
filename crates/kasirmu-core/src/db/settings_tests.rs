@@ -172,7 +172,7 @@ fn setting_overwrite_with_empty_string() {
     s.set_setting("greeting", "").unwrap();
     assert_eq!(
         s.get_setting("greeting").unwrap(),
-        Some("".into()),
+        Some(String::new()),
         "empty string should be a valid setting value"
     );
 }

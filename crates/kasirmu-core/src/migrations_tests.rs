@@ -1445,7 +1445,7 @@ fn scoped_row_ids(conn: &rusqlite::Connection, table: &str, store: &str) -> Vec<
         .unwrap();
     stmt.query_map(rusqlite::params![store], |row| row.get(0))
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect()
 }
 
@@ -1460,7 +1460,7 @@ fn global_row_ids(conn: &rusqlite::Connection, table: &str) -> Vec<String> {
         .unwrap();
     stmt.query_map([], |row| row.get(0))
         .unwrap()
-        .filter_map(|r| r.ok())
+        .filter_map(std::result::Result::ok)
         .collect()
 }
 
@@ -2285,7 +2285,7 @@ fn migration_registry_matches_filesystem() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
     let mut files: Vec<String> = std::fs::read_dir(&dir)
         .expect("migrations directory must exist")
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".sql") && !n.ends_with(".pg.sql"))
         .collect();

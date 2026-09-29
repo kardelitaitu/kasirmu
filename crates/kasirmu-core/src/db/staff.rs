@@ -419,8 +419,7 @@ impl Store<'_> {
         // The role resolves through the assignment when one exists; legacy
         // users without an assignment fall back to `users.role_id`.
         let role_id = assignment
-            .map(|a| a.role_id.as_str())
-            .unwrap_or(user.role_id.as_str());
+            .map_or(user.role_id.as_str(), |a| a.role_id.as_str());
         // Fail closed: an unresolvable role is a denial, never an internal
         // error (a role row deleted out from under a user must not surface
         // as a crash-adjacent 500 to the frontend).

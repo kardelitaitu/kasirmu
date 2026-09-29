@@ -72,9 +72,9 @@ impl AuditEntry {
             id: uuid::Uuid::now_v7().to_string(),
             user_id: user_id.into(),
             action: action.into(),
-            target_type: target_type.map(|s| s.into()),
-            target_id: target_id.map(|s| s.into()),
-            details: details.map(|s| s.into()).unwrap_or_else(|| "{}".into()),
+            target_type: target_type.map(std::convert::Into::into),
+            target_id: target_id.map(std::convert::Into::into),
+            details: details.map_or_else(|| "{}".into(), std::convert::Into::into),
             outcome: outcome.into(),
             created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         }

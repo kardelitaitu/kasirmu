@@ -278,8 +278,7 @@ pub fn import_kasirpkg(
     let trimmed_len = header_bytes
         .iter()
         .rposition(|&b| b != b' ')
-        .map(|pos| pos + 1)
-        .unwrap_or(0);
+        .map_or(0, |pos| pos + 1);
     let header: KasirpkgHeader = serde_json::from_slice(&header_bytes[..trimmed_len])
         .map_err(|e| CoreError::Internal(format!("invalid header: {e}")))?;
 

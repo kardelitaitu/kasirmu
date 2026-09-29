@@ -58,7 +58,7 @@ fn smtp_config_valid_passes() {
 #[test]
 fn smtp_config_empty_host_fails() {
     let cfg = SmtpConfig {
-        host: "".into(),
+        host: String::new(),
         ..SmtpConfig::default()
     };
     let err = cfg.validate().unwrap_err();
@@ -940,7 +940,7 @@ fn report_email_low_stock_alerts_html() {
     assert!(email.html_body.contains("Low Stock Alerts"));
     assert!(email.html_body.contains("WIDGET"));
     assert!(email.html_body.contains("Widget"));
-    assert!(email.html_body.contains("2")); // current_qty
+    assert!(email.html_body.contains('2')); // current_qty
     assert!(email.html_body.contains("10")); // threshold
 }
 

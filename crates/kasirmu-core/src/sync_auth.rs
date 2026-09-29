@@ -399,9 +399,7 @@ pub async fn request_token(url: &str, admin_key: Option<&str>) -> TokenResult {
                         TokenResult {
                             ok: true,
                             status: expires
-                                .as_ref()
-                                .map(|e| format!("Token obtained — {}", format_expiry(e)))
-                                .unwrap_or_else(|| "Token obtained".into()),
+                                .as_ref().map_or_else(|| "Token obtained".into(), |e| format!("Token obtained — {}", format_expiry(e))),
                             token: Some(tr.token.token),
                             expires_at: tr.token.expires_at,
                         }

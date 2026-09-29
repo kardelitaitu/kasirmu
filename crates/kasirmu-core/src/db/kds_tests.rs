@@ -555,7 +555,7 @@ fn list_kds_orders_with_status_filter() {
 
     for sid in [&sale_id1, &sale_id2] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -627,7 +627,7 @@ fn get_kds_queue_returns_pending_and_preparing() {
 
     for sid in [&sale_id1, &sale_id2, &sale_id3] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -745,7 +745,7 @@ fn display_number_increments_per_day() {
 
     for sid in [&sale_id1, &sale_id2] {
         let test_sale = Sale {
-            id: sid.to_string(),
+            id: sid.clone(),
             status: crate::SaleStatus::Completed,
             total: price(0),
             currency: usd(),
@@ -1174,7 +1174,7 @@ fn get_kds_queue_empty_zone_returns_unzoned_orders() {
             store_id: None,
             items_summary: format!("Order {suffix}"),
             item_count: 1,
-            kitchen_zone: zone.map(|z| z.to_string()),
+            kitchen_zone: zone.map(std::string::ToString::to_string),
             notes: String::new(),
             table_number: None,
             priority: false,
@@ -1808,7 +1808,7 @@ fn update_kds_order_items_rejects_empty_summary() {
     let err = s
         .update_kds_order_items(crate::UpdateKdsOrderItemsInput {
             id: "any-id".into(),
-            items_summary: "".into(),
+            items_summary: String::new(),
             item_count: 1,
             line_items: None,
         })
@@ -1842,7 +1842,7 @@ fn create_kds_order_rejects_empty_sale_id() {
     let s = store(&conn);
     let err = s
         .create_kds_order(CreateKdsOrderInput {
-            sale_id: "".into(),
+            sale_id: String::new(),
             store_id: None,
             items_summary: "Items".into(),
             item_count: 1,
@@ -1869,7 +1869,7 @@ fn create_kds_order_rejects_empty_items_summary() {
         .create_kds_order(CreateKdsOrderInput {
             sale_id: "sale-1".into(),
             store_id: None,
-            items_summary: "".into(),
+            items_summary: String::new(),
             item_count: 1,
             kitchen_zone: None,
             notes: String::new(),
@@ -3112,7 +3112,7 @@ fn make_kds_order(s: &Store<'_>, sale_id: &str, zone: Option<&str>) -> crate::Kd
         store_id: None,
         items_summary: "Burger x1".into(),
         item_count: 1,
-        kitchen_zone: zone.map(|z| z.to_owned()),
+        kitchen_zone: zone.map(std::borrow::ToOwned::to_owned),
         notes: String::new(),
         table_number: None,
         priority: false,

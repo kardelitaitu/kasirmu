@@ -248,6 +248,7 @@ impl<'a> Store<'a> {
     }
 
     /// Set the terminal ID for pub/sub message tagging.
+    #[must_use]
     pub fn with_terminal_id(mut self, terminal_id: Option<String>) -> Self {
         self.terminal_id = terminal_id;
         self

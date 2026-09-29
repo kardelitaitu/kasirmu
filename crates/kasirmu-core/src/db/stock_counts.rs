@@ -664,7 +664,7 @@ impl Store<'_> {
                 previous_qty,
                 adjusted_qty: counted_qty,
                 reason: format!("stock count {} ({})", count.count_number, line.notes),
-                created_by: completed_by.map(|s| s.to_owned()),
+                created_by: completed_by.map(std::borrow::ToOwned::to_owned),
                 created_at: now.clone(),
             };
 

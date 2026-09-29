@@ -80,7 +80,7 @@ impl Shift {
         Self {
             id: uuid::Uuid::now_v7().to_string(),
             user_id,
-            terminal_id: terminal_id.map(|t| t.into()),
+            terminal_id: terminal_id.map(std::convert::Into::into),
             opened_at: now.clone(),
             closed_at: None,
             opening_balance_minor,

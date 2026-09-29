@@ -253,7 +253,7 @@ fn a_blank_vendor_and_model_become_none_not_empty_strings() {
     let store = Store::new(&conn);
     let mut row = input();
     row.vendor = Some("   ".into());
-    row.model = Some("".into());
+    row.model = Some(String::new());
     let created = store.create_edc_terminal(&row).expect("create");
     assert_eq!(created.vendor, None);
     assert_eq!(created.model, None);

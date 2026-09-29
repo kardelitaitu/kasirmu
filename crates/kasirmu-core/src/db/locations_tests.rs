@@ -247,8 +247,8 @@ fn set_primary_location_promotes_and_demotes() {
     let second = LocationProfile {
         id: uuid::Uuid::now_v7().to_string(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -290,8 +290,8 @@ fn delete_second_store() {
     let second = LocationProfile {
         id: uuid::Uuid::now_v7().to_string(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -329,8 +329,8 @@ fn delete_store_with_workspace_instances_rejected() {
     let second = LocationProfile {
         id: "store-branch".into(),
         name: "Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -371,8 +371,8 @@ fn delete_store_with_user_access_rejected() {
     let second = LocationProfile {
         id: "store-b2".into(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -491,8 +491,8 @@ fn create_store_with_is_primary_true_rejected_by_db() {
     let second = LocationProfile {
         id: "branch-p".into(),
         name: "Branch P".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: true, // would create a second primary
@@ -602,8 +602,8 @@ fn multiple_locations_distinct_currencies() {
     let p1 = LocationProfile {
         id: "usd-store".into(),
         name: "USD Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -615,8 +615,8 @@ fn multiple_locations_distinct_currencies() {
     let p2 = LocationProfile {
         id: "eur-store".into(),
         name: "EUR Branch".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "EUR".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -765,8 +765,8 @@ fn enforce_location_quota_pro_allows_two_locations() {
     let second = LocationProfile {
         id: "store-2".into(),
         name: "Branch 2".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -800,7 +800,7 @@ fn enforce_location_quota_error_message_includes_tier_and_count() {
         .unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("Free"), "message should name the tier: {msg}");
-    assert!(msg.contains("1"), "message should show the limit: {msg}");
+    assert!(msg.contains('1'), "message should show the limit: {msg}");
 }
 
 #[test]
@@ -813,8 +813,8 @@ fn enforce_location_quota_premium_allows_four() {
         let p = LocationProfile {
             id: format!("store-{i}"),
             name: format!("Branch {i}"),
-            address: "".into(),
-            tax_id: "".into(),
+            address: String::new(),
+            tax_id: String::new(),
             currency: "USD".into(),
             timezone: "UTC".into(),
             is_primary: false,
@@ -833,8 +833,8 @@ fn enforce_location_quota_premium_allows_four() {
     let p = LocationProfile {
         id: "store-3".into(),
         name: "Branch 3".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,
@@ -861,8 +861,8 @@ fn enforce_location_quota_enterprise_unlimited() {
         let p = LocationProfile {
             id: format!("store-{i}"),
             name: format!("Branch {i}"),
-            address: "".into(),
-            tax_id: "".into(),
+            address: String::new(),
+            tax_id: String::new(),
             currency: "USD".into(),
             timezone: "UTC".into(),
             is_primary: false,
@@ -925,8 +925,8 @@ fn ticket_prefix_duplicate_within_tenant_refused_by_index() {
     let second = LocationProfile {
         id: "loc-2".into(),
         name: "Second".into(),
-        address: "".into(),
-        tax_id: "".into(),
+        address: String::new(),
+        tax_id: String::new(),
         currency: "USD".into(),
         timezone: "UTC".into(),
         is_primary: false,

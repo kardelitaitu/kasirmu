@@ -223,7 +223,7 @@ impl Store<'_> {
             param_values.push(Box::new(id.clone()));
         }
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            param_values.iter().map(|b| b.as_ref()).collect();
+            param_values.iter().map(std::convert::AsRef::as_ref).collect();
         let rows = stmt.query_map(param_refs.as_slice(), Self::map_instance_dto)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
     }
@@ -439,11 +439,7 @@ impl Store<'_> {
         )?;
 
         for id in instance_ids {
-            let is_default = if Some(id) == default_instance_id {
-                1
-            } else {
-                0
-            };
+            let is_default = i32::from(Some(id) == default_instance_id);
             tx.execute(
                 "INSERT OR IGNORE INTO user_workspace_instances
                  (user_id, instance_id, is_default)

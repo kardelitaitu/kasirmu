@@ -51,6 +51,6 @@ fn recipe_item_debug() {
         unit: "pcs".into(),
     };
     let debug = format!("{item:?}");
-    assert!(debug.contains("p"));
-    assert!(debug.contains("i"));
+    assert!(debug.contains('p'));
+    assert!(debug.contains('i'));
 }

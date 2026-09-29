@@ -884,8 +884,7 @@ fn header_json_fits_in_fixed_block() {
     let trimmed_len = header_bytes
         .iter()
         .rposition(|&b| b != b' ')
-        .map(|pos| pos + 1)
-        .unwrap_or(0);
+        .map_or(0, |pos| pos + 1);
 
     let result: Result<KasirpkgHeader, _> = serde_json::from_slice(&header_bytes[..trimmed_len]);
     assert!(result.is_ok(), "header block must be valid JSON");

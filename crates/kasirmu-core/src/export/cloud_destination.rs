@@ -741,7 +741,7 @@ async fn get_gcp_access_token(key_json: &str) -> Result<String, String> {
     let body: serde_json::Value = resp.json().await.map_err(|e| format!("parse token: {e}"))?;
     body["access_token"]
         .as_str()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .ok_or_else(|| {
             format!(
                 "no access_token in response: {}",

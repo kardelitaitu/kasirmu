@@ -73,7 +73,7 @@ pub fn is_valid_bcp47_locale(tag: &str) -> bool {
     let mut segments = tag.split('-');
     let language = segments.next().unwrap_or("");
     let lang = language.as_bytes();
-    if !(lang.len() == 2 || lang.len() == 3) || !lang.iter().all(|b| b.is_ascii_alphabetic()) {
+    if !(lang.len() == 2 || lang.len() == 3) || !lang.iter().all(u8::is_ascii_alphabetic) {
         return false;
     }
     segments.all(|segment| {
@@ -88,7 +88,7 @@ pub fn is_valid_bcp47_locale(tag: &str) -> bool {
 #[must_use]
 pub fn is_valid_iso3166_alpha2(code: &str) -> bool {
     let b = code.as_bytes();
-    b.len() == 2 && b.iter().all(|byte| byte.is_ascii_alphabetic())
+    b.len() == 2 && b.iter().all(u8::is_ascii_alphabetic)
 }
 
 /// The canonical residency vocabulary — which deployment a tenant's data lives

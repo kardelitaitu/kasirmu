@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 /// surface must not produce a mismatch against a correct build.
 fn normalize(raw: &str) -> String {
     raw.chars()
-        .filter(|c| c.is_ascii_hexdigit())
+        .filter(char::is_ascii_hexdigit)
         .map(|c| c.to_ascii_lowercase())
         .collect()
 }

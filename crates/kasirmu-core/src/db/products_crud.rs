@@ -446,7 +446,7 @@ impl Store<'_> {
             sku: Sku::new(sku.trim()),
             name: name.trim().to_owned(),
             price,
-            category_id: category_id.map(|s| s.to_owned()),
+            category_id: category_id.map(std::borrow::ToOwned::to_owned),
             barcode: barcode.and_then(|s| foundation::Barcode::new(s).ok()),
             created_at: now.clone(),
             updated_at: now.clone(),

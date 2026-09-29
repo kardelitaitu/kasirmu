@@ -153,7 +153,7 @@ fn test_workspace_locations() {
         .create_inventory_location("Warehouse A", "warehouse", "")
         .unwrap();
     let bindings = vec![WorkspaceInventoryLocation {
-        id: "".to_owned(),
+        id: String::new(),
         instance_id: "ws-1".to_owned(),
         location_id: loc_id.clone(),
         is_primary: true,

@@ -566,7 +566,7 @@ impl Store<'_> {
         // "X of Y" count and the unreviewed badge.
         let total: u64 = self.conn.query_row(
             &format!("SELECT COUNT(*) FROM audit_log{where_sql}"),
-            rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())),
+            rusqlite::params_from_iter(params.iter().map(std::convert::AsRef::as_ref)),
             |row| row.get(0),
         )?;
 
@@ -577,7 +577,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {
@@ -625,7 +625,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {
@@ -679,7 +679,7 @@ impl Store<'_> {
              FROM audit_log{where_sql} ORDER BY created_at DESC, id DESC LIMIT ?{idx}"
         ))?;
         let mut rows = stmt.query(rusqlite::params_from_iter(
-            params.iter().map(|p| p.as_ref()),
+            params.iter().map(std::convert::AsRef::as_ref),
         ))?;
         let mut items: Vec<AuditEntry> = Vec::new();
         while let Some(row) = rows.next()? {

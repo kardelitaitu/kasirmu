@@ -197,10 +197,7 @@ impl Store<'_> {
         &self,
         customer_id: &str,
     ) -> Result<Option<LoyaltyAccountWithDetails>, CoreError> {
-        let account = match self.get_loyalty_account_raw(customer_id)? {
-            Some(a) => a,
-            None => return Ok(None),
-        };
+        let Some(account) = self.get_loyalty_account_raw(customer_id)? else { return Ok(None) };
 
         let tier = if let Some(ref tid) = account.tier_id {
             self.get_loyalty_tier(tid)?
@@ -217,8 +214,7 @@ impl Store<'_> {
 
         let points_to_next_tier = next_tier
             .as_ref()
-            .map(|t| t.min_points - account.lifetime_points)
-            .unwrap_or(0);
+            .map_or(0, |t| t.min_points - account.lifetime_points);
 
         let mut stmt = self.conn.prepare(
             "SELECT id, account_id, sale_id, points, txn_type, description, created_at
@@ -290,8 +286,7 @@ impl Store<'_> {
 
             let points_to_next_tier = next_tier
                 .as_ref()
-                .map(|t| t.min_points - account.lifetime_points)
-                .unwrap_or(0);
+                .map_or(0, |t| t.min_points - account.lifetime_points);
 
             let mut txn_stmt = self.conn.prepare(
                 "SELECT id, account_id, sale_id, points, txn_type, description, created_at
@@ -368,15 +363,12 @@ impl Store<'_> {
         points: i64,
         sale_id: &str,
     ) -> Result<(LoyaltyTransaction, i64), CoreError> {
-        let account = match self.get_loyalty_account_raw(customer_id)? {
-            Some(a) => a,
-            None => {
+        let Some(account) = self.get_loyalty_account_raw(customer_id)? else {
                 return Err(CoreError::NotFound {
                     entity: "loyalty_account",
                     id: customer_id.to_owned(),
                 });
-            }
-        };
+            };
 
         if points <= 0 {
             return Err(CoreError::Validation {

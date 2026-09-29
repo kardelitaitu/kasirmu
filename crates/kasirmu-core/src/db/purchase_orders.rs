@@ -264,8 +264,8 @@ impl Store<'_> {
             created_lines.push(PurchaseOrderLine {
                 id: line_id,
                 po_id: id.clone(),
-                sku: line.sku.to_owned(),
-                product_name: line.product_name.to_owned(),
+                sku: line.sku.clone(),
+                product_name: line.product_name.clone(),
                 qty: line.qty,
                 unit_cost_minor: line.unit_cost_minor,
                 line_total_minor: line_total,
@@ -289,7 +289,7 @@ impl Store<'_> {
                 tax_minor: 0,
                 total_minor: subtotal,
                 notes: notes.to_owned(),
-                created_by: created_by.map(|s| s.to_owned()),
+                created_by: created_by.map(std::borrow::ToOwned::to_owned),
                 created_at: now.clone(),
                 updated_at: now,
             },
@@ -487,8 +487,8 @@ impl Store<'_> {
 
         for line in &po.lines {
             let input = by_line.get(line.id.as_str());
-            let received = input.map(|i| i.received_qty).unwrap_or(0);
-            let damaged = input.map(|i| i.damaged_qty).unwrap_or(0);
+            let received = input.map_or(0, |i| i.received_qty);
+            let damaged = input.map_or(0, |i| i.damaged_qty);
 
             if received < 0 || damaged < 0 {
                 return Err(CoreError::Validation {

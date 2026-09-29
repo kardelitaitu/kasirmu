@@ -335,8 +335,8 @@ impl Store<'_> {
                     id,
                     instance_id,
                     loc.location_id,
-                    if loc.is_primary { 1 } else { 0 },
-                    if loc.allow_negative_stock { 1 } else { 0 },
+                    i32::from(loc.is_primary),
+                    i32::from(loc.allow_negative_stock),
                     loc.sort_order
                 ],
             )?;
@@ -702,14 +702,14 @@ impl Store<'_> {
         if let Some(id) = existing_id {
             tx.execute(
                 "UPDATE stock_thresholds SET threshold = ?1, enabled = ?2, updated_at = ?3 WHERE id = ?4",
-                params![threshold, if enabled { 1 } else { 0 }, now, id],
+                params![threshold, i32::from(enabled), now, id],
             )?;
         } else {
             let new_id = uuid::Uuid::now_v7().to_string();
             tx.execute(
                 "INSERT INTO stock_thresholds (id, product_id, location_id, threshold, enabled, created_at, updated_at) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-                params![new_id, product_id, location_id, threshold, if enabled { 1 } else { 0 }, now],
+                params![new_id, product_id, location_id, threshold, i32::from(enabled), now],
             )?;
         }
 

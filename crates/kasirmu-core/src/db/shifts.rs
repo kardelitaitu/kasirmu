@@ -105,7 +105,7 @@ impl Store<'_> {
 
         self.get_shift(&id)?.ok_or_else(|| CoreError::NotFound {
             entity: "shift",
-            id: id.to_owned(),
+            id: id.clone(),
         })
     }
 

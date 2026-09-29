@@ -210,7 +210,7 @@ fn payout_created_at_is_set() {
 
     let payout = s.create_cash_payout(&shift_id, 500, "test").unwrap();
     assert!(!payout.created_at.is_empty());
-    assert!(payout.created_at.contains("T")); // ISO-8601 format
+    assert!(payout.created_at.contains('T')); // ISO-8601 format
 }
 
 #[test]

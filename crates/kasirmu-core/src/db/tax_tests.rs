@@ -298,8 +298,8 @@ fn get_product_tax_rates_batch_returns_all_skus() {
     let map = s
         .get_product_tax_rates_batch(&["A".into(), "B".into(), "NOPE".into()])
         .unwrap();
-    assert_eq!(map.get("A").map(|v| v.len()), Some(2));
-    assert_eq!(map.get("B").map(|v| v.len()), Some(1));
+    assert_eq!(map.get("A").map(std::vec::Vec::len), Some(2));
+    assert_eq!(map.get("B").map(std::vec::Vec::len), Some(1));
     assert!(!map.contains_key("NOPE"));
 }
 

@@ -111,8 +111,7 @@ pub fn compute_discount(
             let mut base = 0_i64;
             for line in &sale.lines {
                 let in_scope = category_of(&line.sku)
-                    .map(|c| c == scope_id)
-                    .unwrap_or(false);
+                    .is_some_and(|c| c == scope_id);
                 if !in_scope {
                     continue;
                 }
@@ -167,8 +166,7 @@ pub fn compute_discount(
             for line in &sale.lines {
                 let in_scope = match scope_id {
                     Some(scope_id) => category_of(&line.sku)
-                        .map(|c| c == scope_id)
-                        .unwrap_or(false),
+                        .is_some_and(|c| c == scope_id),
                     None => true,
                 };
                 if !in_scope {

@@ -458,7 +458,7 @@ fn every_lifecycle_state_declares_whether_it_grants_entitlements() {
     let flowing: Vec<&str> = all
         .iter()
         .filter(|s| s.grants_entitlements())
-        .map(|s| s.as_str())
+        .map(super::super::subscription::SubscriptionLifecycleState::as_str)
         .collect();
     assert_eq!(
         flowing,

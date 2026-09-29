@@ -63,14 +63,10 @@ impl PayableStatus {
     /// Legal transitions driven by payments and write-off. A payable never
     /// returns from a terminal state; `Paid`/`WrittenOff` are sinks.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use PayableStatus::*;
+        use PayableStatus::{Open, Partial, Paid, WrittenOff};
         matches!(
             (from, to),
-            (Open, Partial)
-                | (Open, Paid)
-                | (Open, WrittenOff)
-                | (Partial, Paid)
-                | (Partial, WrittenOff)
+            (Open, Partial | Paid | WrittenOff) | (Partial, Paid | WrittenOff)
         )
     }
 

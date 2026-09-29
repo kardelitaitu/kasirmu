@@ -568,7 +568,7 @@ impl Store<'_> {
                 },
             )
             .optional()
-            .map(|row| row.unwrap_or_default())
+            .map(std::option::Option::unwrap_or_default)
             .map_err(Into::into)
     }
 
@@ -605,8 +605,7 @@ impl Store<'_> {
             tenant_id: row.get("tenant_id")?,
             priority: row
                 .get::<_, i32>("priority")
-                .map(crate::offline::SyncPriority::from)
-                .unwrap_or(crate::offline::SyncPriority::Normal),
+                .map_or(crate::offline::SyncPriority::Normal, crate::offline::SyncPriority::from),
             // NULL stays NULL: "unknown origin", never a default.
             origin_terminal_id: row.get("origin_terminal_id")?,
         })

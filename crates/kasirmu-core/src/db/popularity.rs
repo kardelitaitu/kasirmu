@@ -246,9 +246,7 @@ impl Store<'_> {
             // weekly/monthly series use the plain linear fit.
             let f = if granularity == "daily" && tail.len() >= 7 {
                 let next = tail
-                    .last()
-                    .map(|(d, _)| *d + chrono::Duration::days(1))
-                    .unwrap_or_else(|| chrono::Utc::now().date_naive());
+                    .last().map_or_else(|| chrono::Utc::now().date_naive(), |(d, _)| *d + chrono::Duration::days(1));
                 crate::popularity::seasonal_daily_forecast(&tail, next)
             } else {
                 let units: Vec<f64> = tail.iter().map(|(_, u)| *u).collect();
@@ -680,9 +678,9 @@ impl Store<'_> {
             return Ok(None);
         };
         Ok(Some((
-            entry.get("sales").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            entry.get("search").and_then(|v| v.as_f64()).unwrap_or(0.0),
-            entry.get("edits").and_then(|v| v.as_f64()).unwrap_or(0.0),
+            entry.get("sales").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
+            entry.get("search").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
+            entry.get("edits").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
         )))
     }
 
@@ -848,9 +846,9 @@ impl Store<'_> {
             })?;
             for row in rows {
                 let (sku, category) = row?;
-                let s_events = sales.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
-                let q_events = searches.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
-                let e_events = edits.get(&sku).map(Vec::as_slice).unwrap_or(&[]);
+                let s_events: &[DayCount] = sales.get(&sku).map_or(&[], Vec::as_slice);
+                let q_events: &[DayCount] = searches.get(&sku).map_or(&[], Vec::as_slice);
+                let e_events: &[DayCount] = edits.get(&sku).map_or(&[], Vec::as_slice);
                 products.push((
                     sku,
                     category,

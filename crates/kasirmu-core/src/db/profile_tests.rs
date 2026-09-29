@@ -91,7 +91,7 @@ fn validate_rejects_each_missing_required_field() {
         let err = p.validate().unwrap_err();
         match err {
             CoreError::Validation { field: f, .. } => {
-                assert_eq!(f, field, "missing {field} must report that field")
+                assert_eq!(f, field, "missing {field} must report that field");
             }
             other => panic!("expected Validation for {field}, got {other:?}"),
         }

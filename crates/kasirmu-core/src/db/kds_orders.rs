@@ -68,7 +68,7 @@ impl Store<'_> {
 
         let mut stmt = self.conn.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(std::convert::AsRef::as_ref).collect();
         let rows = stmt.query_map(param_refs.as_slice(), Self::row_to_kds_order)?;
         rows.map(|r| Ok(r?)).collect()
     }
@@ -311,7 +311,7 @@ impl Store<'_> {
             let mut old_states: std::collections::HashMap<
                 (String, Option<String>),
                 std::collections::VecDeque<LineItemStateTuple>,
-            > = Default::default();
+            > = std::collections::HashMap::default();
             {
                 let mut stmt = tx.prepare(
                     "SELECT sku, course, item_status, started_at, ready_at, served_at
@@ -340,7 +340,7 @@ impl Store<'_> {
                 .map(|item| {
                     old_states
                         .get_mut(&(item.sku.clone(), item.course.clone()))
-                        .and_then(|q| q.pop_front())
+                        .and_then(std::collections::VecDeque::pop_front)
                 })
                 .collect();
 
@@ -404,7 +404,7 @@ impl Store<'_> {
             // Forward progression.
             ("pending", "preparing") | ("preparing", "ready") | ("ready", "served") => true,
             // Cancellation from any active state.
-            ("pending", "cancelled") | ("preparing", "cancelled") | ("ready", "cancelled") => true,
+            ("pending" | "preparing" | "ready", "cancelled") => true,
             // No-op (idempotent replay of the current state).
             (from, to) if from == to => true,
             // Everything else (regressions, terminal-state moves) is invalid.
@@ -543,7 +543,7 @@ impl Store<'_> {
 
         let mut stmt = self.conn.prepare(&sql)?;
         let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            params.iter().map(|p| p.as_ref()).collect();
+            params.iter().map(std::convert::AsRef::as_ref).collect();
         let rows = stmt.query_map(param_refs.as_slice(), Self::row_to_kds_order)?;
         rows.map(|r| Ok(r?)).collect()
     }

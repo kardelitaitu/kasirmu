@@ -180,9 +180,7 @@ impl SecurityEvent {
         device_id: Option<impl Into<String>>,
     ) -> Self {
         Self {
-            user_id: user_id
-                .map(str::to_string)
-                .unwrap_or_else(|| SYSTEM_ACTOR.into()),
+            user_id: user_id.map_or_else(|| SYSTEM_ACTOR.into(), str::to_string),
             username: username.into(),
             action: SECURITY_ACTION_LOGIN_FAILED,
             outcome: "failure",

@@ -1103,11 +1103,9 @@ fn update_po_status_race_cannot_overwrite_a_competing_transition() {
             // once the intended interleaving is established, or on the
             // deadline below.
             while !A_IS_BLOCKED.load(std::sync::atomic::Ordering::SeqCst) {
-                if B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) > 10_000 {
-                    panic!(
-                        "A never reached its write lock within 10s — the forced interleaving was not established"
-                    );
-                }
+                assert!(B_WAITED_MS.load(std::sync::atomic::Ordering::SeqCst) <= 10_000, 
+                    "A never reached its write lock within 10s — the forced interleaving was not established"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(5));
                 B_WAITED_MS.fetch_add(5, std::sync::atomic::Ordering::SeqCst);
             }

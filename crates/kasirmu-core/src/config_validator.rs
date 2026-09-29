@@ -77,7 +77,7 @@ fn validate_config_inner(vars: &HashMap<String, String>) -> Result<(), Vec<Confi
 
     /// Helper: look up a key in the supplied map, returning `None` if absent.
     fn get<'a>(vars: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
-        vars.get(key).map(|s| s.as_str())
+        vars.get(key).map(std::string::String::as_str)
     }
 
     // ── OZ_API_PORT ──────────────────────────────────────────────

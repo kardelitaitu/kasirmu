@@ -94,9 +94,9 @@ pub fn parse_base62_index(s: &str) -> Option<i64> {
     let mut acc: u64 = 0;
     for &b in s.as_bytes() {
         let val = match b {
-            b'0'..=b'9' => (b - b'0') as u64,
-            b'a'..=b'z' => (b - b'a' + 10) as u64,
-            b'A'..=b'Z' => (b - b'A' + 36) as u64,
+            b'0'..=b'9' => u64::from(b - b'0'),
+            b'a'..=b'z' => u64::from(b - b'a' + 10),
+            b'A'..=b'Z' => u64::from(b - b'A' + 36),
             _ => return None,
         };
         acc = acc.checked_mul(62)?.checked_add(val)?;

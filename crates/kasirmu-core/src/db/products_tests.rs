@@ -315,7 +315,7 @@ fn create_product_with_all_fields() {
         .unwrap();
     assert_eq!(p.category_id.as_deref(), Some("cat-drinks"));
     assert_eq!(
-        p.barcode.as_ref().map(|b| b.as_str()),
+        p.barcode.as_ref().map(foundation::Barcode::as_str),
         Some("1234567890123")
     );
     let qty = store(&conn).get_stock(&p.id).unwrap();
@@ -832,7 +832,7 @@ fn create_and_list_product_variants() {
     // Verify price and barcode on first variant.
     assert_eq!(variants[0].price.unwrap().minor_units, 800);
     assert_eq!(
-        variants[0].barcode.as_ref().map(|b| b.as_str()),
+        variants[0].barcode.as_ref().map(foundation::Barcode::as_str),
         Some("sm-barcode")
     );
     assert!(variants[0].is_active);
@@ -2610,15 +2610,12 @@ fn seed_allow_negative_terminal(conn: &rusqlite::Connection) -> String {
     conn.execute_batch(&format!(
         "INSERT OR IGNORE INTO locations (id, name) VALUES ('store-neg', 'Neg Store');
          INSERT OR IGNORE INTO workspace_instances (id, type_key, location_id, name) \
-           VALUES ('{ws}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
+           VALUES ('{ws_inst_id}', (SELECT key FROM workspace_types LIMIT 1), 'store-neg', 'NegTest');
          INSERT OR IGNORE INTO workspace_inventory_locations \
            (id, instance_id, location_id, is_primary, allow_negative_stock, sort_order) \
-           VALUES ('wsl-{ws}', '{ws}', '{loc}', 1, 1, 0);
+           VALUES ('wsl-{ws_inst_id}', '{ws_inst_id}', '{loc}', 1, 1, 0);
          INSERT OR IGNORE INTO terminals (id, name, device_id, workspace_instance_id, created_at, updated_at) \
-           VALUES ('{term}', 'NegTerm', '{term}-dev', '{ws}', '{now}', '{now}');",
-        ws = ws_inst_id,
-        term = term_id,
-        loc = loc
+           VALUES ('{term_id}', 'NegTerm', '{term_id}-dev', '{ws_inst_id}', '{now}', '{now}');"
     ))
     .unwrap();
     term_id

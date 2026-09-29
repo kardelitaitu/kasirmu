@@ -137,7 +137,7 @@ impl Store<'_> {
         }
         // TBL-08: reject unusable persisted geometry at the boundary.
         validate_table_geometry(table)?;
-        let active_int: i64 = if table.active { 1 } else { 0 };
+        let active_int: i64 = i64::from(table.active);
         let id = if table.id.is_empty() {
             uuid::Uuid::now_v7().to_string()
         } else {
@@ -157,7 +157,7 @@ impl Store<'_> {
         )?;
         self.get_table(&id)?.ok_or_else(|| CoreError::NotFound {
             entity: "table",
-            id: id.to_owned(),
+            id: id.clone(),
         })
     }
 
@@ -177,7 +177,7 @@ impl Store<'_> {
         }
         // TBL-08: reject unusable persisted geometry at the boundary.
         validate_table_geometry(table)?;
-        let active_int: i64 = if table.active { 1 } else { 0 };
+        let active_int: i64 = i64::from(table.active);
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let rows = self.conn.execute(
             "UPDATE tables SET name = ?1, capacity = ?2, pos_x = ?3, pos_y = ?4,

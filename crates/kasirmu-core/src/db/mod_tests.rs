@@ -128,7 +128,7 @@ fn row_to_product_maps_full_row() {
     );
     assert_eq!(product.category_id.as_deref(), Some("cat-1"));
     assert_eq!(
-        product.barcode.as_ref().map(|b| b.as_str()),
+        product.barcode.as_ref().map(foundation::Barcode::as_str),
         Some("8991234567890")
     );
     assert!(product.track_serial);

@@ -103,7 +103,7 @@ impl AssignmentSpec {
                 field: "scope_id",
                 message: "organization scope must not carry a scope_id".into(),
             }),
-            (_, None) | (_, Some("")) => Err(CoreError::Validation {
+            (_, None | Some("")) => Err(CoreError::Validation {
                 field: "scope_id",
                 message: format!(
                     "{} scope requires a non-empty scope_id",
@@ -275,10 +275,7 @@ impl Store<'_> {
         // silently re-interpreted as org-wide). The column is NOT NULL
         // DEFAULT 'organization', so None here can only mean a hand-edited
         // DB — exactly the case the fail-closed rule exists for.
-        let scope_type = match scope_type.as_deref().and_then(ScopeType::parse) {
-            Some(t) => t,
-            None => return Ok(None),
-        };
+        let Some(scope_type) = scope_type.as_deref().and_then(ScopeType::parse) else { return Ok(None) };
 
         let branches = self.branch_ids_for(user_id)?;
         let workspaces = self.workspace_keys_for(user_id)?;
