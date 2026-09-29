@@ -213,6 +213,12 @@ impl Keyring for LibSecretKeyring {
         Ok(true)
     }
 
+    /// The Secret Service persists across restarts, so a generated key survives
+    /// (C1 hazard H3). Opting in explicitly is the trait's fail-closed contract.
+    fn is_durable(&self) -> bool {
+        true
+    }
+
     // `rotate_key` and `key_created_at` use the default implementations
     // from the `Keyring` trait.
 }
