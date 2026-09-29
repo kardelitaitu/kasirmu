@@ -684,6 +684,7 @@
       "label": "Docs-auditor checkers still run",
       "status": "required",
       "runners": { "check.sh": ["auditor self-tests"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "steps": ["Docs-auditor self-tests"] },
       "_note": "Added in 0.0.39. A checker that cannot run is indistinguishable from a checker that found nothing: check-api-surface.py had been dead since apps/desktop-client was renamed, and check-nav-paths.py reported SELF-TEST WRONG because its self-test read the live nav. This runs every self-test the docs-auditor ships -- the roster is the script's own for-line, six as of 2026-09-24 (check-dead-refs joined with the source-relative link rules, check-adr-status with the status-word comparator, check-site-links with the route-vs-filesystem cases), not a count maintained here. Runner: sh scripts/check-auditor-selftests.sh."
     },
     {

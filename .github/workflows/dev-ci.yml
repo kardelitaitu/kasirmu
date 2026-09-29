@@ -867,6 +867,18 @@ jobs:
       - name: API reference surface self-test
         run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
 
+      # Gate: scripts/gates.json -> "auditor-selftests" ("Docs-auditor checkers still
+      # run", status required). Until this step existed that gate was enforced ONLY by
+      # scripts/check.sh, whose own header says it is not what git push runs -- so a
+      # checker that could no longer run was invisible to every merge. This runs the whole
+      # roster, which is what covers the five checkers that have no gate of their own
+      # (env-docs, adr-status, site-links, nav-paths, ci-claims). The two steps above stay
+      # because the convention is that a self-test lives BESIDE the gate it proves; this
+      # one is the backstop for the roster as a whole. scripts/check.sh still runs it
+      # locally, unchanged.
+      - name: Docs-auditor self-tests
+        run: sh scripts/check-auditor-selftests.sh
+
   # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
   # so nothing enforced them on a clone that skipped setup-dev.ps1. Each was run
