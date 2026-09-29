@@ -1123,6 +1123,18 @@ jobs:
         run: python3 scripts/verify-invoke-parity.py
       - name: Topology template parity
         run: python3 scripts/verify-topology-parity.py
+      # Phase 2's kind-derivation cases, in the same job as the gate they prove --
+      # the convention stated at "IPC command parity self-test" (7c). Pure: dicts in,
+      # list out, and the corpus and both contract copies are never read.
+      #
+      # The quiet failure they guard: phase 2 compares a GENERATED corpus against the
+      # contract, and "workspace" is not probed bare -- the corpus probes one kind per
+      # endpoint workspace type, as "workspace:<key>". Get that derivation wrong in
+      # the SKIPPING direction and the corpus looks complete while proving nothing
+      # about the endpoint types. Proven by mutation: dropping the filter turns the
+      # first case red, with the bare "workspace" reappearing in the wanted list.
+      - name: Topology template parity self-test
+        run: python3 scripts/verify-topology-parity.py --self-test
       - name: Feature registry
         run: python3 scripts/verify-feature-registry.py
       - name: Plugin guide parity

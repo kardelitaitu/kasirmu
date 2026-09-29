@@ -509,6 +509,9 @@ if command -v npm &>/dev/null && [ -f ui/package-lock.json ]; then
     # Topology contract parity — the vendored kasirmu-core copy and the UI copy
     # must stay byte-identical (both sides of the IPC boundary read it).
     step "topology contract parity" "python3 scripts/verify-topology-parity.py" python3 scripts/verify-topology-parity.py
+    # Phase 2's kind-derivation cases, beside the gate they prove. Pure dicts in,
+    # list out; the corpus and both contract copies are never read.
+    step "topology contract parity self-test" "python3 scripts/verify-topology-parity.py --self-test" python3 scripts/verify-topology-parity.py --self-test
     # npm run build skipped — typecheck + vitest already cover correctness;
     # the production vite bundle is validated by CI independently.
     # AUDIT-27 CI-07: E2E is NOT run here (Docker backend not provisioned).
