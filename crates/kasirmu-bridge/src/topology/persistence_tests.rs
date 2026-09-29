@@ -222,9 +222,16 @@ fn validate_warehouse_quota_plus_and_pro_are_also_zero() {
     // Store/Plus/Pro tiers keep every other workspace type, but not warehouses:
     // the gate moved to Premium+ for all three together.
     let nodes = vec![wh_node("n1")];
-    for tier in [SubscriptionTier::OneTime, SubscriptionTier::Plus, SubscriptionTier::Pro] {
+    for tier in [
+        SubscriptionTier::OneTime,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+    ] {
         let err = validate_warehouse_quota(&nodes, &tier).unwrap_err();
-        assert!(format!("{err}").contains("limit 0"), "tier {tier:?} must cap at 0");
+        assert!(
+            format!("{err}").contains("limit 0"),
+            "tier {tier:?} must cap at 0"
+        );
     }
 }
 

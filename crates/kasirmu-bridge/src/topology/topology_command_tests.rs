@@ -299,8 +299,10 @@ fn backend_warehouse_quota_allows_two_plus_warehouses() {
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
-    let result =
-        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Premium);
+    let result = validate_warehouse_quota(
+        &nodes,
+        &kasirmu_core::subscription::SubscriptionTier::Premium,
+    );
     assert!(result.is_ok());
 }
 
