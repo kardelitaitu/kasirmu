@@ -11,9 +11,9 @@ changes no runtime behaviour, which is what the slice was scoped to guarantee.
 2026-09-29** (`f2932f6f8`). **S2b-2b (the shells' boot injection) IMPLEMENTED 2026-09-29**
 (`625c47290`, `5813b9208`) — this header previously said NOT STARTED and cited a lane lease
 that did not exist; see §6 S2b-2b for the retraction. **The §7 release-build clause is
-RE-SCOPED (§10, option (a), 2026-09-29) and is the one part of C1 still open, together with
-S2c (`oz rekey`).** Written 2026-09-29. The §8 questions are ANSWERED — see §8, with §8.4
-superseded by §10.
+RE-SCOPED (§10, option (a)) AND LANDED 2026-09-29**, so **S2c (`oz rekey`) is the only slice
+still outstanding** and the only thing keeping C1's box unticked. Written 2026-09-29. The §8
+questions are ANSWERED — see §8, with §8.4 superseded by §10.
 **Branch:** `0.0.40` (do not create or switch branches).
 **Checklist item:** C1 (`manager-codebase-review-checklist.md`), slices S2b and S2c.
 **Owner decision:** D1, **ruled** — option D (per-install key in the OS keychain,
@@ -244,15 +244,18 @@ derivation still decrypts after the key exists."*
 - [x] **A key written to the OS keychain at boot and read back on the next boot.**
       DONE — S2b-2a (`f2932f6f8`) resolves it generate-once; S2b-2b (`625c47290`,
       `5813b9208`) installs it in both shells before the store opens.
-- [ ] **The static fallback is unreachable in a release build.** **RE-SCOPED 2026-09-29
-      (§10, option (a)) — the clause now reads: *"in a release build the static fallback is
-      never the WRITER whenever a durable keychain exists"*, surviving only as a read
-      candidate for pre-upgrade rows (H4 requires it).** It is **not** a build-time gate and
+- [x] **The static fallback is unreachable in a release build.** **RE-SCOPED AND LANDED
+      2026-09-29 (§10, option (a))** — the clause now reads: *"in a release build the static
+      fallback is never the WRITER whenever a durable keychain exists"*, surviving only as a
+      read candidate for pre-upgrade rows (H4 requires it). It is **not** a build-time gate and
       cannot be: `derive_static_key` must stay compiled for H4's legacy read path, so no
-      `compile_error!` can express it. The assertion is **behavioural** — a test over the
-      injectable cores asserting the install key wins the write arm while the static
-      derivation remains in the read candidate list — and it inverts the existing tripwire
-      pin in the same change. §8.4's hard-error reading is **retracted**; see §10 for why.
+      `compile_error!` can express it. The assertion is **behavioural** —
+      `the_static_fallback_is_never_the_writer_when_an_install_key_exists` in
+      `crates/kasirmu-crypto/src/lib_tests.rs` asserts both halves (write arm = install key;
+      static derivation still a read candidate), and it was falsified RED by disabling the
+      install arm before landing. The old tripwire pin is **discharged rather than tripped**
+      (its rationale updated, assertion unchanged) because §8.4's hard-error reading was
+      refused; see §10.
 - [ ] A row written under the legacy derivation still decrypts after the key exists (H4).
       **Satisfied structurally by S2b-1** (the install arm is first for writes, last for
       reads; `candidate_keys` keeps the legacy tail) and pinned by
@@ -327,10 +330,18 @@ refused when it rejected option B.
 stay **compiled** for H4's legacy read path, so no `compile_error!` can express this. The
 assertion must be **behavioural** — a test that drives the injectable cores
 (`portable_key_from` / `candidate_keys_from`) and asserts that a present install key wins the
-*write* arm while the static derivation is still present in the *read* candidate list. The
-existing tripwire pin
-(`the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable`) is **inverted in
-the same change**, as §8.4 said it must be.
+*write* arm while the static derivation is still present in the *read* candidate list.
+
+**The tripwire pin is DISCHARGED, not tripped — and the distinction matters.** §8.4 said the
+existing pin (`the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable`) "must
+go red when this lands, and be inverted in the same change". It does **not** go red, because the
+reading that would have made it red (the hard error) was refused. So the pin keeps its assertion
+and only its **rationale** changes: it now pins the edge the scope allows — with no install key,
+the static fallback is still the writer — instead of standing as a tripwire for a gate that was
+never built. The clause's affirmative half is a **new** test,
+`the_static_fallback_is_never_the_writer_when_an_install_key_exists`, which asserts *both* halves
+on purpose: asserting only the write arm would also be satisfied by the wrong fix — deleting the
+static derivation from the candidate list, which would orphan every pre-upgrade row.
 
 ## 8. Owner questions — ANSWERED 2026-09-29
 

@@ -410,23 +410,29 @@ fn selection_flag_tracks_the_derived_key() {
     );
 }
 
-// ── The static fallback, pinned (review C1) ─────────────────────────
+// ── The static fallback and C1's release clause (review C1, plan §10) ─
 
-/// The static fallback IS the default derivation, in every build profile.
+/// The scope's other edge: with NO install key, the static fallback IS still the
+/// writer.
 ///
-/// `derive_static_key` derives from a public constant, so it is obfuscation
-/// rather than confidentiality -- its own doc says so. Review C1's done-condition
-/// asks for "a test [that] asserts the static fallback cannot be reached in a
-/// release build". That cannot be written yet, because no such mechanism EXISTS:
-/// reaching the static branch is what every shipped install does today, since
-/// NOTHING in the repository sets `OZ_MASTER_KEY` (zero occurrences in `ops/`,
-/// `scripts/`, `.github/`, `.env.example`, any compose file or Dockerfile).
+/// **This test began as a tripwire and is now a positive pin.** Its original doc
+/// said the release gate "must go red when this lands". The gate landed on
+/// 2026-09-29 as plan §10 **option (a)** — a RE-SCOPED behavioural clause, not the
+/// hard-error reading of §8.4 — so the tripwire is **discharged rather than
+/// tripped**: the assertion below is still correct, and it is correct *because*
+/// the clause is scoped. What it now pins is the edge the scope allows:
 ///
-/// What CAN be written is the other direction, and it is worth having: this pins
-/// the CURRENT reachability. Adding the release gate the item asks for is a
-/// change to where the key comes from -- which is decision D1 -- so when that
-/// lands this test must go red and be inverted DELIBERATELY, rather than the
-/// behaviour changing while every test stays green.
+/// > in a release build the static fallback is never the WRITER **whenever a
+/// > durable keychain exists**.
+///
+/// "Whenever a durable keychain exists" is doing real work. Every shipped install
+/// is in the *other* case — NOTHING in the repository sets `OZ_MASTER_KEY` (zero
+/// occurrences in `ops/`, `scripts/`, `.github/`, `.env.example`, any compose file
+/// or Dockerfile), and a host with no usable keychain cannot resolve an install key
+/// either — so this is the state a release build actually boots into. §10 refused
+/// option (b) precisely because a hard error here would stop those installs
+/// booting. The clause's affirmative half is pinned by
+/// [`the_static_fallback_is_never_the_writer_when_an_install_key_exists`].
 #[test]
 fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
     if master_key_from_env().is_some() {
@@ -447,6 +453,60 @@ fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
         "with no master key the static derivation is selected -- if this fails, a \
          release gate was added and C1's decision was taken; invert this test \
          deliberately in the same change"
+    );
+}
+
+/// **C1's release clause, re-scoped 2026-09-29 (plan §10, option (a)).**
+///
+/// The clause: *in a release build the static fallback is never the WRITER
+/// whenever a durable keychain exists.* It survives only as a **read candidate**
+/// for rows written before the upgrade — which hazard H4 requires, and which is
+/// why the clause cannot be a `compile_error!` build gate: `derive_static_key`
+/// must stay **compiled** for that legacy read path. The only honest assertion is
+/// behavioural, and this is it.
+///
+/// **Both halves are asserted, because asserting only the first would also be
+/// satisfied by the wrong fix** — deleting the static derivation from the
+/// candidate list, which would orphan every pre-upgrade row:
+///
+/// 1. an install key wins the **write** arm (the clause), and
+/// 2. the static derivation is **still a read candidate** (H4's requirement).
+#[test]
+fn the_static_fallback_is_never_the_writer_when_an_install_key_exists() {
+    let install = [0x0Au8; 32];
+
+    // 1. The clause: the install key is the writer; the static derivation is not.
+    let written = portable_key_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    assert_eq!(
+        written,
+        install_key(SMTP_AT_REST_DOMAIN, &install),
+        "an install key must win the write arm"
+    );
+    assert_ne!(
+        written,
+        derive_static_key(SMTP_AT_REST_DOMAIN),
+        "the static fallback must not be the writer when a durable keychain exists"
+    );
+
+    // 2. H4's requirement: the static derivation stays readable for rows written
+    //    before the upgrade. This is the half that makes the clause a SCOPE and
+    //    not a deletion.
+    let candidates =
+        candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    assert!(
+        candidates.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "the static derivation must remain a READ candidate (H4) -- a fix that \
+         removed it would orphan every pre-upgrade row"
+    );
+    assert!(
+        candidates.contains(&install_key(SMTP_AT_REST_DOMAIN, &install)),
+        "the install derivation must be readable by the process that wrote it (H1)"
+    );
+    assert_ne!(
+        candidates.first(),
+        Some(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "the static derivation must not be the FIRST candidate while an install \
+         key exists -- it is a fallback for old rows, not the primary"
     );
 }
 
