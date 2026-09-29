@@ -13,7 +13,10 @@ changes no runtime behaviour, which is what the slice was scoped to guarantee.
 that did not exist; see §6 S2b-2b for the retraction. **The §7 release-build clause is
 RE-SCOPED (§10, option (a)) AND LANDED 2026-09-29**, so **S2c (`oz rekey`) is the only slice
 still outstanding** and the only thing keeping C1's box unticked. Written 2026-09-29. The §8
-questions are ANSWERED — see §8, with §8.4 superseded by §10.
+questions are ANSWERED — see §8, with §8.4 superseded by §10. **S2c's ordering is RULED
+2026-09-29: park the OLD key as `…-prev`, promote the NEW key, sweep, verify, then retire
+`-prev` — the "park the new key" ordering this file originally carried cannot satisfy the
+slice's own crash-safety gate. See §6 S2c.**
 **Branch:** `0.0.40` (do not create or switch branches).
 **Checklist item:** C1 (`manager-codebase-review-checklist.md`), slices S2b and S2c.
 **Owner decision:** D1, **ruled** — option D (per-install key in the OS keychain,
@@ -226,11 +229,63 @@ produce.
 **S2c — `oz rekey`.**
 New CLI subcommand re-writes every at-rest row under a newly rotated key. Needs
 `kasirmu-cli` to gain the crypto (+ security) dependency — it currently has neither.
-Rotation is **staged**, mirroring `Keyring::rotate_key`'s SEC-4 ordering: park the new
-key, re-encrypt under it, promote; a failure before promote leaves the old key and the
-old ciphertext intact. **Never delete the old key until the re-encrypt verifies.**
 *Gate:* a fixture with rows under legacy + install keys rekeys and reads back; an
 interrupted rekey leaves every row readable under the old key.
+
+#### S2c — the ordering, ruled 2026-09-29: park the OLD key, promote the NEW one
+
+**The ordering originally written above — "park the new key, re-encrypt under it,
+promote" — cannot satisfy this slice's own gate**, and the reason is a property of the
+process-global rather than a detail: `set_install_key` is a first-call-wins `OnceLock`
+holding **one** key, and `candidate_keys` is `[install, legacy, master]`. Re-encrypting
+to a key the keychain does not yet hold means an interruption leaves rows under a key no
+boot can install — the install is bricked, which is exactly what the gate forbids.
+Parking the **old** key instead keeps both keys durably present for the whole operation.
+
+**Why the reverse order is crash-safe at every instant.** After park + promote the
+keychain holds new (`INSTALL_KEY_ENTRY`) + old (`…-prev`), so **any** boot reads both and
+every row decrypts — whether it is still old or already re-encrypted. Interruption before
+park: nothing changed. Between park and promote: the current entry is still the old key.
+Mid-sweep: both keys present. `-prev` is retired only after the sweep verifies, and
+retiring it is the last step. **Never delete the old key until the re-encrypt verifies.**
+
+**Required changes, none of which the original paragraph named:**
+
+1. **`kasirmu-crypto`** — a SECOND read slot (`previous_install_key`) wired into
+   `candidate_keys` and **deliberately NOT into `portable_key`'s write arm**, so writes
+   always use the current key (hazard H1 preserved). Read order becomes
+   `[install, previous, legacy, master]`; the `[legacy, master]` tail keeps its existing
+   order (H5), so a process with no keys produces a byte-identical list.
+2. **`kasirmu-security`** — `INSTALL_KEY_PREV_ENTRY`, park / promote / retire primitives,
+   and a `resolve_previous_install_key` mirroring `resolve_install_key`'s three cases
+   (present → `Loaded`; malformed → error, never regenerated; absent → `None`, **not** a
+   generation trigger).
+3. **`kasirmu-bridge::security::install_at_rest_key()`** — installs BOTH keys, so both
+   shells gain the tolerance without either shell changing.
+4. **`kasirmu-cli`** — `oz rekey`, which needs the crypto **and** security dependencies
+   it does not have today (its manifest names `kasirmu-core` only).
+
+**The sweep must be TOTAL over the install-key-derived families — measured, not assumed.**
+A row left under the old key is unreadable the moment `-prev` is retired, so the sweep
+covers every family that derives through `portable_key` / `candidate_keys`. There are
+**eight**, read off the call sites:
+
+| # | Family | Domain | Legacy arm |
+|---|---|---|---|
+| 1 | `sync_api_key` | `SYNC_API_KEY_DOMAIN` | `derive_key(d, "static")` |
+| 2 | `sync_terminal_secret` | `SYNC_TERMINAL_SECRET_DOMAIN` | `derive_key(d, "static")` |
+| 3 | `pg_sync.password` | `PG_SYNC_PASSWORD_DOMAIN` | `derive_key(d, "static")` |
+| 4 | `rate_sync.api_key` | `RATE_API_KEY_DOMAIN` | `derive_key(d, "static")` |
+| 5 | `lan_server.psk` | `LAN_PSK_DOMAIN` | `derive_key(d, "static")` |
+| 6 | `local_api.secret` | `LOCAL_API_SECRET_DOMAIN` | `derive_key(d, "static")` |
+| 7 | `smtp_config` password field | `SMTP_AT_REST_DOMAIN` | **`derive_static_key`** |
+| 8 | profile fields (`users.national_id`, `monthly_take_home_minor`) | `PROFILE_AT_REST_DOMAIN` | **`derive_static_key`** |
+
+Two families (**API_KEY_DOMAIN**, **SMTP_DOMAIN**) are **machine-bound**
+(`derive_key(domain, machine_id)`) and are **NOT** install-key-derived, so `oz rekey`
+must not touch them — their ciphertext does not change meaning when the install key
+rotates. Rows 7 and 8 use a *different* legacy closure from rows 1–6 (hazard H5), so the
+sweep must not unify them. A partial sweep does not fail loudly; it strands rows.
 
 **Explicitly NOT in this plan:** `OZ_MASTER_KEY` deprecation, the `.db` portability
 question beyond the release note, and any change to `SECRET_KEY_DENY_LIST`.
