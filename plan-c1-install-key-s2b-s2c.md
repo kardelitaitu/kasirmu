@@ -182,14 +182,43 @@ it — `kasirmu-crypto` and `kasirmu-security` are deliberate siblings):
 
 The audit stamp's "88 tests pass" was already 6 low; corrected to the measured 100.
 
-#### S2b-2b — the boot half ⏸️ **BLOCKED on a lane lease**
+#### S2b-2b — the boot half ✅ **DONE 2026-09-29** (commits `625c47290`, `5813b9208`)
 
 Wiring `resolve_install_key` into the two shells' setup closures.
-`apps/desktop-tauri/**` and `apps/mobile-tauri/**` are the **Desktop shell** and **Tablet**
-lanes' exclusive paths, and the Desktop shell lane was mid-refactor on `state.rs`/`state/`
-when this was written. Do not start it without the lease; the security half above is the part
-that could be landed without one. It also carries §8.4's **debug-only static fallback**,
-which needs a release-profile run to falsify.
+
+**⚠️ The "BLOCKED on a lane lease" status this section previously carried was STALE, and the
+blocker did not exist.** It claimed `apps/desktop-tauri/**` and `apps/mobile-tauri/**` were
+two other lanes' "exclusive paths". Re-verified 2026-09-29: `git status` showed both shells
+**clean** apart from this lane's own line-ending artefact, and there is no lease or exclusion
+mechanism for them — `.agents/scripts/verify-lane.sh` is a *receipt harness* for one lane
+(it prints HEAD and the dirty paths before and after a run so a borrowed red can be spotted),
+not a lock. The work was therefore schedulable, and the honest lesson is that a
+"blocked on another lane" note needs a re-check like any other claim.
+
+**What landed, and why it went through the bridge rather than the shells directly.** No crate
+depended on **both** `kasirmu-crypto` and `kasirmu-security` — they are deliberate siblings —
+so the shells could not call `resolve_install_key` and hand the result to `set_install_key`
+without adding that edge somewhere. `kasirmu-bridge` was the right home: it already depends on
+`kasirmu-security`, already wraps the keyring in `with_keyring` for exactly this
+blocking-thread reason, and both shells already depend on it. So
+`kasirmu_bridge::security::install_at_rest_key()` is the seam, and each shell's `setup`
+closure calls it **before `AppState::new`** — verified by line number in both
+(desktop injection L199 < `AppState::new` L238; mobile L178 < L215).
+
+**It is synchronous on purpose,** unlike the neighbouring `with_keyring`: Tauri's `.setup()`
+closure is synchronous, so there is no async context to await in, and the keyring operation
+runs on a dedicated OS thread (spawn + join) rather than `block_on`, keeping the Linux Secret
+Service backend's private runtime out of Tauri's. A panicked worker is caught rather than
+propagated, because no keychain outcome may abort a boot.
+
+**Evidence:** `cargo test -p kasirmu-bridge security` -> **44 passed, 0 failed** (7 new);
+`cargo clippy -p kasirmu-bridge --all-targets -- -D warnings` clean; both shells compile and
+`cargo clippy -p kasirmu-app ... -D warnings` clean; `cargo test -p kasirmu-app --lib` -> 173
+passed with only the pre-existing registry-floor pin red (unrelated, see below).
+
+**§8.4's debug-only static fallback was NOT implemented, deliberately — it contradicts H2.**
+See §10, which is the finding this slice produced rather than the code it was expected to
+produce.
 
 **S2c — `oz rekey`.**
 New CLI subcommand re-writes every at-rest row under a newly rotated key. Needs
