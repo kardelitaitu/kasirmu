@@ -184,6 +184,34 @@ def self_test() -> int:
     leaves a broken shell script in scripts/ would fail this gate for real.
     """
     bad: list[str] = []
+
+    # BOTH SCOPE PATHS MUST AGREE, and this is here because of what happened on
+    # 2026-09-29: the no-git fallback went unexercised for its whole life and held two
+    # bugs -- an undefined VENDORED that raised NameError, and a startswith(".git")
+    # filter that swallowed all four git hooks, so it found 56 where the git path found
+    # 60. Both surfaced only by forcing the branch with a throwaway probe, and deleting
+    # that probe put the branch back to unexercised. So the branch is exercised HERE, on
+    # every run, as a DIFFERENTIAL: force the fallback and assert it returns exactly what
+    # the git path returns. A divergence between the two is the signature of a scope
+    # bug, and this is the only check in the file able to see one.
+    import subprocess as _sp
+    _real_run = _sp.run
+    _git_count = len(targets())
+    try:
+        def _no_git(*a, **k):
+            raise OSError("self-test: pretend git is absent")
+        _sp.run = _no_git
+        _fallback_count = len(targets())
+    except OSError as exc:
+        _fallback_count = None
+        bad.append("the no-git fallback raised instead of falling back: " + str(exc))
+    finally:
+        _sp.run = _real_run
+    if _fallback_count is not None and _fallback_count != _git_count:
+        bad.append(f"scope paths disagree: git sees {_git_count} shell file(s), "
+                   f"the no-git fallback sees {_fallback_count} -- one of them is "
+                   f"skipping something the other checks")
+
     scratch = ROOT / "scripts" / "_syntax_selftest_tmp.sh"
     try:
         scratch.write_text("#!/usr/bin/env sh\nset -e\necho ok\n", encoding="utf-8", newline="\n")
