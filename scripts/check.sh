@@ -152,6 +152,9 @@ step "unsafe safety comments (tree)" "python3 scripts/verify-unsafe-safety.py" p
 # two of those same arrays omitted `promotionIds`, which is sent in the checkout payload. Neither was
 # gated. This freezes the count at 7 (down from 12): it may go down, never up.
 step "exhaustive-deps ratchet" "python3 scripts/verify-exhaustive-deps.py" python3 scripts/verify-exhaustive-deps.py
+# measure()'s own cases, beside the ratchet they prove. Pure string parsing, so this
+# step needs no node_modules and runs even where the step above cannot.
+step "exhaustive-deps ratchet self-test" "python3 scripts/verify-exhaustive-deps.py --self-test" python3 scripts/verify-exhaustive-deps.py --self-test
 
 # ── Architecture boundary checker (P1 pilot) ────────────────────────────
 # Existing transitional debt is reported but only new, expired, or stale
