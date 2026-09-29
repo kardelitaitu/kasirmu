@@ -561,6 +561,13 @@ step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" pytho
 # skipped and nothing reports that. The cheapest gate in the tree, and the one that
 # guards the most: sh -n parses without executing. Added 2026-09-29; it reported a
 # real parse error in scripts/profile.sh on its first run, which is the whole point.
+# The shell gate's sibling, and the higher-stakes one: a workflow that is not valid
+# YAML RUNS NOTHING. GitHub reports it errored and executes none of its jobs, so the
+# failure presents as a green PR that stopped checking -- not a red one. Only release.yml
+# had a syntax check before this; dev-ci.yml, android.yml and website.yml had none.
+step "workflow syntax" "python3 scripts/verify-workflow-syntax.py" python3 scripts/verify-workflow-syntax.py
+step "workflow syntax self-test" "python3 scripts/verify-workflow-syntax.py --self-test" python3 scripts/verify-workflow-syntax.py --self-test
+
 step "shell syntax" "python3 scripts/verify-shell-syntax.py" python3 scripts/verify-shell-syntax.py
 step "shell syntax self-test" "python3 scripts/verify-shell-syntax.py --self-test" python3 scripts/verify-shell-syntax.py --self-test
 
