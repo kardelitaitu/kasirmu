@@ -60,7 +60,12 @@ HISTORICAL = re.compile(
     r"\b(?:retired|was in|were in|used to|no longer|formerly|previously|"
     r"histor(?:y|ical)|at the time|once|dead|did not run)\b", re.I)
 SKIP_DIRS = ("archived", "attic", "node_modules", "target", "dist", ".git", "__tests__")
-SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1", ".txt")
+SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1",
+              ".txt", ".py", ".mjs", ".ts", ".tsx")
+# .py/.mjs were MISSING at first, so a claim in a Python docstring or a Node comment was
+# invisible -- including this file's own, which names a checker it says has no runner.
+# Same shape as every other scope bug in this session: an assumption about what a file
+# looks like, standing in for a question about where claims actually live.
 SCAN_NAMES = ("Dockerfile", "Dockerfile.server", "Dockerfile.unified", "AGENTS.md")
 
 
@@ -81,12 +86,19 @@ def live_ci_scripts() -> set[str]:
 
 def scanned_files() -> list[Path]:
     out: list[Path] = []
+    # This file is excluded because its own self-test fixtures are CLAIM-SHAPED BY
+    # DESIGN -- they are the strings the cases assert on, and they name verify-x.py, a
+    # script that does not exist. A checker that reads its own fixtures will always find
+    # claims that are not claims, and the fix for that is exclusion, not a weaker
+    # pattern that would also stop matching real ones.
     for dirpath, dirnames, filenames in __import__("os").walk(ROOT):
         dirnames[:] = [d for d in dirnames
                        if d.lower() not in SKIP_DIRS and not d.startswith(".git")]
         for fn in filenames:
             p = Path(dirpath) / fn
             if fn.endswith(SCAN_SUFFIX) or fn in SCAN_NAMES:
+                if p.resolve() == Path(__file__).resolve():
+                    continue   # see below
                 out.append(p)
     return sorted(out)
 
