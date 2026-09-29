@@ -5,44 +5,44 @@
 .restaurant-settings-screen {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4, 16px);
-  padding: var(--space-4, 16px) var(--space-6, 24px);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
   max-width: 840px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
   font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
-  color: var(--color-fg, #111);
+  color: var(--color-fg);
 }
 
 .restaurant-settings-header {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 4px);
-  padding-bottom: var(--space-3, 12px);
-  border-bottom: 1px solid var(--color-border, #e5e5e5);
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .restaurant-settings-title {
   margin: 0;
-  font-size: var(--text-2xl, 1.5rem);
+  font-size: var(--text-2xl);
   font-weight: 700;
-  color: var(--color-fg, #111);
+  color: var(--color-fg);
 }
 
 .restaurant-settings-subtitle {
   margin: 0;
-  font-size: var(--text-sm, 0.875rem);
-  color: var(--color-fg-secondary, #666);
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
 }
 
 /* Loading line shown while the payments screen resolves its location and rails.
    Replaces a borrowed `localpay-loading` name from a sheet this screen never
    imports. */
 .restaurant-settings-loading {
-  padding: var(--space-4, 16px);
-  color: var(--color-fg-muted, #888);
-  font-size: var(--text-sm, 0.875rem);
+  padding: var(--space-4);
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
 }
 
 .restaurant-settings-card-header {
@@ -54,68 +54,68 @@
 
 .restaurant-settings-card-header h2 {
   margin: 0;
-  font-size: var(--text-base, 1rem);
+  font-size: var(--text-base);
   font-weight: 600;
-  color: var(--color-fg, #111);
+  color: var(--color-fg);
 }
 
 .restaurant-settings-card-header p {
   margin: 2px 0 0;
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--color-fg-muted, #888);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
 }
 
 .restaurant-settings-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--space-3, 12px);
-  padding-top: var(--space-2, 8px);
+  gap: var(--space-3);
+  padding-top: var(--space-2);
 }
 
 /* Local payment rails list inside Payments screen */
 .restaurant-rails-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
-  margin-top: var(--space-2, 8px);
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .restaurant-rail-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2, 8px) var(--space-3, 12px);
-  background: var(--color-bg-elevated, #fafafa);
-  border: 1px solid var(--color-border, #e5e5e5);
-  border-radius: var(--radius-md, 6px);
-  gap: var(--space-2, 8px);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  gap: var(--space-2);
 }
 
 .restaurant-rail-info {
   display: flex;
   align-items: center;
-  gap: var(--space-3, 12px);
+  gap: var(--space-3);
 }
 
 .restaurant-rail-label {
   font-weight: 500;
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-sm);
 }
 
 .restaurant-rail-code {
-  font-size: var(--text-xs, 0.75rem);
-  color: var(--color-fg-muted, #888);
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
   font-family: var(--font-mono, monospace);
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.05));
+  background: var(--color-bg-subtle);
   padding: 1px 5px;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-sm);
 }
 
 .restaurant-rail-add {
   display: flex;
-  gap: var(--space-2, 8px);
-  margin-top: var(--space-3, 12px);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
   align-items: center;
 }
 
@@ -129,7 +129,7 @@
 .restaurant-rail-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2, 8px);
+  gap: var(--space-2);
 }
 
 /* Remove control for a non-core rail. Was an inline style on a `button
@@ -137,7 +137,7 @@
    name resolved nowhere and the element rendered unstyled. */
 .restaurant-rail-remove {
   padding: 2px 8px;
-  font-size: var(--text-xs, 0.75rem);
+  font-size: var(--text-xs);
   color: var(--color-danger);
   background: none;
   border: 0;
@@ -151,9 +151,9 @@
 .restaurant-static-qr-box {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1, 4px);
-  margin-top: var(--space-2, 8px);
-  padding: var(--space-2, 8px) var(--space-3, 12px);
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.03));
-  border-radius: var(--radius-md, 6px);
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
 }

@@ -251,8 +251,8 @@
   line-height: 1;
   padding: 2px 6px;
   border-radius: var(--radius-sm, 4px);
-  background: var(--color-bg-subtle, rgba(0, 0, 0, 0.06));
-  color: var(--color-fg-muted, #666);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-muted);
   font-weight: 500;
 }
 
