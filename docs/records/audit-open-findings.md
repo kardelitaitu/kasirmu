@@ -635,6 +635,25 @@ reproduce; each correction is inline, in the bullet that carries it.
   the reader who greps, and a `.bak` line makes a retired gate look wired to that same reader.**
   Owner: `scripts/` for the files; `.github/workflows/dev-ci.yml` for any of them meant to be
   enforced.
+
+  **Progress 2026-09-29 — 2 of the 7 now have a runner; 5 remain.** The census above still
+  holds for the other five and has not been re-run. What changed:
+  `verify-flaky-quarantine.py` and `verify-dockerfile-workspace.py` are both invoked by
+  `check.sh` now, each with a `--self-test` beside it, all four steps registered in
+  `gates.json`. `verify-flaky-quarantine.py` also gained a real `--self-test` (it used to
+  REFUSE the flag) and a zone-agnostic strict-argument rule, so the leg that had the
+  documented silent fall-through is now covered.
+
+  The five still unwired: `verify-fluent-dynamic-families.py`,
+  `verify-quota-coverage.sh`, and the docker family `verify-docker-all.sh` /
+  `verify-docker-digests.sh` / `verify-docker-persistence.sh`. The last three are one
+  unit — `verify-docker-all.sh` is a wrapper whose two children are reachable only
+  through it and through retired `.bak` workflows, so wiring any of them means deciding
+  the whole family's fate, not one file's. Two cautions for whoever does: the docker
+  three likely need a Docker daemon and so cannot go in a job that has none, and
+  `verify-fluent-dynamic-families.py` has ZERO references repo-wide, which makes "wire it
+  up" a decision about whether it is still wanted at all rather than an oversight to
+  repair. Neither question is answered by adding a step.
 - **GI-5 — two gate-integrity checkers have no backstop off a developer's own machine, and both
   `ci` records claim one.** `verify-doc-uniqueness.py`: its only live runners are
   `scripts/check.sh:376` and `:377` (11:40 +07); counting the string `uniqueness` per live workflow
