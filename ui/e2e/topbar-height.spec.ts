@@ -9,17 +9,17 @@ import { loginAs, selectWorkspace, WORKSPACES, navigateTo } from './helpers';
  *
  * The settings hub's top bar and the staff management header are two different
  * sheets that must render the SAME bar height, linked only by `--topbar-height`
- * (tokens.css), DERIVED from `--touch-target-min`, `--space-2` vertical padding
- * and the 1px bottom border both bars carry — so a change to the touch floor
- * moves both bars together instead of desyncing them.
+ * (tokens.css), DERIVED from `--touch-target-comfortable`, `--space-2` vertical
+ * padding and the 1px bottom border both bars carry — so a change to the touch
+ * floor moves both bars together instead of desyncing them.
  *
  * Both halves are needed. The geometry half proves the value that actually
  * renders; the source half proves the token is still DERIVED rather than a
  * hand-written px literal that merely happens to match today.
  *
- * The resolved height is 59px, NOT the 61px a naive read of the token suggests:
+ * The resolved height is 63px, NOT the 65px a naive read of the token suggests:
  * `--space-2` is 0.5rem and the root font-size is 14px, so it is 7px, and
- * 44 + 2*7 + 1 = 59. Hence this file asserts RELATIONS, never a hardcoded
+ * 48 + 2*7 + 1 = 63. Hence this file asserts RELATIONS, never a hardcoded
  * height — a magic number would be wrong the moment the root font-size or the
  * touch floor changes.
  */
@@ -53,7 +53,7 @@ test.describe('Top bar height — geometry', () => {
 
     const touchFloor = await page.evaluate(() =>
       Number.parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue('--touch-target-min'),
+        getComputedStyle(document.documentElement).getPropertyValue('--touch-target-comfortable'),
       ),
     );
     const settingsMin = Number.parseFloat(settings.minHeight);
@@ -88,7 +88,7 @@ test.describe('Top bar height — CSS contract', () => {
     const declarations = tokens.match(/--topbar-height\s*:/g) ?? [];
     expect(declarations, '--topbar-height must be declared exactly once').toHaveLength(1);
     expect(tokens, '--topbar-height must be derived from the touch floor, not a literal').toMatch(
-      /--topbar-height:\s*calc\(\s*var\(--touch-target-min\)\s*\+\s*2\s*\*\s*var\(--space-2\)\s*\+\s*1px\s*\)/,
+      /--topbar-height:\s*calc\(\s*var\(--touch-target-comfortable\)\s*\+\s*2\s*\*\s*var\(--space-2\)\s*\+\s*1px\s*\)/,
     );
 
     for (const [sheet, selector] of [

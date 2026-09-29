@@ -148,6 +148,20 @@
   justify-self: center;
 }
 
+@media (pointer: coarse) {
+  /* The shared coarse rule lifts every tablist [role="tab"] to
+     --touch-target-comfortable (48px), and the segmented track adds its own
+     2px top + 2px bottom padding around them — so the strip's outer box is
+     52px while the settings bar's tallest child (a .btn, also 48px) carries
+     no such wrapper. The token already budgets the 48px child; this
+     drops the extra 4px of track padding so the strip's outer box is
+     44+4 = 48px and both bars settle on the token height. Scoped to this
+     header: every other strip keeps the comfortable segments. */
+  .staff-mgmt-header .segmented-tab[role="tab"] {
+    min-height: var(--touch-target-min);
+  }
+}
+
 /* The only route back to the workspace picker on this sidebar-less page.
    Sized off the touch-target token rather than the neighbour at
    36px in AnalyticsScreen.css: this is a management screen operated on
