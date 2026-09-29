@@ -142,6 +142,11 @@ fn signature_roundtrip_sign_then_load() {
         "oz.apply_discount(\"cart\", 99)\n",
     )
     .unwrap();
+    // SAFETY: same contract as the pair at :130 — this test is #[ignore]d, so it
+    // only runs on a deliberate single-threaded invocation, and the variable is
+    // read solely by PluginManager::new. Repeated here because the verifier looks
+    // for a SAFETY line within 12 lines of the construct, and the earlier note is
+    // 17 lines above this second pair.
     unsafe { std::env::set_var("KASIRMU_PLUGIN_PUBLIC_KEY", &pem) };
     let tampered = kasirmu_plugin::PluginManager::new(&plugins);
     unsafe { std::env::remove_var("KASIRMU_PLUGIN_PUBLIC_KEY") };
