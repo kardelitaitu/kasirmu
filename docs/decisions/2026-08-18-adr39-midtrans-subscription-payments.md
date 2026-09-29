@@ -4,6 +4,7 @@ area: subscription
 title: ADR #39: Midtrans QRIS Subscription Payments (Phase 2)
 status: Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 220 lines, no audit stamp, no footer, no marker. Its front matter is unusually informative -- "Implemented (2026-08-18) — `docs/plans/todo.md` C3.1; Phase C complete (C0-C4.3 shipped)" -- so it claims a full phase set shipped, and the pieces this campaign can check do check out. The Midtrans webhook handler is live at `apps/cloud-server/src/webhooks/midtrans.rs`, sitting beside the Paddle path, and the subscription machinery this ADR depends on is real in the license server: `calculateGraceUntil` in `apps/license-server/activate.go`, with the `grace_period` status and the `signed_payload` column documented in `apps/license-server/DEPLOY.md`. · TWO CONNECTIONS TO DOCUMENTS AUDITED ELSEWHERE IN THIS CAMPAIGN, neither recorded anywhere else. First, `docs/decisions/2026-09-12-adr52-tracked-settings-funnel-refuses-cleartext-credentials.md` (round 10) records that `sync.auth_token` was registered as a credential in commit `b2196d701` and given the full perimeter -- denied on read, refused on both untrusted egress lanes, refused on write. Second, `docs/records/statutory-rounding-and-estimate-stamps.md` (round 10) records the `smtp_config` cleartext exception and, in the same paragraph, that the merged password JSON is encrypted at rest and fails closed. Both are credential-hygiene consequences of exactly this payment work, and neither cross-references this ADR. · The customer-to-tenant resolution this ADR relies on is also present: the `stripe_customers` table is in the base schema and `tenant_plans` is served from `crates/kasirmu-api/src/pg/plans.rs`. · NOT re-measured: the Phase C item-by-item status, a dated delivery record against a plan file (`docs/plans/todo.md`, C3.1) that this campaign has not audited. Body left entirely as written; stamp and footer added. -->
 # ADR #39: Midtrans QRIS Subscription Payments (Phase 2)
 
 Date: 2026-08-18
@@ -218,3 +219,5 @@ intentional refinements, not bugs (except where noted):
    401'd on activation, and it now covers any webhook-issued key (`paddle_sub_id` **or**
    `midtrans_sub_id`). This is the D1 register-first model made symmetric across
    providers.
+
+> last audited 29-09-26 by docs-auditor

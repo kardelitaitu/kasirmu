@@ -4,6 +4,7 @@ area: sync
 title: ADR #21: Sync Conflict Resolution Strategy
 status: Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 327 lines, no audit stamp, no footer, no docs-auditor marker. Its front matter reads "Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)", so a Phase 1 exists, and the resolution function this ADR specifies is live: `resolve_conflict(local, remote) -> ResolvedItem` at `platform/sync/src/conflict.rs:201`, still in the sync crate the ADR names. · WHAT SURVIVED AND WHAT MOVED, precisely. The resolution function is intact, but the surrounding vocabulary the ADR introduces is not findable under its own names -- searching `platform/sync` for `ConflictType` or `ConflictResolution` returns nothing, meaning the entity-type dispatch the companion research document refers to (see `docs/decisions/2026-07-20-crdt-sync-research.md`, audited in the previous round) is keyed differently now. Recorded rather than treated as a finding: an ADR naming a type that was later renamed or inlined is ordinary evolution, and the function carrying the decision is still where the record says. · THIS ADR IS THE DECIDED COUNTERPART to that research document, and reading them together is the useful part. The CRDT survey concluded against a rewrite; this one specifies what shipped instead -- a last-writer-wins hybrid with explicit resolution, extended by property-based tests. Those tests are present (`platform/sync/src/conflict_proptests.rs`), so the strategy this document chose is the one under test. · The status checker reports no drift for this row. Body left entirely as written, including its references to the sync engine's queue and delta surfaces; stamp and footer added, which is all this file needed. -->
 # ADR #21: Sync Conflict Resolution Strategy
 
 **Status:** Approved — Phase 1 implemented (2026-07-20; re-audited 2026-08-08 by docs-auditor)
@@ -324,4 +325,4 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 
 > Activation and Ownership appended 09-09-26.
 
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

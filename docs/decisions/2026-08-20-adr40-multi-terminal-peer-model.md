@@ -4,6 +4,7 @@ area: topology
 title: ADR #40: Multi-Terminal Peer Model
 status: Implemented (2026-08-20)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 163 lines, no audit stamp, no footer, no marker. Front matter reads "Implemented (2026-08-20)" and the four artifacts its Related section names all exist at their current paths -- `session.rs`, `db/terminals.rs`, `db/shifts.rs` and `db/sales.rs` in the core crate. The citation is the only thing needing a note: the document writes them as `crates/oz-core/src/...`, the pre-restructure crate name, now `crates/kasirmu-core/src/...`. Left as written, since this is a decision record and its references are how the decision was recorded. · This ADR is the origin of the `terminal_id` model that several later documents in this campaign take for granted, and the chain is worth naming because it is not written down in one place: this document introduces per-terminal identity, ADR #47 (round 15) adds branch/workspace scope ON TOP of it through the `assignments` table, and the conditional-scoping record (round 11) shows a `terminal_id` being passed by callers into a delta-ledger INSERT under a value the caller supplies. The scoping story is therefore layered -- terminal, then branch/workspace -- and a reader meeting only one of these documents will not see it. · Status checker reports no drift for this row; the index agrees with the front matter. Stamp and footer added; the file had neither. -->
 # ADR #40: Multi-Terminal Peer Model
 
 **Status:** Implemented (2026-08-20)
@@ -161,3 +162,5 @@ values. The routing engine (`resolve_kds_targets`) maps SKU → kitchen_zone
 12. KDS order routed from any terminal
 13. Same user login on two terminals
 14. Terminal crash loses unsaved cart
+
+> last audited 29-09-26 by docs-auditor
