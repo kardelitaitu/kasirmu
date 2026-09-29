@@ -13259,38 +13259,56 @@ drift_pin_generated_ledger_is_the_sweeps_own_output` → regenerated, 92 rows / 
 registered. `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` → 12
 passed.
 
-### 2026-09-29 — OPEN CONFLICT: the records index is stamped and generated at once
+### 2026-09-29 — RESOLVED: the records index is stamped and generated at once
 
 **Found while running the `scripts/check.sh` static gates.** `node
-scripts/generate-records-index.mjs --check` fails at HEAD, and the two mechanisms that
-touch `docs/records/README.md` are mutually exclusive:
+scripts/generate-records-index.mjs --check` failed at HEAD, and the two mechanisms that
+touch `docs/records/README.md` were mutually exclusive:
 
 - `2b345fea4` (docs: audit the CI pipeline, records registry, …) committed an
   **audit stamp** as the file's first line, per the docs-auditor convention every
   other record now carries.
-- `scripts/generate-records-index.mjs` **rewrites the whole file** and has no
-  stamp-preservation logic (grep for `stamp` in the script: zero hits). Running it
-  therefore deletes the stamp; the freshness gate then compares the stamped file
-  against unstamped output and fails with "178 differing lines; 180 generated vs
-  179 committed".
+- `scripts/generate-records-index.mjs` **rewrote the whole file** and had no
+  stamp-preservation logic. Running it therefore deleted the stamp; the freshness gate
+  then compared the stamped file against unstamped output and failed.
 
-So the gate is red for as long as the stamp exists, and the stamp is destroyed the
-moment someone follows the gate's own instruction ("run:
-node scripts/generate-records-index.mjs"). Neither the generator's header nor the
-gate's message mentions the stamp, so the loop is silent until a reader notices the
-stamp is gone.
+So the gate was red for as long as the stamp existed, and the stamp was destroyed the
+moment someone followed the gate's own instruction ("run:
+node scripts/generate-records-index.mjs"). Neither the generator's header nor the gate's
+message mentioned the stamp, so the loop was silent until a reader noticed the stamp was
+gone.
 
-**NOT repaired here, deliberately.** Both fixes are design decisions with an owner:
-(a) teach the generator to preserve a leading HTML comment stamp — the shape the
-audit campaign uses everywhere else; or (b) exempt `docs/records/README.md` from
-stamping, on the grounds that it is generated output and a generated file cannot
-carry a hand-kept provenance line. (a) keeps the audit campaign's coverage; (b)
-keeps the generator's "generated is authoritative" contract intact. Picking one
-changes another lane's live workflow, so it is recorded rather than guessed.
+**RESOLVED the same day, and it was worse than the stamp alone.** Diagnosing the diff
+properly turned up a second defect underneath it: the generator's `frontMatter()` reader
+required `---` on the literal FIRST line, and the audit campaign stamps records ABOVE
+their front matter. ADR #37, #38 and #47 therefore lost their `num`, dropped out of the
+numbered table, and were reclassified as unnumbered records — the committed index listed
+55 ADRs while the generator could only see 52. That is the same class of defect the gate's
+own `_note` records finding at wiring time ("148 generated vs 158 committed lines, ADR #60
+missing").
 
-**Damage check:** running the generator during diagnosis DID delete the committed
-stamp in the working tree. Restored immediately with `git checkout --`, verified
-byte-identical to HEAD (`git hash-object` == `git rev-parse HEAD:…`) with the stamp
-present. Nothing was committed from that run.
+Three changes, all in `scripts/generate-records-index.mjs`:
+
+1. `frontMatter()` steps over a leading HTML comment before looking for `---`. Only
+   comments are skipped; any other leading text still means "no front matter".
+2. `leadingStamp()` carries the committed file's leading `<!-- … -->` block into the
+   render verbatim.
+3. `trailingFooter()` carries the trailing `> last audited …` line, which the campaign
+   writes as the stamp's other half.
+
+The generator still owns everything it authors — title, banner, sections, rows — so
+"header + conventions are regenerated too" holds for the index itself; only human
+provenance is passed through, which the script cannot know. Both ungated generated files
+(`docs/README.md` via `scripts/gen-summary.py`, and the SEO review) carry stamps today
+precisely because nothing compares them to a generator; this gives the one GATED file the
+same reach.
+
+**Verified:** `--check` now reports `ok: … (55 ADRs, …)`, exit 0, with the committed file
+byte-identical to HEAD — `--check` writes nothing. Negative control: tampering one body
+line still fails the gate, so the pass-through did not blunt it.
+
+**Damage check:** an earlier diagnosis run DID delete the committed stamp in the working
+tree. Restored with `git checkout --`, verified byte-identical to HEAD. Nothing was
+committed from that run.
 
 > last audited 29-09-26 by docs-auditor
