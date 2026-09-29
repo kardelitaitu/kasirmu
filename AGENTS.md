@@ -5,6 +5,18 @@
      task playbook folded into §1; chunk-read rule replaced by whole-file reads (E4);
      seven-step gate count named explicitly (§2); discovery directive gains fallback order. -->
 
+<!-- Correction 2026-09-29 (docs-auditor, round 6): the stamp above claimed ACCURATE
+     while §4 named four variables the code does not read — KASIRMU_ADMIN_KEY,
+     KASIRMU_API_SECRET, KASIRMU_ENFORCE_PLANS, KASIRMU_LICENSE_PRIVATE_KEY. All four
+     have ZERO hits under apps/; the server reads the OZ_ spellings. Setting a KASIRMU_
+     name did nothing, and the server fell back to its default — which for
+     OZ_ENFORCE_PLANS means plan gating silently off, the worst direction to fail.
+     Fixed to the OZ_ names, and §0/§4 headings corrected: there is no single prefix.
+     KASIRMU_MASTER_KEY was already right and is unchanged. Names verified against
+     apps/cloud-server/src/config.rs and apps/license-server; the OZ_ side became
+     visible to check-env-docs.py only after that checker's scope was widened to the
+     Rust cloud server in round 5. -->
+
 ## 0. Quick card — read this first
 
 Every value measured 2026-09-27 on branch `0.0.40`. Do not probe to orient (E3); if a
@@ -19,7 +31,7 @@ value smells stale, refresh via §7.5 folded into a call you already need.
 | Gates | Opt-in per clone: `git config core.hooksPath .githooks` — seven steps, §2. |
 | UI work | All npm scripts from inside `ui/`. Never bare `tsc`/`eslint` (§5). |
 | Rust work | `cargo check -p <crate>` for iteration. Clippy/workspace tests: pre-push only (§5). |
-| Secrets | `KASIRMU_*` user-scope env vars (§4). Never hardcode; never commit `.env`. |
+| Secrets | user-scope env vars (§4) — mixed `KASIRMU_*` / `OZ_*` prefixes, copy the name verbatim. Never hardcode; never commit `.env`. |
 | Plan docs | Filename keeps the `todo-`/`plan-`/`prd-` token. `done-` is earned only when the file's acceptance command ran and passed (§7.4). |
 | Paths | Forward slashes in tool args. Never hardcode the checkout root — resolve with `git rev-parse --show-toplevel`. |
 | Money / DB | `Money` (`i64` minor units), never float. SQLite writes only inside a rusqlite transaction. |
@@ -100,12 +112,17 @@ not a pre-commit step (removed 2026-09-13); formatting is check-only via pre-pus
 | **Currency** | **ALWAYS use `Money` struct (`i64` minor units). NEVER use float.** | Monetary values must never be `f32`/`f64`. Agent-enforced; no gate. |
 | **DB Writes** | **ALWAYS use `rusqlite` transactions for database writes.** | Never write to SQLite outside an explicit transaction. Agent-enforced; no gate. |
 
-## 4. Global environment variables (`KASIRMU_*`)
+## 4. Global environment variables (mixed prefixes — read the list)
 
-API keys live as **user-scope Windows environment variables** with a `KASIRMU_` prefix
-(HKCU\Environment; survive reboots, visible in every NEW PowerShell session — the
-session that set them must be reopened). Source of truth: the gitignored `.env` at
-the repo root.
+API keys live as **user-scope Windows environment variables** (HKCU\Environment;
+survive reboots, visible in every NEW PowerShell session — the session that set them
+must be reopened). Source of truth: the gitignored `.env` at the repo root.
+
+**There is no single prefix.** The rename to `KASIRMU_*` is mid-migration and has
+reached the deploy tooling but not the server config: deploy tokens are `KASIRMU_*`,
+the server's own knobs are still `OZ_*`, and at-rest encryption has moved to
+`KASIRMU_MASTER_KEY` with `OZ_MASTER_KEY` still read as a legacy alias. Copy the names
+below verbatim; do not normalise them to one prefix.
 
 ```powershell
 $env:KASIRMU_CLOUDFLARE_API_TOKEN        # Cloudflare Workers deploy token
@@ -114,10 +131,16 @@ $env:KASIRMU_CLOUDFLARE_ACCESS_KEY       # R2 access key id
 $env:KASIRMU_CLOUDFLARE_SECRET_ACCESS_KEY# R2 secret access key
 $env:KASIRMU_CLOUDFLARE_S3_ENDPOINT      # R2 S3 endpoint
 $env:KASIRMU_NORTHFLANK_API_TOKEN        # Northflank deploy token
-$env:KASIRMU_ADMIN_KEY                    # admin dashboard API key
-$env:KASIRMU_API_SECRET                  # JWT signing secret
-$env:KASIRMU_ENFORCE_PLANS               # plan gating flag
-$env:KASIRMU_LICENSE_PRIVATE_KEY         # RSA license signing key (PEM, multiline)
+# The four below are the SERVER's names, not KASIRMU_* ones. The codebase is
+# mid-migration: deploy tokens above are KASIRMU_*, these are still OZ_*, and
+# setting a KASIRMU_ spelling of one of these does nothing -- the server reads
+# OZ_ and falls back to its default, which fails open. Verified against
+# apps/cloud-server/src/config.rs (round-5 check-env-docs scope) and
+# apps/license-server. KASIRMU_MASTER_KEY below IS correct: kasirmu-crypto reads it.
+$env:OZ_ADMIN_KEY                        # admin dashboard API key
+$env:OZ_API_SECRET                       # JWT signing secret
+$env:OZ_ENFORCE_PLANS                    # plan gating flag
+$env:OZ_LICENSE_PRIVATE_KEY              # RSA license signing key (PEM, multiline)
 $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTER_KEY is the legacy alias, still read
 ```
 
