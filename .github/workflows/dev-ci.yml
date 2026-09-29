@@ -1127,6 +1127,18 @@ jobs:
         run: python3 scripts/verify-feature-registry.py
       - name: Plugin guide parity
         run: python3 scripts/verify-plugin-guide-parity.py
+      # This checker's own parser cases, in the same job as the gate it proves --
+      # the convention stated at "IPC command parity self-test" (7c). Pure regex
+      # matching plus a read-only floor, so it needs nothing installed.
+      #
+      # The failure they guard is the quiet one. Every claim this gate makes is a
+      # regex match, and if OZ_SET stopped matching, implemented_bindings() would
+      # return an empty set -- so "implemented but not documented" would have
+      # nothing to complain about, and the gate would report parity on a plugin
+      # crate whose whole binding table it is no longer reading. Proven by mutation:
+      # a pattern that cannot match turns the OZ_SET case red with "got []".
+      - name: Plugin guide parity self-test
+        run: python3 scripts/verify-plugin-guide-parity.py --self-test
       - name: No raw query params
         run: bash scripts/verify-no-raw-params.sh
       - name: Scoped command coverage

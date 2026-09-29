@@ -539,6 +539,9 @@ step "website assets" "python3 scripts/verify-website-assets.py" python3 scripts
 
 # ── Plugin guide / API parity (PLG-10 tail; Rust-side, always runs) ─────
 step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" python3 scripts/verify-plugin-guide-parity.py
+# The four parsers' own cases, beside the gate they prove. Pure regexes plus a
+# read-only floor; nothing installed, nothing written.
+step "plugin-guide parity self-test" "python3 scripts/verify-plugin-guide-parity.py --self-test" python3 scripts/verify-plugin-guide-parity.py --self-test
 
 # ── Windows config drift (AUDIT-28) — NSIS installMode + asInvoker ─────
 # Static gate that runs on every local pre-CI run: tauri.conf.json must
