@@ -17,10 +17,14 @@ next: real vendor framing | perf: N/A — all codecs are stubs
 //! * [`IngenicoCodec`](ingenico::IngenicoCodec) — Telium / Telium 2 (iPP320, iPP350, Desk 3500).
 //! * [`VerifoneCodec`](verifone::VerifoneCodec) — Verifone SSL / Verix (VX520, VX680, P400).
 //! * [`PaxCodec`](pax::PaxCodec) — PAX DCC (S80, S300, S920, A920).
+//! * [`LoopbackCodec`](loopback::LoopbackCodec) — Simulator / loopback POS binary framing.
 
 pub mod ingenico;
+pub mod loopback;
 pub mod pax;
 pub mod verifone;
+
+pub use loopback::LoopbackCodec;
 
 use kasirmu_core::Money;
 

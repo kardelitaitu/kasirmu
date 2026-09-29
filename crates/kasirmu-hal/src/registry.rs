@@ -191,6 +191,21 @@ impl DriverRegistry {
         self.register_terminal(id, terminal).await;
     }
 
+    /// Register a loopback (simulator) EDC terminal under the given id.
+    pub async fn register_loopback_terminal(&self, id: &str) {
+        let terminal = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::new());
+        self.register_terminal(id, terminal).await;
+    }
+
+    /// Register a configured loopback EDC terminal under the given id.
+    pub async fn register_loopback_terminal_with(
+        &self,
+        id: &str,
+        terminal: Arc<crate::drivers::edc::LoopbackEdcTerminal>,
+    ) {
+        self.register_terminal(id, terminal).await;
+    }
+
     /// Discover and register barcode scanners, returning their ids.
     ///
     /// Scanners are the one device class an operator never names. The UI

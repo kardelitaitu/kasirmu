@@ -181,14 +181,195 @@ async fn receipt_is_raw_bytes_for_the_transaction() {
     assert!(text.contains("LOOPBACK-0007"), "got {text:?}");
 }
 
-/// `status` is always `Ready`, and is deliberately NOT scripted.
-///
-/// If status could be scripted, a test could assert a terminal is ready while
-/// the next charge is scripted to time out — a contradiction the type should
-/// not be able to express.
+/// `status` is `Ready` by default when default_behaviour is Approve.
 #[tokio::test]
 async fn status_is_always_ready_and_not_scriptable() {
     let t = LoopbackEdcTerminal::with_script(vec![EdcBehaviour::Offline], EdcBehaviour::Approve);
     assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
     assert_eq!(t.attempts(), 0, "status must not consume a scripted step");
 }
+
+/// from_address parses default "loopback" as an approving simulator.
+#[tokio::test]
+async fn from_address_default_approves() {
+    let t = LoopbackEdcTerminal::from_address("loopback");
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
+    let r = t.sale(idr(50000)).await.expect("approves");
+    assert!(r.success);
+}
+
+/// from_address parses decline with reason query parameter.
+#[tokio::test]
+async fn from_address_decline_with_reason() {
+    let t = LoopbackEdcTerminal::from_address("loopback://decline?reason=card_expired");
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
+    let r = t.sale(idr(50000)).await.expect("decline is a response");
+    assert!(!r.success);
+    assert_eq!(r.message, "card expired");
+}
+
+/// from_address parses timeout simulation.
+#[tokio::test]
+async fn from_address_timeout() {
+    let t = LoopbackEdcTerminal::from_address("loopback://timeout");
+    let r = t.sale(idr(10000)).await;
+    assert!(matches!(r, Err(HalError::Timeout(_))));
+}
+
+/// from_address parses offline terminal.
+#[tokio::test]
+async fn from_address_offline() {
+    let t = LoopbackEdcTerminal::from_address("loopback://offline");
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Offline);
+    let r = t.sale(idr(10000)).await;
+    assert!(matches!(r, Err(HalError::NotFound(_))));
+}
+
+/// from_address parses hardware fault with code and message.
+#[tokio::test]
+async fn from_address_hardware_fault() {
+    let t = LoopbackEdcTerminal::from_address("loopback://fault?code=88&msg=sensor_broken");
+    let r = t.sale(idr(10000)).await.expect("fault is a response");
+    assert!(!r.success);
+    assert!(r.message.contains("88"));
+    assert!(r.message.contains("sensor broken"));
+}
+
+/// from_address parses busy status.
+#[tokio::test]
+async fn from_address_busy() {
+    let t = LoopbackEdcTerminal::from_address("loopback://busy");
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Busy);
+}
+
+/// set_status dynamically forces a status report.
+#[tokio::test]
+async fn dynamic_status_override() {
+    let t = LoopbackEdcTerminal::new();
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
+
+    t.set_status(Some(TerminalStatus::PaperError));
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::PaperError);
+
+    t.set_status(Some(TerminalStatus::Busy));
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Busy);
+
+    t.set_status(None);
+    assert_eq!(t.status().await.unwrap(), TerminalStatus::Ready);
+}
+
+/// Artificial latency delay slows down execution.
+#[tokio::test]
+async fn artificial_delay_slows_execution() {
+    let t = LoopbackEdcTerminal::new();
+    t.set_delay(Some(std::time::Duration::from_millis(30)));
+
+    let start = tokio::time::Instant::now();
+    let _ = t.sale(idr(1000)).await;
+    assert!(start.elapsed() >= std::time::Duration::from_millis(25));
+}
+
+/// LoopbackCodec frame encoding and decoding roundtrip.
+#[test]
+fn loopback_codec_frame_roundtrip() {
+    use super::super::protocol::{LoopbackCodec, ProtocolCodec, ProtocolMessage};
+
+    let codec = LoopbackCodec;
+    assert_eq!(codec.vendor(), "loopback");
+
+    // Test encode sale request
+    let wire_sale = codec.encode_sale(idr(25000), "INV-1001").expect("encodes sale");
+    assert_eq!(wire_sale[0], 0x02, "must start with STX");
+    assert_eq!(wire_sale[wire_sale.len() - 2], 0x03, "must end with ETX");
+    // Verify LRC
+    let expected_lrc = LoopbackCodec::calculate_lrc(&wire_sale[3..wire_sale.len() - 1]);
+    assert_eq!(wire_sale[wire_sale.len() - 1], expected_lrc, "LRC check");
+
+    // Test decode approval response
+    let wire_resp = LoopbackCodec::encode_sale_approved("TXN-9999", "AUTH88", "Mastercard", "5555");
+    let decoded = codec.decode(&wire_resp).expect("decodes approval");
+    match decoded {
+        ProtocolMessage::Authorised {
+            transaction_id,
+            auth_code,
+            card_scheme,
+            card_last4,
+        } => {
+            assert_eq!(transaction_id, "TXN-9999");
+            assert_eq!(auth_code, "AUTH88");
+            assert_eq!(card_scheme.as_deref(), Some("Mastercard"));
+            assert_eq!(card_last4.as_deref(), Some("5555"));
+        }
+        other => panic!("expected Authorised, got {other:?}"),
+    }
+
+    // Test decode decline response
+    let wire_dec = LoopbackCodec::encode_sale_declined("insufficient funds");
+    let decoded_dec = codec.decode(&wire_dec).expect("decodes decline");
+    match decoded_dec {
+        ProtocolMessage::Declined { reason } => {
+            assert_eq!(reason.as_deref(), Some("insufficient funds"));
+        }
+        other => panic!("expected Declined, got {other:?}"),
+    }
+
+    // Test decode error response
+    let wire_err = LoopbackCodec::encode_error(104, "printer head overheat");
+    let decoded_err = codec.decode(&wire_err).expect("decodes error");
+    match decoded_err {
+        ProtocolMessage::Error { code, message } => {
+            assert_eq!(code, 104);
+            assert_eq!(message, "printer head overheat");
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+
+    // Test decode ready status response
+    let wire_ready = LoopbackCodec::encode_ready();
+    let decoded_ready = codec.decode(&wire_ready).expect("decodes ready");
+    assert!(matches!(decoded_ready, ProtocolMessage::Ready));
+}
+
+/// LoopbackCodec fails closed on corrupted LRC checksum.
+#[test]
+fn loopback_codec_fails_on_corrupted_lrc() {
+    use super::super::protocol::{LoopbackCodec, ProtocolCodec};
+
+    let codec = LoopbackCodec;
+    let mut frame = LoopbackCodec::encode_sale_approved("TXN-1", "A1", "Visa", "4242");
+    let last = frame.len() - 1;
+    frame[last] ^= 0xFF; // corrupt checksum
+
+    let err = codec.decode(&frame).unwrap_err();
+    assert!(matches!(err, HalError::Protocol(_)));
+    assert!(err.to_string().contains("LRC checksum mismatch"));
+}
+
+/// LoopbackCodec fails closed on truncated frame.
+#[test]
+fn loopback_codec_fails_on_truncated_frame() {
+    use super::super::protocol::{LoopbackCodec, ProtocolCodec};
+
+    let codec = LoopbackCodec;
+    let frame = LoopbackCodec::encode_sale_approved("TXN-1", "A1", "Visa", "4242");
+    let truncated = &frame[..frame.len() - 5];
+
+    let err = codec.decode(truncated).unwrap_err();
+    assert!(matches!(err, HalError::Protocol(_)));
+    assert!(err.to_string().contains("truncated"));
+}
+
+/// LoopbackCodec fails closed on invalid STX.
+#[test]
+fn loopback_codec_fails_on_invalid_stx() {
+    use super::super::protocol::{LoopbackCodec, ProtocolCodec};
+
+    let codec = LoopbackCodec;
+    let mut frame = LoopbackCodec::encode_sale_approved("TXN-1", "A1", "Visa", "4242");
+    frame[0] = 0xFF; // bad STX
+
+    let err = codec.decode(&frame).unwrap_err();
+    assert!(matches!(err, HalError::Protocol(_)));
+    assert!(err.to_string().contains("invalid loopback framing"));
+}
+

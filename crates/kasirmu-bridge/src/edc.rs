@@ -164,18 +164,31 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
         return;
     }
 
+    let address = row.address.trim();
+    if address.is_empty() {
+        ctx.registry.unregister_terminal(&row.id).await;
+        return;
+    }
+
+    if address.starts_with("loopback")
+        || row.transport == "loopback"
+        || row.connection_type == "loopback"
+        || row.vendor.as_deref() == Some("loopback")
+        || row.vendor.as_deref() == Some("simulator")
+    {
+        let sim = Arc::new(kasirmu_hal::drivers::edc::LoopbackEdcTerminal::from_address(address));
+        ctx.registry.register_loopback_terminal_with(&row.id, sim).await;
+        return;
+    }
+
     let info = kasirmu_hal::types::DeviceInfo::new(
         row.vendor.clone().unwrap_or_else(|| "unknown".into()),
         row.model.clone().unwrap_or_else(|| "card".into()),
-        &row.address,
+        address,
     );
 
-    match (
-        row.connection_type.as_str(),
-        row.transport.as_str(),
-        row.address.trim(),
-    ) {
-        ("wired", "serial" | "usb", address) if !address.is_empty() => {
+    match (row.connection_type.as_str(), row.transport.as_str()) {
+        ("wired", "serial" | "usb") => {
             ctx.registry
                 .register_wired_terminal(
                     &row.id,
@@ -185,7 +198,7 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
                 )
                 .await;
         }
-        ("wireless", "bluetooth", address) if !address.is_empty() => {
+        ("wireless", "bluetooth") => {
             ctx.registry
                 .register_wireless_terminal(
                     &row.id,
@@ -194,7 +207,7 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
                 )
                 .await;
         }
-        ("wireless", "tcp", address) if !address.is_empty() => {
+        ("wireless", "tcp") => {
             ctx.registry
                 .register_wireless_terminal(
                     &row.id,

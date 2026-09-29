@@ -435,8 +435,8 @@ export function EdcTerminalsCard({
               onChange={(e) => setAddress(e.target.value)}
               placeholder={
                 connectionType === 'wired'
-                  ? 'COM3 or /dev/ttyUSB0'
-                  : '192.168.1.188:9000 or MAC'
+                  ? 'COM3, /dev/ttyUSB0, or loopback'
+                  : '192.168.1.188:9000, MAC, or loopback'
               }
               required
               maxLength={255}
@@ -453,7 +453,7 @@ export function EdcTerminalsCard({
               className="settings-input"
               value={vendor}
               onChange={(e) => setVendor(e.target.value)}
-              placeholder="e.g. ingenico, verifone, pax"
+              placeholder="e.g. ingenico, verifone, pax, loopback"
             />
           </div>
 

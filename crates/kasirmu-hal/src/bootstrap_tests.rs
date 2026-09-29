@@ -523,6 +523,25 @@ async fn autodetect_leaves_a_configured_printer_on_default_reachable() {
     assert!(reg.printer("default").await.is_some());
 }
 
+#[tokio::test]
+async fn loopback_terminal_registers_and_does_not_claim_ports() {
+    let reg = DriverRegistry::default();
+    let cfg = HardwareConfig {
+        terminals: vec![TerminalConfig {
+            id: "term-sim".into(),
+            connection: TerminalConnection::Loopback {
+                address: "loopback://decline".into(),
+            },
+            info: info("Sim1"),
+        }],
+        ..HardwareConfig::empty()
+    };
+    let report = apply_config(&reg, &cfg).await;
+    assert!(report.registered.contains(&"terminal:term-sim".to_string()));
+    assert!(reg.terminal("term-sim").await.is_some());
+    assert!(claimed_ports(&cfg).is_empty());
+}
+
 #[allow(dead_code)]
 fn trait_objects_are_send_sync() {
     // The registry stores Arc<dyn Trait>; this would fail to build if a

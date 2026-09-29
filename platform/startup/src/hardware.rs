@@ -183,20 +183,27 @@ fn terminal_connection(
     row: &EdcTerminalConfig,
 ) -> Option<kasirmu_hal::bootstrap::TerminalConnection> {
     use kasirmu_hal::bootstrap::TerminalConnection;
-    match (
-        row.connection_type.as_str(),
-        row.transport.as_str(),
-        row.address.trim(),
-    ) {
-        (_, _, "") => None,
-        ("wired", "serial" | "usb", address) => Some(TerminalConnection::Wired {
+    let address = row.address.trim();
+    if address.is_empty() {
+        return None;
+    }
+    if address.starts_with("loopback")
+        || row.vendor.as_deref() == Some("loopback")
+        || row.vendor.as_deref() == Some("simulator")
+    {
+        return Some(TerminalConnection::Loopback {
+            address: address.to_owned(),
+        });
+    }
+    match (row.connection_type.as_str(), row.transport.as_str()) {
+        ("wired", "serial" | "usb") => Some(TerminalConnection::Wired {
             port: address.to_owned(),
             baud: kasirmu_hal::drivers::edc::wired::DEFAULT_BAUD,
         }),
-        ("wireless", "bluetooth", address) => Some(TerminalConnection::Wireless {
+        ("wireless", "bluetooth") => Some(TerminalConnection::Wireless {
             target: WirelessTarget::Bluetooth(address.to_owned()),
         }),
-        ("wireless", "tcp", address) => Some(TerminalConnection::Wireless {
+        ("wireless", "tcp") => Some(TerminalConnection::Wireless {
             target: WirelessTarget::Network(address.to_owned()),
         }),
         _ => None,

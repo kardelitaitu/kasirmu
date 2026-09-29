@@ -199,3 +199,71 @@ async fn edc_terminals_crud_and_dynamic_registration() {
     assert_eq!(final_list.len(), 1);
     assert!(!final_list[0].is_active);
 }
+
+#[tokio::test]
+async fn loopback_terminal_dynamic_sync_and_payment_simulation() {
+    let tb = TestBridge::new();
+    let ctx = tb.ctx();
+
+    let token_settings = tb
+        .token_granting(kasirmu_core::permissions::SETTINGS_EDIT)
+        .await;
+    let token_cashier = tb
+        .token_granting(kasirmu_core::permissions::SALES_PROCESS)
+        .await;
+
+    // 1. Create a loopback terminal
+    let term = create_edc_terminal_scoped(
+        &ctx,
+        &token_settings,
+        CreateEdcTerminalArgs {
+            name: "Simulator Terminal".into(),
+            connection_type: "wired".into(),
+            transport: "serial".into(),
+            address: "loopback".into(),
+            vendor: Some("loopback".into()),
+            model: Some("Sim01".into()),
+            is_active: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+
+    // Check status via scoped endpoint
+    let status = edc_terminal_status_scoped(&ctx, &token_cashier, Some(&term.id))
+        .await
+        .unwrap();
+    assert_eq!(status.status, TerminalStatus::Ready);
+
+    // Perform sale on loopback terminal
+    let sale_res = edc_sale(&ctx, &token_cashier, 25000, "IDR", Some(&term.id))
+        .await
+        .unwrap();
+    assert!(sale_res.success);
+    assert!(sale_res.transaction_id.is_some());
+    assert_eq!(sale_res.message, "approved");
+
+    // 2. Create a declining loopback terminal
+    let decline_term = create_edc_terminal_scoped(
+        &ctx,
+        &token_settings,
+        CreateEdcTerminalArgs {
+            name: "Declining Simulator".into(),
+            connection_type: "wired".into(),
+            transport: "serial".into(),
+            address: "loopback://decline?reason=lost_card".into(),
+            vendor: Some("loopback".into()),
+            model: Some("Sim02".into()),
+            is_active: Some(true),
+        },
+    )
+    .await
+    .unwrap();
+
+    let dec_res = edc_sale(&ctx, &token_cashier, 15000, "IDR", Some(&decline_term.id))
+        .await
+        .unwrap();
+    assert!(!dec_res.success);
+    assert_eq!(dec_res.message, "lost card");
+}
+

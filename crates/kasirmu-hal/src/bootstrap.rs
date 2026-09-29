@@ -163,6 +163,11 @@ pub enum TerminalConnection {
         /// The HAL wireless target.
         target: WirelessTarget,
     },
+    /// Loopback / simulator terminal.
+    Loopback {
+        /// Simulator configuration URI or address (e.g. "loopback", "loopback://decline").
+        address: String,
+    },
 }
 
 /// Everything the operator configured on this terminal, in the HAL's own
@@ -391,6 +396,11 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                     .await;
                 report.registered.push(key);
             }
+            TerminalConnection::Loopback { address } => {
+                let sim = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::from_address(address));
+                registry.register_loopback_terminal_with(&terminal.id, sim).await;
+                report.registered.push(key);
+            }
             _ => report.skipped.push(key),
         }
     }
@@ -441,6 +451,7 @@ pub fn claimed_ports(config: &HardwareConfig) -> Vec<String> {
         match &terminal.connection {
             TerminalConnection::Wired { port, .. } => claimed.push(port.clone()),
             TerminalConnection::Wireless { target } => claimed.push(target.address().to_owned()),
+            TerminalConnection::Loopback { .. } => {}
         }
     }
 
