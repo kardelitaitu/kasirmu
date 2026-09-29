@@ -317,7 +317,7 @@ impl Store<'_> {
     /// assignment fall back to `users.role_id`.
     pub fn require_permission(&self, user_id: &str, required: &str) -> Result<(), CoreError> {
         let assignment = self.assignment_for_user(user_id)?;
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// The scope-aware gate (ADR #35 D5 / spec 0048): same as
@@ -343,7 +343,7 @@ impl Store<'_> {
                 "branch/workspace out of scope for user {user_id}"
             )));
         }
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// The ADR #47 hierarchical-resource gate (ruling 2: the single scoped
@@ -390,7 +390,7 @@ impl Store<'_> {
                 )));
             }
         }
-        self.authorize_with(user_id, required, &assignment)
+        self.authorize_with(user_id, required, assignment.as_ref())
     }
 
     /// Shared gate body: registry deny-by-default, user resolution + active
@@ -400,7 +400,7 @@ impl Store<'_> {
         &self,
         user_id: &str,
         required: &str,
-        assignment: &Option<crate::db::assignments::Assignment>,
+        assignment: Option<&crate::db::assignments::Assignment>,
     ) -> Result<(), CoreError> {
         // Deny by default: an unregistered permission key is rejected even
         // for the global `"*"` Owner grant — the registry is the only
@@ -419,7 +419,6 @@ impl Store<'_> {
         // The role resolves through the assignment when one exists; legacy
         // users without an assignment fall back to `users.role_id`.
         let role_id = assignment
-            .as_ref()
             .map(|a| a.role_id.as_str())
             .unwrap_or(user.role_id.as_str());
         // Fail closed: an unresolvable role is a denial, never an internal
