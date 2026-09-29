@@ -1160,6 +1160,8 @@ jobs:
       # It is cheap (reads a few text files, no toolchain) and it is the step that makes
       # the convention self-enforcing rather than advisory, so it lives here beside the
       # other static checks rather than only in the manual matrix.
+      - name: Fluent dynamic families
+        run: python3 scripts/verify-fluent-dynamic-families.py
       - name: Runner commands resolve
         run: python3 scripts/verify-runner-commands.py
       - name: Runner commands self-test

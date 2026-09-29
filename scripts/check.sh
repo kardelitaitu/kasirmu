@@ -609,6 +609,12 @@ step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-t
 # a flag those three do not implement. This one skips anything that declares no
 # --self-test, and reports a rejected flag separately from a failed case, so the two
 # cannot be confused.
+# Wired 2026-09-29, which is the point of the round-80 deletion. An unwired checker
+# reads as coverage to the reader who greps, and this one had been finding a real gap
+# since before it had a runner. Green as of that commit (0 bounded families with gaps),
+# so it can be a step rather than a note.
+step "fluent dynamic families" "python3 scripts/verify-fluent-dynamic-families.py" python3 scripts/verify-fluent-dynamic-families.py
+
 step "selftest sweep" "python3 scripts/verify-selftest-sweep.py" python3 scripts/verify-selftest-sweep.py
 step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self-test" python3 scripts/verify-selftest-sweep.py --self-test
 
