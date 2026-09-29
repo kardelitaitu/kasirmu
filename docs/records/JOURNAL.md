@@ -13259,4 +13259,38 @@ drift_pin_generated_ledger_is_the_sweeps_own_output` → regenerated, 92 rows / 
 registered. `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` → 12
 passed.
 
+### 2026-09-29 — OPEN CONFLICT: the records index is stamped and generated at once
+
+**Found while running the `scripts/check.sh` static gates.** `node
+scripts/generate-records-index.mjs --check` fails at HEAD, and the two mechanisms that
+touch `docs/records/README.md` are mutually exclusive:
+
+- `2b345fea4` (docs: audit the CI pipeline, records registry, …) committed an
+  **audit stamp** as the file's first line, per the docs-auditor convention every
+  other record now carries.
+- `scripts/generate-records-index.mjs` **rewrites the whole file** and has no
+  stamp-preservation logic (grep for `stamp` in the script: zero hits). Running it
+  therefore deletes the stamp; the freshness gate then compares the stamped file
+  against unstamped output and fails with "178 differing lines; 180 generated vs
+  179 committed".
+
+So the gate is red for as long as the stamp exists, and the stamp is destroyed the
+moment someone follows the gate's own instruction ("run:
+node scripts/generate-records-index.mjs"). Neither the generator's header nor the
+gate's message mentions the stamp, so the loop is silent until a reader notices the
+stamp is gone.
+
+**NOT repaired here, deliberately.** Both fixes are design decisions with an owner:
+(a) teach the generator to preserve a leading HTML comment stamp — the shape the
+audit campaign uses everywhere else; or (b) exempt `docs/records/README.md` from
+stamping, on the grounds that it is generated output and a generated file cannot
+carry a hand-kept provenance line. (a) keeps the audit campaign's coverage; (b)
+keeps the generator's "generated is authoritative" contract intact. Picking one
+changes another lane's live workflow, so it is recorded rather than guessed.
+
+**Damage check:** running the generator during diagnosis DID delete the committed
+stamp in the working tree. Restored immediately with `git checkout --`, verified
+byte-identical to HEAD (`git hash-object` == `git rev-parse HEAD:…`) with the stamp
+present. Nothing was committed from that run.
+
 > last audited 29-09-26 by docs-auditor
