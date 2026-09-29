@@ -56,6 +56,36 @@ export interface RestaurantReceiptsScreenProps {
   tablesEnabled?: boolean;
 }
 
+interface ReceiptFormValues {
+  paperWidth: 'standard' | 'narrow';
+  fontSize: ReceiptFontSize;
+  showCurrency: boolean;
+  showTax: boolean;
+  showTableNumber: boolean;
+  taxRoundingMode: 'half_up' | 'truncate';
+  footer: string;
+  showReceiptCode: boolean;
+  showDateTime: boolean;
+  showStaffName: boolean;
+  showFooter: boolean;
+  showItemNotes: boolean;
+  taxRatePercent: number;
+  businessLogo: string;
+  logoPosition: ReceiptLogoPosition;
+  headerTitle: string;
+  headerLine1: string;
+  headerLine2: string;
+  marginTop: number;
+  marginBottom: number;
+  marginLeft: number;
+  marginRight: number;
+  printerConnection: 'auto' | 'network' | 'usb' | 'serial' | 'disabled';
+  printerDevicePath: string;
+  printerPaperSize: '80' | '58';
+  kitchenConnection: 'disabled' | 'network' | 'usb' | 'serial' | 'auto';
+  kitchenDevicePath: string;
+}
+
 export default function RestaurantReceiptsScreen({
   terminalId: propTerminalId,
   onSaved,
@@ -121,7 +151,7 @@ export default function RestaurantReceiptsScreen({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Track originals for dirty state
-  const originalsRef = useRef<Record<string, unknown>>({});
+  const originalsRef = useRef<ReceiptFormValues | null>(null);
   const [loaded, setLoaded] = useState(false);
   const receiptInitializedRef = useRef(false);
   const hwInitializedRef = useRef(false);
@@ -129,174 +159,244 @@ export default function RestaurantReceiptsScreen({
   // Initialize receipt settings from workspace context and stored preferences
   useEffect(() => {
     if (receiptInitializedRef.current) return;
-    setPaperWidth(settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard');
-    setShowCurrency(settings.receipt.showCurrency);
-    setShowTax(settings.receipt.showTax);
-    setShowTableNumber(settings.receipt.showTableNumber);
-    setTaxRoundingMode((settings.receipt.taxRoundingMode as 'half_up' | 'truncate') ?? 'half_up');
-    setFooter(settings.receipt.footer ?? '');
-    setMarginTop(settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5);
-    setMarginBottom(settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8);
-    setMarginLeft(settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3);
-    setMarginRight(settings.receipt.marginRight > 0 ? settings.receipt.marginRight : 3);
-    if (settings.store.logo) {
-      setBusinessLogo(settings.store.logo);
-    }
-    const initialTitle = (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT').slice(0, MAX_HEADER_TITLE_LENGTH);
-    const initialLine1 = (settings.store.address ?? '').slice(0, MAX_HEADER_LINE_LENGTH);
-    setHeaderTitle(initialTitle);
-    setHeaderLine1(initialLine1);
-    setHeaderLine2('');
 
-    // Load extra toggles from local preferences
+    // 1. Initial base settings from context
+    const initialPaperWidth = settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard';
+    const initialShowCurrency = settings.receipt.showCurrency;
+    const initialShowTax = settings.receipt.showTax;
+    const initialShowTableNumber = settings.receipt.showTableNumber;
+    const initialTaxRoundingMode = ((settings.receipt.taxRoundingMode as 'half_up' | 'truncate') ?? 'half_up');
+    const initialFooter = settings.receipt.footer ?? '';
+    const initialMarginTop = settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5;
+    const initialMarginBottom = settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8;
+    const initialMarginLeft = settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3;
+    const initialMarginRight = settings.receipt.marginRight > 0 ? settings.receipt.marginRight : 3;
+    let initialBusinessLogo = settings.store.logo ?? '';
+    let initialTitle = (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT').slice(0, MAX_HEADER_TITLE_LENGTH);
+    let initialLine1 = (settings.store.address ?? '').slice(0, MAX_HEADER_LINE_LENGTH);
+    let initialLine2 = '';
+    let initialFontSize: ReceiptFontSize = 'medium';
+    let initialShowCode = true;
+    let initialShowDt = true;
+    let initialShowStaff = true;
+    let initialShowFooter = true;
+    let initialShowItemNotes = true;
+    let initialTaxRate = 10;
+    let initialLogoPos: ReceiptLogoPosition = 'left';
+
+    // 2. Overlay extra toggles from local preferences (localStorage)
     try {
       const localTitle = localStorage.getItem('resto_rcpt_header_title');
-      if (localTitle !== null) setHeaderTitle(localTitle.slice(0, MAX_HEADER_TITLE_LENGTH));
+      if (localTitle !== null) initialTitle = localTitle.slice(0, MAX_HEADER_TITLE_LENGTH);
       const localL1 = localStorage.getItem('resto_rcpt_header_line1');
-      if (localL1 !== null) setHeaderLine1(localL1.slice(0, MAX_HEADER_LINE_LENGTH));
+      if (localL1 !== null) initialLine1 = localL1.slice(0, MAX_HEADER_LINE_LENGTH);
       const localL2 = localStorage.getItem('resto_rcpt_header_line2');
-      if (localL2 !== null) setHeaderLine2(localL2.slice(0, MAX_HEADER_LINE_LENGTH));
+      if (localL2 !== null) initialLine2 = localL2.slice(0, MAX_HEADER_LINE_LENGTH);
       const localFontSize = localStorage.getItem('resto_rcpt_font_size');
       if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
-        setFontSize(localFontSize as ReceiptFontSize);
+        initialFontSize = localFontSize as ReceiptFontSize;
       }
       const localCode = localStorage.getItem('resto_rcpt_show_code');
-      if (localCode !== null) setShowReceiptCode(localCode === 'true');
+      if (localCode !== null) initialShowCode = localCode === 'true';
       const localDt = localStorage.getItem('resto_rcpt_show_dt');
-      if (localDt !== null) setShowDateTime(localDt === 'true');
+      if (localDt !== null) initialShowDt = localDt === 'true';
       const localStaff = localStorage.getItem('resto_rcpt_show_staff');
-      if (localStaff !== null) setShowStaffName(localStaff === 'true');
+      if (localStaff !== null) initialShowStaff = localStaff === 'true';
       const localFooter = localStorage.getItem('resto_rcpt_show_footer');
-      if (localFooter !== null) setShowFooter(localFooter === 'true');
+      if (localFooter !== null) initialShowFooter = localFooter === 'true';
       const localItemNotes = localStorage.getItem('resto_rcpt_show_item_notes');
-      if (localItemNotes !== null) setShowItemNotes(localItemNotes === 'true');
+      if (localItemNotes !== null) initialShowItemNotes = localItemNotes === 'true';
       const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
       if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
-        setTaxRatePercent(clamp(Number(localTaxRate), 0, 100));
+        initialTaxRate = clamp(Number(localTaxRate), 0, 100);
       }
       const localLogo = localStorage.getItem('resto_rcpt_logo');
-      if (localLogo) setBusinessLogo(localLogo);
+      if (localLogo) initialBusinessLogo = localLogo;
       const localLogoPos = localStorage.getItem('resto_rcpt_logo_pos');
       if (localLogoPos && ['top', 'left', 'right'].includes(localLogoPos)) {
-        setLogoPosition(localLogoPos as ReceiptLogoPosition);
+        initialLogoPos = localLogoPos as ReceiptLogoPosition;
       }
     } catch {
       // LocalStorage unavailable, keep defaults
     }
 
-    // Attempt remote user preferences read
+    // Apply initial state
+    setPaperWidth(initialPaperWidth);
+    setShowCurrency(initialShowCurrency);
+    setShowTax(initialShowTax);
+    setShowTableNumber(initialShowTableNumber);
+    setTaxRoundingMode(initialTaxRoundingMode);
+    setFooter(initialFooter);
+    setMarginTop(initialMarginTop);
+    setMarginBottom(initialMarginBottom);
+    setMarginLeft(initialMarginLeft);
+    setMarginRight(initialMarginRight);
+    setBusinessLogo(initialBusinessLogo);
+    setHeaderTitle(initialTitle);
+    setHeaderLine1(initialLine1);
+    setHeaderLine2(initialLine2);
+    setFontSize(initialFontSize);
+    setShowReceiptCode(initialShowCode);
+    setShowDateTime(initialShowDt);
+    setShowStaffName(initialShowStaff);
+    setShowFooter(initialShowFooter);
+    setShowItemNotes(initialShowItemNotes);
+    setTaxRatePercent(initialTaxRate);
+    setLogoPosition(initialLogoPos);
+
+    // Initial hardware defaults
+    const hwP = hw.profile?.hardware.printer;
+    const hwKp = hw.profile?.hardware.kitchenPrinter;
+    const initialPrinterConn = hwP?.connection ?? 'auto';
+    const initialPrinterPath = hwP?.devicePath ?? '';
+    const initialPrinterPaper = hwP?.paperSize === '58' ? '58' : '80';
+    const initialKitchenConn = hwKp?.connection ?? 'disabled';
+    const initialKitchenPath = hwKp?.devicePath ?? '';
+
+    setPrinterConnection(initialPrinterConn);
+    setPrinterDevicePath(initialPrinterPath);
+    setPrinterPaperSize(initialPrinterPaper);
+    setKitchenConnection(initialKitchenConn);
+    setKitchenDevicePath(initialKitchenPath);
+
+    // Seed originals with EXACT matching loaded values
+    originalsRef.current = {
+      paperWidth: initialPaperWidth,
+      fontSize: initialFontSize,
+      showCurrency: initialShowCurrency,
+      showTax: initialShowTax,
+      showTableNumber: initialShowTableNumber,
+      taxRoundingMode: initialTaxRoundingMode,
+      footer: initialFooter,
+      showReceiptCode: initialShowCode,
+      showDateTime: initialShowDt,
+      showStaffName: initialShowStaff,
+      showFooter: initialShowFooter,
+      showItemNotes: initialShowItemNotes,
+      taxRatePercent: initialTaxRate,
+      businessLogo: initialBusinessLogo,
+      logoPosition: initialLogoPos,
+      headerTitle: initialTitle,
+      headerLine1: initialLine1,
+      headerLine2: initialLine2,
+      marginTop: initialMarginTop,
+      marginBottom: initialMarginBottom,
+      marginLeft: initialMarginLeft,
+      marginRight: initialMarginRight,
+      printerConnection: initialPrinterConn,
+      printerDevicePath: initialPrinterPath,
+      printerPaperSize: initialPrinterPaper,
+      kitchenConnection: initialKitchenConn,
+      kitchenDevicePath: initialKitchenPath,
+    };
+
+    receiptInitializedRef.current = true;
+    setLoaded(true);
+
+    // 3. Attempt remote user preferences read
     if (sessionToken) {
       getUserPreferencesScoped(sessionToken)
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
-          if (p['resto_rcpt_header_title'] !== undefined) {
-            setHeaderTitle(p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH));
+          if (originalsRef.current) {
+            if (p['resto_rcpt_header_title'] !== undefined) {
+              const v = p['resto_rcpt_header_title'].slice(0, MAX_HEADER_TITLE_LENGTH);
+              setHeaderTitle(v);
+              originalsRef.current.headerTitle = v;
+            }
+            if (p['resto_rcpt_header_line1'] !== undefined) {
+              const v = p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH);
+              setHeaderLine1(v);
+              originalsRef.current.headerLine1 = v;
+            }
+            if (p['resto_rcpt_header_line2'] !== undefined) {
+              const v = p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH);
+              setHeaderLine2(v);
+              originalsRef.current.headerLine2 = v;
+            }
+            if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
+              const v = p['resto_rcpt_logo_pos'] as ReceiptLogoPosition;
+              setLogoPosition(v);
+              originalsRef.current.logoPosition = v;
+            }
+            if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
+              const v = p['resto_rcpt_font_size'] as ReceiptFontSize;
+              setFontSize(v);
+              originalsRef.current.fontSize = v;
+            }
+            if (p['resto_rcpt_show_code'] !== undefined) {
+              const v = p['resto_rcpt_show_code'] === 'true';
+              setShowReceiptCode(v);
+              originalsRef.current.showReceiptCode = v;
+            }
+            if (p['resto_rcpt_show_dt'] !== undefined) {
+              const v = p['resto_rcpt_show_dt'] === 'true';
+              setShowDateTime(v);
+              originalsRef.current.showDateTime = v;
+            }
+            if (p['resto_rcpt_show_staff'] !== undefined) {
+              const v = p['resto_rcpt_show_staff'] === 'true';
+              setShowStaffName(v);
+              originalsRef.current.showStaffName = v;
+            }
+            if (p['resto_rcpt_show_footer'] !== undefined) {
+              const v = p['resto_rcpt_show_footer'] === 'true';
+              setShowFooter(v);
+              originalsRef.current.showFooter = v;
+            }
+            if (p['resto_rcpt_show_item_notes'] !== undefined) {
+              const v = p['resto_rcpt_show_item_notes'] === 'true';
+              setShowItemNotes(v);
+              originalsRef.current.showItemNotes = v;
+            }
+            if (p['resto_rcpt_tax_rate'] !== undefined) {
+              const parsed = Number(p['resto_rcpt_tax_rate']);
+              if (!isNaN(parsed)) {
+                const v = clamp(parsed, 0, 100);
+                setTaxRatePercent(v);
+                originalsRef.current.taxRatePercent = v;
+              }
+            }
+            if (p['resto_rcpt_logo']) {
+              setBusinessLogo(p['resto_rcpt_logo']);
+              originalsRef.current.businessLogo = p['resto_rcpt_logo'];
+            }
           }
-          if (p['resto_rcpt_header_line1'] !== undefined) {
-            setHeaderLine1(p['resto_rcpt_header_line1'].slice(0, MAX_HEADER_LINE_LENGTH));
-          }
-          if (p['resto_rcpt_header_line2'] !== undefined) {
-            setHeaderLine2(p['resto_rcpt_header_line2'].slice(0, MAX_HEADER_LINE_LENGTH));
-          }
-          if (p['resto_rcpt_logo_pos'] && ['top', 'left', 'right'].includes(p['resto_rcpt_logo_pos'])) {
-            setLogoPosition(p['resto_rcpt_logo_pos'] as ReceiptLogoPosition);
-          }
-          if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
-            setFontSize(p['resto_rcpt_font_size'] as ReceiptFontSize);
-          }
-          if (p['resto_rcpt_show_code'] !== undefined) {
-            setShowReceiptCode(p['resto_rcpt_show_code'] === 'true');
-          }
-          if (p['resto_rcpt_show_dt'] !== undefined) {
-            setShowDateTime(p['resto_rcpt_show_dt'] === 'true');
-          }
-          if (p['resto_rcpt_show_staff'] !== undefined) {
-            setShowStaffName(p['resto_rcpt_show_staff'] === 'true');
-          }
-          if (p['resto_rcpt_show_footer'] !== undefined) {
-            setShowFooter(p['resto_rcpt_show_footer'] === 'true');
-          }
-          if (p['resto_rcpt_show_item_notes'] !== undefined) {
-            setShowItemNotes(p['resto_rcpt_show_item_notes'] === 'true');
-          }
-          if (p['resto_rcpt_tax_rate'] !== undefined) {
-            const parsed = Number(p['resto_rcpt_tax_rate']);
-            if (!isNaN(parsed)) setTaxRatePercent(clamp(parsed, 0, 100));
-          }
-          if (p['resto_rcpt_logo']) {
-            setBusinessLogo(p['resto_rcpt_logo']);
-          }
+          setDirtyVersion((v) => v + 1);
         })
         .catch(() => {
           // Fall back gracefully
         });
     }
-
-    receiptInitializedRef.current = true;
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken]);
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile]);
 
   // Sync hardware settings when profile arrives
   useEffect(() => {
     if (hwInitializedRef.current || !hw.profile) return;
     const p = hw.profile.hardware.printer;
     const kp = hw.profile.hardware.kitchenPrinter;
+    const paperSize = p.paperSize === '58' ? '58' : '80';
     setPrinterConnection(p.connection);
     setPrinterDevicePath(p.devicePath ?? '');
-    setPrinterPaperSize(p.paperSize === '58' ? '58' : '80');
+    setPrinterPaperSize(paperSize);
     setKitchenConnection(kp.connection);
     setKitchenDevicePath(kp.devicePath ?? '');
 
-    originalsRef.current = {
-      ...originalsRef.current,
-      printerConnection: p.connection,
-      printerDevicePath: p.devicePath ?? '',
-      printerPaperSize: p.paperSize ?? '80',
-      kitchenConnection: kp.connection,
-      kitchenDevicePath: kp.devicePath ?? '',
-    };
+    if (originalsRef.current) {
+      originalsRef.current.printerConnection = p.connection;
+      originalsRef.current.printerDevicePath = p.devicePath ?? '';
+      originalsRef.current.printerPaperSize = paperSize;
+      originalsRef.current.kitchenConnection = kp.connection;
+      originalsRef.current.kitchenDevicePath = kp.devicePath ?? '';
+    }
     hwInitializedRef.current = true;
     setDirtyVersion((v) => v + 1);
   }, [hw.profile]);
 
-  // Seed initial originals for clean dirty checking
-  useEffect(() => {
-    if (!loaded) {
-      originalsRef.current = {
-        paperWidth: settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard',
-        fontSize,
-        showCurrency: settings.receipt.showCurrency,
-        showTax: settings.receipt.showTax,
-        showTableNumber: settings.receipt.showTableNumber,
-        taxRoundingMode: settings.receipt.taxRoundingMode ?? 'half_up',
-        footer: settings.receipt.footer ?? '',
-        showReceiptCode: true,
-        showDateTime: true,
-        showStaffName: true,
-        showFooter: true,
-        showItemNotes: true,
-        taxRatePercent: 10,
-        businessLogo: settings.store.logo ?? '',
-        logoPosition,
-        headerTitle: settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT',
-        headerLine1: settings.store.address ?? '',
-        headerLine2: '',
-        marginTop: settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5,
-        marginBottom: settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8,
-        marginLeft: settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3,
-        marginRight: settings.receipt.marginRight > 0 ? settings.receipt.marginRight : 3,
-        printerConnection: hw.profile?.hardware.printer.connection ?? 'auto',
-        printerDevicePath: hw.profile?.hardware.printer.devicePath ?? '',
-        printerPaperSize: hw.profile?.hardware.printer.paperSize ?? '80',
-        kitchenConnection: hw.profile?.hardware.kitchenPrinter.connection ?? 'disabled',
-        kitchenDevicePath: hw.profile?.hardware.kitchenPrinter.devicePath ?? '',
-      };
-      setLoaded(true);
-    }
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, hw.profile, loaded, fontSize, logoPosition]);
-
   const dirty = useMemo(() => {
     void dirtyVersion;
-    const current: Record<string, unknown> = {
+    if (!loaded || !originalsRef.current) return false;
+    const current: ReceiptFormValues = {
       paperWidth,
       fontSize,
       showCurrency,
@@ -325,8 +425,10 @@ export default function RestaurantReceiptsScreen({
       kitchenConnection,
       kitchenDevicePath,
     };
-    return Object.keys(current).some((k) => current[k] !== originalsRef.current[k]);
+    const orig = originalsRef.current;
+    return (Object.keys(current) as (keyof ReceiptFormValues)[]).some((k) => current[k] !== orig[k]);
   }, [
+    loaded,
     dirtyVersion,
     paperWidth,
     fontSize,

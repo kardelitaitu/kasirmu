@@ -243,6 +243,40 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     });
   });
 
+  it('remains clean with All changes saved on mount when preferences exist in localStorage', async () => {
+    localStorage.setItem('resto_rcpt_header_title', 'WARUNG MAKAN PADANG');
+    localStorage.setItem('resto_rcpt_header_line1', 'Jl. Sudirman No. 42');
+    localStorage.setItem('resto_rcpt_header_line2', 'Tel: 08123456789');
+    localStorage.setItem('resto_rcpt_tax_rate', '11');
+    localStorage.setItem('resto_rcpt_font_size', 'large');
+
+    try {
+      await renderScreen();
+      expect(screen.getByText(/All changes saved/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
+      const saveBtn = screen.getByRole('button', { name: /Save/i });
+      expect(saveBtn).toBeDisabled();
+    } finally {
+      localStorage.clear();
+    }
+  });
+
+  it('remains clean with All changes saved when remote preferences resolve', async () => {
+    const { getUserPreferencesScoped } = await import('@/api/settings');
+    vi.mocked(getUserPreferencesScoped).mockResolvedValueOnce({
+      resto_rcpt_header_title: 'REMOTE RESTO',
+      resto_rcpt_tax_rate: '12',
+    });
+
+    await renderScreen();
+    await waitFor(() => {
+      expect(screen.getByText(/All changes saved/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
+      const saveBtn = screen.getByRole('button', { name: /Save/i });
+      expect(saveBtn).toBeDisabled();
+    });
+  });
+
   it('renders test print button with stationary label container', async () => {
     await renderScreen();
     const testPrintBtn = screen.getByTestId('restaurant-receipts-test-print-btn');
