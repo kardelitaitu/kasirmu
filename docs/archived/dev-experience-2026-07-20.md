@@ -1,3 +1,5 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: ACCURATE on its factual claims — no repairs needed to the body · Audited on branch 0.0.40. This file had no top stamp, only a footer claiming "ACCURATE (0 findings) · … all file references valid", so unlike its two neighbours in this batch there was no stamp for that footer to contradict. I tested the claim rather than accepting it, because "all file references valid" is exactly the sort of assertion an audit pass should try to break. It survives: all 44 scripts named across the P43-2 and P43-3 sections are still present in `scripts/` — setup-dev.ps1, setup-cache.ps1/.sh, check.ps1/.sh, the four build scripts, all eight testing scripts, the four i18n scripts, the five CI/release entries, both backup scripts, all four key generators, the three CSS utilities, the branding set, and all ten misc entries. Not one is missing. That is a genuinely durable audit result and worth saying so plainly. · The two numeric claims are dated measurements, correctly left alone: "48 scripts" was the count on 2026-07-20 and the directory now holds 157 (43 `.sh`, 59 `.py`, 24 `.ps1`, 24 `.mjs`, 7 `.bat`) after the test/checker tooling grew; the per-extension split the document gives (20 sh / 12 ps1 / 11 py / 3 bat / 1 mjs) is the same kind of snapshot. · FLAGGED, not repaired: the P43-1 table documents a FOUR-step pre-commit hook (`cargo fmt`, `lint-i18n.sh`, `verify-bundle-parity.py --staged-only`, `dedupe-ftl.py --dry-run`). The hook has grown well past that since — `AGENTS.md` §2 now documents a seven-step gate set covering line-ending normalization, bundle parity, FTL dedupe, migration column-type lint, PG schema drift, the Go gate, and FTL orphan lint. I did not measure the hook's step count in this pass (its steps are not marked with a greppable numbered header), so I am citing `AGENTS.md` as the documentation of record rather than asserting a number I did not verify. The canonical gate reference is `docs/operations/agent-gates.md`, which is itself later in this audit queue and will be checked on its own terms. The P43-1 conclusion — keep clippy out of the pre-commit hook and in CI, to hold the hook under 3s — is a design judgement that still reads as correct and is not drift either way. · No stamp or footer existed at the top of this file before this pass. -->
+
 # Developer Experience Audit — 2026-07-20
 
 ## P43-1: Pre-commit Hook Hardening
@@ -73,8 +75,5 @@
 
 ✅ **48/48 scripts present and verified.** No broken scripts, no missing chmod. All `.sh` scripts use `#!/usr/bin/env bash` with `set -euo pipefail`. Platform coverage is balanced (20 sh, 12 ps1, 11 py).
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 
