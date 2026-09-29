@@ -293,19 +293,21 @@ fn request_fingerprint_binds_store_branch_revision_and_graph_payload() {
 
 #[test]
 fn backend_warehouse_quota_allows_two_plus_warehouses() {
-    // Plus allows 2 warehouses (§3) — two nodes must pass.
+    // Premium+ is the first tier that includes the warehouse workspace at all
+    // (owner's ruling of 2026-09-29), and it carries no cap — two nodes pass.
     let nodes = vec![
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
     ];
     let result =
-        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Plus);
+        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Premium);
     assert!(result.is_ok());
 }
 
 #[test]
 fn backend_warehouse_quota_rejects_multiple_free_warehouses() {
-    // Free allows 1 warehouse (§3) — two nodes must be rejected.
+    // Free allows 0 warehouses — the workspace is Premium+ only, so even the
+    // FIRST warehouse is refused. Two nodes report the zero cap, not a cap of 1.
     let nodes = vec![
         serde_json::json!({ "id": "wh-1", "type": "warehouse" }),
         serde_json::json!({ "id": "wh-2", "type": "warehouse" }),
@@ -313,7 +315,19 @@ fn backend_warehouse_quota_rejects_multiple_free_warehouses() {
     let result =
         validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Free);
     assert!(
-        matches!(result, Err(BridgeError::PermissionDenied(message)) if message.contains("limit 1"))
+        matches!(result, Err(BridgeError::PermissionDenied(message)) if message.contains("limit 0"))
+    );
+}
+
+#[test]
+fn backend_warehouse_quota_rejects_one_free_warehouse() {
+    // The zero cap bites on a SINGLE warehouse: below Premium the feature is
+    // absent, so there is no "one free warehouse" allowance to spend.
+    let nodes = vec![serde_json::json!({ "id": "wh-1", "type": "warehouse" })];
+    let result =
+        validate_warehouse_quota(&nodes, &kasirmu_core::subscription::SubscriptionTier::Free);
+    assert!(
+        matches!(result, Err(BridgeError::PermissionDenied(message)) if message.contains("limit 0"))
     );
 }
 

@@ -176,7 +176,12 @@ async fn owner_can_create_and_deactivate_locations() {
         &bridge.ctx(),
         "owner-token",
         "Backroom".into(),
-        "warehouse".into(),
+        // NOT "warehouse": as of the owner's 2026-09-29 ruling the warehouse
+        // workspace is Premium+ only, and this fixture is a Free tier. The
+        // test's subject is location CRUD authorisation, so it uses an
+        // ordinary storage type and leaves the warehouse gate to the
+        // dedicated quota cases.
+        "store".into(),
         "Secondary storage".into(),
     )
     .await;
@@ -283,7 +288,9 @@ async fn owner_can_update_location_name_and_type() {
         &bridge.ctx(),
         "owner-token",
         "Original".into(),
-        "warehouse".into(),
+        // "store", not "warehouse": warehouses are Premium+ since 2026-09-29
+        // and this Free-tier fixture only needs a location to rename.
+        "store".into(),
         String::new(),
     )
     .await;
@@ -343,7 +350,9 @@ async fn cashier_cannot_update_location() {
         &owner_bridge.ctx(),
         "owner-token",
         "Target".into(),
-        "warehouse".into(),
+        // "store", not "warehouse": Premium+ only since 2026-09-29, and this
+        // Free-tier fixture exists to be the target of a denied cashier edit.
+        "store".into(),
         String::new(),
     )
     .await;
@@ -365,7 +374,10 @@ async fn cashier_cannot_update_location() {
         "cashier-token",
         id,
         "Hacked".into(),
-        "warehouse".into(),
+        // Also "store" so a refusal here can only be the PERMISSION denial this
+        // test is about — a warehouse type would trip the Premium+ quota gate
+        // first and assert the right error for the wrong reason.
+        "store".into(),
         "".into(),
     )
     .await;
@@ -418,12 +430,14 @@ async fn owner_can_start_and_end_inventory_shift() {
         ),
     );
 
-    // Create a location first.
+    // Create a location first. The subject here is the SHIFT lifecycle, so the
+    // type is an ordinary "store": a "warehouse" would be refused outright on
+    // this Free tier (Premium+ only since 2026-09-29) before any shift ran.
     let created = create_inventory_location(
         &bridge.ctx(),
         "owner-token",
-        "Warehouse".into(),
-        "warehouse".into(),
+        "Front Counter".into(),
+        "store".into(),
         String::new(),
     )
     .await;

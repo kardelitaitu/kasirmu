@@ -201,8 +201,11 @@ fn validate_warehouse_quota_no_warehouses_always_ok() {
 #[test]
 fn validate_warehouse_quota_free_tier_one_warehouse() {
     use kasirmu_core::subscription::SubscriptionTier;
+    // The warehouse workspace is Premium+ only (owner's ruling 2026-09-29), so
+    // Free caps warehouses at 0: a single one is already over quota.
     let nodes = vec![wh_node("n1")];
-    assert!(validate_warehouse_quota(&nodes, &SubscriptionTier::Free).is_ok());
+    let err = validate_warehouse_quota(&nodes, &SubscriptionTier::Free).unwrap_err();
+    assert!(format!("{err}").contains("limit 0"));
 }
 
 #[test]
@@ -211,6 +214,18 @@ fn validate_warehouse_quota_free_tier_two_warehouses_rejected() {
     let nodes = vec![wh_node("n1"), wh_node("n2")];
     let err = validate_warehouse_quota(&nodes, &SubscriptionTier::Free).unwrap_err();
     assert!(format!("{err}").contains("quota exceeded"));
+}
+
+#[test]
+fn validate_warehouse_quota_plus_and_pro_are_also_zero() {
+    use kasirmu_core::subscription::SubscriptionTier;
+    // Store/Plus/Pro tiers keep every other workspace type, but not warehouses:
+    // the gate moved to Premium+ for all three together.
+    let nodes = vec![wh_node("n1")];
+    for tier in [SubscriptionTier::OneTime, SubscriptionTier::Plus, SubscriptionTier::Pro] {
+        let err = validate_warehouse_quota(&nodes, &tier).unwrap_err();
+        assert!(format!("{err}").contains("limit 0"), "tier {tier:?} must cap at 0");
+    }
 }
 
 #[test]
