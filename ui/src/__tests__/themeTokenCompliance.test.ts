@@ -3212,6 +3212,16 @@ function lhWhere(key: string): string {
  * its `line-height: 1`; the segment centres its glyph with flex now, so the literal
  * became NO step rather than a --leading-* one. A deletion is still a move, and this
  * one is named here rather than left to read as a quiet green.
+ *
+ * Restated 2026-09-29: `1 @ ui/src/features/restaurant/RestaurantMenu.css` 1 -> 2.
+ * The restaurant search-clear button landed by the resto-pos work carries
+ * `line-height: 1` at :562, alongside the sidebar badge manager's at :251. Both are
+ * single-glyph controls (a status badge and an × clear button) that centre their
+ * glyph inside a fixed-height box, which is exactly what the 2026-09-19 note says
+ * cannot be expressed as a --leading-* step; the alternative to the literal is a
+ * flex centring, and neither control is a flex row today. Counted rather than
+ * expanded by a wildcard: the freeze is per (value @ sheet) pair, so a third site
+ * here still fails.
  */
 const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/components/QrisQrDisplay.css", 1],
@@ -3257,7 +3267,7 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/reports/CustomReportScreen.css", 1],
   ["1", "ui/src/features/reports/DashboardScreen.css", 1],
   ["1", "ui/src/features/reports/MenuEngineeringScreen.css", 1],
-  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 1],
+  ["1", "ui/src/features/restaurant/RestaurantMenu.css", 2],
   ["1", "ui/src/features/retail/RetailPosScreen.css", 10],
   ["1.2", "ui/src/features/retail/RetailPosScreen.css", 3],
   ["1.3", "ui/src/features/retail/RetailPosScreen.css", 1],
