@@ -1,18 +1,20 @@
 # C1 S2b / S2c — per-install at-rest key: implementation plan
 
 <!-- Plan token kept: `plan-` (AGENTS.md §7.4 — the docs-auditor exempts this name
-     from check-dead-refs.py). This is a PLAN, not a record of work done. S2b-1 and
-     S2b-2a have since landed (2026-09-29) and are marked below; S2b-2b and S2c have
-     not. It is deliberately NOT named `done-*`. -->
+     from check-dead-refs.py). This is a PLAN, not a record of work done. Every slice
+     it describes has now landed (2026-09-29) and is marked below. It is deliberately
+     NOT named `done-*`. -->
 
-**Status:** IN PROGRESS. **S2b-1 (the injection seam) IMPLEMENTED 2026-09-29** — it
+**Status:** COMPLETE 2026-09-29. **S2b-1 (the injection seam) IMPLEMENTED** — it
 changes no runtime behaviour, which is what the slice was scoped to guarantee.
-**S2b-2a (the keychain half: durability + generate-once resolution) IMPLEMENTED
-2026-09-29** (`f2932f6f8`). **S2b-2b (the shells' boot injection) IMPLEMENTED 2026-09-29**
+**S2b-2a (the keychain half: durability + generate-once resolution) IMPLEMENTED**
+(`f2932f6f8`). **S2b-2b (the shells' boot injection) IMPLEMENTED**
 (`625c47290`, `5813b9208`) — this header previously said NOT STARTED and cited a lane lease
 that did not exist; see §6 S2b-2b for the retraction. **The §7 release-build clause is
-RE-SCOPED (§10, option (a)) AND LANDED 2026-09-29**, so **S2c (`oz rekey`) is the only slice
-still outstanding** and the only thing keeping C1's box unticked. Written 2026-09-29. The §8
+RE-SCOPED (§10, option (a)) AND LANDED**, and **S2c (`oz rekey`) LANDED 2026-09-29**
+(`6aa7ad2e4`, `6a050fdfe`, `224d39d13`, `6638b3ccf`, `547828b82`) — so nothing in this
+plan is outstanding, and C1's box is unticked only pending its own re-verification. Written
+2026-09-29. The §8
 questions are ANSWERED — see §8, with §8.4 superseded by §10. **S2c's ordering is RULED
 2026-09-29: park the OLD key as `…-prev`, promote the NEW key, sweep, verify, then retire
 `-prev` — the "park the new key" ordering this file originally carried cannot satisfy the
@@ -311,16 +313,43 @@ sweep must not unify them. A partial sweep does not fail loudly; it strands rows
   The resolution was split into a pure `resolve_at_rest_keys(keyring)` so it is testable
   without mutating the process-global slots; 2 new cases. `cargo test -p kasirmu-bridge security`
   → **46 passed**.
-- **S2c-4 ⬜ NOT STARTED — `oz rekey` itself.** It needs `kasirmu-cli` to gain the crypto and
-  security dependencies, and a sweep over the three row SHAPES the eight families live in:
-  (i) the six plain settings rows, (ii) `settings.smtp_config`'s JSON `password` FIELD, and
-  (iii) the `users` columns `national_id` and `monthly_take_home_minor`. The last two are why
-  a "settings-table only" sweep is not sufficient.
-- **The landed mechanism is INERT in production, on purpose.** `resolve_previous_install_key`
-  returns `None` unless `INSTALL_KEY_PREV_ENTRY` exists, and the only writer of that entry is
-  `begin_install_key_rotation`, which has no caller yet. So the boot path behaves exactly as it
-  did before until `oz rekey` exists — the same shape S2b-1 had. Verified: `cargo check
-  --workspace --lib` clean.
+- **S2c-4 ✅ `547828b82` — `oz rekey` itself**, plus `6638b3ccf` for the one primitive the
+  operator command needed and the mechanism did not have. `kasirmu-cli` gained
+  `kasirmu-security` (and NOT `kasirmu-crypto`: that crate is already reachable through the
+  full re-export at `kasirmu_core::crypto`, which is how every other lane in the crate
+  reaches it). `commands/rekey.rs` walks the three row SHAPES in one pass — the six whole-row
+  `settings` keys, the `password` FIELD inside `settings.smtp_config`'s JSON blob, and the
+  `users.national_id` / `users.monthly_take_home_minor` columns — rewraps each row with
+  `kasirmu_crypto::rewrap`, verifies with `opens_under_current_key_only` **inside the same
+  transaction**, and retires the parked key only when the two counts agree. Family lookup goes
+  through `credential_base`, so a case/whitespace variant spelling is swept rather than walked
+  past. `--confirm` gates the write half; a bare run reports scope only and touches neither
+  the keychain nor a row. **Two guards the plan did not name but a rotation needs:** it
+  refuses a non-durable keychain (hazard H3 — a rotation into a store that dies at the next
+  boot is the brick) and it refuses a `--db` path it would have to create, because a rotation
+  against a file the command just made reports success against nothing. 9 new cases;
+  `cargo test -p kasirmu-cli` → **146 passed**, stable at `--test-threads` 1/4/16.
+- **S2c-4b ✅ `6638b3ccf` — `resume_install_key_rotation`.** Found while implementing the
+  command, and it is a gap rather than a refinement: `begin_install_key_rotation` refuses when
+  a key is parked (correctly — a silent restart would orphan the un-swept rows), but refusing
+  was the *only* behaviour, so an operator whose rotation was interrupted had two keys on disk,
+  an unfinished sweep, and no way to finish it. The resume re-reads the two keys already on
+  disk and writes nothing; a resume with nothing parked is an error rather than a silent
+  fresh rotation. 4 new cases; `cargo test -p kasirmu-security` → **111 + 7 passed**.
+- **The landed mechanism is NO LONGER inert.** `oz rekey --confirm` is the first caller of
+  `begin_install_key_rotation` / `resume_install_key_rotation` / `retire_previous_install_key`,
+  and the first writer of `INSTALL_KEY_PREV_ENTRY`. The boot path is unchanged: it still
+  behaves exactly as it did before until an operator runs the command.
+- **What the CLI-level tests deliberately do NOT cover, and where it is covered.** A row sealed
+  under the PARKED key reading mid-rotation needs a row written under a key that is not the
+  install key, and no public API can encrypt under the previous slot (`portable_key`
+  deliberately never consults it, H1). It is pinned at the layers that can express it:
+  `kasirmu-crypto`'s `a_previous_install_key_is_a_read_candidate_and_never_a_writer` and
+  `kasirmu-security`'s `an_interrupted_rotation_leaves_both_keys_resolvable`. `oz rekey
+  --confirm` was also NOT run against the live OS keychain during development: on a developer
+  machine it would park and replace the real `oz-pos/at-rest-key.v1`, which can strand rows in
+  a store the command is not pointed at. The keychain ordering is covered by the security
+  suite's stub keyring instead.
 
 
 **Explicitly NOT in this plan:** `OZ_MASTER_KEY` deprecation, the `.db` portability
