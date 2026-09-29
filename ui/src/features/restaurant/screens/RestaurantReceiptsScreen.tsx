@@ -694,12 +694,12 @@ export default function RestaurantReceiptsScreen({
                           {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
                         </div>
                         {headerLine1.trim() && (
-                          <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                          <div className="resto-receipt-header-line">
                             {headerLine1.trim()}
                           </div>
                         )}
                         {headerLine2.trim() && (
-                          <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                          <div className="resto-receipt-header-line">
                             {headerLine2.trim()}
                           </div>
                         )}
@@ -732,12 +732,12 @@ export default function RestaurantReceiptsScreen({
                         {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
                       </div>
                       {headerLine1.trim() && (
-                        <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                        <div className="resto-receipt-header-line">
                           {headerLine1.trim()}
                         </div>
                       )}
                       {headerLine2.trim() && (
-                        <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                        <div className="resto-receipt-header-line">
                           {headerLine2.trim()}
                         </div>
                       )}
