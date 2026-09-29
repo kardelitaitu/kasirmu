@@ -491,7 +491,11 @@ impl Store<'_> {
 
         // ADR-20 §6: pending_expires_at = NOW + 30 min for stale-reaper.
         let pending_expires_at = chrono::Utc::now()
-            .checked_add_signed(chrono::Duration::minutes(30)).map_or_else(|| now.clone(), |t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+            .checked_add_signed(chrono::Duration::minutes(30))
+            .map_or_else(
+                || now.clone(),
+                |t| t.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            );
 
         // ── Receipt hierarchy code (phase 3) ─────────────────────
         // Mint the frozen 22-char nomor faktur and capture the terminal id.

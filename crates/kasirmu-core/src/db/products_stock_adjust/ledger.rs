@@ -150,7 +150,8 @@ impl Store<'_> {
             ids: &'a [Box<dyn rusqlite::ToSql>],
             tail: &[&'a dyn rusqlite::ToSql],
         ) -> Vec<&'a dyn rusqlite::ToSql> {
-            let mut args: Vec<&dyn rusqlite::ToSql> = ids.iter().map(std::convert::AsRef::as_ref).collect();
+            let mut args: Vec<&dyn rusqlite::ToSql> =
+                ids.iter().map(std::convert::AsRef::as_ref).collect();
             args.extend(tail.iter().copied());
             args
         }
@@ -171,7 +172,8 @@ impl Store<'_> {
                 .iter()
                 .map(|id| Box::new(id.clone()) as Box<dyn rusqlite::ToSql>)
                 .collect();
-            let ids_only = || rusqlite::params_from_iter(id_args.iter().map(std::convert::AsRef::as_ref));
+            let ids_only =
+                || rusqlite::params_from_iter(id_args.iter().map(std::convert::AsRef::as_ref));
 
             // 1. HEAL — find every product in scope whose aggregate is ahead of its
             //    ledger WHILE the per-location cache still agrees with that

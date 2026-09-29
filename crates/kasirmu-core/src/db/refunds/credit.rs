@@ -225,8 +225,11 @@ impl Store<'_> {
             // each look plausible and together return more stock than was
             // sold. checked_add, not +: a near-i64::MAX quantity must be
             // rejected rather than wrapped negative past the comparison.
-            let (sold_qty, _, recorded_sku) =
-                Self::sold_line_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
+            let (sold_qty, _, recorded_sku) = Self::sold_line_for_sale_line_in_tx(
+                tx,
+                &refund.sale_id,
+                &refund_line.sale_line_id,
+            )?;
             let already_credited = Self::refunded_qty_for_sale_line_in_tx(
                 tx,
                 &refund.sale_id,

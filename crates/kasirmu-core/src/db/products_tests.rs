@@ -832,7 +832,10 @@ fn create_and_list_product_variants() {
     // Verify price and barcode on first variant.
     assert_eq!(variants[0].price.unwrap().minor_units, 800);
     assert_eq!(
-        variants[0].barcode.as_ref().map(foundation::Barcode::as_str),
+        variants[0]
+            .barcode
+            .as_ref()
+            .map(foundation::Barcode::as_str),
         Some("sm-barcode")
     );
     assert!(variants[0].is_active);

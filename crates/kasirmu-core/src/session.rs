@@ -137,21 +137,20 @@ impl SessionContext {
     ///
     /// A session with `expires_at: None` is never considered expired.
     pub fn is_expired(&self) -> bool {
-        self.expires_at
-            .is_some_and(|ts| {
-                // `as_secs()` is u64; `i64::try_from` rather than `as i64` so a
-                // clock past 2262 (where u64 seconds exceed i64) fails the
-                // comparison as expired-true rather than wrapping negative and
-                // reporting a long-dead session as live. `unwrap_or_default()`
-                // below already covers the pre-epoch case, so this only has to
-                // be honest about the far future.
-                let now = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
-                let now = i64::try_from(now).unwrap_or(i64::MAX);
-                now >= ts
-            })
+        self.expires_at.is_some_and(|ts| {
+            // `as_secs()` is u64; `i64::try_from` rather than `as i64` so a
+            // clock past 2262 (where u64 seconds exceed i64) fails the
+            // comparison as expired-true rather than wrapping negative and
+            // reporting a long-dead session as live. `unwrap_or_default()`
+            // below already covers the pre-epoch case, so this only has to
+            // be honest about the far future.
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let now = i64::try_from(now).unwrap_or(i64::MAX);
+            now >= ts
+        })
     }
 }
 

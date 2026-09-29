@@ -222,8 +222,10 @@ impl Store<'_> {
         for id in instance_ids {
             param_values.push(Box::new(id.clone()));
         }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            param_values.iter().map(std::convert::AsRef::as_ref).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values
+            .iter()
+            .map(std::convert::AsRef::as_ref)
+            .collect();
         let rows = stmt.query_map(param_refs.as_slice(), Self::map_instance_dto)?;
         rows.collect::<Result<Vec<_>, _>>().map_err(CoreError::from)
     }

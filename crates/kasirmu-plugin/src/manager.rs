@@ -281,7 +281,10 @@ impl PluginManager {
                 grants.granted_for(id),
             );
             if !missing.is_empty() {
-                ungranted_any.push((id.clone(), missing.iter().map(ToString::to_string).collect()));
+                ungranted_any.push((
+                    id.clone(),
+                    missing.iter().map(ToString::to_string).collect(),
+                ));
             }
         }
         if !ungranted_any.is_empty() {

@@ -173,18 +173,36 @@ fn the_last_valid_index_is_max_and_the_next_one_refuses() {
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
 
-    let idx1 = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
-        .unwrap();
+    let idx1 = Store::allocate_entity_index_with_ceiling(
+        &tx,
+        "default",
+        EntityIndexKind::Location,
+        NOW,
+        2,
+    )
+    .unwrap();
     assert_eq!(idx1, 1);
     insert_location(&tx, "default", "loc-1", idx1);
 
-    let idx2 = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
-        .unwrap();
+    let idx2 = Store::allocate_entity_index_with_ceiling(
+        &tx,
+        "default",
+        EntityIndexKind::Location,
+        NOW,
+        2,
+    )
+    .unwrap();
     assert_eq!(idx2, 2);
     insert_location(&tx, "default", "loc-2", idx2);
 
-    let err = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
-        .unwrap_err();
+    let err = Store::allocate_entity_index_with_ceiling(
+        &tx,
+        "default",
+        EntityIndexKind::Location,
+        NOW,
+        2,
+    )
+    .unwrap_err();
     assert!(
         err.to_string().contains("exhausted"),
         "unexpected error: {err}"
@@ -199,8 +217,14 @@ fn a_refused_allocation_consumes_nothing_once_rolled_back() {
         let tx = s.conn.unchecked_transaction().unwrap();
         insert_location(&tx, "default", "loc-1", 1);
         assert!(
-            Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 1)
-                .is_err()
+            Store::allocate_entity_index_with_ceiling(
+                &tx,
+                "default",
+                EntityIndexKind::Location,
+                NOW,
+                1
+            )
+            .is_err()
         );
     } // dropped without commit — rolled back
 
@@ -571,7 +595,11 @@ fn eager_allocation_and_code_lookups_for_locations() {
         updated_at: NOW.into(),
     };
     s.create_location_profile(&profile3).unwrap();
-    assert_eq!(s.get_location_index_id("loc-3").unwrap(), Some(1), "slot 1 should be recycled");
+    assert_eq!(
+        s.get_location_index_id("loc-3").unwrap(),
+        Some(1),
+        "slot 1 should be recycled"
+    );
     assert_eq!(s.get_location_code("loc-3").unwrap().as_deref(), Some("01"));
 }
 
@@ -593,7 +621,10 @@ fn eager_allocation_and_code_lookups_for_terminals() {
     };
     s.create_terminal(&t1).unwrap();
     assert_eq!(s.get_terminal_index_id("term-1").unwrap(), Some(1));
-    assert_eq!(s.get_terminal_code("term-1").unwrap().as_deref(), Some("01"));
+    assert_eq!(
+        s.get_terminal_code("term-1").unwrap().as_deref(),
+        Some("01")
+    );
 
     let t2 = crate::Terminal {
         id: "term-2".into(),
@@ -608,7 +639,10 @@ fn eager_allocation_and_code_lookups_for_terminals() {
     };
     s.create_terminal(&t2).unwrap();
     assert_eq!(s.get_terminal_index_id("term-2").unwrap(), Some(2));
-    assert_eq!(s.get_terminal_code("term-2").unwrap().as_deref(), Some("02"));
+    assert_eq!(
+        s.get_terminal_code("term-2").unwrap().as_deref(),
+        Some("02")
+    );
 
     // Delete term-1 -> slot 1 is reclaimed!
     s.delete_terminal("term-1").unwrap();
@@ -626,8 +660,15 @@ fn eager_allocation_and_code_lookups_for_terminals() {
         updated_at: NOW.into(),
     };
     s.create_terminal(&t3).unwrap();
-    assert_eq!(s.get_terminal_index_id("term-3").unwrap(), Some(1), "slot 1 should be recycled");
-    assert_eq!(s.get_terminal_code("term-3").unwrap().as_deref(), Some("01"));
+    assert_eq!(
+        s.get_terminal_index_id("term-3").unwrap(),
+        Some(1),
+        "slot 1 should be recycled"
+    );
+    assert_eq!(
+        s.get_terminal_code("term-3").unwrap().as_deref(),
+        Some("01")
+    );
 }
 
 #[test]
@@ -635,13 +676,17 @@ fn eager_allocation_and_code_lookups_for_staff() {
     let s_db = migrations::fresh_db();
     let s = store(&s_db);
 
-    s.conn.execute(
-        "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
+    s.conn
+        .execute(
+            "INSERT INTO roles (id, name, description, permissions, created_at, updated_at)
          VALUES ('cashier', 'Cashier', '', '[]', ?1, ?1)",
-        params![NOW],
-    ).unwrap();
+            params![NOW],
+        )
+        .unwrap();
 
-    let u1 = s.create_user("cashier1", "hash", "Alice", "cashier").unwrap();
+    let u1 = s
+        .create_user("cashier1", "hash", "Alice", "cashier")
+        .unwrap();
     assert_eq!(s.get_user_index_id(&u1.id).unwrap(), Some(1));
     assert_eq!(s.get_staff_code(&u1.id).unwrap().as_deref(), Some("01"));
 
@@ -650,12 +695,21 @@ fn eager_allocation_and_code_lookups_for_staff() {
     assert_eq!(s.get_staff_code(&u2.id).unwrap().as_deref(), Some("02"));
 
     s.conn
-        .execute("UPDATE users SET is_active = 0 WHERE id = ?1", params![&u1.id])
+        .execute(
+            "UPDATE users SET is_active = 0 WHERE id = ?1",
+            params![&u1.id],
+        )
         .unwrap();
     s.soft_delete_user(&u1.id).unwrap();
     assert_eq!(s.get_user_index_id(&u1.id).unwrap(), None);
 
-    let u3 = s.create_user("cashier3", "hash", "Charlie", "cashier").unwrap();
-    assert_eq!(s.get_user_index_id(&u3.id).unwrap(), Some(1), "slot 1 should be recycled");
+    let u3 = s
+        .create_user("cashier3", "hash", "Charlie", "cashier")
+        .unwrap();
+    assert_eq!(
+        s.get_user_index_id(&u3.id).unwrap(),
+        Some(1),
+        "slot 1 should be recycled"
+    );
     assert_eq!(s.get_staff_code(&u3.id).unwrap().as_deref(), Some("01"));
 }

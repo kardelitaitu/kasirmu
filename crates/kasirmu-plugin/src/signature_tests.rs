@@ -1,10 +1,10 @@
 use super::*;
 
+use rsa::RsaPrivateKey;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::{EncodePublicKey, LineEnding};
 use rsa::signature::{SignatureEncoding, Signer};
 use rsa::traits::PublicKeyParts;
-use rsa::RsaPrivateKey;
 
 /// A deterministic-ish test keypair. 2048 bits keeps generation fast enough for
 /// a unit test while staying the real algorithm.
@@ -65,11 +65,26 @@ fn digest_ignores_permission_order_and_duplicates() {
 
 #[test]
 fn digest_ignores_script_order_but_not_script_bytes() {
-    let a = plugin_digest("p", "1.0.0", &[], &scripts(&[("a.lua", "x"), ("b.lua", "y")]));
-    let b = plugin_digest("p", "1.0.0", &[], &scripts(&[("b.lua", "y"), ("a.lua", "x")]));
+    let a = plugin_digest(
+        "p",
+        "1.0.0",
+        &[],
+        &scripts(&[("a.lua", "x"), ("b.lua", "y")]),
+    );
+    let b = plugin_digest(
+        "p",
+        "1.0.0",
+        &[],
+        &scripts(&[("b.lua", "y"), ("a.lua", "x")]),
+    );
     assert_eq!(a, b, "path order must not matter");
 
-    let c = plugin_digest("p", "1.0.0", &[], &scripts(&[("a.lua", "x"), ("b.lua", "z")]));
+    let c = plugin_digest(
+        "p",
+        "1.0.0",
+        &[],
+        &scripts(&[("a.lua", "x"), ("b.lua", "z")]),
+    );
     assert_ne!(a, c, "changed script bytes MUST change the digest");
 }
 
@@ -136,10 +151,14 @@ fn malformed_signature_input_is_rejected_by_value() {
     let (_, pem) = test_keypair();
     let digest = plugin_digest("p", "1.0.0", &[], &[]);
 
-    let err = verify_plugin_signature(&pem, &digest, "not base64!!").unwrap_err().to_string();
+    let err = verify_plugin_signature(&pem, &digest, "not base64!!")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("base64"), "got: {err}");
 
-    let err = verify_plugin_signature("not a pem", &digest, "AAAA").unwrap_err().to_string();
+    let err = verify_plugin_signature("not a pem", &digest, "AAAA")
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("public key"), "got: {err}");
 }
 

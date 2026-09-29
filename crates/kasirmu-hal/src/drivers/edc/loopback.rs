@@ -79,9 +79,7 @@ pub enum EdcBehaviour {
 }
 
 /// Parse a simulator address URI into an initial behaviour, status, and delay.
-fn parse_loopback_uri(
-    address: &str,
-) -> (EdcBehaviour, Option<TerminalStatus>, Option<Duration>) {
+fn parse_loopback_uri(address: &str) -> (EdcBehaviour, Option<TerminalStatus>, Option<Duration>) {
     let trimmed = address.trim();
     let without_prefix = trimmed
         .strip_prefix("loopback://")
@@ -218,7 +216,10 @@ impl LoopbackEdcTerminal {
     /// Force [`status`](Self::status) to report `Some(status)` regardless of
     /// scripted behaviour; pass `None` to revert to derived behaviour.
     pub fn set_status(&self, status: Option<TerminalStatus>) {
-        *self.forced_status.lock().expect("loopback status lock poisoned") = status;
+        *self
+            .forced_status
+            .lock()
+            .expect("loopback status lock poisoned") = status;
     }
 
     /// Set an artificial delay before operations complete to simulate cardholder
@@ -309,7 +310,11 @@ impl Default for LoopbackEdcTerminal {
 impl EdcTerminal for LoopbackEdcTerminal {
     async fn status(&self) -> Result<TerminalStatus, HalError> {
         self.apply_delay().await;
-        if let Some(forced) = *self.forced_status.lock().expect("loopback status lock poisoned") {
+        if let Some(forced) = *self
+            .forced_status
+            .lock()
+            .expect("loopback status lock poisoned")
+        {
             return Ok(forced);
         }
         if self.default_behaviour == EdcBehaviour::Offline {

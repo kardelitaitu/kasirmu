@@ -106,7 +106,9 @@ impl ProductType {
     /// three to `None`. `sku` and `operation` are the caller's own row identifier
     /// and call site, so one greppable message shape covers every reader.
     pub fn parse_stored_or_default(stored: Option<&str>, sku: &str, operation: &str) -> Self {
-        if let Some(ptype) = stored.and_then(Self::parse_str) { ptype } else {
+        if let Some(ptype) = stored.and_then(Self::parse_str) {
+            ptype
+        } else {
             tracing::warn!(
                 sku = %sku,
                 stored = ?stored,

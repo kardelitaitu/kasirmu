@@ -245,8 +245,10 @@ impl Store<'_> {
             // seasonality (weak Mondays, strong weekends); shorter or
             // weekly/monthly series use the plain linear fit.
             let f = if granularity == "daily" && tail.len() >= 7 {
-                let next = tail
-                    .last().map_or_else(|| chrono::Utc::now().date_naive(), |(d, _)| *d + chrono::Duration::days(1));
+                let next = tail.last().map_or_else(
+                    || chrono::Utc::now().date_naive(),
+                    |(d, _)| *d + chrono::Duration::days(1),
+                );
                 crate::popularity::seasonal_daily_forecast(&tail, next)
             } else {
                 let units: Vec<f64> = tail.iter().map(|(_, u)| *u).collect();
@@ -678,9 +680,18 @@ impl Store<'_> {
             return Ok(None);
         };
         Ok(Some((
-            entry.get("sales").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
-            entry.get("search").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
-            entry.get("edits").and_then(serde_json::Value::as_f64).unwrap_or(0.0),
+            entry
+                .get("sales")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
+            entry
+                .get("search")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
+            entry
+                .get("edits")
+                .and_then(serde_json::Value::as_f64)
+                .unwrap_or(0.0),
         )))
     }
 

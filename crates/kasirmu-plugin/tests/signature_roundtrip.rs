@@ -68,8 +68,15 @@ fn seed_example(dir: &Path) {
 /// Read the public key PEM the signing tool prints.
 fn public_key_of(private: &Path) -> String {
     let script = repo_root().join("scripts/sign-plugin.py");
-    let out = python(&script, &["--key", &private.to_string_lossy(), "--print-public-key"]);
-    assert!(out.status.success(), "print-public-key failed: {}", String::from_utf8_lossy(&out.stderr));
+    let out = python(
+        &script,
+        &["--key", &private.to_string_lossy(), "--print-public-key"],
+    );
+    assert!(
+        out.status.success(),
+        "print-public-key failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8(out.stdout).unwrap()
 }
 
@@ -84,15 +91,33 @@ fn signature_roundtrip_sign_then_load() {
     seed_example(&plugins);
 
     // 1. Generate a keypair.
-    let out = python(&script, &["--generate-key", "--key", &key.to_string_lossy()]);
-    assert!(out.status.success(), "keygen failed: {}", String::from_utf8_lossy(&out.stderr));
+    let out = python(
+        &script,
+        &["--generate-key", "--key", &key.to_string_lossy()],
+    );
+    assert!(
+        out.status.success(),
+        "keygen failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     // 2. Sign the plugin with the real tool. NOTE the path is the PLUGIN
     //    directory, not the plugins root — the tool reads plugin.toml from the
     //    directory it is given and writes the signature beside it.
     let plugin_dir = plugins.join("example-discount");
-    let out = python(&script, &["--key", &key.to_string_lossy(), &plugin_dir.to_string_lossy()]);
-    assert!(out.status.success(), "signing failed: {}", String::from_utf8_lossy(&out.stderr));
+    let out = python(
+        &script,
+        &[
+            "--key",
+            &key.to_string_lossy(),
+            &plugin_dir.to_string_lossy(),
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "signing failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         plugin_dir.join("plugin.toml.sig").exists(),
         "the tool must write the signature file"

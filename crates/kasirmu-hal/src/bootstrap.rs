@@ -397,8 +397,12 @@ pub async fn apply_config(registry: &DriverRegistry, config: &HardwareConfig) ->
                 report.registered.push(key);
             }
             TerminalConnection::Loopback { address } => {
-                let sim = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::from_address(address));
-                registry.register_loopback_terminal_with(&terminal.id, sim).await;
+                let sim = Arc::new(crate::drivers::edc::LoopbackEdcTerminal::from_address(
+                    address,
+                ));
+                registry
+                    .register_loopback_terminal_with(&terminal.id, sim)
+                    .await;
                 report.registered.push(key);
             }
             _ => report.skipped.push(key),

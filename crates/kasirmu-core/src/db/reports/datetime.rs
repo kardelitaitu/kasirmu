@@ -137,7 +137,9 @@ impl Store<'_> {
                 |r| r.get(0),
             )
             .ok();
-        if let Some(offset) = raw.as_deref().and_then(parse_utc_offset) { offset } else {
+        if let Some(offset) = raw.as_deref().and_then(parse_utc_offset) {
+            offset
+        } else {
             tracing::warn!(
                 timezone = raw.as_deref().unwrap_or("<no primary location>"),
                 "unresolvable locations.timezone — report bucketing falls back to UTC (+00:00)"

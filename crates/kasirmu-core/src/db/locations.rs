@@ -182,7 +182,8 @@ impl Store<'_> {
     ) -> Result<LocationProfile, CoreError> {
         let tx = self.conn.unchecked_transaction()?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let index_id = self.allocate_entity_index(&tx, "default", EntityIndexKind::Location, &now)?;
+        let index_id =
+            self.allocate_entity_index(&tx, "default", EntityIndexKind::Location, &now)?;
         tx.execute(
             "INSERT INTO locations (id, name, address, tax_id, currency, timezone, is_primary, created_at, updated_at, index_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -224,7 +225,9 @@ impl Store<'_> {
 
     /// Read a location's index id (1..=14,776,335).
     pub fn get_location_index_id(&self, location_id: &str) -> Result<Option<i64>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT index_id FROM locations WHERE id = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT index_id FROM locations WHERE id = ?1")?;
         let result = stmt.query_row(params![location_id], |row| row.get(0));
         match result {
             Ok(idx) => Ok(idx),

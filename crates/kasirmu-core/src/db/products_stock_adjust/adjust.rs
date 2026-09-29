@@ -270,7 +270,8 @@ impl Store<'_> {
                 location_id.as_str(),
                 delta,
                 reason,
-                inventory_transaction_id.map(crate::inventory_transaction::InventoryTransactionId::as_str),
+                inventory_transaction_id
+                    .map(crate::inventory_transaction::InventoryTransactionId::as_str),
                 terminal_id.map(foundation::TerminalId::as_str),
                 source_user_id.map(platform_core::staff::UserId::as_str),
                 now,
@@ -476,7 +477,9 @@ impl Store<'_> {
                 .optional()?,
         };
 
-        let Some((threshold_id, threshold)) = threshold_row else { return Ok(()) };
+        let Some((threshold_id, threshold)) = threshold_row else {
+            return Ok(());
+        };
 
         // Check if stock went below threshold.
         if new_qty < threshold {

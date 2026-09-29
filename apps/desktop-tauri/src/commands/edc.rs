@@ -106,9 +106,14 @@ pub async fn edc_void(
     terminal_id: Option<String>,
 ) -> Result<EdcResultDto, AppError> {
     let ctx = state.bridge_ctx();
-    kasirmu_bridge::edc::edc_void(&ctx, &session_token, &transaction_id, terminal_id.as_deref())
-        .await
-        .map_err(Into::into)
+    kasirmu_bridge::edc::edc_void(
+        &ctx,
+        &session_token,
+        &transaction_id,
+        terminal_id.as_deref(),
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// List configured card-payment terminals (session-scoped).

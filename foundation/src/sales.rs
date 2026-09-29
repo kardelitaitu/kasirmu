@@ -238,8 +238,11 @@ impl Sale {
         let from = self.status;
         let valid = matches!(
             (from, to),
-            (SaleStatus::Pending, SaleStatus::Active) |
-(SaleStatus::Active, SaleStatus::Completed | SaleStatus::Voided)
+            (SaleStatus::Pending, SaleStatus::Active)
+                | (
+                    SaleStatus::Active,
+                    SaleStatus::Completed | SaleStatus::Voided
+                )
         );
 
         if valid {

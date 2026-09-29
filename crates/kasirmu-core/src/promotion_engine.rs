@@ -110,8 +110,7 @@ pub fn compute_discount(
         Some(scope_id) => {
             let mut base = 0_i64;
             for line in &sale.lines {
-                let in_scope = category_of(&line.sku)
-                    .is_some_and(|c| c == scope_id);
+                let in_scope = category_of(&line.sku).is_some_and(|c| c == scope_id);
                 if !in_scope {
                     continue;
                 }
@@ -165,8 +164,7 @@ pub fn compute_discount(
             let mut reward_qty_in_cart = 0_i64;
             for line in &sale.lines {
                 let in_scope = match scope_id {
-                    Some(scope_id) => category_of(&line.sku)
-                        .is_some_and(|c| c == scope_id),
+                    Some(scope_id) => category_of(&line.sku).is_some_and(|c| c == scope_id),
                     None => true,
                 };
                 if !in_scope {

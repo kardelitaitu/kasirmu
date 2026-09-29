@@ -337,7 +337,9 @@ fn the_severity_ranks_are_four_distinct_values_with_unavailable_worst() {
     // The rank table is the whole aggregation contract, and worst() reads it
     // through <=, so a duplicated or swapped rank changes what a banner says
     // without failing any single-pair comparison above.
-    let mut ranks: Vec<u8> = HealthState::ALL.map(super::HealthState::severity_rank).to_vec();
+    let mut ranks: Vec<u8> = HealthState::ALL
+        .map(super::HealthState::severity_rank)
+        .to_vec();
     ranks.sort_unstable();
     assert_eq!(ranks, vec![0, 1, 2, 3], "one rank per state");
     let mut by_severity = HealthState::ALL.to_vec();

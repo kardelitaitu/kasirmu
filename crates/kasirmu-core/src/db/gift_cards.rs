@@ -239,8 +239,10 @@ impl Store<'_> {
 
         let mut stmt = self.conn.prepare(&sql)?;
 
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
-            param_values.iter().map(std::convert::AsRef::as_ref).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values
+            .iter()
+            .map(std::convert::AsRef::as_ref)
+            .collect();
         let cards: Vec<GiftCard> = stmt
             .query_map(param_refs.as_slice(), |row| {
                 Ok(GiftCard {
@@ -301,7 +303,9 @@ impl Store<'_> {
         &self,
         card_number_or_id: &str,
     ) -> Result<Option<GiftCardWithTransactions>, CoreError> {
-        let Some(card) = self.get_gift_card(card_number_or_id)? else { return Ok(None) };
+        let Some(card) = self.get_gift_card(card_number_or_id)? else {
+            return Ok(None);
+        };
 
         let transactions = self.get_transactions_for_card(&card.id, 50)?;
 
@@ -313,7 +317,9 @@ impl Store<'_> {
         &self,
         card_number_or_id: &str,
     ) -> Result<Option<(i64, String, String)>, CoreError> {
-        let Some(card) = self.get_gift_card(card_number_or_id)? else { return Ok(None) };
+        let Some(card) = self.get_gift_card(card_number_or_id)? else {
+            return Ok(None);
+        };
         Ok(Some((
             card.current_balance_minor,
             card.currency,
@@ -338,11 +344,11 @@ impl Store<'_> {
         }
 
         let Some(card) = self.get_gift_card(card_number_or_id)? else {
-                return Err(CoreError::NotFound {
-                    entity: "gift_card",
-                    id: card_number_or_id.to_owned(),
-                });
-            };
+            return Err(CoreError::NotFound {
+                entity: "gift_card",
+                id: card_number_or_id.to_owned(),
+            });
+        };
 
         if card.status != "active" {
             return Err(CoreError::Validation {
@@ -518,11 +524,11 @@ impl Store<'_> {
         }
 
         let Some(card) = self.get_gift_card(card_number_or_id)? else {
-                return Err(CoreError::NotFound {
-                    entity: "gift_card",
-                    id: card_number_or_id.to_owned(),
-                });
-            };
+            return Err(CoreError::NotFound {
+                entity: "gift_card",
+                id: card_number_or_id.to_owned(),
+            });
+        };
 
         if card.status != "active" && card.status != "frozen" {
             return Err(CoreError::Validation {
@@ -629,11 +635,11 @@ impl Store<'_> {
     /// write landed.
     pub fn freeze_gift_card(&self, card_number_or_id: &str) -> Result<GiftCard, CoreError> {
         let Some(card) = self.get_gift_card(card_number_or_id)? else {
-                return Err(CoreError::NotFound {
-                    entity: "gift_card",
-                    id: card_number_or_id.to_owned(),
-                });
-            };
+            return Err(CoreError::NotFound {
+                entity: "gift_card",
+                id: card_number_or_id.to_owned(),
+            });
+        };
 
         if card.status != "active" {
             return Err(CoreError::Validation {
@@ -686,11 +692,11 @@ impl Store<'_> {
     /// write landed.
     pub fn unfreeze_gift_card(&self, card_number_or_id: &str) -> Result<GiftCard, CoreError> {
         let Some(card) = self.get_gift_card(card_number_or_id)? else {
-                return Err(CoreError::NotFound {
-                    entity: "gift_card",
-                    id: card_number_or_id.to_owned(),
-                });
-            };
+            return Err(CoreError::NotFound {
+                entity: "gift_card",
+                id: card_number_or_id.to_owned(),
+            });
+        };
 
         if card.status != "frozen" {
             return Err(CoreError::Validation {

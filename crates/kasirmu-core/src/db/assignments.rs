@@ -275,7 +275,9 @@ impl Store<'_> {
         // silently re-interpreted as org-wide). The column is NOT NULL
         // DEFAULT 'organization', so None here can only mean a hand-edited
         // DB — exactly the case the fail-closed rule exists for.
-        let Some(scope_type) = scope_type.as_deref().and_then(ScopeType::parse) else { return Ok(None) };
+        let Some(scope_type) = scope_type.as_deref().and_then(ScopeType::parse) else {
+            return Ok(None);
+        };
 
         let branches = self.branch_ids_for(user_id)?;
         let workspaces = self.workspace_keys_for(user_id)?;

@@ -184,9 +184,8 @@ impl ProtocolCodec for LoopbackCodec {
 
         let cmd = body[0];
         let payload_bytes = &body[1..body.len() - 1]; // strip CMD and ETX
-        let payload_str = std::str::from_utf8(payload_bytes).map_err(|e| {
-            HalError::Protocol(format!("loopback payload is not valid UTF-8: {e}"))
-        })?;
+        let payload_str = std::str::from_utf8(payload_bytes)
+            .map_err(|e| HalError::Protocol(format!("loopback payload is not valid UTF-8: {e}")))?;
 
         match cmd {
             CMD_STATUS_RESP => Ok(ProtocolMessage::Ready),
@@ -218,7 +217,10 @@ impl ProtocolCodec for LoopbackCodec {
                         Ok(ProtocolMessage::Declined { reason })
                     }
                     "99" => {
-                        let code = parts.get(1).and_then(|s| s.parse::<u32>().ok()).unwrap_or(999);
+                        let code = parts
+                            .get(1)
+                            .and_then(|s| s.parse::<u32>().ok())
+                            .unwrap_or(999);
                         let message = parts.get(2).copied().unwrap_or("unknown fault").to_owned();
                         Ok(ProtocolMessage::Error { code, message })
                     }

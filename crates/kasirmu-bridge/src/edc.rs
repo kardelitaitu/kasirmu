@@ -177,7 +177,9 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
         || row.vendor.as_deref() == Some("simulator")
     {
         let sim = Arc::new(kasirmu_hal::drivers::edc::LoopbackEdcTerminal::from_address(address));
-        ctx.registry.register_loopback_terminal_with(&row.id, sim).await;
+        ctx.registry
+            .register_loopback_terminal_with(&row.id, sim)
+            .await;
         return;
     }
 
@@ -231,7 +233,9 @@ async fn sync_default_alias(ctx: &BridgeCtx<'_>, active_rows: &[EdcTerminalConfi
     if let Some(earliest) = active_rows.first()
         && let Some(terminal) = ctx.registry.terminal(&earliest.id).await
     {
-        ctx.registry.register_terminal(DEFAULT_TERMINAL_ID, terminal).await;
+        ctx.registry
+            .register_terminal(DEFAULT_TERMINAL_ID, terminal)
+            .await;
         return;
     }
     ctx.registry.unregister_terminal(DEFAULT_TERMINAL_ID).await;

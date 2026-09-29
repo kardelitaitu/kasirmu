@@ -45,10 +45,10 @@
 use std::path::Path;
 
 use base64::Engine;
+use rsa::RsaPublicKey;
 use rsa::pkcs1v15::Signature;
 use rsa::pkcs8::DecodePublicKey;
 use rsa::signature::Verifier;
-use rsa::RsaPublicKey;
 use sha2::{Digest, Sha256};
 
 use crate::error::PluginError;

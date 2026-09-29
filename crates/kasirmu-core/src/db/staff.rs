@@ -291,7 +291,9 @@ impl Store<'_> {
 
     /// Read a user's index id (1..=14,776,335).
     pub fn get_user_index_id(&self, user_id: &str) -> Result<Option<i64>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT index_id FROM users WHERE id = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT index_id FROM users WHERE id = ?1")?;
         let result = stmt.query_row(params![user_id], |row| row.get(0));
         match result {
             Ok(idx) => Ok(idx),
@@ -418,8 +420,7 @@ impl Store<'_> {
         }
         // The role resolves through the assignment when one exists; legacy
         // users without an assignment fall back to `users.role_id`.
-        let role_id = assignment
-            .map_or(user.role_id.as_str(), |a| a.role_id.as_str());
+        let role_id = assignment.map_or(user.role_id.as_str(), |a| a.role_id.as_str());
         // Fail closed: an unresolvable role is a denial, never an internal
         // error (a role row deleted out from under a user must not surface
         // as a crash-adjacent 500 to the frontend).
@@ -557,7 +558,8 @@ impl Store<'_> {
 
         let id = uuid::Uuid::now_v7().to_string();
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let index_id = self.allocate_entity_index_on_conn(self.conn, "default", EntityIndexKind::User, &now)?;
+        let index_id =
+            self.allocate_entity_index_on_conn(self.conn, "default", EntityIndexKind::User, &now)?;
 
         self.conn.execute(
             "INSERT INTO users (id, username, pin_hash, display_name, role_id, created_at, updated_at, index_id)

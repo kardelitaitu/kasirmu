@@ -212,16 +212,14 @@ impl Store<'_> {
             // the line is deducted at all, and the fallback (Retail) tracks
             // inventory. The fallback stays so one bad row never fails the sale;
             // the helper warns.
-            let tracks_inventory = product_info
-                .as_ref()
-                .is_some_and(|(_, pt)| {
-                    crate::product::ProductType::parse_stored_or_default(
-                        Some(pt.as_str()),
-                        line.sku.as_str(),
-                        "Store::complete_sale_with_resolved_shortfalls:sale_line",
-                    )
-                    .tracks_inventory()
-                });
+            let tracks_inventory = product_info.as_ref().is_some_and(|(_, pt)| {
+                crate::product::ProductType::parse_stored_or_default(
+                    Some(pt.as_str()),
+                    line.sku.as_str(),
+                    "Store::complete_sale_with_resolved_shortfalls:sale_line",
+                )
+                .tracks_inventory()
+            });
 
             // MSL-28: `?`, not `.unwrap_or_default()`. The recipe read decides
             // whether this line is stock-checked at all (`has_recipe` feeds

@@ -603,9 +603,10 @@ impl Store<'_> {
             created_at: row.get("created_at")?,
             synced_at: row.get("synced_at")?,
             tenant_id: row.get("tenant_id")?,
-            priority: row
-                .get::<_, i32>("priority")
-                .map_or(crate::offline::SyncPriority::Normal, crate::offline::SyncPriority::from),
+            priority: row.get::<_, i32>("priority").map_or(
+                crate::offline::SyncPriority::Normal,
+                crate::offline::SyncPriority::from,
+            ),
             // NULL stays NULL: "unknown origin", never a default.
             origin_terminal_id: row.get("origin_terminal_id")?,
         })

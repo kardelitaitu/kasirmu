@@ -161,7 +161,10 @@ fn get_customer_found() {
         c.email.as_ref().map(foundation::Email::as_str),
         Some("alice@example.com")
     );
-    assert_eq!(c.phone.as_ref().map(foundation::Phone::as_str), Some("+1-555-0101"));
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("+1-555-0101")
+    );
     assert_eq!(c.notes, "Regular");
 }
 
@@ -179,7 +182,10 @@ fn get_customer_nullable_fields() {
     let c = store(&conn).get_customer("cust-2").unwrap().unwrap();
     assert_eq!(c.name, "Bob");
     assert!(c.email.is_none());
-    assert_eq!(c.phone.as_ref().map(foundation::Phone::as_str), Some("+1-555-0102"));
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("+1-555-0102")
+    );
 }
 
 // ── Create ──────────────────────────────────────────────────────
@@ -209,8 +215,14 @@ fn create_customer_with_all_fields() {
         )
         .unwrap();
     assert_eq!(c.name, "Diana");
-    assert_eq!(c.email.as_ref().map(foundation::Email::as_str), Some("diana@test.com"));
-    assert_eq!(c.phone.as_ref().map(foundation::Phone::as_str), Some("555-0100"));
+    assert_eq!(
+        c.email.as_ref().map(foundation::Email::as_str),
+        Some("diana@test.com")
+    );
+    assert_eq!(
+        c.phone.as_ref().map(foundation::Phone::as_str),
+        Some("555-0100")
+    );
     assert_eq!(c.notes, "Preferred");
     assert_eq!(c.loyalty_points, 0);
     assert_eq!(c.total_spent_minor, 0);

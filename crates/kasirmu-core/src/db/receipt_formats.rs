@@ -406,8 +406,7 @@ impl crate::db::Store<'_> {
         if content.is_none() {
             // Legacy fallback: the ten pinned org-global keys.
             let has_any = LEGACY_RECEIPT_KEYS.iter().any(|key| {
-                platform_core::settings::Settings::get(self.conn, key)
-                    .is_ok_and(|v| v.is_some())
+                platform_core::settings::Settings::get(self.conn, key).is_ok_and(|v| v.is_some())
             });
             if has_any {
                 content = Some(ReceiptContent {
@@ -564,8 +563,7 @@ impl crate::db::Store<'_> {
         ]
         .iter()
         .any(|key| {
-            platform_core::settings::Settings::get(self.conn, key)
-                .is_ok_and(|v| v.is_some())
+            platform_core::settings::Settings::get(self.conn, key).is_ok_and(|v| v.is_some())
         });
         if layout.paper_width_mm.is_none() {
             let width = platform_core::settings::Settings::get_receipt_paper_width(self.conn)

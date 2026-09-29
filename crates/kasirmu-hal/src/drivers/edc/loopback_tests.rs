@@ -278,7 +278,9 @@ fn loopback_codec_frame_roundtrip() {
     assert_eq!(codec.vendor(), "loopback");
 
     // Test encode sale request
-    let wire_sale = codec.encode_sale(idr(25000), "INV-1001").expect("encodes sale");
+    let wire_sale = codec
+        .encode_sale(idr(25000), "INV-1001")
+        .expect("encodes sale");
     assert_eq!(wire_sale[0], 0x02, "must start with STX");
     assert_eq!(wire_sale[wire_sale.len() - 2], 0x03, "must end with ETX");
     // Verify LRC
@@ -372,4 +374,3 @@ fn loopback_codec_fails_on_invalid_stx() {
     assert!(matches!(err, HalError::Protocol(_)));
     assert!(err.to_string().contains("invalid loopback framing"));
 }
-

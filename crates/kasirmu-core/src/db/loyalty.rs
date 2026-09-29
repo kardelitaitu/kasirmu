@@ -197,7 +197,9 @@ impl Store<'_> {
         &self,
         customer_id: &str,
     ) -> Result<Option<LoyaltyAccountWithDetails>, CoreError> {
-        let Some(account) = self.get_loyalty_account_raw(customer_id)? else { return Ok(None) };
+        let Some(account) = self.get_loyalty_account_raw(customer_id)? else {
+            return Ok(None);
+        };
 
         let tier = if let Some(ref tid) = account.tier_id {
             self.get_loyalty_tier(tid)?
@@ -364,11 +366,11 @@ impl Store<'_> {
         sale_id: &str,
     ) -> Result<(LoyaltyTransaction, i64), CoreError> {
         let Some(account) = self.get_loyalty_account_raw(customer_id)? else {
-                return Err(CoreError::NotFound {
-                    entity: "loyalty_account",
-                    id: customer_id.to_owned(),
-                });
-            };
+            return Err(CoreError::NotFound {
+                entity: "loyalty_account",
+                id: customer_id.to_owned(),
+            });
+        };
 
         if points <= 0 {
             return Err(CoreError::Validation {

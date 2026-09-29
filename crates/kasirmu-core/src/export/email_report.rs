@@ -348,7 +348,9 @@ impl Store<'_> {
     /// with an error (F-029).
     /// Returns `None` if no config has been saved yet.
     pub fn get_smtp_config(&self) -> Result<Option<SmtpConfig>, CoreError> {
-        let Some(raw) = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)? else { return Ok(None) };
+        let Some(raw) = self.get_setting(SMTP_CONFIG_SETTINGS_KEY)? else {
+            return Ok(None);
+        };
         let mut config: SmtpConfig = serde_json::from_str(&raw)
             .map_err(|e| CoreError::Internal(format!("failed to deserialize SMTP config: {e}")))?;
         if let Some(ref pwd) = config.password

@@ -44,7 +44,9 @@ async fn multi_terminal_explicit_routing_and_default_fallback() {
     let driver_b = Arc::new(MockEdcTerminal::new());
     driver_b.set_status(Some(TerminalStatus::Busy));
 
-    ctx.registry.register_terminal("default", driver_a.clone()).await;
+    ctx.registry
+        .register_terminal("default", driver_a.clone())
+        .await;
     ctx.registry.register_terminal("term-a", driver_a).await;
     ctx.registry.register_terminal("term-b", driver_b).await;
 
@@ -114,7 +116,9 @@ async fn edc_terminals_crud_and_dynamic_registration() {
     let ctx = tb.ctx();
 
     // 1. Initial listing is empty
-    let list = list_edc_terminals_scoped(&ctx, &token_cashier).await.unwrap();
+    let list = list_edc_terminals_scoped(&ctx, &token_cashier)
+        .await
+        .unwrap();
     assert!(list.is_empty());
 
     // 2. Create terminal 1 (wired serial)
@@ -160,7 +164,9 @@ async fn edc_terminals_crud_and_dynamic_registration() {
 
     // Both terminals exist
     assert!(ctx.registry.terminal(&created2.id).await.is_some());
-    let list_after = list_edc_terminals_scoped(&ctx, &token_cashier).await.unwrap();
+    let list_after = list_edc_terminals_scoped(&ctx, &token_cashier)
+        .await
+        .unwrap();
     assert_eq!(list_after.len(), 2);
 
     // 4. Update terminal 1: deactivate it
@@ -195,7 +201,9 @@ async fn edc_terminals_crud_and_dynamic_registration() {
     // Since no active terminals remain, default is also unregistered
     assert!(ctx.registry.terminal("default").await.is_none());
 
-    let final_list = list_edc_terminals_scoped(&ctx, &token_cashier).await.unwrap();
+    let final_list = list_edc_terminals_scoped(&ctx, &token_cashier)
+        .await
+        .unwrap();
     assert_eq!(final_list.len(), 1);
     assert!(!final_list[0].is_active);
 }
@@ -266,4 +274,3 @@ async fn loopback_terminal_dynamic_sync_and_payment_simulation() {
     assert!(!dec_res.success);
     assert_eq!(dec_res.message, "lost card");
 }
-

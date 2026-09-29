@@ -398,8 +398,10 @@ pub async fn request_token(url: &str, admin_key: Option<&str>) -> TokenResult {
                         let expires = tr.token.expires_at.clone();
                         TokenResult {
                             ok: true,
-                            status: expires
-                                .as_ref().map_or_else(|| "Token obtained".into(), |e| format!("Token obtained — {}", format_expiry(e))),
+                            status: expires.as_ref().map_or_else(
+                                || "Token obtained".into(),
+                                |e| format!("Token obtained — {}", format_expiry(e)),
+                            ),
                             token: Some(tr.token.token),
                             expires_at: tr.token.expires_at,
                         }

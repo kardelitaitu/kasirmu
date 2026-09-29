@@ -404,7 +404,8 @@ impl Store<'_> {
         let is_complete = profile.is_complete();
         let national_id_masked = profile
             .national_id
-            .as_deref().map_or_else(|| "****".to_string(), mask_last4);
+            .as_deref()
+            .map_or_else(|| "****".to_string(), mask_last4);
         Ok(Some(ProfileView {
             username: user.username,
             display_name: user.display_name,

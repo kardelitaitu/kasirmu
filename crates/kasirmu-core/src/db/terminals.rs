@@ -245,7 +245,8 @@ impl Store<'_> {
         // behaviour — no arm, no veto.
         let tx = self.conn.unchecked_transaction()?;
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let index_id = self.allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, &now)?;
+        let index_id =
+            self.allocate_entity_index(&tx, "default", EntityIndexKind::Terminal, &now)?;
         tx.execute(
             "INSERT INTO terminals (id, name, device_id, terminal_secret, is_active,
                                     last_seen_at, metadata, created_at, updated_at, index_id)
@@ -285,7 +286,9 @@ impl Store<'_> {
 
     /// Read a terminal's index id (1..=14,776,335).
     pub fn get_terminal_index_id(&self, terminal_id: &str) -> Result<Option<i64>, CoreError> {
-        let mut stmt = self.conn.prepare("SELECT index_id FROM terminals WHERE id = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT index_id FROM terminals WHERE id = ?1")?;
         let result = stmt.query_row(params![terminal_id], |row| row.get(0));
         match result {
             Ok(idx) => Ok(idx),

@@ -101,10 +101,7 @@ impl PluginGrants {
     /// next step is [`ungranted`], which reports the whole declared set as
     /// missing, and that is the actionable message.
     pub fn granted_for(&self, plugin_id: &str) -> &[Permission] {
-        self.grants
-            .get(plugin_id)
-            .map(Vec::as_slice)
-            .unwrap_or(&[])
+        self.grants.get(plugin_id).map(Vec::as_slice).unwrap_or(&[])
     }
 
     /// Path of the grant file inside `plugins_dir`.

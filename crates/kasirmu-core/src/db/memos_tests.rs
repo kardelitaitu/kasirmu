@@ -70,7 +70,10 @@ fn seed_location_with_tenant(store: &Store<'_>, id: &str, tenant_id: &str) {
 fn new_memo(tenant: &str, locations: &[&str]) -> NewMemo {
     NewMemo {
         tenant_id: tenant.into(),
-        location_ids: locations.iter().map(std::string::ToString::to_string).collect(),
+        location_ids: locations
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         author_user_id: "user-1".into(),
         author_role: "admin".into(),
         title: "Heads up".into(),

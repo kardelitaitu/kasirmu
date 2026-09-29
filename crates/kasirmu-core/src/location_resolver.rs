@@ -227,9 +227,7 @@ pub fn get_workspace_locations(
                     location_id: loc_id,
                     location_name: name,
                     is_primary: true,
-                    allow_negative_stock: multi_rows
-                        .first()
-                        .is_some_and(|(_, _, neg)| *neg),
+                    allow_negative_stock: multi_rows.first().is_some_and(|(_, _, neg)| *neg),
                 }])
             } else {
                 // Unbound warehouse: return ALL active inventory locations.

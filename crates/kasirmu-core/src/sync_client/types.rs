@@ -213,7 +213,9 @@ pub struct PingResult {
 #[cfg(feature = "sync-http")]
 pub(crate) fn format_expiry(iso: &str) -> String {
     // Try RFC 3339 first (the most common ISO-8601 variant from APIs).
-    let Ok(expiry) = chrono::DateTime::parse_from_rfc3339(iso) else { return format!("expires {iso}") };
+    let Ok(expiry) = chrono::DateTime::parse_from_rfc3339(iso) else {
+        return format!("expires {iso}");
+    };
     let now = chrono::Utc::now();
     let dur = expiry.signed_duration_since(now);
 

@@ -142,7 +142,11 @@ fn ungranted_is_order_independent() {
 #[test]
 fn ungranted_reports_exactly_the_difference() {
     let missing = ungranted(
-        &[Permission::CartRead, Permission::CartWrite, Permission::LogWrite],
+        &[
+            Permission::CartRead,
+            Permission::CartWrite,
+            Permission::LogWrite,
+        ],
         &[Permission::CartRead],
     );
     assert_eq!(missing, vec![Permission::CartWrite, Permission::LogWrite]);

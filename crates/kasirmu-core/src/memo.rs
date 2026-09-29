@@ -126,11 +126,12 @@ impl MemoStatus {
     /// not a status transition (it stays `Published` with a bumped `revision`),
     /// so it is intentionally absent here.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use MemoStatus::{Draft, Published, Archived, Expired, Stopped};
+        use MemoStatus::{Archived, Draft, Expired, Published, Stopped};
         matches!(
             (from, to),
-            (Draft, Published | Archived) | (Published, Expired | Stopped) |
-(Expired | Stopped, Archived)
+            (Draft, Published | Archived)
+                | (Published, Expired | Stopped)
+                | (Expired | Stopped, Archived)
         )
     }
 }
@@ -177,7 +178,7 @@ impl DeliveryStatus {
     /// without a separate delivered event); the reverse (de-acknowledging) and
     /// any skip backwards are invalid.
     pub fn can_transition(from: Self, to: Self) -> bool {
-        use DeliveryStatus::{Pending, Delivered, Acknowledged};
+        use DeliveryStatus::{Acknowledged, Delivered, Pending};
         matches!(
             (from, to),
             (Pending, Delivered | Acknowledged) | (Delivered, Acknowledged)

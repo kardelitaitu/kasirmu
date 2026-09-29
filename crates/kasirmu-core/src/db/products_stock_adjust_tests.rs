@@ -886,8 +886,14 @@ fn check_stock_threshold_and_alert_propagates_db_error() {
     .unwrap();
 
     let tx = conn.unchecked_transaction().unwrap();
-    let err = Store::check_stock_threshold_and_alert_in_tx(&tx, &pid, loc_id, 5, "2025-01-01T00:00:00.000Z")
-        .expect_err("database error reading threshold must propagate");
+    let err = Store::check_stock_threshold_and_alert_in_tx(
+        &tx,
+        &pid,
+        loc_id,
+        5,
+        "2025-01-01T00:00:00.000Z",
+    )
+    .expect_err("database error reading threshold must propagate");
     assert!(
         matches!(err, CoreError::Db(_)),
         "expected CoreError::Db, got {err:?}"

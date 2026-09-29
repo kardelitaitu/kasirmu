@@ -23,7 +23,6 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 //!   be documented.
 
 #![deny(unsafe_code)]
-
 // P2-5: `clippy::pedantic` is enabled HERE, at the crate root, rather than in
 // `Cargo.toml`. This crate carries `[lints] workspace = true`, and Cargo refuses
 // to combine that with a local `[lints.clippy]` table — `cargo metadata` fails
@@ -47,7 +46,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 #![allow(clippy::missing_errors_doc)] // 778
 #![allow(clippy::doc_markdown)] // 462
 #![allow(clippy::must_use_candidate)] // 184
-#![allow(clippy::missing_panics_doc)] // 3
+#![allow(clippy::missing_panics_doc)]
+// 3
 // 10 findings, all in `db/` query helpers that accept an owned aggregate and
 // hand it to a `&T` boundary. Taking `&T` at the signature cascades up every
 // caller — the public `Store` surface plus ~90 test call sites — for no
@@ -61,7 +61,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 #![allow(clippy::similar_names)] // 16 — e.g. `conn`/`conn2` in transaction helpers
 #![allow(clippy::match_same_arms)] // 15 — arms kept split for domain clarity
 #![allow(clippy::used_underscore_binding)] // 13 — `_`-prefixed bindings that are read
-#![allow(clippy::items_after_statements)] // 12 — nested helpers declared next to use
+#![allow(clippy::items_after_statements)]
+// 12 — nested helpers declared next to use
 // 16 findings, every one `use super::*;` in a `db/` module. Those modules are
 // paired with a `#[path = "..._tests.rs"] mod tests` child that itself does
 // `use super::*;` to inherit the parent's imports. Clippy's auto-expansion of
@@ -74,7 +75,8 @@ next: none — all open COR findings from the closed campaign resolved | perf: N
 // an invariant the lint cannot see.
 #![allow(clippy::cast_possible_truncation)] // 7
 #![allow(clippy::cast_sign_loss)] // 6
-#![allow(clippy::cast_possible_wrap)] // 5
+#![allow(clippy::cast_possible_wrap)]
+// 5
 // 20 findings, all HTML/CSV report builders in `export/` that do
 // `s.push_str(&format!(...))`. Clippy's `write!` form needs `use
 // std::fmt::Write` plus an error path for a write that cannot fail on a

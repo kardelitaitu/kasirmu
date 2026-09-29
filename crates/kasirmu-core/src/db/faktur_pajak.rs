@@ -152,18 +152,19 @@ impl crate::db::Store<'_> {
         for r in rows {
             let (id, maybe_nsfp, kode, status) = r?;
             if let Some(nsfp) = maybe_nsfp
-                && !nsfp.trim().is_empty() {
-                    let formatted = format_faktur_pajak_17(&kode, &status, &nsfp);
-                    map.insert(
-                        id,
-                        FakturPajakInfo {
-                            nsfp,
-                            kode_transaksi: kode,
-                            status,
-                            formatted,
-                        },
-                    );
-                }
+                && !nsfp.trim().is_empty()
+            {
+                let formatted = format_faktur_pajak_17(&kode, &status, &nsfp);
+                map.insert(
+                    id,
+                    FakturPajakInfo {
+                        nsfp,
+                        kode_transaksi: kode,
+                        status,
+                        formatted,
+                    },
+                );
+            }
         }
         Ok(map)
     }
