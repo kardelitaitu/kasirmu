@@ -66,7 +66,8 @@ fn at_cap_rejects_with_the_legacy_error_shape_and_values() {
     let conn = fresh();
     seed(&conn);
     let s = store(&conn);
-    // Free: locations at the cap (1/1), the other three over it (2/1).
+    // Free: locations at the cap (1/1), registers and staff over it (2/1),
+    // warehouses over their own cap of 0 (Premium+ only).
     let err = s
         .enforce_creation_quota(QuotaDimension::Locations, &SubscriptionTier::Free)
         .unwrap_err();
@@ -79,7 +80,6 @@ fn at_cap_rejects_with_the_legacy_error_shape_and_values() {
     }
     for (dim, keyword) in [
         (QuotaDimension::PosRegisters, "registers per store"),
-        (QuotaDimension::Warehouses, "warehouse locations"),
         (QuotaDimension::Staff, "staff users"),
     ] {
         let err = s
@@ -88,8 +88,8 @@ fn at_cap_rejects_with_the_legacy_error_shape_and_values() {
         match err {
             CoreError::SubscriptionLimitExceeded(message) => {
                 // RegisterLimit phrases the count as "already has 2"; the
-                // staff/warehouse variants say "currently have 2" — accept
-                // either, both carry the (limit = 1, current = 2) shape.
+                // staff variant says "currently have 2" — accept either, both
+                // carry the (limit = 1, current = 2) shape.
                 assert!(
                     message.contains("maximum 1")
                         && (message.contains("currently have 2")
@@ -99,6 +99,18 @@ fn at_cap_rejects_with_the_legacy_error_shape_and_values() {
             }
             other => panic!("expected SubscriptionLimitExceeded for {keyword}, got {other:?}"),
         }
+    }
+    // Warehouses report the SAME current count against a limit of 0: the tier
+    // does not include the workspace at all, so any active warehouse is excess.
+    let err = s
+        .enforce_creation_quota(QuotaDimension::Warehouses, &SubscriptionTier::Free)
+        .unwrap_err();
+    match err {
+        CoreError::SubscriptionLimitExceeded(message) => {
+            assert!(message.contains("maximum 0"), "got: {message}");
+            assert!(message.contains("currently have 2"), "got: {message}");
+        }
+        other => panic!("expected SubscriptionLimitExceeded for warehouse locations, got {other:?}"),
     }
 }
 

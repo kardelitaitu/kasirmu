@@ -1288,25 +1288,24 @@ fn enforce_warehouse_quota_blocks_free_at_limit() {
 }
 
 #[test]
-fn enforce_warehouse_quota_allows_plus_two() {
+fn enforce_warehouse_quota_blocks_plus_at_zero() {
     let conn = fresh();
     let s = store(&conn);
-    s.create_inventory_location("WH A", "warehouse", "")
-        .unwrap();
-    // Plus allows 2 warehouses; we have 1 → OK.
-    assert!(
-        s.enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
-            .is_ok()
-    );
-    s.create_inventory_location("WH B", "warehouse", "")
-        .unwrap();
-    // Now at 2 → Plus must be blocked.
+    // Plus has had no warehouse entitlement since 2026-09-29 (Premium+), so the
+    // FIRST warehouse is refused — this test used to fill up to two first.
     let err = s
         .enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Plus with 2 warehouses must be blocked: {err:?}"
+        "Plus at zero warehouses must be blocked: {err:?}"
+    );
+    // A legacy tenant that already holds one is OVER the moved cap, not under it.
+    s.create_inventory_location("WH A", "warehouse", "")
+        .unwrap();
+    assert!(
+        s.enforce_warehouse_quota(&SubscriptionTier::Plus, "warehouse")
+            .is_err()
     );
 }
 
@@ -1324,27 +1323,17 @@ fn enforce_warehouse_quota_error_message_includes_tier() {
 }
 
 #[test]
-fn enforce_warehouse_quota_pro_allows_three() {
+fn enforce_warehouse_quota_blocks_pro_at_zero() {
     let conn = fresh();
     let s = store(&conn);
-    s.create_inventory_location("WH A", "warehouse", "")
-        .unwrap();
-    s.create_inventory_location("WH B", "warehouse", "")
-        .unwrap();
-    // Pro allows 3 warehouses; we have 2 → OK.
-    assert!(
-        s.enforce_warehouse_quota(&SubscriptionTier::Pro, "warehouse")
-            .is_ok()
-    );
-    s.create_inventory_location("WH C", "warehouse", "")
-        .unwrap();
-    // Now at 3 → Pro must be blocked.
+    // Pro moved with Plus: the warehouse workspace is Premium+, so Pro is refused
+    // at zero and the entitlement test is the PREMIUM one below.
     let err = s
         .enforce_warehouse_quota(&SubscriptionTier::Pro, "warehouse")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Pro with 3 warehouses must be blocked: {err:?}"
+        "Pro at zero warehouses must be blocked: {err:?}"
     );
 }
 
@@ -1380,11 +1369,12 @@ fn enforce_warehouse_quota_enterprise_unlimited() {
 
 #[test]
 fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
-    // W7-B: the warehouse door. Two things are pinned: an armed warehouse
-    // create at the cap is refused in-tx and does not persist; and a
-    // NON-warehouse location neither consumes nor honours the arm, because
-    // stores are not counted by this dimension — vetoing one would refuse a
-    // row the cap never measured.
+    // W7-B: the warehouse door. Two things are pinned: an armed warehouse create
+    // OVER the cap is refused in-tx and does not persist; and a NON-warehouse
+    // location neither consumes nor honours the arm, because stores are not
+    // counted by this dimension — vetoing one would refuse a row the cap never
+    // measured. The body explains why the fixture starts over the cap instead of
+    // filling up to it.
     let conn = fresh();
     let s = store(&conn);
     let tier = SubscriptionTier::Free;
@@ -1397,27 +1387,34 @@ fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
         )
         .unwrap()
     };
+    // The warehouse dimension caps at ZERO below Premium since the 2026-09-29
+    // ruling, so no tier can "fill up to the cap" and then arm: Premium and
+    // Enterprise are unlimited (`None`) and cannot arm at all. The surviving
+    // shape is the one that matters in production — a LEGACY tenant whose rows
+    // predate the move, already over the cap, meeting an armed downgrade.
+    // `create_inventory_location` is tier-blind (only the arm makes the cap live
+    // in-tx), so the fixture can build that tenant directly.
+    assert_eq!(limit, 0, "no tier below Premium may open a warehouse");
+    s.create_inventory_location("WH A", "warehouse", "")
+        .unwrap();
+    s.create_inventory_location("WH B", "warehouse", "")
+        .unwrap();
     let baseline = warehouses(&conn);
     assert!(
-        baseline < limit,
-        "the fixture must start under the cap (baseline {baseline}, limit {limit})"
+        baseline > limit,
+        "the fixture is over the moved cap (baseline {baseline}, limit {limit})"
     );
-    for n in baseline..limit {
-        s.create_inventory_location(&format!("WH {n}"), "warehouse", "")
-            .unwrap();
-    }
-    assert_eq!(warehouses(&conn), limit);
     s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
     let err = s
         .create_inventory_location("WH over", "warehouse", "")
         .unwrap_err();
     assert!(
         matches!(err, CoreError::SubscriptionLimitExceeded(_)),
-        "Free at the warehouse cap must be refused in-tx: {err:?}"
+        "an over-cap warehouse create must be refused in-tx: {err:?}"
     );
     assert_eq!(
         warehouses(&conn),
-        limit,
+        baseline,
         "the over-cap warehouse must not persist"
     );
     s.arm_creation_quota(QuotaDimension::Warehouses, tier.clone());
@@ -1425,7 +1422,7 @@ fn warehouse_tx_veto_closes_limit_race_and_ignores_other_types() {
         .unwrap();
     assert_eq!(
         warehouses(&conn),
-        limit,
+        baseline,
         "a store row must not move the warehouse count"
     );
 }

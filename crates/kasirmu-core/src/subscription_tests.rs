@@ -84,15 +84,17 @@ fn tier_allows_workspace_type() {
     assert!(!SubscriptionTier::Free.allows_workspace_type("kds"));
     assert!(!SubscriptionTier::Free.allows_workspace_type("warehouse"));
 
-    // Plus tier: warehouse/inventory allowed, kds NOT allowed
-    assert!(SubscriptionTier::Plus.allows_workspace_type("warehouse"));
+    // Plus tier: inventory allowed, warehouse (Premium+) and kds (Pro+) NOT
+    assert!(!SubscriptionTier::Plus.allows_workspace_type("warehouse"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("inventory"));
     assert!(!SubscriptionTier::Plus.allows_workspace_type("kds"));
 
-    // Pro & Enterprise tier allow all
+    // Pro unlocks kds and the unknown shell type keys; the warehouse workspace
+    // is the one type reserved for Premium (owner ruling 2026-09-29).
     assert!(SubscriptionTier::Pro.allows_workspace_type("kds"));
     assert!(SubscriptionTier::Pro.allows_workspace_type("analytics-pro"));
-    assert!(SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(SubscriptionTier::Premium.allows_workspace_type("warehouse"));
     assert!(SubscriptionTier::Enterprise.allows_workspace_type("anything"));
 }
 
@@ -613,7 +615,8 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
     // A Plus + restaurant_starter bundle mints a signed payload whose
     // allowed_types lists kds even though the Plus TIER statically
     // excludes it (subscription-tiers.md §5). The entitlement must honor
-    // the payload, not the tier defaults.
+    // the payload, not the tier defaults. The bundle widens kds ONLY — the
+    // payload carries no `warehouse` (Premium+ since 2026-09-29).
     let sub = TenantSubscription {
         tenant_id: "default".into(),
         tier: SubscriptionTier::Plus,
@@ -622,7 +625,7 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
         max_locations: 1,
         max_pos_instances: 2,
         allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -630,7 +633,7 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
     };
     assert!(sub.allows_workspace_type("kds"));
     assert!(sub.allows_workspace_type("store-pos"));
-    assert!(sub.allows_workspace_type("warehouse"));
+    assert!(!sub.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -651,7 +654,7 @@ fn allows_workspace_type_empty_payload_falls_back_to_tier_defaults() {
         updated_at: String::new(),
     };
     assert!(!sub.allows_workspace_type("kds"));
-    assert!(sub.allows_workspace_type("warehouse"));
+    assert!(!sub.allows_workspace_type("warehouse"));
     assert!(sub.allows_workspace_type("store-pos"));
 }
 
@@ -692,7 +695,7 @@ fn allows_workspace_type_grace_expired_ignores_stored_list() {
         max_locations: 1,
         max_pos_instances: 2,
         allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -931,11 +934,12 @@ fn test_connection_aware_grace_and_pos_read_only() {
 
 #[test]
 fn max_warehouses_per_tier() {
-    // Free/OneTime: 1 warehouse; Plus: 2; Pro: 3
-    assert_eq!(SubscriptionTier::Free.max_warehouses(), Some(1));
-    assert_eq!(SubscriptionTier::OneTime.max_warehouses(), Some(1));
-    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(2));
-    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(3));
+    // No warehouse workspace below Premium (owner ruling 2026-09-29): the zeros
+    // match `allows_workspace_type("warehouse")` and the pricing table's row.
+    assert_eq!(SubscriptionTier::Free.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::OneTime.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(0));
+    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(0));
     // Premium/Enterprise: unlimited
     assert_eq!(SubscriptionTier::Premium.max_warehouses(), None);
     assert_eq!(SubscriptionTier::Enterprise.max_warehouses(), None);
@@ -1039,7 +1043,7 @@ fn allows_workspace_type_plus_tier() {
     assert!(tier.allows_workspace_type("store-pos"));
     assert!(tier.allows_workspace_type("restaurant-pos"));
     assert!(tier.allows_workspace_type("admin"));
-    assert!(tier.allows_workspace_type("warehouse"));
+    assert!(!tier.allows_workspace_type("warehouse"));
     assert!(tier.allows_workspace_type("inventory"));
     // Plus does NOT unlock kds — that is Pro (§3 Workspace Types).
     assert!(!tier.allows_workspace_type("kds"));
@@ -1047,12 +1051,11 @@ fn allows_workspace_type_plus_tier() {
 }
 
 #[test]
-fn allows_workspace_type_pro_tier_allows_all() {
-    for tier in [
-        SubscriptionTier::Pro,
-        SubscriptionTier::Premium,
-        SubscriptionTier::Enterprise,
-    ] {
+fn allows_workspace_type_pro_and_above() {
+    // Pro opens kds and every unknown shell key, but the warehouse workspace is
+    // Premium+ (owner ruling 2026-09-29), so it is asserted separately instead
+    // of being swept into the "all" loop.
+    for tier in [SubscriptionTier::Premium, SubscriptionTier::Enterprise] {
         assert!(tier.allows_workspace_type("store-pos"));
         assert!(tier.allows_workspace_type("restaurant-pos"));
         assert!(tier.allows_workspace_type("warehouse"));
@@ -1061,6 +1064,12 @@ fn allows_workspace_type_pro_tier_allows_all() {
         assert!(tier.allows_workspace_type("custom-plugin"));
         assert!(tier.allows_workspace_type("anything"));
     }
+
+    let pro = SubscriptionTier::Pro;
+    assert!(pro.allows_workspace_type("store-pos"));
+    assert!(pro.allows_workspace_type("kds"));
+    assert!(pro.allows_workspace_type("anything"));
+    assert!(!pro.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -1126,7 +1135,7 @@ fn tier_names() {
 fn test_plus_quota_limits() {
     assert_eq!(SubscriptionTier::Plus.max_locations(), Some(1));
     assert_eq!(SubscriptionTier::Plus.max_pos_instances(), Some(2));
-    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(2));
+    assert_eq!(SubscriptionTier::Plus.max_warehouses(), Some(0));
     assert_eq!(SubscriptionTier::Plus.max_staff_users(), Some(5));
     assert_eq!(SubscriptionTier::Plus.sales_history_days(), Some(365));
 }
@@ -1135,7 +1144,7 @@ fn test_plus_quota_limits() {
 fn test_pro_quota_limits() {
     assert_eq!(SubscriptionTier::Pro.max_locations(), Some(2));
     assert_eq!(SubscriptionTier::Pro.max_pos_instances(), Some(5));
-    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(3));
+    assert_eq!(SubscriptionTier::Pro.max_warehouses(), Some(0));
     assert_eq!(SubscriptionTier::Pro.max_staff_users(), Some(20));
     assert_eq!(SubscriptionTier::Pro.sales_history_days(), Some(5 * 365));
 }
@@ -1152,16 +1161,18 @@ fn test_free_history_limit() {
 
 #[test]
 fn test_workspace_type_matrix() {
-    // Plus gets inventory/warehouse but NOT kds.
+    // Plus gets inventory but NOT kds (Pro+) or warehouse (Premium+).
     assert!(SubscriptionTier::Plus.allows_workspace_type("store-pos"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("restaurant-pos"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("admin"));
     assert!(SubscriptionTier::Plus.allows_workspace_type("inventory"));
-    assert!(SubscriptionTier::Plus.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Plus.allows_workspace_type("warehouse"));
     assert!(!SubscriptionTier::Plus.allows_workspace_type("kds"));
-    // Pro gets kds.
+    // Pro gets kds; the warehouse workspace stays Premium+ (owner ruling
+    // 2026-09-29, matching the website's pricing row).
     assert!(SubscriptionTier::Pro.allows_workspace_type("kds"));
-    assert!(SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(!SubscriptionTier::Pro.allows_workspace_type("warehouse"));
+    assert!(SubscriptionTier::Premium.allows_workspace_type("warehouse"));
 }
 
 #[test]
@@ -1699,7 +1710,7 @@ fn workspace_type_grace_expired_plus_reverts_to_free_defaults() {
         max_pos_instances: 2,
         // Even though kds is in the payload, grace expiry reverts to Free.
         allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),

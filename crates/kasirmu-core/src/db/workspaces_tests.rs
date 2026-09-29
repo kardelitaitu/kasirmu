@@ -72,8 +72,11 @@ fn plus_bundle_sub() -> TenantSubscription {
         expires_at: None,
         max_locations: 1,
         max_pos_instances: 2,
+        // The bundle widens `kds` only. No Plus payload carries `warehouse`
+        // any more — Premium+ since 2026-09-29 — so this is what the license
+        // server mints for a Plus + restaurant_starter bundle today.
         allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","warehouse","inventory","kds"]"#.into(),
+            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -455,7 +458,14 @@ fn list_workspaces_with_entitlement_bundle_plus_sees_kds() {
         dto.iter().any(|w| w.type_key == "kds"),
         "bundle subscriber must see the KDS workspace, got {dto:?}"
     );
-    assert_eq!(dto.len(), 5);
+    // Four, not five: the payload no longer carries `warehouse`, so a Plus
+    // bundle sees pos + restaurant-pos + admin + kds. The bundle widens the
+    // kds type only — warehouse is Premium+, bundle or not.
+    assert!(
+        !dto.iter().any(|w| w.type_key == "warehouse"),
+        "a Plus bundle must not expose the warehouse workspace: {dto:?}"
+    );
+    assert_eq!(dto.len(), 4);
 }
 
 #[test]
@@ -672,7 +682,7 @@ fn enforce_instance_quota_non_pos_types_do_not_inflate_pos_count() {
 }
 
 #[test]
-fn enforce_instance_quota_enforces_warehouse_limit() {
+fn enforce_instance_quota_enforces_warehouse_gate() {
     let store_db = migrations::fresh_db();
     let (store, _) = fresh(&store_db);
     let free = sub_for_tier(SubscriptionTier::Free);
@@ -693,11 +703,20 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
             .is_err()
     );
 
-    // Plus allows 2 warehouses: 0 existing allows creation
+    // Plus has NO warehouse entitlement at all since 2026-09-29 (Premium+), so
+    // the type check refuses it before any count is consulted — and Pro, which
+    // used to allow three, is refused for the same reason.
+    let pro = sub_for_tier(SubscriptionTier::Pro);
     assert!(
         store
             .enforce_instance_quota(&plus, "warehouse", store_id)
-            .is_ok()
+            .is_err()
+    );
+    assert!(
+        store
+            .enforce_instance_quota(&pro, "warehouse", store_id)
+            .is_err(),
+        "Pro is refused too — the warehouse workspace is Premium+"
     );
 
     // Add 1st warehouse instance
@@ -710,11 +729,12 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
         )
         .unwrap();
 
-    // 1 warehouse exists; Plus (limit 2) still allows creation
+    // 1 legacy warehouse exists (the row below predates the gate): Plus is still
+    // refused, because the refusal is the TYPE gate now, not a count.
     assert!(
         store
             .enforce_instance_quota(&plus, "warehouse", store_id)
-            .is_ok()
+            .is_err()
     );
 
     // Add 2nd warehouse instance
@@ -736,12 +756,14 @@ fn enforce_instance_quota_enforces_warehouse_limit() {
         CoreError::SubscriptionLimitExceeded(msg) if msg.contains("warehouse")
     ));
 
-    // Pro tier allows 3 warehouses (2 exist currently)
-    let pro = sub_for_tier(SubscriptionTier::Pro);
+    // Premium is where the workspace starts: two legacy warehouses already exist
+    // and the unlimited tier still allows another.
+    let premium = sub_for_tier(SubscriptionTier::Premium);
     assert!(
         store
-            .enforce_instance_quota(&pro, "warehouse", store_id)
-            .is_ok()
+            .enforce_instance_quota(&premium, "warehouse", store_id)
+            .is_ok(),
+        "Premium must be able to open a warehouse"
     );
 }
 

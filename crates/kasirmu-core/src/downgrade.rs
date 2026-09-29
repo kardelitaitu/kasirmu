@@ -233,6 +233,22 @@ impl QuotaUsage {
         matches!(self.limit, Some(limit) if self.current >= limit)
     }
 
+    /// True when the tier does not include this dimension **at all**: a zero
+    /// cap with nothing in it.
+    ///
+    /// [`blocks_creation`](Self::blocks_creation) is still true here — the next
+    /// creation would be refused, which is exactly right for a creation gate.
+    /// It is the wrong answer for the owner-facing remediation markers
+    /// (`Store::persist_over_quota_markers`, `per_location_over_quota_rows`):
+    /// with nothing to archive there is no "at the cap" state to report, and
+    /// emitting one would put a permanent row on every tenant of every tier
+    /// that does not include the dimension — the warehouse workspace below
+    /// Premium (owner ruling 2026-09-29) and KDS below Pro.
+    #[must_use]
+    pub fn is_unincluded_dimension(&self) -> bool {
+        self.limit == Some(0) && self.current == 0
+    }
+
     /// How far past the cap the tenant already is (`current - limit`),
     /// or 0 when not over quota. This is the number of resources the
     /// owner must archive — or the upgrade delta — to return to within

@@ -18,9 +18,9 @@ use crate::workspace_type::{ADMIN, INVENTORY, RESTAURANT_POS, STORE_POS, WAREHOU
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubscriptionTier {
-    /// Free forever — 3-month sales history, 1 store, 1 register, 1 warehouse, offline-only.
+    /// Free forever — 3-month sales history, 1 store, 1 register, no warehouse workspace, offline-only.
     Free,
-    /// 1-Time Perpetual License — 1 store, 1 register, 1 warehouse, offline-first.
+    /// 1-Time Perpetual License — 1 store, 1 register, no warehouse workspace, offline-first.
     ///
     /// Deprecated: kept only for database back-compat (`from_db("one_time")`).
     /// Do not use for new code — the canonical lineup is Free / Plus / Pro / Premium / Enterprise.
@@ -28,9 +28,9 @@ pub enum SubscriptionTier {
         note = "legacy perpetual license — kept only for database back-compat; do not use for new code"
     )]
     OneTime,
-    /// Plus SaaS — 1 store, 2 registers, 2 warehouses, QRIS, cloud sync, Daily Sales Dashboard.
+    /// Plus SaaS — 1 store, 2 registers, QRIS, cloud sync, Daily Sales Dashboard.
     Plus,
-    /// Pro SaaS — 2 stores, 5 registers/store, 3 warehouses, analytics + KDS, Stripe + QRIS.
+    /// Pro SaaS — 2 stores, 5 registers/store, analytics + KDS, Stripe + QRIS.
     Pro,
     /// Premium — 5 stores, unlimited registers/warehouses, loyalty program, Lua engine, priority support.
     Premium,
@@ -111,12 +111,19 @@ impl SubscriptionTier {
     }
 
     /// Maximum inventory warehouse storage points allowed for this tier.
+    ///
+    /// `Some(0)` below Premium: the warehouse workspace is a Premium+ feature by
+    /// the owner's ruling of 2026-09-29, so a lower tier cannot open one at all.
+    /// That is the same shape as [`max_kds_screens`](Self::max_kds_screens) — 0
+    /// rather than unlimited below its own gate — and it mirrors
+    /// [`allows_workspace_type`](Self::allows_workspace_type), which denies the
+    /// `warehouse` type below Premium too. The website's pricing row publishes
+    /// the same zeros, so the two move together.
+    ///
     /// Returns `None` for unlimited (Premium / Enterprise).
     pub fn max_warehouses(&self) -> Option<i64> {
         match self {
-            Self::Free | Self::OneTime => Some(1),
-            Self::Plus => Some(2),
-            Self::Pro => Some(3),
+            Self::Free | Self::OneTime | Self::Plus | Self::Pro => Some(0),
             Self::Premium | Self::Enterprise => None,
         }
     }
@@ -281,19 +288,20 @@ impl SubscriptionTier {
     /// Check whether this tier allows the given workspace type.
     ///
     /// `type_key` is a workspace vertical ([`crate::workspace_type`]), not a
-    /// terminal profile — the two are different axes.
+    /// terminal profile — the two are different axes. From Pro up the answer is
+    /// permissive on purpose: the shells ship type keys the core does not
+    /// enumerate (`analytics-pro`), so only the gated types are named.
     pub fn allows_workspace_type(&self, type_key: &str) -> bool {
         match self {
             Self::Free | Self::OneTime => {
                 matches!(type_key, STORE_POS | RESTAURANT_POS | ADMIN)
             }
-            // Plus unlocks inventory/warehouse but NOT kds (§3 Workspace Types).
-            Self::Plus => matches!(
-                type_key,
-                STORE_POS | RESTAURANT_POS | ADMIN | WAREHOUSE | INVENTORY
-            ),
-            // Pro and above unlock every workspace type, including KDS.
-            Self::Pro | Self::Premium | Self::Enterprise => true,
+            // Plus unlocks inventory but NOT warehouse (Premium+) or kds (Pro+).
+            Self::Plus => matches!(type_key, STORE_POS | RESTAURANT_POS | ADMIN | INVENTORY),
+            // Pro adds kds and every other type the shells ship; the warehouse
+            // workspace is the one that stays Premium+ (owner ruling 2026-09-29).
+            Self::Pro => !matches!(type_key, WAREHOUSE),
+            Self::Premium | Self::Enterprise => true,
         }
     }
 }

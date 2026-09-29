@@ -1204,16 +1204,17 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
         "the row carries its own store as target"
     );
     assert_eq!(kds[0].resource_type, "kds_screen");
-    // Zero warehouses is not an "at cap" row even though Pro caps warehouses:
-    // an empty category is nothing to remediate, and Free/Plus cap KDS at 0
-    // which would otherwise flag every single store.
+    // Zero warehouses is not an "at cap" row. Pro caps warehouses at 0 since
+    // the workspace moved to Premium+ (2026-09-29), so without the
+    // un-included-dimension rule the 0/0 pair would read as "at the cap" and
+    // flag every single store — the same shape Free/Plus have for KDS.
     assert!(
         !rows.iter().any(|r| r.resource_type == "warehouse"),
         "{rows:?}"
     );
     // Topology-node aggregate (D61 ruling: marker-only dimension riding the
     // existing per-location caps — no tier cap of its own). Limit = SUM of
-    // Pro's finite caps: pos 5 + warehouses 3 + kds 2 = 10. Current = the
+    // Pro's finite caps: pos 5 + warehouses 0 + kds 2 = 7. Current = the
     // store's non-archived instances (2 active KDS + 1 suspended = 3), and
     // the suspended instance alone forces the Over verdict even though 3 is
     // far below the summed cap.
@@ -1231,8 +1232,8 @@ fn per_location_rows_emit_at_cap_and_omit_zero_counts() {
     assert_eq!(topo[0].current, 3, "suspended nodes still exist");
     assert_eq!(
         topo[0].limit,
-        Some(10),
-        "sum of Pro's finite per-location caps"
+        Some(7),
+        "sum of Pro's finite per-location caps (warehouses contribute 0)"
     );
     assert_eq!(
         topo[0].severity,

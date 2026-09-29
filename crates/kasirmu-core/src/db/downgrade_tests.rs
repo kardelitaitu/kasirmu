@@ -81,7 +81,7 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     let conn = fresh();
     seed(&conn);
     let s = store(&conn);
-    // Downgrade to Free: caps locations 1, registers 1, warehouses 1, staff 1, products 200.
+    // Downgrade to Free: caps locations 1, registers 1, warehouses 0, staff 1, products 200.
     let report = s.assess_downgrade(&SubscriptionTier::Free).unwrap();
 
     // Locations exactly at the cap: compliant but blocked from adding more.
@@ -89,16 +89,18 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     assert!(!loc.is_over_quota());
     assert!(loc.blocks_creation());
 
-    // Registers / warehouses / staff are strictly over (2 > 1).
-    for d in [
-        QuotaDimension::PosRegisters,
-        QuotaDimension::Warehouses,
-        QuotaDimension::Staff,
-    ] {
+    // Registers / staff are strictly over by 1 (2 > 1).
+    for d in [QuotaDimension::PosRegisters, QuotaDimension::Staff] {
         let u = report.usage(d).unwrap();
         assert!(u.is_over_quota(), "{d:?} should be over quota");
         assert_eq!(u.excess(), 1);
     }
+
+    // Warehouses are over by 2, not 1: the Free cap is 0 because the
+    // warehouse workspace is Premium+.
+    let wh = report.usage(QuotaDimension::Warehouses).unwrap();
+    assert!(wh.is_over_quota(), "warehouses should be over quota");
+    assert_eq!(wh.excess(), 2);
 
     // Products (2) are far under the 200 cap.
     assert!(
@@ -109,7 +111,7 @@ fn free_tier_reports_over_quota_after_a_downgrade() {
     );
 
     assert!(report.is_over_quota());
-    assert_eq!(report.total_excess(), 3);
+    assert_eq!(report.total_excess(), 4);
     assert_eq!(report.over_quota_usages().count(), 3);
 }
 
@@ -215,7 +217,12 @@ fn persist_drops_markers_once_counts_fall_within_quota() {
         .unwrap(),
         4
     );
-    // Drive terminals and warehouses back to zero (under the Free cap of 1).
+    // Drive terminals and warehouses back to zero. Terminals fall under the
+    // Free cap of 1 and drop their marker; warehouses drop theirs too, but not
+    // because they fit — the Free warehouse cap is 0 (Premium+ only), and a
+    // zero cap with nothing in it is a dimension the tier does not include at
+    // all, so there is nothing to remediate and no row to write
+    // (`QuotaUsage::is_unincluded_dimension`).
     conn.execute("DELETE FROM terminals WHERE id IN ('t-1','t-2')", [])
         .unwrap();
     conn.execute(

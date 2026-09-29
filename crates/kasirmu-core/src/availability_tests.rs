@@ -57,11 +57,36 @@ fn cases() -> Vec<Case> {
     for f in quota {
         // Free supplies a finite limit so the quota knob has something to
         // reach; the tier source cannot deny a quota family at any tier.
+        //
+        // Warehouses are the exception. Their only finite cap is 0, on the
+        // tiers that do not include the workspace at all (Free/Plus/Pro), and
+        // a 0 cap is already reached at zero usage — there is no "one below
+        // the limit" state to probe. So the warehouse case baselines on
+        // Premium (unlimited, so the clean ground is available) against a Free
+        // withholding tier, and its quota arm is pinned separately by
+        // `warehouse_quota_denies_on_every_tier_that_does_not_include_it`.
+        let warehouse = f == F::Warehouses;
         out.push(Case {
             feature: f,
-            granting: &SubscriptionTier::Free,
-            withholding: &SubscriptionTier::Free,
-            label: "free",
+            granting: if warehouse {
+                &SubscriptionTier::Premium
+            } else {
+                &SubscriptionTier::Free
+            },
+            // Also Premium for warehouses, NOT Free. The probe infers "this
+            // source is able to deny" from a single-source denial, so the
+            // withholding tier must not itself fail the quota arm: on Free the
+            // 0 warehouse cap already denies, which would make the Tier probe
+            // come back unavailable for a reason that is not Tier at all.
+            // (Quota families are never denied by the tier flag anyway —
+            // `tier_allows` answers true for all four — so this arm is inert
+            // for every quota case and only the confounding matters.)
+            withholding: if warehouse {
+                &SubscriptionTier::Premium
+            } else {
+                &SubscriptionTier::Free
+            },
+            label: if warehouse { "premium" } else { "free" },
         });
     }
     out.push(Case {
@@ -235,6 +260,41 @@ fn parse_rejects_unknown_keys_rather_than_defaulting_open() {
             AvailabilityFeature::parse(key),
             None,
             "{key} must not parse"
+        );
+    }
+}
+
+#[test]
+fn warehouse_quota_denies_on_every_tier_that_does_not_include_it() {
+    // Owner ruling 2026-09-29 (matching the website's pricing row): the
+    // warehouse workspace is Premium and up, so every lower tier carries a
+    // ZERO warehouse cap. A zero cap is reached at zero usage, which means the
+    // quota arm denies before a single warehouse exists — and it denies as
+    // `Quota`, not `Tier`, because quota families have no tier boolean.
+    for tier in [
+        SubscriptionTier::Free,
+        SubscriptionTier::Plus,
+        SubscriptionTier::Pro,
+    ] {
+        let facts = AvailabilityFacts::baseline(AvailabilityFeature::Warehouses, &tier);
+        assert_eq!(facts.usage.warehouses, 0);
+        let verdict = explain_availability(&facts);
+        assert!(!verdict.available, "{tier:?} must not offer warehouses");
+        assert_eq!(
+            verdict.reason,
+            Some(AvailabilityReason::Quota),
+            "{tier:?} denies warehouses through the zero cap, not the tier flag"
+        );
+        assert_eq!(verdict.detail.limit, Some(0));
+    }
+    // Premium and Enterprise are unlimited: no count can deny them, and the
+    // clean-ground probe the precedence walk uses depends on that.
+    for tier in [SubscriptionTier::Premium, SubscriptionTier::Enterprise] {
+        let mut facts = AvailabilityFacts::baseline(AvailabilityFeature::Warehouses, &tier);
+        facts.usage.warehouses = i64::MAX;
+        assert!(
+            explain_availability(&facts).available,
+            "{tier:?} must allow warehouses at any count"
         );
     }
 }

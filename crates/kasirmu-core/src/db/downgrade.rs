@@ -87,6 +87,13 @@ impl Store<'_> {
 
                 let mut markers = Vec::with_capacity(report.usages.len());
                 for usage in &report.usages {
+                    // A dimension the tier does not include at all (a zero cap
+                    // with nothing in it) is not an "at the cap" row: there is
+                    // nothing to archive. Without this skip every Free/Plus/Pro
+                    // tenant would carry a permanent `warehouses 0/0` marker.
+                    if usage.is_unincluded_dimension() {
+                        continue;
+                    }
                     let (severity, severity_str) = if usage.is_over_quota() {
                         (OverQuotaSeverity::Over, "over")
                     } else if usage.blocks_creation() {
