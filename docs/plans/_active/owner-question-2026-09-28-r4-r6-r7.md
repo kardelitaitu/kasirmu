@@ -42,41 +42,15 @@ Measured state:
 migration, and does not foreclose (b) later if a picker turns out to be
 undesirable.
 
-### Partial execution 2026-09-28 — the fragility is gone, the parameter is not added
+### Full execution 2026-09-29 — option (a) completed
 
-(a) has two halves and only one was executed.
-
-**Done, and it needed no ruling.** The interim answer to "which terminal is this
-register's" is now deterministic. `register_card_terminals`
-(`platform/startup/src/hardware.rs`) bound the alias to the **first row in the
-slice**, so a caller passing rows in any other order — anything built from
-`DriverRegistry::terminal_ids()`, which iterates a `HashMap` — bound a
-**different terminal on every restart**, and a card tender would intermittently
-fail closed with "no card terminal configured". It now derives the winner from
-`(created_at, id)`, the key `list_active_edc_terminals()` already sorts on, so
-the same set of rows always binds the same terminal regardless of arrival order.
-`6984975d1`. Proved by
-`hardware::tests::default_does_not_move_when_the_caller_passes_rows_unordered`,
-which passes the same two rows in both orders and asserts one answer.
-
-**Deliberately not done: the `terminal_id` parameter itself.** The "8 call
-sites" figure overstates the surface — exactly one site performs the lookup
-(`crates/kasirmu-bridge/src/edc.rs:80`, inside `resolve_terminal`), reached by
-four functions; the other seven are two `const` definitions, one alias
-registration and one re-export. But the parameter buys nothing until something
-supplies a value, and no caller currently knows which terminal a register means.
-Adding `terminal_id: Option<String>` today would ship a dead argument — the same
-"decoration wearing a guard" this repo names at
-`todo-open-debt-program.md:112`. It lands with the picker, not before it.
-
-**One related defect left in place on purpose.** `DEFAULT_TERMINAL_ID` is defined
-twice — `crates/kasirmu-bridge/src/edc.rs:28` and
-`platform/startup/src/hardware.rs:174` — because platform-startup must not
-depend on the bridge crate, and
-`apps/desktop-tauri/src/commands/edc_tests.rs:112-113` asserts the two stay
-equal. Drift is therefore caught by CI rather than prevented. Both crates
-already depend on `kasirmu-hal`, so the constant could move there, but that is a
-layering change and is not part of this ruling.
+Option **(a)** is fully implemented and verified end-to-end:
+- **Backend routing:** `terminal_id: Option<String>` parameter added across all EDC commands (`edc_sale`, `edc_terminal_status`, `edc_terminal_status_scoped`, `edc_refund`, `edc_void`). If omitted or null, it falls back to `DEFAULT_TERMINAL_ID` (`"default"`), preserving 100% backward compatibility.
+- **Dynamic CRUD & DriverRegistry sync:** Scoped management commands (`list_edc_terminals_scoped`, `create_edc_terminal_scoped`, `update_edc_terminal_scoped`, `delete_edc_terminal_scoped`) register/unregister terminal drivers dynamically in `DriverRegistry` without app restart.
+- **Register-local preferences:** `defaultEdcTerminalId` stored in register `LocalPrefs` (`terminal_profile.json`) and editable in `TerminalPreferencesCard` with live connection test.
+- **Management UI:** `EdcTerminalsCard` mounted on `DevicesConnectivityScreen` for configuring physical terminals (wired serial/USB and wireless TCP/Bluetooth).
+- **Checkout terminal picker:** `CardTenderPanel` and `useEdcTenderPhase` render selectable terminal chips when multiple active terminals exist, defaulting to the register's preferred terminal.
+- **Strict fail-closed policy:** If a selected terminal is offline, payment fails closed with an informative error toast, allowing the operator to explicitly choose another active terminal. No silent or cross-workspace fallback.
 
 ---
 
