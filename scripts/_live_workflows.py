@@ -19,6 +19,19 @@ live is how a deleted check reads as coverage to whoever greps for it.
 If you are adding a seventh checker that needs the live workflow set, import this
 rather than writing the glob again. Six copies is how the disagreement happened; a
 seventh is how it comes back.
+
+WHEN NOT TO USE IT
+==================
+verify-agents-mirrors.py deliberately does NOT import this, and its three workflow globs
+are correct as written. Its contract is different: `def live_workflows(root: Path)` takes
+the root as a PARAMETER, so the same code serves both the real repository and the
+throwaway fixtures its self-test builds. This module's contract is "this repository's
+workflows" and has no parameter to redirect.
+
+That makes the parameterised version the BETTER design, not the worse one -- it is
+testable against a fixture. Swapping it for a fixed-root helper would have made the
+self-test count the real repository's workflows instead of its own, and the count it
+asserts would still have passed, because the real repository also has four.
 """
 from __future__ import annotations
 

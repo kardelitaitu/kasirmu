@@ -84,6 +84,15 @@ DOCS = ROOT / "docs" / "operations" / "ci-pipeline.md"
 # class this checker exists to catch, in the one document a release manager
 # actually reads at ship time, and outside this script's scope until now.
 RELEASE_CHECKLIST = ROOT / "docs" / "releases" / "checklist.md"
+# The live-workflow RULE is shared; see scripts/_live_workflows.py. Six checkers
+# had their own copy of this question and three disagreed about .yaml, so half the suite
+# would have gone quiet on a .yaml workflow while the other half still checked it. The
+# sys.path insert is deliberate and must stay ABOVE the import: this file is also loaded
+# by path in its own self-test harness, where the script's directory is not on the path
+# for free.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _live_workflows import live_workflow_files as _live_workflows  # noqa: E402
+
 WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 # Where retired (`.yml.bak`) workflows live. P4 of the folder restructure moved
 # them from the workflows directory itself into this subdirectory, so the
@@ -272,7 +281,7 @@ def dangling_ci_refs(
     if live is None:
         live = {}
         if WORKFLOWS_DIR.is_dir():
-            for wf in sorted(list(WORKFLOWS_DIR.glob("*.yml")) + list(WORKFLOWS_DIR.glob("*.yaml"))):
+            for wf in _live_workflows():
                 live[wf.name] = workflow_jobs(wf)
     if baks is None:
         baks = set()
@@ -456,8 +465,7 @@ def hook_workflow_pointers() -> list[str]:
     """Real-path wrapper over hook_workflow_pointers_from_text()."""
     if not PRE_COMMIT_HOOK.is_file():
         return []
-    live = {p.name for p in list((ROOT / ".github" / "workflows").glob("*.yml"))
-             + list((ROOT / ".github" / "workflows").glob("*.yaml"))}
+    live = {p.name for p in _live_workflows()}
     return hook_workflow_pointers_from_text(
         PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace"), live)
 
@@ -855,7 +863,7 @@ def main() -> int:
         return 2
 
     docs_lines = DOCS.read_text(encoding="utf-8").splitlines()
-    workflow_files = sorted(list(WORKFLOWS_DIR.glob("*.yml")) + list(WORKFLOWS_DIR.glob("*.yaml")))
+    workflow_files = _live_workflows()
     workflows_by_name = {wf.name: wf for wf in workflow_files}
     # Workflows that exist only as `<name>.yml.bak`. 23c96330 retired every
     # non-dev CI workflow this way; GitHub never executes a .bak file, so a doc
