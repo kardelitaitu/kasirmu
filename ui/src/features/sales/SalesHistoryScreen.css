@@ -440,6 +440,13 @@
   max-width: 28.75rem;
 }
 
+/* The e-Faktur badge under a receipt code (SalesHistoryScreen.tsx:118). Carries
+ * the tooltip anchor now that the native title= is gone. */
+.sales-history-faktur-badge {
+  display: inline-block;
+  margin-top: 2px;
+}
+
 /* The e-Faktur NSFP block inside the detail drawer
  * (SalesHistoryScreen.tsx:1435). Was inline. */
 .sales-history-efaktur-section {

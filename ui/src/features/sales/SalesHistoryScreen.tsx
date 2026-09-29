@@ -32,6 +32,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
+import Tooltip from '@/app/Tooltip';
 import { NoSalesIcon, NotFoundIcon } from '@/components/EmptyStateIllustrations';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import RefundModal from './RefundModal';
@@ -116,9 +117,20 @@ function SwipeableOrderRow({ sale, isManager, onView, onVoid, cashierName }: Swi
       <td className="sales-history-cell-receipt">
         <div>{sale.displayCode ?? '\u2014'}</div>
         {sale.fakturPajak && (
-          <span style={{ display: 'inline-block', marginTop: '2px' }} title={`Faktur Pajak: ${sale.fakturPajak}`}>
-            <Badge variant="info" size="sm">e-Faktur</Badge>
-          </span>
+          // The native `title=` that used to sit on this span was a real a11y
+          // defect, not just a lint hit: a browser tooltip is mouse-only, so the
+          // NSFP it carried was unreachable by keyboard and invisible to screen
+          // readers. The shared Tooltip + an explicit aria-label is what the rest
+          // of the app uses for the same job (SettingsNavTree.tsx:625,
+          // EmailReportSettings.tsx:451) and what the guard exists to enforce.
+          <Tooltip content={`Faktur Pajak: ${sale.fakturPajak}`}>
+            <span
+              className="sales-history-faktur-badge"
+              aria-label={`Faktur Pajak: ${sale.fakturPajak}`}
+            >
+              <Badge variant="info" size="sm">e-Faktur</Badge>
+            </span>
+          </Tooltip>
         )}
       </td>
       <td>{new Date(sale.createdAt).toLocaleString()}</td>
