@@ -13311,4 +13311,37 @@ line still fails the gate, so the pass-through did not blunt it.
 tree. Restored with `git checkout --`, verified byte-identical to HEAD. Nothing was
 committed from that run.
 
+### 2026-09-29 — Two dead tables beside the receipt index allocator
+
+**Found while checking that `5f59498df`'s tombstone removal left nothing dangling.**
+That refactor is CORRECT and I verified the reason rather than assuming it: it replaces
+the old "an index id is never reused" rule with a **lowest-available slot recycler**, and
+the code genuinely implements it — `allocate_entity_index_with_ceiling_on_conn`
+(`crates/kasirmu-core/src/db/receipt_code.rs:170-191`) returns `1` when free and otherwise
+the first gap (`t1.index_id + 1` where `index_id + 1` is unused), which matches the module
+doc written in the same commit and plan §4.1 / §10. Dropping the tombstone WRITE path is
+therefore right: with recycling, a retired id is meant to come back.
+
+**What the refactor left behind.** Two tables are created and replicated but read and
+written by nothing:
+
+- `entity_index_cursors` — `20261006_receipt_hierarchy_code.sql:37` plus the PG replica.
+- `entity_index_tombstones` — the same file `:49`.
+
+Neither is touched by any `.rs` outside two COMMENTS in
+`crates/kasirmu-core/src/migrations_tests.rs` (`:823`, `:1078`), both of which merely count
+tables. The old module doc's "Allocation is monotonic, driven by `entity_index_cursors`"
+was the only thing that ever claimed otherwise, and `5f59498df` removed that sentence along
+with the tombstone writer — so the header is now honest and the tables are simply orphaned.
+Plan `_active/receipt-hierarchy-code.md` documents the recycler in three places (§4.1, §10,
+the checklist) and mentions **neither table**.
+
+**NOT dropped here, deliberately.** Removing them is a migration change, which AGENTS.md
+§E6 puts on the ask-first list, and it is wider than it looks: both are pinned by the
+table-count assertion (`migrations_tests.rs:833`, `127`) and appear in the generated
+`20260813_init.pg.sql` whitelist at `:621-630` and its RLS array at `:3754`, so a drop must
+move the count pin and regenerate the PG replica in the same pass. They are inert today
+(no reader, no writer, no policy that depends on them), so the cost of leaving them is
+schema noise rather than risk. Recorded for the allocator's owner to decide.
+
 > last audited 29-09-26 by docs-auditor
