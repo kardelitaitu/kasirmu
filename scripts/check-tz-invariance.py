@@ -8,6 +8,28 @@ same file under each zone and requires identical results.
 Before the fix this script fails: isoToday(null) used the device calendar, so
 TZ=Asia/Jakarta and TZ=Pacific/Kiritimati disagree with TZ=UTC near day
 boundaries. That is the regression being pinned.
+
+WHAT IS ACTUALLY BEING PROVEN, and by what
+==========================================
+Running the tests under four (now five) zones proves nothing on its own. A zone only
+disagrees with UTC during part of the day, so the gate is sensitive only if the chosen
+offsets COVER ALL 24 HOURS between them. Trim a zone and the gate still runs, still
+passes, and simply stops noticing host dependence for part of every day -- which is
+why ZONES carries a comment forbidding exactly that edit, and why the arithmetic is
+what --self-test checks.
+
+  --self-test   Asserts the sensitivity arithmetic and the zone preflight. Pure: no
+                file is written and no vitest is started. Dispatched ABOVE the
+                module-level run at the bottom, which is why this file has no main().
+  zone_probe()  Runs before the expensive loop and fails if this host does not honour
+                a zone name. An unrecognised TZ does not error in Node -- it falls back
+                and the run still PASSES, which would silently remove a window. Costs
+                microseconds here and a whole CI job if discovered afterwards.
+
+Corrected 2026-09-29: the ZONES comment previously mis-derived the west-zone rule and
+claimed full 24-hour coverage that did not exist -- there was a 07:00-10:00 blind spot
+every day. Pacific/Honolulu (UTC-10, no DST) closes it. See the ZONES comment for the
+full derivation.
 """
 from __future__ import annotations
 
