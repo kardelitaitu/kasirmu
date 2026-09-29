@@ -7,6 +7,17 @@
 > softened, re-dated or re-scoped and every sha it names is intact; where a heading exceeded 75
 > characters it was shortened to fit the records-heading limit and the body under it is unchanged.
 >
+> **On the sector filenames in the headings below.** They name documents that are no longer in the tree,
+> and that is a **retirement, not a loss**: `0689d5652` ("docs: unify audit + decision records, add area
+> tags + generator") deleted the whole repo-root `audit/` directory — 37 sector reports, `01-crm-module.md`
+> through `32-money-frontend.md` — after consolidating their findings into
+> [audit-open-findings.md](./audit-open-findings.md). So the headings read as broken pointers when they are
+> really **historical paths**: the sources live at `audit/<name>` in any revision before `0689d5652`, and
+> `git show 0689d5652^:audit/01-crm-module.md` still serves the original CRM report in full. Nothing was
+> merged into `docs/audits/`, which holds a different, later set of dated audits. The finding IDs were
+> deliberately preserved across the consolidation, so the entries above remain traceable to code comments
+> and commit history even though the prose that named the files did not survive with them.
+>
 > What did **not** come here, and why: every dated correction, dated retraction and gate-integrity
 > block from the 2026-09-13/14 run stayed in the open register. Nine of those sixteen blocks state work
 > still owed (`PARKED`, an allowlist entry the owner should drop, `Reported, not fixed`, residuals
