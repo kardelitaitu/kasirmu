@@ -48,14 +48,14 @@ export default function RestaurantReceiptsScreen({
   const markSettingsUpdated = settingsCtx?.markSettingsUpdated;
   const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
   const { caps } = useSubscription();
-  const { user } = useAuth();
+  const { session } = useAuth();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const hw = useTerminalHardware(effectiveTerminalId, settings.store.currency);
 
   const isFreeTier = !caps || caps.tier === 'free';
-  const staffDisplayName = user?.name || user?.username || 'Budi S.';
+  const staffDisplayName = session?.display_name || 'Budi S.';
 
   // ── Receipt format draft state ──────────────────────────────
   const [paperWidth, setPaperWidth] = useState<'standard' | 'narrow'>('standard');
@@ -139,24 +139,25 @@ export default function RestaurantReceiptsScreen({
     if (sessionToken) {
       getUserPreferencesScoped(sessionToken)
         .then((prefs) => {
-          if (prefs.resto_rcpt_show_code !== undefined) {
-            setShowReceiptCode(prefs.resto_rcpt_show_code === 'true');
+          const p = prefs as Record<string, string | undefined>;
+          if (p['resto_rcpt_show_code'] !== undefined) {
+            setShowReceiptCode(p['resto_rcpt_show_code'] === 'true');
           }
-          if (prefs.resto_rcpt_show_dt !== undefined) {
-            setShowDateTime(prefs.resto_rcpt_show_dt === 'true');
+          if (p['resto_rcpt_show_dt'] !== undefined) {
+            setShowDateTime(p['resto_rcpt_show_dt'] === 'true');
           }
-          if (prefs.resto_rcpt_show_staff !== undefined) {
-            setShowStaffName(prefs.resto_rcpt_show_staff === 'true');
+          if (p['resto_rcpt_show_staff'] !== undefined) {
+            setShowStaffName(p['resto_rcpt_show_staff'] === 'true');
           }
-          if (prefs.resto_rcpt_show_footer !== undefined) {
-            setShowFooter(prefs.resto_rcpt_show_footer === 'true');
+          if (p['resto_rcpt_show_footer'] !== undefined) {
+            setShowFooter(p['resto_rcpt_show_footer'] === 'true');
           }
-          if (prefs.resto_rcpt_tax_rate !== undefined) {
-            const parsed = Number(prefs.resto_rcpt_tax_rate);
+          if (p['resto_rcpt_tax_rate'] !== undefined) {
+            const parsed = Number(p['resto_rcpt_tax_rate']);
             if (!isNaN(parsed)) setTaxRatePercent(clamp(parsed, 0, 100));
           }
-          if (prefs.resto_rcpt_logo) {
-            setBusinessLogo(prefs.resto_rcpt_logo);
+          if (p['resto_rcpt_logo']) {
+            setBusinessLogo(p['resto_rcpt_logo']);
           }
         })
         .catch(() => {
@@ -324,7 +325,6 @@ export default function RestaurantReceiptsScreen({
     setTestingPrint(true);
     try {
       const currency = settings.store.currency || 'IDR';
-      const effectiveFooter = showFooter ? footer : '';
       await printSalesReceipt(sessionToken, {
         receiptNumber: '01-01-260929-01-000042',
         date: new Date().toLocaleDateString(),
