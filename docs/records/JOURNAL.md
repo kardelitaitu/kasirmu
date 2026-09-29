@@ -13232,6 +13232,31 @@ typing rows, as its header requires; 68 rows / 481 registered. `cargo test -p ka
 gate_audit` → 3 passed. `RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps` →
 clean. `cargo fmt --all --check` and workspace clippy `-D warnings` → clean.
 
+### 2026-09-29 — Tablet twin of the same ratchet: mobile floor 343 -> 345
+
+**Problem:** The desktop entry above covers the app shell. The SAME commit registered the
+same pair on the tablet shell (`7e2ddcbe5` added
+`history::stamp_faktur_pajak_scoped` and `history::create_faktur_pengganti_scoped` to
+both `lib.rs` files), and it moved neither the mobile floor nor the mobile ledger — so
+`cargo test -p kasirmu-mobile` was red at HEAD too. Found by a full-workspace run, not by
+the per-crate checks.
+
+**What landed:** the two names above and nothing else, verified by diffing the
+`generate_handler![` block against `ebdca2758` (the commit that last set the constant):
+343 names then, 345 now, zero removals. Both arrive GATED on `SALES_PROCESS`, so
+regenerating the ledger rewrote only `REGISTERED_TOTAL` (343 -> 345) and left all 92 debt
+rows identical.
+
+**Note on the two-leg shape:** the mobile file checks the floor against the ledger's
+generated total as well as against the tree, so raising the floor alone turns it red with
+"the floor is now guarding a number nobody measured". Regenerating the ledger is required
+in the same pass; that is the pin working as designed, not a second defect.
+
+**Verified:** `KASIRMU_REGENERATE_GATE_LEDGER=1 cargo test -p kasirmu-mobile --lib
+drift_pin_generated_ledger_is_the_sweeps_own_output` → regenerated, 92 rows / 345
+registered. `cargo test -p kasirmu-mobile --lib commands::registration_gate_tests` → 12
+passed.
+
 
 
 

@@ -201,7 +201,18 @@ mod debt;
 /// tree, which is the claim it was written for. Verified before raising: `af77f0144`
 /// touches `commands/setup.rs` and its tests but NOT this file or the generated ledger, so
 /// the lag was real and unattributed rather than a mis-parse.
-const REGISTERED_FLOOR: usize = 343;
+///
+/// The 343 -> 345 step, 2026-09-29. `7e2ddcbe5` (feat(bridge): expose e-faktur stamping
+/// and pengganti endpoints) registered `history::stamp_faktur_pajak_scoped` and
+/// `history::create_faktur_pengganti_scoped` on BOTH shells and moved neither floor nor
+/// either ledger, so the desktop leg (475 -> 481) and this one were both red at HEAD. The
+/// same commit's tablet half is these two names and nothing else; verified by diffing the
+/// `generate_handler![` block against `ebdca2758`, which is the commit that last set this
+/// constant. Both arrive GATED on `SALES_PROCESS`, which is why the ledger's register
+/// (`registration_gate_debt.generated.rs`) did not move — the pair is a write door, and an
+/// already-gated arrival is exactly the case only this leg can see. Provenance recorded in
+/// docs/records/JOURNAL.md.
+const REGISTERED_FLOOR: usize = 345;
 /// How far the parsed count may rise without regenerating: names are added by ordinary
 /// feature work, so the floor is a lower bound plus slack and never an equality.
 /// Crossing the slack is the signal that the ledger needs regenerating in the same pass.
