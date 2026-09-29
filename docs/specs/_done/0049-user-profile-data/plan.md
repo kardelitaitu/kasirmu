@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. Every mechanism this plan commits to was located in the current tree, which matters here because the plan's own Known-deviations section predicted the implementation would sit somewhere other than where the plan assumed. The profile API is `crates/kasirmu-core/src/db/profile.rs:92` (`is_complete`) and `:348` (`mask_last4`), with the writers at `crates/kasirmu-core/src/db/profile/user.rs:76` (`create_user_with_profile`), `:366` (`get_user_profile_viewed_by`), `:454` (`require_role_assignable`) and `:487` (`assign_role_guarded`). The three sensitive keys are registered exactly as named, at `platform/core/src/permission_registry.rs:202`, `:208` and `:214`. The encryption deviation recorded in the plan is still accurate AND now has a more precise location than the plan could give: the plan says `oz_core::crypto`, which is still true, but `crates/kasirmu-core/src/crypto.rs` is a 14-line re-export shim for the `kasirmu-crypto` crate, where `encrypt_profile_field` is at `crates/kasirmu-crypto/src/lib.rs:641`, `decrypt_profile_field` at `:651`, with a `profile_field_roundtrip` test at `crates/kasirmu-crypto/src/lib_tests.rs:49`. The deviation rationale (oz-security depends on kasirmu-core, so the direction is impossible) still holds and the `masks in core for the same reason` reasoning is unchanged. `get_staff_profile_scoped` is registered on both clients at `apps/desktop-tauri/src/commands/staff.rs:95` and `apps/mobile-tauri/src/commands/staff.rs:106`. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
 # User profile data contract with sensitive-field handling
 
 > **Status: IMPLEMENTED — 2026-08-11.** Shipped in seven commits
@@ -20,8 +21,8 @@ This is D9 step 6 and depends on 0046–0048.
   `role_id`, `is_active`, timestamps (migration `007_customers.sql`).
 - Money convention: i64 minor units (`total_spent_minor`, `opening_balance_minor`);
   `customers.notes` is `TEXT NOT NULL DEFAULT ''`.
-- `oz-security` provides keyring-backed encryption (license-API-key precedent:
-  `apps/desktop-client/src/commands/license.rs` encrypts the API key) and
+- `kasirmu-security` provides keyring-backed encryption (license-API-key precedent:
+  `apps/desktop-tauri/src/commands/license.rs` encrypts the API key) and
   `mask.rs` (truncation/masking, PAN precedent).
 - Shift data exists for the analytics follow-up (migration `021_shifts.sql`:
   user_id, terminal_id, opening/closing/expected/cash_difference/total_sales).
@@ -60,7 +61,7 @@ Creation requires the 9 fields; legacy rows enter the incomplete-profile state.
   enforced on the profile command surface; Auditor excluded (via the 0046/0047
   stack).
 - Encryption: `national_id` + `monthly_take_home_minor` encrypted at rest via
-  `oz-security` keyring.
+  `kasirmu-security` keyring.
 - Masking: `national_id` displays last-4 by default; full value only via the
   explicit grant, masked in export/log surfaces.
 - Read audit: every read of the three sensitive fields emits an audit event
@@ -98,12 +99,12 @@ assignment and sensitive grants require a complete profile.
 3. Implement validation + incomplete-profile state in the staff command
    surface (both clients).
 4. Wire the sensitive grants through the 0046/0047 stack.
-5. Add encryption (oz-security keyring), masking, read-audit, and residency
+5. Add encryption (kasirmu-security keyring), masking, read-audit, and residency
    exclusions in the profile read/export/sync paths.
 6. Update the staff form, list, and detail UI (fields, masking, incomplete
    badge); extend the staff IPC args and pin them with the contract test.
-7. Run area tests: `test-tdd.sh -p crates/oz-core`, `cargo test -p oz-pos-app
-   --lib`, `cargo test -p oz-pos-tablet --lib`, fmt, clippy, drift guard,
+7. Run area tests: `test-tdd.sh -p crates/kasirmu-core`, `cargo test -p kasirmu-app
+   --lib`, `cargo test -p kasirmu-mobile --lib`, fmt, clippy, drift guard,
    plus the UI checks from validation.md.
 
 ## 6. Test plan
@@ -111,7 +112,7 @@ assignment and sensitive grants require a complete profile.
 ### Existing tests to modify
 
 - `create_staff` / `create_staff_scoped` tests
-  (`apps/desktop-client/src/commands/staff.rs` ~692–820, tablet `staff.rs`):
+  (`apps/desktop-tauri/src/commands/staff.rs` ~692–820, tablet `staff.rs`):
   arg fixtures gain the 9 required fields;
   `create_staff_args_deserialize` / `_debug` pin the new wire shape.
 - UI `StaffManagementScreen.test.tsx` create-form fixtures gain the required
@@ -130,7 +131,7 @@ assignment and sensitive grants require a complete profile.
 - Uniqueness: `national_id` (when present) and `email` reject duplicates.
 - Incomplete-profile semantics: checkout login works; flagged in staff
   management; management-role assignment and sensitive grants denied.
-- Encryption round-trip via `oz-security` keyring; fail-closed when the key
+- Encryption round-trip via `kasirmu-security` keyring; fail-closed when the key
   is missing.
 - Masking: `national_id` renders last-4 by default; full value only via the
   explicit grant.
@@ -232,9 +233,11 @@ acceptance criteria are met (see validation.md). Moved to `_done/` on
 ### Known deviations
 
 - Encryption uses `oz_core::crypto` (domain-separated AES-GCM, static key)
-  rather than the oz-security keyring — oz-security depends on oz-core, so
+  rather than the kasirmu-security keyring — kasirmu-security depends on kasirmu-core, so
   the dependency direction the spec implies is impossible; the static key
   follows the `encrypt_smtp_at_rest` precedent (readable after a DB restore
-  on another machine). Masking lives in oz-core for the same reason.
+  on another machine). Masking lives in kasirmu-core for the same reason.
 - `cargo clippy -D warnings` reports 2 pre-existing errors in
   `topology.rs` (untouched by 0049); the changed area is clean.
+
+> last audited 29-09-26 by docs-auditor

@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. The gate itself is real and is still the single authorizer this plan set out to build: `require_permission` is defined and called from `apps/desktop-tauri/src/commands/authz.rs`, `apps/mobile-tauri/src/commands/authz.rs` and `crates/kasirmu-bridge/src/ctx.rs`, and the pinned census test this plan's §4.3 promised survives as `apps/desktop-tauri/tests/gate_audit.rs` — its path was the one place the restructure moved the test itself rather than just the crate, and it is now cited by two other modules in their own doc comments (`apps/desktop-tauri/src/commands/registration_gate_tests.rs:30` and the mobile twin), which is independent evidence that the file is load-bearing and not orphaned. The Deviations section's admission that the census pins at module granularity — so a new ungated command inside an already-pinned module still needs review — is the kind of limitation that is usually quietly dropped from a shipped spec, and it is still written down here. That is accurate, not stale. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
 # RBAC centralized fail-closed enforcement gate
 
 > **Status: IMPLEMENTED — 2026-08-11.** Shipped in two commits
@@ -14,7 +15,7 @@ caught by the suite. This is D9 step 2 and depends on the 0046 registry.
 ## 2. Evidence baseline
 
 - Enforcement today is per-command `require_permission_for_user(store,
-  user/role, permission)` — e.g. `apps/desktop-client/src/commands/authz.rs`,
+  user/role, permission)` — e.g. `apps/desktop-tauri/src/commands/authz.rs`,
   `customers.rs`, `exchange_rates.rs`, `loyalty.rs` (desktop and tablet).
 - Rounds 172 and 174 found real gaps of exactly this class: `list_customers_scoped`
   resolved the session but skipped the `customers:view` gate (CRM-02), and
@@ -55,7 +56,7 @@ added to it, which is the review signal.
 2. Write the failing test: a command that skips the gate is detected (Red).
 3. Migrate the command call sites (Green), keeping round-172/174 tests green.
 4. Add the pinned gated-command enumeration test.
-5. Run area tests: `cargo test -p oz-pos-app --lib`, `cargo test -p oz-pos-tablet
+5. Run area tests: `cargo test -p kasirmu-app --lib`, `cargo test -p kasirmu-mobile
    --lib`, `test-changed.sh`, fmt, clippy on both clients.
 
 ## 6. Test plan
@@ -103,7 +104,7 @@ internal), the list is corrected deliberately, not broadened silently.
 
 **What shipped.**
 
-- `Store::require_permission(user_id, required)` in `oz-core` is the single
+- `Store::require_permission(user_id, required)` in `kasirmu-core` is the single
   fail-closed authorizer (ADR #35 D3): the 0046 registry is the only
   vocabulary (unregistered key denies even the `*` Owner grant), and an
   unknown/inactive user or unresolvable role denies as
@@ -114,7 +115,7 @@ internal), the list is corrected deliberately, not broadened silently.
 - The tablet's dead role-based `require_permission` (zero callers, a second
   parallel enforcement path) was removed per §7's "the gate must be the only
   authorizer".
-- New `apps/desktop-client/tests/gate_audit.rs` pins the full gated-command
+- New `apps/desktop-tauri/tests/gate_audit.rs` pins the full gated-command
   census of both clients: every command module with its gate-call count and
   permission keys, bidirectionally. A new command module, a dropped gate
   call, or a changed key surface fails the suite and forces a deliberate,
@@ -134,18 +135,20 @@ internal), the list is corrected deliberately, not broadened silently.
   was initially written comparing constant names to registry values and
   self-corrected to resolve names through the real constants.
 - Runnable verification was partially blocked by running app binaries
-  (`oz-pos-app` via another agent's `cargo run`, `oz-pos-tablet` via
+  (`kasirmu-app` via another agent's `cargo run`, `kasirmu-mobile` via
   `tauri dev`); area-scoped `--lib` suites ran normally, and the audit test
   was executed by running its built harness directly against current
   sources.
 
-**Verify evidence.** Gate 8/8 (oz-core `db::staff` 50/50) · desktop
+**Verify evidence.** Gate 8/8 (kasirmu-core `db::staff` 50/50) · desktop
 `authz`/`customers`/`exchange_rates` 56/56 · tablet 55/55 · `gate_audit`
-3/3 · `cargo fmt --check` clean · clippy `-D warnings` clean on oz-core,
-oz-pos-app, oz-pos-tablet · drift guard clean · enforcement sweep: zero
+3/3 · `cargo fmt --check` clean · clippy `-D warnings` clean on kasirmu-core,
+kasirmu-app, kasirmu-mobile · drift guard clean · enforcement sweep: zero
 `.authorize()`/`has_permission()` callers in `apps/` and `modules/` outside
 the gate.
 
 **Commits.** `47fcf6a5` (feat: centralized gate + client wrappers),
 `ef0707e1` (test: pinned gated-command census), `34464e79` (docs: spec
 moved to `_done`).
+
+> last audited 29-09-26 by docs-auditor

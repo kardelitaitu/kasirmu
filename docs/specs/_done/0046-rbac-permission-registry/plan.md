@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (crate/path renames) — 0 behavioural findings · Audited on branch 0.0.40. Every `cargo` package this file names was renamed when the workspace was restructured, and that was proven by execution rather than by reading a manifest: `cargo pkgid -p oz-core` and `cargo pkgid -p oz-pos-app` both return "did not match any packages", and `cargo metadata --no-deps` lists 40 packages, none of them under the old `oz-*` names. The current mapping, read from each manifest path: `oz-core` -> `kasirmu-core` (`crates/kasirmu-core/Cargo.toml`), `oz-pos-app` -> `kasirmu-app` (`apps/desktop-tauri/Cargo.toml`), `oz-pos-tablet` -> `kasirmu-mobile` (`apps/mobile-tauri/Cargo.toml`), `oz-security` -> `kasirmu-security` (`crates/kasirmu-security/Cargo.toml`). The old client directories moved with them: `apps/desktop-client/` -> `apps/desktop-tauri/` and `apps/tablet-client/` -> `apps/mobile-tauri/`. All of these were repaired in place. The numbered migration series this file cites is likewise gone: migrations are date-stamped and the tables are folded into `crates/kasirmu-core/migrations/20260813_init.sql`. The slice's substance is entirely intact and was verified symbol by symbol, because a registry spec whose registry has moved is exactly the doc that most needs checking: the `ALL_ENFORCED` inventory this plan's bidirectional test pins is still exported from `platform/core/src/rbac.rs` (consumed by `platform/core/src/permission_registry_tests.rs:6`), `validate_grants` is wired into the role-write path at `crates/kasirmu-core/src/db/roles.rs:188`, `is_registered` guards the gate at `crates/kasirmu-core/src/db/staff.rs:410`, and `is_sensitive` is consulted at `crates/kasirmu-core/src/db/profile/user.rs:541` — the last of these added by spec 0049, which is the follow-up the Known follow-ups section predicted. The plan's own §2 evidence baseline also still holds where it was not path-bound: the permission consts and wildcard matching live in `platform/core/src/rbac.rs`, and `platform/kernel/src/manifest.rs` still consumes the per-module `permissions` arrays that `modules/sales/manifest.json` declares. · The original plan text is preserved as approved; only the identifiers that stopped resolving were changed, no design claim was rewritten. · No stamp or footer existed on this file before this pass. -->
 # RBAC code-resident permission registry
 
 > **Status: IMPLEMENTED — 2026-08-11.** Shipped in two commits
@@ -72,7 +73,7 @@ The registry rejects any wildcard covering a sensitive key at definition time
 4. Wire write-time validation into the role write path (Green).
 5. Update module manifests/consts only where they must reference the registry;
    existing strings stay byte-identical.
-6. Run area tests: `cargo test -p platform-core`, `test-tdd.sh -p crates/oz-core`,
+6. Run area tests: `cargo test -p platform-core`, `test-tdd.sh -p crates/kasirmu-core`,
    `cargo fmt --all -- --check`, `cargo clippy -p platform-core -- -D warnings`.
 
 ## 6. Test plan
@@ -81,7 +82,7 @@ The registry rejects any wildcard covering a sensitive key at definition time
 
 - `platform/core/src/rbac.rs` — existing wildcard-matching tests stay;
   extend with registry lookups.
-- `crates/oz-core/tests/staff_integration.rs` —
+- `crates/kasirmu-core/tests/staff_integration.rs` —
   `role_permissions_json_roundtrip` and the seed assertions stay; extend with
   registry validation on the same seeds.
 
@@ -138,11 +139,11 @@ strings).
   tests from the registry, so a sensitive key added to a new family is pinned
   automatically (−122 lines).
 
-**Verify (round 175 + finalization):** registry 9/9, oz-core lib 1678/1678,
-staff_integration 25/25, oz-pos-app staff 40/40, oz-pos-tablet staff 19/19,
+**Verify (round 175 + finalization):** registry 9/9, kasirmu-core lib 1678/1678,
+staff_integration 25/25, kasirmu-app staff 40/40, kasirmu-mobile staff 19/19,
 platform-core 234/234 post-refactor; `cargo fmt --check`, clippy
-`-D warnings` (platform-core + oz-core), and drift guard all clean.
-`test-changed.sh` blocked by the locked `oz-pos-app.exe` (running process,
+`-D warnings` (platform-core + kasirmu-core), and drift guard all clean.
+`test-changed.sh` blocked by the locked `kasirmu-app.exe` (running process,
 left alone).
 
 **Commits:** `bde2962d` (feat) + `7fa406a4` (refactor). Journal round 175;
@@ -153,3 +154,5 @@ CHANGELOG bullet under Added.
 not RBAC enforcement — a future slice may reconcile them. The centralized
 enforcement gate (0047) consumes this registry's public API
 (`is_registered`, `is_sensitive`, `validate_grant`).
+
+> last audited 29-09-26 by docs-auditor
