@@ -1867,11 +1867,44 @@ replace took `String::new()` back to 0 and every remaining hunk in that file is 
 pin-removal. The correct order is `git status -- <crate>` **before** `--fix`. 49 files were
 dirty across the checkout from several lanes at the time — assume nothing is yours.
 
-**What is left, and it is the only thing left: `kasirmu-core`.** Not attempted this round,
-and not a small remainder — the earlier aggregate for the two crates was 2,494 with 998
-`missing_errors_doc`, and `foundation` alone accounts for 149 of it. Same recipe applies:
-crate-root attribute, doc lints allowed by name, correctness-adjacent lints fixed (that
-subset in `kasirmu-core` was measured at 215 sites, line 972).
+**What is left: `kasirmu-core`, and it is a campaign rather than a round.** Measured
+2026-09-29, per crate, from clippy's own JSON — `scripts/pedantic-inventory.json` regenerated
+in this commit:
+
+| | count |
+|---|---|
+| total findings | **3,669** |
+| documentation prose | **2,917** (79%) — `missing_errors_doc` 1,723, `doc_markdown` 796, `must_use_candidate` 390, `missing_panics_doc` 8 |
+| real | **752** |
+| — auto-fixable (clippy's own `MachineApplicable`) | **383** |
+| — needs judgement | **369** |
+
+The old two-crate figure of 2,494 was low by ~1,300, and it was never a per-crate number: the
+grouped summary clippy prints **undercounts**, the same effect recorded above at 195-vs-220.
+**3,669 is the number to plan against.**
+
+Three groups inside the 369 need a ruling rather than an edit:
+
+- **`too_many_lines` — 61.** Every site is a function to split, and in `kasirmu-core` those are
+  money and DB paths. This is refactoring with real risk, not lint tidying.
+- **`unused_self` 18 + `needless_pass_by_value` 21 + `ref_option` 2 — 41 sites where the
+  suggested fix changes a PUBLIC SIGNATURE.** `kasirmu-core` is depended on by most of the
+  workspace, so each one ripples; these are the sites a later change can silently invalidate.
+- **`similar_names` 17 and `unreadable_literal` 34** — plausibly deliberate here (money in
+  minor units). Separately, `wildcard_imports` 16 is *auto-fixable but must not be applied
+  blind*: those sites are `use super::*` in the extracted test files, which is the COR-33
+  test-extraction pattern's own shape.
+
+**Progress already banked:** `float_cmp` and `cast_precision_loss` are now **0** in
+`kasirmu-core` (they were 22 and 56), so rounds 1–5's correctness sweep did land. The cast
+family that remains is 42 sites.
+
+**Recommended sequence, so the next lane does not re-derive it:** enable pedantic with the four
+doc lints allowed (the recipe is proven and takes minutes), land the 383 auto-fixable sites plus
+the ~93 mechanical-but-not-auto ones (`format_push_string` 39, `manual_let_else` 37,
+`items_after_statements` 17), then work the 369 by group — starting with the 41
+signature-changing sites. **Do not enable the crate and allow `too_many_lines` and the casts
+wholesale**: that would contradict `foundation`, where both classes were fixed outright.
 
 The original staging below is kept for the reasoning it records — why each item
 came where it did — with its outcome marked. Read it as history, not a plan.
