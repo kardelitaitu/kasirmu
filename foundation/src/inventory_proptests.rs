@@ -18,8 +18,8 @@
 //! contract does not exist in this crate, and asserting it would fail
 //! against correct code.** `WorkspaceInventoryLocation.allow_negative_stock`
 //! (`inventory.rs`) is a documented per-location policy flag, and
-//! `Repository::adjust_stock_tx` (`repository.rs:130`) applies a raw
-//! `UPDATE inventory SET qty = qty + ?1` with no floor — deliberately, so a
+//! the inventory repository's `adjust_stock_tx` (removed 2026-09-29) applied a
+//! raw `UPDATE inventory SET qty = qty + ?1` with no floor — deliberately, so a
 //! location that opts into negative stock can oversell. The only
 //! non-negativity guard is `Inventory::new`'s constructor assertion, which
 //! cannot see a running balance.
@@ -114,7 +114,7 @@ proptest! {
     /// correct outcome for the implementation and the wrong property.
     ///
     /// What makes the trim worth pinning is the consumer: stock lookups
-    /// (`get_stock`, `adjust_stock_tx`) match on `sku.as_str()`, so a
+    /// stock lookups match on `sku.as_str()`, so a
     /// trailing space from a scanner or a paste must not create a second
     /// product row that the trimmed lookup can never find.
     #[test]

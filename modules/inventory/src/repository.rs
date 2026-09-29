@@ -7,9 +7,9 @@ next: none | perf: N/A
 //! Inventory Repository — database queries for products, categories, and stock levels.
 
 use crate::error::InventoryError;
-use crate::models::{Inventory, LocationId, Product, ProductType};
+use crate::models::{Product, ProductType};
 use foundation::{Barcode, Currency, Money, Sku};
-use rusqlite::{Connection, Transaction, params};
+use rusqlite::{Connection, params};
 
 /// Repository for inventory and product database operations.
 pub struct InventoryRepository<'a> {
@@ -98,48 +98,13 @@ impl<'a> InventoryRepository<'a> {
         }))
     }
 
-    /// Retrieve product stock level for a SKU.
-    pub fn get_stock(&self, sku: &Sku) -> Result<Option<Inventory>, InventoryError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT product_id, sku, qty, low_stock_threshold, updated_at, location_id
-             FROM inventory WHERE sku = ?1",
-        )?;
-
-        let mut rows = stmt.query(params![sku.as_str()])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let sku_str: String = row.get(1)?;
-        let sku = Sku::try_new(sku_str)
-            .ok_or_else(|| InventoryError::validation("sku", "invalid SKU"))?;
-        let loc_str: String = row.get(5).unwrap_or_default();
-
-        Ok(Some(Inventory {
-            product_id: row.get(0)?,
-            sku,
-            qty: row.get(2)?,
-            low_stock_threshold: row.get(3)?,
-            updated_at: row.get(4)?,
-            location_id: LocationId::from(loc_str),
-        }))
-    }
-
-    /// Adjust stock level for a product inside a transaction.
-    pub fn adjust_stock_tx(
-        &self,
-        tx: &Transaction,
-        sku: &Sku,
-        delta: i64,
-    ) -> Result<(), InventoryError> {
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        tx.execute(
-            "UPDATE inventory SET qty = qty + ?1, updated_at = ?2 WHERE sku = ?3",
-            params![delta, now, sku.as_str()],
-        )?;
-        Ok(())
-    }
+    // `get_stock` and `adjust_stock_tx` were REMOVED here on 2026-09-29. Both read or wrote
+    // `inventory.sku` / `inventory.low_stock_threshold`, columns the migrations do not carry
+    // -- `repository_tests.rs` said so in a note promising tests "once the migration is
+    // applied" -- and after `InventoryService`'s wrappers went, they had no caller either.
+    // SQL that cannot run is not a plan, and unreachable code cannot be covered: the pair was
+    // holding `modules-inventory` at 75.2% against a 76.0% floor. They arrive with the
+    // migration, tests included, or not at all.
 }
 
 #[cfg(test)]

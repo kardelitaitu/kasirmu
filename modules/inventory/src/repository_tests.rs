@@ -140,7 +140,7 @@ fn get_product_default_optional_fields_are_none() {
     assert!(p.default_supplier_id.is_none());
 }
 
-// NOTE: get_stock and adjust_stock_tx query `inventory.sku` and
-// `inventory.low_stock_threshold` columns which do not exist in the
-// current migration schema. These are planned-schema methods; their
-// tests will be added once the migration is applied.
+// NOTE: the get_stock/adjust_stock_tx pair these tests were waiting on was removed on
+// 2026-09-29 -- see the note in repository.rs. They queried `inventory.sku` and
+// `inventory.low_stock_threshold`, columns the migrations do not carry, and had no caller
+// left once InventoryService's wrappers went.
