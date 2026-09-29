@@ -287,6 +287,42 @@ must not touch them — their ciphertext does not change meaning when the instal
 rotates. Rows 7 and 8 use a *different* legacy closure from rows 1–6 (hazard H5), so the
 sweep must not unify them. A partial sweep does not fail loudly; it strands rows.
 
+**Progress 2026-09-29 — the MECHANISM has landed (steps 1–3 of 4); the operator command has not.**
+
+- **S2c-1 ✅ `6aa7ad2e4`** — `PREVIOUS_INSTALL_KEY` + `set_previous_install_key` +
+  `previous_install_key_derivation_active`, wired into `candidate_keys` /
+  `candidate_keys_from` (read order `[install, previous, legacy, master]`) and **deliberately
+  NOT** into `portable_key`, so a write can never use the outgoing key. `candidate_keys_from`
+  gained a `previous` parameter; its 4 existing call sites were updated. Two new cases:
+  `a_previous_install_key_is_a_read_candidate_and_never_a_writer` (pins the slot, the
+  write-arm exclusion, AND the reason the sweep must be total — a row under the outgoing key
+  reads mid-rotation and FAILS once that key is retired) and
+  `the_previous_branch_adds_nothing_outside_a_rotation` (the steady state is byte-identical).
+  `cargo test -p kasirmu-crypto` → **36 passed**.
+- **S2c-2 ✅ `6a050fdfe`** — `INSTALL_KEY_PREV_ENTRY` (= `{INSTALL_KEY_ENTRY}-prev`, pinned by
+  a derived-equality test), `resolve_previous_install_key` (absent → `Ok(None)`, **not** a
+  generation trigger), `begin_install_key_rotation` (park → promote, refusing to restart a
+  half-finished rotation), `retire_previous_install_key`, and `InstallKeyRotation` with a
+  hand-written redacting `Debug`. `decode_stored_key` now names the entry it refused.
+  6 new cases; `cargo test -p kasirmu-security` → **107 + 7 passed**.
+- **S2c-3 ✅ `224d39d13`** — `kasirmu-bridge::security::install_at_rest_key()` resolves and
+  installs BOTH keys, the parked one first, and logs rotation-in-flight via `tracing` (the
+  `InstallKeyOutcome` enum is unchanged, because both shells match `Ready { … }` exhaustively).
+  The resolution was split into a pure `resolve_at_rest_keys(keyring)` so it is testable
+  without mutating the process-global slots; 2 new cases. `cargo test -p kasirmu-bridge security`
+  → **46 passed**.
+- **S2c-4 ⬜ NOT STARTED — `oz rekey` itself.** It needs `kasirmu-cli` to gain the crypto and
+  security dependencies, and a sweep over the three row SHAPES the eight families live in:
+  (i) the six plain settings rows, (ii) `settings.smtp_config`'s JSON `password` FIELD, and
+  (iii) the `users` columns `national_id` and `monthly_take_home_minor`. The last two are why
+  a "settings-table only" sweep is not sufficient.
+- **The landed mechanism is INERT in production, on purpose.** `resolve_previous_install_key`
+  returns `None` unless `INSTALL_KEY_PREV_ENTRY` exists, and the only writer of that entry is
+  `begin_install_key_rotation`, which has no caller yet. So the boot path behaves exactly as it
+  did before until `oz rekey` exists — the same shape S2b-1 had. Verified: `cargo check
+  --workspace --lib` clean.
+
+
 **Explicitly NOT in this plan:** `OZ_MASTER_KEY` deprecation, the `.db` portability
 question beyond the release note, and any change to `SECRET_KEY_DENY_LIST`.
 
