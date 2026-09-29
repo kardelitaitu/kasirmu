@@ -36,6 +36,15 @@
   color: var(--color-fg-secondary, #666);
 }
 
+/* Loading line shown while the payments screen resolves its location and rails.
+   Replaces a borrowed `localpay-loading` name from a sheet this screen never
+   imports. */
+.restaurant-settings-loading {
+  padding: var(--space-4, 16px);
+  color: var(--color-fg-muted, #888);
+  font-size: var(--text-sm, 0.875rem);
+}
+
 .restaurant-settings-card-header {
   display: flex;
   align-items: center;
@@ -112,6 +121,31 @@
 
 .restaurant-rail-add input {
   flex: 1;
+}
+
+/* The per-row controls: the remove button and the enable toggle, held together
+   on the row's trailing edge. Split out of what used to be an inline flex box
+   on the row's second child. */
+.restaurant-rail-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+/* Remove control for a non-core rail. Was an inline style on a `button
+   button--ghost` element; `button` is not a class this repo defines, so the
+   name resolved nowhere and the element rendered unstyled. */
+.restaurant-rail-remove {
+  padding: 2px 8px;
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--color-danger);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.restaurant-rail-remove:hover {
+  color: var(--color-fg);
 }
 
 .restaurant-static-qr-box {

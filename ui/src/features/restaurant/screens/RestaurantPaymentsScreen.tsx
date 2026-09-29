@@ -312,7 +312,11 @@ export function RestaurantPaymentsScreen({
       </div>
 
       {loading ? (
-        <p className="localpay-loading">
+        // Was `localpay-loading`, borrowed from LocalPaymentSettingsCard.css —
+        // a sheet this screen does not import, so the name resolved nowhere and
+        // the rule was never reachable from here. The screen's own sheet owns
+        // the loading line now.
+        <p className="restaurant-settings-loading">
           <Localized id="settings-section-loading">Loading…</Localized>
         </p>
       ) : (
@@ -335,31 +339,35 @@ export function RestaurantPaymentsScreen({
           </div>
         }
       >
+        {/* The rails list uses the classes RestaurantSettingsScreens.css already
+            defines — restaurant-rails-list / -rail-row / -rail-info / -rail-label /
+            -rail-code. Those rules landed with the screen's stylesheet but the
+            markup below never adopted them, so it carried the same design as six
+            inline style objects and the sheet graded as dead. Wiring the names up
+            is what the sheet was written for; the only inline style kept is the
+            label's weight, which is a deliberate emphasis on a shared class. */}
         <div className="settings-form">
+          <div className="restaurant-rails-list">
           {drafts.map((rail, index) => {
             const isCore = ['cash', 'card', 'qris', 'open_bill', 'credit'].includes(
               rail.rail_code.toLowerCase(),
             );
             return (
-              <div
-                className="settings-field settings-field--horizontal"
-                key={rail.rail_code}
-                style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}
-              >
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <label htmlFor={`rail-toggle-${rail.rail_code}`} className="settings-label" style={{ fontWeight: 600 }}>
+              <div className="restaurant-rail-row" key={rail.rail_code}>
+                <div className="restaurant-rail-info">
+                  <label
+                    htmlFor={`rail-toggle-${rail.rail_code}`}
+                    className="restaurant-rail-label"
+                  >
                     {rail.label}
                   </label>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-fg-muted)' }}>
-                    Code: <code>{rail.rail_code}</code>
-                  </span>
+                  <span className="restaurant-rail-code">{rail.rail_code}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="restaurant-rail-actions">
                   {!isCore && (
                     <button
                       type="button"
-                      className="button button--ghost"
-                      style={{ padding: '2px 8px', fontSize: '0.8rem', color: 'var(--color-danger)' }}
+                      className="restaurant-rail-remove"
                       onClick={() => handleRemoveRail(index)}
                       aria-label={`Remove ${rail.label}`}
                     >
@@ -384,6 +392,7 @@ export function RestaurantPaymentsScreen({
               </div>
             );
           })}
+          </div>
         </div>
       </Card>
 
@@ -405,18 +414,20 @@ export function RestaurantPaymentsScreen({
               <label htmlFor="resto-static-qris" className="settings-label">
                 <Localized id="settings-localpay-static-qr-label">Static QR payload</Localized>
               </label>
-              <textarea
-                id="resto-static-qris"
-                className="settings-input"
-                rows={3}
-                placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
-                value={staticQrValue}
-                onChange={(e) => handleStaticQrChange(e.target.value)}
-                spellCheck={false}
-              />
-              <p className="settings-hint">
-                Paste the merchant QR string (EMVCo format) to enable in-app counter QR presentation.
-              </p>
+              <div className="restaurant-static-qr-box">
+                <textarea
+                  id="resto-static-qris"
+                  className="settings-input"
+                  rows={3}
+                  placeholder="00020101021126580014ID.LINKAJA.WWW0118936009110022201389..."
+                  value={staticQrValue}
+                  onChange={(e) => handleStaticQrChange(e.target.value)}
+                  spellCheck={false}
+                />
+                <p className="settings-hint">
+                  Paste the merchant QR string (EMVCo format) to enable in-app counter QR presentation.
+                </p>
+              </div>
             </div>
           </div>
         </Card>
