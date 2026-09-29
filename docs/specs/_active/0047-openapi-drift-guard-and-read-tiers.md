@@ -1,6 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a live spec that claimed implemented status while naming a crate that no longer exists, in four places including its own scope line. The stale name was replaced with the current one throughout. That is a small edit, and it is the kind this campaign treats as a repair rather than a record, because a spec is a description of what a reader should go and look at: a scope line naming a removed crate sends someone looking for code that is not there, and the status line claiming IMPLEMENTED makes them trust the rest. · WHAT WAS VERIFIED AROUND THE REPAIR. The crate the old name referred to is genuinely gone from the tree — no file carries it — so the rename was mechanical and unambiguous rather than a judgement call. The document's own cross-references were left alone deliberately: it points at the sibling spec, a user-role campaign residual and a permission-registry decision, and those are relationships rather than coordinates. One table row still names a pre-restructure production binary, and it was left because it is describing a deployment fact at the time of writing rather than directing a reader at a file to open; that is noted here rather than silently patched, because the distinction between the two is exactly what this campaign has been trying to get right. · THE DOCUMENT'S SUBJECT MATTERS MORE THAN ITS SIZE, and the stamp should say why. A drift guard between a published interface description and the code that implements it is a spec that keeps itself honest, and the read-tier half — restricting what a valid token may read, rather than authenticating and then allowing everything — is a security property that this repository has reasoned about carefully elsewhere. A reader auditing the implementation should start from the states the spec records: what the claims shape is, where tokens are minted, and what the authorisation actually permits today. Those are the document's own content and were not re-derived. · NOT re-measured: whether the guard currently runs, and whether the tiering it specifies is enforced as written. Both are the original work. · No stamp existed; this is the first. -->
 # Spec 0047 — OpenAPI Drift Guard + JWT Read Tiers
 
-**Status:** implemented (2026-09-01) · **Created:** 2026-08-31 · **Scope:** cloud-server, oz-api, platform-core, website docs
+**Status:** implemented (2026-09-01) · **Created:** 2026-08-31 · **Scope:** cloud-server, kasirmu-api, platform-core, website docs
 **Related:** 0046b (images — untouched), user-role campaign residual (D1/API-4), ADR #35 (permission registry)
 
 ---
@@ -31,7 +32,7 @@ precedent); token revocation lists.
 | Fact | Evidence |
 |---|---|
 | OpenAPI 3.1 spec + Swagger UI + Scalar served publicly at `/api/openapi.json`, `/api/docs`, `/api/docs/scalar` | `apps/cloud-server/src/openapi.rs:1-6`, `main.rs:493-510` (docs router merged outside the auth layer) |
-| Prod binary `oz-cloud-server` (supervisord `program:sync`) embeds oz-api's router via `oz_api::build_api_router` | `apps/unified/supervisord.conf:49`, `apps/cloud-server/src/main.rs:449-451`, `Cargo.toml:18` |
+| Prod binary `oz-cloud-server` (supervisord `program:sync`) embeds kasirmu-api's router via `oz_api::build_api_router` | `apps/unified/supervisord.conf:49`, `apps/cloud-server/src/main.rs:449-451`, `Cargo.toml:18` |
 | axum **0.7.9** — `Router: IntoIterator<Item = (String, MethodRouter)>` exists in this version | `Cargo.lock` axum 0.7.9 |
 | 13 GET operations declared in the spec (the read surface) | `grep '"get"' openapi.rs` |
 | Claims shape: `sub, jti, exp, iat, tenant_id, terminal_id` — no scope/permission field | `crates/kasirmu-api/src/auth.rs:45-55` |
@@ -92,7 +93,7 @@ Terminal client-credential mints get the `terminal` preset automatically
 (behavior change behind a flag — decision point 1); admin-key mints accept
 an optional `permissions`/`preset` field; anything else keeps full-read.
 
-### F2 — Claims foundation (oz-api)
+### F2 — Claims foundation (kasirmu-api)
 
 - `CreateTokenRequest` gains optional `read_preset: Option<String>` +
   `read_permissions: Option<Vec<String>>` (admin-key path only; terminal
@@ -105,7 +106,7 @@ an optional `permissions`/`preset` field; anything else keeps full-read.
   can narrow, terminal cannot widen, unknown preset/key rejected with the
   registry's typed error).
 
-### F3 — Enforcement (cloud-server/oz-api)
+### F3 — Enforcement (cloud-server/kasirmu-api)
 
 - Static `READ_KEY_MAP: &[(method, path, key, pii)]` covering the 13 GET
   operations (plus any read verbs on mixed routes) — each entry carries
@@ -189,3 +190,5 @@ an optional `permissions`/`preset` field; anything else keeps full-read.
   the deliberate exception (decision 1: secure-by-default) — the
   `OZ_TERMINAL_READ_TIER=full` escape hatch covers any deployed
   integration during the one-cycle deprecation window.
+
+> last audited 29-09-26 by docs-auditor
