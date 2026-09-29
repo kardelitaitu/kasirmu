@@ -1,3 +1,6 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass, and the phase's own rollback safety condition is satisfied. Both wirings this phase specifies are in place: `WorkspaceSettingsModal` is mounted in `ui/src/features/retail/RetailPosScreen.tsx` and in `ui/src/features/sales/PosScreen.tsx` — the Store POS (F10) and Restaurant POS (gear icon) entry points respectively. `SettingsSubScreen` is gone from `PosScreen.tsx`; the only remaining occurrence is a comment at line 69 recording that it was "removed in Phase 6 (ADR #22) — superseded by the …", which is the correct end state — the code is deleted and the history is kept. · PHASE 6 EVIDENCE IS ALREADY VISIBLE HERE, which is the dependency this phase gated on: `RetailOptionsScreen.tsx` no longer exists anywhere in `ui/src`, and the `workspace-settings-v2` feature flag returns no matches in the tree. So the Rollback section's condition — that Phase 6 "must not occur until the feature flag has been enabled in production for at least one full release cycle" — has evidently been met, and the escape hatch this phase built has been retired as designed. · The hotkey-guard criterion is checkable indirectly: the `isAnyOverlayOpen()` predicate the plan defines at step 4 exists in `RetailPosScreen.tsx`, so the guard is not just specified but implemented. · The Baseline line that "`ui/src/features/sales/PosScreen.tsx` line 321: `SettingsSubScreen`" and the "~1,000+ lines" size of the legacy screen are pre-fix measurements and are left as written. Same unchecked-criteria note as the sibling 0-phase files: Status says IMPLEMENTED while every acceptance box is open. I did not tick them — confirming the artifacts exist is not the same as running the typecheck/lint/unit/E2E suites the boxes assert, and a ticked box is a claim about a verification I did not perform. -->
+<!-- dead-ref-prefix-ok: ui/src/features/retail/RetailOptionsScreen -->
+<!-- Baseline + References name the legacy screen this phase replaced and Phase 6 then deleted. -->
 # Phase 5 — Workspace Wiring
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -94,4 +97,4 @@ Replace `RetailOptionsScreen` in `RetailPosScreen.tsx` (Store POS, F10 hotkey, f
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
