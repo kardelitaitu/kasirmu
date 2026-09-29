@@ -649,10 +649,22 @@ export default function RestaurantReceiptsScreen({
     return `${cur === 'IDR' ? 'Rp ' : `${cur} `}${formattedNum}`;
   };
 
-  // Sample line items (35000 + 16000 + 34255 = 85255)
-  // Designed so subtotal produces a fractional tax to showcase tax rounding mode
-  const sampleSubtotal = 85255;
-  const rawTax = sampleSubtotal * (taxRatePercent / 100);
+  // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
+  // When showTax is true, line items show net price = 100/(100 + taxRatePercent) of gross,
+  // rounded for display (e.g. 16.000 * 100 / 110 = 14545.4545... -> shown as 14.545),
+  // while exact fractional parts are preserved in exactSubtotal and rawTax.
+  const taxMultiplier = showTax ? 100 / (100 + taxRatePercent) : 1;
+  const sampleItem1Exact = 35000 * taxMultiplier;
+  const sampleItem2Exact = 16000 * taxMultiplier;
+  const sampleItem3Exact = 42000 * taxMultiplier;
+
+  const sampleItem1Price = Math.round(sampleItem1Exact);
+  const sampleItem2Price = Math.round(sampleItem2Exact);
+  const sampleItem3Price = Math.round(sampleItem3Exact);
+
+  const exactSubtotal = sampleItem1Exact + sampleItem2Exact + sampleItem3Exact;
+  const sampleSubtotal = showTax ? Math.round(exactSubtotal) : 93000;
+  const rawTax = showTax ? exactSubtotal * (taxRatePercent / 100) : 0;
   const sampleTax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
   const sampleTotal = showTax ? sampleSubtotal + sampleTax : sampleSubtotal;
   const sampleCash = 100000;
@@ -783,18 +795,18 @@ export default function RestaurantReceiptsScreen({
                   {/* Line Items */}
                   <div className="resto-receipt-item-row">
                     <span className="resto-receipt-item-name">1x Nasi Goreng Spesial</span>
-                    <span className="resto-receipt-item-price">{formatPrice(35000)}</span>
+                    <span className="resto-receipt-item-price">{formatPrice(sampleItem1Price)}</span>
                   </div>
                   {showItemNotes && (
                     <div className="resto-receipt-item-note">pedas</div>
                   )}
                   <div className="resto-receipt-item-row">
                     <span className="resto-receipt-item-name">2x Es Teh Manis</span>
-                    <span className="resto-receipt-item-price">{formatPrice(16000)}</span>
+                    <span className="resto-receipt-item-price">{formatPrice(sampleItem2Price)}</span>
                   </div>
                   <div className="resto-receipt-item-row">
                     <span className="resto-receipt-item-name">1x Ayam Bakar Madu</span>
-                    <span className="resto-receipt-item-price">{formatPrice(34255)}</span>
+                    <span className="resto-receipt-item-price">{formatPrice(sampleItem3Price)}</span>
                   </div>
 
                   <div className="resto-receipt-divider" />
@@ -807,9 +819,7 @@ export default function RestaurantReceiptsScreen({
                     </div>
                     {showTax && (
                       <div className="resto-receipt-total-row">
-                        <span>
-                          PB1 / Tax ({taxRatePercent}% · {taxRoundingMode === 'truncate' ? 'Truncate' : 'Half-up'})
-                        </span>
+                        <span>PB1/TAX ({taxRatePercent}%)</span>
                         <span>{formatPrice(sampleTax)}</span>
                       </div>
                     )}
