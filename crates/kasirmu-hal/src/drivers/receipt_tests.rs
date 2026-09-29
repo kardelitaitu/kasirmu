@@ -700,4 +700,3 @@ fn prints_menu_order_note_under_item() {
         "receipt must print menu order note under item: {text}"
     );
 }
-
