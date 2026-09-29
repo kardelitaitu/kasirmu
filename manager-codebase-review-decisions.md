@@ -230,6 +230,16 @@ The routing gap is therefore live production breakage, and it is now measurable:
 
 **Recommendation: C now, A when the sync vocabulary is next touched, B only if the entitlement is being retired anyway.** The pin (option C) costs one comment and one test and is already dispatched - it is strictly better than the status quo and blocks nothing. The real choice between A and B is commercial, not technical: **if `max_locations` is a sold term, A is owed to the customer; if it is aspirational, B is owed to the truth.** What should not persist either way is a published limit whose enforcement number is a constant zero. I am not guessing this one - it touches pricing copy, which I cannot see from the code.
 
+**ANSWERED 2026-09-29: the recommendation is taken, and it settles the A-vs-B half.**
+`max_locations` **stays published**, so it is treated as a term the product owes rather
+than an aspiration to withdraw: **B is declined.** The sequencing is **C now** (the
+inert-axis pin, already dispatched) and **A when the sync vocabulary is next touched** -
+locations gains a route into PostgreSQL at that point so the count has something to
+count and the over-quota alert can actually fire. Until A lands, the honest statement
+remains that the axis is inert by construction and the alert cannot fire; C's comment
+and pinning test are what keep that readable. **No further owner input is needed on
+D10.**
+
 ---
 
 ## D11 - Should `allow_negative_stock` survive? The missing CHECK is not the missing backstop.

@@ -150,3 +150,28 @@ One line each is enough:
    accepted as unproven.
 3. R7: the terminal model to target, or "none yet" — in which case the loopback
    simulator is the only funded work.
+
+---
+
+## Answers — recorded 2026-09-29
+
+**Q1 (R4) → (a), and it is already executed.** The `terminal_id` routing option was
+implemented and verified end to end; see the "Full execution" block above. No further
+action.
+
+**Q2 (R6) → declined.** No sandbox QRIS credential is supplied, and the four acquirer
+behaviours are **accepted as unproven by this repository**: generic-QR interop, the
+targeted-QR restriction, real refund behaviour, and per-merchant acquirer activation.
+This is recorded rather than papered over, because the existing suite cannot stand in
+for evidence — `qris_tests.rs` asserts in **both** directions, so it is green with and
+without the credential, and all 21 `qris_integration.rs` cases run against a local
+`wiremock` server. **Nothing here may be cited as proof of acquirer behaviour.** If a
+credential is supplied later, the four behaviours are the checklist for what to
+re-verify.
+
+**Q3 (R7) → "none yet".** No terminal model is named, so the loopback simulator is the
+only funded work on this axis — and it is already built and verified (see the "Full
+execution" block above). The vendor wire framing stays a stub (`wired.rs`,
+`wireless.rs`, and the three `protocol/{pax,ingenico,verifone}.rs` files all return
+`HalError::Unsupported`) until a model is named and a capture is supplied. **Do not
+implement a vendor protocol against a guessed framing.**

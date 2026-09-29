@@ -4,7 +4,15 @@
      from check-dead-refs.py). This is a PLAN, not a record of work done. Nothing
      in it has been implemented. It is deliberately NOT named `done-*`. -->
 
-**Status:** PLAN, not started. Written 2026-09-29.
+<!-- Plan token kept: `plan-` (AGENTS.md §7.4 — the docs-auditor exempts this name
+     from check-dead-refs.py). This is a PLAN, not a record of work done. S2b-1 has
+     since landed (2026-09-29) and is marked below; S2b-2 and S2c have not. It is
+     deliberately NOT named `done-*`. -->
+
+**Status:** IN PROGRESS. **S2b-1 (the injection seam) IMPLEMENTED 2026-09-29** — it
+changes no runtime behaviour, which is what the slice was scoped to guarantee.
+**S2b-2 (keychain resolution + boot injection) and S2c (`oz rekey`) NOT STARTED.**
+Written 2026-09-29. The §8 questions are now ANSWERED — see §8.
 **Branch:** `0.0.40` (do not create or switch branches).
 **Checklist item:** C1 (`manager-codebase-review-checklist.md`), slices S2b and S2c.
 **Owner decision:** D1, **ruled** — option D (per-install key in the OS keychain,
@@ -125,11 +133,22 @@ as today.
 
 ## 6. Slices, each independently shippable and reversible
 
-**S2b-1 — the injection seam, no behaviour change.**
-Add `INSTALL_KEY`, `set_install_key`, real `install_key_derivation_active`. Wire the
-key into `portable_key` and `candidate_keys`. Tests inject directly.
-*Gate:* with no key set, `cargo test -p kasirmu-crypto` is byte-identical in behaviour;
-a test proves legacy rows still read. **This slice alone changes nothing at runtime.**
+**S2b-1 — the injection seam, no behaviour change.** ✅ **DONE 2026-09-29.**
+Added `INSTALL_KEY` (`OnceLock<[u8; 32]>`), `set_install_key` (idempotent, first call
+wins), a private `install_key_from_process`, and a real
+`install_key_derivation_active`. The key is wired into `portable_key` (precedence
+install → master → legacy, per §8.1) and `candidate_keys` (install branch tried first,
+same slice as the write arm, per hazard H1). Tests inject through the new
+`portable_key_from` / `candidate_keys_from` cores, because the global cannot be
+un-set and installing one in the unit binary would poison its siblings; the real
+global is driven in `tests/at_rest_key_lifecycle.rs`, which runs as its own process.
+*Gate met:* with no key installed the production selector and candidate list are
+unchanged (`no_install_key_leaves_the_production_path_unchanged` asserts the real
+`portable_key`/`candidate_keys`, not the injectable helpers), and legacy rows still
+read (`install_key_rows_read_and_legacy_rows_survive_the_upgrade`, plus the
+integration case). Verified: 31 unit + 1 integration test pass, clippy clean,
+`cargo fmt --check` clean, `cargo check --workspace --lib` clean.
+**This slice alone changes nothing at runtime** — nothing calls `set_install_key` yet.
 
 **S2b-2 — keychain resolution + boot injection.**
 Add the keychain read to the **shells** (which already depend on `kasirmu-security`):
@@ -164,17 +183,35 @@ derivation still decrypts after the key exists."*
       is the least-specified part of the item and needs a design decision during S2b-2.**
 - [ ] A row written under the legacy derivation still decrypts after the key exists (H4).
 
-## 8. Open questions for the owner
+## 8. Owner questions — ANSWERED 2026-09-29
 
-1. **Precedence when both a keychain key and `OZ_MASTER_KEY` are present.** Recommended:
-   keychain wins (it is per-install and non-public). But this silently changes which
-   derivation writes, so confirm.
-2. **H3's fallback:** on an unsupported target (in-memory keyring), refuse to generate —
-   recommended — or generate-with-a-warning? Refusing keeps at-rest behaviour static and
-   is the conservative answer; generating would encrypt rows that silently orphan.
-3. **H6/H7 portability.** D1 accepts breaking whole-file `.db` portability. Confirm that
-   is still the intended trade, and whether `.ozpkg` needs the import lane.
-4. **The release-build assertion in §7.** No mechanism exists today; pick one.
+All four were answered by taking the plan's own recommendation. Recorded here so the
+next reader does not re-ask them.
+
+1. **Precedence when both a keychain key and a master key are present → the install key
+   wins.** Landed in S2b-1 as `portable_key`'s first arm: install → master → legacy.
+   `portable_key_from` is the injectable core that makes the ordering testable without
+   installing a key into the process global.
+2. **H3's fallback → refuse to generate.** On a target whose resolved keyring is the
+   in-memory fallback, S2b-2 must detect it, log loudly, and stay on the legacy
+   derivation rather than generate a key that is gone next boot. The refusal is
+   S2b-2's job, not `set_install_key`'s: the function cannot tell where the secret came
+   from, and its doc says so.
+3. **Portability → the trade is accepted as D1 recorded it.** Whole-file `.db` /
+   `.backup.db` copies stop being portable under a per-install key; that is the
+   intended consequence and it needs a release note, not a fix. `.ozpkg` is **not**
+   pre-decided: S2b-2 verifies at implementation time whether the install key breaks
+   the `users.national_id` / `monthly_take_home_minor` import path, and adds the
+   export/import lane only if it does.
+4. **The release-build assertion → the static fallback becomes debug-only.** In a
+   release build an unset master key must be a hard error rather than a silent
+   fallback to the public constant, so the fallback is structurally unreachable there
+   instead of merely untested. This is a change to `derive_static_key`'s reachability
+   and therefore lands in **S2b-2**, where it can be falsified by a release-profile
+   run. Until then the existing pin
+   (`the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable`) stays
+   as the deliberate tripwire the plan asked for: it must go red when this lands, and
+   be inverted in the same change.
 
 ## 9. Production blast radius (why the ordering in §6 matters)
 
