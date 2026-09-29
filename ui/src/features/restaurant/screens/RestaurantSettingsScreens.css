@@ -522,14 +522,74 @@
   color: var(--color-fg);
 }
 
-/* Test Print Button — static text centering with non-shifting loading spinner */
+/* Animated Action Buttons — Centered cross-fade loading animation */
 
-.resto-test-print-btn {
+.resto-anim-btn {
   position: relative;
-  width: 100%;
+  display: inline-grid;
+  place-items: center;
+  grid-template-areas: "content";
+  user-select: none;
+  overflow: hidden;
+}
+
+.resto-anim-btn__content {
+  grid-area: content;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  transition: opacity var(--duration-200) var(--ease-out),
+              transform var(--duration-200) var(--ease-out);
+}
+
+.resto-anim-btn__spinner-wrap {
+  grid-area: content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: opacity var(--duration-200) var(--ease-out),
+              transform var(--duration-200) var(--ease-out);
+}
+
+.resto-anim-btn:not(.resto-anim-btn--loading) .resto-anim-btn__content {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.resto-anim-btn:not(.resto-anim-btn--loading) .resto-anim-btn__spinner-wrap {
+  opacity: 0;
+  transform: scale(0.6);
+  visibility: hidden;
+}
+
+.resto-anim-btn--loading .resto-anim-btn__content {
+  opacity: 0;
+  transform: scale(0.85);
+  visibility: hidden;
+}
+
+.resto-anim-btn--loading .resto-anim-btn__spinner-wrap {
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+}
+
+.resto-anim-btn__spinner {
+  width: 1.15em;
+  height: 1.15em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--radius-full);
+  animation: btn-spin var(--duration-600) var(--ease-linear) infinite;
+}
+
+/* Test Print Button */
+
+.resto-test-print-btn {
+  width: 100%;
   min-height: var(--touch-target-min);
   padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
@@ -558,26 +618,6 @@
 .resto-test-print-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-}
-
-.resto-test-print-spinner {
-  position: absolute;
-  left: var(--space-4);
-  top: 50%;
-  transform: translateY(-50%);
-  width: 1em;
-  height: 1em;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: var(--radius-full);
-  animation: btn-spin var(--duration-600) var(--ease-linear) infinite;
-}
-
-.resto-test-print-label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
 }
 
 /* ── Right Column: Settings Form Controls ─────────────────── */

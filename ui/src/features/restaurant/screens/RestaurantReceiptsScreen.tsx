@@ -400,6 +400,7 @@ export default function RestaurantReceiptsScreen({
   const handleTestPrint = useCallback(async () => {
     if (!sessionToken) return;
     setTestingPrint(true);
+    const start = Date.now();
     try {
       const currency = settings.store.currency || 'IDR';
       await printSalesReceipt(sessionToken, {
@@ -432,11 +433,19 @@ export default function RestaurantReceiptsScreen({
         ],
         ...(tablesEnabled && showTableNumber ? { tableNumber: 'Table 1' } : {}),
       });
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
       addToast({
         message: l10n.getString('restaurant-test-print-success'),
         type: 'success',
       });
     } catch {
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
       addToast({
         message: l10n.getString('restaurant-test-print-failed'),
         type: 'error',
@@ -449,6 +458,7 @@ export default function RestaurantReceiptsScreen({
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     setSaving(true);
+    const start = Date.now();
     try {
       const tasks: Promise<unknown>[] = [];
 
@@ -558,6 +568,11 @@ export default function RestaurantReceiptsScreen({
         'receipt.marginRight',
       ]);
 
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
+
       addToast({
         message: l10n.getString('restaurant-save-success'),
         type: 'success',
@@ -565,6 +580,10 @@ export default function RestaurantReceiptsScreen({
 
       onSaved?.();
     } catch {
+      const elapsed = Date.now() - start;
+      if (elapsed < 500) {
+        await new Promise((resolve) => setTimeout(resolve, 500 - elapsed));
+      }
       addToast({
         message: l10n.getString('settings-save-error'),
         type: 'error',
@@ -704,16 +723,21 @@ export default function RestaurantReceiptsScreen({
               <Localized id="restaurant-all-saved">All changes saved</Localized>
             )}
           </span>
-          <Button
-            variant="primary"
-            size="md"
-            loading={saving}
+          <button
+            type="button"
+            className={`btn btn--primary btn--md resto-anim-btn ${saving ? 'resto-anim-btn--loading' : ''}`}
             disabled={!dirty || saving}
+            aria-busy={saving || undefined}
             onClick={handleSave}
             data-testid="restaurant-receipts-save-btn"
           >
-            <Localized id="save">Save Changes</Localized>
-          </Button>
+            <span className="resto-anim-btn__spinner-wrap" aria-hidden="true">
+              <span className="resto-anim-btn__spinner" />
+            </span>
+            <span className="resto-anim-btn__content">
+              <Localized id="save">Save Changes</Localized>
+            </span>
+          </button>
         </div>
       </div>
 
@@ -941,19 +965,19 @@ export default function RestaurantReceiptsScreen({
               </span>
             </div>
 
-            {/* Test Print Button under preview — fixed center alignment so loading animation does not move text */}
+            {/* Test Print Button under preview — animated centered loading replacing text */}
             <button
               type="button"
-              className="resto-test-print-btn"
+              className={`resto-test-print-btn resto-anim-btn ${testingPrint ? 'resto-anim-btn--loading' : ''}`}
               disabled={testingPrint}
               aria-busy={testingPrint || undefined}
               onClick={handleTestPrint}
               data-testid="restaurant-receipts-test-print-btn"
             >
-              {testingPrint && (
-                <span className="resto-test-print-spinner" aria-hidden="true" />
-              )}
-              <span className="resto-test-print-label">
+              <span className="resto-anim-btn__spinner-wrap" aria-hidden="true">
+                <span className="resto-anim-btn__spinner" />
+              </span>
+              <span className="resto-anim-btn__content resto-test-print-label">
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
