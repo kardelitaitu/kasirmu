@@ -392,6 +392,23 @@ max_concurrency = 1 if is_ci else 2
 if zone_probe() != 0:
     sys.exit(1)
 
+# And the SENSITIVITY check at gate time, not only in --self-test. Until 2026-09-29 this
+# ran nowhere except the self-test, which a static audit found by asking which of a
+# self-test's callees are referenced nowhere else. The consequence was specific: someone
+# could trim ZONES to the zones that pass right now, every gate run would stay green,
+# and the blind hours would reopen -- because zone_probe() asks whether the host
+# HONOURS a zone, which is a different question from whether the chosen set is SENSITIVE.
+# Cost is arithmetic on a five-entry dict, so there is no reason for the gate's own run
+# to stay silent about the property the whole file exists to provide.
+_gap = sensitivity_gap(ZONE_OFFSETS)
+if _gap:
+    print("check-tz-invariance: SENSITIVITY FAILURE — no zone disagrees with UTC "
+          "during: " + ", ".join(f"{a:02d}:00-{b:02d}:00" for a, b in _gap))
+    print("  The gate runs, passes, and cannot see a host-date bug in those hours. "
+          "Add a zone whose window covers the gap, or widen an existing one.")
+    sys.exit(1)
+print(f"check-tz-invariance: sensitivity OK — {len(ZONES)} zone(s) cover all 24 hours.")
+
 print(f"=== timezone invariance ({len(TESTS)} file(s) x {len(ZONES)} zones, concurrency={max_concurrency}) ===")
 with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
     for tz, summary, zone_failed in pool.map(check_zone, ZONES):
