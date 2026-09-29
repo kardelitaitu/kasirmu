@@ -553,6 +553,13 @@ step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" pytho
 # verify-selftests-wired.py, which is what found them: both declared a --self-test
 # that no runner invoked. The meta-gate goes first -- it is what keeps the next
 # one from being the same finding again.
+# check-chokepoints.py declares a --self-test that no runner invoked. Found by
+# widening verify-selftests-wired.py from verify-* to check-* as well: the gate had been
+# scoped to half the convention and so could not see this one. Local matrix only -- the
+# checker is not a gate on the merge path, and adding one is a policy decision.
+step "chokepoints" "python3 scripts/check-chokepoints.py" python3 scripts/check-chokepoints.py
+step "chokepoints self-test" "python3 scripts/check-chokepoints.py --self-test" python3 scripts/check-chokepoints.py --self-test
+
 step "flaky quarantine" "python3 scripts/verify-flaky-quarantine.py" python3 scripts/verify-flaky-quarantine.py
 step "flaky quarantine self-test" "python3 scripts/verify-flaky-quarantine.py --self-test" python3 scripts/verify-flaky-quarantine.py --self-test
 

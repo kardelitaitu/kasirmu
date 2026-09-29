@@ -51,7 +51,7 @@ RUNNERS = (
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
 )
-SCRIPT_RE = re.compile(r"^verify-[A-Za-z0-9_-]+\.py$")
+SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.py$")
 # "<name>.py --self-test" anywhere on the line. Deliberately not anchored to a
 # command position: a step that pipes or redirects still calls the flag, and a
 # grep that misses those would report a false finding, which is the failure mode
@@ -60,7 +60,12 @@ CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.py\s+--self-test")
 
 
 def checkers() -> list[str]:
-    return sorted(p.name for p in SCRIPT_DIR.glob("verify-*.py") if SCRIPT_RE.match(p.name))
+    # check-*.py as well as verify-*.py. The scope was verify-only at first and that was
+    # too narrow: check-chokepoints.py declares a --self-test that no runner invokes, and
+    # the gate reported every self-test as wired. A gate whose scope is narrower than the
+    # convention it enforces cannot see half the rot it exists to catch.
+    return sorted(p.name for p in SCRIPT_DIR.iterdir()
+                  if p.is_file() and SCRIPT_RE.match(p.name))
 
 
 def declares_selftest(name: str) -> bool:
@@ -181,8 +186,8 @@ def main() -> int:
                   f"Add a step beside its gate in .github/workflows/dev-ci.yml and "
                   f"scripts/check.sh, or delete the flag if it was never meant to run.")
         return 1
-    print(f"verify-selftests-wired: OK — {declared} of {total} verify-*.py declare a "
-          f"--self-test and every one is invoked by a runner.")
+    print(f"verify-selftests-wired: OK — {declared} of {total} verify-*/check-* checkers "
+          f"declare a --self-test and every one is invoked by a runner.")
     return 0
 
 
