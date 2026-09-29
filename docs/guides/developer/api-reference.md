@@ -12,9 +12,9 @@ and kds_orders.rs that are listed as if they were IPC commands - two of those ca
 and 70 references, so they are live code documented at the wrong layer, not dead names.
 -->
 
-> **Derived from the `#[tauri::command]` definitions in both clients, NOT from
-> `generate_handler!` — the two sets differ, and the difference is the interesting
-> part.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
+> **Derived from the `generate_handler!` registries of both clients, and it lists
+> exactly the callable surface — every name here can be invoked on the shells its
+> marker names, and no registered command is missing.** Regenerated 31-08-26, reconciled against reality 08-09-26. The live
 > registered surface is **454 distinct commands** (re-measured 08-09-26; 429 in
 > `apps/desktop-tauri/src/lib.rs`, 301 in `apps/mobile-tauri/src/lib.rs`, 276 in
 > both) — a point-in-time record, kept as written. **Re-measured 2026-09-14: 478
@@ -24,7 +24,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > `registered   desktop=453 tablet=322 distinct=478`; the 297-both figure is NOT printed
 > by it or by `python scripts/verify-ipc-parity.py` (which agrees per shell: 453 registered
 > desktop, 322 tablet, EXIT 0) and comes from intersecting the two `generate_handler!`
-> lists. The page's own shape is unchanged and re-derivable:
+> lists. **As at 2026-09-14 — superseded by the 2026-09-29 note below, which re-measured every number here.** The page's own shape was then re-derivable:
 > `grep -c '^### `commands::' docs/guides/developer/api-reference.md` = 54 sections,
 > `grep -cE '^- \*\*`' docs/guides/developer/api-reference.md` = 547 rows, and the `(N)` on every
 > section header sums to 547 with zero sections whose annotation disagrees with their own
@@ -44,7 +44,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > registered-but-undocumented = 454 registered. The identity held for the old numbers
 > too, and that is the point of writing it as an equation: after each repair it either
 > still closes, or it tells you the arithmetic was never checked.
-> that a "55-entry gap" and then presented a four-class table summing to 154 underneath
+> **A correction recorded:** an earlier header asserted a "55-entry gap" and then presented a four-class table summing to 154 underneath
 > it, which cannot both be true — 55 is a difference of set sizes while 154 is a count of
 > discrepancies in four directions, and the two were being read as one number. Stating the
 > intersection makes the claim checkable; the gap framing hid an inconsistency.
@@ -61,15 +61,15 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > Reproduce every number above with
 >
 > ```bash
-> python .agents/skills/docs-auditor/scripts/check-api-surface.py   # exit 1 today, by design
+> python .agents/skills/docs-auditor/scripts/check-api-surface.py   # exit 0 since 2026-09-29
 > ```
 >
 > It parses `generate_handler![...]` in each `lib.rs` for the registered set, every
 > `#[command]` fn under `src/` for the defined set, and the entry lines of this page for
-> the documented set, then reports the four classes separately. It is deliberately not
-> wired into `check.sh`, `gates.json` or CI: this page is red against it right now, and a
-> gate that starts life failing gets muted rather than fixed. Wiring it in needs every
-> discrepancy resolved first, or an explicit baseline — and the count moves with the code:
+> the documented set, then reports the four classes separately. It is now
+> wired into `check.sh`, `gates.json` and CI (`dev-ci.yml#ci-docs-drift`), because as of
+> 2026-09-29 the page is green against it: all four classes are zero, so the gate starts
+> life passing rather than muted. The count still moves with the code:
 > it was 154 on 31-08-26, 158 by 08-09-26, entirely because 4 new command groups landed
 > (`memos`, `payables`, `legal_entities`, `local_api`) without a doc row each. Do not
 > hardcode a target number into CI; derive it.
@@ -103,13 +103,32 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 > `apps/desktop-tauri/src/commands/<module>.rs` (or the tablet equivalent). All
 > commands return `Result<T, AppError>`.
 
+> **Count note 2026-09-29 · Buffy · repair pass ·** the page now matches the registries
+> exactly: `registered desktop=481 tablet=345 distinct=496`, `documented 496 entries`,
+> and `marker wrong : 0`, `listed, not registered anywhere : 0`,
+> `listed, not defined anywhere : 0`, `registered, not listed : 0` — **`CLEAN: doc and
+> registries agree`**, exit 0. What that took, and what it removed: 101 rows named a
+> command that exists nowhere in the repo (97 were unscoped ADR #7 twins whose code has
+> since been deleted, 4 were retired setup/topology names), 3 rows named a `#[command]` fn
+> that no `generate_handler!` lists, 10 availability markers named the wrong shell, and 55
+> registered commands had no row at all. Every name removed is accounted for under
+> [Names this page deliberately does not list](#names-this-page-deliberately-does-not-list),
+> with its successor or its real home, so nothing was dropped silently. This page's own
+> section annotations were also wrong before this pass — four of them disagreed with their
+> own row counts (`commands::hardware` said 16 over 13 rows, `products` 23 over 22,
+> `settings` 29 over 28, and the header said 54 sections when there were 55) — which is
+> why the table above claimed "zero sections whose annotation disagrees" and was not true.
+> The `(N)` on each heading was regenerated from its own rows in this pass, and the six
+> sections that had no page presence at all (`avatars`, `fiscal`, `local_payment`,
+> `qris_auto`, `receipt_format`, `regional`) were added.
+
 <!-- regenerate: parse generate_handler! in both lib.rs for the surface, and the /// doc comments in commands/*.rs for the summaries -->
 ### `commands::analytics` (2)
 
 - **`get_staff_analytics_daily_scoped`** [D+T] — Per-day shift + sales series for one staff member over `[from, to]`.
 - **`get_staff_analytics_scoped`** [D+T] — Per-staff shift + sales summary for the session's store over `[from, to]`.
 
-### `commands::audit` (5)
+### `commands::audit` (6)
 
 - **`export_audit_log_scoped`** [D+T] — Export the session store's audit log to CSV (AUD-09).
 - **`get_audit_review_status_scoped`** [D+T] — Fetch the session store's latest review checkpoint + unreviewed count
@@ -117,11 +136,13 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`list_security_events_scoped`** [D+T] — Read the ORGANIZATION-level security trail — logins, logouts and staff account changes — from the GLOBAL identity database.
 - **`mark_audit_reviewed_scoped`** [D+T] — Persist a server-side review checkpoint for the session's store (AUD-04).
 
-### `commands::auth` (9)
+- **`export_security_events_scoped`** [D+T] — Export the ORGANIZATION-level security trail to CSV (owner ruling D61-7, D84).
+
+### `commands::auth` (11)
 
 - **`create_session`** [D+T] — Create a new session and return an opaque session token.
 - **`destroy_session`** [D+T] — Destroy an active session, invalidating the token.
-- **`has_users`** [D] — Check whether any staff accounts exist in the database.
+- **`has_users`** [D+T] — Check whether any staff accounts exist in the database.
 - **`impersonate_user_scoped`** [D+T] — Begin an operator impersonation session for support. The caller must present a valid operator session that holds the.
 - **`refresh_picker_ticket`** [D+T] — Mint a fresh picker ticket for a caller who already holds a valid session token.
 - **`session_keepalive`** [D+T] — Refresh the current session's TTL so long-lived screens (analytics,
@@ -129,17 +150,23 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`staff_login`** [D+T] — Authenticate a staff member by username and PIN.
 - **`verify_pin`** [D] — Verify the current session user's PIN.
 
-### `commands::branding` (10)
+- **`list_organizations`** [D+T] — Enumerate the Organizations (legal entities) this device knows about.
+- **`switch_organization`** [D+T] — Switch the active Organization (legal entity) for an authenticated session.
+
+### `commands::avatars` (3)
+
+- **`clear_avatar_scoped`** [D+T] — Clear `user_id`'s avatar back to the initials fallback.
+- **`get_own_avatar_scoped`** [D+T] — Read the SESSION user's own avatar hash, or null when none is set.
+- **`set_avatar_scoped`** [D+T] — Set `user_id`'s avatar from the image at `source_path`.
+
+### `commands::branding` (7)
 
 - **`get_brand_settings`** [D+T] — Load all brand settings at once.
 - **`get_brand_settings_scoped`** [D+T] — Load all brand settings resolved from a session token. ADR #7.
 - **`pick_logo_file`** [D] — Open a native file picker filtered to image files and return the
 - **`pick_logo_file_scoped`** [D] — Session-scoped variant of [`pick_logo_file`].
-- **`set_brand_logo_path`** [T] — Set the filesystem path to the store logo.
 - **`set_brand_logo_path_scoped`** [D+T] — Set the brand logo path (scoped — two-phase db access).
-- **`set_brand_primary_colour`** [T] — Set the primary brand colour.
 - **`set_brand_primary_colour_scoped`** [D+T] — Scoped variant of `set_brand_primary_colour` (ADR #7).
-- **`set_brand_store_name`** [T] — Set the brand store display name.
 - **`set_brand_store_name_scoped`** [D+T] — Scoped variant of `set_brand_store_name` (ADR #7).
 
 ### `commands::browser` (2)
@@ -147,19 +174,13 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`open_product_images`** [T] — Open a Google Images search for a product in the default browser.
 - **`open_product_images_scoped`** [D] — Open a Google Images search for a product in the default browser.
 
-### `commands::bundles` (12)
+### `commands::bundles` (6)
 
-- **`create_bundle`** [T] — Create bundle.
 - **`create_bundle_scoped`** [D+T] — Create a new bundle (scoped).
-- **`delete_bundle`** [T] — Delete bundle.
 - **`delete_bundle_scoped`** [D+T] — Scoped variant of `delete_bundle` (ADR #7).
-- **`get_bundle`** [T] — Get bundle.
 - **`get_bundle_scoped`** [D+T] — Scoped variant of `get_bundle` (ADR #7).
-- **`list_bundles`** [T] — List bundles.
 - **`list_bundles_scoped`** [D+T] — Scoped variant of `list_bundles` (ADR #7).
-- **`lookup_bundle_by_sku`** [T] — Lookup bundle by sku.
 - **`lookup_bundle_by_sku_scoped`** [D+T] — Scoped variant of `lookup_bundle_by_sku` (ADR #7).
-- **`update_bundle`** [T] — Update bundle.
 - **`update_bundle_scoped`** [D+T] — Scoped variant of `update_bundle` (ADR #7).
 
 ### `commands::categories` (5)
@@ -190,23 +211,34 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`search_customers_scoped`** [D+T] — Search customers in the store resolved from a session token. ADR #7.
 - **`update_customer_scoped`** [D+T] — Update a customer in the store resolved from a session token. ADR #7.
 
-### `commands::data` (7)
+### `commands::data` (12)
 
 - **`create_backup`** [D] — Create backup.
 - **`create_backup_scoped`** [D] — Session-scoped variant of [`create_backup`].
-- **`export_data`** [D] — Export data.
+- **`export_data`** [D+T] — Export data.
 - **`get_backup_status`** [D] — Get backup status.
 - **`get_backup_status_scoped`** [D] — Session-scoped variant of [`get_backup_status`].
-- **`import_data`** [D] — Import data.
-- **`import_preview`** [D] — Import preview.
+- **`import_data`** [D+T] — Import data.
+- **`import_preview`** [D+T] — Import preview.
 
-### `commands::edc` (5)
+- **`create_backup_to`** [T] — Backup the database to an operator-chosen destination (tablet only).
+- **`export_data_without_session`** [D+T] — Export data on the session-less path. The command carries no `///` line in source.
+- **`list_restore_candidates`** [D] — List the backup generations beside the live database, each with its verdict.
+- **`restore_prepare`** [D] — Request a restore of the named candidate on the next boot (gated).
+- **`restore_status`** [D] — Report whether a restore request is pending beside the live database.
+
+### `commands::edc` (9)
 
 - **`edc_refund`** [D] — Refund a previously captured card transaction.
 - **`edc_sale`** [D] — Process a card-present sale (authorize + capture in one call).
 - **`edc_terminal_status`** [D] — Query the EDC terminal's current status.
 - **`edc_terminal_status_scoped`** [D] — Session-scoped variant of [`edc_terminal_status`].
 - **`edc_void`** [D] — Void a pending authorisation before capture.
+
+- **`create_edc_terminal_scoped`** [D] — Create a new card-payment terminal (session-scoped).
+- **`delete_edc_terminal_scoped`** [D] — Delete a card-payment terminal (session-scoped).
+- **`list_edc_terminals_scoped`** [D] — List configured card-payment terminals (session-scoped).
+- **`update_edc_terminal_scoped`** [D] — Update an existing card-payment terminal (session-scoped).
 
 ### `commands::email` (4)
 
@@ -230,42 +262,41 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`set_feature`** [D+T] — Enable or disable a single feature flag.
 - **`set_features_bulk`** [D+T] — Enable or disable multiple feature flags atomically in a single
 
-### `commands::gift_cards` (16)
+### `commands::fiscal` (5)
 
-- **`freeze_gift_card`** [T] — Freeze gift card.
+Statutory number series and fiscal schemes, per legal entity. Desktop and tablet both register all five.
+
+- **`get_document_number_sequence_scoped`** [D+T] — Read the statutory number series for one legal entity and document kind.
+- **`list_document_number_sequences_for_entity_scoped`** [D+T] — The configured series for ONE legal entity (the overview's per-entity drill-down).
+- **`list_document_number_sequences_scoped`** [D+T] — List every statutory number series configured for the tenant.
+- **`list_fiscal_schemes_scoped`** [D+T] — List the tenant's fiscal schemes — the entity-level anchor the number series hang off.
+- **`upsert_document_number_sequence_scoped`** [D+T] — Create or update the statutory number series for one legal entity and document kind.
+
+### `commands::gift_cards` (8)
+
 - **`freeze_gift_card_scoped`** [D+T] — Freeze a gift card (scoped).
-- **`get_gift_card`** [T] — Get gift card.
-- **`get_gift_card_balance`** [T] — Get gift card balance.
 - **`get_gift_card_balance_scoped`** [D+T] — Get the current balance of a gift card (scoped).
 - **`get_gift_card_scoped`** [D+T] — Get a gift card by its card number or internal ID (scoped).
-- **`issue_gift_card`** [T] — Issue gift card.
 - **`issue_gift_card_scoped`** [D+T] — Issue a new gift card (scoped — requires valid session).
-- **`list_gift_cards`** [T] — List gift cards.
 - **`list_gift_cards_scoped`** [D+T] — List all gift cards with optional filtering by status (scoped).
-- **`redeem_gift_card`** [T] — Redeem gift card.
 - **`redeem_gift_card_scoped`** [D+T] — Redeem (spend) a gift card balance against a sale (scoped).
-- **`top_up_gift_card`** [T] — Top_up gift card.
 - **`top_up_gift_card_scoped`** [D+T] — Add value (top up) to an existing gift card (scoped).
-- **`unfreeze_gift_card`** [T] — Unfreeze gift card.
 - **`unfreeze_gift_card_scoped`** [D+T] — Unfreeze a previously frozen gift card (scoped).
 
-### `commands::hardware` (16)
+### `commands::hardware` (10)
 
 - **`discover_hardware_scoped`** [D+T] — Discover all connected USB hardware devices (scoped).
 - **`display_clear_scoped`** [D+T] — Clear a customer-facing pole display (scoped).
 - **`display_show_scoped`** [D+T] — Show content on a customer-facing pole display (scoped).
 - **`list_displays_scoped`** [D+T] — List all registered customer displays (scoped).
 - **`list_scanners_scoped`** [D+T] — List all registered barcode scanners (scoped).
-- **`open_cash_drawer`** [T] — Open cash drawer.
 - **`open_cash_drawer_scoped`** [D+T] — Open cash drawer (scoped — requires valid session).
-- **`print_receipt`** [T] — Print receipt.
 - **`print_receipt_scoped`** [D+T] — Print receipt (scoped — requires valid session).
-- **`print_sales_receipt`** [T] — Print sales receipt.
 - **`print_sales_receipt_scoped`** [D+T] — Print sales receipt for the store resolved from a session token. ADR #7.
 - **`start_scanner_scoped`** [D+T] — Start a barcode scanner (scoped).
 - **`stop_scanner_scoped`** [D+T] — Stop the active barcode scanner (scoped).
 
-### `commands::health` (8)
+### `commands::health` (9)
 
 - **`get_device_id`** [D+T] — Get the stable device identifier (hostname) for terminal binding.
 - **`get_device_id_scoped`** [D] — Session-scoped variant of [`get_device_id`].
@@ -276,7 +307,9 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`version`** [D+T] — Version.
 - **`version_scoped`** [D] — Version info resolved from a session token. ADR #7.
 
-### `commands::history` (10)
+- **`get_build_fingerprint`** [T] — Report this installation's APK signing-certificate fingerprint (ADR #57 §2.1).
+
+### `commands::history` (12)
 
 - **`export_daily_summary`** [T] — Export daily summary.
 - **`export_daily_summary_scoped`** [D+T] — Fetch the daily sales summary for the store resolved from a session token.
@@ -288,6 +321,9 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`get_sale_scoped`** [D+T] — Fetch a single sale by ID from the store resolved from a session token.
 - **`list_sales`** [T] — List sales.
 - **`list_sales_scoped`** [D+T] — List all sales for the store resolved from a session token.
+
+- **`create_faktur_pengganti_scoped`** [D+T] — Create a Faktur Pengganti for an existing e-Faktur on a completed sale.
+- **`stamp_faktur_pajak_scoped`** [D+T] — Stamp a DJP-approved NSFP onto a completed sale.
 
 ### `commands::inventory` (24)
 
@@ -329,7 +365,7 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`update_count_line_scoped`** [D+T] — Update a line belonging to an editable count in the session's store.
 - **`update_stock_count_status_scoped`** [D+T] — Move an editable count to `in_progress` or `cancelled`.
 
-### `commands::desktop_link` (3)
+### `commands::desktop_link` (8)
 
 > Added 2026-09-20: these three shipped with ADR #54 §2.5 and were never listed here. The
 > `check-api-surface.py` checker had been unable to run since `apps/desktop-client` was renamed,
@@ -339,21 +375,22 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`link_device_email_request`** [D+T] — Email a 6-digit code to the account address (the tablet's route).
 - **`link_device_email_consume`** [D+T] — Spend that code and link the device.
 
-### `commands::kds` (14)
+- **`login_with_email_password`** [D+T] — Signs in with an email address and the account's password.
+- **`poll_device_pairing`** [D+T] — Polls an active device-code pairing session (ADR #56 §2.5).
+- **`request_email_login_code`** [D+T] — Emails a 6-digit sign-in code to an address (register-or-login).
+- **`start_device_pairing`** [D+T] — Starts a device-code pairing session (ADR #56 §2.5).
+- **`verify_email_login_code`** [D+T] — Spends an emailed sign-in code, returning the session it proved.
 
-- **`create_kds_order_from_sale`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `create_kds_order_from_sale_scoped`.
+### `commands::kds` (9)
+
 - **`create_kds_order_from_sale_scoped`** [D+T] — Create KDS orders in the store resolved from a session token. ADR #7.
-- **`get_kds_order`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `get_kds_order_scoped`.
 - **`get_kds_order_lines_scoped`** [D] — Get all line items for a KDS order (scoped — ADR #7).
 - **`get_kds_order_scoped`** [D+T] — Get a KDS order from the store resolved from a session token. ADR #7.
-- **`get_kds_queue`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `get_kds_queue_scoped`.
 - **`get_kds_queue_scoped`** [D+T] — Get the kitchen queue for the store resolved from a session token. ADR #7.
-- **`list_kds_orders`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `list_kds_orders_scoped`.
 - **`list_kds_orders_scoped`** [D+T] — List KDS orders for the store resolved from a session token. ADR #7.
 - **`print_kds_chit_scoped`** [D] — Print a kitchen chit for a specific KDS order by ID (scoped — ADR #7).
 - **`update_kds_line_item_status_scoped`** [D] — Update the status of a single KDS line item in the store resolved
 - **`update_kds_order_items_scoped`** [D] — Update the items on a KDS order in the store resolved from a session token. ADR #7.
-- **`update_kds_status`** [not an IPC command] — Service method in `kasirmu_core::db`. The callable surface is `update_kds_status_scoped`.
 - **`update_kds_status_scoped`** [D+T] — Update a KDS order's status in the store resolved from a session token. ADR #7.
 
 ### `commands::kds_device` (6)
@@ -365,10 +402,13 @@ and 70 references, so they are live code documented at the wrong layer, not dead
 - **`register_kds_device_scoped`** [D] — Register a new KDS device bound to a Restaurant POS.
 - **`update_kds_device_status_scoped`** [D] — Update a KDS device's connection status.
 
-### `commands::kds_routing` (1)
+### `commands::kds_routing` (3)
 
 - **`resolve_kds_targets_scoped`** [D] — Resolve which KDS device IDs should receive an order based on its
 
+
+- **`get_kds_routing_rules_scoped`** [D] — List the KDS routing rules of the session's restaurant, highest priority first (lower number wins).
+- **`save_kds_routing_rules_scoped`** [D] — Replace the complete KDS routing rule set of the session's restaurant.
 
 ### `commands::legal_entities` (4)
 
@@ -386,11 +426,11 @@ A legal entity is the contracting body an organization registers; tenants hang o
 ### `commands::license` (17)
 
 - **`activate_license`** [D] — Activates a license key for the given email, phone, and machine ID.
-- **`check_license_status`** [D] — Checks the license status against the PocketBase license server.
+- **`check_license_status`** [D+T] — Checks the license status against the PocketBase license server.
 - **`check_license_status_scoped`** [D] — Session-scoped variant of [`check_license_status`].
 - **`get_hardware_fingerprint`** [D] — Retrieves the device-level hardware fingerprint (SPEC-2026-TRIAL-LOCK).
 - **`get_hardware_fingerprint_scoped`** [D] — Session-scoped variant of [`get_hardware_fingerprint`].
-- **`get_license_status`** [D] — Analyzes the local license state and returns a comprehensive status response.
+- **`get_license_status`** [D+T] — Analyzes the local license state and returns a comprehensive status response.
 - **`get_license_status_scoped`** [D] — Session-scoped variant of [`get_license_status`].
 - **`get_machine_id`** [D] — Retrieves the unique hardware identifier for this installation.
 - **`get_machine_id_scoped`** [D] — Session-scoped variant of [`get_machine_id`].
@@ -418,6 +458,13 @@ The loopback HTTP API. Desktop-only: there is no tablet handler for any of these
 - **`local_api_set_port_scoped`** [D] — Change the listen port. When the server is running it is restarted on the new port; a failed restart returns an error and leaves the.
 - **`local_api_set_store_scoped`** [D] — Choose which store the local API serves. Empty string resets to the primary store. Running servers restart against the new target.
 - **`local_api_status_scoped`** [D] — Report whether the local API is enabled/running and on which port.
+
+### `commands::local_payment` (2)
+
+Regional slice 6 — the payment rails a location accepts, as one read and one whole-list write.
+
+- **`get_local_payment_methods_scoped`** [D+T] — Read the effective payment-rail surface for one location of the session's store.
+- **`set_local_payment_methods_scoped`** [D+T] — Replace the location's rail list (the card's whole-list write) and return the freshly effective set.
 
 ### `commands::loyalty` (8)
 
@@ -447,24 +494,16 @@ The terminal memo board. Authoring and publishing are desktop-side; acknowledgem
 - **`revise_memo_scoped`** [D] — Revise an existing memo with new title and body. Requires `memo:write`.
 - **`stop_memo_scoped`** [D] — Early-stop a published memo (`published → stopped`): it leaves every display surface immediately and `stopped_by` records who ended it.
 
-### `commands::offline` (17)
+### `commands::offline` (9)
 
-- **`delete_offline_item`** [T] — Delete a processed offline queue item.
 - **`delete_offline_item_scoped`** [D+T] — Delete a processed offline queue item (scoped).
-- **`enqueue_offline`** [T] — Manually enqueue a transaction for later sync.
 - **`enqueue_offline_scoped`** [D+T] — Enqueue a transaction for later sync (scoped).
-- **`list_all_offline`** [T] — List all offline queue items (most recent first).
 - **`list_all_offline_scoped`** [D+T] — List all offline queue items (scoped).
-- **`list_pending_offline`** [T] — List all pending (unsynced) offline queue items, oldest first.
 - **`list_pending_offline_scoped`** [D+T] — List all pending (unsynced) offline queue items (scoped).
-- **`list_remote_failures`** [T] — List retained remote-application failures (dead-letter discovery).
 - **`list_remote_failures_scoped`** [D+T] — List retained remote-application failures (scoped).
 - **`offline_queue_status_summary_scoped`** [D] — Get a summary of the offline queue status (scoped).
-- **`pending_offline_count`** [T] — Get the count of pending offline items.
 - **`pending_offline_count_scoped`** [D+T] — Get the count of pending offline items (scoped).
-- **`requeue_remote_failure`** [T] — Requeue a dead-lettered remote item so the next sync cycle retries it.
 - **`requeue_remote_failure_scoped`** [D+T] — Requeue a dead-lettered remote item (scoped).
-- **`retry_offline_sync`** [T] — Attempt to sync all pending offline items through the real cloud sync
 - **`retry_offline_sync_scoped`** [D+T] — Attempt to sync all pending offline items (scoped).
 
 
@@ -481,7 +520,7 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`record_payable_payment_scoped`** [D] — Record a payment against a payable (partial or full settlement). Requires `payables:settle`. Returns the updated payable; the payment history is a.
 - **`write_off_payable_scoped`** [D] — Write off a payable (forgive the remaining balance). Requires `payables:writeoff` — a money-destruction action, terminal and audited.
 
-### `commands::pos` (19)
+### `commands::pos` (21)
 
 - **`add_line_scoped`** [D+T] — Add a line to an active cart in the store resolved from a session token. ADR #7.
 - **`complete_sale_scoped`** [D+T] — Complete a sale within the store resolved from a session token.
@@ -503,42 +542,30 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 - **`set_cart_discount_scoped`** [D+T] — Set a cart discount within the store resolved from a session token.
 - **`start_sale_scoped`** [D+T] — Start a new sale in the store resolved from a session token. ADR #7.
 
-### `commands::product_variants` (10)
+- **`publish_course_fired_scoped`** [D+T] — Publish one fired course for a completed sale (ADR #7).
+- **`set_line_course_scoped`** [D+T] — Assign (or clear) the restaurant course on an active cart line (ADR #7).
 
-- **`create_product_variant`** [T] — Create a new product variant.
+### `commands::product_variants` (5)
+
 - **`create_product_variant_scoped`** [D+T] — Create a product variant (scoped).
-- **`delete_product_variant`** [T] — Delete a product variant by its own SKU.
 - **`delete_product_variant_scoped`** [D+T] — Scoped variant of `delete_product_variant` (ADR #7).
-- **`get_product_variant`** [T] — Get a single variant by its own SKU.
 - **`get_product_variant_scoped`** [D+T] — Scoped variant of `get_product_variant` (ADR #7).
-- **`list_product_variants`** [T] — List all variants for a given parent product SKU.
 - **`list_product_variants_scoped`** [D+T] — Scoped variant of `list_product_variants` (ADR #7).
-- **`update_product_variant`** [T] — Update an existing product variant (matched by SKU).
 - **`update_product_variant_scoped`** [D+T] — Update an existing product variant (scoped).
 
-### `commands::products` (23)
+### `commands::products` (12)
 
-- **`adjust_stock`** [T] — Adjust stock for a product identified by SKU.
 - **`adjust_stock_scoped`** [D+T] — Adjust stock for the store resolved from a session token.
-- **`create_product`** [T] — Create product.
 - **`create_product_scoped`** [D+T] — Create a product within the store resolved from a session token.
-- **`delete_product`** [T] — Delete product.
 - **`delete_product_scoped`** [D+T] — Delete a product within the store resolved from a session token.
-- **`get_product_track_serial`** [T] — Check whether a product tracks serial numbers.
-- **`get_product_track_serial_batch`** [T] — Check serial-tracking flags for many SKUs in one round trip
 - **`get_product_track_serial_batch_scoped`** [D+T] — Store-scoped batch variant of `get_product_track_serial_batch`. ADR #7.
 - **`get_product_track_serial_scoped`** [D+T] — Check whether a product tracks serial numbers, store-scoped. ADR #7.
-- **`list_products`** [T] — Fetch all products from the database.
 - **`list_products_scoped`** [D+T] — Fetch all products for the store resolved from a session token.
-- **`list_warehouse_products`** [T] — Fetch warehouse-tracked products only (excludes services).
 - **`list_warehouse_products_at_location`** [D] — Fetch inventory-tracked products with stock at a specific location.
 - **`list_warehouse_products_scoped`** [T] — Session-scoped variant of `list_warehouse_products`.
 - **`lookup_by_barcode_scoped`** [D+T] — Look up a product by barcode for the store resolved from a
-- **`lookup_product_by_sku`** [T] — Look up a single product by SKU.
 - **`lookup_product_by_sku_scoped`** [D+T] — Look up a product by SKU for the store resolved from a
-- **`record_product_search`** [T] — Record an acted-upon product search for the popularity index.
 - **`record_product_search_scoped`** [D+T] — Record an acted-upon product search for the popularity index.
-- **`update_product`** [T] — Update product.
 - **`update_product_scoped`** [D+T] — Update a product within the store resolved from a session token.
 
 
@@ -550,54 +577,60 @@ Supplier debts raised outside a purchase order. Desktop-only for now.
 
 Product image slot assignment (slots 1..=5). The bytes live on disk; these commands move the assignment rows.
 
-- **`products_clear_image_scoped`** [D] — Remove the image at `slot` for `product_id`. Only the DB assignment is removed; the file on disk is left for the GC.
+- **`products_clear_image_scoped`** [D+T] — Remove the image at `slot` for `product_id`. Only the DB assignment is removed; the file on disk is left for the GC.
 - **`products_list_images_scoped`** [D] — List the image assignments for a product (slots 1..=5), ordered by slot. The editor flow calls this on open to show the primary + alternatives.
-- **`products_set_image_scoped`** [D] — Assign the image at `source_path` to `product_id` at `slot` (1..=5). The ingest pipeline runs entirely in Rust: `source_path` is the file.
+- **`products_set_image_scoped`** [D+T] — Assign the image at `source_path` to `product_id` at `slot` (1..=5). The ingest pipeline runs entirely in Rust: `source_path` is the file.
 
-### `commands::promotions` (14)
+### `commands::promotions` (7)
 
-- **`apply_promotion`** [T] — Apply promotion.
 - **`apply_promotion_scoped`** [D+T] — Apply a promotion in the store resolved from a session token. ADR #7.
-- **`create_promotion`** [T] — Create promotion.
 - **`create_promotion_scoped`** [D+T] — Create a promotion in the store resolved from a session token. ADR #7.
-- **`delete_promotion`** [T] — Delete promotion.
 - **`delete_promotion_scoped`** [D+T] — Delete a promotion in the store resolved from a session token. ADR #7.
-- **`get_promotion`** [T] — Get promotion.
 - **`get_promotion_scoped`** [D+T] — Get a promotion from the store resolved from a session token. ADR #7.
-- **`get_sale_promotions`** [T] — Get sale promotions.
 - **`get_sale_promotions_scoped`** [D+T] — Get sale promotions from the store resolved from a session token. ADR #7.
-- **`list_promotions`** [T] — List promotions.
 - **`list_promotions_scoped`** [D+T] — List promotions for the store resolved from a session token. ADR #7.
-- **`update_promotion`** [T] — Update promotion.
 - **`update_promotion_scoped`** [D+T] — Update a promotion in the store resolved from a session token. ADR #7.
 
-### `commands::purchasing` (19)
+### `commands::purchasing` (10)
 
-- **`create_purchase_order`** [T] — Create purchase order.
 - **`create_purchase_order_scoped`** [D+T] — Scoped variant of `create_purchase_order` (ADR #7).
-- **`create_supplier`** [T] — Create supplier.
 - **`create_supplier_scoped`** [D+T] — Scoped variant of `create_supplier` (ADR #7).
-- **`get_purchase_order`** [T] — Get purchase order.
 - **`get_purchase_order_scoped`** [D+T] — Scoped variant of `get_purchase_order` (ADR #7).
-- **`get_supplier`** [T] — Get supplier.
 - **`get_supplier_scoped`** [D+T] — Scoped variant of `get_supplier` (ADR #7).
-- **`list_purchase_orders`** [T] — List purchase orders.
 - **`list_purchase_orders_scoped`** [D+T] — Scoped variant of `list_purchase_orders` (ADR #7).
-- **`list_suppliers`** [T] — List suppliers.
 - **`list_suppliers_scoped`** [D+T] — Scoped variant of `list_suppliers` (ADR #7).
-- **`receive_purchase_order`** [T] — Receive purchase order.
 - **`receive_purchase_order_scoped`** [D+T] — Scoped variant of `receive_purchase_order` (ADR #7).
 - **`receive_purchase_order_with_lines_scoped`** [D+T] — Scoped variant of `receive_purchase_order_with_lines` (ADR #7).
-- **`update_po_status`** [T] — Update po status.
 - **`update_po_status_scoped`** [D+T] — Scoped variant of `update_po_status` (ADR #7).
-- **`update_supplier`** [T] — Update supplier.
 - **`update_supplier_scoped`** [D+T] — Scoped variant of `update_supplier` (ADR #7).
+
+### `commands::qris_auto` (2)
+
+Dynamic QRIS, desktop and tablet. Both are scoped, per ADR #7.
+
+- **`qris_auto_charge_scoped`** [D+T] — Issue a dynamic Midtrans QRIS charge for a sale (scoped, ADR #7).
+- **`qris_auto_status_scoped`** [D+T] — Poll a charge's settlement status (scoped, ADR #7).
 
 ### `commands::refunds` (3)
 
 - **`list_refunds_scoped`** [D+T] — List all refunds for a sale from the store resolved from a session token.
 - **`lookup_sale_by_receipt_barcode_scoped`** [D+T] — Look up a sale by receipt barcode from the store resolved from a session token.
 - **`process_refund_scoped`** [D+T] — Process a refund within the store resolved from a session token.
+
+### `commands::receipt_format` (3)
+
+Three layers of one receipt format: the terminal override, the workspace layout record, and the primary legal entity's statutory content.
+
+- **`get_receipt_format_scoped`** [D+T] — Read the effective receipt format for the session's terminal (or the store default when none is bound).
+- **`set_receipt_content_scoped`** [D+T] — Replace the primary legal entity's statutory content record and return the freshly effective format.
+- **`set_receipt_layout_scoped`** [D+T] — Replace the workspace-layer layout record for the session's store db.
+
+### `commands::regional` (2)
+
+Regional slice 2/3 — the per-location regional configuration, read and write.
+
+- **`get_regional_config_scoped`** [D+T] — Read the effective regional configuration for one location of the session's store.
+- **`set_regional_config_scoped`** [D+T] — Write the regional configuration for one location of the session's store.
 
 ### `commands::reports` (24)
 
@@ -632,52 +665,43 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`read_scale_weight`** [T] — Read the current weight from the registered weight scale.
 - **`read_scale_weight_scoped`** [D+T] — Read scale weight (scoped).
 
-### `commands::security` (4)
+### `commands::security` (3)
 
 - **`get_key_rotation_info`** [D] — Get the current key rotation status (key age, creation timestamp).
 - **`get_key_rotation_info_scoped`** [D] — Session-scoped variant of [`get_key_rotation_info`].
-- **`rotate_encryption_key`** [not an IPC command] — Rotate (re-generate) the encryption key.
-  Retired by `a32b13aaa` ("drop the ungated rotate_encryption_key command"): no `#[command]` of this name exists in either client today (`grep -rn 'fn rotate_encryption_key' --include=*.rs apps crates` returns only the `_scoped` command at `apps/desktop-tauri/src/commands/security.rs:105` and the plain bridge fn at `crates/kasirmu-bridge/src/security.rs:156`). The callable surface is `rotate_encryption_key_scoped`; measured 2026-09-14.
 - **`rotate_encryption_key_scoped`** [D] — Session-scoped variant of [`rotate_encryption_key`].
 
-### `commands::settings` (29)
+### `commands::settings` (20)
 
 - **`gateway_status`** [D+T] — Report which payment gateways have credentials configured.
-- **`get_credit_settings`** [T] — Get credit settings.
 - **`get_credit_settings_scoped`** [D+T] — Scoped variant of `get_credit_settings` (ADR #7).
 - **`get_deployment_info`** [D+T] — Read-only deployment metadata for the signed-in operator. Authenticates the session and checks `settings:read` inline (category 2 unscoped command).
 - **`get_hardware_settings`** [T] — Get hardware settings for the current terminal from the DB.
 - **`get_hardware_settings_scoped`** [D+T] — Get hardware settings (scoped — multi-phase with session validation).
-- **`get_receipt_settings`** [T] — Get receipt settings.
 - **`get_receipt_settings_scoped`** [D+T] — Get receipt settings resolved from a session token. ADR #7.
 - **`get_setting`** [D+T] — Read a single setting value by key.
 - **`get_setting_scoped`** [D+T] — Scoped variant of `get_setting` (ADR #7).
-- **`get_store_settings`** [T] — Get store settings.
 - **`get_store_settings_scoped`** [D+T] — Get store settings resolved from a session token. ADR #7.
 - **`get_user_preferences_scoped`** [D+T] — Get user preferences resolved from a session token. ADR #7.
-- **`list_credit_sales`** [T] — List credit sales.
 - **`list_credit_sales_scoped`** [D+T] — List credit sales for the store resolved from a session token. ADR #7.
-- **`set_credit_settings`** [T] — Set credit settings.
 - **`set_credit_settings_scoped`** [D+T] — Set credit settings resolved from a session token. ADR #7.
 - **`set_hardware_settings_scoped`** [D+T] — Set hardware settings resolved from a session token. ADR #7.
-- **`set_receipt_settings`** [T] — Set receipt settings.
 - **`set_receipt_settings_scoped`** [D+T] — Set receipt settings resolved from a session token. ADR #7.
 - **`set_setting`** [D+T] — **Deprecated — use `set_setting_scoped` (ADR #7).**
 - **`set_setting_scoped`** [D+T] — Write (or overwrite) a single setting value resolved from a session token. ADR #7.
 - **`set_settings_scoped`** [D+T] — Write (or overwrite) multiple settings in a single transaction, resolved from a session token. ADR #7.
-- **`set_store_settings`** [T] — Set store settings.
 - **`set_store_settings_scoped`** [D+T] — Set store settings resolved from a session token. ADR #7.
 - **`set_user_preferences_scoped`** [D+T] — Set user preferences resolved from a session token. ADR #7.
-- **`settle_credit`** [T] — Settle credit.
 - **`settle_credit_scoped`** [D+T] — Settle a credit sale resolved from a session token. ADR #7.
 
 ### `commands::setup` (5)
 
-- **`complete_setup`** [D+T] — Persist the chosen preset and features, then mark setup as complete.
-- **`dismiss_setup_wizard`** [D+T] — Dismiss the setup wizard without enabling any features.
 - **`get_enabled_features`** [D+T] — Return the list of currently-enabled feature keys.
-- **`get_setup_status`** [D+T] — Returns whether the setup wizard has been completed.
-- **`seed_default_roles_scoped`** [D] — Requires the `staff:manage_roles` permission.
+- **`seed_default_roles_scoped`** [D+T] — Requires the `staff:manage_roles` permission.
+
+- **`get_first_run_state`** [D+T] — The first-run state for one terminal (ADR #56 §2.1); replaces the retired `get_setup_status` boolean.
+- **`get_preset_features`** [D+T] — Return the feature keys a store-type preset enables.
+- **`provision_device`** [D+T] — Provision this terminal in one idempotent transaction (ADR #56 §2.2).
 
 ### `commands::shifts` (7)
 
@@ -689,7 +713,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`list_shifts_scoped`** [D] — List shifts for the store resolved from a session token. ADR #7.
 - **`open_shift_scoped`** [D] — Open a shift in the store resolved from a session token. ADR #7.
 
-### `commands::staff` (11)
+### `commands::staff` (16)
 
 - **`bootstrap_owner`** [D+T] — Create the first owner user in a fresh installation.
 - **`create_role_scoped`** [D+T] — Create a custom role: a named key-set row in the same vocabulary enforcement already speaks (ADR #47 ruling 4).
@@ -702,6 +726,12 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`list_staff_scoped`** [D+T] — List staff members. Caller identity is resolved from the session token.
 - **`update_role_scoped`** [D+T] — Re-name, re-describe, or re-grant an authored role. Editing re-points every holder, so the grant set is validated against the.
 - **`update_staff_scoped`** [D+T] — Update a staff member. Caller identity is resolved from the session token.
+
+- **`delete_staff_scoped`** [D+T] — Move a staff member to the trash (the soft delete, 90-day retention window).
+- **`list_role_trash_scoped`** [D+T] — The role trash, newest first. Runs the 90-day purge sweep before listing.
+- **`list_staff_trash_scoped`** [D+T] — The staff trash, newest first. Runs the 90-day purge sweep before listing.
+- **`restore_role_scoped`** [D+T] — Take a custom role back out of the trash.
+- **`restore_staff_scoped`** [D+T] — Take a staff member back out of the trash (they come back INACTIVE).
 
 ### `commands::stock_transfers` (10)
 
@@ -716,7 +746,7 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`remove_stock_transfer_line_scoped`** [D+T] — Remove a transfer line in the session-scoped store.
 - **`send_stock_transfer_scoped`** [D+T] — Send a transfer in the session-scoped store.
 
-### `commands::locations` (8)
+### `commands::locations` (9)
 
 > Renamed from `store_profiles` in the store→location rename (`10260a035`/`c9d0ec95f`
 > core SQL 09-06, `54470e277` wire field 09-07, `1b3e71798` entitlements 09-08). Every
@@ -736,70 +766,65 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 > `crates/kasirmu-core/src/db/locations.rs` (`list_store_profiles`, `get_store_profile`), which
 > are not IPC surface. A doc comment pointing at one of those as a command is how 7 rows
 > came to look like live API.
+> **Changed 2026-09-29:** `get_primary_location` is defined at
+> `apps/desktop-tauri/src/commands/locations.rs:100` and wired into no handler, so it is no
+> longer listed here as a command — see [Defined but in no handler](#defined-but-in-no-handler-3-names).
+> The section keeps the seven `_scoped` commands, all of which are registered in the
+> desktop handler.
 
-- **`get_primary_location`** [D] — Get the session tenant's primary location (the one unscoped command in this module).
 - **`list_locations_scoped`** [D] — List location profiles for the session's tenant (ADR #7).
 - **`get_location_profile_scoped`** [D] — Get a location profile for the session's tenant (ADR #7).
-- **`get_primary_location_scoped`** [D] — Get the primary location for the session's tenant (ADR #7).
+- **`get_primary_location_scoped`** [D+T] — Get the primary location for the session's tenant (ADR #7).
 - **`create_location_profile_scoped`** [D] — Create a location profile for the session's tenant (ADR #7).
 - **`update_location_profile_scoped`** [D] — Update a location profile for the session's tenant (ADR #7).
 - **`set_primary_location_scoped`** [D] — Set a location as primary for the session's tenant (ADR #7).
 - **`delete_location_profile_scoped`** [D] — Delete a location profile for the session's tenant (ADR #7).
 
-### `commands::subscription` (3)
+- **`get_location_ticket_prefix_scoped`** [D] — Read one location's KDS ticket prefix for the session's tenant (`None` means no prefix).
+- **`set_location_ticket_prefix_scoped`** [D] — Set (or clear) one location's KDS ticket prefix; returns the value as stored.
+
+### `commands::subscription` (4)
 
 - **`explain_feature_availability_scoped`** [D+T] — Explain WHY a feature is (un)available for the session user — the diagnostics surface behind support's "why can't I use X" question.
 - **`get_over_quota_report`** [D+T] — The tenant-level over-quota assessment for the owner-facing remediation view (todo-global-saas-2.md §J downgrade item): which.
 - **`get_subscription_capabilities`** [D+T] — Read the tenant's subscription capabilities and current usage.
 
-### `commands::sync` (23)
+- **`get_over_quota_report_scoped`** [D+T] — The `_scoped` twin of `get_over_quota_report` for the owner-facing remediation view.
+
+### `commands::sync` (17)
 
 - **`get_pg_sync_settings_scoped`** [D] — Get PG sync settings (scoped).
-- **`get_sync_plan`** [T] — Read the caller's own sync plan from the server (ADR sync-plan-gating).
 - **`get_sync_plan_scoped`** [D+T] — Get sync plan (scoped).
-- **`get_sync_settings`** [T] — Get sync settings.
 - **`get_sync_settings_scoped`** [D+T] — Get sync settings resolved from a session token. ADR #7.
-- **`pending_sync_count`** [T] — Get the pending sync count.
 - **`pending_sync_count_scoped`** [D+T] — Pending sync count (scoped).
 - **`pg_sync_start_scoped`** [D] — PG sync start (scoped).
 - **`pg_sync_status_scoped`** [D] — PG sync status (scoped).
 - **`pg_sync_stop_scoped`** [D] — PG sync stop (scoped).
-- **`request_sync_token`** [T] — Request a new JWT API token from the cloud server's
 - **`request_sync_token_scoped`** [D+T] — Request a sync token (scoped).
-- **`settings_changed_sink`** [not an IPC command] — A plain helper at `apps/desktop-tauri/src/commands/sync.rs:210`, used by the wiring at `:366`. The callable surface is `settings_changed_sink_scoped` at `:811`.
 - **`settings_changed_sink_scoped`** [D] — Settings changed sink (scoped — no-op for session-validated callers).
-- **`sync_pull`** [T] — Pull a server snapshot and overwrite the local cache for products,
 - **`sync_pull_scoped`** [D+T] — Sync pull (scoped — 4-phase with auth refresh + backup).
-- **`sync_run`** [T] — Immediately run a sync cycle that pushes pending sales, credit, and
 - **`sync_run_scoped`** [D+T] — Sync run (scoped — 3-phase with auth refresh).
 - **`test_sync_connection`** [D+T] — Test the cloud sync connection by pinging the configured server.
 - **`test_sync_connection_scoped`** [D+T] — Test sync connection (scoped).
 - **`update_pg_sync_settings_scoped`** [D] — Update PG sync settings (scoped).
-- **`update_sync_settings`** [T] — Update sync settings.
 - **`update_sync_settings_scoped`** [D+T] — Update sync settings (scoped).
 
-### `commands::tables` (18)
+- **`list_sync_conflicts_scoped`** [D+T] — List conflicts flagged for manager review (scoped).
+- **`resolve_sync_conflict_scoped`** [D+T] — Record a manager's decision on a conflict (scoped). Returns `false` when the row was not open.
 
-- **`assign_table_order`** [T] — Assign table order.
+### `commands::tables` (9)
+
 - **`assign_table_order_scoped`** [D+T] — Assign an order to a table in the store resolved from a session token. ADR #7.
-- **`create_table`** [T] — Create table.
 - **`create_table_scoped`** [D+T] — Create a table in the store resolved from a session token. ADR #7.
-- **`delete_table`** [T] — Delete table.
 - **`delete_table_scoped`** [D+T] — Delete a table in the store resolved from a session token. ADR #7.
-- **`get_table`** [T] — Get table.
 - **`get_table_scoped`** [D+T] — Get a table from the store resolved from a session token. ADR #7.
-- **`list_sections`** [T] — List sections.
 - **`list_sections_scoped`** [D+T] — List sections for the store resolved from a session token. ADR #7.
-- **`list_tables`** [T] — List tables.
 - **`list_tables_scoped`** [D+T] — List tables for the store resolved from a session token. ADR #7.
-- **`release_table`** [T] — Release table.
 - **`release_table_scoped`** [D+T] — Release a table in the store resolved from a session token. ADR #7.
-- **`update_table`** [T] — Update table.
 - **`update_table_scoped`** [D+T] — Update a table in the store resolved from a session token. ADR #7.
-- **`update_table_status`** [T] — Update table status.
 - **`update_table_status_scoped`** [D+T] — Update a table's status in the store resolved from a session token. ADR #7.
 
-### `commands::tax` (7)
+### `commands::tax` (8)
 
 - **`create_tax_rate_scoped`** [D+T] — Create a tax rate in the store resolved from a session token. ADR #7.
 - **`delete_tax_rate_scoped`** [D+T] — Delete a tax rate in the store resolved from a session token. ADR #7.
@@ -809,35 +834,28 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`set_category_tax_rates_scoped`** [D+T] — Set (replace) the tax rates assigned to a category in the store resolved
 - **`update_tax_rate_scoped`** [D+T] — Update a tax rate in the store resolved from a session token. ADR #7.
 
-### `commands::terminals` (25)
+- **`list_tax_rate_rounding_modes_scoped`** [D+T] — The statutory rounding directive of each named rate row, in one batch read (E1-5).
+
+### `commands::terminals` (16)
 
 - **`clear_device_binding_scoped`** [D] — Clear a device binding in the store resolved from a session token. ADR #7.
-- **`delete_terminal`** [T] — Delete a terminal by id.
-- **`delete_terminal_override`** [T] — Delete a single feature override for a terminal.
 - **`delete_terminal_override_scoped`** [D+T] — Delete a terminal override in the store resolved from a session token. ADR #7.
 - **`delete_terminal_profile_scoped`** [D] — Delete a terminal profile in the store resolved from a session token. ADR #7.
 - **`delete_terminal_scoped`** [D+T] — Delete a terminal in the store resolved from a session token. ADR #7.
 - **`get_device_binding_scoped`** [D] — Get device binding from the store resolved from a session token. ADR #7.
-- **`get_terminal`** [T] — Get a single terminal by id.
 - **`get_terminal_profile_scoped`** [D] — Get a terminal profile from the store resolved from a session token. ADR #7.
 - **`get_terminal_scoped`** [D+T] — Get a terminal from the store resolved from a session token. ADR #7.
-- **`list_terminal_overrides`** [T] — List all feature overrides for a terminal.
 - **`list_terminal_overrides_scoped`** [D+T] — List terminal overrides from the store resolved from a session token. ADR #7.
 - **`list_terminal_profiles_scoped`** [D] — List terminal profiles from the store resolved from a session token. ADR #7.
-- **`list_terminals`** [T] — List all registered terminals.
 - **`list_terminals_scoped`** [D+T] — List terminals from the store resolved from a session token. ADR #7.
-- **`ping_terminal`** [T] — Update a terminal's last_seen_at timestamp (heartbeat).
 - **`ping_terminal_scoped`** [D+T] — Ping a terminal in the store resolved from a session token. ADR #7.
-- **`register_terminal`** [T] — Register a new terminal.
 - **`register_terminal_scoped`** [D+T] — Register a terminal in the store resolved from a session token. ADR #7.
 - **`set_device_binding_scoped`** [D+T] — Set a device binding in the store resolved from a session token. ADR #7.
-- **`set_terminal_override`** [T] — Set (upsert) a feature override for a terminal.
 - **`set_terminal_override_scoped`** [D+T] — Set a terminal override in the store resolved from a session token. ADR #7.
 - **`set_terminal_profile_scoped`** [D] — Set a terminal profile in the store resolved from a session token. ADR #7.
-- **`update_terminal`** [T] — Update an existing terminal.
 - **`update_terminal_scoped`** [D+T] — Update a terminal in the store resolved from a session token. ADR #7.
 
-### `commands::topology` (11)
+### `commands::topology` (10)
 
 - **`apply_topology_diff`** [D] — Apply a full topology diff atomically (Critical #4).
 - **`can_save_topology`** [D] — Return whether the authenticated session can save topology changes.
@@ -848,7 +866,6 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 - **`load_topology_revision`** [D] — ADR #46 §5/§7: fetch one revision's graph, to diff it or load it as a draft. Never mutates — restore-to-draft is a client-side action, and.
 - **`load_topology_template`** [D] — Load one diagram template. `None` when it never existed or is unreadable.
 - **`pin_topology_revision`** [D] — ADR #46 §4: pin or unpin one revision, exempting it from deflation. Gated on `TOPOLOGY_WRITE`, deliberately unlike its two read siblings.
-- **`recover_pending_topology_apply_at_startup`** [not an IPC command] — An internal startup routine, not a `#[command]`, and unlike the other six here it has no `_scoped` twin either.
 - **`save_topology_template`** [D] — Save a diagram template under a branch, replacing any template of that name.
 
 ### `commands::void` (1)
@@ -877,5 +894,72 @@ Product image slot assignment (slots 1..=5). The bytes live on disk; these comma
 
 ---
 
-> last audited 08-09-26 by docs-auditor
+## Names this page deliberately does not list
+
+Everything removed from the module sections above is here. None of these names can be
+invoked today; each line says what to call instead or where the real function lives.
+Re-derive the whole set with `python .agents/skills/docs-auditor/scripts/check-api-surface.py --full`.
+
+### Retired unscoped twins (90 names)
+
+The ADR #7 convention's legacy half. Each row's unscoped name was deleted from both
+clients; **the callable surface is the `_scoped` twin of the same name, which has its own
+row above.** A grep for any name in this table returns nothing under `apps/`.
+
+| Module | Retired unscoped names (`_scoped` twin is the callable one) |
+|---|---|
+| `commands::branding` | `set_brand_logo_path`, `set_brand_primary_colour`, `set_brand_store_name` |
+| `commands::bundles` | `create_bundle`, `delete_bundle`, `get_bundle`, `list_bundles`, `lookup_bundle_by_sku`, `update_bundle` |
+| `commands::gift_cards` | `freeze_gift_card`, `get_gift_card`, `get_gift_card_balance`, `issue_gift_card`, `list_gift_cards`, `redeem_gift_card`, `top_up_gift_card`, `unfreeze_gift_card` |
+| `commands::hardware` | `open_cash_drawer`, `print_receipt`, `print_sales_receipt` |
+| `commands::offline` | `delete_offline_item`, `enqueue_offline`, `list_all_offline`, `list_pending_offline`, `list_remote_failures`, `pending_offline_count`, `requeue_remote_failure`, `retry_offline_sync` |
+| `commands::product_variants` | `create_product_variant`, `delete_product_variant`, `get_product_variant`, `list_product_variants`, `update_product_variant` |
+| `commands::products` | `create_product`, `delete_product`, `get_product_track_serial`, `get_product_track_serial_batch`, `list_warehouse_products`, `lookup_product_by_sku`, `record_product_search`, `update_product` |
+| `commands::promotions` | `apply_promotion`, `create_promotion`, `delete_promotion`, `get_promotion`, `get_sale_promotions`, `list_promotions`, `update_promotion` |
+| `commands::purchasing` | `create_purchase_order`, `create_supplier`, `get_purchase_order`, `get_supplier`, `list_purchase_orders`, `list_suppliers`, `receive_purchase_order`, `update_po_status`, `update_supplier` |
+| `commands::settings` | `get_credit_settings`, `get_receipt_settings`, `get_store_settings`, `list_credit_sales`, `set_credit_settings`, `set_receipt_settings`, `set_store_settings`, `settle_credit` |
+| `commands::sync` | `get_sync_plan`, `get_sync_settings`, `pending_sync_count`, `request_sync_token`, `sync_pull`, `sync_run`, `update_sync_settings` |
+| `commands::tables` | `assign_table_order`, `create_table`, `delete_table`, `get_table`, `list_sections`, `list_tables`, `release_table`, `update_table`, `update_table_status` |
+| `commands::terminals` | `delete_terminal`, `delete_terminal_override`, `get_terminal`, `list_terminal_overrides`, `list_terminals`, `ping_terminal`, `set_terminal_override`, `update_terminal` |
+| `commands::locations` | `get_primary_location` |
+
+### Documented as non-commands before, moved here (8 names)
+
+These rows used to sit in the module sections with a `[not an IPC command]` marker. They
+are real code at the wrong layer, kept because callers exist for them.
+
+| Name | What it actually is |
+|---|---|
+| `create_kds_order_from_sale` | Service method in `kasirmu_core::db`; the command is `create_kds_order_from_sale_scoped` |
+| `get_kds_order` | Service method in `kasirmu_core::db`; the command is `get_kds_order_scoped` |
+| `get_kds_queue` | Service method in `kasirmu_core::db`; the command is `get_kds_queue_scoped` |
+| `list_kds_orders` | Service method in `kasirmu_core::db`; the command is `list_kds_orders_scoped` |
+| `update_kds_status` | Service method in `kasirmu_core::db`; the command is `update_kds_status_scoped` |
+| `settings_changed_sink` | A plain helper at `apps/desktop-tauri/src/commands/sync.rs:210`, wired at `:366`; the command is `settings_changed_sink_scoped` at `:811` |
+| `rotate_encryption_key` | Retired by `a32b13aaa` ("drop the ungated rotate_encryption_key command"); the command is `rotate_encryption_key_scoped` at `apps/desktop-tauri/src/commands/security.rs:105` |
+| `recover_pending_topology_apply_at_startup` | An internal startup routine, not a `#[command]`, and it has no `_scoped` twin either |
+
+### Retired by a rename, with no unscoped twin (3 names)
+
+| Retired name | Replacement |
+|---|---|
+| `complete_setup` | `provision_device` (ADR #56 §2.2) — one idempotent transaction instead of a preset write |
+| `dismiss_setup_wizard` | `provision_device` — the wizard's dismissal is a first-run state, not a separate command |
+| `get_setup_status` | `get_first_run_state` (ADR #56 §2.1) — a state, not the retired boolean |
+
+### Defined but in no handler (3 names)
+
+Annotated `#[tauri::command]`, and absent from both `generate_handler!` lists. The
+front-end cannot call any of these; they are listed here rather than in the module
+sections because this page documents the **callable** surface.
+
+| Name | Note |
+|---|---|
+| `adjust_stock` | Superseded by `adjust_stock_scoped`; carries no `///` line in source |
+| `list_products` | Superseded by `list_products_scoped` |
+| `register_terminal` | Source marks it "**Deprecated for multi-store (ADR #7):** Use `register_terminal_scoped`" |
+
+---
+
+> last audited 29-09-26 by docs-auditor
 

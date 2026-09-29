@@ -142,12 +142,12 @@ Write-Host "`nUpdating version strings..." -ForegroundColor Cyan
 # to be a bullet). The audit stamp at the top of the file also carries the locked version.
 Update-File "AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
 Update-File "AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
-# The second mirror is .agents/management/AGENTS.md -- the path scripts/verify-agents-mirrors.py
-# names in MIRRORS. It moved there from .agents/AGENTS.md in edd97e5c0 (the .agents/ reorg) and this
-# script kept writing the dead path, so the mirror's lock line was left at the old version while the
-# script reported MISSING FILE. Keep this path equal to the verifier's MIRRORS list.
-Update-File ".agents/management/AGENTS.md" "| **Version Lock** | **Version is locked at ``$currentVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |" "| **Version Lock** | **Version is locked at ``$TargetVersion``. NEVER modify version numbers.** | Do not bump version in ``Cargo.toml``, ``package.json``, ``tauri.conf.json``, etc. |"
-Update-File ".agents/management/AGENTS.md" "version lock: $currentVersion" "version lock: $TargetVersion"
+# The second mirror, .agents/management/AGENTS.md, is GONE: deleted 2026-09-24 by 5ec0ca164
+# (a commit whose whole change was that deletion), after moving there from .agents/AGENTS.md in
+# edd97e5c0. Its two Update-File calls were removed with it -- because a call on a missing path is
+# not a no-op here: Update-File records "MISSING FILE" in $BumpFailures, so a bumped version would
+# have FAILED the script for a mirror that no longer exists. Keep this file's mirror calls equal to
+# the verifier's MIRRORS list (root AGENTS.md only), and re-add a pair here if a mirror returns.
 Update-File "Cargo.toml" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "ops/docker/Dockerfile.server" "version = `"$currentVersion`"" "version = `"$TargetVersion`""
 Update-File "apps/desktop-tauri/tauri.conf.json" "`"version`": `"$currentVersion`"," "`"version`": `"$TargetVersion`","

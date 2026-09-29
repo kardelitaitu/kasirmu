@@ -9,9 +9,14 @@ WHY THIS EXISTS
   name the wrong shell. A reader cannot tell those apart, and a prose audit finds them
   only by accident. This turns a one-off measurement into a re-runnable check.
 
-SCOPE: reporting only. NOT wired into check.sh, gates.json or CI, so a non-zero exit
-  is a finding for whoever is auditing docs, not a broken build. The page is currently
-  red against it by design; wiring it in needs its own baseline.
+SCOPE: a BLOCKING gate since 2026-09-29 -- wired into check.sh (step 'api surface'),
+  gates.json ('api-surface') and dev-ci.yml#ci-docs-drift (step 'API reference surface'),
+  with a green baseline from day one because the page was repaired in the same change
+  that added the step. It ran reporting-only and unwired from 08-09-26 to 09-29: the page
+  was red against it by design, and the recorded reason for not wiring it was that a gate
+  introduced against a red page gets muted rather than fixed. Exit 2 on an unparseable
+  input is what keeps that from cutting the other way -- a checker that cannot run must
+  never read as a checker that found nothing.
 
 USAGE
   python check-api-surface.py [--root REPO] [--json]

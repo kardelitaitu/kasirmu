@@ -841,6 +841,13 @@ jobs:
       - name: Docs dead references
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 
+      # Gate: scripts/gates.json -> "api-surface". Green from day one (2026-09-29), when the
+      # page was repaired from 169 drifts to 0 in the same change that added this step. This
+      # checker exits 2, not 0, when it cannot parse an input, so a renamed registry or a
+      # missing page fails the job instead of reading as agreement.
+      - name: API reference surface
+        run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+
   # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
   # so nothing enforced them on a clone that skipped setup-dev.ps1. Each was run

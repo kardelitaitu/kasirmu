@@ -34,7 +34,9 @@
 >
 > Three rows were repointed in this release because CI coverage was added for
 > them: `rust-fmt`, `ui-lint` and `ui-typecheck` are **steps**
-> inside live `dev-ci.yml` jobs rather than jobs of their own (`rust-clippy` is local-only).
+> inside live `dev-ci.yml` jobs rather than jobs of their own. Clippy is the exception in
+the other direction: the retired `ci.yml` job `rust-clippy` has a live successor,
+`dev-ci.yml#cargo-clippy` — see its row below.
 
 | Job ID | Blocks Merge | Workflow | Notes |
 |--------|--------------|----------|-------|
@@ -47,7 +49,7 @@
 | `changes` | ✅ Required | dev-ci.yml | Path-based change detection for PR filtering. `changes` is the FIRST job in dev-ci.yml's own job list — the `ci.yml` attribution was never ambiguous, just stale |
 | `static-gates` | ✅ Required | dev-ci.yml | `python3 scripts/verify-no-hardcoded-money-format.py`, step "No hardcoded money formatting". **No gates.json record** — see the blind-spot note below |
 | `static-gates` | ✅ Required | dev-ci.yml | Static boundary enforcement, step "Architecture boundaries" |
-| `rust-clippy` | Local only | ci.yml | Clippy is skipped in CI and run locally via `check.sh` / `cargo clippy` (was job `rust-clippy` in `ci.yml`) |
+| `rust-clippy` | Superseded by `cargo-clippy` | ci.yml | **Not local-only any more.** The retired `ci.yml` job is superseded by the live `dev-ci.yml#cargo-clippy`, which runs `cargo clippy --workspace --all-targets -- -D warnings` on Rust changes; only the `--all-features` lane stays local, via `check.sh` / `release.sh` (see the Clippy row below — changed 2026-09-25, C25) |
 | `rust-test-fast` | Superseded | ci.yml | The sharded crate-group layout is gone; `dev-ci.yml#cargo-nextest` covers the same ground in one unsharded `--workspace --all-features` run |
 | `sync-slow-tests` | ❌ Runs nowhere | ci.yml | Platform-sync integration suite. gates.json: **retired**, no runner — "advisory" still implied it executed somewhere |
 | `cargo-nextest` | ✅ Required | dev-ci.yml | gates.json maps this gate to `dev-ci.yml/cargo-nextest`, which runs `cargo nextest run --workspace --all-features` on every PR — not push-only |
@@ -57,6 +59,7 @@
 | `ui-test` | ✅ Required | dev-ci.yml | step "Run Vitest" in the live `ui-test` job. The `ci.yml` row described the 4-shard layout; the shards are gone, the coverage is not |
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `verify-ci-docs-drift.py` — blocking since R36-10 closed the count to 0 |
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `bash scripts/test-ci-routing.sh` — the router decides whether every other job runs, so this one blocks |
+| `ci-docs-drift` | ✅ Required | dev-ci.yml | step `check-api-surface.py` — `docs/guides/developer/api-reference.md` against both `generate_handler!` registries. **Added 2026-09-29**: the page had drifted 169 ways from the registries and nothing enforced it. The repair and the gate landed together, so the step has a green baseline from day one (gates.json `api-surface`); a gate introduced against a 169-finding page would have been muted, which is how this checker sat unwired from 08-09-26 |
 | `ci-docs-drift` | ✅ Required | dev-ci.yml | step `node scripts/generate-records-index.mjs --check` — records index freshness (gates.json `records-index`). Added 2026-09-23 by the documentation audit: the gate this page's sibling docs called "unbuilt by decision" is now built, and the 148-vs-158-line drift it caught was repaired before the step landed |
 | `ci-docs-drift` | ❌ Advisory step | dev-ci.yml | step `python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py`, `continue-on-error: true` (gates.json `dead-refs`, `advisory_at: step`). CI-only while findings > 0 — they sit in a file under active peer edit (7 at wiring, up from 2 mid-session as the peer kept writing); flips to blocking at 0 |
 | `website` | ✅ Required | dev-ci.yml | `cd website && npm ci && npm run check && npm test && npm run build` |
@@ -138,7 +141,8 @@
 | CI docs drift | `ci-docs-drift` | Required | `check.sh` (ci docs drift) |
 | CI path router test | `ci-docs-drift` | Required | `check.sh` (ci routing test) |
 | Records index freshness | `ci-docs-drift` | Required | `check.sh` (records index freshness) |
-| Docs dead references | `ci-docs-drift` (advisory step) | Advisory (CI step `continue-on-error: true`) | — CI-only while findings > 0: `check.sh`'s `step()` exits on first failure, so a red leg would break every local pre-push |
+| API reference surface | `ci-docs-drift` | Required | `check.sh` (api surface) — the page against both `generate_handler!` registries: registered-not-listed, listed-not-registered, listed-and-nonexistent, and wrong availability marker. Added 2026-09-29 with the page repair (gates.json `api-surface`) |
+| Docs dead references | `ci-docs-drift` | Required | `check.sh` (docs dead refs) — **flipped to blocking 2026-09-25 (C62)** once the last 9 findings were cleared to 0, and the CI step dropped `continue-on-error` in the same change; gates.json `dead-refs` records the flip condition and how it was met |
 | ADR status drift | — | Required | `check.sh` (adr status drift) |
 | Website route links | — | Required | `check.sh` (site links) |
 | Windows config drift | `static-gates` | Required | `check.sh` (windows config) |

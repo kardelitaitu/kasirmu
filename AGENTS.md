@@ -69,13 +69,17 @@ and re-plans instead of grinding):
 Opt in per clone: `git config core.hooksPath .githooks`. Each step fires only on the
 paths it cares about:
 
-1. Line-ending normalization
-2. Bundle parity
-3. FTL dedupe dry-run
-4. Migration column-type lint
-5. PG schema drift guard
-6. Go gate
-7. FTL orphan lint
+1. **Line-ending normalization**
+2. **Bundle parity**
+3. **FTL dedupe dry-run**
+4. **Migration column-type lint**
+5. **PG schema drift guard**
+6. **Go gate**
+7. **FTL orphan lint**
+
+The labels are bold for a reason: `scripts/verify-agents-mirrors.py` grades this list
+(`N. **name**`) against the hook's own section names, and an unbolded list is read as a
+numeral alone, which leaves the names ungraded.
 
 Per-step commands and CI backstops: `docs/operations/agent-gates.md`. `cargo fmt` is
 not a pre-commit step (removed 2026-09-13); formatting is check-only via pre-push,
@@ -159,7 +163,9 @@ $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTE
 - 🛑 **NOT during routine iteration:** `cargo clippy`, `cargo test --workspace`.
 - **Pre-push / final only:** `cargo fmt --all`; then
   `cargo clippy --all-targets --all-features -- -D warnings` (must resolve all
-  warnings — no live workflow runs clippy, so CI neither blocks nor reports it);
+  warnings — CI's `dev-ci.yml#cargo-clippy` job runs `--workspace --all-targets`
+  and fails on any warning, but it does **not** pass `--all-features`, so that
+  lane is yours alone);
   then full workspace tests.
 
 ## 6. Architecture & coding standards

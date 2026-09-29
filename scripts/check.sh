@@ -303,8 +303,9 @@ fi
 
 # ── Migration (LOCAL ONLY — no CI job runs this) ──────────────────────────
 # This comment used to read "mirrors CI `migration` job". There is no such job:
-# dev-ci.yml's fifteen jobs are changes, website, rust-fmt, cargo-check, cargo-clippy, cargo-nextest, ui-test,
-# i18n, ci-docs-drift, static-gates, go-gate, ipc-parity, release-readiness, release-bridge-test (push-only), northflank-deploy. The
+# dev-ci.yml's eighteen jobs are changes, website, rust-fmt, cargo-check, cargo-clippy, rust-doc, fuzz-typecheck,
+# coverage-floors, cargo-nextest, release-bridge-test (push-only), ui-test, i18n, ci-docs-drift, static-gates, go-gate,
+# ipc-parity, release-readiness, northflank-deploy. The
 # confusion is understandable because two neighbouring gates DO have CI backing since
 # 0.0.37 (pg-schema-drift and migration-column-types, both in static-gates), but this
 # one is the SQLite migrate-up path and nothing enforces it off a developer machine.
@@ -589,6 +590,15 @@ step "ci docs drift self-test" "python3 scripts/verify-ci-docs-drift.py --self-t
 # Measured before flipping: 9 unresolved -> 0.
 # Gate: scripts/gates.json -> "dead-refs".
 step "docs dead refs" "python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py" python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
+
+# The API reference page is the IPC contract read first by every agent and integrator, and
+# nothing enforced it: it had drifted 169 ways from the registries (101 names that exist
+# nowhere, 55 registered commands with no row, 10 wrong availability markers, 3 defined but
+# in no handler). Page repaired and gate added together 2026-09-29, so this leg has a green
+# baseline -- a gate introduced against a red page gets muted, which is how this checker sat
+# unwired from 08-09-26 to 09-29. The checker exits 2, not 0, on an unparseable input, so a
+# broken checker cannot read as a clean page. Gate: scripts/gates.json -> "api-surface".
+step "api surface" "python3 .agents/skills/docs-auditor/scripts/check-api-surface.py" python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
 # docs/records/README.md calls itself the single entry point, and its freshness
 # gate was "unbuilt by decision" (docs/README.md) — a decision the 2026-09-23
 # documentation audit reversed once the generator defect behind seven dead
@@ -694,8 +704,10 @@ step "typecheck gate" "bash scripts/test-typecheck-gate.sh" bash scripts/test-ty
 step "cbm hook guard" "bash scripts/test-cbm-hook.sh" bash scripts/test-cbm-hook.sh
 
 # ── AGENTS.md mirror truthfulness ──────────────────────────────────────────
-# Three copies of the agent rules exist and `bump-version.ps1` syncs only their
-# version lines. Twice in 0.0.36 a mirror stated something the repo contradicted:
+# Root AGENTS.md is the only copy of the agent rules today: .agents/management/AGENTS.md
+# was deleted 2026-09-24 (5ec0ca164) and .prime/AGENTS.md went with the .prime/ tree on
+# 08-09-26, so the verifier's MIRRORS list holds one path and bump-version.ps1 no longer
+# syncs a second one. Twice in 0.0.36 a mirror stated something the repo contradicted:
 # `.agents/AGENTS.md` said Go had no CI backstop after dev-ci.yml#static-gates
 # started running it, and root AGENTS.md said dev-ci runs on push when it has no
 # push trigger. A mirror that governs work under `.agents/` and tells agents their

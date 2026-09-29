@@ -17,6 +17,13 @@ Route table (what `astro build` would actually serve):
     its pattern -- it emits one page per content file, so routes come from
     src/content/docs/{locale}/*.md as `/{locale}/docs/{slug}` (a link to a ghost slug
     is red even though the catch-all file exists);
+  * the guides routes `src/pages/[locale]/[guideSegment]/{index,[...slug]}.astro` are
+    content-driven too, and their segment is a TRANSLATED WORD per locale
+    (`/en/guides/`, `/id/panduan/`) read from its one owner, src/lib/guides.ts
+    `GUIDE_SEGMENT`. Routes come from src/content/guides/{locale}/*.md as
+    `/{locale}/{segment}` (the hub, emitted only for a locale that has an article)
+    and `/{locale}/{segment}/{slug}`, so `/en/panduan/x/` is red while
+    `/en/guides/x/` resolves;
   * legal docs are rendered by src/pages/[locale]/legal/{name}.astro -- a legal file
     with no consuming page is a finding (its route base cannot be derived);
   * files under public/ (and their parent directories), plus source paths declared in
@@ -43,12 +50,15 @@ anything else resolves against the source document's own URL in directory form
 resolves a trailing-slash page. Collection -> base URL:
   docs   -> `/{locale}/docs/{slug}/`      (matches [...slug].astro's params)
   legal  -> `/{locale}/legal/{name}/`      (matches the consuming page)
+  guides -> `/{locale}/{segment}/{slug}/`  (segment from src/lib/guides.ts GUIDE_SEGMENT)
   other  -> finding, links cannot be resolved without a route mapping.
 
 Fail-loud contract (cannot-verify is not agreement -- each of these exits 1 rather
 than reporting a clean run): website/ or its astro.config.mjs missing; `locales: [...]`
 unparseable; src/pages/[locale]/docs/[...slug].astro renamed or gone; a dynamic
-segment other than `[locale]` anywhere in pages/ (unenumerable); src/content/ missing.
+segment other than `[locale]` anywhere in pages/ (unenumerable); src/content/ missing;
+src/content/guides/ holds articles but src/lib/guides.ts declares no readable
+GUIDE_SEGMENT map.
 A content file whose locale is not one of the config's locales, or which sits in an
 unmapped collection, is a per-file finding (those files are never rendered).
 
@@ -162,6 +172,33 @@ def markdown_ids(text: str) -> set[str]:
     return ids
 
 
+GUIDE_SEGMENT_RE = re.compile(r"GUIDE_SEGMENT\s*(?::[^=]*)?=\s*\{([^}]*)\}")
+
+
+def _guide_segments(site: Path) -> dict[str, str]:
+    """Parse GUIDE_SEGMENT from src/lib/guides.ts -- its single owner.
+
+    The guides path segment is a translated word (`/en/guides/`, `/id/panduan/`), so it
+    cannot be derived from a page pattern. Reading the map from the file that declares
+    it keeps a locale added there from desyncing this checker silently, and an
+    unreadable map is a fatal rather than a `guides` guess.
+    """
+    src = site / "src" / "lib" / "guides.ts"
+    if not src.is_file():
+        return {}
+    m = GUIDE_SEGMENT_RE.search(src.read_text(encoding="utf-8", errors="replace"))
+    if not m:
+        return {}
+    out: dict[str, str] = {}
+    for pair in m.group(1).split(","):
+        key, _, value = pair.partition(":")
+        key = key.strip().strip("'\"")
+        value = value.strip().strip("'\"").rstrip(",")
+        if key and value:
+            out[key] = value
+    return out
+
+
 def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], dict[str, Path], list[str]]:
     """Enumerate what the built site serves. Returns (routes, sources, fatals).
 
@@ -172,6 +209,16 @@ def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], dict[str, P
     sources: dict[str, Path] = {}
     fatals: list[str] = []
     pages = site / "src" / "pages"
+
+    # Content-driven routes: their params come from collection entries, so they are
+    # enumerated from src/content below and never from the page pattern. The guides
+    # segment is a translated word rather than a parameter name, which is why it
+    # cannot be read off the file name at all.
+    content_driven = {
+        "[locale]/docs/[...slug].astro",
+        "[locale]/[guideSegment]/index.astro",
+        "[locale]/[guideSegment]/[...slug].astro",
+    }
 
     docs_page = pages / "[locale]" / "docs" / "[...slug].astro"
     if not docs_page.is_file():
@@ -185,7 +232,7 @@ def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], dict[str, P
         if p.is_dir() or p.suffix.lower() not in PAGE_SUFFIXES:
             continue
         rel = p.relative_to(pages).as_posix()
-        if rel == "[locale]/docs/[...slug].astro":
+        if rel in content_driven:
             continue  # content-driven: enumerated below, not from the pattern
         route_path = rel.rsplit(".", 1)[0]  # strip ONE extension (llms.txt.ts -> llms.txt)
         if route_path == "index":
@@ -235,6 +282,32 @@ def _build_routes(site: Path, locales: list[str]) -> tuple[set[str], dict[str, P
                 if not slash or loc not in locales:
                     continue
                 sources[f"/{loc}/legal/{posixpath.splitext(name)[0]}"] = p
+
+    # Guides are content-driven like the docs, with one twist: the path segment is a
+    # translated word per locale, so it comes from its one owner, src/lib/guides.ts.
+    # A locale with no article gets no hub (index.astro emits nothing for an empty
+    # collection), so both shapes are added only for a locale that has a file.
+    guides_dir = site / "src" / "content" / "guides"
+    if guides_dir.is_dir():
+        guide_segments = _guide_segments(site)
+        if not guide_segments:
+            fatals.append(
+                "src/content/guides/ holds articles but src/lib/guides.ts declares no "
+                "readable GUIDE_SEGMENT map -- the guides segment is a translated word; "
+                "refusing to guess it; update check-site-links.py"
+            )
+        for suffix in CONTENT_DOC_SUFFIXES:
+            for p in sorted(guides_dir.rglob(f"*{suffix}")):
+                rel = p.relative_to(guides_dir).as_posix()
+                loc, slash, name = rel.partition("/")
+                if not slash or loc not in locales:
+                    continue  # reported per-file by scan() as a finding
+                segment = guide_segments.get(loc, "guides")
+                slug = posixpath.splitext(name)[0]
+                routes.add(f"/{loc}/{segment}")
+                route = f"/{loc}/{segment}/{slug}"
+                routes.add(route)
+                sources[route] = p
 
     # public/ serves files (and their directories) at the site root; _redirects
     # declares Cloudflare Pages source paths that resolve via 301 at deploy time.
@@ -330,6 +403,9 @@ def _route_base(site: Path, rel_to_content: str, locales: list[str]) -> tuple[st
                 "cannot derive a route base"
             )
         return f"/{loc}/legal/{name}/", None
+    if collection == "guides":
+        segment = _guide_segments(site).get(loc, "guides")
+        return f"/{loc}/{segment}/{stem}/", None
     return None, (
         f"{_display(site / 'src' / 'content' / rel_to_content)}: content collection "
         f"'{collection}' has no route mapping -- links cannot be resolved site-aware"
