@@ -40,6 +40,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The live-workflow rule is shared; see scripts/_live_workflows.py. Only the WORKFLOWS
+# entry below is covered by it -- the other two are files, not a directory, and keep
+# their own handling.
 RUNNERS = (
     ROOT / ".github" / "workflows",
     ROOT / "scripts" / "check.sh",

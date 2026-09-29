@@ -30,24 +30,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WF = ROOT / ".github" / "workflows"
+# The live-workflow rule lives in ONE place now. Six checkers had their own copy and
+# three of the six disagreed about .yaml -- see scripts/_live_workflows.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _live_workflows import live_workflow_files as _live  # noqa: E402
 
 
 def live_workflows() -> list[Path]:
-    """Every top-level .yml AND .yaml. Files under attic/ are retired and never run.
-
-    Both extensions because that is GitHub's rule, not a guess and not a snapshot: it
-    executes any .yml or .yaml at the top of .github/workflows/. This globbed *.yml
-    only, which happens to be right today because all four live workflows use that
-    extension, and would have silently skipped a .yaml one added tomorrow. Same shape
-    as the VENDORED directory list in verify-shell-syntax, which is why that was replaced
-    by git ls-files: an extension list that must be maintained to stay true is a pending
-    failure, and a failure nobody is told about.
-    """
-    if not WF.is_dir():
-        return []
-    return sorted(p for p in list(WF.glob("*.yml")) + list(WF.glob("*.yaml"))
-                  if p.is_file())
+    """Every workflow GitHub will execute. The rule itself is shared; see
+    scripts/_live_workflows.py for why it is not written out a sixth time."""
+    return _live()
 
 
 def check(path: Path) -> str:

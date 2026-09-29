@@ -41,7 +41,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WF = ROOT / ".github" / "workflows"
+# The live-workflow rule is shared; see scripts/_live_workflows.py. Six checkers had
+# their own copy and three disagreed about .yaml, which is how a half-fixed suite
+# pretends to be a fixed one.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _live_workflows import live_workflow_files as _live_workflow_files  # noqa: E402
 
 # A positive enforcement claim. Two shapes, because prose uses both:
 #   "... is enforced by scripts/verify-x.py in CI"
@@ -72,16 +76,8 @@ SCAN_NAMES = ("Dockerfile", "Dockerfile.server", "Dockerfile.unified", "AGENTS.m
 def live_ci_scripts() -> set[str]:
     """Basenames a LIVE workflow invokes. attic/ excluded: never executed."""
     out: set[str] = set()
-    if not WF.is_dir():
-        return out
-    # .yml AND .yaml, because that is GitHub's rule -- the same fix
-    # verify-workflow-syntax.py made on 2026-09-29. This gate and three others each
-    # carried their own copy of "what counts as a live workflow", and three of the six
-    # copies globbed *.yml alone, so they would have gone quiet on a .yaml workflow while
-    # the other three still checked it. Six implementations of one concept is the actual
-    # defect here; this line is the cheap half of the fix and the shared helper is the
-    # half that needs its own round.
-    for p in sorted(list(WF.glob("*.yml")) + list(WF.glob("*.yaml"))):
+    # Shared rule -- see scripts/_live_workflows.py for why it is written once.
+    for p in _live_workflow_files():
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -175,7 +171,7 @@ def main() -> int:
     false_claims: list[str] = []
     seen = 0
     for p in scanned_files():
-        if p.suffix == ".yml" and p.parent == WF:
+        if p.suffix in (".yml", ".yaml") and p.name in {w.name for w in _live_workflow_files()}:
             continue          # a workflow does not claim about itself
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
