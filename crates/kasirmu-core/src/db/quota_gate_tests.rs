@@ -110,7 +110,9 @@ fn at_cap_rejects_with_the_legacy_error_shape_and_values() {
             assert!(message.contains("maximum 0"), "got: {message}");
             assert!(message.contains("currently have 2"), "got: {message}");
         }
-        other => panic!("expected SubscriptionLimitExceeded for warehouse locations, got {other:?}"),
+        other => {
+            panic!("expected SubscriptionLimitExceeded for warehouse locations, got {other:?}")
+        }
     }
 }
 

@@ -624,8 +624,7 @@ fn allows_workspace_type_bundle_payload_unlocks_kds_on_plus() {
         expires_at: None,
         max_locations: 1,
         max_pos_instances: 2,
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -694,8 +693,7 @@ fn allows_workspace_type_grace_expired_ignores_stored_list() {
         expires_at: Some(old.to_rfc3339()),
         max_locations: 1,
         max_pos_instances: 2,
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),
@@ -1709,8 +1707,7 @@ fn workspace_type_grace_expired_plus_reverts_to_free_defaults() {
         max_locations: 1,
         max_pos_instances: 2,
         // Even though kds is in the payload, grace expiry reverts to Free.
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),

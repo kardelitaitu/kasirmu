@@ -75,8 +75,7 @@ fn plus_bundle_sub() -> TenantSubscription {
         // The bundle widens `kds` only. No Plus payload carries `warehouse`
         // any more — Premium+ since 2026-09-29 — so this is what the license
         // server mints for a Plus + restaurant_starter bundle today.
-        allowed_types_json:
-            r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
+        allowed_types_json: r#"["store-pos","restaurant-pos","admin","inventory","kds"]"#.into(),
         signature: "BOOTSTRAP_FREE".into(),
         signed_payload: String::new(),
         api_key: String::new(),

@@ -829,7 +829,6 @@ pub(crate) fn resolve_db_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("kasir.db"))
 }
 
-
 impl Drop for AppState {
     fn drop(&mut self) {
         // Stop the local API server first: its handlers share `db`, so

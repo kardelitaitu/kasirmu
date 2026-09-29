@@ -85,7 +85,9 @@ fn absent_entry_on_a_non_durable_keyring_refuses_to_generate() {
     );
     // And nothing was written, so a later boot sees the same absent entry.
     assert_eq!(
-        keyring.get_secret(kasirmu_security::install_key::INSTALL_KEY_ENTRY).unwrap(),
+        keyring
+            .get_secret(kasirmu_security::install_key::INSTALL_KEY_ENTRY)
+            .unwrap(),
         None,
         "a refusal must not leave anything behind"
     );
@@ -100,13 +102,22 @@ fn a_present_entry_is_loaded_not_regenerated() {
 
     let keyring = kasirmu_security::InMemoryKeyring::new();
     let original = [7u8; 32];
-    keyring.set_secret(INSTALL_KEY_ENTRY, &hex::encode(original)).unwrap();
+    keyring
+        .set_secret(INSTALL_KEY_ENTRY, &hex::encode(original))
+        .unwrap();
 
     let resolved = resolve_install_key(&keyring).expect("resolution must not error");
     match resolved {
         InstallKeyResolution::Ready { secret, source } => {
-            assert_eq!(secret, original, "the stored key must be returned unchanged");
-            assert_eq!(source, InstallKeySource::Loaded, "a present entry is LOADED");
+            assert_eq!(
+                secret, original,
+                "the stored key must be returned unchanged"
+            );
+            assert_eq!(
+                source,
+                InstallKeySource::Loaded,
+                "a present entry is LOADED"
+            );
         }
         other => panic!("expected Ready/Loaded, got {other:?}"),
     }
@@ -121,7 +132,9 @@ fn a_malformed_entry_errors_and_is_never_regenerated() {
     use kasirmu_security::install_key::{INSTALL_KEY_ENTRY, resolve_install_key};
 
     let keyring = kasirmu_security::InMemoryKeyring::new();
-    keyring.set_secret(INSTALL_KEY_ENTRY, "not-hex-at-all").unwrap();
+    keyring
+        .set_secret(INSTALL_KEY_ENTRY, "not-hex-at-all")
+        .unwrap();
 
     let err = resolve_install_key(&keyring).expect_err("malformed must be an error");
     let msg = err.to_string();
@@ -147,10 +160,15 @@ fn a_wrong_length_entry_is_refused_by_length() {
     use kasirmu_security::install_key::{INSTALL_KEY_ENTRY, resolve_install_key};
 
     let keyring = kasirmu_security::InMemoryKeyring::new();
-    keyring.set_secret(INSTALL_KEY_ENTRY, &hex::encode([1u8; 16])).unwrap();
+    keyring
+        .set_secret(INSTALL_KEY_ENTRY, &hex::encode([1u8; 16]))
+        .unwrap();
 
     let msg = resolve_install_key(&keyring).unwrap_err().to_string();
-    assert!(msg.contains("16 bytes"), "the error must name the length, got: {msg}");
+    assert!(
+        msg.contains("16 bytes"),
+        "the error must name the length, got: {msg}"
+    );
 }
 
 /// `install_at_rest_key` never fails boot, on any keychain outcome.
@@ -183,4 +201,3 @@ fn the_outcome_debug_carries_no_key_material() {
         "the Debug rendering must not contain key material: {rendered}"
     );
 }
-
