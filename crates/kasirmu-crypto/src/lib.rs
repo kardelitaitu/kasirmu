@@ -748,6 +748,14 @@ pub enum AtRestFamily {
     ProfileAtRest,
 }
 
+/// The signature every install-key derivation closure in this crate shares: a
+/// domain-separation prefix in, a 32-byte at-rest key out.
+///
+/// Named rather than spelled inline so that [`AtRestFamily::derivation`] can hand
+/// back a *pair* — `(&'static [u8], fn(&[u8]) -> [u8; 32])` — without the bare fn
+/// pointer tripping `clippy::type_complexity`.
+type LegacyKeyFn = fn(&[u8]) -> [u8; 32];
+
 impl AtRestFamily {
     /// The family's domain-separation prefix and its byte-identical legacy closure.
     ///
@@ -755,7 +763,7 @@ impl AtRestFamily {
     /// `ProfileAtRest` derive through [`derive_static_key`], the other six through
     /// `derive_key(d, "static")`. Unifying them would change what existing
     /// ciphertext means.
-    fn derivation(self) -> (&'static [u8], fn(&[u8]) -> [u8; 32]) {
+    fn derivation(self) -> (&'static [u8], LegacyKeyFn) {
         match self {
             Self::SyncApiKey => (SYNC_API_KEY_DOMAIN, |d| derive_key(d, "static")),
             Self::SyncTerminalSecret => (SYNC_TERMINAL_SECRET_DOMAIN, |d| derive_key(d, "static")),
