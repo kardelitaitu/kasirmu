@@ -663,6 +663,17 @@ reproduce; each correction is inline, in the bullet that carries it.
   better informed than this note; the question is whether to give it a schedule, and
   the file already argues for the cadence it implies.
 
+  `verify-quota-coverage.sh` is RESOLVED, and the answer is DO NOT WIRE IT. Run by
+  hand it exits 1, reporting an INSERT site at
+  `apps/desktop-tauri/src/state.rs::seed_primary_store` whose own comment reads:
+  "first-run bootstrap of the ONE primary location an empty install needs, before any
+  subscription row exists, so there is no tier to ask. Gating it makes a fresh install
+  unbootable, so this door is deliberately ungated for good rather than pending a gate."
+  So its non-zero exit is a REPORT, not a verdict, and making it a blocking step would
+  fail every run on a decision that was taken deliberately. Its `--self-test` IS wired
+  (added 2026-09-29), which is the half that can be enforced. Same shape as the docker
+  digests gate: a report whose finding is information for a human, not a PR condition.
+
   `verify-fluent-dynamic-families.py` is RESOLVED: its "setup feature label" family was
   stale -- the keys are in neither bundle and no source file references the prefix -- so
   the family was deleted rather than satisfied with 27 unread keys, and the checker is
