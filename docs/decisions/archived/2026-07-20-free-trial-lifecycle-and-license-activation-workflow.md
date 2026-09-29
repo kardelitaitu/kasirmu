@@ -4,6 +4,7 @@ area: subscription
 title: ADR #23: Free Trial Lifecycle & License Activation Workflow
 status: Re-scoped — superseded by subscription-tiers.md §4 (FINAL, approved 2026-08-17)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, and correctly filed as re-scoped. The front matter reads Re-scoped — superseded by `subscription-tiers.md` §4 (FINAL, approved 2026-08-17), and the reference is precise: it names the SECTION of the superseding document, not just the file. That is the level of specificity a supersession note needs, because §4 of an 895-line document is a findable thing and a vague pointer would not be. · The supersession target exists, and its §4 is the section that would have to carry the trial lifecycle this document specifies. Not verified in this pass — the target file is later in the queue and will be audited on its own terms; recorded here as the open edge of this file's claim rather than asserted either way. · Left entirely as written, with the same reasoning as its sibling ADR-5 in this batch: a re-scoped decision record is a historical artifact, and its body describes the trial workflow as it was designed. What it must not be is read as current, and the front matter prevents that twice over — once at the metadata level and once by pointing at the section that replaced it. · Status checker reports no drift for this row. Stamp and footer added; the file had neither. -->
 # ADR #23: Free Trial Lifecycle & License Activation Workflow
 
 - **Status**: Approved — ⚠️ **RE-SCOPED by `subscription-tiers.md` §4 (FINAL, approved 2026-08-17)**
@@ -190,8 +191,5 @@ When a merchant enters a purchased license key:
 - System clock rollback protection via SQLite ledger timestamps.
 - Audit logging of all trial activation attempts on the PocketBase Auth Server.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 

@@ -4,6 +4,7 @@ area: topology
 title: ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBAC)
 status: Accepted (2026-08-28)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 203 lines, no audit stamp, no footer, no docs-auditor marker. Front matter reads Accepted (2026-08-28) — an accepted decision, not an implemented one — which sets the right audit expectation: the falsifiable surface is what the document asserts about the current system and what it plans, not whether a feature shipped. · Its two-layer gated home (tier AND RBAC) is a real concept in this codebase and not an invention: the tier half is the subscription/entitlement system, and the RBAC half is the permission registry and centralized gate specified in the RBAC spec series (0046/0047) audited in round 3, whose `require_permission` choke point this document builds on. The device-onboarding and topology-home-gating halves are the parts I did not re-verify: they are design content, and a fresh pass would need to trace the onboarding flow end to end rather than confirm a symbol. Recorded as the limit of this audit rather than presented as coverage. · One cross-document link worth making explicit, because it is the same pattern this campaign has been surfacing repeatedly: this ADR introduces the terminal and topology concepts that ADR-40 (round 18) introduced as per-terminal identity, and ADR-47 (round 15) then layered branch/workspace scope on top. The gated-home decision is the user-facing consequence of that whole stack, and no single document ties them together. · Status checker reports no drift for this row; the index agrees with the front matter. Body left entirely as written, including its pre-restructure path references. Stamp and footer added; the file had neither. -->
 # ADR #41: App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home Experience (Tier & RBAC)
 
 **Status:** Accepted (2026-08-28)  
@@ -201,3 +202,5 @@ Evaluated only after Layer 1 permissions pass. Enforces SaaS tier limits (Free, 
 
 ### Trade-offs & Mitigations
 * **Initial Setup Requires Network:** First-time device provisioning cannot happen completely offline. *Mitigation:* Clear UI guidance on setup screen; once enrolled, device operates indefinitely offline within tier grace limits.
+
+> last audited 29-09-26 by docs-auditor

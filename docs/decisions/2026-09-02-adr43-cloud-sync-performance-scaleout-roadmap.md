@@ -4,6 +4,7 @@ area: cloud
 title: ADR #43: Cloud Sync Performance & Scale-Out Roadmap
 status: Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 257 lines, no audit stamp, no footer, no marker. Front matter reads Implemented for D1–D4, D7 and D9-ready, with the remaining items characterised as deferred or infra-only (2026-09-02) — an unusual and welcome precision, naming which decision numbers landed rather than claiming blanket completion. The sync performance surface it governs is real and heavily exercised: the `MAX_BATCH_BYTES` batching constant, the gzip transport path, the `SyncPriority` enum and the `AnchorExpired` variant verified in ADR-10 (round 16) are the same machinery this roadmap scales, and the `platform/sync/tests/` integration suite it names is present. · IT IS ALSO THE DOCUMENT THAT GAVE THE EDGE RELAY SPEC ITS PREMISE. `docs/specs/_active/0049-edge-relay-network.md`, audited in round 7, opens by depending on ADR #43 for origin optimisations and is the concrete plan for putting cheap VPS relays in front of the origin this roadmap optimises. The dependency is declared from the spec side, not the ADR side, and the spec also cites Spec 0046b for the content-addressed images that make image caching safe. That chain — origin optimisations here, relay deployment there — is the largest performance design in the repository and it is documented in two files under two different owners, with the link running in one direction only. Recorded as a navigation observation. · NOT re-measured: any latency or throughput figure, which are point-in-time measurements of a deployed service and belong to a benchmark run rather than a documentation audit. · Status checker reports no drift for this row. Body left entirely as written; stamp and footer added. -->
 # ADR #43: Cloud Sync Performance & Scale-Out Roadmap
 
 **Status:** Implemented (D1–D4, D7, D9-ready) — remaining items deferred or infra-only (2026-09-02)  
@@ -254,4 +255,6 @@ While designed for horizontal scaling, several items in Tiers 2–4 should **not
 - Spec 0047 — OpenAPI Drift Guard & JWT Read Tiers
 - `docs/records/sqlite-pg-roles.md` — SQLite↔Postgres schema parity & RLS cutover
 - `scripts/rls-cutover.sql` — the pending RLS enforcement cutover (D9)
+
+> last audited 29-09-26 by docs-auditor
 
