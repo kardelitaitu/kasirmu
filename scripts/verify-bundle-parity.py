@@ -594,8 +594,59 @@ def resolve_scan_dirs(raw: str | None) -> tuple[str, ...]:
     return names
 
 
+def self_test() -> int:
+    """Liveness for the EXTRACTORS, which is the leg nothing else here covers.
+
+    This is pre-commit step 2 and it runs in dev-ci and check.sh, and it had no test
+    of any kind -- no --self-test and no case in scripts/__tests__/. The failure it
+    cannot self-detect is specific: if a regex stops matching, every extractor returns
+    [], main() reports "no sites", and the gate passes on a tree it is no longer
+    reading. That is a checker that cannot fail reading as a checker that found
+    nothing, and this repo has paid for that shape before.
+
+    So each case asserts the extractor FINDS a planted literal: a silent-empty
+    regression is a FAIL here, which is the whole point. Proven by mutation --
+    replacing ID_MAP_NAME's pattern with one that cannot match turns case 1 red with
+    "expected [...], got []" and the run exits non-zero. Pure: synthetic strings, no
+    file is created, read or written, because a self-test that touches the tree can
+    damage the thing it polices (see check-nav-paths.py for the incident).
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    want("id-map literal found",
+         [v for v, _ in extract_id_map_values(
+             "const SECTION_IDS = { heading: 'section-heading', body: 'section-body' };")],
+         ["section-heading", "section-body"])
+    want("non-id-map object ignored",
+         extract_id_map_values("const OTHER = { a: 'not-an-id' };"), [])
+    want("dynamic id literal found",
+         extract_dynamic_id_literals(
+             "const a = 1;\nreturn <Localized id={x === 1 ? 'dyn-one' : 'dyn-two'}>v</Localized>;\n"),
+         [("dyn-one", 2), ("dyn-two", 2)])
+    want("no sites yields empty", extract_dynamic_id_literals("const x = 1;\n"), [])
+    want("comments blanked",
+         strip_comments("a();\n// id={'ghost'}\n/* id={'ghost2'} */\nb();\n").count("ghost"), 0)
+    want("code survives comment stripping",
+         strip_comments("a();\n// gone\nb();\n").count("b();"), 1)
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (6 cases, no files touched)")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=DESCRIPTION)
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="Run this checker's extractor cases and exit. Pure: touches no file.",
+    )
     parser.add_argument(
         "--report-only",
         action="store_true",
@@ -687,6 +738,9 @@ def main() -> int:
              "--staged-only.",
     )
     args = parser.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     if args.full_census:
         args.include_getstring = True
