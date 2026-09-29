@@ -315,8 +315,12 @@ def zone_probe() -> int:
     """
     if not hasattr(time, "tzset"):
         print("check-tz-invariance: zone preflight SKIPPED -- time.tzset is unavailable"
-              " here, so zone names were NOT verified before running. The sensitivity"
-              " arithmetic is still checked by --self-test; only host honouring is unverified.")
+              " here, so zone NAMES were not verified against this host. The 24-hour"
+              " sensitivity arithmetic is still enforced -- by this run, immediately"
+              " below, and again by --self-test -- so the only thing skipped is whether"
+              " this host honours each name. A name it silently ignores runs the tests"
+              " under a fallback and still passes, which is why that is the half worth"
+              " saying out loud rather than the half that is covered twice.")
         return 0
     dead: list[str] = []
     for tz in ZONES:
