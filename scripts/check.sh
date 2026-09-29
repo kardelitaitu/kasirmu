@@ -593,6 +593,14 @@ step "release version self-test" "node scripts/check-release-version.mjs --self-
 step "updater compat self-test" "node scripts/check-updater-compat.mjs --self-test" node scripts/check-updater-compat.mjs --self-test
 step "updater signature self-test" "node scripts/verify-updater-signature.mjs --self-test" node scripts/verify-updater-signature.mjs --self-test
 
+# verify-quota-coverage.sh declares a --self-test that no runner invoked. Found by
+# extending verify-selftests-wired.py to .sh -- the same extension-shaped hole .mjs was
+# two rounds earlier. NOTE WHAT THIS IS NOT: verify-quota-coverage.sh itself is one of
+# the five unwired checkers in open finding GI-4, and it is still unwired. Running its
+# self-test proves the checker works; it does not make the checker a gate, and it does
+# not close GI-4. Wiring the checker is an owner's decision this commit does not make.
+step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-test" bash scripts/verify-quota-coverage.sh --self-test
+
 step "runner claims" "python3 scripts/verify-runner-claims.py" python3 scripts/verify-runner-claims.py
 step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-test" python3 scripts/verify-runner-claims.py --self-test
 

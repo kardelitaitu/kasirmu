@@ -60,12 +60,12 @@ RUNNERS = (
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
 )
-SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs)$")
+SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs|sh)$")
 # "<name>.py --self-test" anywhere on the line. Deliberately not anchored to a
 # command position: a step that pipes or redirects still calls the flag, and a
 # grep that misses those would report a false finding, which is the failure mode
 # that gets a gate muted.
-CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.(?:py|mjs)\s+--self-test")
+CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.(?:py|mjs|sh)\s+--self-test")
 
 
 def checkers() -> list[str]:
