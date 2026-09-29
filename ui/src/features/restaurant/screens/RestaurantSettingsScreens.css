@@ -7,7 +7,7 @@
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
-  max-width: 840px;
+  max-width: 1240px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -36,13 +36,252 @@
   color: var(--color-fg-secondary);
 }
 
-/* Loading line shown while the payments screen resolves its location and rails.
-   Replaces a borrowed `localpay-loading` name from a sheet this screen never
-   imports. */
-.restaurant-settings-loading {
+/* ── 2-Column Responsive Layout ───────────────────────────── */
+
+.restaurant-settings-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  gap: var(--space-6);
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 960px), (orientation: portrait) {
+  .restaurant-settings-layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+}
+
+/* ── Left Column: Live Receipt Preview ─────────────────────── */
+
+.restaurant-preview-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: var(--space-4);
+}
+
+@media (max-width: 960px), (orientation: portrait) {
+  .restaurant-preview-column {
+    position: static;
+    order: -1;
+    align-items: center;
+  }
+}
+
+.restaurant-preview-card {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: var(--space-4);
-  color: var(--color-fg-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.restaurant-preview-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.restaurant-preview-title {
   font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-fg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.restaurant-preview-badge {
+  font-size: var(--text-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-subtle);
+  color: var(--color-fg-secondary);
+  font-weight: 500;
+}
+
+/* Thermal Paper Roll Simulation */
+
+.resto-receipt-paper-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  background: #0f1218;
+  padding: var(--space-4) var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+  overflow-x: auto;
+}
+
+.resto-receipt-paper {
+  background: #ffffff;
+  color: #111827;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+  box-sizing: border-box;
+  transition: width 0.2s ease, padding 0.15s ease;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+}
+
+.resto-receipt-paper--80mm {
+  width: 80mm;
+  max-width: 100%;
+  min-width: 290px;
+}
+
+.resto-receipt-paper--58mm {
+  width: 58mm;
+  max-width: 100%;
+  min-width: 220px;
+  font-size: 10px;
+}
+
+/* Printable content boundary guide (subtle dashed border on preview) */
+.resto-receipt-printable-area {
+  outline: 1px dashed rgba(59, 130, 246, 0.35);
+  outline-offset: -1px;
+}
+
+.resto-receipt-center {
+  text-align: center;
+}
+
+.resto-receipt-bold {
+  font-weight: bold;
+}
+
+.resto-receipt-store-title {
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.resto-receipt-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #374151;
+  margin-top: 4px;
+}
+
+.resto-receipt-table-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  background: #e5e7eb;
+  color: #1f2937;
+  border-radius: 3px;
+  font-weight: bold;
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+.resto-receipt-divider {
+  border-top: 1px dashed #4b5563;
+  margin: 6px 0;
+  width: 100%;
+}
+
+.resto-receipt-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.resto-receipt-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resto-receipt-item-price {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.resto-receipt-totals-block {
+  margin-top: 4px;
+}
+
+.resto-receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  margin: 1px 0;
+}
+
+.resto-receipt-grand-total {
+  font-size: 13px;
+  font-weight: bold;
+  margin: 4px 0;
+}
+
+.resto-receipt-footer-text {
+  text-align: center;
+  font-style: italic;
+  font-size: 10px;
+  color: #4b5563;
+  margin-top: 6px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.resto-receipt-cut-edge {
+  height: 6px;
+  background: linear-gradient(135deg, transparent 4px, #ffffff 4px) 0 0,
+              linear-gradient(-135deg, transparent 4px, #ffffff 4px) 0 0;
+  background-size: 8px 6px;
+  margin-top: 2px;
+}
+
+/* Printable Dimension HUD */
+
+.resto-preview-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.resto-preview-hud-tag {
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+/* ── Right Column: Settings Form Controls ─────────────────── */
+
+.restaurant-settings-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
 }
 
 .restaurant-settings-card-header {
@@ -65,6 +304,205 @@
   color: var(--color-fg-muted);
 }
 
+/* Segmented Control for Paper Width */
+
+.resto-segmented-group {
+  display: flex;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--space-3);
+}
+
+.resto-segmented-btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.resto-segmented-btn:hover {
+  color: var(--color-fg);
+}
+
+.resto-segmented-btn--active {
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* 2x2 Paper Margins Grid */
+
+.resto-margins-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-4);
+}
+
+.resto-margin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.resto-margin-card:focus-within {
+  border-color: var(--color-primary);
+}
+
+.resto-margin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.resto-margin-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.resto-margin-range {
+  font-size: 10px;
+  color: var(--color-fg-muted);
+}
+
+.resto-margin-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.resto-margin-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-fg);
+  padding: 4px 8px;
+  font-size: var(--text-sm);
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+}
+
+.resto-margin-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.resto-margin-unit {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+  font-weight: 500;
+}
+
+/* Modern Sliding Switch Toggles */
+
+.resto-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.resto-toggle-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.resto-toggle-title {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-fg);
+}
+
+.resto-toggle-desc {
+  font-size: var(--text-xs);
+  color: var(--color-fg-muted);
+}
+
+.resto-switch-btn {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--color-bg-elevated);
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.resto-switch-btn[aria-checked="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.resto-switch-handle {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.resto-switch-btn[aria-checked="true"] .resto-switch-handle {
+  transform: translateX(20px);
+}
+
+/* Textarea for Receipt Footer */
+
+.resto-textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+  font-family: var(--font-sans, inherit);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.resto-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* Save Bar / Actions */
+
 .restaurant-settings-actions {
   display: flex;
   align-items: center;
@@ -73,7 +511,14 @@
   padding-top: var(--space-2);
 }
 
-/* Local payment rails list inside Payments screen */
+/* Loading & Payment Screen Elements */
+
+.restaurant-settings-loading {
+  padding: var(--space-4);
+  color: var(--color-fg-muted);
+  font-size: var(--text-sm);
+}
+
 .restaurant-rails-list {
   display: flex;
   flex-direction: column;
@@ -123,18 +568,12 @@
   flex: 1;
 }
 
-/* The per-row controls: the remove button and the enable toggle, held together
-   on the row's trailing edge. Split out of what used to be an inline flex box
-   on the row's second child. */
 .restaurant-rail-actions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-/* Remove control for a non-core rail. Was an inline style on a `button
-   button--ghost` element; `button` is not a class this repo defines, so the
-   name resolved nowhere and the element rendered unstyled. */
 .restaurant-rail-remove {
   padding: 2px 8px;
   font-size: var(--text-xs);
