@@ -644,6 +644,22 @@ reproduce; each correction is inline, in the bullet that carries it.
   REFUSE the flag) and a zone-agnostic strict-argument rule, so the leg that had the
   documented silent fall-through is now covered.
 
+  The docker FAMILY is the last item and its fix is known; what is missing is a
+  decision, not a defect. Measured 2026-09-29: this repo has NO live `schedule:`
+  trigger. All four in the tree are in retired .bak files (`docker-digest-drift.yml.bak:16`,
+  `docker-persistence.yml.bak:20`, `nightly.yml.bak:18`, `security.yml.bak:4`), and
+  `dev-ci.yml:575` carries an explicit "WHY NOT A SCHEDULE" note: a `schedule:` there would
+  run all its jobs nightly, which is not what a weekly pin check wants. So the answer is a
+  DEDICATED scheduled workflow, not a schedule on dev-ci -- which is exactly what
+  `docker-digest-drift.yml.bak:5-10` was, down to its own rationale ("if pins are refreshed
+  deliberately, this scheduled job re-resolves..." and "on drift the job exits 1, so a
+  scheduled-run failure alerts maintainers"). The retired file is a usable draft.
+
+  Not done here, and the reason is a decision rather than effort: this would be the FIRST
+  live schedule in the repository, and GitHub bills scheduled runs on private and
+  inactive repos. That is an owner's call about cost and about whether the repo wants
+  nightly CI at all, and it is not something a documentation commit should decide.
+
   The five still unwired: `verify-fluent-dynamic-families.py`,
   `verify-quota-coverage.sh`, and the docker family `verify-docker-all.sh` /
   `verify-docker-digests.sh` / `verify-docker-persistence.sh`. The last three are one
