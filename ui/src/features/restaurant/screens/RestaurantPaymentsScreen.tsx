@@ -63,6 +63,17 @@ export function RestaurantPaymentsScreen({
     defaultEdcTerminalId: string;
   }>({ drafts: [], defaultEdcTerminalId: '' });
   const [dirtyVersion, setDirtyVersion] = useState(0);
+  const hwInitializedRef = useRef(false);
+
+  // Sync initial EDC terminal preference from hardware profile without wiping drafts on profile updates
+  useEffect(() => {
+    if (hwInitializedRef.current || !hw.profile) return;
+    const currentEdc = hw.profile.localPrefs?.defaultEdcTerminalId ?? '';
+    setDefaultEdcTerminalId(currentEdc);
+    originalsRef.current.defaultEdcTerminalId = currentEdc;
+    hwInitializedRef.current = true;
+    setDirtyVersion((v) => v + 1);
+  }, [hw.profile]);
 
   // Load location, payment rails, and EDC terminals
   useEffect(() => {
@@ -133,14 +144,7 @@ export function RestaurantPaymentsScreen({
           }
 
           setDrafts(merged);
-
-          const currentEdc = hw.profile?.localPrefs?.defaultEdcTerminalId ?? '';
-          setDefaultEdcTerminalId(currentEdc);
-
-          originalsRef.current = {
-            drafts: merged.map((d) => ({ ...d })),
-            defaultEdcTerminalId: currentEdc,
-          };
+          originalsRef.current.drafts = merged.map((d) => ({ ...d }));
         }
       } catch {
         addToast({
@@ -156,14 +160,15 @@ export function RestaurantPaymentsScreen({
     return () => {
       cancelled = true;
     };
-  }, [sessionToken, hw.profile, l10n, addToast]);
+  }, [sessionToken, l10n, addToast]);
 
   const dirty = useMemo(() => {
+    void dirtyVersion;
     if (defaultEdcTerminalId !== originalsRef.current.defaultEdcTerminalId) return true;
-    if (drafts.length !== originalsRef.current.drafts.length) return true;
+    if (drafts.length !== (originalsRef.current.drafts?.length ?? 0)) return true;
     for (let i = 0; i < drafts.length; i++) {
       const a = drafts[i];
-      const b = originalsRef.current.drafts[i];
+      const b = originalsRef.current.drafts?.[i];
       if (!a || !b) return true;
       if (
         a.rail_code !== b.rail_code ||
@@ -175,7 +180,7 @@ export function RestaurantPaymentsScreen({
       }
     }
     return false;
-  }, [drafts, defaultEdcTerminalId, dirtyVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [drafts, defaultEdcTerminalId, dirtyVersion]);
 
   const handleToggleRail = (index: number, checked: boolean) => {
     setDrafts((prev) => {

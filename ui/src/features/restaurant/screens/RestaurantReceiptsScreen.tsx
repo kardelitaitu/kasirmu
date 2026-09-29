@@ -69,28 +69,48 @@ export function RestaurantReceiptsScreen({
   // a draft field changes, so without bumping this the Save button would stay
   // disabled after a successful save. Named with a leading underscore so the
   // unused value reads as intentional rather than a forgotten read.
-  const [_dirtyVersion, setDirtyVersion] = useState(0);
+  const [dirtyVersion, setDirtyVersion] = useState(0);
 
   // Track originals for dirty state
   const originalsRef = useRef<Record<string, unknown>>({});
   const [loaded, setLoaded] = useState(false);
+  const receiptInitializedRef = useRef(false);
+  const hwInitializedRef = useRef(false);
 
   useEffect(() => {
+    if (receiptInitializedRef.current) return;
     setPaperWidth(settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard');
     setShowCurrency(settings.receipt.showCurrency);
     setShowTax(settings.receipt.showTax);
     setShowTableNumber(settings.receipt.showTableNumber);
     setTaxRoundingMode((settings.receipt.taxRoundingMode as 'half_up' | 'truncate') ?? 'half_up');
     setFooter(settings.receipt.footer ?? '');
+    receiptInitializedRef.current = true;
+  }, [settings.receipt]);
 
-    if (hw.profile) {
-      setPrinterConnection(hw.profile.hardware.printer.connection);
-      setPrinterDevicePath(hw.profile.hardware.printer.devicePath ?? '');
-      setPrinterPaperSize(hw.profile.hardware.printer.paperSize === '58' ? '58' : '80');
-      setKitchenConnection(hw.profile.hardware.kitchenPrinter.connection);
-      setKitchenDevicePath(hw.profile.hardware.kitchenPrinter.devicePath ?? '');
-    }
+  useEffect(() => {
+    if (hwInitializedRef.current || !hw.profile) return;
+    const p = hw.profile.hardware.printer;
+    const kp = hw.profile.hardware.kitchenPrinter;
+    setPrinterConnection(p.connection);
+    setPrinterDevicePath(p.devicePath ?? '');
+    setPrinterPaperSize(p.paperSize === '58' ? '58' : '80');
+    setKitchenConnection(kp.connection);
+    setKitchenDevicePath(kp.devicePath ?? '');
 
+    originalsRef.current = {
+      ...originalsRef.current,
+      printerConnection: p.connection,
+      printerDevicePath: p.devicePath ?? '',
+      printerPaperSize: p.paperSize ?? '80',
+      kitchenConnection: kp.connection,
+      kitchenDevicePath: kp.devicePath ?? '',
+    };
+    hwInitializedRef.current = true;
+    setDirtyVersion((v) => v + 1);
+  }, [hw.profile]);
+
+  useEffect(() => {
     if (!loaded) {
       originalsRef.current = {
         paperWidth: settings.receipt.paperWidth,
@@ -110,6 +130,7 @@ export function RestaurantReceiptsScreen({
   }, [settings.receipt, hw.profile, loaded]);
 
   const dirty = useMemo(() => {
+    void dirtyVersion;
     const current: Record<string, unknown> = {
       paperWidth,
       showCurrency,
@@ -125,6 +146,7 @@ export function RestaurantReceiptsScreen({
     };
     return Object.keys(current).some((k) => current[k] !== originalsRef.current[k]);
   }, [
+    dirtyVersion,
     paperWidth,
     showCurrency,
     showTax,
