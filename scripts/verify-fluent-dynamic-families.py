@@ -11,14 +11,28 @@ cover them, so the code must degrade gracefully instead.
 
 Usage: python dyn_cover.py <repo_root>
 
-UNWIRED, AND IT IS NOT IDLE -- measured 2026-09-29. Open finding GI-4 lists this among
-seven checkers no runner invokes, and framed "wire it up" as an oversight to repair. It
-is not: run by hand it exits 1 and reports a LIVE GAP. The "setup feature label" family
-builds 27 ids by template literal (setup-feature-analytics-label,
-setup-feature-audit-log-label, ...) and NONE of them exist in the English bundle. Every
-other family it covers reports OK. So the concern this file was written for is current
-and unreported, which is worse than an obsolete checker: a reader grepping for
-verify- finds a working gate and concludes the gap is covered.
+UNWIRED -- and measured 2026-09-29, run by hand it exits 1 on ONE family. Open
+finding GI-4 lists this among seven checkers no runner invokes.
+
+WHAT IT ACTUALLY REPORTS, stated carefully because the obvious reading is wrong. The
+"setup feature label" family is a HAND-MAINTAINED slug list below, not something
+derived from the source, and none of the 27 ids it names (setup-feature-analytics-label,
+setup-feature-audit-log-label, ...) appears anywhere under ui/src -- zero references.
+So the GAP it reports is a true statement about the BUNDLE ("these 27 keys are absent")
+and an unproven claim about the CODE ("the UI needs these 27 keys"). An earlier note in
+this file, added the same day, called it a live product defect. That was overstated: the
+defect demonstrably present here is THIS CHECKER'S STALE LIST, not 27 missing
+translations. Adding the keys to the .ftl would be adding translation strings nothing
+reads.
+
+The two possibilities that remain need someone who knows the setup wizard's history:
+either the UI code that built these ids was renamed or removed (so the list should be
+deleted), or it lives somewhere this grep did not reach. Resolve that BEFORE wiring this
+file, or wiring it locks a stale list into CI.
+
+Still not wired, and the reason is now sharper: a blocking step would turn every
+check.sh run red over a list that is probably itself wrong, which is worse than the
+silent gap because it looks like a real failure.
 
 NOT WIRED YET, DELIBERATELY. Wiring it as a blocking step would turn every check.sh run
 red over 27 missing translations, and shipping that without fixing the ids is the
