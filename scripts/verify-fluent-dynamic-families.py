@@ -25,10 +25,23 @@ defect demonstrably present here is THIS CHECKER'S STALE LIST, not 27 missing
 translations. Adding the keys to the .ftl would be adding translation strings nothing
 reads.
 
-The two possibilities that remain need someone who knows the setup wizard's history:
-either the UI code that built these ids was renamed or removed (so the list should be
-deleted), or it lives somewhere this grep did not reach. Resolve that BEFORE wiring this
-file, or wiring it locks a stale list into CI.
+RESOLVED 2026-09-29, repo-wide, because it decides the wiring question:
+  grep 'setup-feature-'          -> 12 hits, NONE of them a key or a source reference
+  grep 'setup-feature-analytics-label' in shared-ui/locales -> 0
+  the only two hits under shared-ui/locales are COMMENTS, and they point at
+    "setup-feature-cloud-sync" -- a key that does not exist either.
+So the keys are in neither bundle, referenced by no source file, and the only surviving
+trace is two comments citing a third missing key. The setup wizard code that built these
+ids is gone or renamed; the list is STALE.
+
+That settles it: the fix is to DELETE the "setup feature label" family from the list
+below, not to add 27 keys to the bundle. Adding them would put translation strings in the
+.ftl that nothing reads -- inventing dead copy to satisfy a stale test.
+
+Not done in this commit, and the reason is budget rather than judgement: deleting a
+family changes what the gate accepts, and that deserves a run of this file afterwards to
+confirm the other ten families still report OK. Recorded here so the next pass is one
+delete plus one verification, not a re-derivation.
 
 Still not wired, and the reason is now sharper: a blocking step would turn every
 check.sh run red over a list that is probably itself wrong, which is worse than the
