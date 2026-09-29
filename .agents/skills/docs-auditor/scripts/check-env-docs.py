@@ -34,6 +34,12 @@ from pathlib import Path
 
 GETENV = re.compile(r'(?:Getenv|LookupEnv)\(\s*"([A-Z][A-Z0-9_]{3,})"\)')
 SHELLVAR = re.compile(r'\$\{?([A-Z][A-Z0-9_]{4,})')
+ENVRUST = re.compile(r'(?:env::var|env!)\(\s*"([A-Z][A-Z0-9_]{3,})"')
+# The repo's test convention (AGENTS.md 6.2) is a sibling `foo_tests.rs` beside `foo.rs`,
+# so the Go `_test.go` exclusion has a Rust twin. Skipping it matters: OZ_TEST_REDIS_URL is
+# read ONLY in redis_backend_tests.rs, and counting it would report an operator knob that
+# no operator can set.
+RUSTTEST = re.compile(r'_tests?\.rs$')
 PRAGMA = re.compile(r'env-doc:\s*ok\s*:', re.I)
 PREFIX = ('OZ_', 'PADDLE_', 'MIDTRANS_', 'LOGIN_', 'LICENSE_', 'OZPA_')
 DOC_GLOBS = ['apps/license-server/DEPLOY.md', 'docs/operations/go-live-checklist.md',
@@ -57,6 +63,23 @@ def code_names(r: Path):
             for m in GETENV.finditer(line):
                 if m.group(1).startswith(PREFIX):
                     out.setdefault(m.group(1), []).append('%s:%d' % (p.name, i))
+    # The Rust cloud server reads the same OZ_ namespace the Go server does, and
+    # .env.example documents both as 'the CURRENT unified runtime'. Scanning only the Go
+    # side made every Rust-only knob invisible here -- which is how MIDTRANS_QRIS_ACQUIRER,
+    # read in config.rs and carrying a production warning, reached this tree with no
+    # operator-facing description anywhere.
+    cs = r / 'apps' / 'cloud-server' / 'src'
+    if cs.is_dir():
+        for p in sorted(cs.rglob('*.rs')):
+            if RUSTTEST.search(p.name) or 'tests' in p.parts:
+                continue
+            for i, line in enumerate(p.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
+                if PRAGMA.search(line) or line.strip().startswith('//'):
+                    continue
+                for m in ENVRUST.finditer(line):
+                    if m.group(1).startswith(PREFIX):
+                        out.setdefault(m.group(1), []).append(
+                            '%s:%d' % (p.relative_to(r).as_posix(), i))
     hc = r / 'apps' / 'unified' / 'healthcheck.sh'
     if hc.is_file():
         for i, line in enumerate(hc.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
