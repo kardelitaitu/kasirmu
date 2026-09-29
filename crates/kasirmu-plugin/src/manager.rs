@@ -15,7 +15,7 @@ use kasirmu_lua::{
 use mlua::RegistryKey;
 
 use crate::error::PluginError;
-use crate::loader::{hash_plugin_set, load_plugins};
+use crate::loader::{LoadedPlugin, hash_plugin_set, load_plugins};
 use crate::manifest::Permission;
 
 /// A discount queued by a plugin script for later application.
@@ -43,6 +43,58 @@ pub struct PluginSandbox {
 struct HookRef {
     plugin_id: String,
     func_name: String,
+}
+
+/// Environment variable holding the plugin-signing public key (PEM).
+///
+/// Read once at [`PluginManager::new`]. Unset means plugin signatures are not
+/// verified, which is the documented opt-in default — see `crate::signature`.
+/// Named `KASIRMU_`-prefixed to match the house convention for deployment
+/// configuration (AGENTS.md §4).
+pub const SIGNATURE_PUBLIC_KEY_ENV: &str = "KASIRMU_PLUGIN_PUBLIC_KEY";
+
+/// Read a loaded plugin's scripts as (relative path, bytes) pairs for signing.
+///
+/// Relative to the plugin directory, never absolute: an absolute path embeds the
+/// install location, so a plugin signed on one machine would fail to verify on
+/// another. An unreadable script yields its path with empty bytes rather than
+/// being skipped, so a script that disappears after being resolved cannot
+/// silently drop out of the digest and leave a signature that still matches.
+///
+/// # Why both sides are canonicalised before the strip
+///
+/// `LoadedPlugin.scripts` holds **canonicalised** paths (see
+/// `resolve_plugin_scripts`), while `LoadedPlugin.directory` holds the path as
+/// the directory walk produced it. On Windows `canonicalize` returns a `\\?\`
+/// verbatim-prefixed path, so stripping the raw directory off a canonical script
+/// path **fails**, and the old `unwrap_or(path)` fallback silently emitted an
+/// absolute path instead. The effect was Windows-only and invisible to the unit
+/// tests — which build their own relative names — but it made every signature
+/// machine-specific, so a plugin signed on one install could never verify on
+/// another. Canonicalising both sides makes the strip succeed and the name
+/// relative on every platform. Caught by `tests/signature_roundtrip.rs`.
+fn read_plugin_scripts(plugin: &LoadedPlugin) -> Vec<(String, Vec<u8>)> {
+    let canonical_dir = std::fs::canonicalize(&plugin.directory).ok();
+    plugin
+        .scripts
+        .iter()
+        .map(|path| {
+            let relative = canonical_dir
+                .as_deref()
+                .and_then(|dir| path.strip_prefix(dir).ok())
+                // Fall back to the raw directory, then to the file name alone.
+                // The file name is still relative and still identifies the file
+                // within a plugin, which beats an absolute path that would make
+                // the signature machine-specific.
+                .or_else(|| path.strip_prefix(&plugin.directory).ok())
+                .map(|p| p.to_path_buf())
+                .or_else(|| path.file_name().map(std::path::PathBuf::from))
+                .unwrap_or_else(|| path.clone());
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            let bytes = std::fs::read(path).unwrap_or_default();
+            (relative, bytes)
+        })
+        .collect()
 }
 
 /// Runtime manager for Lua plugin scripts.
@@ -131,6 +183,60 @@ impl PluginManager {
                 .collect::<Vec<_>>(),
             "plugin set fingerprint recorded — a changed set is refused until restart"
         );
+
+        // ── Verify plugin signatures (C2 / D7) ──────────────────────
+        // The grant gate below answers "did the operator approve this plugin's
+        // permissions?"; it cannot answer "is this the plugin they approved?",
+        // because `plugin-grants.json` sits in the same directory an attacker
+        // who can add a plugin can write to. This is the authenticity half.
+        //
+        // Env-configured rather than a parameter: `PluginManager::new` is called
+        // from both shells and from tests, and threading a key through every
+        // caller would be a larger change than the gate itself. An unset key
+        // means unsigned plugins load exactly as before -- see the module docs
+        // on `crate::signature` for why verification is opt-in per install.
+        let signing_key = std::env::var(SIGNATURE_PUBLIC_KEY_ENV).ok();
+        if signing_key.is_none() {
+            tracing::debug!(
+                "no {SIGNATURE_PUBLIC_KEY_ENV} configured — plugin signatures are not verified"
+            );
+        }
+        let mut unverified: Vec<(String, String)> = Vec::new();
+        for plugin in &registry.plugins {
+            let id = &plugin.manifest.plugin.name;
+            let declared: Vec<String> = plugin
+                .manifest
+                .permissions
+                .required_permissions
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let scripts = read_plugin_scripts(plugin);
+            match crate::signature::verify_plugin(
+                &plugin.directory,
+                id,
+                &plugin.manifest.plugin.version,
+                &declared,
+                &scripts,
+                signing_key.as_deref(),
+            ) {
+                Ok(true) => {
+                    tracing::info!(plugin = %id, "plugin signature verified");
+                }
+                Ok(false) => {}
+                Err(e) => unverified.push((id.clone(), e.to_string())),
+            }
+        }
+        if !unverified.is_empty() {
+            let detail = unverified
+                .iter()
+                .map(|(id, why)| format!("'{id}': {why}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(PluginError::Signature(format!(
+                "plugin signature verification failed — refused. {detail}"
+            )));
+        }
 
         // ── Enforce plugin permissions ──────────────────────────────
         for plugin in &registry.plugins {

@@ -27,6 +27,8 @@ pub mod manager;
 pub mod manifest;
 /// Plugin package format (.ozp) handling.
 pub mod package;
+/// Plugin signature verification (C2 / D7).
+pub mod signature;
 
 pub use error::PluginError;
 pub use grants::{PluginGrants, ungranted};

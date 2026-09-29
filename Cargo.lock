@@ -3378,6 +3378,7 @@ dependencies = [
  "modules-terminal",
  "notify",
  "platform-core",
+ "platform-instance-guard",
  "platform-kernel",
  "platform-startup",
  "platform-sync",
@@ -3661,6 +3662,7 @@ dependencies = [
  "modules-tax",
  "modules-terminal",
  "platform-core",
+ "platform-instance-guard",
  "platform-kernel",
  "platform-startup",
  "rand 0.8.6",
@@ -3728,14 +3730,19 @@ dependencies = [
 name = "kasirmu-plugin"
 version = "0.0.40"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
+ "hex",
  "kasirmu-lua",
  "mlua",
+ "rand 0.8.6",
  "regex",
+ "rsa",
  "rusqlite",
  "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "thiserror 1.0.69",
  "toml 0.8.2",
@@ -5242,6 +5249,13 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "platform-instance-guard"
+version = "0.0.40"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
