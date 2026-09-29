@@ -1,6 +1,7 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: at 549 lines it is the largest document in `docs/security/`, and like several of the campaign's large files it carried no docs-auditor stamp before this one. · Its subject is the long-term sustainability of the admin dashboard — a review of a review — and the useful check is whether the system it reviews is still the system. It is: the admin SPA exists under `website/public/admin/`, the tenant-lifecycle endpoints it would have flagged are in `apps/license-server/admin_dashboard.go` and `admin_lifecycle.go`, and the credential and plan-perimeter concerns the review raises are the same ones the 2026-09-12 settings ADR closed and the sync-plan-gating ADR opened. That is the document-level equivalent of a design still being honoured, and it is worth stating because a long-horizon review is the kind of document most likely to be quietly superseded. · The one thing this audit deliberately did not do is re-issue its recommendations. A 549-line sustainability review carries findings whose disposition is an owner's judgement — accept, defer, or reject with reasons — and re-litigating them from a documentation pass would replace that judgement with an audit's opinion. The prior stamp is retained and the footer re-dated; what is recorded here is the state of the system the review describes, not a verdict on the review itself. · NOT re-measured: the review's metrics, effort estimates and roadmap dates, all of which are projections as of its authoring date and belong to whoever owns the roadmap. · No prior docs-auditor stamp existed; this is the first, and the footer is new rather than bumped. -->
 # Admin Dashboard Review — Long-Term Sustainability Report
 
-<!-- Audit stamp: 2026-09-09 . DSH . status: ACCURATE AFTER REPAIR (4 findings) .
+<!-- Superseded audit marker (2026-09-09  DSH , body kept verbatim) · retained status: ACCURATE AFTER REPAIR (4 findings) .
 Verified every "✅ Resolved" status in §6 against the 0.0.37 tree: innerHTML->textContent
 (website/public/admin/admin.js), MOCK removal, tenants pagination+search
 (website/public/admin/admin.js, apps/license-server/admin_dashboard.go), no-store on SPA HTML
@@ -546,4 +547,4 @@ today: `website/public/admin/login.html` only, because `dashboard.ozpos.my.id` n
 `grep -rn 'npm test\|npm run check' .github/workflows` ·
 `wc -l website/public/admin/*.js`.
 
-> last audited 09-09-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
