@@ -557,6 +557,13 @@ step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" pytho
 # widening verify-selftests-wired.py from verify-* to check-* as well: the gate had been
 # scoped to half the convention and so could not see this one. Local matrix only -- the
 # checker is not a gate on the merge path, and adding one is a policy decision.
+# A shell file that does not parse does not RUN, so every step inside it is
+# skipped and nothing reports that. The cheapest gate in the tree, and the one that
+# guards the most: sh -n parses without executing. Added 2026-09-29; it reported a
+# real parse error in scripts/profile.sh on its first run, which is the whole point.
+step "shell syntax" "python3 scripts/verify-shell-syntax.py" python3 scripts/verify-shell-syntax.py
+step "shell syntax self-test" "python3 scripts/verify-shell-syntax.py --self-test" python3 scripts/verify-shell-syntax.py --self-test
+
 step "chokepoints" "python3 scripts/check-chokepoints.py" python3 scripts/check-chokepoints.py
 step "chokepoints self-test" "python3 scripts/check-chokepoints.py --self-test" python3 scripts/check-chokepoints.py --self-test
 

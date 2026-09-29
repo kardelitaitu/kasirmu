@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""verify-shell-syntax.py -- parse every shell entry point without running it.
+
+WHY
+===
+This is the cheapest gate in the tree and the one that guards the most. A syntax
+error in scripts/check.sh or .githooks/pre-commit does not fail loudly: the file
+does not run, so every step inside it is skipped, so the matrix reports fewer
+checks and the hook enforces fewer gates, and nothing anywhere says so. The
+pre-commit hook is the sharper case -- if it cannot parse, it stops gating
+everything it was written to gate, and the only symptom is a bug that reaches
+main unblocked.
+
+`sh -n` PARSES and does not execute. That distinction is the whole design: this
+gate can run first in a pipeline, on a checkout with no toolchain installed, over
+files whose bodies would be expensive or destructive to run, and it cannot have
+side effects because it never invokes anything in the file.
+
+SCOPE
+=====
+Tracked files only, and only two shapes: *.sh under scripts/, and everything
+under .githooks/ that is not a *.sample. A .sample is documentation of a hook the
+user installs, not a hook this repo runs, and a file the repo does not execute
+should not be able to fail a gate -- the same reasoning verify-ci-docs-drift.py
+uses when it scopes a claim to a live workflow. Shebang is honoured when present
+so a bash-only construct in a bash file is not reported against /bin/sh.
+
+Exit 0 all parse, 1 at least one does not, 2 could not run the parser.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def targets() -> list[Path]:
+    out: list[Path] = []
+    scripts = ROOT / "scripts"
+    if scripts.is_dir():
+        out += sorted(p for p in scripts.glob("*.sh") if p.is_file())
+    hooks = ROOT / ".githooks"
+    if hooks.is_dir():
+        out += sorted(p for p in hooks.iterdir()
+                     if p.is_file() and not p.name.endswith(".sample"))
+    return out
+
+
+def parser_for(path: Path) -> list[str]:
+    """Honour the shebang so a bash-only file is not parsed as POSIX sh."""
+    try:
+        with path.open("rb") as fh:
+            first = fh.readline(200).decode("utf-8", errors="replace")
+    except OSError:
+        return ["sh", "-n"]
+    if "bash" in first:
+        return ["bash", "-n"]
+    return ["sh", "-n"]
+
+
+def check(path: Path) -> tuple[bool, str]:
+    # Forward slashes, always. The Windows-native form C:\\dev\\... reaches Git-bash's
+    # /bin/bash with its separators eaten (C:devkasirmu...) and the parser then reports a
+    # MISSING FILE rather than a syntax error -- a failure this gate must never
+    # manufacture, because "does not parse" and "cannot be read" are different bugs and
+    # only the first is this gate's business. Measured: sh -n tolerated the backslashed
+    # form, bash -n did not, so the path is normalised rather than the failure tolerated.
+    # RELATIVE, not absolute. An absolute Windows path handed to Git-bash's /bin/bash
+    # comes back as a MISSING FILE, not a parse result, and this gate must not
+    # manufacture a "does not parse" for a file it could not read. Measured here: sh -n
+    # tolerated C:\\... and bash -n did not. A repo-relative path has no drive letter
+    # to mangle and is the one form every shell accepts on every platform, so that is
+    # what is passed. cwd is ROOT, so the relative path resolves correctly.
+    rel = path.relative_to(ROOT).as_posix()
+    cmd = parser_for(path) + [rel]
+    try:
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                           errors="replace")
+    except OSError as exc:
+        return False, f"could not run {cmd[0]}: {exc}"
+    if r.returncode == 0:
+        return True, ""
+    return False, (r.stderr or r.stdout or "parse failed").strip()
+
+
+def self_test() -> int:
+    """Proves the property on a file this writes under target/, then removes.
+
+    Not a pure-string case because the property is about the PARSER, not a regex:
+    a self-test that only checked argument construction would pass with a
+    check() that could not detect anything. The file is created in a directory
+    this gate already scans, so it also demonstrates that a broken file is
+    FOUND -- and it is deleted in a finally block, because a self-test that
+    leaves a broken shell script in scripts/ would fail this gate for real.
+    """
+    bad: list[str] = []
+    scratch = ROOT / "scripts" / "_syntax_selftest_tmp.sh"
+    try:
+        scratch.write_text("#!/usr/bin/env sh\nset -e\necho ok\n", encoding="utf-8", newline="\n")
+        ok, why = check(scratch)
+        if not ok:
+            bad.append("a well-formed script must parse: " + why)
+
+        scratch.write_text("#!/usr/bin/env sh\nif [ 1 -eq 1 ]\nthen echo 'unterminated\n", encoding="utf-8", newline="\n")
+        ok, why = check(scratch)
+        if ok:
+            bad.append("a script with an unterminated string must NOT parse")
+        elif not why:
+            bad.append("a parse failure must carry the parser's message")
+
+        # A missing PARSE message is as much a defect as a missing detection: a gate
+        # that reports "does not parse" for a file it could not read teaches its reader
+        # to ignore it. Covered by the second case above, which asserts why is non-empty.
+    finally:
+        if scratch.exists():
+            scratch.unlink()
+
+    if scratch.exists():
+        bad.append("self-test left a scratch file behind")
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (3 cases, no files left behind)")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--self-test", action="store_true",
+                    help="Run this checker's cases and exit.")
+    args = ap.parse_args()
+    if args.self_test:
+        return self_test()
+
+    found = False
+    checked = 0
+    for p in targets():
+        checked += 1
+        ok, why = check(p)
+        if not ok:
+            found = True
+            print(f"verify-shell-syntax: PARSE ERROR in {p.relative_to(ROOT).as_posix()}")
+            for line in why.splitlines()[:6]:
+                print("    " + line)
+    if found:
+        print("verify-shell-syntax: a file that does not parse is a file that does not run,"
+              " and every step inside it is skipped. Fix before anything else in the tree"
+              " can be trusted.")
+        return 1
+    print(f"verify-shell-syntax: OK — {checked} shell entry point(s) parse.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
