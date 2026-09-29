@@ -41,6 +41,8 @@ export interface SalesApiOverrides {
   exportSalesByHourScoped?: ReturnType<typeof vi.fn>;
   exportEodReportScoped?: ReturnType<typeof vi.fn>;
   listOpenBillsScoped?: ReturnType<typeof vi.fn>;
+  stampFakturPajakScoped?: ReturnType<typeof vi.fn>;
+  createFakturPenggantiScoped?: ReturnType<typeof vi.fn>;
 }
 
 export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
@@ -95,6 +97,21 @@ export function createSalesApiMock(overrides: SalesApiOverrides = {}) {
     exportDailySummaryScoped: vi.fn((_token: string) => Promise.resolve([])),
     exportSalesByHourScoped: vi.fn((_token: string) => Promise.resolve([])),
     exportEodReportScoped: vi.fn((_token: string) => Promise.resolve(null)),
+    // e-Faktur (PER-11/PJ/2025). Both are REAL calls from the history screen --
+    // SalesHistoryScreen.tsx:567 stamps an NSFP and :591 creates a pengganti --
+    // and both were missing here, so any suite routing through this factory
+    // reached the factory's proxy-less undefined and threw at call time. The
+    // shape mirrors FakturPajakDto (api/sales.ts:458) exactly, because the
+    // screen spreads the result straight into its detail state; a bare
+    // Promise.resolve() would have silenced the throw while breaking the parts
+    // of the drawer that read the stamped NSFP. Same discipline as the
+    // listSalesScoped note above.
+    stampFakturPajakScoped: vi.fn((_token: string, _args: unknown) =>
+      Promise.resolve({ nsfp: '2600000000001', kodeTransaksi: '01', status: '00', formatted: '01002600000000001' }),
+    ),
+    createFakturPenggantiScoped: vi.fn((_token: string, _saleId: string) =>
+      Promise.resolve({ nsfp: '2600000000002', kodeTransaksi: '01', status: '01', formatted: '01012600000000002' }),
+    ),
     ...overrides,
   };
 }

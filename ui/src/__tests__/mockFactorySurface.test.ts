@@ -200,6 +200,13 @@ const KNOWN_GAPS: Record<string, string[]> = {
   ],
   // 6 names. `completeSaleWithResolvedShortfalls` is the one the retail cart calls
   // on a shortfall, so a suite routing through this factory cannot exercise it.
+  //
+  // 2026-09-29: `stampFakturPajakScoped` and `createFakturPenggantiScoped` LEFT
+  // this list — they are now defined in createSalesApiMock, which is the deletion
+  // direction the mismatch assertion is designed to force. Both are real calls
+  // from SalesHistoryScreen.tsx (:567, :591), so the gap was a live throw rather
+  // than a cosmetic omission: a suite routing through the factory hit the
+  // proxy-less undefined the moment the stamp modal or the pengganti button ran.
   '@/api/sales    <- createSalesApiMock': [
     'completeSaleWithResolvedShortfalls', 'lookupSaleByReceiptBarcodeScoped',
     'overrideCartDeductionLocation', 'overrideLinePriceScoped',
