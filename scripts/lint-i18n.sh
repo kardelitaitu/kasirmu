@@ -2,7 +2,9 @@
 # scripts/lint-i18n.sh — local i18n quality gate.
 #
 # Runs as the `i18n Quality Gate` job in `.github/workflows/dev-ci.yml` — the
-# only live workflow. It previously ran inside `ci.yml`, which 23c96330 retired
+# only live workflow that runs THIS gate, not the only live workflow: android.yml
+# and website.yml are live too (ls .github/workflows/*.yml). It previously ran inside
+# `ci.yml`, which 23c96330 retired
 # to `ci.yml.bak` without a replacement; the step was restored after the Fluent
 # page audit, because in between the only enforcement was the opt-in local
 # pre-commit hook (core.hooksPath is set by scripts/setup-dev.ps1 and is not

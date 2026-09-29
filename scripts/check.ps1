@@ -1,8 +1,10 @@
 # scripts/check.ps1 — Windows dev gate: a set of CHECKS, with an optional auto-fix afterwards.
 #
 # This is NOT a mirror of CI, whatever an older header here said. The workflow it used to
-# name (ci.yml) is retired at .github/workflows/attic/ci.yml.bak; the live ones are
-# dev-ci.yml and release.yml, and their job set is a strict superset of what runs below --
+# name (ci.yml) is retired at .github/workflows/attic/ci.yml.bak. There are FOUR live
+# workflows, not the two this line used to name: dev-ci.yml, release.yml, android.yml
+# (restored by a9dca0610) and website.yml -- count them with: ls .github/workflows/*.yml
+# dev-ci.yml's and release.yml's job set is a strict superset of what runs below --
 # the whole static-gates family (i18n parity, PG drift, ipc parity, scoped reads, the
 # Go checks, the website job) has no equivalent here. For the full local matrix run
 # scripts/check.sh; for what a push actually gates see .githooks/pre-push ->
