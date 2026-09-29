@@ -8,7 +8,7 @@ next: none | perf: N/A
 //!
 //! Subcommand handlers live in per-family modules (`db`, `backup`,
 //! `catalog`, `product`, `sale`, `customer`, `user`, `kasirpkg`,
-//! `credential_deltas`, `stock_variance`, `rekey`); this
+//! `credential_deltas`, `credential_settings`, `stock_variance`, `rekey`); this
 //! module owns database opening, the clap dispatch entry point, and the
 //! re-exports that keep the sibling `commands_tests.rs` family-wide.
 
@@ -23,6 +23,7 @@ use crate::seed_demo::run_seed_demo;
 pub(crate) mod backup;
 pub(crate) mod catalog;
 pub(crate) mod credential_deltas;
+pub(crate) mod credential_settings;
 pub(crate) mod customer;
 pub(crate) mod db;
 pub(crate) mod kasirpkg;
@@ -35,6 +36,13 @@ pub(crate) mod user;
 // Family re-exports: the dispatch below and `commands_tests.rs` (which
 // uses `use super::*`) address handlers through this module. Globs keep
 // every family handler visible without enumerating them here.
+//
+// `credential_settings` is deliberately NOT globbed here. It is the read-only
+// half of `credential-deltas` and is re-exported by its sibling
+// `credential_deltas` (see the `pub(crate) use` there), which is what keeps
+// `credential_deltas_tests.rs` — a child of `credential_deltas` — able to reach
+// the census symbols through its own `use super::*`. Globbing it here as well
+// is redundant and trips `unused_imports`.
 pub(crate) use backup::*;
 pub(crate) use catalog::*;
 pub(crate) use credential_deltas::*;
