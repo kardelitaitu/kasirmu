@@ -62,7 +62,13 @@ export function EdcTerminalsCard({
     setLoading(true);
     try {
       const list = await listEdcTerminalsScoped(sessionToken);
-      setTerminals(list);
+      // Defend the state at the boundary: the render path reads
+      // `terminals.length` and `terminals.map` unguarded (:248-:258), so a
+      // backend that answers with a null/undefined body — or a caller whose
+      // session predates the field — would crash the whole screen on
+      // "Cannot read properties of undefined". Normalising once here keeps that
+      // shape out of React state instead of scattering `?.` through the JSX.
+      setTerminals(Array.isArray(list) ? list : []);
     } catch (err) {
       addToast({
         message: plainErrorMessage(err),
