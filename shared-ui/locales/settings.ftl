@@ -519,6 +519,7 @@ data-mgmt-tabs-aria = Data management actions
 data-mgmt-tab-export = Export
 data-mgmt-tab-import = Import
 data-mgmt-tab-backup = Backup
+data-mgmt-tab-restore = Restore
 
 # Export wizard
 data-mgmt-export-wizard-aria = Export wizard
@@ -595,7 +596,44 @@ data-mgmt-backup-label-size = Size
 data-mgmt-backup-create = Create backup now
 data-mgmt-backup-backing-up = Backing up…
 
+# Restore section (C8 S5b)
+#
+# The restore is a SAFE-MODE operation (D5): the request is recorded here and
+# performed on the next start, before anything opens the database. No string
+# here may promise an immediate restore, and none does.
+data-mgmt-restore-status-aria = Restore status
+data-mgmt-restore-title = Restore from backup
+data-mgmt-restore-desc = Replace the live database with one of the backup generations stored beside it. The restore runs the next time kasir.mu starts, before anything opens the database.
+data-mgmt-restore-loading = Reading backup generations…
+data-mgmt-restore-empty = No backup generations were found beside the database.
+data-mgmt-restore-generation = Generation { $number }
+data-mgmt-restore-label-size = Size
+data-mgmt-restore-label-modified = Modified
+data-mgmt-restore-label-schema = Backup schema
+data-mgmt-restore-schema-unknown = Unknown
+data-mgmt-restore-verdict-acceptable = Usable
+data-mgmt-restore-verdict-older = Usable, older schema
+data-mgmt-restore-verdict-newer = Refused, newer schema
+data-mgmt-restore-verdict-corrupt = Refused, corrupt
+data-mgmt-restore-request = Restore this backup
+data-mgmt-restore-confirm-title = Restore from this backup?
+data-mgmt-restore-confirm-desc = To confirm, type the store name that this BACKUP carries — not the name of the store you are running now. The name is not shown anywhere, on purpose: typing it is the confirmation that you have the right backup.
+data-mgmt-restore-store-name-label = Store name in the backup
+data-mgmt-restore-store-name-placeholder = Type the backup's store name
+data-mgmt-restore-submit = Request restore
+data-mgmt-restore-cancel = Cancel
+data-mgmt-restore-next-boot = This restore will run the next time kasir.mu starts. You can keep using the app until then.
+data-mgmt-restore-pending-aria = A restore is already pending
+data-mgmt-restore-pending-title = A restore is already pending
+data-mgmt-restore-pending-desc = A restore has been requested and will run the next time kasir.mu starts. Requesting another would replace it.
+data-mgmt-restore-pending-requested = Requested
+data-mgmt-restore-pending-unreadable = The pending request could not be read
+data-mgmt-restore-cli-hint = You can also restore from the command line: run the kasir.mu CLI restore command while the app is closed.
+
 # Toast notifications
+data-mgmt-toast-restore-success = Restore requested. It will run the next time kasir.mu starts.
+data-mgmt-toast-restore-fail = Could not request the restore
+data-mgmt-toast-restore-store-mismatch = That store name does not match the backup
 data-mgmt-toast-backup-success = Backup created successfully
 data-mgmt-export-complete-aria = Export complete
 data-mgmt-import-complete-aria = Import complete

@@ -21,6 +21,8 @@ import { BackupSection } from './components/BackupSection';
 import { ImportSection } from './components/ImportSection';
 import { useExportWizard } from './hooks/useExportWizard';
 import { useImportWizard } from './hooks/useImportWizard';
+import { useRestore } from './hooks/useRestore';
+import { RestoreSection } from './components/RestoreSection';
 
 // ── Component ──────────────────────────────────────────────────────
 
@@ -40,7 +42,7 @@ function DataManagementScreenContent() {
   const { l10n } = useLocalization();
   const { sessionToken: rawSessionToken } = useWorkspace();
   const sessionToken = rawSessionToken ?? '';
-  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'backup'>('export');
+  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'backup' | 'restore'>('export');
 
   // ── Row flash animation -> hooks/useFlashRows. The map is shared with the
   //     import wizard rows, so the backup hook below is wired to the same trigger.
@@ -82,6 +84,19 @@ function DataManagementScreenContent() {
   //     same deps, and the security notes travel with the code they describe.
   const { backup, handleBackup } = useBackupStatus({ sessionToken, triggerFlash });
 
+  // ── Restore-from-backup (C8 S5b) -> hooks/useRestore. Fetches only while the
+  //     restore tab is open, so the two extra IPC reads cost nothing on the
+  //     default tab.
+  const {
+    restore,
+    isAvailable: restoreAvailable,
+    refresh: refreshRestore,
+    startConfirm,
+    cancelConfirm,
+    setConfirmName,
+    submit: submitRestore,
+  } = useRestore({ sessionToken, open: activeTab === 'restore' });
+
   // ── Render ──────────────────────────────────────────────────────
 
   return (
@@ -108,7 +123,7 @@ function DataManagementScreenContent() {
       <SegmentedTabs
         className="data-mgmt-tabs"
         ariaLabel={l10n.getString('data-mgmt-tabs-aria')}
-        items={(['export', 'import', 'backup'] as const).map((tab) => ({
+        items={(['export', 'import', 'backup', 'restore'] as const).map((tab) => ({
           value: tab,
           label: (
             <>
@@ -160,6 +175,19 @@ function DataManagementScreenContent() {
           backup={backup}
           flashRows={flashRows}
           onBackup={handleBackup}
+        />
+      )}
+
+      {/* ── Restore tab (C8 S5b) ────────────────────────────── */}
+      {activeTab === 'restore' && (
+        <RestoreSection
+          restore={restore}
+          isAvailable={restoreAvailable}
+          onRefresh={refreshRestore}
+          onStartConfirm={startConfirm}
+          onCancelConfirm={cancelConfirm}
+          onConfirmNameChange={setConfirmName}
+          onSubmit={submitRestore}
         />
       )}
     </div>

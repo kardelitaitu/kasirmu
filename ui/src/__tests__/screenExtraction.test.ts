@@ -756,7 +756,9 @@ const SCREENS: ScreenEntry[] = [
     // BackupSection.tsx carries the data-mgmt-backup-* markup and its flash modifier,
     // moved out of the screen in DataManagement slice 3; unregistered, the guard
     // reads those classes as dead CSS.
-    additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx', 'settings/components/ExportSection.tsx'],
+    // RestoreSection.tsx (C8 slice S5b) is the same case: its data-mgmt-restore-*
+    // classes are styled by this sheet but live in the section, not the screen.
+    additionalTsx: ['settings/components/BackupSection.tsx', 'settings/components/ImportSection.tsx', 'settings/components/ExportSection.tsx', 'settings/components/RestoreSection.tsx'],
     // dynamicClassPrefixes: ['data-mgmt-toast--'] struck 2026-09-15 · DSH · an inert allowance, retired with evidence rather than quietly deleted: the family it muted was removed by f16c7ead5 (2026-07-09, 0 inserted / 38 deleted on settings/DataManagementScreen.css), and today 0 rules match it in 137 sheets and 0 composition sites exist in any walked source. The strings that survive as data-mgmt-toast-* in useBackupStatus.ts, useExportWizard.ts, useImportWizard.ts and settings.ftl are Fluent message IDs with ONE dash, not class names. Re-derive: git grep -n data-mgmt-toast-- -- ui/src ui/e2e (1 hit, this comment). Graded by the prefix arm at the foot of this file.
     knownDynamicFragments: [
       // Template-literal parameters inside flashRows.has() that the
