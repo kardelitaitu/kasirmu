@@ -599,6 +599,14 @@ step "updater signature self-test" "node scripts/verify-updater-signature.mjs --
 # the five unwired checkers in open finding GI-4, and it is still unwired. Running its
 # self-test proves the checker works; it does not make the checker a gate, and it does
 # not close GI-4. Wiring the checker is an owner's decision this commit does not make.
+# The self-test is wired; the CHECKER IS DELIBERATELY NOT, and this line is here so a
+# reader who greps check.sh for "quota" does not conclude the gate runs. Run by hand,
+# verify-quota-coverage.sh exits 1 by design: it reports the seed_primary_store INSERT
+# site, whose own comment says gating it "makes a fresh install unbootable, so this door
+# is deliberately ungated for good rather than pending a gate". Its non-zero exit is a
+# REPORT, not a verdict, so a blocking step here would fail every run on a decision that
+# was taken on purpose. Same shape as the docker-digests gate. Provenance and the full
+# reasoning: docs/records/audit-open-findings.md, finding GI-4.
 step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-test" bash scripts/verify-quota-coverage.sh --self-test
 
 step "runner claims" "python3 scripts/verify-runner-claims.py" python3 scripts/verify-runner-claims.py
