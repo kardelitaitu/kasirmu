@@ -74,7 +74,14 @@ def live_ci_scripts() -> set[str]:
     out: set[str] = set()
     if not WF.is_dir():
         return out
-    for p in sorted(WF.glob("*.yml")):
+    # .yml AND .yaml, because that is GitHub's rule -- the same fix
+    # verify-workflow-syntax.py made on 2026-09-29. This gate and three others each
+    # carried their own copy of "what counts as a live workflow", and three of the six
+    # copies globbed *.yml alone, so they would have gone quiet on a .yaml workflow while
+    # the other three still checked it. Six implementations of one concept is the actual
+    # defect here; this line is the cheap half of the fix and the shared helper is the
+    # half that needs its own round.
+    for p in sorted(list(WF.glob("*.yml")) + list(WF.glob("*.yaml"))):
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:

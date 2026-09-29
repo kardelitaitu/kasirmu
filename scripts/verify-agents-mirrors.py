@@ -443,7 +443,7 @@ def live_workflows(root: Path) -> dict[str, str]:
     """name -> text, for workflows GitHub actually executes (.bak is retired)."""
     d = root / ".github" / "workflows"
     return {p.name: io.open(p, encoding="utf-8", errors="replace").read()
-            for p in sorted(d.glob("*.yml"))}
+            for p in sorted(list(d.glob("*.yml")) + list(d.glob("*.yaml")))}
 
 
 def workflow_jobs(text: str) -> list[str]:
@@ -1888,7 +1888,8 @@ def walk_counts(root: Path) -> dict:
     their unit, and the missing paths spelled out, so nothing has to be inferred.
     """
     missing = [rel for rel in ALWAYS_READ if not (root / rel).is_file()]
-    wfs = len(list((root / ".github" / "workflows").glob("*.yml")))
+    wfs = len(list((root / ".github" / "workflows").glob("*.yml"))
+             + list((root / ".github" / "workflows").glob("*.yaml")))
     skills = len(list((root / ".agents" / "skills").glob("*/SKILL.md")))
     found = len(ALWAYS_READ) - len(missing)
     return {"missing": missing, "total": len(ALWAYS_READ), "found": found,
@@ -2073,7 +2074,8 @@ def make_fixture(src: Path, dst: Path) -> None:
     needed = ["Cargo.toml", ".githooks/pre-commit", ".githooks/commit-msg"]
     wfdir = src / ".github" / "workflows"
     if wfdir.is_dir():
-        needed += [f".github/workflows/{p.name}" for p in sorted(wfdir.glob("*.yml"))]
+        needed += [f".github/workflows/{p.name}"
+                   for p in sorted(list(wfdir.glob("*.yml")) + list(wfdir.glob("*.yaml")))]
     needed += MIRRORS
     # PROSE_FILES too, for the same reason the skills are: rules (7) and (8) read these
     # files, and a fixture that omits them would make those rules check nothing while

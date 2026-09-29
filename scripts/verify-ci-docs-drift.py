@@ -272,7 +272,7 @@ def dangling_ci_refs(
     if live is None:
         live = {}
         if WORKFLOWS_DIR.is_dir():
-            for wf in sorted(WORKFLOWS_DIR.glob("*.yml")):
+            for wf in sorted(list(WORKFLOWS_DIR.glob("*.yml")) + list(WORKFLOWS_DIR.glob("*.yaml"))):
                 live[wf.name] = workflow_jobs(wf)
     if baks is None:
         baks = set()
@@ -456,7 +456,8 @@ def hook_workflow_pointers() -> list[str]:
     """Real-path wrapper over hook_workflow_pointers_from_text()."""
     if not PRE_COMMIT_HOOK.is_file():
         return []
-    live = {p.name for p in (ROOT / ".github" / "workflows").glob("*.yml")}
+    live = {p.name for p in list((ROOT / ".github" / "workflows").glob("*.yml"))
+             + list((ROOT / ".github" / "workflows").glob("*.yaml"))}
     return hook_workflow_pointers_from_text(
         PRE_COMMIT_HOOK.read_text(encoding="utf-8", errors="replace"), live)
 
@@ -788,7 +789,10 @@ def self_test() -> int:
                   "# see `.github/workflows/dev-ci.yml#static-gates`\n",
                   {"dev-ci.yml"}), [])
         # A `.bak` sitting beside the name is the exact trap: the file exists on disk
-        # but GitHub never runs it, so glob("*.yml") must be the live set.
+        # but GitHub never runs it, so the TOP-LEVEL glob must be the live set. This comment
+# said glob("*.yml") specifically, and that was half the rule: GitHub executes .yaml as
+# readily as .yml, so the live set is both. Three other gates had already been corrected
+# to match; this one was still .yml-only at three separate call sites.
         check("a workflow only present as .bak counts as not live",
               len(hook_workflow_pointers_from_text(
                   "x .github/workflows/nightly.yml y", {"dev-ci.yml"})), 1)
@@ -851,7 +855,7 @@ def main() -> int:
         return 2
 
     docs_lines = DOCS.read_text(encoding="utf-8").splitlines()
-    workflow_files = sorted(WORKFLOWS_DIR.glob("*.yml"))
+    workflow_files = sorted(list(WORKFLOWS_DIR.glob("*.yml")) + list(WORKFLOWS_DIR.glob("*.yaml")))
     workflows_by_name = {wf.name: wf for wf in workflow_files}
     # Workflows that exist only as `<name>.yml.bak`. 23c96330 retired every
     # non-dev CI workflow this way; GitHub never executes a .bak file, so a doc
