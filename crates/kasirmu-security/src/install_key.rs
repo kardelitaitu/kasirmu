@@ -114,7 +114,7 @@ impl std::fmt::Debug for InstallKeyResolution {
 pub fn resolve_install_key(keyring: &dyn Keyring) -> Result<InstallKeyResolution, SecurityError> {
     if let Some(stored) = keyring.get_secret(INSTALL_KEY_ENTRY)? {
         return Ok(InstallKeyResolution::Ready {
-            secret: decode_stored_key(&stored)?,
+            secret: decode_stored_key(INSTALL_KEY_ENTRY, &stored)?,
             source: InstallKeySource::Loaded,
         });
     }
@@ -143,22 +143,179 @@ pub fn resolve_install_key(keyring: &dyn Keyring) -> Result<InstallKeyResolution
 
 /// Decode a stored key, refusing anything that is not exactly 32 hex-encoded bytes.
 ///
-/// Both messages name the entry and the problem and never the value.
-fn decode_stored_key(stored: &str) -> Result<[u8; 32], SecurityError> {
+/// `entry` names the keychain entry in the message, because two entries now hold
+/// key material ([`INSTALL_KEY_ENTRY`] and [`INSTALL_KEY_PREV_ENTRY`]) and a
+/// refusal that did not say which one is unactionable. Both messages name the
+/// entry and the problem and never the value.
+fn decode_stored_key(entry: &str, stored: &str) -> Result<[u8; 32], SecurityError> {
     let bytes = hex::decode(stored.trim()).map_err(|_| {
         SecurityError::KeyUnavailable(format!(
-            "the {INSTALL_KEY_ENTRY} entry is not valid hex; refusing to regenerate it, \
+            "the {entry} entry is not valid hex; refusing to regenerate it, \
              because a key that cannot be parsed may still decrypt existing rows and \
              replacing it would orphan them"
         ))
     })?;
     bytes.try_into().map_err(|v: Vec<u8>| {
         SecurityError::KeyUnavailable(format!(
-            "the {INSTALL_KEY_ENTRY} entry is {} bytes, not 32; refusing to regenerate it \
+            "the {entry} entry is {} bytes, not 32; refusing to regenerate it \
              for the same reason",
             v.len()
         ))
     })
+}
+
+/// The keychain entry holding the **outgoing** at-rest key while a rotation is in
+/// flight (C1 slice S2c).
+///
+/// Named `{INSTALL_KEY_ENTRY}-prev`, matching the `{name}-prev` convention
+/// [`Keyring::rotate_key`] already uses for its archives. It exists only between
+/// [`begin_install_key_rotation`] and [`retire_previous_install_key`]. A boot that
+/// finds it installs it as a secondary READ candidate, which is what makes an
+/// interrupted rotation survivable: rows still under the outgoing key keep
+/// decrypting until the sweep has converted them all.
+pub const INSTALL_KEY_PREV_ENTRY: &str = concat!("oz-pos/at-rest-key.v1", "-prev");
+
+/// Resolve the **outgoing** key parked by an in-flight rotation, if any.
+///
+/// The three cases mirror [`resolve_install_key`], with one deliberate difference:
+/// an **absent** entry is `Ok(None)` and is **not** a generation trigger. A
+/// rotation is started by `oz rekey`, never by a boot, so a boot that finds no
+/// parked key simply has nothing extra to read.
+///
+/// # Errors
+///
+/// [`SecurityError::KeyUnavailable`] when the entry exists but is not 32 hex bytes.
+/// It is **never regenerated**, for the same reason `resolve_install_key` refuses:
+/// a value that cannot be parsed may still decrypt rows written under it.
+pub fn resolve_previous_install_key(
+    keyring: &dyn Keyring,
+) -> Result<Option<[u8; 32]>, SecurityError> {
+    match keyring.get_secret(INSTALL_KEY_PREV_ENTRY)? {
+        Some(stored) => Ok(Some(decode_stored_key(INSTALL_KEY_PREV_ENTRY, &stored)?)),
+        None => Ok(None),
+    }
+}
+
+/// A staged rotation, as returned by [`begin_install_key_rotation`].
+///
+/// `Debug` is written by hand rather than derived for the same reason
+/// [`InstallKeyResolution`]'s is: both fields are key material, and a derived
+/// `Debug` would print them into any log line, panic message or `dbg!`.
+pub struct InstallKeyRotation {
+    /// The key now stored in [`INSTALL_KEY_ENTRY`]. Hand this to
+    /// `kasirmu_crypto::set_install_key`.
+    pub new_secret: [u8; 32],
+    /// The key parked in [`INSTALL_KEY_PREV_ENTRY`], if the install had a current
+    /// key. `None` means there was nothing to park — a legacy-only install
+    /// adopting its first key. Hand this to
+    /// `kasirmu_crypto::set_previous_install_key` when it is `Some`.
+    pub outgoing: Option<[u8; 32]>,
+}
+
+impl std::fmt::Debug for InstallKeyRotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InstallKeyRotation")
+            .field("new_secret", &"<redacted>")
+            .field(
+                "outgoing",
+                &if self.outgoing.is_some() {
+                    "<redacted>"
+                } else {
+                    "<none>"
+                },
+            )
+            .finish()
+    }
+}
+
+/// Begin a staged rotation of the per-install at-rest key.
+///
+/// # The steps, and why this order
+///
+/// 1. read the current key ([`INSTALL_KEY_ENTRY`]) — this is the OUTGOING key;
+/// 2. **park** it in [`INSTALL_KEY_PREV_ENTRY`];
+/// 3. **promote** a freshly generated key into [`INSTALL_KEY_ENTRY`].
+///
+/// After step 3 the keychain holds **both** keys, so any boot reads both and every
+/// row decrypts — whether it is still under the outgoing key or already
+/// re-encrypted. The caller then re-encrypts every at-rest row and calls
+/// [`retire_previous_install_key`] only once that verifies. Parking the *new* key
+/// instead would leave an interruption with rows under a key no boot can install,
+/// which is the brick this ordering exists to prevent
+/// (`plan-c1-install-key-s2b-s2c.md` §6 S2c).
+///
+/// # Refusals, and the one non-error
+///
+/// - a parked key **already exists** → [`SecurityError::KeyUnavailable`]. A prior
+///   rotation did not complete; overwriting the parked key would orphan every row
+///   still under it, so this refuses rather than silently restarting.
+/// - the current entry is present but **malformed** → error, never overwritten.
+/// - the current entry is **absent** → *not* an error: there is nothing to park, so
+///   `outgoing` is `None`. The caller still promotes and sweeps, which is how a
+///   legacy-only install adopts its first key.
+///
+/// # Errors
+///
+/// [`SecurityError::KeyGenerationFailed`] when the OS RNG fails; a backend read or
+/// write failure surfaces as its own [`SecurityError`].
+pub fn begin_install_key_rotation(
+    keyring: &dyn Keyring,
+) -> Result<InstallKeyRotation, SecurityError> {
+    // A half-finished rotation must not be silently restarted: the parked key may
+    // still be the only way to read rows the sweep has not reached.
+    if keyring.get_secret(INSTALL_KEY_PREV_ENTRY)?.is_some() {
+        return Err(SecurityError::KeyUnavailable(format!(
+            "a previous key is already parked at {INSTALL_KEY_PREV_ENTRY}; a prior \
+             rotation did not complete. Retire it before starting another — \
+             overwriting it would orphan every row still encrypted under it"
+        )));
+    }
+
+    let outgoing = match keyring.get_secret(INSTALL_KEY_ENTRY)? {
+        Some(stored) => Some(decode_stored_key(INSTALL_KEY_ENTRY, &stored)?),
+        None => None,
+    };
+
+    let mut new_secret = [0u8; 32];
+    rand::thread_rng()
+        .try_fill_bytes(&mut new_secret)
+        .map_err(|e| SecurityError::KeyGenerationFailed(format!("rng error: {e}")))?;
+
+    // Park first, promote second. An interruption BETWEEN the two leaves the
+    // current key in place with a harmless duplicate parked (the reader tries
+    // current then previous, and they are the same key). The reverse order would
+    // leave the new key current with the old one nowhere — the brick.
+    if let Some(secret) = outgoing {
+        let encoded = Zeroizing::new(hex::encode(secret));
+        keyring.set_secret(INSTALL_KEY_PREV_ENTRY, &encoded)?;
+    }
+    // SEC-6 pattern, as in `Keyring::rotate_key`: the encoded copy lives in a
+    // zeroizing allocation so the hex string does not outlive this call.
+    let encoded_new = Zeroizing::new(hex::encode(new_secret));
+    keyring.set_secret(INSTALL_KEY_ENTRY, &encoded_new)?;
+
+    Ok(InstallKeyRotation {
+        new_secret,
+        outgoing,
+    })
+}
+
+/// Retire the parked outgoing key, completing a rotation.
+///
+/// **Call this only after every install-key-derived row has been verified to
+/// decrypt under the new key.** After it returns, a row still under the outgoing
+/// key is unreadable — which is precisely why the sweep must be total.
+///
+/// Returns whether an entry was actually deleted, so a caller can distinguish
+/// "retired" from "there was nothing parked".
+///
+/// # Errors
+///
+/// A backend delete failure surfaces as its own [`SecurityError`]. The rotation is
+/// then *incomplete but safe*: both keys are still present, so every row still
+/// reads.
+pub fn retire_previous_install_key(keyring: &dyn Keyring) -> Result<bool, SecurityError> {
+    keyring.delete_secret(INSTALL_KEY_PREV_ENTRY)
 }
 
 #[cfg(test)]

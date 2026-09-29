@@ -214,3 +214,172 @@ fn the_entry_is_its_own_name_and_not_the_rotated_bridge_entry() {
         "the entry carries a version so a future scheme can be added beside it"
     );
 }
+
+// -- S2c: the staged rotation ------------------------------------------------
+
+/// The parked entry is DERIVED from the current one, so a rename of either cannot
+/// leave the two halves of a rotation pointing at different keychain entries.
+#[test]
+fn the_previous_entry_is_the_current_entry_plus_prev() {
+    assert_eq!(
+        INSTALL_KEY_PREV_ENTRY,
+        format!("{INSTALL_KEY_ENTRY}-prev"),
+        "the parked entry follows the same {{name}}-prev convention Keyring::rotate_key uses"
+    );
+    assert_ne!(INSTALL_KEY_PREV_ENTRY, INSTALL_KEY_ENTRY);
+}
+
+/// An absent parked entry is `Ok(None)` and writes NOTHING — a boot must never
+/// start a rotation.
+#[test]
+fn resolve_previous_install_key_is_absent_by_default_and_never_generates() {
+    let keyring = DurableStubKeyring::new();
+    assert_eq!(
+        resolve_previous_install_key(&keyring).expect("absent is not an error"),
+        None,
+        "no rotation in flight means there is nothing extra to read"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY),
+        None,
+        "a boot must never generate a parked key: a rotation is started by `oz rekey`, not by boot"
+    );
+}
+
+/// The core of the ordering: the outgoing key is PARKED and a different key is
+/// PROMOTED, so both are durably present after this call returns.
+#[test]
+fn begin_rotation_parks_the_outgoing_key_and_promotes_a_new_one() {
+    let keyring = DurableStubKeyring::new();
+    let old = hex::encode([0x11u8; 32]);
+    keyring.seed(INSTALL_KEY_ENTRY, &old);
+
+    let rotation = begin_install_key_rotation(&keyring).expect("rotation begins");
+
+    assert_eq!(
+        rotation.outgoing.map(hex::encode),
+        Some(old.clone()),
+        "the outgoing key handed back to the caller is the one that was current"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY),
+        Some(old.clone()),
+        "the outgoing key is parked, so rows still under it keep decrypting"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_ENTRY),
+        Some(hex::encode(rotation.new_secret)),
+        "the current entry now holds the freshly generated key"
+    );
+    assert_ne!(
+        hex::encode(rotation.new_secret),
+        old,
+        "a rotation must actually change the key"
+    );
+}
+
+/// The state a crash between promote and sweep leaves: BOTH keys resolvable, so
+/// every row reads — old or already re-encrypted. This is the slice's gate.
+#[test]
+fn an_interrupted_rotation_leaves_both_keys_resolvable() {
+    let keyring = DurableStubKeyring::new();
+    let old = [0x22u8; 32];
+    keyring.seed(INSTALL_KEY_ENTRY, &hex::encode(old));
+
+    let rotation = begin_install_key_rotation(&keyring).expect("rotation begins");
+
+    // Deliberately NO retire: this is the interrupted state.
+    let InstallKeyResolution::Ready {
+        secret: current, ..
+    } = resolve_install_key(&keyring).expect("current resolves")
+    else {
+        panic!("a key is present, so resolution must be Ready");
+    };
+    assert_eq!(
+        current, rotation.new_secret,
+        "the boot installs the new key"
+    );
+    assert_eq!(
+        resolve_previous_install_key(&keyring).expect("previous resolves"),
+        Some(old),
+        "and the outgoing key too, so a row the sweep has not reached still reads"
+    );
+    assert_ne!(
+        current, old,
+        "the two slots must hold different keys, or 'both resolvable' proves nothing"
+    );
+}
+
+/// A half-finished rotation must not be silently restarted: the parked key may be
+/// the only way to read rows the sweep has not reached.
+#[test]
+fn begin_rotation_refuses_when_a_previous_key_is_already_parked() {
+    let keyring = DurableStubKeyring::new();
+    let current = hex::encode([0x33u8; 32]);
+    let parked = hex::encode([0x44u8; 32]);
+    keyring.seed(INSTALL_KEY_ENTRY, &current);
+    keyring.seed(INSTALL_KEY_PREV_ENTRY, &parked);
+
+    let err = begin_install_key_rotation(&keyring)
+        .expect_err("a half-finished rotation must not be silently restarted");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(INSTALL_KEY_PREV_ENTRY),
+        "the refusal names the entry, got: {msg}"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY),
+        Some(parked),
+        "the parked key is untouched — overwriting it would orphan the rows under it"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_ENTRY),
+        Some(current),
+        "and the current key is untouched too"
+    );
+}
+
+/// Retiring removes ONLY the parked entry; the promoted key survives, and a second
+/// retire reports that there was nothing left to remove.
+#[test]
+fn retire_previous_install_key_deletes_only_the_parked_entry() {
+    let keyring = DurableStubKeyring::new();
+    keyring.seed(INSTALL_KEY_ENTRY, &hex::encode([0x55u8; 32]));
+    let rotation = begin_install_key_rotation(&keyring).expect("rotation begins");
+    let promoted = hex::encode(rotation.new_secret);
+
+    assert!(
+        retire_previous_install_key(&keyring).expect("retire"),
+        "an entry was parked, so retiring removes one"
+    );
+    assert_eq!(keyring.peek(INSTALL_KEY_PREV_ENTRY), None);
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_ENTRY),
+        Some(promoted),
+        "retiring the outgoing key must not disturb the current one"
+    );
+    assert!(
+        !retire_previous_install_key(&keyring).expect("retire again"),
+        "a second retire finds nothing and says so"
+    );
+}
+
+/// `Debug` must not print either half of a rotation.
+#[test]
+fn rotation_debug_redacts_both_secrets() {
+    let keyring = DurableStubKeyring::new();
+    keyring.seed(INSTALL_KEY_ENTRY, &hex::encode([0x66u8; 32]));
+    let rotation = begin_install_key_rotation(&keyring).expect("rotation begins");
+    let outgoing = hex::encode(rotation.outgoing.expect("a key was parked"));
+
+    let rendered = format!("{rotation:?}");
+    assert!(rendered.contains("<redacted>"), "{rendered}");
+    assert!(
+        !rendered.contains(&hex::encode(rotation.new_secret)),
+        "Debug printed the new key: {rendered}"
+    );
+    assert!(
+        !rendered.contains(&outgoing),
+        "Debug printed the outgoing key: {rendered}"
+    );
+}
