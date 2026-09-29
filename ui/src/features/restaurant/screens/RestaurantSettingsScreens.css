@@ -248,6 +248,56 @@
   text-align: center;
 }
 
+/* Receipt Header (Logo Left + Title/Lines Right) */
+.resto-receipt-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.resto-receipt-header-logo-col {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+}
+
+.resto-receipt-header-logo-col .resto-receipt-logo {
+  max-width: 48px;
+  max-height: 48px;
+  object-fit: contain;
+  filter: grayscale(100%) contrast(150%);
+}
+
+.resto-receipt-paper--58mm .resto-receipt-header-logo-col {
+  width: 38px;
+  height: 38px;
+}
+
+.resto-receipt-paper--58mm .resto-receipt-header-logo-col .resto-receipt-logo {
+  max-width: 38px;
+  max-height: 38px;
+}
+
+.resto-receipt-header-text-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+}
+
+.resto-receipt-header-line {
+  font-size: var(--rcpt-size-meta, 10px);
+  color: var(--receipt-paper-ink-soft);
+  line-height: var(--leading-snug, 1.3);
+  word-break: break-word;
+}
+
 .resto-receipt-store-title {
   font-size: var(--rcpt-size-title, var(--text-base));
   font-weight: bold;

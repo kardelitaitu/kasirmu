@@ -552,5 +552,45 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(tableToggle).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('TABLE 4')).toBeInTheDocument();
   });
+
+  it('renders left-aligned logo and right-aligned title and lines when logo is enabled', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Enter a business logo (via text input)
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    // Header row should appear with logo on left and text on right
+    const headerRow = document.querySelector('.resto-receipt-header-row');
+    expect(headerRow).toBeInTheDocument();
+    const logoCol = document.querySelector('.resto-receipt-header-logo-col');
+    expect(logoCol).toBeInTheDocument();
+    const textCol = document.querySelector('.resto-receipt-header-text-col');
+    expect(textCol).toBeInTheDocument();
+
+    // Configure custom title and lines
+    const titleInput = screen.getByLabelText('Receipt Title');
+    const line1Input = screen.getByLabelText('Header Line 1');
+    const line2Input = screen.getByLabelText(/Header Line 2/i);
+
+    await user.clear(titleInput);
+    await user.type(titleInput, 'WARUNG NUSANTARA');
+    await user.clear(line1Input);
+    await user.type(line1Input, 'Jl. Sudirman 45, Jakarta');
+    await user.clear(line2Input);
+    await user.type(line2Input, 'Tel: 021-123456');
+
+    expect(within(textCol as HTMLElement).getByText('WARUNG NUSANTARA')).toBeInTheDocument();
+    expect(within(textCol as HTMLElement).getByText('Jl. Sudirman 45, Jakarta')).toBeInTheDocument();
+    expect(within(textCol as HTMLElement).getByText('Tel: 021-123456')).toBeInTheDocument();
+  });
 });
 
