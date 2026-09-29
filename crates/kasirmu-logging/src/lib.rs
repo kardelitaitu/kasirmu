@@ -1,14 +1,13 @@
 /*
-last audited DD-MM-YY by DSH-Agent
+last audited 29-09-26 by DSH-Agent
 crate: kasirmu-logging | status: SAFE | lint: CLEAN
-findings: 3 actual unsafe blocks verified (syslog: openlog + syslog; eventlog: OutputDebugStringW) — all with SAFETY comments and valid CString/wide-string guards. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
+findings: 0 unsafe blocks — the syslog/eventlog FFI modules (3 unsafe blocks: openlog + syslog, OutputDebugStringW) were DELETED 2026-09-29 under C29 / decision D13, so this crate is now entirely safe Rust and the crate-level `#![deny(unsafe_code)]` below makes that structural. .expect() calls only in documented-panic wrapper functions (init/init_json/init_with_file/init_json_with_file — mirrored by try_* non-panicking variants). Error type #[non_exhaustive]. File logger guard retention fix (L-1) verified. No defects found.
 next: none | perf: N/A
 */
 //! Structured logging facade for kasir.mu.
 //!
 //! `kasirmu-logging` wraps the `tracing` ecosystem with context-tagged
-//! record format, file + stdout writers, log rotation, and platform-
-//! specific outputs (syslog on Linux, Event Log on Windows).
+//! record format, file + stdout writers, and log rotation.
 //!
 //! # Initialisers
 //!
@@ -18,19 +17,19 @@ next: none | perf: N/A
 //! - [`init_with_file`] — human-readable text + rolling file writer.
 //! - [`init_json_with_file`] — JSON + rolling file writer.
 //!
-//! # Platform outputs
+//! # No platform-specific sinks
 //!
-//! - **Linux**: Syslog output is available via the `syslog` module.
-//! - **Windows**: Event Log output is available via the `eventlog` module.
+//! The `syslog` (Linux) and `eventlog` (Windows) modules were **deleted
+//! 2026-09-29** (C29 / decision D13). Both were unwired — zero callers
+//! anywhere in the tree — and both were redundant with the stdout
+//! initialisers above, which the container and the host already capture.
+//! They also carried a `no_run` doctest advertising a usage that did not
+//! exist, which is the defect class the deletion closes. There is
+//! deliberately no FFI and no `unsafe` in this crate.
 
-// Note: unsafe blocks are permitted for platform-specific FFI
-// calls (libc syslog, Windows Event Log).
+#![deny(unsafe_code)]
 
 pub mod error;
-#[cfg(target_os = "windows")]
-pub mod eventlog;
-#[cfg(target_os = "linux")]
-pub mod syslog;
 pub mod visitor;
 
 pub use error::LoggingError;

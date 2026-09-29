@@ -209,10 +209,12 @@ wiremock = "0.6.5"
 # in `lints`"), so a crate cannot relax a workspace lint from its manifest.
 #
 # Second, and decisively: `unsafe_code` is not uniformly deniable here.
-# `kasirmu-logging` calls syslog/eventlog through FFI (`syslog.rs`,
-# `eventlog.rs`) and `kasirmu-notification` uses `unsafe` in its tests, and
-# neither currently carries a crate-level opt-out — adding a workspace-wide
-# deny would break both builds, which is out of scope for a plumbing change.
+# `kasirmu-notification` uses `unsafe` in its tests and does not carry a
+# crate-level opt-out — adding a workspace-wide deny would break that build,
+# which is out of scope for a plumbing change. (This note previously also
+# named `kasirmu-logging`'s syslog/eventlog FFI; those modules were deleted
+# 2026-09-29 under C29 / D13, and `kasirmu-logging` now denies the lint
+# itself with a file-local `#![deny(unsafe_code)]`.)
 #
 # The crates that DO deny it keep the file-local `#![deny(unsafe_code)]`
 # inner attribute, which stays the reviewable place for an exception:

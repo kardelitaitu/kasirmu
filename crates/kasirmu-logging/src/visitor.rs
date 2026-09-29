@@ -8,7 +8,8 @@ next: none | perf: N/A
 //!
 //! [`MessageVisitor`] collects all fields from a `tracing::Event` into
 //! a plain-text string suitable for output channels that don't support
-//! structured data (syslog, Windows Event Log).
+//! structured data (the human-readable text initialisers, and the rolling
+//! file writer).
 
 /// Collects event fields into a plain-text message string.
 ///

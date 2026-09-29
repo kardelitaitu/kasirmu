@@ -599,7 +599,7 @@ These crates were originally scaffolded and are now fully implemented:
 ### kasirmu-logging
 - `tracing` + `tracing-subscriber` with env-filter.
 - Single `kasirmu_logging::init()` call wires up log sinks. Used by `apps/desktop-tauri` and `kasirmu-api`.
-- JSON formatter, syslog, and Windows Event Log outputs planned for Phase 2.
+- JSON formatter available today (`init_json`). Syslog and Windows Event Log sinks are **not** planned — the unwired modules were deleted 2026-09-29 (C29 / D13).
 
 ### apps/desktop-tauri & apps/mobile-tauri (Tauri v2 Shells)
 Each app crate has an identical command surface, wired through `platform-startup`:

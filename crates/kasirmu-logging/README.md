@@ -1,6 +1,6 @@
 # kasirmu-logging
 
-<!-- Audit stamp: 2026-07-22 · Hermes-Agent · status: ACCURATE (0 findings) · fully verified against tree: all 4 init fns present (init, init_json, init_with_file, init_json_with_file) with matching signatures; syslog (Linux) + eventlog (Windows) pub mods present; #![warn(missing_docs)] present; RUST_LOG default info; retention_days cleanup logic present · RE-AUDITED 2026-08-31 by docs-auditor: all 4 init fns + signatures re-confirmed (init_with_file/init_json_with_file take log_dir/file_prefix/retention_days), syslog+eventlog pub mods (lib.rs:31/33), RUST_LOG→info fallback (lib.rs:80), hourly rotation (rolling::hourly lib.rs:206/260), retention_days cleanup; L-1 fix (a53e3eda, 08-30) now retains the tracing_appender WorkerGuard in a process-global registry so file logging actually survives init — the README's "stdout + rolling file" claim is now backed by working code (was aspirational before the fix) -->
+<!-- Audit stamp: 2026-09-29 · DSH-Agent · status: ACCURATE (0 findings) · re-verified against tree: all 4 init fns present (init, init_json, init_with_file, init_json_with_file) with matching signatures; RUST_LOG default info; retention_days cleanup logic present; hourly rotation; L-1 fix retains the tracing_appender WorkerGuard in a process-global registry. PRIOR STAMP (2026-07-22 · Hermes-Agent; re-audited 2026-08-31 by docs-auditor) also verified "syslog (Linux) + eventlog (Windows) pub mods present" — those modules were DELETED 2026-09-29 (C29 / decision D13) and that claim is removed rather than left stale. The earlier "#![warn(missing_docs)] present" claim was also stale: the lint is inherited via `[lints] workspace = true`. -->
 
 Structured logging facade wrapping the `tracing` ecosystem.
 
@@ -20,12 +20,13 @@ kasirmu_logging::init();                                      // dev
 kasirmu_logging::init_json_with_file("logs", "kasirmu", 30);   // production
 ```
 
-### Platform modules
+### Platform modules — removed
 
-| Module | Platform | Output |
-|--------|----------|--------|
-| `syslog` | Linux | Syslog |
-| `eventlog` | Windows | Event Log |
+There are no platform-specific sinks. The `syslog` (Linux) and `eventlog`
+(Windows) modules were deleted 2026-09-29 (C29 / decision D13): both were
+unwired — zero callers tree-wide — and both were redundant with the stdout
+initialisers above, which the container and the host already capture. The
+crate is now pure safe Rust and denies `unsafe_code` crate-wide.
 
 ## Conventions
 
