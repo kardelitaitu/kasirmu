@@ -541,7 +541,7 @@ impl Store<'_> {
             // recomputes the legacy inventory aggregate as the SUM over all
             // locations. The legacy single-PK precheck/write this replaces
             // clobbered the aggregate and was invisible to stock_summary.
-            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
             if let Err(err) = self.adjust_stock_at_location_with_reason(
                 &tx,
                 &line.sku,
@@ -678,7 +678,7 @@ impl Store<'_> {
                 // Route the credit through the canonical per-location adjust
                 // fn at the DESTINATION location (see send_transfer) so the
                 // per-location rows and the legacy aggregate stay consistent.
-                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
                 self.adjust_stock_at_location_with_reason(
                     &tx,
                     &sku,
@@ -804,7 +804,7 @@ impl Store<'_> {
                 // Route the reversal through the canonical per-location
                 // adjust fn: the dispatched qty is credited back at the
                 // SOURCE location it was deducted from (see send_transfer).
-                self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+                Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
                 self.adjust_stock_at_location_with_reason(
                     &tx,
                     &sku,

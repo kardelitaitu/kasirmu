@@ -201,7 +201,7 @@ impl Store<'_> {
             )?;
 
             // Create the structured line items in the new kds_line_items table.
-            self.create_kds_line_items_in_tx(&tx, &order.id, &structured_items)?;
+            Self::create_kds_line_items_in_tx(&tx, &order.id, &structured_items)?;
 
             orders.push(order);
         }
@@ -262,7 +262,7 @@ impl Store<'_> {
             return Ok(vec![]);
         }
         let tx = self.conn.unchecked_transaction()?;
-        let result = self.create_kds_line_items_in_tx(&tx, order_id, items)?;
+        let result = Self::create_kds_line_items_in_tx(&tx, order_id, items)?;
         tx.commit()?;
         Ok(result)
     }

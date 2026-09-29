@@ -199,7 +199,7 @@ impl Store<'_> {
             // because create_sale never writes deduction_locations, so the
             // deduction_locations bound below cannot be relied on to catch it.
             let (sold_qty, line_minor, recorded_sku) =
-                self.sold_line_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
+                Self::sold_line_for_sale_line_in_tx(&tx, &refund.sale_id, sale_line_id)?;
 
             // ── IDENTITY: the claimed sku must BE the sku that line sold ───
             // Both bounds above are measured against the named line, so they
@@ -245,7 +245,7 @@ impl Store<'_> {
                     ),
                 });
             }
-            let already_refunded_qty = self.refunded_qty_for_sale_line_in_tx(
+            let already_refunded_qty = Self::refunded_qty_for_sale_line_in_tx(
                 &tx,
                 &refund.sale_id,
                 sale_line_id,
@@ -515,7 +515,6 @@ impl Store<'_> {
     /// three from the same row, so no bound can be measured against a
     /// different snapshot of it than the one the others saw.
     fn sold_line_for_sale_line_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         sale_id: &str,
         sale_line_id: &str,
@@ -552,7 +551,6 @@ impl Store<'_> {
     /// own units twice; passing the id keeps both reads meaning the same thing
     /// — units refunded by EARLIER refunds.
     fn refunded_qty_for_sale_line_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         sale_id: &str,
         sale_line_id: &str,

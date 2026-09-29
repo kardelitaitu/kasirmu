@@ -844,7 +844,6 @@ fn rebuild_scope_survives_a_catalog_larger_than_the_chunk() {
 #[test]
 fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
     let conn = fresh();
-    let s = store(&conn);
     let pid = seed_product(&conn, "SKU-LEGACY-BRIDGE");
     seed_legacy_inventory(&conn, &pid, 50);
 
@@ -856,8 +855,7 @@ fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
     .unwrap();
 
     let tx = conn.unchecked_transaction().unwrap();
-    let err = s
-        .bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &pid)
+    let err = Store::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &pid)
         .expect_err("a database error reading legacy inventory must not silently be ignored");
     assert!(
         matches!(err, CoreError::Db(_)),
@@ -868,7 +866,6 @@ fn bridge_legacy_inventory_propagates_db_error_when_reading_inventory() {
 #[test]
 fn check_stock_threshold_and_alert_propagates_db_error() {
     let conn = fresh();
-    let s = store(&conn);
     let pid = seed_product(&conn, "SKU-ALERT-ERR");
     let loc_id = "loc-err-test";
     seed_location(&conn, loc_id, "Error Location");
@@ -889,8 +886,7 @@ fn check_stock_threshold_and_alert_propagates_db_error() {
     .unwrap();
 
     let tx = conn.unchecked_transaction().unwrap();
-    let err = s
-        .check_stock_threshold_and_alert_in_tx(&tx, &pid, loc_id, 5, "2025-01-01T00:00:00.000Z")
+    let err = Store::check_stock_threshold_and_alert_in_tx(&tx, &pid, loc_id, 5, "2025-01-01T00:00:00.000Z")
         .expect_err("database error reading threshold must propagate");
     assert!(
         matches!(err, CoreError::Db(_)),

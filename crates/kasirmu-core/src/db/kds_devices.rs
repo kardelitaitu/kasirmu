@@ -89,7 +89,7 @@ impl Store<'_> {
         )?;
         let mut rows = stmt.query(params![id])?;
         match rows.next()? {
-            Some(row) => Ok(Some(self.row_to_kds_device(row)?)),
+            Some(row) => Ok(Some(Self::row_to_kds_device(row)?)),
             None => Ok(None),
         }
     }
@@ -118,7 +118,7 @@ impl Store<'_> {
         })?;
         rows.map(|r| {
             let row = r?;
-            self.row_from_kds_device_row(row)
+            Self::row_from_kds_device_row(row)
         })
         .collect()
     }
@@ -164,7 +164,7 @@ impl Store<'_> {
         Ok(())
     }
 
-    fn row_to_kds_device(&self, row: &rusqlite::Row) -> rusqlite::Result<KdsDevice> {
+    fn row_to_kds_device(row: &rusqlite::Row) -> rusqlite::Result<KdsDevice> {
         let station_ids_str: String = row.get("station_ids")?;
         // Fail CLOSED. An empty `station_ids` is the BROADCAST sentinel — see
         // [`KdsDevice::station_ids`] and `resolve_targets_by_station` Phase 2
@@ -195,7 +195,7 @@ impl Store<'_> {
         })
     }
 
-    fn row_from_kds_device_row(&self, row: KdsDeviceRow) -> Result<KdsDevice, CoreError> {
+    fn row_from_kds_device_row(row: KdsDeviceRow) -> Result<KdsDevice, CoreError> {
         // Fail CLOSED — see `row_to_kds_device` for why an empty list must not
         // be the default for an unreadable value.
         let station_ids: Vec<String> = serde_json::from_str(&row.station_ids).map_err(|e| {

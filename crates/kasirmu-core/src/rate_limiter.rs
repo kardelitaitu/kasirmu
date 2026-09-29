@@ -68,7 +68,7 @@ impl LoginRateLimiter {
         // This runs on every record, so the map holds at most the usernames that
         // have attempted within the last window — bounded by the request rate
         // over the window, not by the process lifetime.
-        self.evict_expired_locked(&mut map, now, window);
+        Self::evict_expired_locked(&mut map, now, window);
 
         let attempts = map.entry(username.to_string()).or_default();
 
@@ -109,7 +109,6 @@ impl LoginRateLimiter {
     /// starts at zero anyway) and is dropped, which is what keeps the map from
     /// growing without bound.
     fn evict_expired_locked(
-        &self,
         map: &mut HashMap<String, Vec<Instant>>,
         now: Instant,
         window: Duration,

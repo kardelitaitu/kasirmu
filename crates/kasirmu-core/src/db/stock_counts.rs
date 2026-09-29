@@ -597,7 +597,7 @@ impl Store<'_> {
             // never underflowing one); a surplus credits the largest holder —
             // or the canonical default location when the product has no
             // per-location rows.
-            self.bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
+            Self::bridge_legacy_inventory_into_stock_summary_in_tx(&tx, &product_id)?;
             if delta != 0 {
                 let holders: Vec<(String, i64)> = {
                     let mut stmt = tx.prepare(

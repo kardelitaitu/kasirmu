@@ -348,7 +348,7 @@ impl Store<'_> {
                 "DELETE FROM kds_line_items WHERE kds_order_id = ?1",
                 rusqlite::params![input.id],
             )?;
-            let inserted = self.create_kds_line_items_in_tx(&tx, &input.id, line_items)?;
+            let inserted = Self::create_kds_line_items_in_tx(&tx, &input.id, line_items)?;
             for (row, state) in inserted.iter().zip(&carry) {
                 if let Some((status, started, ready, served)) = state {
                     tx.execute(

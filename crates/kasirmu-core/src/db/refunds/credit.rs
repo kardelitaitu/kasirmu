@@ -79,7 +79,7 @@ impl Store<'_> {
             // still outstanding against what was deducted here. Without
             // the sum, two refunds that each fit inside total_deducted
             // credit more stock than the line ever sold.
-            let already_credited = self.refunded_qty_for_sale_line_in_tx(
+            let already_credited = Self::refunded_qty_for_sale_line_in_tx(
                 tx,
                 &refund.sale_id,
                 &refund_line.sale_line_id,
@@ -226,8 +226,8 @@ impl Store<'_> {
             // sold. checked_add, not +: a near-i64::MAX quantity must be
             // rejected rather than wrapped negative past the comparison.
             let (sold_qty, _, recorded_sku) =
-                self.sold_line_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
-            let already_credited = self.refunded_qty_for_sale_line_in_tx(
+                Self::sold_line_for_sale_line_in_tx(tx, &refund.sale_id, &refund_line.sale_line_id)?;
+            let already_credited = Self::refunded_qty_for_sale_line_in_tx(
                 tx,
                 &refund.sale_id,
                 &refund_line.sale_line_id,

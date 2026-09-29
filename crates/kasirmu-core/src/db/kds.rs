@@ -237,7 +237,6 @@ impl Store<'_> {
     /// Used by both `create_kds_line_items` (for initial creation) and
     /// `update_kds_order_items` (for replacement after deletion).
     fn create_kds_line_items_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         order_id: &str,
         items: &[CreateKdsLineItemInput],

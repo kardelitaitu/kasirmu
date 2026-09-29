@@ -343,7 +343,7 @@ impl Store<'_> {
         // evidence anywhere. The sibling legacy-inventory arm 10 lines above
         // already logs its expected case, and `active_stock_alerts` reads this
         // table to render the low-stock list, so a lost row is a lost warning.
-        if let Err(e) = self.check_stock_threshold_and_alert_in_tx(
+        if let Err(e) = Self::check_stock_threshold_and_alert_in_tx(
             tx,
             &product_id,
             location_id.as_str(),
@@ -400,7 +400,6 @@ impl Store<'_> {
     /// per-location rows are left untouched. No `stock_movements` row is
     /// written: this materialises existing state, it is not a new delta.
     pub(crate) fn bridge_legacy_inventory_into_stock_summary_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
     ) -> Result<(), CoreError> {
@@ -448,7 +447,6 @@ impl Store<'_> {
     /// If stock recovers above threshold: UPDATE any active/acknowledged
     /// alerts to `status = 'resolved'` (auto-resolve).
     pub(crate) fn check_stock_threshold_and_alert_in_tx(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         product_id: &str,
         location_id: &str,

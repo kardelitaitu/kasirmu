@@ -130,7 +130,7 @@ impl crate::db::Store<'_> {
         kind: EntityIndexKind,
         now: &str,
     ) -> Result<i64, CoreError> {
-        self.allocate_entity_index_with_ceiling(tx, tenant_id, kind, now, INDEX_ID_MAX)
+        Self::allocate_entity_index_with_ceiling(tx, tenant_id, kind, now, INDEX_ID_MAX)
     }
 
     /// Allocate the lowest available index id for `(tenant_id, kind)` on an
@@ -142,22 +142,20 @@ impl crate::db::Store<'_> {
         kind: EntityIndexKind,
         now: &str,
     ) -> Result<i64, CoreError> {
-        self.allocate_entity_index_with_ceiling_on_conn(conn, tenant_id, kind, now, INDEX_ID_MAX)
+        Self::allocate_entity_index_with_ceiling_on_conn(conn, tenant_id, kind, now, INDEX_ID_MAX)
     }
 
     pub(crate) fn allocate_entity_index_with_ceiling(
-        &self,
         tx: &rusqlite::Transaction<'_>,
         tenant_id: &str,
         kind: EntityIndexKind,
         now: &str,
         ceiling: i64,
     ) -> Result<i64, CoreError> {
-        self.allocate_entity_index_with_ceiling_on_conn(tx, tenant_id, kind, now, ceiling)
+        Self::allocate_entity_index_with_ceiling_on_conn(tx, tenant_id, kind, now, ceiling)
     }
 
     pub(crate) fn allocate_entity_index_with_ceiling_on_conn(
-        &self,
         conn: &rusqlite::Connection,
         tenant_id: &str,
         kind: EntityIndexKind,

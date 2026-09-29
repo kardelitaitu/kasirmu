@@ -173,20 +173,17 @@ fn the_last_valid_index_is_max_and_the_next_one_refuses() {
     let s = store(&s_db);
     let tx = s.conn.unchecked_transaction().unwrap();
 
-    let idx1 = s
-        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
+    let idx1 = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
         .unwrap();
     assert_eq!(idx1, 1);
     insert_location(&tx, "default", "loc-1", idx1);
 
-    let idx2 = s
-        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
+    let idx2 = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
         .unwrap();
     assert_eq!(idx2, 2);
     insert_location(&tx, "default", "loc-2", idx2);
 
-    let err = s
-        .allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
+    let err = Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 2)
         .unwrap_err();
     assert!(
         err.to_string().contains("exhausted"),
@@ -202,7 +199,7 @@ fn a_refused_allocation_consumes_nothing_once_rolled_back() {
         let tx = s.conn.unchecked_transaction().unwrap();
         insert_location(&tx, "default", "loc-1", 1);
         assert!(
-            s.allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 1)
+            Store::allocate_entity_index_with_ceiling(&tx, "default", EntityIndexKind::Location, NOW, 1)
                 .is_err()
         );
     } // dropped without commit — rolled back
