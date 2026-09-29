@@ -841,12 +841,31 @@ jobs:
       - name: Docs dead references
         run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py
 
+      # The dead-ref checker's own cases, beside the gate it proves -- the convention
+      # stated at "IPC command parity self-test" (7c). Blocking, for the reason that
+      # comment gives: the step above, scripts/check.sh and scripts/run-pre-push.py all
+      # invoke the checker WITHOUT --self-test, so a regression in the LEG -- a
+      # source-relative path resolver that stops resolving, or a pragma rule that goes
+      # blind -- could sit broken while every gate stayed green. No bare run of the
+      # checker can see this class; only the self-test can.
+      - name: Docs dead references self-test
+        run: python3 .agents/skills/docs-auditor/scripts/check-dead-refs.py --self-test
+
       # Gate: scripts/gates.json -> "api-surface". Green from day one (2026-09-29), when the
       # page was repaired from 169 drifts to 0 in the same change that added this step. This
       # checker exits 2, not 0, when it cannot parse an input, so a renamed registry or a
       # missing page fails the job instead of reading as agreement.
       - name: API reference surface
         run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py
+
+      # Same convention and same reason as the step above. This one is the sharper case:
+      # the checker's four drift buckets are counted from generate_handler! and from the
+      # page, so a parser that stops matching the page's entry format would report an
+      # empty surface as agreement. Its classification was made a pure function on
+      # 2026-09-29 precisely so these cases need no filesystem; running them here is what
+      # makes that worth having.
+      - name: API reference surface self-test
+        run: python3 .agents/skills/docs-auditor/scripts/check-api-surface.py --self-test
 
   # ── 7a. Static Gates: the cheap, fast-red job ─────────────────────────
   # Six checks existed only in scripts/check.sh, which is manual and unhooked,
