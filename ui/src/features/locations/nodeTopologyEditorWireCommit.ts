@@ -55,7 +55,7 @@ export interface TopologyWireCommitDeps {
   /** id -> node, for endpoint lookups and the warehouse side of the gates. */
   nodeMap: Map<string, TopologyNodeData>;
   /** Tier gate: the stock-routing fallback limit applies below Pro. */
-  isProAllowed: boolean;
+  warehouseTierAllowed: boolean;
   /** Refusal / info toasts. */
   addToast: (toast: { message: string; type: ToastType }) => unknown;
   /** Only `getString` is needed — for the refusal and hint copy. */
@@ -94,7 +94,7 @@ export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
     wiresRef,
     pushHistoryRef,
     nodeMap,
-    isProAllowed,
+    warehouseTierAllowed,
     addToast,
     l10n,
     cancelRelationshipPicker,
@@ -165,7 +165,7 @@ export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
       target,
       targetPort,
       option,
-      { isProAllowed, existingStockWires },
+      { warehouseTierAllowed, existingStockWires },
     );
     if (refusal) {
       addToast({ message: l10n.getString(WIRE_CONNECT_REFUSAL_TOAST[refusal.reason]), type: 'warning' });
@@ -204,7 +204,7 @@ export function useTopologyEditorWireCommit(deps: TopologyWireCommitDeps): {
       },
     ]);
     cancelRelationshipPicker();
-  }, [nodeMap, addToast, l10n, isProAllowed, cancelRelationshipPicker, setWires, wiresRef, pushHistoryRef]);
+  }, [nodeMap, addToast, l10n, warehouseTierAllowed, cancelRelationshipPicker, setWires, wiresRef, pushHistoryRef]);
 
   /** Commit the relationship the user picked, looking up the endpoint nodes
    *  at click time — a node deleted mid-dialog cancels instead of crashing. */

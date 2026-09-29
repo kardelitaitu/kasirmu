@@ -56,7 +56,9 @@ export interface MockTierCaps {
   maxLocations: number | null;
   /** `max_pos_instances`: Free 1, Plus 2, Pro 5, Premium+ unlimited. */
   maxPosInstances: number | null;
-  /** `max_warehouses`: Free 1, Plus 2, Pro 3, Premium+ unlimited. */
+  /** `max_warehouses`: ZERO below Premium (the warehouse workspace is a
+   *  Premium+ feature by the owner's ruling of 2026-09-29 — the same zeros the
+   *  website's pricing row publishes), Premium+ unlimited. */
   maxWarehouses: number | null;
   /** `max_kds_screens` — PER LOCATION, not a tenant budget. Free/Plus 0 (KDS
    *  is not merely capped, it is unavailable), Pro 2, Premium+ unlimited. */
@@ -102,7 +104,7 @@ export const MOCK_TIER_CAPS: Record<MockTierKey, MockTierCaps> = {
   free: {
     maxLocations: 1,
     maxPosInstances: 1,
-    maxWarehouses: 1,
+    maxWarehouses: 0,
     maxKdsScreens: 0,
     maxStaffUsers: 1,
     salesHistoryDays: 90,
@@ -120,7 +122,7 @@ export const MOCK_TIER_CAPS: Record<MockTierKey, MockTierCaps> = {
   plus: {
     maxLocations: 1,
     maxPosInstances: 2,
-    maxWarehouses: 2,
+    maxWarehouses: 0,
     maxKdsScreens: 0,
     maxStaffUsers: 5,
     salesHistoryDays: 365,
@@ -138,7 +140,7 @@ export const MOCK_TIER_CAPS: Record<MockTierKey, MockTierCaps> = {
   pro: {
     maxLocations: 2,
     maxPosInstances: 5,
-    maxWarehouses: 3,
+    maxWarehouses: 0,
     maxKdsScreens: 2,
     maxStaffUsers: 20,
     salesHistoryDays: 1825,

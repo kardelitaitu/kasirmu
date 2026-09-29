@@ -57,7 +57,7 @@ const TOPOLOGY_EN: Record<string, string> = {
   'topology-tool-kds-desc': 'Kitchen display workspace',
   'topology-tool-warehouse-workspace': '+ Warehouse',
   'topology-tool-warehouse-workspace-desc': 'Inventory storage workspace',
-  'topology-toast-multi-warehouse': 'Multiple Warehouses require a Pro Tier license.',
+  'topology-toast-multi-warehouse': 'Warehouse nodes require a Premium Tier license.',
   'topology-warehouse-excess-badge': '{count} Warehouses — 1 allowed',
   'topology-branch-excess-badge': '{count} Branch Locations — 1 allowed',
   'topology-toast-wire-duplicate': 'A wire already connects these ports.',
@@ -841,7 +841,7 @@ describe('NodeTopologyEditor Component', () => {
 
 
   it('adds each of the four supported workspace types from the palette', () => {
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
 
     fireEvent.click(screen.getByText('+ Restaurant POS'));
     fireEvent.click(screen.getByText('+ Retail POS'));
@@ -2014,7 +2014,7 @@ describe('NodeTopologyEditor Component', () => {
       renderEditor();
       await waitFor(() => expect(getNodeCount()).toBe(4));
 
-      expect(screen.getAllByText('Multiple Warehouses require a Pro Tier license.').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Warehouse nodes require a Premium Tier license.').length).toBeGreaterThanOrEqual(1);
     });
 
     it('blocks Apply for two warehouses on standard tier without calling onSave', async () => {
@@ -2029,32 +2029,41 @@ describe('NodeTopologyEditor Component', () => {
       // blocking issue at once) and toasts a block summary instead of a
       // single error message.
       await waitFor(() =>
-        expect(screen.getByText('Apply blocked — 1 issue(s) to fix in the panel')).toBeInTheDocument());
+        // Both Stock Rooms are excess below Premium (the cap is 0, not 1), so
+        // the panel opens with one issue per excess node.
+        expect(screen.getByText('Apply blocked — 2 issue(s) to fix in the panel')).toBeInTheDocument());
       expect(document.querySelector('.topology-validation-panel')).not.toBeNull();
       expect(onSave).not.toHaveBeenCalled();
     });
 
-    it('allows two warehouses on a Pro-tier diagram', async () => {
+    it('blocks Apply for warehouses on a Pro-tier diagram (the workspace is Premium+)', async () => {
+      // Pro was the top warehouse tier before 2026-09-29, so it is the tier the
+      // zero cap is easiest to get wrong on: both Stock Rooms are excess and
+      // Apply is refused, exactly as `validate_warehouse_quota` refuses them.
       mockLoadTopology.mockResolvedValueOnce(twoWarehouseDiagram);
       const onSave = vi.fn();
       renderEditor({ currentTier: 'pro', onSave });
       await waitFor(() => expect(getNodeCount()).toBe(4));
 
-      await applyWithPin();
-      await waitFor(() => expect(onSave).toHaveBeenCalled());
+      fireEvent.click(screen.getByText('Apply Topology'));
+
+      await waitFor(() =>
+        expect(screen.getByText('Apply blocked — 2 issue(s) to fix in the panel')).toBeInTheDocument());
+      expect(onSave).not.toHaveBeenCalled();
     });
 
-    it('allows two warehouses on a Premium-tier diagram (Pro-equivalent)', async () => {
-      // Regression: the editor's Pro set was ['pro', 'enterprise'] and the
-      // screen's tier union omitted 'premium', so a Premium install saw the
+    it('allows two warehouses on a Premium-tier diagram', async () => {
+      // Regression: the editor's set was ['pro', 'enterprise'] and the screen's
+      // tier union omitted 'premium', so a Premium install saw the
       // standard-tier warehouse-tier-limit banner and Apply gate even though
-      // the backend treats Premium as an unlimited-warehouse tier.
+      // the backend treats Premium as an unlimited-warehouse tier. Premium is
+      // now the FIRST tier that may hold a Stock Room at all.
       mockLoadTopology.mockResolvedValueOnce(twoWarehouseDiagram);
       const onSave = vi.fn();
       renderEditor({ currentTier: 'premium', onSave });
       await waitFor(() => expect(getNodeCount()).toBe(4));
 
-      expect(screen.queryByText('Multiple Warehouses require a Pro Tier license.')).toBeNull();
+      expect(screen.queryByText('Warehouse nodes require a Premium Tier license.')).toBeNull();
 
       await applyWithPin();
       await waitFor(() => expect(onSave).toHaveBeenCalled());
@@ -2101,7 +2110,7 @@ describe('NodeTopologyEditor Component', () => {
     fireEvent.click(screen.getByText('+ Warehouse'));
 
     const warningToasts = screen.queryAllByText(
-      'Multiple Warehouses require a Pro Tier license.',
+      'Warehouse nodes require a Premium Tier license.',
     );
     expect(warningToasts.length).toBeGreaterThanOrEqual(1);
   });
@@ -4279,7 +4288,7 @@ describe('NodeTopologyEditor — Escape connection-cancel flow', () => {
 
 describe('NodeTopologyEditor — Pro-tier warehouse fallback label', () => {
   it('allows a second workspace→warehouse wire with the fallback label on Pro', () => {
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     const baseline = getWireCount();
 
     // Add a second warehouse, then connect the workspace to it. The retail
@@ -4351,19 +4360,19 @@ describe('NodeTopologyEditor — warehouse tool-card tier lock', () => {
 
     const locked = document.querySelector('.tool-card.locked');
     expect(locked).not.toBeNull();
-    expect(locked!.textContent).toContain('Pro');
+    expect(locked!.textContent).toContain('Premium');
 
     const before = getNodeCount();
     fireEvent.click(screen.getByText('+ Warehouse'));
     // handleAddNode guards the tier: toast, no new node.
     expect(getNodeCount()).toBe(before);
     expect(
-      screen.getByText('Multiple Warehouses require a Pro Tier license.'),
+      screen.getByText('Warehouse nodes require a Premium Tier license.'),
     ).toBeInTheDocument();
   });
 
-  it('unlocks the warehouse tool-card on Pro tier and adds a warehouse', () => {
-    renderEditor({ currentTier: 'pro' });
+  it('unlocks the warehouse tool-card on Premium tier and adds a warehouse', () => {
+    renderEditor({ currentTier: 'premium' });
 
     expect(document.querySelector('.tool-card.locked')).toBeNull();
 
@@ -4395,7 +4404,7 @@ describe('NodeTopologyEditor — warehouse inspector settings card', () => {
   it('marks the diagram dirty when capacity is edited', async () => {
     const onDirtyChange = vi.fn();
     // Capacity edits are Pro-gated (round 78) — render at Pro so the edit lands.
-    renderEditor({ currentTier: 'pro', onDirtyChange });
+    renderEditor({ currentTier: 'premium', onDirtyChange });
     // Wait for the post-load clean snapshot so the edit is the only delta.
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
     selectWarehouse();
@@ -4408,7 +4417,7 @@ describe('NodeTopologyEditor — warehouse inspector settings card', () => {
   it('persists capacity and low-stock threshold through Apply', async () => {
     const onSave = vi.fn();
     // Capacity edits are Pro-gated (round 78) — render at Pro so the edits land.
-    renderEditor({ currentTier: 'pro', onSave });
+    renderEditor({ currentTier: 'premium', onSave });
     selectWarehouse();
 
     fireEvent.change(screen.getByLabelText(/Capacity/), { target: { value: '500' } });
@@ -4471,7 +4480,7 @@ describe('NodeTopologyEditor — warehouse capacity tier lock', () => {
   });
 
   it('enables all warehouse inputs on Pro tier without the lock badge', () => {
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     selectWarehouse();
 
     expect(screen.getByLabelText(/Capacity/)).toBeEnabled();
@@ -4549,7 +4558,7 @@ describe('NodeTopologyEditor — warehouse capacity validation', () => {
         { id: 'w-stock', from_node_id: 'ws-1', to_node_id: 'wh-1', from_port_id: 'stock-out', to_port_id: 'stock-in', relationship_type: 'stock-routing', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
   };
 
@@ -4610,7 +4619,7 @@ describe('NodeTopologyEditor — warehouse missing stock-routing prompt', () => 
         { id: 'w-scope', from_node_id: 'store-1', to_node_id: 'wh-1', from_port_id: 'location-out', to_port_id: 'location-in', relationship_type: 'location', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
   };
 
@@ -4640,7 +4649,7 @@ describe('NodeTopologyEditor — warehouse missing stock-routing prompt', () => 
         { id: 'w-stock', from_node_id: 'ws-1', to_node_id: 'wh-1', from_port_id: 'stock-out', to_port_id: 'stock-in', relationship_type: 'stock-routing', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
 
     expect(warehouseNote()).toBeNull();
@@ -4675,7 +4684,7 @@ describe('NodeTopologyEditor — warehouse missing stock-routing prompt', () => 
         { id: 'w-transfer', from_node_id: 'wh-hub', to_node_id: 'wh-sat', from_port_id: 'transfer-out', to_port_id: 'transfer-in', relationship_type: 'inventory-transfer', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(4));
 
     const satellite = [...document.querySelectorAll('.topology-node')].find((n) =>
@@ -4703,7 +4712,7 @@ describe('NodeTopologyEditor — warehouse missing stock-routing prompt', () => 
         { id: 'w-transfer', from_node_id: 'wh-hub', to_node_id: 'wh-sat', from_port_id: 'transfer-out', to_port_id: 'transfer-in', relationship_type: 'inventory-transfer', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(4));
 
     const satellite = [...document.querySelectorAll('.topology-node')].find((n) =>
@@ -4737,7 +4746,7 @@ describe('NodeTopologyEditor — warehouse missing stock-routing prompt', () => 
         { id: 'w-transfer', from_node_id: 'wh-hub', to_node_id: 'wh-sat', from_port_id: 'transfer-out', to_port_id: 'transfer-in', relationship_type: 'inventory-transfer', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(4));
 
     const satellite = [...document.querySelectorAll('.topology-node')].find((n) =>
@@ -4766,7 +4775,7 @@ describe('NodeTopologyEditor — validation panel stock-wire action', () => {
         { id: 'w-scope', from_node_id: 'store-1', to_node_id: 'wh-1', from_port_id: 'location-out', to_port_id: 'location-in', relationship_type: 'location', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
   };
 
@@ -4860,7 +4869,7 @@ describe('NodeTopologyEditor — missing-stock-routing dismiss', () => {
 
   const renderUnwired = async (props?: Parameters<typeof renderEditor>[0]) => {
     mockLoadTopology.mockResolvedValueOnce(unwiredFixture);
-    renderEditor({ currentTier: 'pro', ...props });
+    renderEditor({ currentTier: 'premium', ...props });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
   };
 
@@ -4918,7 +4927,7 @@ describe('NodeTopologyEditor — missing-stock-routing dismiss', () => {
       ...unwiredFixture,
       resolved_issue_keys: ['node:wh-1:topology-validation-warehouse-missing-stock-routing'],
     });
-    renderEditor({ currentTier: 'pro', onSave, branchId: 'b-dismiss' });
+    renderEditor({ currentTier: 'premium', onSave, branchId: 'b-dismiss' });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
 
     expect(document.querySelector('.node-validation-note')).toBeNull();
@@ -4947,10 +4956,16 @@ describe('NodeTopologyEditor — warehouse capacity tier gate', () => {
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
   };
 
-  it('suppresses the capacity note and wire marker on standard tier', async () => {
+  it('replaces the capacity note with the tier-limit note below Premium', async () => {
+    // The capacity guards and the warehouse tier cap now exclude each other by
+    // tier: below Premium the cap is 0, so the card carries the tier-limit note
+    // instead of the capacity note — the capacity wire marker stays off.
     await renderStandard();
 
-    expect(document.querySelector('.node-type-warehouse')?.querySelector('.node-validation-note')).toBeNull();
+    // The chip renders an icon; the message itself is the chip's title and the
+    // screen-reader span, so read the title.
+    const note = document.querySelector('.node-type-warehouse .node-validation-note');
+    expect(note?.getAttribute('title')).toContain('Warehouse nodes require a Premium Tier license.');
     expect(document.querySelector('.wire-validation-marker')).toBeNull();
   });
 
@@ -4969,14 +4984,18 @@ describe('NodeTopologyEditor — warehouse capacity tier gate', () => {
     renderEditor();
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
 
-    expect(document.querySelector('.node-type-warehouse')?.querySelector('.node-validation-note')).toBeNull();
+    // The missing-wire prompt is suppressed below Premium, but the tier-limit
+    // note is not: this diagram cannot be applied on this tier at all.
+    const note = document.querySelector('.node-type-warehouse .node-validation-note');
+    expect(note?.getAttribute('title')).toContain('Warehouse nodes require a Premium Tier license.');
+    expect(note?.getAttribute('title')).not.toContain('stock');
   });
 });
 
 // ── Warehouse capacity tier notice ──────────────────────────────
 
 describe('NodeTopologyEditor — warehouse capacity tier notice', () => {
-  const renderGraph = async (tier: 'plus' | 'pro', metadata: Record<string, unknown>) => {
+  const renderGraph = async (tier: 'plus' | 'pro' | 'premium', metadata: Record<string, unknown>) => {
     mockLoadTopology.mockResolvedValueOnce({
       nodes: [
         { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140, store_profile_id: 'store-1' },
@@ -5000,8 +5019,15 @@ describe('NodeTopologyEditor — warehouse capacity tier notice', () => {
     expect(notice?.textContent).toContain('capacity');
   });
 
-  it('hides the notice on Pro tier with the same numbers', async () => {
+  it('shows the notice on Pro tier with the same numbers (capacity is Premium+)', async () => {
+    // Pro is no longer the capacity-aware tier: the warehouse workspace is
+    // Premium+ since 2026-09-29, so Pro reads exactly like plus here.
     await renderGraph('pro', { stock: 500, capacity: 1000 });
+    expect(document.querySelector('.topology-tier-notice')).not.toBeNull();
+  });
+
+  it('hides the notice on Premium tier with the same numbers', async () => {
+    await renderGraph('premium', { stock: 500, capacity: 1000 });
     expect(document.querySelector('.topology-tier-notice')).toBeNull();
   });
 
@@ -5010,7 +5036,10 @@ describe('NodeTopologyEditor — warehouse capacity tier notice', () => {
     expect(document.querySelector('.topology-tier-notice')).toBeNull();
   });
 
-  it('does not block Apply', async () => {
+  it('applies a capacity-tracked warehouse on Premium tier, with no notice and no block', async () => {
+    // The notice is informational for tiers that cannot hold a warehouse at
+    // all, so the property worth pinning is the inverse: on the tier that CAN
+    // (Premium), there is no notice and Apply succeeds with capacity numbers.
     const onSave = vi.fn();
     mockLoadTopology.mockResolvedValueOnce({
       nodes: [
@@ -5021,12 +5050,16 @@ describe('NodeTopologyEditor — warehouse capacity tier notice', () => {
       wires: [
         { id: 'w-loc', from_node_id: 'store-1', to_node_id: 'ws-1', from_port_id: 'location-out', to_port_id: 'location-in', relationship_type: 'location', direction: 'one-way' },
         { id: 'w-scope', from_node_id: 'store-1', to_node_id: 'wh-1', from_port_id: 'location-out', to_port_id: 'location-in', relationship_type: 'location', direction: 'one-way' },
+        // Premium enforces the capacity guards, so the room must actually be
+        // serviced (the missing-stock-routing prompt would otherwise block
+        // Apply and this test would prove nothing about the notice).
+        { id: 'w-stock', from_node_id: 'ws-1', to_node_id: 'wh-1', from_port_id: 'stock-out', to_port_id: 'stock-in', relationship_type: 'stock-routing', direction: 'one-way' },
       ],
     } as never);
-    renderEditor({ onSave });
+    renderEditor({ currentTier: 'premium', onSave });
     await waitFor(() => expect(document.querySelectorAll('.topology-node')).toHaveLength(3));
 
-    expect(document.querySelector('.topology-tier-notice')).not.toBeNull();
+    expect(document.querySelector('.topology-tier-notice')).toBeNull();
     await applyWithPin();
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
   });
@@ -7000,7 +7033,7 @@ describe('NodeTopologyEditor — tool-slot shortcuts', () => {
   it('1 spawns a store node, 2 a workspace, 3 a warehouse, 4 hardware', () => {
     // Pro tier: the standard-tier preset already owns a warehouse, which
     // would block the '3' slot on the multi-warehouse gate.
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     const before = getNodeCount();
     // The 1–4 slots are canvas-scoped: the keydown must originate inside
     // the canvas container (the real surface a focused canvas produces).
@@ -7022,7 +7055,7 @@ describe('NodeTopologyEditor — tool-slot shortcuts', () => {
   });
 
   it('does not spawn from a 1–4 keystroke outside the canvas (body focus)', () => {
-    renderEditor({ currentTier: 'pro' });
+    renderEditor({ currentTier: 'premium' });
     const before = getNodeCount();
 
     // Focus on the document body (no canvas interaction) must NOT spawn —
@@ -7934,7 +7967,7 @@ describe('NodeTopologyEditor — clipboard & bulk duplication', () => {
         .find((n) => n.classList.contains('node-type-warehouse')) as HTMLElement;
       fireEvent.mouseDown(wh, { button: 0 });
     };
-    const WH_TOAST = 'Multiple Warehouses require a Pro Tier license.';
+    const WH_TOAST = 'Warehouse nodes require a Premium Tier license.';
 
     it('blocks Ctrl+D duplicating the only warehouse on standard tier', async () => {
       renderEditor();
@@ -7974,7 +8007,7 @@ describe('NodeTopologyEditor — clipboard & bulk duplication', () => {
     });
 
     it('allows Ctrl+D on pro tier (the gate is tier-aware)', async () => {
-      renderEditor({ currentTier: 'pro' });
+      renderEditor({ currentTier: 'premium' });
       expect(warehouseCount()).toBe(1);
       selectWarehouse();
 
@@ -10540,14 +10573,17 @@ describe('NodeTopologyEditor — tier-limit error node scoping', () => {
     const panel = document.querySelector('.topology-validation-panel');
     expect(panel).not.toBeNull();
 
-    // The message lives in exactly ONE node-scoped item (named, not
-    // static), pointing at WH 2 — the second Stock Room the contract flags.
+    // One node-scoped item per excess Stock Room (named, not static). Below
+    // Premium the cap is ZERO, so BOTH Stock Rooms are flagged — there is no
+    // allowed first one to skip.
     const matching = Array.from(panel!.querySelectorAll('.topology-validation-item')).filter((el) =>
-      el.textContent?.includes('Multiple Warehouses require a Pro Tier license.'),
+      el.textContent?.includes('Warehouse nodes require a Premium Tier license.'),
     );
-    expect(matching).toHaveLength(1);
-    const item = matching[0]!;
-    expect(item.querySelector('.topology-validation-item-node')?.textContent).toBe('WH 2');
+    expect(matching).toHaveLength(2);
+    expect(
+      matching.map((el) => el.querySelector('.topology-validation-item-node')?.textContent),
+    ).toEqual(['WH 1', 'WH 2']);
+    const item = matching[1]!;
     expect(item.querySelector('.topology-validation-item-static')).toBeNull();
 
     // The jump button selects WH 2 (the card gains node-selected) and
@@ -10564,10 +10600,10 @@ describe('NodeTopologyEditor — tier-limit error node scoping', () => {
   });
 
   it('renders one jumpable panel item per excess warehouse (three Stock Rooms)', async () => {
-    // Round 106: the cap flags every warehouse beyond the first, so three
-    // Stock Rooms on standard tier must produce TWO panel items — one per
-    // excess node — each jumping to its own card. A regression to
-    // single-error emission would leave WH 3 silently unflagged.
+    // Round 106, re-cut for the zero cap: below Premium EVERY Stock Room is
+    // excess, so three of them produce THREE panel items — one per node, each
+    // jumping to its own card. A regression to single-error emission would
+    // leave WH 3 silently unflagged.
     const threeWarehouseDiagram = {
       nodes: [
         { id: 'store-1', type: 'store', name: 'Branch', x: 80, y: 140, store_profile_id: 'store-1' },
@@ -10601,21 +10637,22 @@ describe('NodeTopologyEditor — tier-limit error node scoping', () => {
     expect(panel).not.toBeNull();
 
     const matching = Array.from(panel!.querySelectorAll('.topology-validation-item')).filter((el) =>
-      el.textContent?.includes('Multiple Warehouses require a Pro Tier license.'),
+      el.textContent?.includes('Warehouse nodes require a Premium Tier license.'),
     );
-    expect(matching).toHaveLength(2);
+    expect(matching).toHaveLength(3);
     expect(matching.map((el) => el.querySelector('.topology-validation-item-node')?.textContent)).toEqual([
+      'WH 1',
       'WH 2',
       'WH 3',
     ]);
 
-    // The second item jumps to WH 3's card and closes the panel.
+    // The last item jumps to WH 3's card and closes the panel.
     const wh3Card = Array.from(document.querySelectorAll('.topology-node')).find((el) =>
       el.textContent?.includes('WH 3'),
     )!;
     expect(wh3Card.className).not.toContain('node-selected');
 
-    fireEvent.click(matching[1]!.querySelector('.topology-validation-item-select')!);
+    fireEvent.click(matching[2]!.querySelector('.topology-validation-item-select')!);
 
     expect(wh3Card.className).toContain('node-selected');
     expect(document.querySelector('.topology-validation-panel')).toBeNull();
@@ -12030,7 +12067,7 @@ describe('NodeTopologyEditor — clipboard cluster characterization (G13-prep)',
     nodePos().filter((p) => p.x === x && p.y === y).length;
   const typeCount = (type: 'store' | 'workspace' | 'warehouse') =>
     document.querySelectorAll(`.topology-node.node-type-${type}`).length;
-  const WH_TOAST = 'Multiple Warehouses require a Pro Tier license.';
+  const WH_TOAST = 'Warehouse nodes require a Premium Tier license.';
 
   it('Ctrl+C snapshots the selection: a later move of the ORIGINAL never reaches the clipboard', async () => {
     // clipboardRef stores per-node object copies taken at COPY time

@@ -788,7 +788,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual(expect.arrayContaining([
+    expect(validateTopologyGraph(normalized, 'premium')).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: 'warehouse-at-capacity',
         nodeId: 'wh-sat',
@@ -818,7 +818,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    const errors = validateTopologyGraph(normalized, 'pro');
+    const errors = validateTopologyGraph(normalized, 'premium');
     const capacityErrors = errors.filter((e) => e.code === 'warehouse-at-capacity');
     expect(capacityErrors).toHaveLength(1);
     expect(capacityErrors[0]).toEqual(expect.objectContaining({
@@ -844,7 +844,7 @@ describe('semantic topology contract', () => {
       { addWarehouseScope: false },
     );
 
-    const errors = validateTopologyGraph(normalized, 'pro');
+    const errors = validateTopologyGraph(normalized, 'premium');
     expect(errors.filter((e) => e.code === 'warehouse-at-capacity')).toEqual([]);
   });
 
@@ -863,7 +863,7 @@ describe('semantic topology contract', () => {
       { addWarehouseScope: false },
     );
 
-    const errors = validateTopologyGraph(normalized, 'pro');
+    const errors = validateTopologyGraph(normalized, 'premium');
     expect(errors).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'warehouse-missing-stock-routing', nodeId: 'wh-1' }),
     ]));
@@ -890,7 +890,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual([]);
+    expect(validateTopologyGraph(normalized, 'premium')).toEqual([]);
   });
 
   it('rejects a circular transfer chain with exactly cycle-detected', () => {
@@ -915,7 +915,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual([
+    expect(validateTopologyGraph(normalized, 'premium')).toEqual([
       expect.objectContaining({
         code: 'cycle-detected',
         nodeId: 'wh-hub',
@@ -942,7 +942,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    const errors = validateTopologyGraph(normalized, 'pro');
+    const errors = validateTopologyGraph(normalized, 'premium');
     expect(errors.filter((e) => e.code === 'warehouse-missing-stock-routing')).toEqual([
       expect.objectContaining({ nodeId: 'wh-mid' }),
     ]);
@@ -963,7 +963,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    const errors = validateTopologyGraph(normalized, 'pro');
+    const errors = validateTopologyGraph(normalized, 'premium');
     expect(errors.filter((e) => e.code === 'warehouse-at-capacity')).toHaveLength(0);
   });
 
@@ -1100,7 +1100,7 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual([]);
+    expect(validateTopologyGraph(normalized, 'premium')).toEqual([]);
   });
 
   it('still flags a warehouse with room that receives neither stock nor transfer', () => {
@@ -1125,23 +1125,25 @@ describe('semantic topology contract', () => {
     ]);
   });
 
-  it('enforces the capacity guards on Pro tier', () => {
+  it('enforces the capacity guards on Premium tier', () => {
     const normalized = graph(
       [branch(), workspace('ws-1'), warehouseWith('wh-1', { stock: 1000, capacity: 1000 })],
       [ownershipWire('w-owner', 'ws-1'), stockWire('w-stock', 'ws-1', 'wh-1')],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual(expect.arrayContaining([
+    expect(validateTopologyGraph(normalized, 'premium')).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'warehouse-at-capacity' }),
     ]));
   });
 
-  it('flags two warehouses below Pro tier as a tier-limit violation', () => {
-    // Round 87: the multi-warehouse cap is an Apply-gate invariant the
-    // contract must own — the editor and the parent screen gate both pass
-    // their tier, so this single check keeps them in lockstep. The
-    // transfer chain is semantically clean; the license cap is the only
-    // thing that makes it illegal on standard.
+  it('flags every warehouse below Premium tier as a tier-limit violation', () => {
+    // Round 87, re-cut for the 2026-09-29 ruling: the warehouse workspace is
+    // Premium+, so the cap below Premium is ZERO rather than one — there is no
+    // "allowed first Stock Room" left to skip. This is an Apply-gate invariant
+    // the contract must own (the editor and the parent screen gate both pass
+    // their tier), and the backend refuses the same diagram through
+    // `validate_warehouse_quota`. The transfer chain is semantically clean; the
+    // license cap is the only thing that makes it illegal below Premium.
     const normalized = graph(
       [
         branch(),
@@ -1159,19 +1161,16 @@ describe('semantic topology contract', () => {
     const tierErrors = validateTopologyGraph(normalized, 'plus').filter(
       (e) => e.code === 'warehouse-tier-limit',
     );
-    // Exactly ONE excess Stock Room for two warehouses — the second node is
-    // the one that pushes the count past the allowed single Stock Room, so
-    // the editor renders it as a node-scoped card note with a jump target
-    // instead of a banner with nowhere to go (round 87 follow-up).
-    expect(tierErrors).toEqual([expect.objectContaining({ nodeId: 'wh-sat' })]);
+    // BOTH Stock Rooms are excess, each a node-scoped card note with a jump
+    // target instead of a banner with nowhere to go (round 87 follow-up).
+    expect(tierErrors.map((e) => e.nodeId)).toEqual(['wh-hub', 'wh-sat']);
   });
 
-  it('flags every warehouse beyond the first below Pro tier', () => {
-    // Multi-excess shape (round 103 follow-up): the cap flags the FIRST
-    // allowed Stock Room plus every warehouse after it — with three Stock
-    // Rooms the second and third are each flagged, one jumpable error per
-    // excess node, so a user downgraded with several Stock Rooms can fix
-    // them one by one.
+  it('flags every warehouse below Premium tier, one jumpable error each', () => {
+    // Multi-excess shape (round 103 follow-up), re-cut for the zero cap: below
+    // Premium EVERY Stock Room is excess — with three of them all three are
+    // flagged, one jumpable error per excess node, so a user downgraded with
+    // several Stock Rooms can fix them one by one.
     const normalized = graph(
       [
         branch(),
@@ -1191,10 +1190,16 @@ describe('semantic topology contract', () => {
     const tierErrors = validateTopologyGraph(normalized, 'plus').filter(
       (e) => e.code === 'warehouse-tier-limit',
     );
-    expect(tierErrors.map((e) => e.nodeId)).toEqual(['wh-mid', 'wh-leaf']);
+    expect(tierErrors.map((e) => e.nodeId)).toEqual(['wh-hub', 'wh-mid', 'wh-leaf']);
   });
 
-  it('allows two warehouses on Pro tier', () => {
+  it('refuses warehouse nodes on Pro tier (the workspace is Premium+ since 2026-09-29)', () => {
+    // The warehouse workspace moved to Premium+ on 2026-09-29, so Free/Plus/Pro
+    // all carry a ZERO warehouse cap — the same zeros the website's pricing row
+    // publishes, and the cap `validate_warehouse_quota` refuses at Apply. Pro
+    // therefore flags a warehouse exactly like the tiers below it; a green
+    // Pro-tier badge here would be the live-badge/Apply disagreement the edit
+    // boundary exists to prevent.
     const normalized = graph(
       [
         branch(),
@@ -1209,10 +1214,15 @@ describe('semantic topology contract', () => {
       ],
     );
 
-    expect(validateTopologyGraph(normalized, 'pro')).toEqual([]);
+    const errors = validateTopologyGraph(normalized, 'pro');
+    expect(
+      errors.filter((e) => e.code === 'warehouse-tier-limit').map((e) => e.nodeId),
+    ).toEqual(['wh-hub', 'wh-sat']);
+    // And nothing about capacity is reported for a tier that cannot hold one.
+    expect(errors.filter((e) => e.code === 'warehouse-at-capacity')).toEqual([]);
   });
 
-  it('skips the at-capacity guard below Pro tier', () => {
+  it('skips the at-capacity guard below Premium tier', () => {
     const normalized = graph(
       [branch(), workspace('ws-1'), warehouseWith('wh-1', { stock: 1000, capacity: 1000 })],
       [ownershipWire('w-owner', 'ws-1'), stockWire('w-stock', 'ws-1', 'wh-1')],
@@ -1222,7 +1232,7 @@ describe('semantic topology contract', () => {
     expect(errors.filter((e) => e.code === 'warehouse-at-capacity')).toHaveLength(0);
   });
 
-  it('skips the missing-wire prompt below Pro tier', () => {
+  it('skips the missing-wire prompt below Premium tier', () => {
     const normalized = graph(
       [branch(), workspace('ws-1'), warehouseWith('wh-1', { stock: 500, capacity: 1000 })],
       [ownershipWire('w-owner', 'ws-1')],

@@ -1123,52 +1123,12 @@ describe('TopologyScreen', () => {
 
   // ══ Capacity gate parity (editor gate vs parent Apply gate) ════
 
-  it('applies an at-capacity warehouse diagram on standard tier', async () => {
-    // The capacity guards are Pro-gated (rounds 72/75/76) — on standard
-    // the same diagram that Pro blocks must save cleanly. This pins the
-    // parent Apply gate agreeing with the editor's live gate so they
-    // cannot drift (a user on standard is never stuck behind a Pro check).
-    await renderReady();
-
-    await triggerSave([
-      storeNode(),
-      wsNode({ id: 'ws-pos', name: 'Retail POS', metadata: { typeKey: 'store-pos' } }),
-      {
-        id: 'wh-1',
-        type: 'warehouse',
-        name: 'Main Stock Room',
-        x: 0,
-        y: 0,
-        metadata: { stock: 1000, capacity: 1000 },
-      },
-    ], [
-      locationWire('store-1', 'ws-pos', 'w-loc'),
-      locationWire('store-1', 'wh-1', 'w-wh-scope'),
-      {
-        id: 'w-stock',
-        fromNodeId: 'ws-pos',
-        fromPortId: 'stock-out',
-        toNodeId: 'wh-1',
-        toPortId: 'stock-in',
-        relationshipType: 'stock-routing',
-        direction: 'one-way',
-      },
-    ]);
-
-    expect(mockApplyTopologyDiff).toHaveBeenCalledTimes(1);
-    // The save went through — the only toast is the success one, never the
-    // capacity error that Pro would have raised.
-    expect(mockAddToast).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
-    expect(mockAddToast).not.toHaveBeenCalledWith({
-      message: 'Something went wrong. Please try again.',
-      type: 'error',
-    });
-  });
-
-  it('blocks the same at-capacity diagram on Pro tier', async () => {
-    // Pro enforces the capacity guard at the parent gate too — the editor's
-    // live marker and the Apply block must never disagree.
-    mockLicenseTier = 'pro';
+  it('blocks an at-capacity warehouse diagram on Premium tier', async () => {
+    // The capacity guards are Premium-gated — rounds 72/75/76 now apply to the
+    // tiers that can hold a Stock Room at all, since the warehouse workspace
+    // moved to Premium+ on 2026-09-29. This pins the parent Apply gate agreeing
+    // with the editor's live gate so the two cannot drift.
+    mockLicenseTier = 'premium';
     await renderReady();
 
     await expect(triggerSave([
@@ -1197,11 +1157,50 @@ describe('TopologyScreen', () => {
     ])).rejects.toThrow('topology-validation-warehouse-at-capacity');
 
     expect(mockApplyTopologyDiff).not.toHaveBeenCalled();
-    // The Apply gate now toasts the specific validation message (the
-    // refactored topologyApply.ts shows the localized messageId, not the
-    // generic plainErrorMessage fallback).
     expect(mockAddToast).toHaveBeenCalledWith({
       message: 'topology-validation-warehouse-at-capacity',
+      type: 'error',
+    });
+  });
+
+  it('blocks the same at-capacity diagram on Pro tier via the zero warehouse cap', async () => {
+    // Pro is BELOW the warehouse tier since 2026-09-29, so the parent gate
+    // refuses this diagram with the tier-limit message — not the capacity one,
+    // which no below-Premium tier reaches.
+    mockLicenseTier = 'pro';
+    await renderReady();
+
+    await expect(triggerSave([
+      storeNode(),
+      wsNode({ id: 'ws-pos', name: 'Retail POS', metadata: { typeKey: 'store-pos' } }),
+      {
+        id: 'wh-1',
+        type: 'warehouse',
+        name: 'Main Stock Room',
+        x: 0,
+        y: 0,
+        metadata: { stock: 1000, capacity: 1000 },
+      },
+    ], [
+      locationWire('store-1', 'ws-pos', 'w-loc'),
+      locationWire('store-1', 'wh-1', 'w-wh-scope'),
+      {
+        id: 'w-stock',
+        fromNodeId: 'ws-pos',
+        fromPortId: 'stock-out',
+        toNodeId: 'wh-1',
+        toPortId: 'stock-in',
+        relationshipType: 'stock-routing',
+        direction: 'one-way',
+      },
+    ])).rejects.toThrow('topology-toast-multi-warehouse');
+
+    expect(mockApplyTopologyDiff).not.toHaveBeenCalled();
+    // The Apply gate toasts the specific validation messageId (the refactored
+    // topologyApply.ts shows the localized messageId, not the generic
+    // plainErrorMessage fallback).
+    expect(mockAddToast).toHaveBeenCalledWith({
+      message: 'topology-toast-multi-warehouse',
       type: 'error',
     });
   });
@@ -1232,8 +1231,8 @@ describe('TopologyScreen', () => {
       resolvedIssueKeys,
     );
 
-  it('blocks an unwired capacity warehouse on Pro tier', async () => {
-    mockLicenseTier = 'pro';
+  it('blocks an unwired capacity warehouse on Premium tier', async () => {
+    mockLicenseTier = 'premium';
     await renderReady();
 
     await expect(unwiredWarehouseSave()).rejects.toThrow('topology-validation-warehouse-missing-stock-routing');
@@ -1308,7 +1307,7 @@ describe('TopologyScreen', () => {
   });
 
   it('applies the same diagram once the prompt is dismissed (intentionally empty)', async () => {
-    mockLicenseTier = 'pro';
+    mockLicenseTier = 'premium';
     await renderReady();
 
     await unwiredWarehouseSave(['node:wh-1:topology-validation-warehouse-missing-stock-routing']);

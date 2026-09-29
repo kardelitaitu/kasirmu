@@ -39,8 +39,9 @@ export interface TopologyToolRackProps {
   /** Add panel. */
   allowLegacyApply: boolean;
   onAddNode: (type: NodeType, at?: { x: number; y: number }, workspaceTypeKey?: WorkspaceTypeKey) => void;
-  isProAllowed: boolean;
-  hasWarehouse: boolean;
+  /** Which tiers may hold warehouse nodes at all (Premium and Enterprise
+   *  since 2026-09-29) — the warehouse tool card locks when this is false. */
+  warehouseTierAllowed: boolean;
   /** View panel. */
   onAutoLayout: () => void;
   wireRouting: 'elbow' | 'curved';
@@ -81,8 +82,7 @@ export function TopologyToolRack({
   onRedo,
   allowLegacyApply,
   onAddNode,
-  isProAllowed,
-  hasWarehouse,
+  warehouseTierAllowed,
   onAutoLayout,
   wireRouting,
   onToggleWireRouting,
@@ -130,7 +130,7 @@ export function TopologyToolRack({
               <button type="button" className="tool-card" onClick={() => { onAddNode('workspace', undefined, 'restaurant-pos'); }}><span className="tool-card-icon"><UtensilsIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-restaurant-pos">+ Restaurant POS</Localized></strong><span><Localized id="topology-tool-restaurant-pos-desc">Restaurant checkout workspace</Localized></span></div></button>
               <button type="button" className="tool-card" onClick={() => { onAddNode('workspace', undefined, 'store-pos'); }}><span className="tool-card-icon"><CartIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-retail-pos">+ Retail POS</Localized></strong><span><Localized id="topology-tool-retail-pos-desc">Retail checkout workspace</Localized></span></div></button>
               <button type="button" className="tool-card" onClick={() => { onAddNode('workspace', undefined, 'kds'); }}><span className="tool-card-icon"><NodesIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-kds">+ KDS</Localized></strong><span><Localized id="topology-tool-kds-desc">Kitchen display workspace</Localized></span></div></button>
-              <button type="button" className={`tool-card${!isProAllowed && hasWarehouse ? ' locked' : ''}`} onClick={() => { onAddNode('warehouse'); }}><span className="tool-card-icon"><WarehouseIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-warehouse-workspace">+ Warehouse</Localized></strong><span><Localized id="topology-tool-warehouse-workspace-desc">Inventory storage workspace</Localized></span></div>{!isProAllowed && hasWarehouse && <span className="lock-badge"><LockIcon size={12} /> Pro</span>}</button>
+              <button type="button" className={`tool-card${!warehouseTierAllowed ? ' locked' : ''}`} onClick={() => { onAddNode('warehouse'); }}><span className="tool-card-icon"><WarehouseIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-warehouse-workspace">+ Warehouse</Localized></strong><span><Localized id="topology-tool-warehouse-workspace-desc">Inventory storage workspace</Localized></span></div>{!warehouseTierAllowed && <span className="lock-badge"><LockIcon size={12} /> Premium</span>}</button>
               <div className="rack-panel-subsection"><span className="rack-panel-subsection-title"><Localized id="topology-other-nodes-title">Other Nodes</Localized></span></div>
               <button type="button" className="tool-card" onClick={() => { onAddNode('hardware'); }}><span className="tool-card-icon"><PrinterIcon size={20} /></span><div className="tool-card-info"><strong><Localized id="topology-tool-hardware">+ Hardware Node</Localized></strong><span><Localized id="topology-tool-hardware-desc">Printer / KDS Peripheral</Localized></span></div></button>
             </div>

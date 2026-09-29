@@ -134,7 +134,7 @@ describe('stockRoutingWires', () => {
 });
 
 describe('wireConnectRefusal', () => {
-  const noContext = { isProAllowed: false, existingStockWires: [] };
+  const noContext = { warehouseTierAllowed: false, existingStockWires: [] };
 
   it('refuses a duplicate forward wire — legacy untyped existing wire matches by default ports', () => {
     const wires = [directed('w1', 'ws-1', 'wh-1', {})];
@@ -160,7 +160,7 @@ describe('wireConnectRefusal', () => {
     // The "transfer is always authorable" rule belongs to the stock-routing
     // TIER gate only — the one-input-per-warehouse gate fires first here.
     const wires = [directed('w1', 'ws-1', 'wh-1', { relationshipType: 'stock-routing', toPortId: 'location-in' })];
-    expect(wireConnectRefusal(wires, wsNode, 'right', whNode, 'left', option({ toPortId: 'operation-in', relationshipType: 'inventory-transfer' }), { isProAllowed: true, existingStockWires: [] }))
+    expect(wireConnectRefusal(wires, wsNode, 'right', whNode, 'left', option({ toPortId: 'operation-in', relationshipType: 'inventory-transfer' }), { warehouseTierAllowed: true, existingStockWires: [] }))
       .toEqual({ reason: 'warehouse-input-taken' });
   });
 
@@ -207,9 +207,9 @@ describe('wireConnectRefusal', () => {
     const wires = [directed('w1', 'ws-1', 'wh-1', { relationshipType: 'stock-routing' })];
     const nodeTypes2 = new Map([wsNode, whNode].map((n) => [n.id, n]));
     const existing = stockRoutingWires(wires, nodeTypes2);
-    expect(wireConnectRefusal(wires, kdsNode, 'right', whNode, 'left', option({ relationshipType: 'stock-routing', toPortId: 'operation-in' }), { isProAllowed: false, existingStockWires: existing }))
+    expect(wireConnectRefusal(wires, kdsNode, 'right', whNode, 'left', option({ relationshipType: 'stock-routing', toPortId: 'operation-in' }), { warehouseTierAllowed: false, existingStockWires: existing }))
       .toEqual({ reason: 'stock-routing-limit' });
-    expect(wireConnectRefusal(wires, kdsNode, 'right', whNode, 'left', option({ relationshipType: 'stock-routing', toPortId: 'operation-in' }), { isProAllowed: true, existingStockWires: existing }))
+    expect(wireConnectRefusal(wires, kdsNode, 'right', whNode, 'left', option({ relationshipType: 'stock-routing', toPortId: 'operation-in' }), { warehouseTierAllowed: true, existingStockWires: existing }))
       .toBeNull();
   });
 
