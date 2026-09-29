@@ -764,7 +764,9 @@
         "deployment verification self-test", "flaky quarantine self-test",
         "chokepoints self-test", "doc uniqueness self-test",
         "release workflow self-test", "tz invariance self-test",
-        "runner commands self-test", "runner claims self-test"
+        "runner commands self-test", "runner claims self-test",
+        "testid self-test", "release version self-test",
+        "updater compat self-test", "updater signature self-test"
       ] }
     },
     {

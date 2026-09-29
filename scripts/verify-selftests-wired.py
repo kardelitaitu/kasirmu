@@ -60,12 +60,12 @@ RUNNERS = (
     ROOT / "scripts" / "check.ps1",
     ROOT / ".githooks" / "pre-commit",
 )
-SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.py$")
+SCRIPT_RE = re.compile(r"^(?:verify|check)-[A-Za-z0-9_-]+\.(?:py|mjs)$")
 # "<name>.py --self-test" anywhere on the line. Deliberately not anchored to a
 # command position: a step that pipes or redirects still calls the flag, and a
 # grep that misses those would report a false finding, which is the failure mode
 # that gets a gate muted.
-CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.py\s+--self-test")
+CALL_RE = re.compile(r"([A-Za-z0-9_-]+)\.(?:py|mjs)\s+--self-test")
 
 
 def checkers() -> list[str]:
@@ -129,7 +129,12 @@ def strip_full_line_comments(text: str) -> str:
 
 
 def called(name: str, text: str) -> bool:
-    stem = name[: -len(".py")]
+    # Strip the ACTUAL extension. This was hardcoded to ".py" and went wrong the
+    # moment .mjs checkers entered scope: name[:-3] turned "check-testid.mjs" into
+    # "check-testid.m", which matched nothing, so the four Node self-tests were reported
+    # uncalled even after being wired. A hardcoded length is a silent no-op waiting for
+    # the next file type.
+    stem = name.rsplit(".", 1)[0]
     return any(m.group(1) == stem for m in CALL_RE.finditer(strip_full_line_comments(text)))
 
 

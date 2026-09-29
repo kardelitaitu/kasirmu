@@ -583,6 +583,16 @@ step "flaky quarantine self-test" "python3 scripts/verify-flaky-quarantine.py --
 # The self-test is beside it per the convention, and it is the piece that was missing:
 # --self-test used to be REFUSED here, so the strict-argument rule that already had one
 # documented silent fall-through had no way to be tested at all.
+# Four NODE checkers declared a --self-test that no runner invoked. Widening
+# verify-selftests-wired.py from verify-*.py/check-*.py to also match check-*/verify-*.mjs
+# found them at once. The extension needs no judgement about which .mjs files are
+# "checkers": the gate only asks whether a declared --self-test has a caller, and an
+# uncalled self-test is uncalled whether or not its file is a gate. All four pass.
+step "testid self-test" "node scripts/check-testid.mjs --self-test" node scripts/check-testid.mjs --self-test
+step "release version self-test" "node scripts/check-release-version.mjs --self-test" node scripts/check-release-version.mjs --self-test
+step "updater compat self-test" "node scripts/check-updater-compat.mjs --self-test" node scripts/check-updater-compat.mjs --self-test
+step "updater signature self-test" "node scripts/verify-updater-signature.mjs --self-test" node scripts/verify-updater-signature.mjs --self-test
+
 step "runner claims" "python3 scripts/verify-runner-claims.py" python3 scripts/verify-runner-claims.py
 step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-test" python3 scripts/verify-runner-claims.py --self-test
 
