@@ -3,6 +3,12 @@
 > **Point-of-sale software that runs on the hardware you already own and needs no connection
 > to take money. Free forever for one store. Paid plans start at $4.99/month — one flat price,
 > never a cut of your sales.**
+>
+> **How to read this page.** This is the product-level one: what kasir.mu does for a merchant,
+> what it costs, and what is deliberately not built yet. The engineering README is
+> [`README.md`](./README.md) — architecture, commands, and verified figures. Pricing and quotas
+> below are quoted exactly as [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md)
+> writes them, and that file is the authority when the two ever disagree.
 
 ---
 
@@ -101,17 +107,17 @@ add-ons** — which is where conventional POS pricing usually puts them.
 | Plan | Monthly | Yearly (2 months free) | For |
 |---|---:|---:|---|
 | **Free** | Rp 0 / $0 | — | One store, one register, one warehouse. Forever. |
-| **Plus** | Rp 49k / $4.99 | Rp 500k / $49.99 | Single-location shops ready to grow. Daily sales dashboard, QRIS, cloud sync. |
-| **Pro** ⭐ | Rp 99k / $9.99 | Rp 1.000k / $99.99 | Multi-terminal, Kitchen Display, reports & analytics, card payments. |
-| **Premium** | Rp 399k / $39.99 | Rp 3.999k / $399.99 | Multi-location chains, loyalty, whitelabel, scripting. |
+| **Plus** | Rp 49.000 / $4.99 | Rp 500.000 / $49.99 | Single-location shops ready to grow. Daily sales dashboard, QRIS, cloud sync. |
+| **Pro** ⭐ | Rp 99.000 / $9.99 | Rp 1.000.000 / $99.99 | Multi-terminal, Kitchen Display, reports & analytics, card payments. |
+| **Premium** | Rp 399.000 / $39.99 | Rp 3.999.000 / $399.99 | Multi-location chains, loyalty, whitelabel, scripting. |
 | **Enterprise** | Bespoke | Bespoke | Unlimited scale, custom hardware drivers, SLA. |
 
 ```mermaid
 flowchart LR
     F["<b>Free</b><br/>Rp 0 forever<br/><br/>1 store<br/>1 register<br/>1 warehouse<br/>3 months history"]
-    PL["<b>Plus</b><br/>Rp 49k / $4.99<br/><br/>Still 1 store<br/>2 registers<br/>Daily dashboard<br/>Cloud sync"]
-    PR["<b>Pro</b> — most popular<br/>Rp 99k / $9.99<br/><br/>2 stores<br/>5 registers per store<br/>Kitchen Display<br/>Analytics + cards"]
-    PM["<b>Premium</b><br/>Rp 399k / $39.99<br/><br/>5 stores<br/>Unlimited registers<br/>Loyalty + whitelabel"]
+    PL["<b>Plus</b><br/>Rp 49.000 / $4.99<br/><br/>Still 1 store<br/>2 registers<br/>Daily dashboard<br/>Cloud sync"]
+    PR["<b>Pro</b> — most popular<br/>Rp 99.000 / $9.99<br/><br/>2 stores<br/>5 registers per store<br/>Kitchen Display<br/>Analytics + cards"]
+    PM["<b>Premium</b><br/>Rp 399.000 / $39.99<br/><br/>5 stores<br/>Unlimited registers<br/>Loyalty + whitelabel"]
     ET["<b>Enterprise</b><br/>Bespoke<br/><br/>Unlimited<br/>Custom drivers<br/>Support SLA"]
 
     F --> PL --> PR --> PM --> ET
@@ -182,7 +188,7 @@ own, this is the difference between a cashier waiting on a spinner and a queue t
 |---|---|
 | **What it is** | Offline-first point-of-sale for retail, cafés, restaurants, and multi-location chains |
 | **Free plan** | Rp 0 / $0 forever — one store, one register, one warehouse, 3 months of history |
-| **Paid from** | Rp 49k / $4.99 per month; yearly = 2 months free |
+| **Paid from** | Rp 49.000 / $4.99 per month; the yearly column is billed as roughly ten months (two months free) |
 | **Commission on sales** | 0% — we never take a cut of a transaction |
 | **Payments** | Static QRIS on every plan; dynamic QRIS from Plus; Stripe cards from Pro |
 | **Offline** | Every plan, including Free. No feature is online-only |
