@@ -144,7 +144,10 @@
     "update_workspace_instance_scoped",
     "verify_pin",
     "version_scoped",
-    "void_pending_sale"
+    "void_pending_sale",
+    "list_restore_candidates",
+    "restore_prepare",
+    "restore_status"
   ],
   "scoped_orphans": [
     "check_license_status_scoped",
@@ -239,6 +242,18 @@
     {
       "name": "save_topology_template",
       "reason": "Saves one named diagram template for a branch, replacing any template of that name (crates/kasirmu-bridge/src/topology/commands.rs::save_topology_template -> template_save, behind authorize_topology_write; the payload skips Apply validation because a template is a starting point, not a claim). NOT hardware- or shell-bound -- see delete_topology_template. LIKELY OWED. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "list_restore_candidates",
+      "reason": "Enumerates the backup generations sitting beside the live database and returns each with its verdict (crates/kasirmu-bridge/src/data/restore.rs::list_restore_candidates). Filesystem reads only -- no device, no secret, no process. NOT structurally blocked: a mock could return a fixed candidate list the way it already fakes other reads. LIKELY OWED -- nothing in _dev_mock_comment explains its absence, and the restore tab reads it on open (ui/src/features/settings/hooks/useRestore.ts:134). NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "restore_status",
+      "reason": "Reports whether a restore request file is pending beside the live database (crates/kasirmu-bridge/src/data/restore.rs::restore_status). Reads a request file, so a static pending:false shape is trivially faithful in a browser preview. NOT structurally blocked. LIKELY OWED -- same route as list_restore_candidates; the preview currently answers null and the section silently renders its failure path. NEEDS-OWNER-INPUT."
+    },
+    {
+      "name": "restore_prepare",
+      "reason": "Writes a restore-request file naming the chosen candidate, refusing an unusable candidate or a mismatched store name (crates/kasirmu-bridge/src/data/restore.rs::restore_prepare). A mock cannot perform the real next-boot swap, but the PREVIEW contract is only that the request was accepted or refused, which a localStorage flag models exactly. NOT structurally blocked. LIKELY OWED -- weakest of the three, since a preview that accepts a restore it can never perform could mislead; that needs the owner call. NEEDS-OWNER-INPUT."
     }
   ],
   "shell_blind": [
