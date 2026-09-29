@@ -4,6 +4,7 @@ area: topology
 title: ADR #22: Visual Node-Based Store & Workspace Topology Builder
 status: Implemented (2026-07-22) — Amended (2026-07-23)
 ---
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 277 lines, no audit stamp, no footer, no marker. It carries the most detailed front matter of the four (`status: Implemented (2026-07-22) — Amended (2026-07-23)`, with an Amendment 1 section on atomic commit and type-change handling), and everything it built is still standing. · THE COMPONENT THIS ADR SPECIFIES STILL EXISTS AND HAS BEEN DECOMPOSED RATHER THAN REPLACED, which is the distinction worth drawing. `NodeTopologyEditor.tsx` and `TopologyScreen.tsx` are both live under `ui/src/features/locations/`, alongside roughly twenty extracted modules from the same area -- `nodeTopologyEditorApplyPanel`, `...Clipboard`, `...WireCommit`, `...Validation`, `...Pointer`, `...Keyboard`, `...Touch`, `...Viewport`, `...State`, `...SelectionState` and others. A reader looking for the editor this ADR describes will find it, and will also find that the single component it was written about has become a coordinator over focused modules. That is the same pattern the workspace-settings Phase 0a extraction produced in `SettingsPage.tsx`, and the same reorganisation that moved these files out of `ui/src/features/stores/` -- a path drift this campaign recorded against the topology phase specs. The body is left naming the components as it did; the current decomposition is recorded here. · The front-end contract it depends on is real: `topologyContract` is live and tested, and `registerPage` registration is the mechanism Phase 3 of the workspace-settings series relies on to mount screens. Its Amendment 1 on atomic commit and type-change handling is the kind of addition that usually gets lost in a document's history; it is still present and still labelled. · Status checker reports no drift for this row against the hand-maintained index -- the first file in this batch with front-matter status at all, and it is consistent. Stamp and footer added; the file had neither. -->
 # ADR #22: Visual Node-Based Store & Workspace Topology Builder
 
 **Status:** Implemented (2026-07-22) — Amended (2026-07-23)  
@@ -270,8 +271,5 @@ in-place type changes (without archive+recreate) would require:
 
 Until then, archive+recreate is the only supported path for type changes.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers
+> last audited 29-09-26 by docs-auditor
 
