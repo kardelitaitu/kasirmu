@@ -1,9 +1,10 @@
-# Owner Decisions - D1 to D11
+# Owner Decisions - D1 to D13
 
 **Date:** 2026-09-24 (rulings); status surface reviewed 2026-09-29. **Version:** 0.0.40.
-**Status:** all eleven decisions are ruled — none is open. D10 is *partially* open by
+**Status:** D1-D11 are ruled — none is open. D10 is *partially* open by
 design: its A-vs-B choice is a commercial call the manager explicitly declined to make
-("it touches pricing copy, which I cannot see from the code").
+("it touches pricing copy, which I cannot see from the code"). **D12 and D13 were added
+2026-09-29 and ARE open — they are asks, not rulings, and each blocks a named item.**
 
 Companion to manager-codebase-review.md and manager-codebase-review-checklist.md. Each decision was analysed by a worker that traced the code before forming a view; every option below is priced against facts cited as file:line, and the recommendation is the manager's, not the analyst's. Three of these analyses **changed the review's own advice**, and those corrections are recorded at the end.
 
@@ -22,6 +23,8 @@ Companion to manager-codebase-review.md and manager-codebase-review-checklist.md
 | D11 | `allow_negative_stock` vs the missing CHECK | **Keep the feature and enforce conditionally (A)** - an unconditional `qty >= 0` silently re-enables the guard the flag exists to opt out of, and ADR #17 plus the UI depend on it | M (migration + a `TRIGGER_MAP` PG port) | High - the briefed fix would have broken a shipped, documented, cashier-facing feature |
 | D10 | The locations quota axis | **Pin it now (C), make it real (A) when the sync vocabulary is next touched** - the tier limit is currently unenforceable by construction; choose A or B on whether `max_locations` is a sold term or an aspiration | XS for the pin, M for A | High - a published tier limit whose enforcement number is a constant zero |
 | D9 | Desktop tenancy | **The desktop store DB is single-tenant by construction; the cloud applies the tenant at ingest** - do not thread a tenant into the terminal writers | S-M at the ingest boundary | High - the cloud quota detector scores a paying tenant 0 locations and the popularity roll-up reads nothing, both silently |
+| **D12** | **C35: build the terminal-tenant parameterization, or drop it?** | **Drop it, or re-scope to D9's ingest boundary** — C35's scheduled shape is the one D9 rules out, and it would make the app refuse to boot | XS to decide; S-M if re-scoped to ingest | **High — OPEN, and the item currently mis-cites D9 as having decided *for* it** |
+| **D13** | **Inert-but-intended surface: delete or keep?** | **Per-surface ruling needed** — `register_scale`, the syslog/eventlog/file sinks and `kasirmu-media` reach nothing, but each has a different reason and one is a documented Phase-2 seam | S per surface | Medium — OPEN, blocks C29 |
 
 ---
 
@@ -285,3 +288,40 @@ So the review was right about the dead code and **wrong about the fix**. An unco
 3. **Section 12.1 said nothing compares the route table to the proxy.** Something does now - a required checker - and it is failing on the current tree, which is a stronger and more actionable fact than the absence of a check. The checker's blind spot (it cannot see path constants) is the new finding.
 
 Everything above was established read-only: no build, no test execution, no deploy, and no code change. Counts cited here are file and grep readings, not executed-case totals.
+
+---
+
+# Open asks - D12 to D13
+
+Added 2026-09-29. **These are asks, not rulings** — each names one decision that is genuinely the owner's to make, and each currently blocks a named checklist item. They are recorded here rather than only in a report so the ask survives the session that raised it.
+
+## D12 - C35: build the terminal-tenant parameterization, or drop it?
+
+**Why this is here.** C35 schedules adding an explicit `tenant_id: &str` parameter to four catalog-child writers so a composite FK wall cannot fire, and its own text says the shape was *"decided by the D9 analysis and NOT to be re-litigated"*. **That citation is wrong, and D9 says the opposite.** D9's recommendation is *"A, refined - and do not start B"*, where option B is *"Thread a tenant into `SessionContext` and the writers"* — which is C35's shape verbatim. D9 then rules what must not happen: *"What must NOT happen either way is stamping a tenant on the terminal - facts 1, 2, 3 and 6 rule it out, and `check_tenant_integrity` would refuse the next boot. ... B would mean inventing a tenant on the desktop to satisfy a cloud query."*
+
+**The price of getting this wrong is a non-booting app, not a style disagreement.** `check_tenant_integrity` (`crates/kasirmu-core/src/db/mod.rs:529-555`) returns `CoreError::Internal("foreign-tenant rows detected in desktop store database — refusing to start: ...")` and is called on the boot path in all three shells (`apps/desktop-tauri/src/state.rs:265`, `apps/mobile-tauri/src/state.rs:211`, `crates/kasirmu-bridge/src/auth/session.rs:418`). A precise caveat: that check scans only `products` and `users`, so stamping the four CHILDREN would not trip it directly — but their composite FKs are against `products(tenant_id, ...)`, so a child stamped while its parent stays `'default'` cannot satisfy its own FK. Either route is unsafe.
+
+**The hazard C35 exists to prevent cannot fire today**, which C35's own evidence establishes: exactly one site changes a `products` row's tenant (`crates/kasirmu-api/src/routes/products.rs:312-315`) and it writes no child, and the four children appear in neither the sync vocabulary nor the PG copy surface.
+
+| Option | What it means | Pros | Cons |
+|---|---|---|---|
+| **A. Close C35 as superseded** | D9 already rules the FK wall unreachable and names the ingest boundary as the remedy; record it and stop carrying a P1 | Zero risk; removes an item whose premise is satisfied by doing nothing; ends the mis-citation | If a future writer ever stamps a parent, the wall becomes reachable and the item would need re-opening |
+| **B. Re-scope C35 to D9's ingest boundary** | Add the four children to the sync vocabulary and let the existing ingest stamp the tenant (`sync_store/pg.rs:39-45`, `:76-87`) | The only reading under which C35 is still real work; **no writer signature changes at all**; matches D9 | Different job from the one written, so the item needs rewriting rather than resuming |
+| **C. Build it as written** | Thread a tenant into the terminal writers | None identified | **Refused by D9, and would make the app refuse to boot.** Not recommended under any reading |
+
+**Recommendation: A or B, and not C.** I am not taking this unilaterally because it changes what a P1 item means — A retires it, B rewrites it. **One caveat, stated so this is not over-read:** D9's own text says *"Confirm A against the pending researcher finding on the outbox tenant before scoping it"*, and D9's (a)/(b) investigation was recorded as running. If that finding landed and changed the ruling, this ask should be re-checked against it.
+
+## D13 - Inert-but-intended surface: delete it, or keep it?
+
+**Why this is here.** C29's own re-verification moved every candidate from "mechanical deletion" to "needs a decision": one is a documented Phase-2 seam, one is test-pinned, and one is a multi-file removal with a live Dockerfile dependency. **Two of the four candidates have since been deleted** (`44e7be9cd`, 2026-09-29: `register_scale` and the empty `commands/plugins.rs`), so this ask is now smaller than the item records and is stated against what remains.
+
+**What is being asked.** Not "is this dead?" (measured: yes) but "is inert-but-intended surface a thing this codebase keeps?" If the answer is yes, C29 should be closed as by-design with the remaining census recorded; if no, each remaining surface needs its own deletion, and they are not interchangeable:
+
+| Surface | Status | What makes it different |
+|---|---|---|
+| `register_scale` | **DELETED** (`44e7be9cd`) | Was the Phase-2 wiring point; its read side (`scale()`/`scale_ids()`) stays live in production, verified by `scale_tests.rs` |
+| Empty `commands/plugins.rs` | **DELETED** (`44e7be9cd`) | Was the cheapest of the four, as predicted |
+| **syslog / eventlog sinks** | **STILL PRESENT — genuinely unpinned** | The FILE-log initialisers are **test-pinned** (`lib_tests.rs:201,229,257,302` call them directly, so deleting breaks that file's COMPILE); only `syslog.rs:81 init_syslog` and `eventlog.rs:55 init_eventlog` are unpinned, and **each module carries a `no_run` doctest** (`syslog.rs:20`, `eventlog.rs:21`) that names it, so removal must take the module, its tests and the doc example together |
+| **`kasirmu-media`** | **STILL PRESENT — zero code dependents** | The item's "dummy hole" claim was **FALSE** and is corrected in the checklist: this is debt, not a contradiction. **The workspace-`exclude` remedy is also factually wrong** — the manifest inherits `workspace = true` for six keys, so excluding it without deleting the directory fails outright. The real removal is ~11 edit sites across 7 files (root `Cargo.toml:63`, the crate directory, `deny.toml:142-146`, three Dockerfile lines, `ARCHITECTURE.md:405`) |
+
+**Recommendation: one ruling covers the remaining two only if the answer is "keep inert surface".** If it is "delete", the order is the two logging sinks first (self-contained, but remember the doctest and the test-pinned FILE variants are a different group), then `kasirmu-media` (the multi-file one, and the one where a documented Phase-2 seam means deleting it is a statement that Phase 2 is not happening). **Note also that C29's own "(13)" count matches nothing** — the item names 7 surfaces and `manager-codebase-review.md` §13's table has 10 rows, so any ruling should also settle which list is authoritative.
