@@ -649,11 +649,24 @@ reproduce; each correction is inline, in the bullet that carries it.
   `verify-docker-digests.sh` / `verify-docker-persistence.sh`. The last three are one
   unit — `verify-docker-all.sh` is a wrapper whose two children are reachable only
   through it and through retired `.bak` workflows, so wiring any of them means deciding
-  the whole family's fate, not one file's. Two cautions for whoever does: the docker
-  three likely need a Docker daemon and so cannot go in a job that has none, and
-  `verify-fluent-dynamic-families.py` has ZERO references repo-wide, which makes "wire it
-  up" a decision about whether it is still wanted at all rather than an oversight to
-  repair. Neither question is answered by adding a step.
+  the whole family's fate, not one file's.
+
+  **Corrected 2026-09-29: the Docker caution below was wrong, and `fluent-dynamic` is
+  resolved.** I wrote that "the docker three likely need a Docker daemon and so cannot
+  go in a job that has none." Measured: `dev-ci.yml:932` says the e2e job "needs the
+  Docker backend", so a daemon is available; the real constraint is that
+  `verify-docker-digests.sh` re-resolves every `image:tag@sha256:` against a REGISTRY,
+  and a hit there means "a pin rotted, refresh it deliberately" -- a different cadence
+  from a PR gate, not a different machine. `scripts/verify-docker-digests.sh:11-23` had
+  already made exactly this census, with dates, and concluded: "the honest state is
+  'manual script', not 'gate'. Run it by hand before refreshing a pin." That file was
+  better informed than this note; the question is whether to give it a schedule, and
+  the file already argues for the cadence it implies.
+
+  `verify-fluent-dynamic-families.py` is RESOLVED: its "setup feature label" family was
+  stale -- the keys are in neither bundle and no source file references the prefix -- so
+  the family was deleted rather than satisfied with 27 unread keys, and the checker is
+  now wired into check.sh and dev-ci.yml. See the commit that removed the family.
 - **GI-5 — two gate-integrity checkers have no backstop off a developer's own machine, and both
   `ci` records claim one.** `verify-doc-uniqueness.py`: its only live runners are
   `scripts/check.sh:376` and `:377` (11:40 +07); counting the string `uniqueness` per live workflow
