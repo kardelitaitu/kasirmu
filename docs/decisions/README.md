@@ -81,7 +81,7 @@ implementation-status walkthrough.
 | 36 | [Retail POS Product Attributes — Cost, Brand, Rack, Notes + Configurable Columns](./2026-08-11-adr36-retail-product-attributes.md) | Implemented (2026-08-12) |
 | 37 | [Product Popularity Index — Weighted Activity Score for Retail Sorting](./2026-08-11-adr37-product-popularity-index.md) | Implemented (2026-08-12) |
 | 38 | [Retail POS Row Context Menu — View Product Images in Browser](./2026-08-11-adr38-retail-row-context-menu-browser-images.md) | Implemented (2026-08-12) |
-| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/todo.md` C3.1 |
+| 39 | [Midtrans QRIS Subscription Payments (Phase 2)](./2026-08-18-adr39-midtrans-subscription-payments.md) | Implemented (2026-08-18) — `docs/plans/_active/todo.md` C3.1 |
 | 40 | [Multi-Terminal Peer Model](./2026-08-20-adr40-multi-terminal-peer-model.md) | Implemented (2026-08-20) |
 | 41 | [App Lifecycle, Device Onboarding, Dynamic Topology Workspaces, and Two-Layer Gated Home (Tier & RBAC)](./2026-08-28-adr41-app-lifecycle-device-onboarding-topology-home-gating.md) | Accepted (2026-08-28) |
 | 42 | [Website Admin Dashboard & User Dashboard (Subdomain Architecture)](./2026-08-28-adr42-website-admin-and-user-dashboard.md) | Partially Implemented (2026-08-28) |
@@ -147,7 +147,7 @@ authoritative record.
 | [#39](./2026-08-18-adr39-midtrans-subscription-payments.md) | Midtrans QRIS Subscription Payments (Phase 2) | Implemented (2026-08-18) | **Dev 1:** Signature is plain SHA-512 (not HMAC-SHA512). **Dev 2:** Midtrans custom-field contract documented (`custom_field1` tier, `custom_field2` email, `custom_field3` period, `custom_field4` bundle). **Dev 3:** `custom_field3` period cross-checked against price map. **Dev 4:** Amount-authoritative tier resolution (amount → map lookup is primary; custom_field1 cross-checked). **Dev 5:** Failed-payment grace via `calculateGraceUntil`. **Dev 6:** Dedup by `transaction_id` only. **Dev 7:** Subscription-notification canonical string not implemented (falls through default branch). **Dev 8:** Webhook-minted key activation fast-path in `activate.go`. |
 
 > The `subscription-tiers.md` source-of-truth spec (§4 trial strategy, §3
-> quota matrix) and `docs/plans/todo.md` Phase C track the implementation details.
+> quota matrix) and `docs/plans/_active/todo.md` Phase C track the implementation details.
 
 ## Conventions
 
@@ -161,7 +161,7 @@ authoritative record.
   opened its cell with "§1–§3, … Implemented (2026-09-02)" and dropped the "Accepted —"
   that begins its own frontmatter, making an accepted-with-work-remaining decision read as
   finished; and #39 said "Approved" in three places while its body lists D1–D4 all checked
-  and `docs/plans/todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
+  and `docs/plans/_active/todo.md` records "Phase C complete. All items C0–C4.3 shipped". Its
   Go files exist (`apps/license-server/midtrans_checkout.go`, `midtrans_webhook.go`,
   `midtrans_webhook_test.go`, plus a smoke-verification record), so the record was updated
   to Implemented rather than the index being made consistently wrong.
@@ -190,7 +190,8 @@ authoritative record.
   scripts") — a pure rename, content intact, so every `TODO.md` C-phase citation went dead
   at once. Nine were still live across six docs on 08-09-26 and have been repointed. If you
   are holding an old note or shell history that says `TODO.md`, the file you want is
-  `docs/plans/todo.md`.
+  `docs/plans/_active/todo.md` (it moved again when the plans were split into `_active/`,
+  `_backlog/` and `_done/`).
 
 ---
 

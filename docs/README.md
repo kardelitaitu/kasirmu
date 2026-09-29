@@ -22,6 +22,7 @@
 | [`releases/`](./releases/) | Changelogs, release process, checklists | [`CHANGELOG-0.0.33.md`](./releases/CHANGELOG-0.0.33.md) |
 | [`observability/`](./observability/) | Logging, error handling, metrics | [`logging-2026-07-20.md`](./observability/logging-2026-07-20.md) |
 | [`benchmarks/`](./benchmarks/) | Performance benchmarks and regression tracking | [`baseline-2026-07-21.md`](./benchmarks/baseline-2026-07-21.md) |
+| [`audits/`](./audits/) | Audit reports — full audits of the docs system, the API reference, CSS verification, and SEO/crawler reviews | [`2026-09-28-docs-audit.md`](./audits/2026-09-28-docs-audit.md); [`frontend/css-verification.md`](./audits/frontend/css-verification.md) — no linter sees `.css` |
 | [`archived/`](./archived/) | Truly retired documents — completed/superseded audits, old plans, obsolete guides | *(26 files; the 2026-08-31 retirement pass moved the last three repo-root docs here — see [`records/`](./records/) index)* |
 | [`plans/`](./plans/) | Active improvement plans | [`northflank-p1-p7-plan.md`](./plans/_active/northflank-p1-p7-plan.md) |
 
