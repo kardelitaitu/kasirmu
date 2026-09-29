@@ -75,8 +75,24 @@ def run(path: Path) -> tuple[int, str]:
     # fails, so a real failure was filed under USAGE and the summary said "0 failed a
     # case". Exit codes are per-checker conventions and cannot carry a shared meaning;
     # argparse's own words are unambiguous.
+    # A declared --self-test that exits non-zero HAS FAILED. Full stop. There is no
+    # second bucket that can absorb it.
+    #
+    # This previously returned 2 for anything whose output mentioned "usage:", on the
+    # theory that rc 2 meant argparse had rejected the flag. A mutation on 2026-09-29
+    # proved that wrong twice over: verify-selftests-wired.py returns 2 from self_test()
+    # when a CASE fails, and the sweep then printed "0 failed a case" with the failure
+    # sitting in the USAGE line directly above it. A bucket that reclassifies a failure
+    # as something else is worse than no bucket, because the summary line is what gets
+    # read.
+    #
+    # The usage signal is still worth having, so it is kept as a REASON on the failure
+    # line -- "the flag was rejected" is genuinely different from "a case failed" and
+    # changes what the reader should do -- but it can no longer change the verdict or
+    # the count.
     usage = ("usage:" in text) or ("unrecognized arguments" in text)
-    return (2 if usage else r.returncode), (tail[-1] if tail else (r.stderr or "").strip()[-120:])
+    return r.returncode, (("FLAG REJECTED: " if usage else "")
+                          + (tail[-1] if tail else (r.stderr or "").strip()[-120:]))
 
 
 def self_test() -> int:
@@ -118,24 +134,21 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    passed, usage, failed = [], [], []
+    passed, failed = [], []
     for p in todo:
         rc, tail = run(p)
         line = f"{p.name}: rc={rc} {tail}"
-        if rc == 0:
-            passed.append(line)
-        elif rc == 2:
-            usage.append(line)
-        else:
-            failed.append(line)
+        (passed if rc == 0 else failed).append(line)
 
-    for line in usage:
-        print("  USAGE  " + line)
     for line in failed:
         print("  FAILED " + line)
-    if usage or failed:
-        print(f"verify-selftest-sweep: {len(passed)} passed, {len(usage)} rejected the "
-              f"flag they declare, {len(failed)} failed a case.")
+    if failed:
+        rejected = sum(1 for ln in failed if "FLAG REJECTED:" in ln)
+        extra = (f", of which {rejected} had the flag rejected rather than a failed case"
+                 if rejected else "")
+        print(f"verify-selftest-sweep: {len(passed)} passed, {len(failed)} FAILED"
+              f"{extra}. A non-zero exit from a checker that DECLARES --self-test is a "
+              f"failure; there is no other reading.")
         return 1
     print(f"verify-selftest-sweep: OK — {len(passed)} self-test(s) across "
           f"{len(checkers())} checker(s); {len(checkers()) - len(todo)} declare none "
