@@ -55,6 +55,38 @@ fn print_sales_receipt_args_deserialise() {
     assert_eq!(args.payments.len(), 1);
 }
 
+#[test]
+fn print_sales_receipt_args_deserialise_camel_case() {
+    let json = r#"{
+        "date": "01 Jan 2026",
+        "receiptNumber": "REC-001",
+        "items": [
+            {
+                "name": "Coffee",
+                "quantity": 1,
+                "unitPrice": { "minorUnits": 350, "currency": "USD" },
+                "totalPrice": { "minorUnits": 350, "currency": "USD" }
+            }
+        ],
+        "subtotal": { "minorUnits": 350, "currency": "USD" },
+        "total": { "minorUnits": 350, "currency": "USD" },
+        "payments": [
+            {
+                "method": "CASH",
+                "amount": { "minorUnits": 500, "currency": "USD" },
+                "change": { "minorUnits": 150, "currency": "USD" }
+            }
+        ]
+    }"#;
+    let args: PrintSalesReceiptArgs = serde_json::from_str(json).unwrap();
+    assert_eq!(args.date, "01 Jan 2026");
+    assert_eq!(args.items.len(), 1);
+    assert_eq!(args.items[0].unit_price.minor_units, 350);
+    assert_eq!(args.subtotal.minor_units, 350);
+    assert_eq!(args.total.minor_units, 350);
+    assert_eq!(args.payments[0].amount.minor_units, 500);
+}
+
 // -- DTO struct tests --
 
 #[test]

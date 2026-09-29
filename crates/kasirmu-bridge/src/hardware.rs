@@ -199,9 +199,11 @@ pub struct PaymentDto {
 
 /// Flat serialisable representation of Money — the front-end sends
 /// these instead of a nested Money object for simplicity.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MoneyDto {
     /// Minor Units.
+    #[serde(alias = "minor_units")]
     pub minor_units: i64,
     /// ISO-4217 currency code.
     pub currency: String,
