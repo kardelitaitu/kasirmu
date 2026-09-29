@@ -48,6 +48,27 @@ ROOT = Path(__file__).resolve().parent.parent
 # belt-and-braces skip for a checkout where git is unavailable.
 
 
+VENDORED = ("node_modules", ".git", "target", "dist", "build", ".venv", "vendor",
+             ".next", "out", "coverage", "__pycache__", ".cache", ".pnpm-store")
+
+
+def is_shell(path: Path) -> bool:
+    """Whether a tracked file DECLARES itself a shell script.
+
+    The single scope rule, used by both the git path and the filesystem fallback. A
+    shebang is a fact about the file; a .sh suffix is a habit, and the habit was wrong
+    for seven tracked scripts here -- three git hooks, an Android gradlew, and two
+    Debian maintainer scripts that run as root during package install.
+    """
+    try:
+        head = path.open("rb").readline(120)
+    except OSError:
+        return False
+    if not head.startswith(b"#!"):
+        return False
+    return any(k in head.decode("utf-8", "replace") for k in ("sh", "bash"))
+
+
 def targets() -> list[Path]:
     """Every first-party shell file in the repo, not just scripts/ and .githooks/.
 
@@ -59,6 +80,16 @@ def targets() -> list[Path]:
     PRODUCTION CONTAINER: a syntax error there is not a broken dev tool, it is an
     image that will not come up. Those are now covered.
     """
+    # The fallback for a checkout with no git still has to skip vendored trees BY NAME,
+    # because it cannot ask git what is tracked -- but the fallback is a SAFETY NET, not
+    # a second scope: both paths call is_shell() to decide what is a shell script, and
+    # this list only decides which DIRECTORIES to walk. Being incomplete there degrades
+    # to scanning a vendored tree, never to skipping a real one.
+    #
+    # The 2026-09-29 edit that introduced this branch also deleted the VENDORED tuple it
+    # referenced, and nothing noticed for two rounds because every machine here has git.
+    # It surfaced only when the fallback was deliberately exercised with subprocess.run
+    # patched to raise. An unexercised branch is not a tested one.
     out: list[Path] = []
     tracked: set[str] | None = None
     try:
@@ -79,24 +110,29 @@ def targets() -> list[Path]:
         # the install. A shebang is a FACT about the file; a .sh suffix is a habit.
         for rel in sorted(tracked):
             p = ROOT / rel
-            if not p.is_file() or rel.endswith(".sample"):
-                continue
-            try:
-                head = p.open("rb").readline(120)
-            except OSError:
-                continue
-            if head.startswith(b"#!") and any(
-                    k in head.decode("utf-8", "replace") for k in ("sh", "bash")):
+            if p.is_file() and not rel.endswith(".sample") and is_shell(p):
                 out.append(p)
         return sorted(out)
 
     for dirpath, dirnames, filenames in os.walk(ROOT):
+        # d != ".git", NOT d.startswith(".git"): the prefix form also swallows
+        # ".githooks", which is where four of the shell scripts live (commit-msg,
+        # post-commit, pre-commit, pre-push). That made this fallback find 56 where the
+        # git path finds 60, and the only reason it was ever noticed is that both paths
+        # were run side by side.
         dirnames[:] = [d for d in dirnames
-                       if d.lower() not in VENDORED and not d.startswith(".git")]
+                       if d.lower() not in VENDORED and d.lower() != ".git"]
         for fn in sorted(filenames):
-            if not fn.endswith(".sh") or fn.endswith(".sample"):
+            if fn.endswith(".sample"):
                 continue
-            out.append(Path(dirpath) / fn)
+            p = Path(dirpath) / fn
+            # Same SHEBANG rule as the git path. This branch used to keep the old
+            # *.sh glob, which meant the gate checked a different set of files
+            # depending on whether git was available -- the same scope bug wearing a
+            # different mask, and the kind that only shows up on a machine where nobody
+            # reproduces the failure. One rule, both paths.
+            if is_shell(p):
+                out.append(p)
     return sorted(out)
 
 
