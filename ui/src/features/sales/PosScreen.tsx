@@ -665,16 +665,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
             tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
           />
         </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
-          <button
-            type="button"
-            className="pos-cart-pay-btn"
-            onClick={() => setShowReceiptsSettings(false)}
-            style={{ width: '100%' }}
-          >
-            &larr; {l10n.getString('back')}
-          </button>
-        </div>
       </div>
     );
   }
@@ -685,16 +675,6 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
           <RestaurantPaymentsScreen onBack={() => setShowPaymentsSettings(false)} />
-        </div>
-        <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
-          <button
-            type="button"
-            className="pos-cart-pay-btn"
-            onClick={() => setShowPaymentsSettings(false)}
-            style={{ width: '100%' }}
-          >
-            &larr; {l10n.getString('back')}
-          </button>
         </div>
       </div>
     );

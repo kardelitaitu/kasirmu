@@ -715,6 +715,37 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(toggleNotes).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('pedas')).toBeInTheDocument();
   });
+
+  it('moves receipt code to first row alongside staff name when Date & Time is disabled', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={false} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Default: Date & Time enabled -> Row 1 has date and staff name, Row 2 has receipt code
+    let metaRows = document.querySelectorAll('.resto-receipt-meta');
+    expect(metaRows.length).toBe(2);
+    expect(within(metaRows[0] as HTMLElement).getByText('29/09/2026 21:15')).toBeInTheDocument();
+    expect(within(metaRows[0] as HTMLElement).getByText('Test')).toBeInTheDocument();
+    expect(within(metaRows[1] as HTMLElement).getByText('01-01-260929-01-000042')).toBeInTheDocument();
+
+    // Toggle off Show Date & Time
+    const toggleDateTime = screen.getByRole('switch', { name: /Show Date/i });
+    expect(toggleDateTime).toHaveAttribute('aria-checked', 'true');
+    await user.click(toggleDateTime);
+    expect(toggleDateTime).toHaveAttribute('aria-checked', 'false');
+
+    // Now receipt code moves up to row 1, resulting in only 1 meta row
+    metaRows = document.querySelectorAll('.resto-receipt-meta');
+    expect(metaRows.length).toBe(1);
+    expect(within(metaRows[0] as HTMLElement).getByText('01-01-260929-01-000042')).toBeInTheDocument();
+    expect(within(metaRows[0] as HTMLElement).getByText('Test')).toBeInTheDocument();
+    expect(screen.queryByText('29/09/2026 21:15')).toBeNull();
+  });
 });
 
 

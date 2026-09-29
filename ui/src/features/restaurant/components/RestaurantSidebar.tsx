@@ -26,6 +26,7 @@ import { hueFromName } from '@/utils/color';
 import { useWorkspaceNav } from '@/hooks/useWorkspaceNav';
 import { useVersionStatus } from '@/hooks/useVersionStatus';
 import { useAuth } from '@/contexts/AuthContext';
+import { isRovingKey, computeRovingIndex } from './sidebarLogic';
 
 /** The signed-in cashier, as the sidebar header shows them. */
 export interface RestaurantSidebarProfile {
@@ -289,19 +290,15 @@ export function RestaurantSidebar({
   }, [open, onOpenChange, sidebarRef, triggerRef]);
 
   const handleSidebarKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+    if (!isRovingKey(e.key)) return;
     const items = Array.from(
       sidebarRef.current?.querySelectorAll<HTMLButtonElement>('button.restaurant-sidebar-item') ?? [],
     );
-    if (items.length === 0) return;
-    const current = items.indexOf(e.currentTarget);
-    const next = e.key === 'Home'
-      ? 0
-      : e.key === 'End'
-        ? items.length - 1
-        : e.key === 'ArrowDown'
-          ? (current + 1 + items.length) % items.length
-          : (current - 1 + items.length) % items.length;
+    // `computeRovingIndex` returns `null` for an empty row list (the
+    // empty-tablist case), so no separate `items.length === 0` early return is
+    // needed here; the pure function owns that branch and it is unit-tested.
+    const next = computeRovingIndex(items.indexOf(e.currentTarget), items.length, e.key);
+    if (next === null) return;
     e.preventDefault();
     items[next]?.focus();
   }, [sidebarRef]);
@@ -444,7 +441,8 @@ export function RestaurantSidebar({
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('restaurant-sidebar-receipts')}
             onClick={() => {
-              if (!effectiveIsManager) return;
+              // The button is disabled for non-managers, so a non-manager
+              // click can never reach here; no guard is needed.
               cartActions.onOpenReceipts?.();
               onOpenChange(false);
             }}
@@ -467,7 +465,8 @@ export function RestaurantSidebar({
             onKeyDown={handleSidebarKeyDown}
             aria-label={l10n.getString('restaurant-sidebar-payments')}
             onClick={() => {
-              if (!effectiveIsManager) return;
+              // The button is disabled for non-managers, so a non-manager
+              // click can never reach here; no guard is needed.
               cartActions.onOpenPayments?.();
               onOpenChange(false);
             }}

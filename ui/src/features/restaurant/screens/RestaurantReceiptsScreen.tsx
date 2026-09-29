@@ -64,6 +64,7 @@ export interface RestaurantReceiptsScreenProps {
 export default function RestaurantReceiptsScreen({
   terminalId: propTerminalId,
   onSaved,
+  onBack,
   tablesEnabled: propTablesEnabled,
 }: RestaurantReceiptsScreenProps) {
   const settingsCtx = useOptionalSettings();
@@ -672,15 +673,58 @@ export default function RestaurantReceiptsScreen({
 
   return (
     <div className="restaurant-settings-screen">
-      <div className="restaurant-settings-header">
-        <h1 className="restaurant-settings-title">
-          <Localized id="restaurant-receipts-title">Receipt &amp; Printer Settings</Localized>
-        </h1>
-        <p className="restaurant-settings-subtitle">
-          <Localized id="restaurant-receipts-subtitle">
-            Configure receipt layout and device printer connections
+      <div className="restaurant-settings-header" data-testid="restaurant-receipts-header">
+        {onBack && (
+          <button
+            type="button"
+            className="restaurant-settings-back-btn"
+            onClick={onBack}
+            aria-label={l10n.getString('back') || 'Back'}
+            data-testid="restaurant-receipts-back-btn"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              width="18"
+              height="18"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+        )}
+        <div className="restaurant-settings-header-title-group">
+          <span
+            className="restaurant-settings-header-icon"
+            data-testid="restaurant-receipts-icon"
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              width="20"
+              height="20"
+              aria-hidden="true"
+            >
+              <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+              <path d="M8 7h8M8 11h8M8 15h5" />
+            </svg>
+          </span>
+          <Localized id="restaurant-receipts-title">
+            <h1 className="restaurant-settings-title" data-testid="restaurant-receipts-title">
+              Receipt &amp; Printer Settings
+            </h1>
           </Localized>
-        </p>
+        </div>
       </div>
 
       <div className="restaurant-settings-layout">
@@ -773,22 +817,56 @@ export default function RestaurantReceiptsScreen({
                   )}
 
                   {/* Metadata (Date/Time, Staff, Code, Table) */}
-                  <div className="resto-receipt-center">
-                    {/* Row 1: Timestamp & Staff Name */}
-                    {(showDateTime || showStaffName) && (
-                      <div className="resto-receipt-meta">
-                        {showDateTime ? <span>29/09/2026 21:15</span> : <span />}
-                        {showStaffName ? <span>{staffDisplayName}</span> : <span />}
+                  {(() => {
+                    const hasTablePill = tablesEnabled && showTableNumber;
+                    const tablePill = hasTablePill ? <span className="resto-receipt-table-pill">TABLE 4</span> : null;
+                    const staffSpan = showStaffName ? <span>{staffDisplayName}</span> : null;
+                    const codeSpan = showReceiptCode ? <span>01-01-260929-01-000042</span> : null;
+                    const dateSpan = showDateTime ? <span>29/09/2026 21:15</span> : null;
+
+                    let row1Left = null;
+                    let row1Right = null;
+                    let row2Left = null;
+                    let row2Right = null;
+
+                    if (showDateTime) {
+                      row1Left = dateSpan;
+                      row1Right = staffSpan;
+                      row2Left = codeSpan;
+                      row2Right = tablePill;
+                    } else {
+                      // When datetime is not enabled, use the first row
+                      row1Left = codeSpan;
+                      if (staffSpan) {
+                        row1Right = staffSpan;
+                        row2Right = tablePill;
+                      } else {
+                        row1Right = tablePill;
+                      }
+                    }
+
+                    const hasRow1 = row1Left !== null || row1Right !== null;
+                    const hasRow2 = row2Left !== null || row2Right !== null;
+
+                    if (!hasRow1 && !hasRow2) return null;
+
+                    return (
+                      <div className="resto-receipt-center">
+                        {hasRow1 && (
+                          <div className="resto-receipt-meta">
+                            {row1Left || <span />}
+                            {row1Right || <span />}
+                          </div>
+                        )}
+                        {hasRow2 && (
+                          <div className="resto-receipt-meta" style={{ marginTop: '2px' }}>
+                            {row2Left || <span />}
+                            {row2Right || <span />}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {/* Row 2: Receipt Code & Table Number */}
-                    {(showReceiptCode || (tablesEnabled && showTableNumber)) && (
-                      <div className="resto-receipt-meta" style={{ marginTop: '2px' }}>
-                        {showReceiptCode ? <span>01-01-260929-01-000042</span> : <span />}
-                        {(tablesEnabled && showTableNumber) ? <span className="resto-receipt-table-pill">TABLE 4</span> : <span />}
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })()}
 
                   <div className="resto-receipt-divider" />
 
@@ -888,21 +966,7 @@ export default function RestaurantReceiptsScreen({
         {/* ── Right Column: Configuration Controls ──────────── */}
         <main className="restaurant-settings-column">
           {/* ── Card 1: Receipt Format & Margins ───────────────── */}
-          <Card
-            shadow="sm"
-            header={
-              <div className="restaurant-settings-card-header">
-                <div>
-                  <h2 className="settings-section-title">
-                    <Localized id="restaurant-receipt-format-heading">Receipt Format</Localized>
-                  </h2>
-                  <p>
-                    <Localized id="settings-rcptfmt-source-workspace">Workspace setting</Localized>
-                  </p>
-                </div>
-              </div>
-            }
-          >
+          <Card shadow="sm">
             {/* Business Logo Section */}
             <div className="resto-logo-section">
               <div className="resto-toggle-title">

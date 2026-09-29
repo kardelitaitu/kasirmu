@@ -38,6 +38,7 @@ interface DraftRail {
 export function RestaurantPaymentsScreen({
   terminalId: propTerminalId,
   onSaved,
+  onBack,
 }: RestaurantPaymentsScreenProps) {
   const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
@@ -305,15 +306,58 @@ export function RestaurantPaymentsScreen({
 
   return (
     <div className="restaurant-settings-screen">
-      <div className="restaurant-settings-header">
-        <h1 className="restaurant-settings-title">
-          <Localized id="restaurant-payments-title">Payment Settings</Localized>
-        </h1>
-        <p className="restaurant-settings-subtitle">
-          <Localized id="restaurant-payments-subtitle">
-            Configure payment methods and local payment rails
+      <div className="restaurant-settings-header" data-testid="restaurant-payments-header">
+        {onBack && (
+          <button
+            type="button"
+            className="restaurant-settings-back-btn"
+            onClick={onBack}
+            aria-label={l10n.getString('back') || 'Back'}
+            data-testid="restaurant-payments-back-btn"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              width="18"
+              height="18"
+              aria-hidden="true"
+            >
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
+            </svg>
+          </button>
+        )}
+        <div className="restaurant-settings-header-title-group">
+          <span
+            className="restaurant-settings-header-icon"
+            data-testid="restaurant-payments-icon"
+            aria-hidden="true"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              width="20"
+              height="20"
+              aria-hidden="true"
+            >
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <line x1="2" y1="10" x2="22" y2="10" />
+            </svg>
+          </span>
+          <Localized id="restaurant-payments-title">
+            <h1 className="restaurant-settings-title" data-testid="restaurant-payments-title">
+              Payment Settings
+            </h1>
           </Localized>
-        </p>
+        </div>
       </div>
 
       {loading ? (
