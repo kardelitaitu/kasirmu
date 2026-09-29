@@ -155,6 +155,7 @@ from pathlib import Path
 if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")  # type: ignore[attr-defined]
 
+
 # The root used when no path is given on the command line. Resolved through git FIRST:
 # the old constant was script-relative (Path(__file__).parent.parent), which is the
 # directory holding scripts/ -- right in a normal checkout and quietly WRONG in a worktree,
