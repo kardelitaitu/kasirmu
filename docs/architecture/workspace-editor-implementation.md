@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 299 lines — and it opens with a finding that is a model of the kind this campaign has been trying to produce. The file's headline is a course/modifier data-pipeline design, and its first substantive section is a table mapping the design's original MIGRATION NUMBERS to where those migrations actually are. It states plainly that the numbered files were squashed into `crates/kasirmu-core/migrations/20260813_init.sql`, so migration 105 and its siblings no longer name anything. Most documents in this campaign have had that correction applied to them by a later auditor; this one applied it to itself, in a table, in the document. That is the correct treatment, and it is why the rest of the file can be trusted without re-deriving every coordinate. · THE REST VERIFIES IN THE SAME SELF-CORRECTING REGISTER. The design's Rust types are located at `crates/kasirmu-core/src/kds.rs`, and the enrichment point is identified as `modules/sales/src/models.rs` with an explicit parenthetical that it is NOT `models/sale.rs` — a note that exists precisely because an earlier draft of that design named the wrong file. The paths are already current crate names, so this file did not need the rename repair most documents from its period did. · WHAT THE DOCUMENT IS, so the audit scope is honest: it is a design for carrying course and modifier data from POS into KDS, and the KDS side it targets has since been substantially redesigned — `docs/specs/_active/kds-redesign-ux.md` (round 3) replaces the three-layout board this pipeline would feed. The pipeline design may therefore be sound while its destination has moved, and a reader should check the KDS spec before acting on it. That dependency is recorded nowhere else. · NOT re-measured: the pipeline's per-step design, which is the document's own proposal. · A prior stamp exists and is retained; footer re-dated to match the new stamp. -->
 # Design: Course/Modifier Data Pipeline — POS → KDS
 
 > TODO 2a assessment: Large effort. This is a cross-cutting change touching
@@ -292,8 +293,5 @@ The 131 pre-Aug-2026 migrations were squashed into `20260813_init.sql`, so numbe
 | **POS cart changes are complex** (course UI, modifier selection UX) | Medium | Can ship Phase 1–3 (KDS display only) first. Phase 4 (POS input) is additive and optional. Pre-existing sales without course data display gracefully. |
 | **Performance**: loading line items for every queue ticket | Low | KDS queue typically has <50 active tickets. Single JOIN per ticket is negligible. Could add eager loading in a single query if needed. |
 
-> last audited 08-09-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 
