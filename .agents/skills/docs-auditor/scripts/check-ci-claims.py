@@ -41,7 +41,15 @@ NOT_JOB = set(["push", "pull_request", "workflow_dispatch", "workflow_call", "sc
 STOP_WORDS = set(["yml", "bak", "sh", "py", "rs", "md", "ci", "true", "false", "main",
                   "tag", "ok", "the", "job", "step", "gate"])
 SKIP_DIR = ("docs/archived", "/archived", "node_modules", "references", "target/", "dist/")
-JOURNAL_SUFFIX = ("-journal.md", ".md.bak", ".bak")
+BACKUP_SUFFIX = (".md.bak", ".bak")
+# Manager journals are NAMED manager-journal-<topic>.md - the token LEADS, it does not close
+# the name. A suffix test for "-journal.md" therefore matched none of the live corpus: the
+# only files that end that way are docs/archived/manager-2-journal*.md, which SKIP_DIR
+# already removes. Every live journal was being graded as if it were current guidance,
+# which is how a record whose whole purpose is to name a dead workflow ("kasirmu-app-3:132
+# .circleci/workflows/06-cargo-nextest.yml = BROKEN ... live = dev-ci.yml#cargo-nextest")
+# produced a finding against itself. Match the token anywhere in the basename instead.
+JOURNAL_TOKEN = "journal"
 HEDGE = ("no longer", "used to", "retire", "does not run", "never run", "not run",
          "not enforced", "no such", "there is no", "no job named", "absent", "inert",
          "dead", "only in", "existed", "formerly", "was removed", "no live", "nothing",
@@ -73,9 +81,15 @@ def jobs_only(lines):
 
 
 def parse_ci(files):
-    """files: {workflow_basename: text} -> {name: set(job)}. A job is a 2-space key that
-    carries its own steps/uses/services list, so trigger metadata never counts as a job."""
-    jobs = {}
+    """files: {workflow_basename: text} -> ({name: set(job)}, set(step_slug)).
+
+    A job is a 2-space key that carries its own steps/uses/services list, so trigger
+    metadata never counts as a job. The step set is collected for the same reason: a doc
+    that says "the `drift` step ends on a PASS assertion" is describing a real step inside
+    ci-docs-drift, and grading that name against the JOB set invented a phantom job. Step
+    names are slugified the same way job_refs slugifies prose, so compare like with like.
+    """
+    jobs, steps = {}, set()
     for nm, txt in files.items():
         lines = jobs_only(txt.split(NL))
         found = set()
@@ -86,14 +100,18 @@ def parse_ci(files):
             body = NL.join(lines[i:i + 80])
             if re.search("^    (steps|uses|services):", body, re.M):
                 found.add(m.group(1))
+                for sm in re.finditer("^      - name: (.+)$", body, re.M):
+                    slug = slugify(sm.group(1))
+                    if slug:
+                        steps.add(slug)
         jobs[nm] = found
-    return jobs
+    return jobs, steps
 
 
 def load_live():
     files, baks = {}, set()
     if not os.path.isdir(WF_DIR):
-        return {}, set(), baks
+        return {}, set(), set(), baks
     # Retired workflows live in the attic/ subdirectory since P4 of the folder
     # restructure, so the .bak enumeration walks recursively. Live *.yml files
     # GitHub would execute only ever sit at the top level, so they stay flat.
@@ -104,7 +122,8 @@ def load_live():
                                      errors="replace").read()
             elif f.endswith(".yml.bak"):
                 baks.add(f[:-8])
-    return parse_ci(files), set(files), baks
+    jobs, steps = parse_ci(files)
+    return jobs, steps, set(files), baks
 
 
 def wf_refs(line):
@@ -115,13 +134,29 @@ def job_refs(line):
     return [m.group(1) for m in re.finditer("`([a-z][a-z0-9_-]{2,24})`", line)]
 
 
+def slugify(text):
+    """A step's YAML name: -> the slug a doc would backtick for it. The doc side keeps only
+    [a-z0-9_-], so a step called "Drift: 0 items (hard gate)" is findable as drift in
+    prose. Returns "" for a name with no usable slug, so it can never mask a real finding."""
+    m = re.search("[a-z][a-z0-9_-]{2,24}", text.strip().lower())
+    return m.group(0) if m else ""
+
+
 def claims_job(line, nm):
+    """Does the sentence call nm a JOB? Deliberately excludes the "<name> step" shape.
+    Those are two different assertions: calling a name a job when it is a step mislabels
+    it, but calling a real step a step is correct prose and must never be graded against
+    the job set. Collapsing them is what invented a phantom `drift` job."""
     q = "`" + nm + "`"
-    pats = [q + " job", "job named " + q, "the " + q + " job", q + " step"]
+    pats = [q + " job", "job named " + q, "the " + q + " job"]
     return any(p in line.lower() for p in pats)
 
 
-def check_text(text, jobs, live, baks, all_jobs):
+def claims_step(line, nm):
+    return (nm + "` step") in line.lower()
+
+
+def check_text(text, jobs, live, baks, all_jobs, all_steps=frozenset()):
     """Pure over one document string plus parsed CI state. -> [(line_no, message)]."""
     out = []
     lines = text.split(NL)
@@ -147,6 +182,9 @@ def check_text(text, jobs, live, baks, all_jobs):
                 if claims_job(l, nm):
                     out.append((i + 1, "claims a job named " + nm + " that no live workflow"
                                 " defines (live jobs: " + ", ".join(sorted(all_jobs)) + ")"))
+                elif claims_step(l, nm) and nm not in all_steps:
+                    out.append((i + 1, "names `" + nm + "` as a CI step, but no live workflow"
+                                " defines a step or job of that name"))
     return out
 
 
@@ -159,8 +197,10 @@ def tracked_docs():
     res = []
     for p in out:
         q = p.replace(BS, "/")
-        if q.startswith(WF_DIR) or q.endswith(JOURNAL_SUFFIX):
+        if q.startswith(WF_DIR) or q.endswith(BACKUP_SUFFIX):
             continue
+        if JOURNAL_TOKEN in q.rsplit("/", 1)[-1].lower():
+            continue  # manager-journal-*.md: a dated record, not current guidance
         if any(x in q for x in SKIP_DIR):
             continue
         res.append(q)
@@ -169,6 +209,9 @@ def tracked_docs():
 
 HDR = "jobs:" + NL
 JOBS = HDR + job_block("changes", "a") + job_block("static-gates", "b") + job_block("i18n", "c")
+# A workflow whose ci-docs-drift job carries a step literally named "drift", matching the
+# real one. Exercises the step-vs-job ground truth without touching .github/.
+STEPWF = HDR + job_block("ci-docs-drift", "Drift: 0 items (hard gate)")
 RJOBS = HDR + job_block("release-validate", "d") + job_block("release-build", "e")
 
 SELF = [
@@ -192,17 +235,24 @@ SELF = [
      "there is no `deploy` job here", False),
     ("pragma suppresses", {"dev-ci.yml": JOBS}, {"dev-ci"}, set(),
      "The `audit` job runs weekly <!-- ci-claim: ok: quoted history -->", False),
+    # A doc naming a real STEP is not claiming a job. This is the shape that produced a
+    # phantom `drift` job: project-scaffold/SKILL.md says the ci-docs-drift job's `drift`
+    # "step ends on a PASS assertion", and claims_job() treats "<name> step" as a claim.
+    ("live step name is not a phantom job", {"dev-ci.yml": STEPWF}, {"dev-ci"}, set(),
+     "The `drift` step ends on a PASS assertion, so it blocks.", False),
+    ("a job name in the same sentence still flags", {"dev-ci.yml": STEPWF}, {"dev-ci"}, set(),
+     "The `drift` job gates the docs index", True),
 ]
 
 
 def self_test():
     bad = 0
     for name, files, live, baks, line, expect in SELF:
-        jj = parse_ci(files)
+        jj, ss = parse_ci(files)
         all_jobs = set()
         for s in jj.values():
             all_jobs |= s
-        got = bool(check_text(line, jj, live, baks, all_jobs))
+        got = bool(check_text(line, jj, live, baks, all_jobs, ss))
         if got != expect:
             bad += 1
             print("  FAIL " + name + ": expected flag=" + str(expect) + ", got " + str(got))
@@ -222,7 +272,7 @@ def main():
     a = ap.parse_args()
     if a.self_test:
         return self_test()
-    jobs, live, baks = load_live()
+    jobs, steps, live, baks = load_live()
     all_jobs = set()
     for s in jobs.values():
         all_jobs |= s
@@ -236,7 +286,7 @@ def main():
             text = open(p, encoding="utf-8", errors="replace").read()
         except OSError:
             continue
-        f = check_text(text, jobs, live, baks, all_jobs)
+        f = check_text(text, jobs, live, baks, all_jobs, steps)
         if f:
             hit += 1
             total += len(f)
