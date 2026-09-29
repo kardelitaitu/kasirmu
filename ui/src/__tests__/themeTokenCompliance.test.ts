@@ -3285,7 +3285,11 @@ const LINE_HEIGHT_LITERAL_BASELINE: Array<[string, string, number]> = [
   ["1", "ui/src/features/sales/PromotionsModal.css", 1],
   ["1", "ui/src/features/sales/ReceiptPreview.css", 1],
   ["1.2", "ui/src/features/sales/ReceiptPreview.css", 2],
-  ["1.4", "ui/src/features/sales/ReceiptPreview.css", 1],
+  // The ["1.4", …, 1] row was REMOVED 2026-09-29, not moved: the note-printing
+  // change (c761e0fc0) added a second 1.4 site at :148, and both :141 and :148 now
+  // use `var(--leading-snug)` — the exact step the value already was. So this is a
+  // paid-down key rather than a count that drifted, which is why deleting the row
+  // here is the correct restatement the guard asks for.
   ["1.6", "ui/src/features/sales/ReceiptPreview.css", 1],
   ["1", "ui/src/features/sales/SalesHistoryScreen.css", 2],
   ["1.4", "ui/src/features/sales/StockShortfallDialog.css", 1],
