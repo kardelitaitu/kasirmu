@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass — this is the best-evidenced file in the 0-series. The phase claims IMPLEMENTED and every acceptance criterion with a checkable artifact holds. All five extracted section components exist under `ui/src/features/settings/sections/`: `GeneralSection.tsx`, `AppearanceSection.tsx`, `ReceiptSection.tsx`, `SyncSection.tsx` and `AboutSection.tsx`, exactly the five the spec says needed extraction (the other 13 already rendered as imported components). The headline criterion — "`SettingsPage.tsx` is reduced to < 500 lines" — is met with room to spare: `ui/src/features/settings/SettingsPage.tsx` is now **456 lines**, down from the "~2,000+ lines with a 18-case renderSection() switch" the Baseline describes. That single number is the strongest evidence in this file and it was worth measuring rather than assuming. · The Residual section is honest about its own cost: it admits the `SectionProps` interface is "intentionally broad" and names Phase 0b as the cleanup. That is the right way to close a refactor whose real debt was deferred. · NOT repaired, deliberately: the acceptance criteria are all `- [ ]` unchecked while Status says IMPLEMENTED. That is a real inconsistency, but the checkboxes belong to the plan-as-approved and ticking them would assert a verification I did not perform — I confirmed the artifacts exist, not that the "all existing E2E tests pass unchanged" and "zero behavioral changes" criteria were run. Recording the gap rather than closing it. · The Parent reference `docs/specs/2026-07-23-unified-2tier-workspace-settings-architecture.md` resolves. -->
 # Phase 0a — SettingsPage Section Extraction
 
 - **Status:** IMPLEMENTED (ADR #22 unified workspace settings shipped in 0.0.19; re-audited 2026-08-08 by docs-auditor)
@@ -132,4 +133,4 @@ interface SectionProps {
 
 > (status corrected to IMPLEMENTED).
 >
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor

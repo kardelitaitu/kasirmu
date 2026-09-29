@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · Clean pass, and the two inline docs-auditor repairs already in this file were re-verified rather than assumed. The 2026-08-08 note claims the command names now reflect the IPC surface — `check_login` is `staff_login`, `create_sale` became the `start_sale`/`complete_sale` pair — and all four commands in the table resolve in the current tree: `staff_login`, `import_data`, `list_products` and `build_custom_report`. The second inline note, that the rate-limited routes are `/api/sync/*` with no `v1` segment, is consistent with the sync router in `apps/cloud-server/src/main.rs`. The guidelines section (string length caps, numeric ranges, path-traversal defence, parameterized `rusqlite`, session-token checks on scoped commands) is unchanged project policy and still current. · This file lives in `docs/security/` rather than `docs/archived/`, which is the right call for it: unlike the July audit snapshots in the archive, every claim here is a standing security rule, and rules that decay are worse than records that are simply old. Its "0.0.14" in the title is the version the audit ran against, not a version claim to correct. · NOT re-measured: the "250+ Tauri commands" count and the per-endpoint rate limits (100/min push, 300/min pull and status, 50/min snapshot, 300/min default). The limits are policy values nothing in the repository arbitrates, and the command count is a July measurement. · No house stamp existed at the top of this file before this pass. -->
 # Input Validation & Rate Limiting — 0.0.14 Hardening
 
 ## Input Validation
@@ -45,4 +46,4 @@ Middleware returns `429 Too Many Requests` with `Retry-After` header. Background
 
 > (repairs applied; `search_products` → `list_products`).
 >
-> last audited 29-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
