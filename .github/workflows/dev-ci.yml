@@ -1164,6 +1164,27 @@ jobs:
         run: python3 scripts/verify-selftests-wired.py
       - name: Self-tests are wired self-test
         run: python3 scripts/verify-selftests-wired.py --self-test
+
+      # Both added 2026-09-29 after existing only as check.sh steps, which was the wrong
+      # side for gates whose entire subject is a file that silently does not run: a
+      # contributor who never runs the local matrix would have had neither.
+      #
+      # shell syntax: sh -n PARSES without executing, so it is safe here on a bare
+      # checkout and cannot have side effects. It is the one gate that protects
+      # check.sh and this workflow's own shell, so it belongs where a broken parse
+      # cannot hide.
+      - name: Shell syntax
+        run: python3 scripts/verify-shell-syntax.py
+      - name: Shell syntax self-test
+        run: python3 scripts/verify-shell-syntax.py --self-test
+      # workflow syntax: catches a sibling workflow that stopped being valid YAML. It
+      # cannot catch THIS file -- if dev-ci.yml were unparseable, no job here would run
+      # to report it -- so its value is android.yml, website.yml and release.yml, and
+      # the local review window for a dev-ci.yml break.
+      - name: Workflow syntax
+        run: python3 scripts/verify-workflow-syntax.py
+      - name: Workflow syntax self-test
+        run: python3 scripts/verify-workflow-syntax.py --self-test
       - name: No raw query params
         run: bash scripts/verify-no-raw-params.sh
       - name: Scoped command coverage
