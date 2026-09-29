@@ -1345,7 +1345,24 @@ const SCREENS: ScreenEntry[] = [
     // once in settings/SettingsPage.css and imported by the settings shell this
     // screen deliberately reuses. Same cite, same reason, as the four settings
     // cards (:1385 StatutoryNumberingCard and siblings).
-    parentCss: ['settings/SettingsPage.css'],
+    //
+    // `../theme/components.css` is the SECOND legal parentCss shape (:120-131) and
+    // is cited here for one class: `noise-dither`, the elevated-surface grain
+    // overlay. The preview card declares `box-shadow: var(--shadow-sm)`, so
+    // noiseDitherCompliance requires it to carry the overlay — and that gate reads
+    // CSS SELECTORS, so `.restaurant-preview-card` is named in the dither block of
+    // components.css *and* the element carries the class. Citing the sheet that
+    // defines the utility is what the :127-138 note calls saying what is true in a
+    // field the guard can check, rather than muting the name in
+    // knownDynamicFragments (which would falsely assert it is composed at runtime).
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
+    // The paper width is chosen at runtime from the operator's setting:
+    // `resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'}`
+    // (RestaurantReceiptsScreen.tsx:418). The static walk cannot see either tail,
+    // so both rules graded dead. This is the genuine composed-at-runtime case the
+    // field exists for — unlike `noise-dither` above, which is a literal name and
+    // is therefore CITED rather than muted.
+    dynamicClassPrefixes: ['resto-receipt-paper--'],
   },
   {
     // See the RestaurantReceiptsScreen note above for the shared-sheet ruling.
@@ -1360,7 +1377,25 @@ const SCREENS: ScreenEntry[] = [
     name: 'RestaurantPaymentsScreen',
     tsx: 'restaurant/screens/RestaurantPaymentsScreen.tsx',
     css: ['restaurant/screens/RestaurantSettingsScreens.css'],
-    parentCss: ['settings/SettingsPage.css'],
+    // The RECIPROCAL half of the cite the RestaurantReceiptsScreen entry makes
+    // (:1343). Both screens render from this one sheet, and the dead-class walk
+    // grades the WHOLE sheet against this entry's markup plus additionalTsx — so
+    // without this line every receipt-side rule (restaurant-preview-*,
+    // resto-receipt-*) grades as dead from here, which is exactly the "each entry
+    // names the other's file rather than muting rules one by one" rule at :1338.
+    // It went missing while the receipt preview was built out in dc7571036: the
+    // Receipts side kept its cite, this side never gained one.
+    additionalTsx: ['restaurant/screens/RestaurantReceiptsScreen.tsx'],
+    // Same runtime-composed paper widths as the Receipts entry above: this entry
+    // now grades that sibling's markup, so it needs the same prefix door for the
+    // `--58mm` / `--80mm` tails the static walk cannot see.
+    dynamicClassPrefixes: ['resto-receipt-paper--'],
+    // Same `noise-dither` cite as the Receipts entry: this entry grades that
+    // sibling's markup through additionalTsx, and the preview card carries the
+    // class, so the sheet that defines the utility must be named here too — the
+    // coverage block checks that a cited sheet actually defines what it is
+    // cited for, and it will not accept the citation on the Receipts entry.
+    parentCss: ['settings/SettingsPage.css', '../theme/components.css'],
   },
   {
     name: 'RestaurantMenu',
