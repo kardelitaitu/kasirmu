@@ -1,10 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-crm slice A: lib re-verify)
 crate: modules-crm | status: SAFE | lint: CLEAN
-findings: clean Module registration layer
+findings: clean Module registration layer. NOTE 2026-09-30: the `#![deny(unsafe_code)]` below was INERT until that date — a malformed comment merge (a closing delimiter immediately followed by an opening one, on line 6) had swallowed the attribute into a block comment, so this crate compiled with no unsafe lint at all. Restored as a real inner attribute.
 next: none | perf: N/A
-*//*
-#![deny(unsafe_code)]
 
 last audited 19-07-26 by RSA-Agent
 crate: modules-crm | status: SAFE | lint: CLEAN
@@ -12,6 +10,7 @@ findings: Transitional module implementing Module trait. No unsafe code. Re-expo
   kasirmu-core. 7 unit tests pass covering lifecycle and kernel registration.
 next: Migrate DB CRUD + Tauri commands into this module | perf: N/A — no hot paths yet.
 */
+#![deny(unsafe_code)]
 
 //! CRM Module — customer relationship management.
 //!

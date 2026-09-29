@@ -9,6 +9,31 @@ next: none | perf: blocking DB work off the async runtime
 //! A background task that periodically fetches exchange rates from the
 //! Frankfurter public API (`https://api.frankfurter.app`) and stores them
 //! in the `exchange_rates` table using [`modules_currency::repository::CurrencyRepository::upsert_exchange_rate`].
+//!
+//! # Wiring status: implemented, and started by nothing
+//!
+//! **This daemon has no caller.** Measured 2026-09-30 (C29 / decision D13):
+//! `grep -rn init_rate_sync` over every `*.rs` in the tree returns **exactly one
+//! hit — its own definition** in `platform/startup/src/lib.rs`, and `ui/src` has
+//! **zero** hits for any rate-sync control (`rate.sync`, `rateSync`, `rate_sync`,
+//! `autoSync`). So it is unreachable from both ends: no code path starts it and no
+//! screen configures it.
+//!
+//! It is nevertheless **not** a stub, which is why it is kept rather than deleted
+//! under D13's rule — *redundant-and-inert is deleted; unwired-but-implemented is
+//! kept and labelled honestly*. The fetch, the fixed-point rounding to
+//! `rate_millionths`, the poison recovery on both DB phases, the graceful-shutdown
+//! watch channel and the per-rate upsert are all implemented and audited, and its
+//! four settings keys (`RATE_SYNC_ENABLED`, `RATE_SYNC_API_KEY`,
+//! `RATE_SYNC_INTERVAL`, `RATE_SYNC_BASE_CURRENCY`) exist with typed accessors and
+//! test pins in `platform/core/src/settings`. Nothing else in the tree does
+//! exchange-rate synchronisation, so it is not redundant either.
+//!
+//! **Consequence, stated so it is not mistaken for a quick win:** retiring
+//! rate-sync is not a deletion of dead code. It would take this module, four
+//! settings keys, eight typed accessors and roughly fourteen test functions
+//! together. Any future change to this file should assume it is shipped-and-off
+//! rather than dead.
 
 use std::collections::HashMap;
 use std::sync::Arc;

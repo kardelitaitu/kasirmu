@@ -17,6 +17,25 @@ next: none | perf: N/A
 //! - [`init_with_file`] — human-readable text + rolling file writer.
 //! - [`init_json_with_file`] — JSON + rolling file writer.
 //!
+//! # Which initialisers are actually wired, stated because it is not obvious
+//!
+//! **The two FILE initialisers have no production caller.** Measured 2026-09-30
+//! (C29 / decision D13): the only initialisers called by any shipped binary are
+//! [`try_init`] (desktop `apps/desktop-tauri/src/lib.rs`, mobile
+//! `apps/mobile-tauri/src/lib.rs`) and [`try_init_json`] (cloud-server
+//! `apps/cloud-server/src/main.rs`), all of which write to **stdout**. Nothing in
+//! the tree calls [`init_with_file`], [`try_init_with_file`],
+//! [`init_json_with_file`] or [`try_init_json_with_file`] outside this crate's own
+//! tests, which DO call them directly and are why they cannot simply be removed.
+//!
+//! They are kept, and kept labelled, under D13's rule — *redundant-and-inert is
+//! deleted; unwired-but-implemented is kept and labelled honestly*. They fall on
+//! the KEEP side for a reason the deleted syslog/eventlog pair did not: file
+//! logging is **not redundant** with stdout on a desktop install, where stdout is
+//! captured by nothing, so this is a real capability that simply is not switched
+//! on yet — unlike a syslog sink, which duplicated what the container already
+//! collects. Retaining them is a deliberate decision, not an oversight.
+//!
 //! # No platform-specific sinks
 //!
 //! The `syslog` (Linux) and `eventlog` (Windows) modules were **deleted
