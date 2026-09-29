@@ -18,7 +18,7 @@ Three topics were reviewed today, in order:
 
 2. **Subscription contract** — traced end-to-end. Verdict: **already solid, no work needed.**
    - `crates/oz-core/src/subscription.rs`: tiers Free/Plus/Pro/Premium/Enterprise (+ deprecated `OneTime` for DB back-compat).
-   - Quotas: `max_stores` (1/1/2/5/∞), `max_pos_instances` (1/2/5/∞/∞), `max_warehouses` (1/2/3/∞/∞), `max_staff_users` (1/5/20/50/∞), `sales_history_days` (90/365/5y/∞/∞).
+   - Quotas: `max_stores` (1/1/2/5/∞), `max_pos_instances` (1/2/5/∞/∞), `max_warehouses` (0/0/0/∞/∞ — Premium+ only since 2026-09-29), `max_staff_users` (1/5/20/50/∞), `sales_history_days` (90/365/5y/∞/∞).
    - Features: QRIS (Plus+), cloud sync (Plus+), Stripe (Pro+), analytics (Pro+), KDS (Pro+), loyalty + Lua engine (Premium+), regional zones (Enterprise).
    - `effective_tier()`: canceled → Free; within `offline_grace_days` → paid tier; out of grace → Free. Clock-rollback detection via ledger MAX(created_at) vs wall clock (30s tolerance). Row is **RSA-2048-signed** by the license server.
    - Enforced at creation points: staff (staff.rs), warehouses (inventory.rs), registers (topology), workspace types, history capping (history.rs).

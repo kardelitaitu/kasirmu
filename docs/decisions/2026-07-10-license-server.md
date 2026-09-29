@@ -289,6 +289,15 @@ API Rules:
   delete:        @request.auth.id != ""           (admin only)
 ```
 
+> **Note (2026-09-29) — the `max_warehouses` row above is history, not the current
+> contract.** It records the schema as decided on 2026-07-10, when the lineup was
+> free/one_time/standard/pro/enterprise and the field's value was 1 below pro. The
+> warehouse workspace is **Premium+** by the owner's ruling of 2026-09-29, so the cap is 0
+> on Free/Plus/Pro and unlimited on Premium/Enterprise
+> (`docs/guides/user/subscription-tiers.md` ‡). The field is also no longer the
+> enforcement point: there is no `maxWarehouses` on the wire at all, and the client
+> answers from `SubscriptionTier::max_warehouses()`.
+
 #### `tenant_machines` collection
 
 ```
