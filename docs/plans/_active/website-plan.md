@@ -315,7 +315,7 @@ on the owned domain is the real inbox-not-spam fix — see
 |---------|------|------|-----|---------|------------|
 | Stores | 1 | 1 | 2 | 5 | Unlimited |
 | Registers / store | 1 | 2 | 5 | Unlimited | Unlimited |
-| Warehouses | 1 | 2 | 3 | Unlimited | Unlimited |
+| Warehouses | 0 | 0 | 0 | Unlimited | Unlimited |
 | KDS screens | 0 | 0 | 2 | Unlimited | Unlimited |
 | Max products/menu | 200 | 500 | 1,000 | 10,000 | Unlimited |
 | Staff users | 1 | 5 | 20 | 50 | Unlimited |
@@ -446,7 +446,7 @@ https://license.ozpos.my.id/api/v1/paddle/webhook        (new server work)
 | Tier Cards | Free / Plus / Pro ⭐ / Premium / Enterprise — annual default toggle ("2 months free") |
 | Feature Comparison | Full matrix below cards |
 | Buy Buttons | Paddle overlay checkout (product id per locale) |
-| Trust Signals | "30-day money back" · "Cancel anytime" |
+| Trust Signals | "14-day money back" · "Cancel anytime" |
 
 ### Login Page (`/[locale]/login`)
 
