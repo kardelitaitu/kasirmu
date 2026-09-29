@@ -302,6 +302,11 @@ pub async fn print_sales_receipt_scoped(
                     unit_price: i.unit_price.to_money()?,
                     total_price: i.total_price.to_money()?,
                     tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
+                    // Forwarded, not dropped: the arg declares `note` with
+                    // `#[serde(default)]` at :101 and the HAL prints it under the
+                    // item, so omitting it here would compile-fail AND lose the
+                    // note on the tablet while the desktop shell kept it.
+                    note: i.note,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,
