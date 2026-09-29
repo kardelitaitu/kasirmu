@@ -238,36 +238,6 @@ fn a_refused_allocation_consumes_nothing_once_rolled_back() {
 }
 
 #[test]
-fn tombstone_records_what_a_retired_index_was() {
-    let s_db = migrations::fresh_db();
-    let s = store(&s_db);
-    let tx = s.conn.unchecked_transaction().unwrap();
-    s.retire_entity_index(
-        &tx,
-        "default",
-        EntityIndexKind::User,
-        7,
-        "user-7",
-        "Budi",
-        NOW,
-    )
-    .unwrap();
-    tx.commit().unwrap();
-
-    assert_eq!(
-        s.retired_entity_label("default", EntityIndexKind::User, 7)
-            .unwrap()
-            .as_deref(),
-        Some("Budi")
-    );
-    assert_eq!(
-        s.retired_entity_label("default", EntityIndexKind::User, 8)
-            .unwrap(),
-        None
-    );
-}
-
-#[test]
 fn claim_starts_at_one_and_increments_per_terminal_year() {
     let s_db = migrations::fresh_db();
     let s = store(&s_db);

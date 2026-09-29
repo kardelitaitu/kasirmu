@@ -1,21 +1,20 @@
 //! Index ids for the receipt hierarchy code.
 //!
-//! An index id is an immutable badge allocated once, at registration, and
-//! printed as dynamic-width Base62 characters inside the receipt code
-//! (`01-02-260929-10a-000123`). It is deliberately NOT "the Nth location":
-//! a value is never reused, because a retired `02` reissued to a new
-//! location would make every historic receipt naming `02` resolve to the
-//! wrong store — and with a tax number on the receipt that is
-//! falsification, not a cosmetic bug.
+//! An index id is allocated at registration and printed as dynamic-width
+//! Base62 characters inside the receipt code (`01-02-260929-10a-000123`). The
+//! allocator is a **lowest-available slot recycler** (plan §4.1): it hands out
+//! the lowest positive integer (1, 2, 3…) not currently held by an active
+//! entity in the tenant, and when an entity (location, terminal, staff) is
+//! deleted its index id is released and reclaimed by the next entity — this is
+//! the intended, spec'd behaviour, not a leak.
 //!
-//! Allocation is monotonic, driven by `entity_index_cursors`, so even a row
-//! deleted without a tombstone cannot hand its index to the next entity.
 //! `0` is never allocated: `"00"` is the display sentinel for "no staff"
-//! (kiosk and system sales). The ceiling is `14,776,335` ($62^4 - 1$) — four
-//! Base62 digits is all the field can express — and the allocator refuses
-//! rather than wraps, because a wrap would reissue live codes.
+//! (kiosk and system sales; [`INDEX_ID_NONE`]). The ceiling is
+//! `14,776,335` ($62^4 - 1$) — four Base62 digits is all the field can
+//! express — and the allocator refuses rather than wraps, because a wrap
+//! would reissue live codes.
 //!
-//! Design and decisions: docs/plans/receipt-hierarchy-code.md
+//! Design and decisions: docs/plans/_active/receipt-hierarchy-code.md
 
 use chrono::{DateTime, FixedOffset};
 use rusqlite::{OptionalExtension, params};
@@ -205,57 +204,6 @@ impl crate::db::Store<'_> {
             });
         }
         Ok(allocated)
-    }
-
-    /// Record what a retired index id *was*, so historic codes resolve.
-    ///
-    /// Append-only and idempotent: re-retiring the same index is a no-op.
-    /// This does not free the index — only `entity_index_cursors` decides
-    /// what gets handed out, and it never goes backwards.
-    // One argument over clippy's default, deliberately: the list mirrors the
-    // `entity_index_tombstones` row it inserts — tenant, kind, index, entity,
-    // label, retired_at — plus `tx` and `now`. Grouping them into a struct
-    // would hide the correspondence that is this method's whole point.
-    #[allow(clippy::too_many_arguments)]
-    pub fn retire_entity_index(
-        &self,
-        tx: &rusqlite::Transaction<'_>,
-        tenant_id: &str,
-        kind: EntityIndexKind,
-        index_id: i64,
-        entity_id: &str,
-        label: &str,
-        now: &str,
-    ) -> Result<(), CoreError> {
-        tx.execute(
-            "INSERT INTO entity_index_tombstones
-                 (tenant_id, entity_kind, index_id, entity_id, label, retired_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(tenant_id, entity_kind, index_id) DO NOTHING",
-            params![tenant_id, kind.as_str(), index_id, entity_id, label, now],
-        )?;
-        Ok(())
-    }
-
-    /// What an index id resolved to, for a code that outlived its row.
-    ///
-    /// Returns the tombstone label when the entity was retired, or `None`
-    /// when this tenant never issued that index.
-    pub fn retired_entity_label(
-        &self,
-        tenant_id: &str,
-        kind: EntityIndexKind,
-        index_id: i64,
-    ) -> Result<Option<String>, CoreError> {
-        self.conn
-            .query_row(
-                "SELECT label FROM entity_index_tombstones
-                  WHERE tenant_id = ?1 AND entity_kind = ?2 AND index_id = ?3",
-                params![tenant_id, kind.as_str(), index_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(Into::into)
     }
 }
 
