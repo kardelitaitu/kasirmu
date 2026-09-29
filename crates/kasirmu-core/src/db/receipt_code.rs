@@ -9,10 +9,21 @@
 //! the intended, spec'd behaviour, not a leak.
 //!
 //! `0` is never allocated: `"00"` is the display sentinel for "no staff"
-//! (kiosk and system sales; [`INDEX_ID_NONE`]). The ceiling is
-//! `14,776,335` ($62^4 - 1$) — four Base62 digits is all the field can
-//! express — and the allocator refuses rather than wraps, because a wrap
+//! (kiosk and system sales; [`INDEX_ID_NONE`](crate::db::receipt_code::INDEX_ID_NONE)).
+//! The ceiling is `14,776,335` ($62^4 - 1$) — four Base62 digits is all the field
+//! can express — and the allocator refuses rather than wraps, because a wrap
 //! would reissue live codes.
+//!
+//! "Active" is expressed per entity kind, and the three kinds do NOT share one
+//! predicate — see the `extra_where` arm in
+//! `allocate_entity_index_with_ceiling_on_conn` (private, so named rather than
+//! linked). Only `users` is soft-deleted (`20261009_staff_trash.sql` adds
+//! `deleted_at`), so only the `User` arm carries `AND deleted_at IS NULL`; a
+//! trashed staff member must not hold a slot. Neither `locations` nor `terminals`
+//! has that column — their rows are removed outright — so their arm is empty and a
+//! deleted row frees its index by no longer existing. Adding a `deleted_at` to
+//! either table later would make its arm silently over-allocate unless this arm is
+//! updated with it.
 //!
 //! Design and decisions: docs/plans/_active/receipt-hierarchy-code.md
 
