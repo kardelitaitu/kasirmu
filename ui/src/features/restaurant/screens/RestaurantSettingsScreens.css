@@ -248,11 +248,13 @@
   text-align: center;
 }
 
-/* Receipt Header (Logo Column + Title/Lines Column) */
+/* Receipt Header (Balanced 3-column row: Logo / Centered Title / Counter-Spacer) */
 .resto-receipt-header-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 2px;
   margin-bottom: 6px;
 }
 
@@ -260,21 +262,22 @@
   flex-direction: row-reverse;
 }
 
-.resto-receipt-header-logo-col {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  max-width: 48px;
+.resto-receipt-header-logo-col,
+.resto-receipt-header-spacer {
+  flex: 0 0 44px;
+  width: 44px;
+  box-sizing: border-box;
 }
 
-.resto-receipt-header-row--right .resto-receipt-header-logo-col {
-  justify-content: flex-end;
+.resto-receipt-header-logo-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .resto-receipt-header-logo-col .resto-receipt-logo {
-  max-width: 48px;
-  max-height: 42px;
+  max-width: 40px;
+  max-height: 38px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -282,13 +285,15 @@
   display: block;
 }
 
-.resto-receipt-paper--58mm .resto-receipt-header-logo-col {
-  max-width: 38px;
+.resto-receipt-paper--58mm .resto-receipt-header-logo-col,
+.resto-receipt-paper--58mm .resto-receipt-header-spacer {
+  flex: 0 0 34px;
+  width: 34px;
 }
 
 .resto-receipt-paper--58mm .resto-receipt-header-logo-col .resto-receipt-logo {
-  max-width: 36px;
-  max-height: 32px;
+  max-width: 32px;
+  max-height: 30px;
 }
 
 .resto-receipt-header-text-col {
