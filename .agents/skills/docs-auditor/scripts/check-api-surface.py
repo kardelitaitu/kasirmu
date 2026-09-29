@@ -19,10 +19,17 @@ SCOPE: a BLOCKING gate since 2026-09-29 -- wired into check.sh (step 'api surfac
   never read as a checker that found nothing.
 
 USAGE
-  python check-api-surface.py [--root REPO] [--json]
+  python check-api-surface.py [--root REPO] [--json] [--full]
+  python check-api-surface.py --self-test
   exit 0  doc and registries agree exactly
   exit 1  at least one of the four drift classes is non-empty
   exit 2  could not parse an input (never report drift on a parse failure)
+
+SELF-TEST
+  The classification is a pure function of three parsed inputs, so its cases need no
+  filesystem and cannot rot when a crate is renamed - which is what took this checker out
+  of scripts/check-auditor-selftests.sh before: it read live paths, and reading live
+  paths is exactly what breaks when the tree moves.
 """
 
 from __future__ import annotations
@@ -98,13 +105,96 @@ def norm(marker):
     return marker.replace('only', '').strip()
 
 
+def classify(reg, dfn, doc):
+    """Pure: the four drift buckets, from three already-parsed inputs. No filesystem.
+
+    Split out of main() so --self-test can drive it with fixtures. The weakness this
+    shape exists to remove is the one scripts/check-auditor-selftests.sh records for this
+    file: it read live paths, so it could not run at all once apps/desktop-client became
+    apps/desktop-tauri, and a checker that cannot run is indistinguishable from one that
+    found nothing. Classification touches no path, so it can be tested anywhere.
+
+    Returns a dict; the caller formats it. Every bucket is kept, not just counts, so the
+    reporter and the test read the same objects.
+    """
+    all_reg = reg["desktop"] | reg["tablet"]
+    truth = {}
+    for n in all_reg:
+        in_d, in_t = n in reg["desktop"], n in reg["tablet"]
+        truth[n] = "D+T" if in_d and in_t else ("D" if in_d else "T")
+    all_def = set(dfn["desktop"]) | set(dfn["tablet"])
+    doc_names = [n for n, _ in doc]
+    doc_set = set(doc_names)
+    wrong = [(n, m, truth[n]) for n, m in doc if n in truth and norm(m) != truth[n]]
+    unwired = [n for n in doc_names if n not in all_reg and n in all_def]
+    absent = [n for n in doc_names if n not in all_reg and n not in all_def]
+    missing = sorted(all_reg - doc_set)
+    return {"truth": truth, "wrong": wrong, "unwired": unwired, "absent": absent,
+            "missing": missing}
+
+
+def _reg(d, t):
+    return {"desktop": set(d), "tablet": set(t)}
+
+
+def _dfn(d, t):
+    return {"desktop": set(d), "tablet": set(t)}
+
+
+# (name, reg, dfn, doc, expected {bucket: count}). Each row must put every command in
+# exactly one bucket, so a row with a non-zero count in one bucket has zeros in the rest.
+SELF = [
+    ("clean page, all three marker shapes", _reg(["a", "b"], ["b", "c"]),
+     _dfn(["a", "b"], ["b", "c"]), [("a", "D"), ("b", "D+T"), ("c", "T")], {}),
+    # A doc may write [D only]; norm() strips the word, so this is NOT a marker error.
+    ("'only' in a marker normalises away", _reg(["a"], ["b"]),
+     _dfn(["a"], ["b"]), [("a", "D only"), ("b", "T only")], {}),
+    ("marker names the wrong shell", _reg(["a", "b"], ["b"]),
+     _dfn(["a", "b"], ["b"]), [("a", "T"), ("b", "D+T")], {"wrong": 1}),
+    ("listed, not registered, but defined", _reg(["a"], []),
+     _dfn(["a", "ghost"], []), [("a", "D"), ("ghost", "D")], {"unwired": 1}),
+    ("listed, exists nowhere at all", _reg(["a"], []),
+     _dfn(["a"], []), [("a", "D"), ("nowhere", "D")], {"absent": 1}),
+    ("registered, not listed", _reg(["a", "b"], []),
+     _dfn(["a", "b"], []), [("a", "D")], {"missing": 1}),
+    # The four classes are independent: one row that trips three of them at once.
+    ("three classes at once", _reg(["a", "unlisted"], []),
+     _dfn(["a", "unlisted", "wired"], []),
+     [("a", "T"), ("wired", "D"), ("ghost", "D")],
+     {"wrong": 1, "unwired": 1, "absent": 1, "missing": 1}),
+]
+
+
+def self_test():
+    bad = 0
+    for name, reg, dfn, doc, want in SELF:
+        c = classify(reg, dfn, doc)
+        got = {"wrong": len(c["wrong"]), "unwired": len(c["unwired"]),
+               "absent": len(c["absent"]), "missing": len(c["missing"])}
+        got = {k: v for k, v in got.items() if v}
+        if got != want:
+            bad += 1
+            print("  FAIL " + name + ": expected " + str(want) + ", got " + str(got))
+        else:
+            print("  ok   " + name)
+    if bad:
+        print("SELF-TEST FAILED (" + str(bad) + " of " + str(len(SELF)) + ")")
+        return 1
+    print("SELF-TEST OK (" + str(len(SELF)) + " cases, no files touched)")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--full", action="store_true",
                     help="list EVERY name per bucket, not just examples")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run this checker's own cases and exit")
     args = ap.parse_args()
+    if args.self_test:
+        return self_test()
     root = Path(args.root).resolve()
     try:
         reg = {k: registered(root, v) for k, v in CLIENTS.items()}
@@ -116,18 +206,10 @@ def main():
     if not doc:
         print("error: parsed zero documented entries -- check ENTRY_RE", file=sys.stderr)
         return 2
+    c = classify(reg, dfn, doc)
     all_reg = reg['desktop'] | reg['tablet']
-    truth = {}
-    for n in all_reg:
-        in_d, in_t = n in reg['desktop'], n in reg['tablet']
-        truth[n] = 'D+T' if in_d and in_t else ('D' if in_d else 'T')
-    all_def = set(dfn['desktop']) | set(dfn['tablet'])
-    doc_names = [n for n, _ in doc]
-    doc_set = set(doc_names)
-    wrong = [(n, m, truth[n]) for n, m in doc if n in truth and norm(m) != truth[n]]
-    unwired = [n for n in doc_names if n not in all_reg and n in all_def]
-    absent = [n for n in doc_names if n not in all_reg and n not in all_def]
-    missing = sorted(all_reg - doc_set)
+    wrong, unwired = c['wrong'], c['unwired']
+    absent, missing = c['absent'], c['missing']
     total = len(wrong) + len(unwired) + len(absent) + len(missing)
     out = {
         'registered_desktop': len(reg['desktop']),

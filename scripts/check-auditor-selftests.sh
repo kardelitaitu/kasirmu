@@ -12,9 +12,11 @@
 # of its cases are deliberately red), and check-site-links for open item 4
 # (route-vs-filesystem resolution; its red cases are ghost routes, over-escaping above
 # the locale root, empty targets, unmapped collections, out-of-config locales, and --
-# since the fragment pass -- dead heading anchors, 27 cases).
+# since the fragment pass -- dead heading anchors, 27 cases). check-api-surface joined
+# 2026-09-29 once its classification was split out of main() as a pure function, so its
+# cases need no filesystem and survive the crate renames that silenced it once.
 set -e
 cd "$(git rev-parse --show-toplevel)"
-for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links; do
+for t in check-env-docs check-ci-claims check-nav-paths check-dead-refs check-adr-status check-site-links check-api-surface; do
   python3 ".agents/skills/docs-auditor/scripts/$t.py" --self-test
 done
