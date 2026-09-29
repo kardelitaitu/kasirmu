@@ -763,7 +763,7 @@
         "migration column types self-test", "coverage floors self-test",
         "deployment verification self-test", "flaky quarantine self-test",
         "chokepoints self-test", "doc uniqueness self-test",
-        "release workflow self-test"
+        "release workflow self-test", "tz invariance self-test"
       ] }
     },
     {

@@ -46,17 +46,164 @@ TESTS = [
 # disagrees with UTC during part of the day: local date differs from the UTC
 # date when UTC-time-of-day is below |offset| for west zones, and at or above
 # 24-|offset| for east zones. So:
-#   Los_Angeles (UTC-7/-8) differs while UTC < 17:00 (16:00 in winter)
+#   Honolulu    (UTC-10)  differs while UTC < 10:00
 #   Kiritimati  (UTC+14)   differs once UTC >= 10:00
-# Those two windows overlap and together cover all 24 hours, so at least one
-# zone always disagrees -- the check is sensitive no matter when it runs.
+# Those two windows meet exactly at 10:00 and together cover all 24 hours, so
+# at least one zone always disagrees -- the check is sensitive no matter when it
+# runs. Honolulu is UTC-10 with no daylight saving, so its window never moves.
 # Jakarta is kept because it is the zone that actually broke PR #95, not
-# because it adds coverage. Dropping both LA and Kiritimati would leave the
-# check passing at some hours and failing at others, which is the worst
-# possible property for a regression gate.
-ZONES = ["UTC", "Asia/Jakarta", "Pacific/Kiritimati", "America/Los_Angeles"]
+# because it adds coverage; at +7 it covers UTC 17:00-24:00, already inside
+# Kiritimati's window. Dropping Honolulu or Kiritimati would leave the check
+# passing at some hours and failing at others, which is the worst possible
+# property for a regression gate.
+#
+# CORRECTED 2026-09-29. This comment previously claimed Los_Angeles (UTC-7)
+# "differs while UTC < 17:00" and that it and Kiritimati together covered all 24
+# hours. Both were wrong: a WEST zone disagrees while UTC is BELOW its offset,
+# so -7 gives 00:00-07:00, not 17:00 -- the 17 came from applying the east-zone
+# rule to a west zone. The real coverage was 00:00-07:00 (LA) plus 10:00-24:00
+# (Kiritimati), leaving 07:00-10:00 with no disagreeing zone: for three hours
+# every day this gate could not see a host-date bug. Found by the sensitivity
+# self-test at the bottom of this file, which asserts the union covers all 24
+# hours AND that removing either load-bearing zone opens a gap.
+ZONES = ["UTC", "Asia/Jakarta", "Pacific/Honolulu", "Pacific/Kiritimati",
+         "America/Los_Angeles"]
 
 NPMX = "npm.cmd" if os.name == "nt" else "npm"
+
+# Offsets that make the arithmetic above checkable. A fixture, not a lookup: the point
+# is the SENSITIVITY WINDOW, not re-deriving offsets from the host's tzdata (which is
+# absent on a bare Windows Python and would make this self-test fail for a reason that
+# has nothing to do with the gate). Values are the standard offsets; the daylight-saving
+# variant of Los Angeles (-8) is covered because the window for -7 already contains it.
+ZONE_OFFSETS = {
+    "UTC": 0,
+    "Asia/Jakarta": 7,
+    "Pacific/Honolulu": -10,
+    "Pacific/Kiritimati": 14,
+    "America/Los_Angeles": -7,
+}
+
+
+def diff_window(offset: int) -> tuple[float, float] | None:
+    """The half-open UTC hour range in which a zone's LOCAL DATE differs from UTC's.
+
+    Pure, and the whole reason this self-test can exist. A west zone (offset < 0) is a
+    calendar day behind, so it disagrees while UTC time-of-day is below the offset; an
+    east zone is a day ahead, so it disagrees once UTC reaches 24 - offset. UTC never
+    disagrees, hence None. Mirrors the arithmetic written out in the ZONES comment, which
+    is the part nobody re-derives when the list is edited.
+    """
+    if offset == 0:
+        return None
+    if offset < 0:
+        return (0.0, float(-offset))
+    return (24.0 - offset, 24.0)
+
+
+def sensitivity_gap(offsets: dict[str, int]) -> list[tuple[int, int]]:
+    """Hour ranges in [0,24) where NO zone disagrees with UTC.
+
+    A non-empty gap is the failure the ZONES comment warns about: the gate would pass
+    at those hours and fail at others. One hour of slack per boundary, because a zone
+    disagrees only while the local date is actually rolled over -- a whole hour, not an
+    instant -- and an instant boundary would be false precision.
+    """
+    covered = [False] * 24
+    for off in offsets.values():
+        w = diff_window(off)
+        if w is None:
+            continue
+        lo, hi = w
+        for h in range(24):
+            if lo <= h < hi:
+                covered[h] = True
+    gap: list[tuple[int, int]] = []
+    start = None
+    for h in range(24):
+        if not covered[h] and start is None:
+            start = h
+        elif covered[h] and start is not None:
+            gap.append((start, h))
+            start = None
+    if start is not None:
+        gap.append((start, 24))
+    return gap
+
+
+def self_test() -> int:
+    """Liveness for the property that makes this gate a gate.
+
+    This is a LIVE gate (dev-ci + check.sh) that runs the same vitest files under four
+    host timezones and requires identical results. What makes it able to catch a
+    host-dependent date bug is not the vitest invocation -- it is the arithmetic in the
+    ZONES comment: a zone only disagrees with UTC during part of the day, so the chosen
+    offsets must cover all twenty-four hours between them. Drop one zone and the gate
+    still RUNS, still passes, and simply stops noticing host dependence for part of
+    every day. Nothing else in the file can see that, and no bare run of the gate can
+    either -- the failure is in the choice of constants, not in the check.
+
+    Cases are therefore about SENSITIVITY, not about the test runner: the full set must
+    leave no gap, and removing either load-bearing zone must open one. Those two are the
+    proof the cases would catch the trim the comment forbids.
+
+    Pure: no file is written, no subprocess is started, and the module-level vitest run
+    below is never reached -- this function is called from the dispatch above it.
+    """
+    bad: list[str] = []
+
+    def want(name: str, got, expect) -> None:
+        if got != expect:
+            bad.append(f"{name}: expected {expect!r}, got {got!r}")
+
+    want("west zone disagrees early in the UTC day",
+         diff_window(-7), (0.0, 7.0))
+    want("east zone disagrees late in the UTC day",
+         diff_window(14), (10.0, 24.0))
+    want("UTC never disagrees", diff_window(0), None)
+
+    # The real set covers every hour, which is the whole claim in the comment.
+    want("the shipped zones cover all 24 hours",
+         sensitivity_gap(ZONE_OFFSETS), [])
+
+    # Each SENSITIVITY-bearing zone is load-bearing: removing it opens a gap, which is
+    # the case that fires if someone trims ZONES. Honolulu and Kiritimati are the two
+    # that carry the property.
+    without_hon = {k: v for k, v in ZONE_OFFSETS.items() if k != "Pacific/Honolulu"}
+    without_kir = {k: v for k, v in ZONE_OFFSETS.items() if k != "Pacific/Kiritimati"}
+    want("dropping Honolulu opens a gap", sensitivity_gap(without_hon) != [], True)
+    want("dropping Kiritimati opens a gap", sensitivity_gap(without_kir) != [], True)
+
+    # Los Angeles is REDUNDANT for sensitivity: Honolulu covers 00:00-10:00 and
+    # Kiritimati 10:00-24:00 on their own, so dropping LA leaves the property intact.
+    # Asserted rather than assumed, because the pre-fix list claimed LA was one of the
+    # two windows the whole property rested on and it was not. It stays in ZONES for
+    # real-world coverage (a zone developers actually run in, and the only one that
+    # crosses a daylight-saving boundary), not because the arithmetic needs it.
+    without_la = {k: v for k, v in ZONE_OFFSETS.items() if k != "America/Los_Angeles"}
+    want("Los Angeles is redundant for sensitivity", sensitivity_gap(without_la), [])
+
+    # And the gate's own ZONES list must be exactly what the fixture describes, so
+    # editing ZONES without updating the arithmetic is caught rather than assumed.
+    want("ZONES and the offset fixture agree",
+         sorted(ZONES), sorted(ZONE_OFFSETS))
+    for z in ZONES:
+        if z not in ZONE_OFFSETS:
+            bad.append(f"zone {z!r} has no entry in ZONE_OFFSETS")
+
+    if bad:
+        print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
+        return 2
+    print("SELF-TEST OK (8 cases, no files touched, vitest never run)")
+    return 0
+
+
+# Dispatch ABOVE the module-level vitest run further down this file. Placing it there
+# rather than at the bottom is the whole reason --self-test is safe here: every other
+# checker dispatches from main(), and this file has no main(), because its four vitest
+# invocations execute on import.
+if "--self-test" in sys.argv:
+    sys.exit(self_test())
 
 from concurrent.futures import ThreadPoolExecutor
 
