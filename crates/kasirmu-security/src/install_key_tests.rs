@@ -383,3 +383,116 @@ fn rotation_debug_redacts_both_secrets() {
         "Debug printed the outgoing key: {rendered}"
     );
 }
+
+// -- S2c: resuming an interrupted rotation -----------------------------------
+
+/// A resume hands back the two keys the keychain ALREADY holds, and writes
+/// nothing.
+///
+/// This is the half that `begin_rotation_refuses_when_a_previous_key_is_already_parked`
+/// leaves open: refusing to restart is correct, but without a resume the operator
+/// is stuck with two keys on disk, an unfinished sweep, and no way to finish it —
+/// the only remaining operation being the retirement that must not happen yet.
+#[test]
+fn resume_adopts_the_two_keys_already_on_disk_without_writing() {
+    let keyring = DurableStubKeyring::new();
+    let incoming = hex::encode([0x77u8; 32]);
+    let outgoing = hex::encode([0x88u8; 32]);
+    // The exact state an interruption leaves: both entries populated.
+    keyring.seed(INSTALL_KEY_ENTRY, &incoming);
+    keyring.seed(INSTALL_KEY_PREV_ENTRY, &outgoing);
+
+    let resumed = resume_install_key_rotation(&keyring).expect("a parked key is resumable");
+
+    assert_eq!(
+        hex::encode(resumed.new_secret),
+        incoming,
+        "the incoming key is the one currently in INSTALL_KEY_ENTRY"
+    );
+    assert_eq!(
+        resumed.outgoing.map(hex::encode),
+        Some(outgoing.clone()),
+        "the outgoing key is the parked one"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_ENTRY).as_deref(),
+        Some(incoming.as_str()),
+        "a resume must not mint a third key"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY).as_deref(),
+        Some(outgoing.as_str()),
+        "and must not disturb the parked key the un-swept rows still need"
+    );
+}
+
+/// A resume with nothing parked is an ERROR, never a fresh rotation.
+///
+/// The failure this pins: a caller that meant to resume silently minting a new
+/// key instead, which would re-encrypt rows under a key the operator never saw
+/// while the parked-key guard reported everything as fine.
+#[test]
+fn resume_refuses_when_nothing_is_parked_and_never_generates() {
+    let keyring = DurableStubKeyring::new();
+    keyring.seed(INSTALL_KEY_ENTRY, &hex::encode([0x99u8; 32]));
+
+    let err = resume_install_key_rotation(&keyring)
+        .expect_err("there is no interrupted rotation to resume");
+    assert!(
+        err.to_string().contains(INSTALL_KEY_PREV_ENTRY),
+        "the refusal names the entry it looked for, got: {err}"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY),
+        None,
+        "a refused resume must not park anything"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_ENTRY).as_deref(),
+        Some(hex::encode([0x99u8; 32]).as_str()),
+        "and must not replace the current key"
+    );
+}
+
+/// A parked key with no promoted key is the interruption *between* park and
+/// promote. It is an error rather than a resume, because the parked key is still
+/// the install key and the caller must begin a fresh rotation instead.
+#[test]
+fn resume_refuses_when_the_parked_key_has_no_promoted_partner() {
+    let keyring = DurableStubKeyring::new();
+    keyring.seed(INSTALL_KEY_PREV_ENTRY, &hex::encode([0xaau8; 32]));
+
+    let err =
+        resume_install_key_rotation(&keyring).expect_err("there is no promoted key to sweep under");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(INSTALL_KEY_ENTRY),
+        "the refusal names the missing entry, got: {msg}"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY).as_deref(),
+        Some(hex::encode([0xaau8; 32]).as_str()),
+        "the parked key survives a refused resume"
+    );
+}
+
+/// A malformed parked key is refused by the resume too, and never regenerated.
+#[test]
+fn resume_refuses_a_malformed_parked_key() {
+    let keyring = DurableStubKeyring::new();
+    keyring.seed(INSTALL_KEY_ENTRY, &hex::encode([0xbbu8; 32]));
+    keyring.seed(INSTALL_KEY_PREV_ENTRY, "not-hex");
+
+    assert!(
+        matches!(
+            resume_install_key_rotation(&keyring),
+            Err(SecurityError::KeyUnavailable(_))
+        ),
+        "an unparseable parked key may still decrypt rows and must never be replaced"
+    );
+    assert_eq!(
+        keyring.peek(INSTALL_KEY_PREV_ENTRY).as_deref(),
+        Some("not-hex"),
+        "the malformed value is left exactly as it was"
+    );
+}

@@ -300,6 +300,51 @@ pub fn begin_install_key_rotation(
     })
 }
 
+/// Re-adopt a rotation that was **interrupted**, without minting another key.
+///
+/// [`begin_install_key_rotation`] refuses when [`INSTALL_KEY_PREV_ENTRY`] is
+/// already populated, and it is right to: silently restarting would overwrite the
+/// parked key while rows still under it have not been swept. But refusing is only
+/// half an answer — it leaves the operator with a keychain holding two keys, a
+/// sweep that has not finished, and no way to finish it, because the only
+/// remaining operation is the retirement that must not happen yet. This is the
+/// other half: it re-reads the two keys that are already on disk and hands back
+/// the same [`InstallKeyRotation`] shape, so a caller can resume a sweep.
+///
+/// The two keys it returns are the ones the keychain currently holds:
+/// [`INSTALL_KEY_ENTRY`] is the incoming key and the parked entry is the outgoing
+/// one. Nothing is written. `outgoing` is always `Some` here — a resume with
+/// nothing parked is not a resume, and is an error rather than a silent
+/// `begin_install_key_rotation`, so a caller cannot get a fresh key by accident.
+///
+/// # Errors
+///
+/// [`SecurityError::KeyUnavailable`] when nothing is parked (there is nothing to
+/// resume) or when either entry is present but malformed. A malformed key is
+/// **never** regenerated, for the same reason [`resolve_install_key`] refuses.
+pub fn resume_install_key_rotation(
+    keyring: &dyn Keyring,
+) -> Result<InstallKeyRotation, SecurityError> {
+    let Some(outgoing) = resolve_previous_install_key(keyring)? else {
+        return Err(SecurityError::KeyUnavailable(format!(
+            "no key is parked at {INSTALL_KEY_PREV_ENTRY}, so there is no interrupted \
+             rotation to resume; start one with begin_install_key_rotation"
+        )));
+    };
+    let stored = keyring.get_secret(INSTALL_KEY_ENTRY)?.ok_or_else(|| {
+        SecurityError::KeyUnavailable(format!(
+            "a key is parked at {INSTALL_KEY_PREV_ENTRY} but {INSTALL_KEY_ENTRY} is \
+             absent, so the rotation was interrupted before the new key was promoted. \
+             The parked key is still the install key and every row under it reads; \
+             begin a fresh rotation to promote one"
+        ))
+    })?;
+    Ok(InstallKeyRotation {
+        new_secret: decode_stored_key(INSTALL_KEY_ENTRY, &stored)?,
+        outgoing: Some(outgoing),
+    })
+}
+
 /// Retire the parked outgoing key, completing a rotation.
 ///
 /// **Call this only after every install-key-derived row has been verified to
