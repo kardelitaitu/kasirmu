@@ -660,7 +660,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <RestaurantReceiptsScreen onBack={() => setShowReceiptsSettings(false)} />
+          <RestaurantReceiptsScreen
+            onBack={() => setShowReceiptsSettings(false)}
+            tablesEnabled={isEnabled(FEATURES.TABLE_MANAGEMENT)}
+          />
         </div>
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
           <button

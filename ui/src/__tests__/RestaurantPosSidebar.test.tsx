@@ -11,6 +11,7 @@ import settingsFtl from '@/locales/settings.ftl?raw';
 import tablesFtl from '@/locales/tables.ftl?raw';
 import kdsFtl from '@/locales/kds.ftl?raw';
 import PosScreen from '@/features/sales/PosScreen';
+import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
 import type { Product } from '@/types/domain';
 
 const mockProducts = [
@@ -481,3 +482,75 @@ describe('RestaurantPosSidebar — row alignment', () => {
     ).toBe(true);
   });
 });
+
+describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
+  it('renders 4 font size options with medium active by default, and switches classes on click', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    const verySmallBtn = screen.getByRole('button', { name: 'Very Small' });
+    const smallBtn = screen.getByRole('button', { name: 'Small' });
+    const mediumBtn = screen.getByRole('button', { name: 'Medium' });
+    const largeBtn = screen.getByRole('button', { name: 'Large' });
+
+    expect(verySmallBtn).toBeInTheDocument();
+    expect(smallBtn).toBeInTheDocument();
+    expect(mediumBtn).toBeInTheDocument();
+    expect(largeBtn).toBeInTheDocument();
+
+    // Default is medium
+    expect(mediumBtn).toHaveClass('resto-segmented-btn--active');
+    const paper = document.querySelector('.resto-receipt-paper');
+    expect(paper).toHaveClass('resto-receipt-paper--font-medium');
+
+    // Switch to Very Small
+    await user.click(verySmallBtn);
+    expect(verySmallBtn).toHaveClass('resto-segmented-btn--active');
+    expect(paper).toHaveClass('resto-receipt-paper--font-very-small');
+
+    // Switch to Large
+    await user.click(largeBtn);
+    expect(largeBtn).toHaveClass('resto-segmented-btn--active');
+    expect(paper).toHaveClass('resto-receipt-paper--font-large');
+  });
+
+  it('hides the Show Table Number toggle when tablesEnabled is false', async () => {
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={false} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    expect(screen.queryByLabelText(/Show Table Number/i)).toBeNull();
+    expect(screen.queryByText('TABLE 4')).toBeNull();
+  });
+
+  it('shows the Show Table Number toggle and table pill when tablesEnabled is true', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    const tableToggle = screen.getByLabelText(/Show Table Number/i);
+    expect(tableToggle).toBeInTheDocument();
+    expect(tableToggle).toHaveAttribute('aria-checked', 'false');
+
+    // Click to enable table number
+    await user.click(tableToggle);
+    expect(tableToggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('TABLE 4')).toBeInTheDocument();
+  });
+});
+

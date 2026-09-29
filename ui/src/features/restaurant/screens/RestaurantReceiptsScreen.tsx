@@ -8,10 +8,30 @@ import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
+import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesScoped } from '@/api/settings';
 import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import './RestaurantSettingsScreens.css';
+
+export type ReceiptFontSize = 'very_small' | 'small' | 'medium' | 'large';
+
+/**
+ * The modifier each font-size preset carries on `.resto-receipt-paper`.
+ *
+ * Spelled out rather than derived with `.replace('_', '-')` at the call site:
+ * the underscore-to-hyphen rule only applies to one of the four values, and the
+ * `screenExtraction` class walker reads template literals statically — an inline
+ * `.replace('_', '-')` inside the className produced a stray `_` token that no
+ * stylesheet defines, so the screen graded as using an undefined class. A literal
+ * map says the same thing and is readable at the markup.
+ */
+const FONT_SIZE_CLASS: Record<ReceiptFontSize, string> = {
+  very_small: 'resto-receipt-paper--font-very-small',
+  small: 'resto-receipt-paper--font-small',
+  medium: 'resto-receipt-paper--font-medium',
+  large: 'resto-receipt-paper--font-large',
+};
 
 const FALLBACK_SETTINGS = {
   receipt: {
@@ -37,11 +57,13 @@ export interface RestaurantReceiptsScreenProps {
   terminalId?: string;
   onSaved?: () => void;
   onBack?: () => void;
+  tablesEnabled?: boolean;
 }
 
 export default function RestaurantReceiptsScreen({
   terminalId: propTerminalId,
   onSaved,
+  tablesEnabled: propTablesEnabled,
 }: RestaurantReceiptsScreenProps) {
   const settingsCtx = useOptionalSettings();
   const settings = settingsCtx?.settings ?? FALLBACK_SETTINGS;
@@ -49,16 +71,19 @@ export default function RestaurantReceiptsScreen({
   const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
   const { caps } = useSubscription();
   const { session } = useAuth();
+  const { isEnabled } = useFeatures();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const hw = useTerminalHardware(effectiveTerminalId, settings.store.currency);
 
+  const tablesEnabled = propTablesEnabled !== undefined ? propTablesEnabled : isEnabled(FEATURES.TABLE_MANAGEMENT);
   const isFreeTier = !caps || caps.tier === 'free';
   const staffDisplayName = session?.display_name || 'Budi S.';
 
   // ── Receipt format draft state ──────────────────────────────
   const [paperWidth, setPaperWidth] = useState<'standard' | 'narrow'>('standard');
+  const [fontSize, setFontSize] = useState<ReceiptFontSize>('medium');
   const [showCurrency, setShowCurrency] = useState(false);
   const [showTableNumber, setShowTableNumber] = useState(false);
   const [taxRoundingMode, setTaxRoundingMode] = useState<'half_up' | 'truncate'>('half_up');
@@ -117,6 +142,10 @@ export default function RestaurantReceiptsScreen({
 
     // Load extra toggles from local preferences
     try {
+      const localFontSize = localStorage.getItem('resto_rcpt_font_size');
+      if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
+        setFontSize(localFontSize as ReceiptFontSize);
+      }
       const localCode = localStorage.getItem('resto_rcpt_show_code');
       if (localCode !== null) setShowReceiptCode(localCode === 'true');
       const localDt = localStorage.getItem('resto_rcpt_show_dt');
@@ -140,6 +169,9 @@ export default function RestaurantReceiptsScreen({
       getUserPreferencesScoped(sessionToken)
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
+          if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
+            setFontSize(p['resto_rcpt_font_size'] as ReceiptFontSize);
+          }
           if (p['resto_rcpt_show_code'] !== undefined) {
             setShowReceiptCode(p['resto_rcpt_show_code'] === 'true');
           }
@@ -196,6 +228,7 @@ export default function RestaurantReceiptsScreen({
     if (!loaded) {
       originalsRef.current = {
         paperWidth: settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard',
+        fontSize,
         showCurrency: settings.receipt.showCurrency,
         showTax: settings.receipt.showTax,
         showTableNumber: settings.receipt.showTableNumber,
@@ -219,12 +252,13 @@ export default function RestaurantReceiptsScreen({
       };
       setLoaded(true);
     }
-  }, [settings.receipt, settings.store.logo, hw.profile, loaded]);
+  }, [settings.receipt, settings.store.logo, hw.profile, loaded, fontSize]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
     const current: Record<string, unknown> = {
       paperWidth,
+      fontSize,
       showCurrency,
       showTax,
       showTableNumber,
@@ -250,6 +284,7 @@ export default function RestaurantReceiptsScreen({
   }, [
     dirtyVersion,
     paperWidth,
+    fontSize,
     showCurrency,
     showTax,
     showTableNumber,
@@ -352,7 +387,7 @@ export default function RestaurantReceiptsScreen({
             change: null,
           },
         ],
-        ...(showTableNumber ? { tableNumber: 'Table 1' } : {}),
+        ...(tablesEnabled && showTableNumber ? { tableNumber: 'Table 1' } : {}),
       });
       addToast({
         message: l10n.getString('restaurant-test-print-success'),
@@ -366,7 +401,7 @@ export default function RestaurantReceiptsScreen({
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, showTableNumber, showFooter, footer, l10n, addToast]);
+  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, tablesEnabled, showTableNumber, showFooter, footer, l10n, addToast]);
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -382,7 +417,7 @@ export default function RestaurantReceiptsScreen({
           showTax,
           footer: showFooter ? footer : '',
           paperWidth,
-          showTableNumber,
+          showTableNumber: tablesEnabled ? showTableNumber : false,
           marginTop,
           marginBottom,
           marginLeft,
@@ -400,6 +435,7 @@ export default function RestaurantReceiptsScreen({
       if (sessionToken) {
         tasks.push(
           setUserPreferencesScoped(sessionToken, [
+            { key: 'resto_rcpt_font_size', value: fontSize },
             { key: 'resto_rcpt_show_code', value: String(showReceiptCode) },
             { key: 'resto_rcpt_show_dt', value: String(showDateTime) },
             { key: 'resto_rcpt_show_staff', value: String(showStaffName) },
@@ -412,6 +448,7 @@ export default function RestaurantReceiptsScreen({
 
       // Cache to localStorage for instantaneous client load
       try {
+        localStorage.setItem('resto_rcpt_font_size', fontSize);
         localStorage.setItem('resto_rcpt_show_code', String(showReceiptCode));
         localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
         localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
@@ -426,6 +463,7 @@ export default function RestaurantReceiptsScreen({
 
       originalsRef.current = {
         paperWidth,
+        fontSize,
         showCurrency,
         showTax,
         showTableNumber,
@@ -486,6 +524,8 @@ export default function RestaurantReceiptsScreen({
     showFooter,
     footer,
     paperWidth,
+    fontSize,
+    tablesEnabled,
     showTableNumber,
     showReceiptCode,
     showDateTime,
@@ -511,9 +551,22 @@ export default function RestaurantReceiptsScreen({
   // ── Accurate Calculations for Thermal Preview ───────────────
   const rollWidthMm = paperWidth === 'narrow' ? 58 : 80;
   const printableAreaMm = Math.max(15, rollWidthMm - (marginLeft + marginRight));
-  const approxCols = paperWidth === 'narrow'
-    ? Math.max(16, Math.round((printableAreaMm / 52) * 32))
-    : Math.max(20, Math.round((printableAreaMm / 74) * 44));
+  const approxCols = useMemo(() => {
+    const baseCols = paperWidth === 'narrow'
+      ? Math.max(16, Math.round((printableAreaMm / 52) * 32))
+      : Math.max(20, Math.round((printableAreaMm / 74) * 44));
+    switch (fontSize) {
+      case 'very_small':
+        return Math.round(baseCols * 1.25);
+      case 'small':
+        return Math.round(baseCols * 1.1);
+      case 'large':
+        return Math.round(baseCols * 0.85);
+      case 'medium':
+      default:
+        return baseCols;
+    }
+  }, [paperWidth, printableAreaMm, fontSize]);
 
   const formatPrice = (amount: number) => {
     const formattedNum = amount.toLocaleString('id-ID');
@@ -548,7 +601,7 @@ export default function RestaurantReceiptsScreen({
           className="restaurant-preview-column"
           aria-label={l10n.getString('restaurant-preview-title') || 'Print Preview'}
         >
-          <div className="restaurant-preview-card">
+          <div className="restaurant-preview-card noise-dither">
             <div className="restaurant-preview-header-bar">
               <span className="restaurant-preview-title">
                 <Localized id="restaurant-preview-title">Print Preview</Localized>
@@ -561,7 +614,7 @@ export default function RestaurantReceiptsScreen({
             {/* Thermal Paper Container */}
             <div className="resto-receipt-paper-wrapper">
               <div
-                className={`resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'}`}
+                className={`resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'} ${FONT_SIZE_CLASS[fontSize]}`}
                 style={{
                   paddingTop: `${marginTop}mm`,
                   paddingBottom: `${marginBottom}mm`,
@@ -595,10 +648,10 @@ export default function RestaurantReceiptsScreen({
                       </div>
                     )}
                     {/* Staff Name & Table Number */}
-                    {(showStaffName || showTableNumber) && (
+                    {(showStaffName || (tablesEnabled && showTableNumber)) && (
                       <div className="resto-receipt-meta" style={{ marginTop: '2px' }}>
                         {showStaffName ? <span>Staff: {staffDisplayName}</span> : <span />}
-                        {showTableNumber ? <span className="resto-receipt-table-pill">TABLE 4</span> : <span />}
+                        {(tablesEnabled && showTableNumber) ? <span className="resto-receipt-table-pill">TABLE 4</span> : <span />}
                       </div>
                     )}
                   </div>
@@ -796,6 +849,47 @@ export default function RestaurantReceiptsScreen({
               </div>
             </div>
 
+            {/* Font Size Segmented Control (Very Small, Small, Medium, Large) */}
+            <div style={{ marginBottom: 'var(--space-3)' }}>
+              <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
+                <Localized id="restaurant-rcpt-font-size-heading">Font Size</Localized>
+              </div>
+              <div
+                className="resto-segmented-group resto-segmented-group--4"
+                role="group"
+                aria-label={l10n.getString('restaurant-rcpt-font-size-heading') || 'Font Size'}
+              >
+                <button
+                  type="button"
+                  className={`resto-segmented-btn ${fontSize === 'very_small' ? 'resto-segmented-btn--active' : ''}`}
+                  onClick={() => setFontSize('very_small')}
+                >
+                  <Localized id="restaurant-rcpt-font-size-very-small">Very Small</Localized>
+                </button>
+                <button
+                  type="button"
+                  className={`resto-segmented-btn ${fontSize === 'small' ? 'resto-segmented-btn--active' : ''}`}
+                  onClick={() => setFontSize('small')}
+                >
+                  <Localized id="restaurant-rcpt-font-size-small">Small</Localized>
+                </button>
+                <button
+                  type="button"
+                  className={`resto-segmented-btn ${fontSize === 'medium' ? 'resto-segmented-btn--active' : ''}`}
+                  onClick={() => setFontSize('medium')}
+                >
+                  <Localized id="restaurant-rcpt-font-size-medium">Medium</Localized>
+                </button>
+                <button
+                  type="button"
+                  className={`resto-segmented-btn ${fontSize === 'large' ? 'resto-segmented-btn--active' : ''}`}
+                  onClick={() => setFontSize('large')}
+                >
+                  <Localized id="restaurant-rcpt-font-size-large">Large</Localized>
+                </button>
+              </div>
+            </div>
+
             {/* Paper Margins (0-30mm top/bottom, 0-15mm left/right) */}
             <div style={{ marginBottom: 'var(--space-3)' }}>
               <div className="resto-toggle-title">
@@ -912,7 +1006,7 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowReceiptCode(!showReceiptCode)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 
@@ -936,7 +1030,7 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowDateTime(!showDateTime)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 
@@ -960,33 +1054,35 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowStaffName(!showStaffName)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 
-            {/* Toggle: Table Number */}
-            <div className="resto-toggle-row">
-              <div className="resto-toggle-info">
-                <span className="resto-toggle-title">
-                  <Localized id="workspace-pos-show-table">Show Table Number</Localized>
-                </span>
-                <span className="resto-toggle-desc">
-                  <Localized id="restaurant-show-table-desc">
-                    Print assigned table on receipt header
-                  </Localized>
-                </span>
+            {/* Toggle: Table Number (only if table management is enabled in resto pos) */}
+            {tablesEnabled && (
+              <div className="resto-toggle-row">
+                <div className="resto-toggle-info">
+                  <span className="resto-toggle-title">
+                    <Localized id="workspace-pos-show-table">Show Table Number</Localized>
+                  </span>
+                  <span className="resto-toggle-desc">
+                    <Localized id="restaurant-show-table-desc">
+                      Print assigned table on receipt header
+                    </Localized>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showTableNumber}
+                  aria-label={l10n.getString('workspace-pos-show-table') || 'Show Table Number'}
+                  className="resto-switch-btn"
+                  onClick={() => setShowTableNumber(!showTableNumber)}
+                >
+                  <span className="resto-switch-handle" aria-hidden="true" />
+                </button>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={showTableNumber}
-                aria-label={l10n.getString('workspace-pos-show-table') || 'Show Table Number'}
-                className="resto-switch-btn"
-                onClick={() => setShowTableNumber(!showTableNumber)}
-              >
-                <span className="resto-switch-handle" />
-              </button>
-            </div>
+            )}
 
             {/* Toggle: Currency Symbol */}
             <div className="resto-toggle-row">
@@ -1008,7 +1104,7 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowCurrency(!showCurrency)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 
@@ -1032,7 +1128,7 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowTax(!showTax)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 
@@ -1096,7 +1192,7 @@ export default function RestaurantReceiptsScreen({
                 className="resto-switch-btn"
                 onClick={() => setShowFooter(!showFooter)}
               >
-                <span className="resto-switch-handle" />
+                <span className="resto-switch-handle" aria-hidden="true" />
               </button>
             </div>
 

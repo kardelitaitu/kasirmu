@@ -151,7 +151,7 @@
   background: var(--receipt-paper);
   color: var(--receipt-paper-ink);
   font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  font-size: var(--rcpt-size-base, var(--text-sm));
   /* Was the literal 1.35. The --leading-* scale has no 1.35 step (condensed
      1.2 / tight 1.25 / snug 1.4 / normal 1.5), and the line-height freeze test
      asks a human to pick a step rather than invent one: snug (1.4) is the
@@ -161,7 +161,7 @@
   box-shadow: var(--receipt-paper-shadow);
   border-radius: 2px;
   box-sizing: border-box;
-  transition: width 0.2s ease, padding 0.15s ease;
+  transition: width 0.2s ease, padding 0.15s ease, font-size 0.15s ease;
   user-select: none;
   font-variant-numeric: tabular-nums;
   position: relative;
@@ -177,7 +177,65 @@
   width: 58mm;
   max-width: 100%;
   min-width: 220px;
-  font-size: 10px;
+  font-size: var(--rcpt-size-base, 10px);
+}
+
+/* Font Size Variations (80mm standard paper) */
+.resto-receipt-paper--font-very-small {
+  --rcpt-size-base: 10px;
+  --rcpt-size-title: 12px;
+  --rcpt-size-meta: 8.5px;
+  --rcpt-size-total: 12px;
+}
+
+.resto-receipt-paper--font-small {
+  --rcpt-size-base: 11px;
+  --rcpt-size-title: 13px;
+  --rcpt-size-meta: 9px;
+  --rcpt-size-total: 13px;
+}
+
+.resto-receipt-paper--font-medium {
+  --rcpt-size-base: var(--text-sm);
+  --rcpt-size-title: var(--text-base);
+  --rcpt-size-meta: 10px;
+  --rcpt-size-total: var(--text-base);
+}
+
+.resto-receipt-paper--font-large {
+  --rcpt-size-base: 13.5px;
+  --rcpt-size-title: 15.5px;
+  --rcpt-size-meta: 11px;
+  --rcpt-size-total: 15.5px;
+}
+
+/* Font Size Variations (58mm compact paper) */
+.resto-receipt-paper--58mm.resto-receipt-paper--font-very-small {
+  --rcpt-size-base: 8.5px;
+  --rcpt-size-title: 10.5px;
+  --rcpt-size-meta: 7.5px;
+  --rcpt-size-total: 10.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-small {
+  --rcpt-size-base: 9.5px;
+  --rcpt-size-title: 11.5px;
+  --rcpt-size-meta: 8px;
+  --rcpt-size-total: 11.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-medium {
+  --rcpt-size-base: 10px;
+  --rcpt-size-title: 12.5px;
+  --rcpt-size-meta: 9px;
+  --rcpt-size-total: 12.5px;
+}
+
+.resto-receipt-paper--58mm.resto-receipt-paper--font-large {
+  --rcpt-size-base: 11.5px;
+  --rcpt-size-title: 13.5px;
+  --rcpt-size-meta: 9.5px;
+  --rcpt-size-total: 13.5px;
 }
 
 /* Printable content boundary guide (subtle dashed border on preview) */
@@ -191,7 +249,7 @@
 }
 
 .resto-receipt-store-title {
-  font-size: var(--text-base);
+  font-size: var(--rcpt-size-title, var(--text-base));
   font-weight: bold;
   letter-spacing: 0.5px;
   margin-bottom: 2px;
@@ -200,7 +258,7 @@
 .resto-receipt-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: var(--rcpt-size-meta, 10px);
   color: var(--receipt-paper-ink-soft);
   margin-top: 4px;
 }
@@ -212,7 +270,7 @@
   color: var(--receipt-paper-pill-ink);
   border-radius: 3px;
   font-weight: bold;
-  font-size: 10px;
+  font-size: var(--rcpt-size-meta, 10px);
   margin-top: 4px;
 }
 
@@ -253,7 +311,7 @@
 }
 
 .resto-receipt-grand-total {
-  font-size: var(--text-base);
+  font-size: var(--rcpt-size-total, var(--text-base));
   font-weight: bold;
   margin: 4px 0;
 }
@@ -261,7 +319,7 @@
 .resto-receipt-footer-text {
   text-align: center;
   font-style: italic;
-  font-size: 10px;
+  font-size: var(--rcpt-size-meta, 10px);
   color: var(--receipt-paper-rule);
   margin-top: 6px;
   word-break: break-word;
@@ -363,6 +421,11 @@
   color: var(--color-text-on-color);
   font-weight: 600;
   box-shadow: var(--shadow-sm);
+}
+
+.resto-segmented-group--4 .resto-segmented-btn {
+  padding: var(--space-2) var(--space-1);
+  font-size: var(--text-xs);
 }
 
 /* 2x2 Paper Margins Grid */
@@ -637,12 +700,12 @@
 .resto-receipt-watermark {
   margin-top: 8px;
   padding-top: 4px;
-  border-top: 1px dotted #9ca3af;
+  border-top: 1px dotted var(--receipt-paper-rule);
   text-align: center;
-  font-size: 10px;
+  font-size: var(--rcpt-size-meta, 10px);
   font-weight: 700;
   letter-spacing: 1px;
-  color: #374151;
+  color: var(--receipt-paper-ink-soft);
 }
 
 .resto-logo-section {
@@ -710,13 +773,13 @@
 }
 
 .resto-tier-notice--free {
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  color: var(--color-warning, #f59e0b);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning);
 }
 
 .resto-tier-notice--paid {
-  background: rgba(16, 185, 129, 0.1);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  color: var(--color-success, #10b981);
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
 }
