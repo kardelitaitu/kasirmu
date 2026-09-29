@@ -12,27 +12,18 @@ import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesScoped } from '@/api/settings';
 import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '@/features/settings/SettingsSelect';
+import {
+  clamp,
+  rollWidthMm as paperRollWidth,
+  printableAreaMm as areaMm,
+  approxCols as colsFor,
+  formatPrice as _formatPrice,
+  fontSizeClass,
+  computeReceiptPreview,
+  type ReceiptFontSize,
+  type ReceiptLogoPosition,
+} from './receiptLogic';
 import './RestaurantSettingsScreens.css';
-
-export type ReceiptFontSize = 'very_small' | 'small' | 'medium' | 'large';
-export type ReceiptLogoPosition = 'top' | 'left' | 'right';
-
-/**
- * The modifier each font-size preset carries on `.resto-receipt-paper`.
- *
- * Spelled out rather than derived with `.replace('_', '-')` at the call site:
- * the underscore-to-hyphen rule only applies to one of the four values, and the
- * `screenExtraction` class walker reads template literals statically — an inline
- * `.replace('_', '-')` inside the className produced a stray `_` token that no
- * stylesheet defines, so the screen graded as using an undefined class. A literal
- * map says the same thing and is readable at the markup.
- */
-const FONT_SIZE_CLASS: Record<ReceiptFontSize, string> = {
-  very_small: 'resto-receipt-paper--font-very-small',
-  small: 'resto-receipt-paper--font-small',
-  medium: 'resto-receipt-paper--font-medium',
-  large: 'resto-receipt-paper--font-large',
-};
 
 const FALLBACK_SETTINGS = {
   receipt: {
@@ -50,9 +41,6 @@ const FALLBACK_SETTINGS = {
   },
   store: { name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' },
 };
-
-const clamp = (val: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, isNaN(val) ? min : val));
 
 export interface RestaurantReceiptsScreenProps {
   terminalId?: string;
@@ -624,106 +612,108 @@ export default function RestaurantReceiptsScreen({
   ]);
 
   // ── Accurate Calculations for Thermal Preview ───────────────
-  const rollWidthMm = paperWidth === 'narrow' ? 58 : 80;
-  const printableAreaMm = Math.max(15, rollWidthMm - (marginLeft + marginRight));
-  const approxCols = useMemo(() => {
-    const baseCols = paperWidth === 'narrow'
-      ? Math.max(16, Math.round((printableAreaMm / 52) * 32))
-      : Math.max(20, Math.round((printableAreaMm / 74) * 44));
-    switch (fontSize) {
-      case 'very_small':
-        return Math.round(baseCols * 1.25);
-      case 'small':
-        return Math.round(baseCols * 1.1);
-      case 'large':
-        return Math.round(baseCols * 0.85);
-      case 'medium':
-      default:
-        return baseCols;
-    }
-  }, [paperWidth, printableAreaMm, fontSize]);
+  // These values are computed by the pure `receiptLogic` module (unit-tested);
+  // the JSX below reads the same names as before the extraction.
+  const rollWidthMm = paperRollWidth(paperWidth);
+  const printableAreaMm = areaMm(rollWidthMm, marginLeft, marginRight);
+  const approxCols = useMemo(
+    () => colsFor(paperWidth, printableAreaMm, fontSize),
+    [paperWidth, printableAreaMm, fontSize],
+  );
 
-  const formatPrice = (amount: number) => {
-    const formattedNum = amount.toLocaleString('id-ID');
-    if (!showCurrency) return formattedNum;
-    const cur = settings.store.currency || 'IDR';
-    return `${cur === 'IDR' ? 'Rp ' : `${cur} `}${formattedNum}`;
-  };
+  const formatPrice = (amount: number) => _formatPrice(amount, showCurrency, settings.store.currency);
 
   // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
   // When showTax is true, line items show net price = 100/(100 + taxRatePercent) of gross,
   // rounded for display (e.g. 16.000 * 100 / 110 = 14545.4545... -> shown as 14.545),
-  // while exact fractional parts are preserved in exactSubtotal and rawTax.
-  const taxMultiplier = showTax ? 100 / (100 + taxRatePercent) : 1;
-  const sampleItem1Exact = 35000 * taxMultiplier;
-  const sampleItem2Exact = 16000 * taxMultiplier;
-  const sampleItem3Exact = 42000 * taxMultiplier;
-
-  const sampleItem1Price = Math.round(sampleItem1Exact);
-  const sampleItem2Price = Math.round(sampleItem2Exact);
-  const sampleItem3Price = Math.round(sampleItem3Exact);
-
-  const exactSubtotal = sampleItem1Exact + sampleItem2Exact + sampleItem3Exact;
-  const sampleSubtotal = showTax ? Math.round(exactSubtotal) : 93000;
-  const rawTax = showTax ? exactSubtotal * (taxRatePercent / 100) : 0;
-  const sampleTax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
-  const sampleTotal = showTax ? sampleSubtotal + sampleTax : sampleSubtotal;
+  // while exact fractional parts are preserved in the subtotal and raw tax inside
+  // computeReceiptPreview.
+  const preview = computeReceiptPreview({ taxRatePercent, showTax, taxRoundingMode });
+  const [sampleItem1Price, sampleItem2Price, sampleItem3Price] = preview.itemPrices;
+  const sampleSubtotal = preview.subtotal;
+  const sampleTax = preview.tax;
+  const sampleTotal = preview.total;
   const sampleCash = 100000;
-  const sampleChange = Math.max(0, sampleCash - sampleTotal);
+  const sampleChange = preview.change;
 
   return (
     <div className="restaurant-settings-screen">
       <div className="restaurant-settings-header" data-testid="restaurant-receipts-header">
-        {onBack && (
-          <button
-            type="button"
-            className="restaurant-settings-back-btn"
-            onClick={onBack}
-            aria-label={l10n.getString('back') || 'Back'}
-            data-testid="restaurant-receipts-back-btn"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              width="18"
-              height="18"
+        <div className="restaurant-settings-header-lead">
+          {onBack && (
+            <button
+              type="button"
+              className="restaurant-settings-back-btn"
+              onClick={onBack}
+              aria-label={l10n.getString('back') || 'Back'}
+              data-testid="restaurant-receipts-back-btn"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="18"
+                height="18"
+                aria-hidden="true"
+              >
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
+          <div className="restaurant-settings-header-title-group">
+            <span
+              className="restaurant-settings-header-icon"
+              data-testid="restaurant-receipts-icon"
               aria-hidden="true"
             >
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-        )}
-        <div className="restaurant-settings-header-title-group">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                width="20"
+                height="20"
+                aria-hidden="true"
+              >
+                <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+                <path d="M8 7h8M8 11h8M8 15h5" />
+              </svg>
+            </span>
+            <Localized id="restaurant-receipts-title">
+              <h1 className="restaurant-settings-title" data-testid="restaurant-receipts-title">
+                Receipt &amp; Printer Settings
+              </h1>
+            </Localized>
+          </div>
+        </div>
+
+        <div className="restaurant-settings-header-actions">
           <span
-            className="restaurant-settings-header-icon"
-            data-testid="restaurant-receipts-icon"
-            aria-hidden="true"
+            className="restaurant-settings-header-dirty"
+            style={{ color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              width="20"
-              height="20"
-              aria-hidden="true"
-            >
-              <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
-              <path d="M8 7h8M8 11h8M8 15h5" />
-            </svg>
+            {dirty ? (
+              <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
+            ) : (
+              <Localized id="restaurant-all-saved">All changes saved</Localized>
+            )}
           </span>
-          <Localized id="restaurant-receipts-title">
-            <h1 className="restaurant-settings-title" data-testid="restaurant-receipts-title">
-              Receipt &amp; Printer Settings
-            </h1>
-          </Localized>
+          <Button
+            variant="primary"
+            size="md"
+            loading={saving}
+            disabled={!dirty || saving}
+            onClick={handleSave}
+            data-testid="restaurant-receipts-save-btn"
+          >
+            <Localized id="save">Save Changes</Localized>
+          </Button>
         </div>
       </div>
 
@@ -747,7 +737,7 @@ export default function RestaurantReceiptsScreen({
             {/* Thermal Paper Container */}
             <div className="resto-receipt-paper-wrapper">
               <div
-                className={`resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'} ${FONT_SIZE_CLASS[fontSize]}`}
+                className={`resto-receipt-paper resto-receipt-paper--${paperWidth === 'narrow' ? '58mm' : '80mm'} ${fontSizeClass(fontSize)}`}
                 style={{
                   paddingTop: `${marginTop}mm`,
                   paddingBottom: `${marginBottom}mm`,
@@ -951,16 +941,37 @@ export default function RestaurantReceiptsScreen({
               </span>
             </div>
 
-            {/* Test Print Button under preview */}
-            <Button
-              variant="secondary"
-              size="md"
-              loading={testingPrint}
+            {/* Test Print Button under preview — fixed center alignment so loading animation does not move text */}
+            <button
+              type="button"
+              className="resto-test-print-btn"
+              disabled={testingPrint}
+              aria-busy={testingPrint || undefined}
               onClick={handleTestPrint}
-              style={{ width: '100%' }}
+              data-testid="restaurant-receipts-test-print-btn"
             >
-              <Localized id="restaurant-test-print">Test Print Receipt</Localized>
-            </Button>
+              {testingPrint && (
+                <span className="resto-test-print-spinner" aria-hidden="true" />
+              )}
+              <span className="resto-test-print-label">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  width="16"
+                  height="16"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 6 2 18 2 18 9" />
+                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                  <rect x="6" y="14" width="12" height="8" />
+                </svg>
+                <Localized id="restaurant-test-print">Test Print Receipt</Localized>
+              </span>
+            </button>
           </div>
         </aside>
 
@@ -998,6 +1009,7 @@ export default function RestaurantReceiptsScreen({
                     <Button
                       variant="secondary"
                       size="sm"
+                      className="resto-logo-upload-btn"
                       onClick={() => fileInputRef.current?.click()}
                     >
                       <Localized id="restaurant-logo-upload-btn">Choose Logo</Localized>
@@ -1006,6 +1018,7 @@ export default function RestaurantReceiptsScreen({
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="resto-logo-remove-btn"
                         onClick={() => setBusinessLogo('')}
                       >
                         <Localized id="restaurant-logo-remove-btn">Remove Logo</Localized>
@@ -1662,26 +1675,6 @@ export default function RestaurantReceiptsScreen({
               )}
             </div>
           </Card>
-
-          {/* Action Bar */}
-          <div className="restaurant-settings-actions">
-            <span style={{ fontSize: 'var(--text-xs)', color: dirty ? 'var(--color-warning)' : 'var(--color-fg-muted)' }}>
-              {dirty ? (
-                <Localized id="restaurant-unsaved-changes">Unsaved changes</Localized>
-              ) : (
-                <Localized id="restaurant-all-saved">All changes saved</Localized>
-              )}
-            </span>
-            <Button
-              variant="primary"
-              size="lg"
-              loading={saving}
-              disabled={!dirty || saving}
-              onClick={handleSave}
-            >
-              <Localized id="save">Save Changes</Localized>
-            </Button>
-          </div>
         </main>
       </div>
       </div>
