@@ -376,10 +376,15 @@ derivation still decrypts after the key exists."*
       install arm before landing. The old tripwire pin is **discharged rather than tripped**
       (its rationale updated, assertion unchanged) because §8.4's hard-error reading was
       refused; see §10.
-- [ ] A row written under the legacy derivation still decrypts after the key exists (H4).
-      **Satisfied structurally by S2b-1** (the install arm is first for writes, last for
-      reads; `candidate_keys` keeps the legacy tail) and pinned by
-      `crates/kasirmu-crypto/tests/at_rest_key_lifecycle.rs`; not re-run this pass.
+- [x] **A row written under the legacy derivation still decrypts after the key exists (H4).**
+      **RE-RUN 2026-09-30** — this was the one clause the previous pass left as "satisfied
+      structurally, not re-run". Both halves now pass by execution, not by argument:
+      `crates/kasirmu-crypto/tests/at_rest_key_lifecycle.rs::the_installed_key_governs_writes_and_the_previous_rows_still_read`
+      (a separate process, driving the REAL process-global through the public API: it writes a
+      row before the install, installs the key, and asserts the pre-upgrade row still reads) and
+      the unit case `install_key_rows_read_and_legacy_rows_survive_the_upgrade`. The structural
+      reason it holds is unchanged: the install arm is first for writes and last for reads, and
+      `candidate_keys` keeps the legacy tail.
 
 ## 10. The §7 release-build clause contradicts §5's H2 — do not build it as written
 
