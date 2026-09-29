@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · REPAIRED — a live design document whose central premise had been overtaken by the code it describes, and the fix is the highest-value single edit in this campaign. · THE STALE CLAIM, AND IT IS THE FRAMING ONE. The document measured its own subject and concluded that the entire fallback-and-resilience layer was TEST-ONLY: no dispatch path wired it, no production caller existed, and the document built every subsequent decision on that basis — including the argument that an unwired decorator is the worst of three possible states, worse than deleting it. Re-running the document's OWN grep, exactly as it instructs the reader to do, now returns production hits outside the payment crate: the cloud server's payment API constructs the resilient processor inside a real processor allocation, with the import, the shared-breaker rationale, and the construction each at a line this pass recorded. The decorator therefore has a genuine production caller. · THE DOCUMENT WAS NOT AT FAULT, AND THE STAMP SAYS SO, because the distinction is the valuable part. The document carries an explicit instruction to re-run its measurement before quoting either figure, and notes that the hit count moved because its TESTS grew rather than because a caller appeared. That is a design record modelling the discipline this campaign has been asking of everything else in the tree, and it is precisely why the drift was catchable by anyone who followed its own advice. The correction is a dated block above the original sentence, not an edit to it; the original analysis is the evidence of what was true when written. · WHAT THE CORRECTION DELIBERATELY DOES NOT TOUCH. The registry-versus-dispatch-path finding, the three-states argument, the guard methodology and the R9 work all stand — the correction says so in terms, because a reader who sees a premise revised might otherwise assume the whole document is now in doubt, and it is not. Only the framing claim and the two table rows above it are out of date. · WORTH RECORDING ONCE: the direction of the drift. This document went stale in the OPTIMISTIC direction — it said less was true than actually is — which is the exact failure it was written to warn about, and the same direction as the archived CI dashboard and the regression tracker. Documents that understate what has shipped are rarer and more useful to catch than the reverse. · NOT re-measured: the resilience layer's behaviour, the fallback semantics, or the guard suite's coverage. Running them is the original work. What is established is that the wiring this document says is absent now exists in production. · Prior marker did not exist; this is the first. -->
 # Payment resilience — the design the code was written before
 
 **Status:** design doc, first draft. **Not** an ADR — nothing here is decided by a lane.
@@ -30,6 +31,21 @@ grep -rn "execute_with_fallback\|register_method_fallback\|ResilientProcessor" \
 #   added under R9). The count moved because the TESTS grew, not because a
 #   production caller appeared — re-run it before quoting either figure.
 ```
+
+> ⚠️ **CORRECTION (2026-09-29, re-audited) — the "test-only" premise is now
+> FALSE.** This document instructs the reader to re-run its own grep before
+> quoting either figures, which is exactly what was done. That grep now returns
+> production hits outside the payment crate: `apps/cloud-server/src/payment_api.rs:133`
+> constructs `Arc::new(ResilientProcessor::new(Arc::new(qris))) as
+> Arc<dyn PaymentProcessor>`, with the import at `:48` and the shared-breaker
+> rationale documented at `:105`. The resilience decorator therefore has a real
+> production caller and is no longer unwired. **The rest of the analysis is not
+> disturbed** — the registry-versus-dispatch-path finding, the three-states
+> argument and the guard methodology all still stand, and the measurement
+> discipline this document models is precisely why the drift was catchable.
+> Only the framing claim and the two table rows above it (`wired into any
+> dispatch path`, `any production caller`) are out of date — and out of date in
+> the optimistic direction this document was written to prevent.
 
 So the entire fallback-and-resilience layer is **test-only today**. Its tests are evidence that it compiles and that its author's model of it is self-consistent — not that the payment path is protected. **It still is not, re-measured 2026-09-25:** `AppState.processor` holds a concrete `QrisPaymentProcessor` (`payment_api.rs:79`), built by `build_qris_processor` (`:127`), and the handler calls `sale()` on it directly (`:291`). The three tests this paragraph used to name are now **twelve** in `resilience_tests.rs` plus **eight** in `registry_tests.rs` (both counted rather than estimated), and that growth is the §2 retry guard, the §5 single-probe rule, and the §4 shared-breaker seam — hardening that buys nothing until something wires the decorator in.
 
@@ -274,3 +290,5 @@ grep -n "QRIS_EXPIRY_SECS" crates/kasirmu-payment/src/drivers/qris.rs           
 sed -n '364,371p' crates/kasirmu-core/migrations/20260813_init.sql                 # the payments columns
 sed -n '14,22p' crates/kasirmu-core/migrations/20261001_sale_idempotency.sql       # the unguarded-is-legal contract
 ```
+
+> last audited 29-09-26 by docs-auditor
