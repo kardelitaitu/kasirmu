@@ -224,11 +224,15 @@ async fn sync_terminal_driver(ctx: &BridgeCtx<'_>, row: &EdcTerminalConfig) {
 
 /// Keep the `"default"` alias pointing to the earliest active row in the table.
 async fn sync_default_alias(ctx: &BridgeCtx<'_>, active_rows: &[EdcTerminalConfig]) {
-    if let Some(earliest) = active_rows.first() {
-        if let Some(terminal) = ctx.registry.terminal(&earliest.id).await {
-            ctx.registry.register_terminal(DEFAULT_TERMINAL_ID, terminal).await;
-            return;
-        }
+    // A let-chain rather than a nested `if let`: edition 2024, and clippy's
+    // `collapsible_if` is a hard error under the workspace's `-D warnings`, so
+    // the nested form fails CI's cargo-clippy job. Both conditions must hold to
+    // register the alias; anything else unregisters it.
+    if let Some(earliest) = active_rows.first()
+        && let Some(terminal) = ctx.registry.terminal(&earliest.id).await
+    {
+        ctx.registry.register_terminal(DEFAULT_TERMINAL_ID, terminal).await;
+        return;
     }
     ctx.registry.unregister_terminal(DEFAULT_TERMINAL_ID).await;
 }
