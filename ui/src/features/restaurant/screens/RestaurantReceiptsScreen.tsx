@@ -97,6 +97,9 @@ export default function RestaurantReceiptsScreen({
   const [showTax, setShowTax] = useState(true);
   const [taxRatePercent, setTaxRatePercent] = useState(10);
   const [businessLogo, setBusinessLogo] = useState<string>('');
+  const [headerTitle, setHeaderTitle] = useState('');
+  const [headerLine1, setHeaderLine1] = useState('');
+  const [headerLine2, setHeaderLine2] = useState('');
 
   // ── Paper margins state (mm) ────────────────────────────────
   const [marginTop, setMarginTop] = useState(5);
@@ -139,9 +142,20 @@ export default function RestaurantReceiptsScreen({
     if (settings.store.logo) {
       setBusinessLogo(settings.store.logo);
     }
+    const initialTitle = settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT';
+    const initialLine1 = settings.store.address ?? '';
+    setHeaderTitle(initialTitle);
+    setHeaderLine1(initialLine1);
+    setHeaderLine2('');
 
     // Load extra toggles from local preferences
     try {
+      const localTitle = localStorage.getItem('resto_rcpt_header_title');
+      if (localTitle !== null) setHeaderTitle(localTitle);
+      const localL1 = localStorage.getItem('resto_rcpt_header_line1');
+      if (localL1 !== null) setHeaderLine1(localL1);
+      const localL2 = localStorage.getItem('resto_rcpt_header_line2');
+      if (localL2 !== null) setHeaderLine2(localL2);
       const localFontSize = localStorage.getItem('resto_rcpt_font_size');
       if (localFontSize && ['very_small', 'small', 'medium', 'large'].includes(localFontSize)) {
         setFontSize(localFontSize as ReceiptFontSize);
@@ -169,6 +183,15 @@ export default function RestaurantReceiptsScreen({
       getUserPreferencesScoped(sessionToken)
         .then((prefs) => {
           const p = prefs as Record<string, string | undefined>;
+          if (p['resto_rcpt_header_title'] !== undefined) {
+            setHeaderTitle(p['resto_rcpt_header_title']);
+          }
+          if (p['resto_rcpt_header_line1'] !== undefined) {
+            setHeaderLine1(p['resto_rcpt_header_line1']);
+          }
+          if (p['resto_rcpt_header_line2'] !== undefined) {
+            setHeaderLine2(p['resto_rcpt_header_line2']);
+          }
           if (p['resto_rcpt_font_size'] && ['very_small', 'small', 'medium', 'large'].includes(p['resto_rcpt_font_size'])) {
             setFontSize(p['resto_rcpt_font_size'] as ReceiptFontSize);
           }
@@ -198,7 +221,7 @@ export default function RestaurantReceiptsScreen({
     }
 
     receiptInitializedRef.current = true;
-  }, [settings.receipt, settings.store.logo, sessionToken]);
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken]);
 
   // Sync hardware settings when profile arrives
   useEffect(() => {
@@ -240,6 +263,9 @@ export default function RestaurantReceiptsScreen({
         showFooter: true,
         taxRatePercent: 10,
         businessLogo: settings.store.logo ?? '',
+        headerTitle: settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT',
+        headerLine1: settings.store.address ?? '',
+        headerLine2: '',
         marginTop: settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5,
         marginBottom: settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8,
         marginLeft: settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3,
@@ -252,7 +278,7 @@ export default function RestaurantReceiptsScreen({
       };
       setLoaded(true);
     }
-  }, [settings.receipt, settings.store.logo, hw.profile, loaded, fontSize]);
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, hw.profile, loaded, fontSize]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -270,6 +296,9 @@ export default function RestaurantReceiptsScreen({
       showFooter,
       taxRatePercent,
       businessLogo,
+      headerTitle,
+      headerLine1,
+      headerLine2,
       marginTop,
       marginBottom,
       marginLeft,
@@ -296,6 +325,9 @@ export default function RestaurantReceiptsScreen({
     showFooter,
     taxRatePercent,
     businessLogo,
+    headerTitle,
+    headerLine1,
+    headerLine2,
     marginTop,
     marginBottom,
     marginLeft,
@@ -435,6 +467,9 @@ export default function RestaurantReceiptsScreen({
       if (sessionToken) {
         tasks.push(
           setUserPreferencesScoped(sessionToken, [
+            { key: 'resto_rcpt_header_title', value: headerTitle },
+            { key: 'resto_rcpt_header_line1', value: headerLine1 },
+            { key: 'resto_rcpt_header_line2', value: headerLine2 },
             { key: 'resto_rcpt_font_size', value: fontSize },
             { key: 'resto_rcpt_show_code', value: String(showReceiptCode) },
             { key: 'resto_rcpt_show_dt', value: String(showDateTime) },
@@ -448,6 +483,9 @@ export default function RestaurantReceiptsScreen({
 
       // Cache to localStorage for instantaneous client load
       try {
+        localStorage.setItem('resto_rcpt_header_title', headerTitle);
+        localStorage.setItem('resto_rcpt_header_line1', headerLine1);
+        localStorage.setItem('resto_rcpt_header_line2', headerLine2);
         localStorage.setItem('resto_rcpt_font_size', fontSize);
         localStorage.setItem('resto_rcpt_show_code', String(showReceiptCode));
         localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
@@ -475,6 +513,9 @@ export default function RestaurantReceiptsScreen({
         showFooter,
         taxRatePercent,
         businessLogo,
+        headerTitle,
+        headerLine1,
+        headerLine2,
         marginTop,
         marginBottom,
         marginLeft,
@@ -532,6 +573,9 @@ export default function RestaurantReceiptsScreen({
     showStaffName,
     taxRatePercent,
     businessLogo,
+    headerTitle,
+    headerLine1,
+    headerLine2,
     marginTop,
     marginBottom,
     marginLeft,
@@ -623,23 +667,48 @@ export default function RestaurantReceiptsScreen({
                 }}
               >
                 <div className="resto-receipt-printable-area">
-                  {/* Business Logo */}
-                  {businessLogo && (
-                    <div className="resto-receipt-logo-wrap">
-                      <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                  {/* Store Header with Logo */}
+                  {businessLogo ? (
+                    <div className="resto-receipt-header-row">
+                      <div className="resto-receipt-header-logo-col">
+                        <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                      </div>
+                      <div className="resto-receipt-header-text-col">
+                        <div className="resto-receipt-store-title">
+                          {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
+                        </div>
+                        {headerLine1.trim() && (
+                          <div className="resto-receipt-header-line">
+                            {headerLine1.trim()}
+                          </div>
+                        )}
+                        {headerLine2.trim() && (
+                          <div className="resto-receipt-header-line">
+                            {headerLine2.trim()}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="resto-receipt-center">
+                      <div className="resto-receipt-store-title">
+                        {headerTitle.trim() || (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT')}
+                      </div>
+                      {headerLine1.trim() && (
+                        <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                          {headerLine1.trim()}
+                        </div>
+                      )}
+                      {headerLine2.trim() && (
+                        <div className="resto-receipt-header-line" style={{ marginBottom: '2px' }}>
+                          {headerLine2.trim()}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Store Header */}
+                  {/* Metadata (Date/Time, Code, Staff, Table) */}
                   <div className="resto-receipt-center">
-                    <div className="resto-receipt-store-title">
-                      {settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT'}
-                    </div>
-                    {settings.store.address && (
-                      <div style={{ fontSize: '9px', color: '#4b5563', marginBottom: '2px' }}>
-                        {settings.store.address}
-                      </div>
-                    )}
                     {/* Timestamp & Receipt Code */}
                     {(showDateTime || showReceiptCode) && (
                       <div className="resto-receipt-meta">
@@ -821,6 +890,57 @@ export default function RestaurantReceiptsScreen({
                         setBusinessLogo(e.target.value);
                       }
                     }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Header Configuration (Title, Line 1, Line 2) */}
+            <div style={{ marginBottom: 'var(--space-3)' }}>
+              <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
+                <Localized id="restaurant-header-config-heading">Receipt Header Details</Localized>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
+                    <Localized id="restaurant-header-title-label">Receipt Title</Localized>
+                  </label>
+                  <input
+                    id="resto-header-title"
+                    type="text"
+                    className="resto-margin-input"
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
+                    value={headerTitle}
+                    onChange={(e) => setHeaderTitle(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
+                    <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
+                  </label>
+                  <input
+                    id="resto-header-line1"
+                    type="text"
+                    className="resto-margin-input"
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
+                    value={headerLine1}
+                    onChange={(e) => setHeaderLine1(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ display: 'block', marginBottom: '2px', fontWeight: 500 }}>
+                    <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
+                  </label>
+                  <input
+                    id="resto-header-line2"
+                    type="text"
+                    className="resto-margin-input"
+                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
+                    value={headerLine2}
+                    onChange={(e) => setHeaderLine2(e.target.value)}
                   />
                 </div>
               </div>
@@ -1222,7 +1342,7 @@ export default function RestaurantReceiptsScreen({
             <div className={`resto-tier-notice ${isFreeTier ? 'resto-tier-notice--free' : 'resto-tier-notice--paid'}`}>
               {isFreeTier ? (
                 <Localized id="restaurant-free-tier-watermark-notice">
-                  Free Plan: "kasir.mu" is always printed after footer
+                  Free Plan: &ldquo;kasir.mu&rdquo; is always printed after footer
                 </Localized>
               ) : (
                 <Localized id="restaurant-paid-tier-watermark-notice">

@@ -70,6 +70,16 @@ const EXPECTED_KEYS: Record<string, string> = {
   'settings-sidebar-expanded': 'features/settings/SettingsNavTree.tsx',
   'settings-sidebar-width': 'features/settings/SettingsNavTree.tsx',
   'smtp_config': 'features/settings/EmailReportSettings.tsx',
+  // Restaurant receipt print-preview preferences. The screen reads the same
+  // seven through get_setting as a fallback, but the localStorage copy is what
+  // makes a preview toggle survive a reload before the setting round-trips.
+  'resto_rcpt_font_size': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_code': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_dt': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_staff': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_footer': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_tax_rate': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_logo': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
