@@ -638,6 +638,48 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(headerRow).toBeInTheDocument();
     expect(headerRow).not.toHaveClass('resto-receipt-header-row--right');
   });
+
+  it('displays correct preview math and showcases tax rounding segmented toggle', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Initial state: default 10% tax, 'half_up' rounding mode
+    // Subtotal: 85.255 (35.000 + 16.000 + 34.255)
+    // 85255 * 0.10 = 8525.5 -> round = 8526 -> Total: 85255 + 8526 = 93781 -> Change: 100000 - 93781 = 6219
+    expect(screen.getByText('PB1 / Tax (10% · Half-up)')).toBeInTheDocument();
+    expect(screen.getByText('34.255')).toBeInTheDocument();
+    expect(screen.getByText('85.255')).toBeInTheDocument();
+    expect(screen.getByText('8.526')).toBeInTheDocument();
+    expect(screen.getByText('93.781')).toBeInTheDocument();
+    expect(screen.getByText('6.219')).toBeInTheDocument();
+
+    // Switch to Truncate (Legacy)
+    const truncateBtn = screen.getByRole('button', { name: 'Truncate (Legacy)' });
+    await user.click(truncateBtn);
+
+    // In truncate mode:
+    // 85255 * 0.10 = 8525.5 -> floor = 8525 -> Total: 85255 + 8525 = 93780 -> Change: 100000 - 93780 = 6220
+    expect(screen.getByText('PB1 / Tax (10% · Truncate)')).toBeInTheDocument();
+    expect(screen.getByText('8.525')).toBeInTheDocument();
+    expect(screen.getByText('93.780')).toBeInTheDocument();
+    expect(screen.getByText('6.220')).toBeInTheDocument();
+
+    // Switch back to Round Half Up
+    const halfUpBtn = screen.getByRole('button', { name: 'Round Half Up' });
+    await user.click(halfUpBtn);
+
+    expect(screen.getByText('PB1 / Tax (10% · Half-up)')).toBeInTheDocument();
+    expect(screen.getByText('8.526')).toBeInTheDocument();
+    expect(screen.getByText('93.781')).toBeInTheDocument();
+    expect(screen.getByText('6.219')).toBeInTheDocument();
+  });
 });
+
 
 

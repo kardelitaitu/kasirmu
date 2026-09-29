@@ -59,6 +59,7 @@ restaurant-toggle-footer = Tampilkan Catatan Kaki
 restaurant-toggle-footer-desc = Cetak ucapan terima kasih atau info promosi di bagian bawah
 restaurant-tax-rate-label = Tarif Pajak (%)
 restaurant-tax-rate-hint = Standar PB1 restoran adalah 10%, PPN adalah 11–12%
+restaurant-tax-rounding-desc = Metode pembulatan untuk nilai pecahan pajak
 restaurant-logo-heading = Logo Usaha
 restaurant-logo-desc = Unggah logo persegi PNG atau SVG untuk header struk
 restaurant-logo-upload-btn = Pilih Logo

@@ -60,6 +60,7 @@ restaurant-toggle-footer = Show Footer Note
 restaurant-toggle-footer-desc = Print thank-you or promotional message at bottom
 restaurant-tax-rate-label = Tax Rate (%)
 restaurant-tax-rate-hint = Standard restaurant PB1 is 10%, VAT/PPN is 11–12%
+restaurant-tax-rounding-desc = Rounding method applied to fractional tax amounts
 restaurant-logo-heading = Business Logo
 restaurant-logo-desc = Upload a square PNG or SVG logo for the receipt header
 restaurant-logo-upload-btn = Choose Logo

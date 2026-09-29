@@ -635,7 +635,9 @@ export default function RestaurantReceiptsScreen({
     return `${cur === 'IDR' ? 'Rp ' : `${cur} `}${formattedNum}`;
   };
 
-  const sampleSubtotal = 93000;
+  // Sample line items (35000 + 16000 + 34255 = 85255)
+  // Designed so subtotal produces a fractional tax to showcase tax rounding mode
+  const sampleSubtotal = 85255;
   const rawTax = sampleSubtotal * (taxRatePercent / 100);
   const sampleTax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
   const sampleTotal = showTax ? sampleSubtotal + sampleTax : sampleSubtotal;
@@ -775,7 +777,7 @@ export default function RestaurantReceiptsScreen({
                   </div>
                   <div className="resto-receipt-item-row">
                     <span className="resto-receipt-item-name">1x Ayam Bakar Madu</span>
-                    <span className="resto-receipt-item-price">{formatPrice(42000)}</span>
+                    <span className="resto-receipt-item-price">{formatPrice(34255)}</span>
                   </div>
 
                   <div className="resto-receipt-divider" />
@@ -788,7 +790,9 @@ export default function RestaurantReceiptsScreen({
                     </div>
                     {showTax && (
                       <div className="resto-receipt-total-row">
-                        <span>PB1 / Tax ({taxRatePercent}%)</span>
+                        <span>
+                          PB1 / Tax ({taxRatePercent}% · {taxRoundingMode === 'truncate' ? 'Truncate' : 'Half-up'})
+                        </span>
                         <span>{formatPrice(sampleTax)}</span>
                       </div>
                     )}
@@ -1321,44 +1325,62 @@ export default function RestaurantReceiptsScreen({
             </div>
 
             {showTax && (
-              <div className="resto-tax-input-wrap">
-                <label htmlFor="resto-tax-rate" className="resto-toggle-title" style={{ fontSize: 'var(--text-xs)' }}>
-                  <Localized id="restaurant-tax-rate-label">Tax Rate (%)</Localized>
-                </label>
-                <input
-                  id="resto-tax-rate"
-                  type="number"
-                  className="resto-margin-input"
-                  style={{ maxWidth: '80px' }}
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={taxRatePercent}
-                  onChange={(e) => setTaxRatePercent(clamp(Number(e.target.value), 0, 100))}
-                />
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
-                  <Localized id="restaurant-tax-rate-hint">
-                    Standard restaurant PB1 is 10%, VAT/PPN is 11–12%
-                  </Localized>
-                </span>
-              </div>
-            )}
+              <>
+                <div className="resto-tax-input-wrap">
+                  <label htmlFor="resto-tax-rate" className="resto-toggle-title" style={{ fontSize: 'var(--text-xs)' }}>
+                    <Localized id="restaurant-tax-rate-label">Tax Rate (%)</Localized>
+                  </label>
+                  <input
+                    id="resto-tax-rate"
+                    type="number"
+                    className="resto-margin-input"
+                    style={{ maxWidth: '80px' }}
+                    min={0}
+                    max={100}
+                    step={0.5}
+                    value={taxRatePercent}
+                    onChange={(e) => setTaxRatePercent(clamp(Number(e.target.value), 0, 100))}
+                  />
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
+                    <Localized id="restaurant-tax-rate-hint">
+                      Standard restaurant PB1 is 10%, VAT/PPN is 11–12%
+                    </Localized>
+                  </span>
+                </div>
 
-            {/* Tax Rounding */}
-            <div style={{ marginTop: 'var(--space-3)' }}>
-              <label htmlFor="resto-rcpt-tax-rounding" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                <Localized id="workspace-pos-tax-rounding">Tax Rounding</Localized>
-              </label>
-              <SettingsSelect
-                id="resto-rcpt-tax-rounding"
-                value={taxRoundingMode}
-                onChange={(v) => setTaxRoundingMode(v as 'half_up' | 'truncate')}
-                options={[
-                  { value: 'half_up', label: 'Half Up (Standard)' },
-                  { value: 'truncate', label: 'Truncate (Down)' },
-                ]}
-              />
-            </div>
+                {/* Tax Rounding */}
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <div className="resto-toggle-title" style={{ marginBottom: '4px' }}>
+                    <Localized id="workspace-pos-tax-rounding">Tax Rounding</Localized>
+                  </div>
+                  <div className="resto-toggle-desc" style={{ marginBottom: '6px' }}>
+                    <Localized id="restaurant-tax-rounding-desc">
+                      Rounding method applied to fractional tax amounts
+                    </Localized>
+                  </div>
+                  <div
+                    className="resto-segmented-group"
+                    role="group"
+                    aria-label={l10n.getString('workspace-pos-tax-rounding') || 'Tax Rounding'}
+                  >
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${taxRoundingMode === 'half_up' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setTaxRoundingMode('half_up')}
+                    >
+                      <Localized id="workspace-pos-tax-rounding-halfup">Round Half Up</Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${taxRoundingMode === 'truncate' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setTaxRoundingMode('truncate')}
+                    >
+                      <Localized id="workspace-pos-tax-rounding-truncate">Truncate (Legacy)</Localized>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Toggle: Footer Note */}
             <div className="resto-toggle-row" style={{ marginTop: 'var(--space-3)' }}>
