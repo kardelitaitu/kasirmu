@@ -727,6 +727,7 @@ export default function RestaurantReceiptsScreen({
         </div>
       </div>
 
+      <div className="restaurant-settings-main">
       <div className="restaurant-settings-layout">
         {/* ── Left Column: Live Accurate Thermal Receipt Preview ── */}
         <aside
@@ -1682,6 +1683,7 @@ export default function RestaurantReceiptsScreen({
             </Button>
           </div>
         </main>
+      </div>
       </div>
     </div>
   );

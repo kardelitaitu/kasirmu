@@ -360,6 +360,7 @@ export function RestaurantPaymentsScreen({
         </div>
       </div>
 
+      <div className="restaurant-settings-main">
       {loading ? (
         // Was `localpay-loading`, borrowed from LocalPaymentSettingsCard.css —
         // a sheet this screen does not import, so the name resolved nowhere and
@@ -592,6 +593,7 @@ export function RestaurantPaymentsScreen({
       </div>
       </>
       )}
+      </div>
     </div>
   );
 }
