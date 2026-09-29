@@ -30,6 +30,15 @@ because "should this gate have a self-test" is a judgement per checker; the swee
 that found the nine is recorded in the docstring above so the next one to be added
 knows the convention exists.
 
+AND, concretely, the checkers that are not Python. The glob is verify-*/check-*, so a
+--self-test in a Node checker is invisible here. One exists: check.sh's "updater manifest
+generator" step runs `generate-latest-json.mjs --self-test`, and nothing polices whether
+that flag keeps working or has a caller. Widening the glob to .mjs/.ts/.js is NOT done
+here, and deliberately so: a first pass at it would have to guess which Node scripts are
+checkers rather than tools, which is the same judgement-per-file problem above, and
+guessing wrong produces a gate that fires on scripts that were never meant to be policed.
+Named rather than left to be rediscovered.
+
 Exit 0 clean, 1 uncalled self-test(s), 2 usage or self-test failure.
 """
 from __future__ import annotations
