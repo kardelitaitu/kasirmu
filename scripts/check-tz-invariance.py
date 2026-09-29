@@ -184,6 +184,28 @@ def self_test() -> int:
     without_la = {k: v for k, v in ZONE_OFFSETS.items() if k != "America/Los_Angeles"}
     want("Los Angeles is redundant for sensitivity", sensitivity_gap(without_la), [])
 
+    # The ZONE PREFLIGHT, which the cases above cannot reach: it runs after the dispatch
+    # by design, so without these it was shipped unexercised on every host. These assert
+    # the property the preflight itself asserts -- a zone the host honours SHIFTS local
+    # time, and a name it does not recognise does not -- so CI verifies the preflight's
+    # happy path even on a host where it could not be run by hand.
+    if hasattr(time, "tzset"):
+        want("UTC reports a zero offset", honoured_offset("UTC"), 0)
+        # A name no tzdata has falls back to UTC, which is the signature the preflight
+        # keys on. If this ever returns non-zero, the preflight's whole test is wrong.
+        want("an unrecognised zone name reports zero",
+             honoured_offset("Not/ARealZone"), 0)
+        for z in ZONES:
+            if z == "UTC":
+                continue
+            off = honoured_offset(z)
+            if off == 0:
+                bad.append(f"preflight: {z!r} is not honoured by this host (offset 0) -- "
+                           f"it would run under a fallback and silently lose its window")
+    # Where time.tzset is absent the preflight reports SKIPPED and returns 0, and the
+    # arithmetic above is the only thing this self-test can assert. Said here rather
+    # than left to look like coverage that does not exist.
+
     # And the gate's own ZONES list must be exactly what the fixture describes, so
     # editing ZONES without updating the arithmetic is caught rather than assumed.
     want("ZONES and the offset fixture agree",
@@ -195,7 +217,13 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (8 cases, no files touched, vitest never run)")
+    # Report what ACTUALLY ran. The preflight cases are conditional on time.tzset, so
+    # a fixed count would claim coverage this host did not perform -- the same small
+    # untruth this file's own history is about.
+    ran = 8 + (5 if hasattr(time, "tzset") else 0)
+    skipped = "" if hasattr(time, "tzset") else \
+        " (preflight cases SKIPPED: no time.tzset on this host)"
+    print(f"SELF-TEST OK ({ran} cases{skipped}, no files touched, vitest never run)")
     return 0
 
 
