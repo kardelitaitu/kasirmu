@@ -911,6 +911,18 @@ body:has(.memo-stack) .staff-mgmt-main {
   white-space: nowrap;
 }
 
+/* Staff code badge — the `#A01` chip rendered beside a name when the member
+ * carries a staff_code (StaffRoster.tsx:315). Owns a rule rather than inline
+ * styles so the three sibling badges (terminal, store) can share the same
+ * spelling; the sheet is this screen's alone, so the name stays local. */
+.staff-mgmt-code-badge {
+  margin-left: var(--space-1);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-fg-muted);
+}
+
 .staff-mgmt-card-sub-row {
   display: flex;
   align-items: center;

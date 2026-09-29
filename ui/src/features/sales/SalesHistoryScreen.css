@@ -433,6 +433,23 @@
   box-shadow: var(--shadow-xl);
 }
 
+/* Narrow variant for the e-Faktur stamp dialog (SalesHistoryScreen.tsx:1220),
+ * which only needs to override the base max-width. Sized for a two-field form
+ * rather than the 40rem list modal it borrows its chrome from. */
+.sales-history-stamp-modal {
+  max-width: 28.75rem;
+}
+
+/* The e-Faktur NSFP block inside the detail drawer
+ * (SalesHistoryScreen.tsx:1435). Was inline. */
+.sales-history-efaktur-section {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .sales-history-modal-header {
   display: flex;
   align-items: center;

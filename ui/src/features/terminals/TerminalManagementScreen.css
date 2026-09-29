@@ -93,6 +93,17 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* The `#T01` terminal-code chip beside a row's name
+ * (TerminalManagementScreen.tsx:579). Was inline; named here so it is graded
+ * like its siblings. */
+.terminal-mgmt-code-badge {
+  margin-left: var(--space-1);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-fg-muted);
+}
+
 .terminal-mgmt-cell-device-id {
   font-family: var(--font-mono);
   font-size: var(--text-xs);

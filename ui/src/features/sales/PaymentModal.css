@@ -256,6 +256,13 @@
   padding: 0 var(--space-5) var(--space-4);
 }
 
+/* The card-terminal selector block shown when a payment has more than one
+ * bound EDC terminal (CardTenderPanel.tsx:86). Was inline; the rule carries the
+ * block's separation from the tender rows below it. */
+.payment-edc-terminals {
+  margin-bottom: var(--space-4);
+}
+
 .payment-customer-label {
   display: flex;
   flex-direction: column;
