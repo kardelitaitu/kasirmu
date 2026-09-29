@@ -1,7 +1,18 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 644 lines, no audit stamp, no footer and no marker — for a QA procedure someone runs against a physical device. That makes it an operational document, and under the rule this campaign has applied throughout, a stale COMMAND in a live procedure is a defect to repair rather than a historical detail to preserve. · REPAIRED, AND THE REPAIR IS A CAVEAT RATHER THAN A STRING. The APK paths (`oz-pos-tablet-arm64-v8a*.apk`) and the logcat tag (`-s "oz-pos-tablet"`) all use the pre-restructure product name, while `apps/mobile-tauri/tauri.conf.json` now declares `"productName": "kasir.mu"` and `"identifier": "mu.kasir.mobile"`. The obvious repair is to substitute the new name — and that would be guessing, because the generated APK filename is produced by the build, not by this document. Instead the guide now carries the same kind of warning its iOS siblings already carry: the artifact name must be resolved at build time, with the `ls` command that does it. · THE ASYMMETRY THAT PROMPTED THE REPAIR IS THE INTERESTING PART. Both iOS guides in this directory were already audited and already flag the instability explicitly — `ios-install-test.md` says outright that the project filename is not stable, that this guide and the build guide disagree on it, that neither can be verified until the scaffold exists, and that discovery beats a hardcoded name. The Android guide was the only one of the three that had no such note while using the same pre-restructure name. A QA engineer following it would hit a path that does not resolve, with nothing in the document to explain why. Closing that gap was worth more than a string substitution, and the note says so. · The device requirements table is the part most likely to be trusted blindly and it checks out: Android 8.0+ / API 26 is the stated `minSdkVersion`, consistent with what the mobile build documentation states. · NOT re-measured: whether the build, install and logcat procedure actually works on hardware. That is the original work and needs a device. · No stamp existed; this is the first. -->
 # Android APK Install Test — kasir.mu
 
 > **Status:** Implemented (2026-07-21)
 > **Target audience:** QA / developers testing on Android 10+ physical tablets
+> **Artifact name — verify before running (added 2026-09-29, docs-auditor).** The APK
+> filenames below (`oz-pos-tablet-arm64-v8a*.apk`) and the logcat tag near the end
+> (`-s "oz-pos-tablet"`) use the PRE-RESTRUCTURE product name. The Tauri config
+> now declares `"productName": "kasir.mu"` and `"identifier": "mu.kasir.mobile"` in
+> `apps/mobile-tauri/tauri.conf.json`, so the generated artifact name will differ.
+> Rather than guess the new string, resolve it at build time:
+> `ls apps/mobile-tauri/gen/android/app/build/outputs/apk/*/*.apk`.
+> The two iOS guides in this directory already carry an equivalent caveat for the
+> same reason; this one did not, and that asymmetry is what this note closes.
+>
 > **Related:** [Mobile Build Guide](https://github.com/kardelitaitu/kasirmu/tree/main/ops/packaging/mobile) · [Tauri Tablet Config](https://github.com/kardelitaitu/kasirmu/blob/main/apps/mobile-tauri/tauri.conf.json) · [Windows Launch Test](./windows-launch-test.md) · [Linux Launch Test](./linux-launch-test.md)
 
 This guide covers building, installing, and testing the kasir.mu tablet app
@@ -641,4 +652,4 @@ Notes:
 
 ---
 
-> last audited 08-08-26 by docs-auditor
+> last audited 29-09-26 by docs-auditor
