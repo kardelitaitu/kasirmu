@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 23 lines, and — unusually for a 23-line document — everything it claims verifies, including the parts a reader would have to take on trust. It is the entry page of the mdBook documentation portal, and the build chain it describes was checked end to end rather than assumed: `docs/book.toml` exists and sets `build-dir = "book"`, so the output really does land in `docs/book/` as stated; `scripts/build-docs.sh` exists, sets `BOOK_SRC` to `docs/src`, runs `cargo doc --workspace --no-deps --document-private-items` and finishes with `mdbook build`; and the Windows sibling `scripts/build-docs.ps1` is present. The dev-server instruction is also correct — mdBook's default source directory is `src`, so running `mdbook serve` from inside `docs/` is right. · ONE BROKEN CROSS-REFERENCE, in a file outside this audit's scope and therefore reported rather than patched. `docs/book.toml` line 6 points readers to `docs/plans/documentation-portal-plan.md` for the full portal layout, and that path does not exist: the plan is at `docs/plans/_active/documentation-portal-plan.md`, having been filed into the active-plans directory. The fix belongs in the `.toml` file, not in a document, and this audit is scoped to the markdown under `docs/` — so it is recorded here, where a reader of the portal will actually encounter the broken path, rather than left for someone to trip over. · The file's own closing line — the Docs content is placeholder and will be rewritten — is honest about its own state and was left exactly as written. An entry page that admits it is a stub is more useful than one pretending to be complete, and it is the same instinct that makes the stale-reference report worth making rather than hiding. -->
 # kasir.mu Documentation
 
 Welcome to the kasir.mu documentation portal — a single place for hand-written
@@ -21,3 +22,5 @@ sidebar, and builds the portal into `docs/book/`. Then open
 at `http://localhost:3000`.
 
 > The Docs content is placeholder for now and will be rewritten later.
+
+> last audited 29-09-26 by docs-auditor

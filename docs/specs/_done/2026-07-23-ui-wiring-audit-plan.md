@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 184 lines, no audit stamp, no footer, no marker — and it is a PLAN rather than a report, which sets the correct expectation. A plan records what was proposed to be checked; the findings that resulted live in its sibling `2026-07-23-ui-wiring-audit-report.md`, audited in the same round. The two were read as a pair, because a plan whose sibling report exists has already been executed, and the plan's value is now historical. · WHAT IS STILL CHECKABLE is the plan's premise: that the desktop settings surface had a wiring problem worth a structured audit. That premise is answered by the report, and the surface it describes — the settings screens — is still live, still the target of the Phase 0a section extraction audited in round 9, and still the subject of the workspace-settings phase series. A plan filed in `_done/` whose subject was subsequently restructured twice over is a plan whose body must not be edited to match the new shape, and it was left exactly as written. · NOT re-measured: the element inventory and the specific screens the plan proposed to walk, which are the plan's own proposal and belong to the report for findings. · Stamp and footer added; the file had neither. -->
 # UI Wiring & Element Audit Plan — kasir.mu Desktop App
 
 - **Audit ID:** 2026-07-23-ui-wiring-audit
@@ -182,3 +183,5 @@ While reading the code, check:
 ---
 
 *End of plan.*
+
+> last audited 29-09-26 by docs-auditor
