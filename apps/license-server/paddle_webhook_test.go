@@ -1233,8 +1233,13 @@ func assertPlusQuotaBlock(t *testing.T, tier string, maxStores, maxPOS int, allo
 		t.Errorf("plus must not allow kds (Pro+), got %v", allowed)
 	}
 	if !slices.Contains(allowed, "restaurant-pos") || !slices.Contains(allowed, "store-pos") ||
-		!slices.Contains(allowed, "inventory") || !slices.Contains(allowed, "warehouse") {
+		!slices.Contains(allowed, "inventory") {
 		t.Errorf("plus allowed_types missing core workspace types, got %v", allowed)
+	}
+	// The warehouse workspace is Premium+ (2026-09-29), so a plus payload must
+	// not carry the type — the same claim the website's pricing row makes.
+	if slices.Contains(allowed, "warehouse") {
+		t.Errorf("plus must not allow warehouse (Premium+), got %v", allowed)
 	}
 }
 

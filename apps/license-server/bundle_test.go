@@ -172,7 +172,7 @@ func TestBundleActivation_PaidKeyIgnoresBundle(t *testing.T) {
 	defer app.Cleanup()
 
 	seedLicenseKeyWithLimits(t, app, "OZ-PAID-BNDL-001", "plus", "unused",
-		"2099-12-31 23:59:59.000Z", 1, 2, `["restaurant-pos","store-pos","admin","inventory","warehouse"]`)
+		"2099-12-31 23:59:59.000Z", 1, 2, `["restaurant-pos","store-pos","admin","inventory"]`)
 	sp := activateWithBundle(t, se, "OZ-PAID-BNDL-001", "restaurant_starter")
 
 	if sp.TierKey != "plus" {
