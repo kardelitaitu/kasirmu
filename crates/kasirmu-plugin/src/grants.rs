@@ -54,11 +54,17 @@ pub const GRANTS_FILE_NAME: &str = "plugin-grants.json";
 /// silent downgrade of every approval on the machine.
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 
-/// [`SUPPORTED_SCHEMA_VERSION`] for callers outside this module.
+/// The schema version this module understands, for callers outside this module.
 ///
 /// Exposed so an error message (the manager's ungranted-permission refusal) can
 /// print the schema version to write without duplicating the literal and
 /// letting the two drift.
+///
+/// Deliberately does NOT carry an intra-doc link to its private source
+/// constant: rustdoc refuses a public doc that hyperlinks a private item
+/// (`rustdoc::private_intra_doc_links`, raised to an error by the `rust-doc`
+/// gate), so the relationship is stated in prose instead of linked. The
+/// aliasing is one line below and greppable.
 pub const SUPPORTED_SCHEMA_VERSION_PUBLIC: u32 = SUPPORTED_SCHEMA_VERSION;
 
 /// Raw on-disk shape. Deserialised first, then validated into [`PluginGrants`].

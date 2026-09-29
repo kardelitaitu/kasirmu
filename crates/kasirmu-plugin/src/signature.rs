@@ -117,8 +117,11 @@ pub fn plugin_digest(
 /// The algorithm is RSA-2048 PKCS1v15/SHA-256, matching
 /// `kasirmu_core::attestation::verify_attestation_signature` so the codebase has
 /// one signature story rather than two. The digest is signed as its hex rendering
-/// under [`PLUGIN_SIGNATURE_PREFIX`], which is what the companion signing helper
-/// (`scripts/sign-plugin.py`) produces.
+/// under this crate's private signature prefix constant, which is what the
+/// companion signing helper (`scripts/sign-plugin.py`) produces. The constant is
+/// named here in prose rather than linked: an intra-doc link from this public
+/// item to the private one is refused by `rustdoc::private_intra_doc_links`,
+/// which the `rust-doc` gate raises to an error.
 pub fn verify_plugin_signature(
     public_pem: &str,
     digest: &[u8; 32],

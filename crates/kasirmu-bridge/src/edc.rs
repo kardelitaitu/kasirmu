@@ -9,7 +9,11 @@
 //!
 //! When multiple card terminals exist per store / register, commands route
 //! explicitly via `terminal_id: Option<&str>`. Omitted or blank ids fall back
-//! to [`DEFAULT_TERMINAL_ID`], maintaining 100% backward compatibility.
+//! to [`DEFAULT_TERMINAL_ID`](crate::edc::DEFAULT_TERMINAL_ID), maintaining 100%
+//! backward compatibility. Fully-qualified because a module-level `//!` doc
+//! resolves links in the ENCLOSING scope, where this module's own items are not
+//! yet in scope; the bare label and the `self::` form both fail
+//! `rustdoc::broken_intra_doc_links`, which the `rust-doc` gate raises to an error.
 //! Dynamic configuration changes are synced with the driver registry without
 //! requiring an application restart.
 

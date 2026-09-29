@@ -13,7 +13,11 @@ findings: added terminal_id parameter to payment and status commands for R4 mult
 //!
 //! When multiple card terminals exist per store / register, commands route
 //! explicitly via `terminal_id: Option<String>`. Omitted or null values fall
-//! back to [`DEFAULT_TERMINAL_ID`] for single-terminal stores.
+//! back to [`DEFAULT_TERMINAL_ID`](kasirmu_bridge::edc::DEFAULT_TERMINAL_ID) for
+//! single-terminal stores. Linked to the bridge constant this module re-exports
+//! (:24) rather than to the re-export itself: a module-level `//!` doc resolves
+//! links in the ENCLOSING scope, so the bare label does not see the `pub use`
+//! below it.
 
 use tauri::State;
 

@@ -10,7 +10,14 @@
 //! and increments the kode status.
 //!
 //! Key types:
-//! - [`FakturPajakInfo`]: Parsed and formatted 17-digit DJP invoice metadata.
+//! - [`FakturPajakInfo`](crate::db::faktur_pajak::FakturPajakInfo): Parsed and
+//!   formatted 17-digit DJP invoice metadata. Fully-qualified because a
+//!   module-level `//!` doc resolves links in the ENCLOSING scope, where this
+//!   module's own items are not yet in scope — the same shape as
+//!   `db/fiscal.rs:5` and `db/audit_security.rs:12`. The bare label and the
+//!   `self::` form both fail `rustdoc::broken_intra_doc_links`, which the
+//!   `rust-doc` gate raises to an error. The three `Store::` links below need no
+//!   qualifier: `Store` is defined in the parent `db` module and IS in scope here.
 //! - [`Store::get_faktur_pajak`]: Query e-Faktur metadata for a completed sale.
 //! - [`Store::stamp_faktur_pajak`]: Post-checkout stamping of DJP-approved NSFP.
 //! - [`Store::create_faktur_pengganti`]: Increment kode status for replacement invoices.

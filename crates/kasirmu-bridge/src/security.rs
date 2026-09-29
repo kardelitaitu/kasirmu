@@ -210,7 +210,7 @@ pub async fn rotate_encryption_key_scoped(
 /// This is a boot-path call and Tauri's `.setup()` closure is synchronous, so
 /// there is no async context to await in and none to nest a keyring backend's
 /// private runtime inside. It therefore does the same thing
-/// [`with_keyring`](crate::security::with_keyring) does — run the keyring
+/// [`with_keyring`] does — run the keyring
 /// operation on a dedicated OS thread — but by spawning and joining directly
 /// rather than through a oneshot channel. Calling `block_on` from the setup
 /// closure would be the alternative and is deliberately avoided: it would enter
