@@ -334,6 +334,21 @@
 /* ADR #46 §2 deploy-history browser — explicit ::after path so the
    shadow-coverage check sees it (the element also carries .noise-dither). */
 .topology-rev-browser::after,
+/* Restaurant receipt print preview (C8) — the same explicit-::after route as
+   .topology-rev-browser above: the element carries className="noise-dither" in
+   RestaurantReceiptsScreen.tsx, but noiseDitherCompliance.test.ts walks CSS
+   SELECTORS, so a shadow declared on .restaurant-preview-card is read as an
+   uncovered elevated surface unless the selector is named here too. The card is
+   a genuinely large, soft --shadow-sm pane (the preview column's own rail), so
+   it takes the overlay rather than an exemption. */
+.restaurant-preview-card::after,
+/* The mat the thermal roll sits on: the full-width stage behind the receipt
+   preview, carrying inset --shadow-inner. Large enough to band, so it takes the
+   overlay rather than an exemption. (The two other shadowed selectors this
+   sheet gained when the receipt values were tokenised — .resto-segmented-btn--active
+   and the toggle knob — are small controls and are exempted in the test
+   alongside .btn, for the thin-shadow reason recorded there.) */
+.resto-receipt-paper-wrapper::after,
 /* Memo chat-bubble stack + enlarged reading card — the two genuinely
    elevated memo surfaces (shadow-xl / shadow-2xl). Their close chips are
    exempt in noiseDitherCompliance.test.ts: small circular controls inherit
@@ -520,6 +535,8 @@
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .restaurant-preview-card::after,
+  .resto-receipt-paper-wrapper::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,
@@ -657,6 +674,8 @@
   .noise-dither::after,
   .error-boundary__card::after,
   .topology-rev-browser::after,
+  .restaurant-preview-card::after,
+  .resto-receipt-paper-wrapper::after,
   .memo-banner::after,
   .memo-expanded-card::after,
   .retail-shift-modal::after,

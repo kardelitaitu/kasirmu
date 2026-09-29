@@ -46,7 +46,20 @@
   width: 100%;
 }
 
-@media (max-width: 960px), (orientation: portrait) {
+/* Collapse to one column when the pane is too narrow for the preview rail.
+ *
+ * WIDTH ONLY, deliberately: ADR-0001 Slice 3 / T1 makes orientation the SHELL's
+ * decision and licenses `@media (orientation: …)` in exactly two sheets
+ * (ui/src/app/AppLayout.css, ui/src/app/tablet/tablet.css) — see
+ * ui/src/__tests__/orientationAdaptiveWalker.test.ts. A feature sheet declaring
+ * its own orientation branch is the competing-threshold shape that rule exists to
+ * prevent: the shell already rotates at
+ * `(orientation: portrait) and (max-width: 1023px)`, so a second orientation query
+ * here would collapse this grid at a geometry the shell has not adopted. Width
+ * alone is sufficient and is the honest condition — the two-column grid needs
+ * ~700px (320px floor + gap + preview card), so 960px is where the rail stops
+ * fitting no matter which way the device is held. */
+@media (max-width: 960px) {
   .restaurant-settings-layout {
     grid-template-columns: 1fr;
     gap: var(--space-4);
@@ -63,7 +76,9 @@
   top: var(--space-4);
 }
 
-@media (max-width: 960px), (orientation: portrait) {
+/* Same width-only reasoning as the grid collapse above: unstick the rail and
+   lead with the preview once the layout is single-column. */
+@media (max-width: 960px) {
   .restaurant-preview-column {
     position: static;
     order: -1;
@@ -71,7 +86,13 @@
   }
 }
 
+/* Noise-dither coverage (P11-5) is applied by the `noise-dither` CLASS on the
+   element in RestaurantReceiptsScreen.tsx, not by a ::after rule here — see the
+   "USAGE (recommended for NEW components)" block in ui/src/theme/components.css.
+   The legacy per-selector ::after list is deprecated for new surfaces. That class
+   needs `position: relative` on this element so its ::after can anchor. */
 .restaurant-preview-card {
+  position: relative;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -118,21 +139,26 @@
   display: flex;
   justify-content: center;
   width: 100%;
-  background: #0f1218;
+  background: var(--receipt-paper-scrim);
   padding: var(--space-4) var(--space-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-inner);
   overflow-x: auto;
 }
 
 .resto-receipt-paper {
-  background: #ffffff;
-  color: #111827;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 11px;
-  line-height: 1.35;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  background: var(--receipt-paper);
+  color: var(--receipt-paper-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* Was the literal 1.35. The --leading-* scale has no 1.35 step (condensed
+     1.2 / tight 1.25 / snug 1.4 / normal 1.5), and the line-height freeze test
+     asks a human to pick a step rather than invent one: snug (1.4) is the
+     nearest and stays legible at this size in monospace, which is the property
+     that mattered for the thermal-paper line stack. */
+  line-height: var(--leading-snug);
+  box-shadow: var(--receipt-paper-shadow);
   border-radius: 2px;
   box-sizing: border-box;
   transition: width 0.2s ease, padding 0.15s ease;
@@ -156,7 +182,7 @@
 
 /* Printable content boundary guide (subtle dashed border on preview) */
 .resto-receipt-printable-area {
-  outline: 1px dashed rgba(59, 130, 246, 0.35);
+  outline: var(--receipt-paper-guide);
   outline-offset: -1px;
 }
 
@@ -164,12 +190,8 @@
   text-align: center;
 }
 
-.resto-receipt-bold {
-  font-weight: bold;
-}
-
 .resto-receipt-store-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: bold;
   letter-spacing: 0.5px;
   margin-bottom: 2px;
@@ -179,15 +201,15 @@
   display: flex;
   justify-content: space-between;
   font-size: 10px;
-  color: #374151;
+  color: var(--receipt-paper-ink-soft);
   margin-top: 4px;
 }
 
 .resto-receipt-table-pill {
   display: inline-block;
   padding: 1px 6px;
-  background: #e5e7eb;
-  color: #1f2937;
+  background: var(--receipt-paper-pill-bg);
+  color: var(--receipt-paper-pill-ink);
   border-radius: 3px;
   font-weight: bold;
   font-size: 10px;
@@ -195,7 +217,7 @@
 }
 
 .resto-receipt-divider {
-  border-top: 1px dashed #4b5563;
+  border-top: 1px dashed var(--receipt-paper-rule);
   margin: 6px 0;
   width: 100%;
 }
@@ -231,7 +253,7 @@
 }
 
 .resto-receipt-grand-total {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: bold;
   margin: 4px 0;
 }
@@ -240,7 +262,7 @@
   text-align: center;
   font-style: italic;
   font-size: 10px;
-  color: #4b5563;
+  color: var(--receipt-paper-rule);
   margin-top: 6px;
   word-break: break-word;
   white-space: pre-wrap;
@@ -320,7 +342,7 @@
 
 .resto-segmented-btn {
   flex: 1;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
   font-weight: 500;
   background: transparent;
@@ -338,9 +360,9 @@
 
 .resto-segmented-btn--active {
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-text-on-color);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-sm);
 }
 
 /* 2x2 Paper Margins Grid */
@@ -450,7 +472,7 @@
   width: 44px;
   height: 24px;
   background: var(--color-bg-elevated);
-  border-radius: 12px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--color-border);
   cursor: pointer;
   transition: background-color 0.2s ease, border-color 0.2s ease;
@@ -470,9 +492,9 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--receipt-paper);
   transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-sm);
 }
 
 .resto-switch-btn[aria-checked="true"] .resto-switch-handle {
@@ -491,7 +513,7 @@
   color: var(--color-fg);
   font-family: var(--font-sans, inherit);
   font-size: var(--text-sm);
-  line-height: 1.4;
+  line-height: var(--leading-snug);
   resize: vertical;
   box-sizing: border-box;
 }
@@ -595,4 +617,106 @@
   padding: var(--space-2) var(--space-3);
   background: var(--color-bg-subtle);
   border-radius: var(--radius-md);
+}
+
+/* Business Logo in Preview & Settings */
+.resto-receipt-logo-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.resto-receipt-logo {
+  max-width: 56px;
+  max-height: 56px;
+  object-fit: contain;
+  filter: grayscale(100%) contrast(150%);
+  display: block;
+}
+
+.resto-receipt-watermark {
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px dotted #9ca3af;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #374151;
+}
+
+.resto-logo-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+}
+
+.resto-logo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.resto-logo-thumb-box {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+  background: var(--color-bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.resto-logo-thumb {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.resto-logo-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.resto-tax-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.resto-tier-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  margin-top: var(--space-3);
+}
+
+.resto-tier-notice--free {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--color-warning, #f59e0b);
+}
+
+.resto-tier-notice--paid {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--color-success, #10b981);
 }

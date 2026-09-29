@@ -242,6 +242,25 @@
   --blur-amount: 0px;
   --shadow-glow: none;
 
+  /* ── Thermal receipt simulation (restaurant print preview) ──────
+     These are deliberately NOT theme-reactive and NOT aliases of the
+     --color-* surface ramp. A thermal receipt is a physical object: it is
+     white paper with dark grey ink no matter what the app theme is, and the
+     preview exists to show the operator what the printer will actually
+     produce. Binding it to --color-bg/-text would make the preview lie in
+     dark mode, which is the one thing this pane must not do. Declared once
+     here so the values have one home and the token gate can see them, per
+     KNOWN_VIOLATIONS_BASELINE = 0 in themeTokenCompliance.test.ts. */
+  --receipt-paper:          #ffffff; /* paper stock */
+  --receipt-paper-ink:      #111827; /* primary thermal ink */
+  --receipt-paper-ink-soft: #374151; /* secondary ink (meta rows) */
+  --receipt-paper-rule:     #4b5563; /* dashed separator rule */
+  --receipt-paper-pill-bg:  #e5e7eb; /* table-number chip fill */
+  --receipt-paper-pill-ink: #1f2937; /* table-number chip text */
+  --receipt-paper-scrim:    #0f1218; /* mat the roll sits on */
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.35);
+  --receipt-paper-guide:    1px dashed rgba(59, 130, 246, 0.35);
+
   /* ── Timing ───────────────────────────────────────────────── */
   --duration-0:    0ms;
   --duration-75:   75ms;

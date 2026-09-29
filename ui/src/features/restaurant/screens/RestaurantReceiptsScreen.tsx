@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/Toast';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
-import { setReceiptSettingsScoped } from '@/api/settings';
+import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesScoped } from '@/api/settings';
 import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import './RestaurantSettingsScreens.css';
@@ -25,7 +27,7 @@ const FALLBACK_SETTINGS = {
     marginRight: 3,
     taxRoundingMode: 'half_up',
   },
-  store: { name: '', address: '', taxId: '', currency: 'IDR', branch: '' },
+  store: { name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' },
 };
 
 const clamp = (val: number, min: number, max: number): number =>
@@ -45,18 +47,31 @@ export default function RestaurantReceiptsScreen({
   const settings = settingsCtx?.settings ?? FALLBACK_SETTINGS;
   const markSettingsUpdated = settingsCtx?.markSettingsUpdated;
   const { sessionToken, terminalId: contextTerminalId } = useWorkspace();
+  const { caps } = useSubscription();
+  const { user } = useAuth();
   const effectiveTerminalId = propTerminalId || contextTerminalId || '';
   const { l10n } = useLocalization();
   const { addToast } = useToast();
   const hw = useTerminalHardware(effectiveTerminalId, settings.store.currency);
 
+  const isFreeTier = !caps || caps.tier === 'free';
+  const staffDisplayName = user?.name || user?.username || 'Budi S.';
+
   // ── Receipt format draft state ──────────────────────────────
   const [paperWidth, setPaperWidth] = useState<'standard' | 'narrow'>('standard');
   const [showCurrency, setShowCurrency] = useState(false);
-  const [showTax, setShowTax] = useState(true);
   const [showTableNumber, setShowTableNumber] = useState(false);
   const [taxRoundingMode, setTaxRoundingMode] = useState<'half_up' | 'truncate'>('half_up');
   const [footer, setFooter] = useState('');
+
+  // ── New Toggles ─────────────────────────────────────────────
+  const [showReceiptCode, setShowReceiptCode] = useState(true);
+  const [showDateTime, setShowDateTime] = useState(true);
+  const [showStaffName, setShowStaffName] = useState(true);
+  const [showFooter, setShowFooter] = useState(true);
+  const [showTax, setShowTax] = useState(true);
+  const [taxRatePercent, setTaxRatePercent] = useState(10);
+  const [businessLogo, setBusinessLogo] = useState<string>('');
 
   // ── Paper margins state (mm) ────────────────────────────────
   const [marginTop, setMarginTop] = useState(5);
@@ -75,13 +90,15 @@ export default function RestaurantReceiptsScreen({
   const [testingPrint, setTestingPrint] = useState(false);
   const [dirtyVersion, setDirtyVersion] = useState(0);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Track originals for dirty state
   const originalsRef = useRef<Record<string, unknown>>({});
   const [loaded, setLoaded] = useState(false);
   const receiptInitializedRef = useRef(false);
   const hwInitializedRef = useRef(false);
 
-  // Initialize receipt settings from workspace context once
+  // Initialize receipt settings from workspace context and stored preferences
   useEffect(() => {
     if (receiptInitializedRef.current) return;
     setPaperWidth(settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard');
@@ -94,8 +111,61 @@ export default function RestaurantReceiptsScreen({
     setMarginBottom(settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8);
     setMarginLeft(settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3);
     setMarginRight(settings.receipt.marginRight > 0 ? settings.receipt.marginRight : 3);
+    if (settings.store.logo) {
+      setBusinessLogo(settings.store.logo);
+    }
+
+    // Load extra toggles from local preferences
+    try {
+      const localCode = localStorage.getItem('resto_rcpt_show_code');
+      if (localCode !== null) setShowReceiptCode(localCode === 'true');
+      const localDt = localStorage.getItem('resto_rcpt_show_dt');
+      if (localDt !== null) setShowDateTime(localDt === 'true');
+      const localStaff = localStorage.getItem('resto_rcpt_show_staff');
+      if (localStaff !== null) setShowStaffName(localStaff === 'true');
+      const localFooter = localStorage.getItem('resto_rcpt_show_footer');
+      if (localFooter !== null) setShowFooter(localFooter === 'true');
+      const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
+      if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
+        setTaxRatePercent(clamp(Number(localTaxRate), 0, 100));
+      }
+      const localLogo = localStorage.getItem('resto_rcpt_logo');
+      if (localLogo) setBusinessLogo(localLogo);
+    } catch {
+      // LocalStorage unavailable, keep defaults
+    }
+
+    // Attempt remote user preferences read
+    if (sessionToken) {
+      getUserPreferencesScoped(sessionToken)
+        .then((prefs) => {
+          if (prefs.resto_rcpt_show_code !== undefined) {
+            setShowReceiptCode(prefs.resto_rcpt_show_code === 'true');
+          }
+          if (prefs.resto_rcpt_show_dt !== undefined) {
+            setShowDateTime(prefs.resto_rcpt_show_dt === 'true');
+          }
+          if (prefs.resto_rcpt_show_staff !== undefined) {
+            setShowStaffName(prefs.resto_rcpt_show_staff === 'true');
+          }
+          if (prefs.resto_rcpt_show_footer !== undefined) {
+            setShowFooter(prefs.resto_rcpt_show_footer === 'true');
+          }
+          if (prefs.resto_rcpt_tax_rate !== undefined) {
+            const parsed = Number(prefs.resto_rcpt_tax_rate);
+            if (!isNaN(parsed)) setTaxRatePercent(clamp(parsed, 0, 100));
+          }
+          if (prefs.resto_rcpt_logo) {
+            setBusinessLogo(prefs.resto_rcpt_logo);
+          }
+        })
+        .catch(() => {
+          // Fall back gracefully
+        });
+    }
+
     receiptInitializedRef.current = true;
-  }, [settings.receipt]);
+  }, [settings.receipt, settings.store.logo, sessionToken]);
 
   // Sync hardware settings when profile arrives
   useEffect(() => {
@@ -130,6 +200,12 @@ export default function RestaurantReceiptsScreen({
         showTableNumber: settings.receipt.showTableNumber,
         taxRoundingMode: settings.receipt.taxRoundingMode ?? 'half_up',
         footer: settings.receipt.footer ?? '',
+        showReceiptCode: true,
+        showDateTime: true,
+        showStaffName: true,
+        showFooter: true,
+        taxRatePercent: 10,
+        businessLogo: settings.store.logo ?? '',
         marginTop: settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5,
         marginBottom: settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8,
         marginLeft: settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3,
@@ -142,7 +218,7 @@ export default function RestaurantReceiptsScreen({
       };
       setLoaded(true);
     }
-  }, [settings.receipt, hw.profile, loaded]);
+  }, [settings.receipt, settings.store.logo, hw.profile, loaded]);
 
   const dirty = useMemo(() => {
     void dirtyVersion;
@@ -153,6 +229,12 @@ export default function RestaurantReceiptsScreen({
       showTableNumber,
       taxRoundingMode,
       footer,
+      showReceiptCode,
+      showDateTime,
+      showStaffName,
+      showFooter,
+      taxRatePercent,
+      businessLogo,
       marginTop,
       marginBottom,
       marginLeft,
@@ -172,6 +254,12 @@ export default function RestaurantReceiptsScreen({
     showTableNumber,
     taxRoundingMode,
     footer,
+    showReceiptCode,
+    showDateTime,
+    showStaffName,
+    showFooter,
+    taxRatePercent,
+    businessLogo,
     marginTop,
     marginBottom,
     marginLeft,
@@ -211,27 +299,47 @@ export default function RestaurantReceiptsScreen({
     hw.updateKitchenPrinter({ devicePath: v });
   };
 
+  const handleLogoFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      addToast({
+        message: 'Logo file too large (maximum 2MB)',
+        type: 'error',
+      });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setBusinessLogo(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // ── Test Print ──────────────────────────────────────────────
   const handleTestPrint = useCallback(async () => {
     if (!sessionToken) return;
     setTestingPrint(true);
     try {
       const currency = settings.store.currency || 'IDR';
+      const effectiveFooter = showFooter ? footer : '';
       await printSalesReceipt(sessionToken, {
-        receiptNumber: 'RCP-TEST-0001',
+        receiptNumber: '01-01-260929-01-000042',
         date: new Date().toLocaleDateString(),
         subtotal: { minorUnits: 30000, currency },
-        ...(showTax ? { tax: { minorUnits: 3000, currency } } : {}),
-        total: { minorUnits: showTax ? 33000 : 30000, currency },
+        ...(showTax ? { tax: { minorUnits: Math.round(30000 * (taxRatePercent / 100)), currency } } : {}),
+        total: { minorUnits: showTax ? Math.round(30000 * (1 + taxRatePercent / 100)) : 30000, currency },
         items: [
           {
-            name: 'Sample Item 1',
+            name: 'Nasi Goreng Spesial',
             quantity: 1,
             unitPrice: { minorUnits: 25000, currency },
             totalPrice: { minorUnits: 25000, currency },
           },
           {
-            name: 'Sample Item 2',
+            name: 'Es Teh Manis',
             quantity: 1,
             unitPrice: { minorUnits: 5000, currency },
             totalPrice: { minorUnits: 5000, currency },
@@ -258,7 +366,7 @@ export default function RestaurantReceiptsScreen({
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, showTax, showTableNumber, l10n, addToast]);
+  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, showTableNumber, showFooter, footer, l10n, addToast]);
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -272,7 +380,7 @@ export default function RestaurantReceiptsScreen({
           showCurrency,
           decimalSeparator: settings.receipt.decimalSeparator,
           showTax,
-          footer,
+          footer: showFooter ? footer : '',
           paperWidth,
           showTableNumber,
           marginTop,
@@ -288,6 +396,32 @@ export default function RestaurantReceiptsScreen({
         tasks.push(hw.save());
       }
 
+      // 3. Save extended toggles & preferences
+      if (sessionToken) {
+        tasks.push(
+          setUserPreferencesScoped(sessionToken, [
+            { key: 'resto_rcpt_show_code', value: String(showReceiptCode) },
+            { key: 'resto_rcpt_show_dt', value: String(showDateTime) },
+            { key: 'resto_rcpt_show_staff', value: String(showStaffName) },
+            { key: 'resto_rcpt_show_footer', value: String(showFooter) },
+            { key: 'resto_rcpt_tax_rate', value: String(taxRatePercent) },
+            { key: 'resto_rcpt_logo', value: businessLogo },
+          ]),
+        );
+      }
+
+      // Cache to localStorage for instantaneous client load
+      try {
+        localStorage.setItem('resto_rcpt_show_code', String(showReceiptCode));
+        localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
+        localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
+        localStorage.setItem('resto_rcpt_show_footer', String(showFooter));
+        localStorage.setItem('resto_rcpt_tax_rate', String(taxRatePercent));
+        localStorage.setItem('resto_rcpt_logo', businessLogo);
+      } catch {
+        // Safe to ignore
+      }
+
       await Promise.all(tasks);
 
       originalsRef.current = {
@@ -297,6 +431,12 @@ export default function RestaurantReceiptsScreen({
         showTableNumber,
         taxRoundingMode,
         footer,
+        showReceiptCode,
+        showDateTime,
+        showStaffName,
+        showFooter,
+        taxRatePercent,
+        businessLogo,
         marginTop,
         marginBottom,
         marginLeft,
@@ -343,9 +483,15 @@ export default function RestaurantReceiptsScreen({
     showCurrency,
     settings.receipt.decimalSeparator,
     showTax,
+    showFooter,
     footer,
     paperWidth,
     showTableNumber,
+    showReceiptCode,
+    showDateTime,
+    showStaffName,
+    taxRatePercent,
+    businessLogo,
     marginTop,
     marginBottom,
     marginLeft,
@@ -362,7 +508,7 @@ export default function RestaurantReceiptsScreen({
     onSaved,
   ]);
 
-  // ── Accurate Printable Area & Preview Calculations ──────────
+  // ── Accurate Calculations for Thermal Preview ───────────────
   const rollWidthMm = paperWidth === 'narrow' ? 58 : 80;
   const printableAreaMm = Math.max(15, rollWidthMm - (marginLeft + marginRight));
   const approxCols = paperWidth === 'narrow'
@@ -377,7 +523,7 @@ export default function RestaurantReceiptsScreen({
   };
 
   const sampleSubtotal = 93000;
-  const rawTax = sampleSubtotal * 0.1;
+  const rawTax = sampleSubtotal * (taxRatePercent / 100);
   const sampleTax = taxRoundingMode === 'truncate' ? Math.floor(rawTax) : Math.round(rawTax);
   const sampleTotal = showTax ? sampleSubtotal + sampleTax : sampleSubtotal;
   const sampleCash = 100000;
@@ -424,6 +570,13 @@ export default function RestaurantReceiptsScreen({
                 }}
               >
                 <div className="resto-receipt-printable-area">
+                  {/* Business Logo */}
+                  {businessLogo && (
+                    <div className="resto-receipt-logo-wrap">
+                      <img src={businessLogo} alt="Business logo" className="resto-receipt-logo" />
+                    </div>
+                  )}
+
                   {/* Store Header */}
                   <div className="resto-receipt-center">
                     <div className="resto-receipt-store-title">
@@ -434,13 +587,18 @@ export default function RestaurantReceiptsScreen({
                         {settings.store.address}
                       </div>
                     )}
-                    <div className="resto-receipt-meta">
-                      <span>29/09/2026 21:15</span>
-                      <span>RCP-2026-0042</span>
-                    </div>
-                    {showTableNumber && (
-                      <div>
-                        <span className="resto-receipt-table-pill">TABLE 4</span>
+                    {/* Timestamp & Receipt Code */}
+                    {(showDateTime || showReceiptCode) && (
+                      <div className="resto-receipt-meta">
+                        {showDateTime ? <span>29/09/2026 21:15</span> : <span />}
+                        {showReceiptCode ? <span>01-01-260929-01-000042</span> : <span />}
+                      </div>
+                    )}
+                    {/* Staff Name & Table Number */}
+                    {(showStaffName || showTableNumber) && (
+                      <div className="resto-receipt-meta" style={{ marginTop: '2px' }}>
+                        {showStaffName ? <span>Staff: {staffDisplayName}</span> : <span />}
+                        {showTableNumber ? <span className="resto-receipt-table-pill">TABLE 4</span> : <span />}
                       </div>
                     )}
                   </div>
@@ -471,7 +629,7 @@ export default function RestaurantReceiptsScreen({
                     </div>
                     {showTax && (
                       <div className="resto-receipt-total-row">
-                        <span>PB1 / Tax (10%)</span>
+                        <span>PB1 / Tax ({taxRatePercent}%)</span>
                         <span>{formatPrice(sampleTax)}</span>
                       </div>
                     )}
@@ -490,14 +648,24 @@ export default function RestaurantReceiptsScreen({
                     </div>
                   </div>
 
-                  <div className="resto-receipt-divider" />
+                  {/* Footer note */}
+                  {showFooter && (
+                    <>
+                      <div className="resto-receipt-divider" />
+                      <div className="resto-receipt-footer-text">
+                        {footer.trim()
+                          ? footer
+                          : l10n.getString('restaurant-footer-placeholder') || 'Terima kasih atas kunjungan Anda!'}
+                      </div>
+                    </>
+                  )}
 
-                  {/* Live Footer Note */}
-                  <div className="resto-receipt-footer-text">
-                    {footer.trim()
-                      ? footer
-                      : l10n.getString('restaurant-footer-placeholder') || 'Terima kasih atas kunjungan Anda!'}
-                  </div>
+                  {/* Free Tier Watermark */}
+                  {isFreeTier && (
+                    <div className="resto-receipt-watermark">
+                      <span>kasir.mu</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="resto-receipt-cut-edge" aria-hidden="true" />
@@ -545,6 +713,66 @@ export default function RestaurantReceiptsScreen({
               </div>
             }
           >
+            {/* Business Logo Section */}
+            <div className="resto-logo-section">
+              <div className="resto-toggle-title">
+                <Localized id="restaurant-logo-heading">Business Logo</Localized>
+              </div>
+              <div className="resto-toggle-desc">
+                <Localized id="restaurant-logo-desc">
+                  Upload a square PNG or SVG logo for the receipt header
+                </Localized>
+              </div>
+              <div className="resto-logo-row">
+                <div className="resto-logo-thumb-box">
+                  {businessLogo ? (
+                    <img src={businessLogo} alt="Logo preview" className="resto-logo-thumb" />
+                  ) : (
+                    <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>No logo</span>
+                  )}
+                </div>
+                <div className="resto-logo-actions">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".svg,.png,.jpg,.jpeg,.webp"
+                    style={{ display: 'none' }}
+                    onChange={handleLogoFileChange}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Localized id="restaurant-logo-upload-btn">Choose Logo</Localized>
+                    </Button>
+                    {businessLogo && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBusinessLogo('')}
+                      >
+                        <Localized id="restaurant-logo-remove-btn">Remove Logo</Localized>
+                      </Button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    className="resto-margin-input"
+                    style={{ marginTop: '4px', fontSize: '11px' }}
+                    placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
+                    value={businessLogo.startsWith('data:') ? 'Custom uploaded image' : businessLogo}
+                    onChange={(e) => {
+                      if (!e.target.value.startsWith('Custom uploaded')) {
+                        setBusinessLogo(e.target.value);
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Paper Width Segmented Control */}
             <div style={{ marginBottom: 'var(--space-3)' }}>
               <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
@@ -664,7 +892,79 @@ export default function RestaurantReceiptsScreen({
               </div>
             </div>
 
-            {/* Modern Sliding Switch Toggles */}
+            {/* Toggle: Receipt Code */}
+            <div className="resto-toggle-row">
+              <div className="resto-toggle-info">
+                <span className="resto-toggle-title">
+                  <Localized id="restaurant-toggle-receipt-code">Show Receipt Code</Localized>
+                </span>
+                <span className="resto-toggle-desc">
+                  <Localized id="restaurant-toggle-receipt-code-desc">
+                    Print unique hierarchical receipt number
+                  </Localized>
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showReceiptCode}
+                aria-label={l10n.getString('restaurant-toggle-receipt-code') || 'Show Receipt Code'}
+                className="resto-switch-btn"
+                onClick={() => setShowReceiptCode(!showReceiptCode)}
+              >
+                <span className="resto-switch-handle" />
+              </button>
+            </div>
+
+            {/* Toggle: Date & Time */}
+            <div className="resto-toggle-row">
+              <div className="resto-toggle-info">
+                <span className="resto-toggle-title">
+                  <Localized id="restaurant-toggle-datetime">Show Date &amp; Time</Localized>
+                </span>
+                <span className="resto-toggle-desc">
+                  <Localized id="restaurant-toggle-datetime-desc">
+                    Print transaction date and timestamp on header
+                  </Localized>
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showDateTime}
+                aria-label={l10n.getString('restaurant-toggle-datetime') || 'Show Date and Time'}
+                className="resto-switch-btn"
+                onClick={() => setShowDateTime(!showDateTime)}
+              >
+                <span className="resto-switch-handle" />
+              </button>
+            </div>
+
+            {/* Toggle: Staff Name */}
+            <div className="resto-toggle-row">
+              <div className="resto-toggle-info">
+                <span className="resto-toggle-title">
+                  <Localized id="restaurant-toggle-staff">Show Staff Name</Localized>
+                </span>
+                <span className="resto-toggle-desc">
+                  <Localized id="restaurant-toggle-staff-desc">
+                    Print serving staff or cashier name
+                  </Localized>
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showStaffName}
+                aria-label={l10n.getString('restaurant-toggle-staff') || 'Show Staff Name'}
+                className="resto-switch-btn"
+                onClick={() => setShowStaffName(!showStaffName)}
+              >
+                <span className="resto-switch-handle" />
+              </button>
+            </div>
+
+            {/* Toggle: Table Number */}
             <div className="resto-toggle-row">
               <div className="resto-toggle-info">
                 <span className="resto-toggle-title">
@@ -688,6 +988,7 @@ export default function RestaurantReceiptsScreen({
               </button>
             </div>
 
+            {/* Toggle: Currency Symbol */}
             <div className="resto-toggle-row">
               <div className="resto-toggle-info">
                 <span className="resto-toggle-title">
@@ -711,6 +1012,7 @@ export default function RestaurantReceiptsScreen({
               </button>
             </div>
 
+            {/* Toggle: Tax & Tax Rate Input */}
             <div className="resto-toggle-row">
               <div className="resto-toggle-info">
                 <span className="resto-toggle-title">
@@ -734,6 +1036,30 @@ export default function RestaurantReceiptsScreen({
               </button>
             </div>
 
+            {showTax && (
+              <div className="resto-tax-input-wrap">
+                <label htmlFor="resto-tax-rate" className="resto-toggle-title" style={{ fontSize: 'var(--text-xs)' }}>
+                  <Localized id="restaurant-tax-rate-label">Tax Rate (%)</Localized>
+                </label>
+                <input
+                  id="resto-tax-rate"
+                  type="number"
+                  className="resto-margin-input"
+                  style={{ maxWidth: '80px' }}
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={taxRatePercent}
+                  onChange={(e) => setTaxRatePercent(clamp(Number(e.target.value), 0, 100))}
+                />
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
+                  <Localized id="restaurant-tax-rate-hint">
+                    Standard restaurant PB1 is 10%, VAT/PPN is 11–12%
+                  </Localized>
+                </span>
+              </div>
+            )}
+
             {/* Tax Rounding */}
             <div style={{ marginTop: 'var(--space-3)' }}>
               <label htmlFor="resto-rcpt-tax-rounding" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
@@ -750,25 +1076,63 @@ export default function RestaurantReceiptsScreen({
               />
             </div>
 
-            {/* Receipt Footer */}
-            <div style={{ marginTop: 'var(--space-3)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <label htmlFor="resto-rcpt-footer" className="resto-toggle-title">
-                  <Localized id="workspace-pos-footer">Receipt Footer</Localized>
-                </label>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
-                  {footer.length}/500
+            {/* Toggle: Footer Note */}
+            <div className="resto-toggle-row" style={{ marginTop: 'var(--space-3)' }}>
+              <div className="resto-toggle-info">
+                <span className="resto-toggle-title">
+                  <Localized id="restaurant-toggle-footer">Show Footer Note</Localized>
+                </span>
+                <span className="resto-toggle-desc">
+                  <Localized id="restaurant-toggle-footer-desc">
+                    Print thank-you or promotional message at bottom
+                  </Localized>
                 </span>
               </div>
-              <textarea
-                id="resto-rcpt-footer"
-                className="resto-textarea"
-                rows={3}
-                maxLength={500}
-                placeholder={l10n.getString('restaurant-footer-placeholder') || 'Thank you for dining with us!'}
-                value={footer}
-                onChange={(e) => setFooter(e.target.value)}
-              />
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showFooter}
+                aria-label={l10n.getString('restaurant-toggle-footer') || 'Show Footer Note'}
+                className="resto-switch-btn"
+                onClick={() => setShowFooter(!showFooter)}
+              >
+                <span className="resto-switch-handle" />
+              </button>
+            </div>
+
+            {showFooter && (
+              <div style={{ marginTop: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <label htmlFor="resto-rcpt-footer" className="resto-toggle-title" style={{ fontSize: 'var(--text-xs)' }}>
+                    <Localized id="workspace-pos-footer">Receipt Footer Text</Localized>
+                  </label>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
+                    {footer.length}/500
+                  </span>
+                </div>
+                <textarea
+                  id="resto-rcpt-footer"
+                  className="resto-textarea"
+                  rows={3}
+                  maxLength={500}
+                  placeholder={l10n.getString('restaurant-footer-placeholder') || 'Thank you for dining with us!'}
+                  value={footer}
+                  onChange={(e) => setFooter(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Free Tier Watermark Notice */}
+            <div className={`resto-tier-notice ${isFreeTier ? 'resto-tier-notice--free' : 'resto-tier-notice--paid'}`}>
+              {isFreeTier ? (
+                <Localized id="restaurant-free-tier-watermark-notice">
+                  Free Plan: "kasir.mu" is always printed after footer
+                </Localized>
+              ) : (
+                <Localized id="restaurant-paid-tier-watermark-notice">
+                  Paid Plan: Watermark removed
+                </Localized>
+              )}
             </div>
           </Card>
 
