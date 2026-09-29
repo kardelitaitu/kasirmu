@@ -1889,6 +1889,14 @@ The old two-crate figure of 2,494 was low by ~950, and it was never a per-crate 
 grouped summary clippy prints **undercounts**, the same effect recorded above at 195-vs-220.
 **3,439 is the number to plan against.**
 
+> **CORRECTION (2026-09-29, same day).** 3,439 is **double-counted**. `cargo clippy
+> --all-targets` compiles the crate twice — as `lib` and as `lib test` — so every non-test
+> finding is reported twice and a raw tally reads ~1.8x high. Deduped on `file:line:col` the
+> real baseline is **1,902 distinct findings across 47 lints**. The table above is left as
+> measured (it is what the plan was sized against); the corrected figure and the outcome are
+> in the `kasirmu-core` DONE section below. **Dedupe, or the plan is sized against a number
+> that does not exist.**
+
 Three groups inside the 357 need a ruling rather than an edit:
 
 - **`too_many_lines` — 61.** Every site is a function to split, and in `kasirmu-core` those are
@@ -1914,6 +1922,57 @@ name with their counts so the debt stays visible. **Do not enable the crate and 
 `too_many_lines` and the casts wholesale**: that would contradict `foundation`, where both
 classes were fixed outright.
 
+**`kasirmu-core` DONE 2026-09-29 — pedantic enabled at the crate root, 0 findings.**
+Commit `style(core): enable clippy::pedantic at the crate root (P2-5)`.
+
+| | count |
+|---|---|
+| distinct baseline (deduped — see the correction above) | **1,902** |
+| covered by the 17 named allows | **1,621** |
+| fixed | **281** |
+
+The allows live at the crate root of `crates/kasirmu-core/src/lib.rs`, each with its count and
+reason inline: doc prose **1,427** (`missing_errors_doc` 778, `doc_markdown` 462,
+`must_use_candidate` 184, `missing_panics_doc` 3); `needless_pass_by_value` **10**; judgement
+classes **123** (`unreadable_literal` 34, `too_many_lines` 33, `similar_names` 16,
+`match_same_arms` 15, `used_underscore_binding` 13, `items_after_statements` 12);
+`wildcard_imports` **16**; the SQLite cast family **18**; `format_push_string` **20**; and four
+single-helper signatures (`implicit_hasher` 2, `unnecessary_wraps` 1,
+`match_wildcard_for_single_variants` 2, `case_sensitive_file_extension_comparisons` 2).
+
+**The 281 fixed.** `cargo clippy --fix` applied the machine-applicable sites over two passes
+(the first aborted mid-way — see below), then the hand set: 18 `manual_let_else`,
+3 `map_unwrap_or`, 2 `return_self_not_must_use`, 2 `op_ref`, 1 `default_trait_access`,
+1 `needless_continue`, 1 `should_panic_without_expect`. The last three classes were applied by
+reading clippy's own `suggested_replacement` spans out of the JSON and splicing them by byte
+offset — for `MaybeIncorrect` suggestions, which `--fix` refuses — then compiling to verify.
+
+**TWO AUTO-FIXES WERE REVERTED RATHER THAN KEPT — both would have shipped a broken artifact:**
+- **`wildcard_imports` (16).** Clippy's expansion of `use super::*;` is built from the *lib*
+  target alone, so it silently drops every name only the `#[path = "..._tests.rs"]` child module
+  needs — `Currency`, here. Applying it broke the lib-test build with 7 `E0425`s. The glob is
+  load-bearing in this crate's test-extraction pattern (COR-33), so the lint is **allowed with
+  that reason, not fixed**. **A green `--fix` is not evidence a fix is correct: it exited 0
+  while producing a crate that did not compile.**
+- **`should_panic_without_expect`.** Clippy's replacement text is the literal placeholder
+  `#[should_panic(expected = /* panic message */)]` — a `HasPlaceholders` suggestion. The
+  scripted pass applied it; the compiler caught it (`expected a literal ... found <eof>`) and it
+  was replaced with the real message read out of `FeatureRegistry::from_set`. **Placeholder
+  suggestions must be treated as unsafe to apply, whatever their applicability label says.**
+
+**Acceptance verified:** `cargo clippy -p kasirmu-core --all-targets` → **0 clippy findings**
+(deduped); `... -- -D warnings` → **exit 0**; `cargo check -p kasirmu-core --all-targets` →
+**0 `unknown_lints`**; `cargo test -p kasirmu-core` → **3,981 passed, 0 failed, 2 ignored** across
+26 suites; `cargo check --workspace --lib` → exit 0 with **0** `unused_must_use`, so the two new
+`#[must_use]` attributes (`Store::with_terminal_id`, `HealthState::worst`) do not redden a
+dependent — every caller already consumes the result.
+
+**A workspace-wide `--all-targets` check still fails, and it is NOT this crate.**
+`crates/kasirmu-bridge/src/edc_tests.rs` is mid-edit in the EDC lane
+(`create_session_with_perms` does not exist yet); its 4 errors are theirs. `--lib` across the
+workspace is clean. **Read the error's file path before attributing a red workspace to your own
+change.**
+
 The original staging below is kept for the reasoning it records — why each item
 came where it did — with its outcome marked. Read it as history, not a plan.
 
@@ -1924,21 +1983,21 @@ came where it did — with its outcome marked. Read it as history, not a plan.
    `models_proptests.rs`, `convergence_replay.rs`).
 4. ~~P1-2 — coverage floor, once there is something worth measuring.~~ **DONE** —
    `coverage-floors.json` + `verify-coverage-floors.py`, 4 per-crate floors.
-5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **P2-4 and P2-6 DONE.
-   P2-5: `foundation` DONE 2026-09-29 (149 → 0, acceptance exit 0); `kasirmu-core`
-   still open.** The blocker recorded here earlier was a false one — the manifest
-   cannot hold `[lints.clippy]` beside `[lints] workspace = true`, but a crate-root
-   attribute can, and it composes with the workspace table instead of opting out of
-   it. No architecture decision was ever needed. See the P2-5 entry for the measured
-   per-lint counts and the recipe that carries over to `kasirmu-core`.
+5. ~~P2-4, P2-5, P2-6 — cheap compiler-surface wins.~~ **DONE 2026-09-29.** P2-4 and
+   P2-6 were already closed. P2-5: `foundation` DONE 2026-09-29 (149 → 0, acceptance
+   exit 0) and `kasirmu-core` DONE 2026-09-29 (**1,902 distinct → 0**: 1,621 covered by
+   17 named allows, 281 fixed, acceptance exit 0). The blocker recorded here earlier was
+   a false one — the manifest cannot hold `[lints.clippy]` beside
+   `[lints] workspace = true`, but a crate-root attribute can, and it composes with the
+   workspace table instead of opting out of it. No architecture decision was ever
+   needed. See the P2-5 entry for the measured per-lint counts.
 6. ~~P3-\*, P4-\* — housekeeping.~~ **DONE except P3-2, which is REJECTED** (§7).
    P3-1 (invariants doc), P3-3 (SAFETY-comment gate) and all three P4 items
    closed with evidence.
 
-**The remaining item needs work, not an architecture decision** — that framing was
-retired on 2026-09-29 when the crate-root attribute was proven to work under the
-existing workspace lint table. `kasirmu-core` is the last crate; the recipe is in the
-P2-5 entry.
+**P2-5 is closed** — both crates carry `#![warn(clippy::pedantic)]` at the crate root,
+under the existing workspace lint table, so every item in this list is now done. The
+recipe and the measured per-lint counts are in the P2-5 entry.
 
 **Reality check, unchanged from the previous revision and still correct:** for
 an offline-first multi-location system, "bug-free" is not attainable. What is
