@@ -5,6 +5,7 @@ title: ADR #50: Sync Authentication Hardening (token refresh, gating, terminal c
 status: Accepted (2026-09-11) - partially implemented
 ---
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE on substance, with one symbol rename recorded. The four phases are all traceable in the current tree. P2/P4: the expired-vs-invalid classification the ADR calls for is real and documented as a design invariant — `crates/kasirmu-api/src/auth.rs:316-328` carries the comment "(ADR sync-auth-hardening P4): `token_expired`, `invalid_token`" and a `Classify a JWT validation failure` function, so the client-refreshes-only-on-`token_expired` rule has a server half in place. P3: the `sync_terminals` table exists (`crates/kasirmu-core/migrations/20260813_init.sql:854`, PG mirror `:1634`), and the settings-key constant the ADR explicitly corrects itself about is a real named constant rather than a dotted string — `platform/core/src/settings/keys.rs` now exports `SYNC_TERMINAL_SECRET`, which is exactly the fix the P3 bullet describes ("not the dotted `sync.terminal_secret` once written here"). The file that ADR names is the same file that exists today, which is not always true in this repo. · ⚠️ ONE RENAME: the P1 bullet's `AuthRejected` variant does not exist under that name. A repo-wide search of `crates/` and `platform/` for `AuthRejected` returns ZERO matches; the 401 split that shipped is `AuthExpired` vs `AuthInvalid`, and the split is stated as a deliberate invariant at `crates/kasirmu-core/src/sync_client/types.rs:8` — "a 401 is SPLIT (`AuthExpired` vs `AuthInvalid`) so a caller can [distinguish]". The enum itself is at `types.rs:89`, in a module that has since become a directory (`crates/kasirmu-core/src/sync_client/`). So P1 is implemented, just under a name a reader grepping this ADR will not find; recorded rather than edited, because the ADR is the record of the decision and the rename is visible in the code. Both halves of P1's asymmetry survive and are worth confirming: the refresh guard is `matches!(outcomes, Err(sync_client::SyncHttpError::AuthExpired))` at `crates/kasirmu-bridge/src/sync.rs:621` and again for snapshot at `:766`, which is the "retry once, never loop" bound the ADR asks for. · REPAIRED: crate paths. The body cites `crates/kasirmu-api/src/routes/tokens.rs` and `kasirmu_core::sync_client`, both now `crates/kasirmu-api/…` and `crates/kasirmu-core/…`. Repaired in place — a live ADR is read by engineers working on the code, so its paths are instructions. · The header note about the corrected date and `scripts/generate-records-index.mjs` indexing by front-matter `num:` is exactly the kind of self-correction worth keeping; the front matter is present and correct. -->
 # ADR #50: Sync Authentication Hardening (token refresh, gating, terminal credentials)
 
 **Status:** Accepted (2026-09-11) - partially implemented (incremental; each phase ships independently)
@@ -20,7 +21,7 @@ The cloud sync server authenticates every `/api/sync/*` call with a JWT
 make this fragile:
 
 1. **The token endpoint is unprotected.** Any caller can mint a 24-hour token
-   (`crates/oz-api/src/routes/tokens.rs` documents this). There is no
+   (`crates/kasirmu-api/src/routes/tokens.rs` documents this). There is no
    revocation list and the signing secret falls back to a hardcoded dev value.
 2. **Tokens expire with no client refresh.** The desktop bootstrap mints one
    token per launch and stores it as the API key. A token that expires
@@ -40,7 +41,7 @@ Harden sync auth in four independent, individually-shippable phases.
   fresh token from `POST /api/v1/tokens`, persist it as the API key, and retry
   the operation exactly once.
 - Implemented in both client paths:
-  - `oz-core::sync_client` (used by the Tauri `sync_run` / `sync_pull`
+  - `kasirmu_core::sync_client` (used by the Tauri `sync_run` / `sync_pull`
     commands) gains a typed `SyncHttpError` with an `AuthRejected` variant so
     the command layer can distinguish 401 from other failures.
   - `platform-sync::SyncTransport` (used by the background daemon) maps 401 to
@@ -63,7 +64,7 @@ Harden sync auth in four independent, individually-shippable phases.
 
 ### P3 — Terminal registration / client credentials
 
-- New `sync_terminals` table (migration in `oz-core`): `terminal_id` (PK),
+- New `sync_terminals` table (migration in `kasirmu-core`): `terminal_id` (PK),
   `device_secret` (hashed), `label`, `tenant_id`, timestamps.
 - `POST /api/v1/terminals` (admin-gated) registers a terminal and returns a
   generated device secret.
@@ -114,3 +115,5 @@ Harden sync auth in four independent, individually-shippable phases.
 Each phase ships with focused tests: transport/command 401 mapping (P1),
 handler gating matrix (P2), registration + client-credentials minting (P3),
 expired-vs-invalid middleware responses (P4), plus the existing sync suites.
+
+> last audited 29-09-26 by docs-auditor

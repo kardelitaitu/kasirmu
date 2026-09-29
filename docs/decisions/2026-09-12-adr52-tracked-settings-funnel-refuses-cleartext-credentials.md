@@ -5,6 +5,7 @@ title: ADR #52: Tracked Settings Funnel Refuses Cleartext Credentials
 status: Accepted (2026-09-12)
 ---
 
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · ACCURATE, unusually so — and its Open item is CONFIRMED STILL OPEN, which is the finding worth carrying forward. Every mechanism this ADR names exists: `keys::SECRET_KEY_DENY_LIST` and the `is_secret_setting_key` predicate are in `crates/kasirmu-bridge/src/settings.rs`; `set_tracked` is in `crates/kasirmu-bridge/src/settings/core.rs`; `set_batch_tracked` is in `crates/kasirmu-core/src/settings.rs`; `CLEARTEXT_CREDENTIAL_EXCEPTION` is in `platform/core/src/settings/raw.rs`; and the census test the Context rests on is real at `crates/kasirmu-core/tests/credential_storage_form.rs`. The Amendment's method — counting rows rather than reading what goes into them, and correcting itself when the count was misleading — is the most careful self-correction in this directory. · THE OPEN ITEM, re-measured: the ADR says "The settings screen still posts `sync.auth_token` at `ui/src/features/settings/SettingsPage.tsx:479` through a best-effort catch that swallows the new error". The BEHAVIOUR is unchanged and the LINE REFERENCE is stale, for a reason this campaign can now explain exactly: that call site was moved out of `SettingsPage.tsx` by the Phase 0a section extraction audited in the previous round — which is why that file is now 456 lines, so line 479 does not exist — and it now lives at `ui/src/features/settings/hooks/useSettingsSave.ts:289` as `setSettingScoped(sessionToken, 'sync.auth_token', syncApiKey).catch(() => { /* best-effort */ })`. That is literally the "best-effort catch that swallows the new error" the open item describes, character for character. So the silent no-op against dead UI is still happening; a reader who checked only the cited line would have concluded the item was fixed. The ADR also says the mirror is parked because the tree has been typecheck-red; the parked reason has plausibly changed, but the open item itself has not. Not repaired: this is a live known-issue record, and closing it is the owner's call once the write is actually removed. · The other key named here, `sync.auth_token`, is now a named constant — `pub const AUTH_TOKEN: &str = "sync.auth_token";` at `platform/core/src/settings/keys.rs:109`, with a comment at `:96` recording that it "existed only as the bare literal", which is the same constants-not-literals discipline ADR-50 P3 established. · The "What this does not do" section is the most valuable part of the file: it bounds the decision honestly against the backup page copy, the snapshot pile, and the trusted writers, so nobody reads "credentials are refused" as "credentials are encrypted everywhere". -->
 # ADR #52: Tracked Settings Funnel Refuses Cleartext Credentials
 
 **Status:** Accepted (2026-09-12) · branch `0.0.37`. Landed in `0f26a4b29` (refusal in both tracked accessors
@@ -23,7 +24,7 @@ never to list membership, and filtering the write path would break the lifecycle
 very keys. At-rest FORM was, by design, nobody's business but the typed setter's — every guarantee in this
 area was about EXIT.
 
-The census test (`crates/oz-core/tests/credential_storage_form.rs`, `5a536af6a`) made the cost of that
+The census test (`crates/kasirmu-core/tests/credential_storage_form.rs`, `5a536af6a`) made the cost of that
 premise measurable, and the measurement is bad on every axis it checks:
 - Through the funnel, ZERO of the fourteen credential keys land as ciphertext in either table:
   `Settings::set_tracked` writes the value into `settings.value` AND a delta row into
@@ -99,7 +100,7 @@ Dated claims, true when the review closed on 2026-09-12; none is a design invari
   against `setting_updated` take the version integer and neither reads the value — the writer's
   own `next_delta_version` (`raw.rs:252`) and `get_version` (`raw.rs:284`) — and the one function
   that would have made the ledger a concurrency contract, `get_version` ("detect concurrent
-  edits", `raw.rs:281-283`), has ZERO production callers (the `oz-core` facade delegation at
+  edits", `raw.rs:281-283`), has ZERO production callers (the `kasirmu-core` facade delegation at
   `settings.rs:854` and tests only). Deleting deny-listed rows from the ledger is NOT a sync
   corruption event as of 2026-09-12 — the moment someone wires that reader, deletion starts to
   look like a rewind; re-check this before building any purge on it.
@@ -130,3 +131,5 @@ Dated claims, true when the review closed on 2026-09-12; none is a design invari
   unaffected. The durable lesson: the exception exists so the settings screen can save, and what
   made this look like a leak was counting delta rows rather than reading what goes into them —
   the row exists, and the FORM of its value is what decides.
+
+> last audited 29-09-26 by docs-auditor
