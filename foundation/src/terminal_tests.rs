@@ -3,7 +3,6 @@
 //! Moved here with the types from `modules/terminal/src/models_tests.rs`; the assertions are
 //! unchanged, including the one that pins the redacting `Debug`.
 
-
 use super::*;
 
 // ── Terminal ────────────────────────────────────────────────────

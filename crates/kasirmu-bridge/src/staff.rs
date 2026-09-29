@@ -655,12 +655,7 @@ pub async fn create_staff_scoped(
     let staff_code = store.get_staff_code(&user.id).unwrap_or(None);
     drop(db);
 
-    let mut dto = to_staff_dto(
-        &user,
-        &roles,
-        Some(&profile),
-        assignment.as_ref(),
-    );
+    let mut dto = to_staff_dto(&user, &roles, Some(&profile), assignment.as_ref());
     dto.staff_code = staff_code;
     Ok(dto)
 }
@@ -877,12 +872,7 @@ pub async fn update_staff_scoped(
             store.get_staff_code(&args.id).unwrap_or(None),
         )
     };
-    let mut dto = to_staff_dto(
-        &user,
-        &roles,
-        profile.as_ref(),
-        assignment.as_ref(),
-    );
+    let mut dto = to_staff_dto(&user, &roles, profile.as_ref(), assignment.as_ref());
     dto.staff_code = staff_code;
     Ok(dto)
 }

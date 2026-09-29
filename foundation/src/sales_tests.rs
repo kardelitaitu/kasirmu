@@ -3,7 +3,6 @@
 //! Moved here with the types from `modules/sales/src/models_tests.rs`; the assertions are
 //! unchanged, and `foundation::` paths became `crate::` because a crate cannot name itself by path.
 
-
 use super::*;
 
 use crate::{Cart, CartLine, Percentage, Sku};

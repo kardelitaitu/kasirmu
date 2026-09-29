@@ -164,7 +164,10 @@ pub async fn list_locations_scoped(
         .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
     let store = Store::new(&conn);
     let profiles = store.list_locations()?;
-    Ok(profiles.into_iter().map(|p| to_location_dto(&store, p)).collect())
+    Ok(profiles
+        .into_iter()
+        .map(|p| to_location_dto(&store, p))
+        .collect())
 }
 
 /// Get a location profile for the session's tenant (ADR #7).
