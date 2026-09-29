@@ -724,6 +724,28 @@
       "runners": { "check.sh": ["docs dead refs"] },
       "ci": { "workflow": "dev-ci.yml", "job": "ci-docs-drift", "steps": ["Docs dead references"] },
       "_note": "FLIPPED TO REQUIRED 2026-09-25 (C62), because the flip condition this entry wrote for itself was MET and the point of writing it down was to act on it rather than let the advisory state calcify. Original advisory reason, kept because it is still the right call at the time it was made: findings sat in manager-codebase-review-checklist.md while a concurrent session was actively writing that file (the count grew 2 -> 7 over that session), and check.sh's step() exits 1 on first failure, so a leg red for reasons outside the runner's control would have broken every local pre-push. HOW THE CONDITION WAS MET: the audit register's 82 pre-rebrand paths were repointed to the real files (c6ebcc165), and the four remaining hits were quoted-or-illustrative paths -- a mistyped root cited as command evidence, a brief that named a directory which no longer exists, a path used as an ILLUSTRATIVE EXAMPLE of a non-test file, and my own C62/C70 prose quoting the dead names as the FINDING. Those four are not citations to fix; they are deliberate absences, and they now carry the NEGATIVE_MARKERS wording this checker documents for exactly that case ('does not exist', 'no longer exists', 'never existed'). Measured immediately before the flip: 9 unresolved references -> 0. The gate now has a check.sh runner ('docs dead refs') as the condition required, and the CI step drops continue-on-error so a future dead path fails the job rather than annotating it."
+    },
+    {
+      "id": "shell-syntax",
+      "label": "shell syntax",
+      "status": "required",
+      "_note": "Added 2026-09-29. A shell file that does not parse does not RUN, so every step inside it is skipped and nothing reports that; the pre-commit hook case is sharper, because a hook that cannot parse stops gating everything it was written to gate. sh -n parses without executing, so this is safe to run first, on a bare checkout, and cannot have side effects. Paid for itself on its first run: scripts/profile.sh line 151 read \"fi# -- Build and run command\", and since bash treats # as a comment only when it STARTS a word, \"fi#\" lexes as one token, the enclosing if never closed, and bash reported it at END OF FILE 65 lines away with every keyword, quote, brace and $( in the file balancing. Covers all first-party .sh repo-wide and excludes vendored trees.",
+      "runners": { "check.sh": ["shell syntax", "shell syntax self-test"] }
+    },
+    {
+      "id": "workflow-syntax",
+      "label": "workflow syntax",
+      "status": "required",
+      "_note": "Added 2026-09-29, the shell gate's sibling. A .github/workflows/*.yml that is not valid YAML runs NO JOBS AT ALL: GitHub reports the workflow errored and executes none of them, so the failure presents as a green PR that stopped checking rather than a red one. Only release.yml had a syntax check before this (verify-release-workflow.py); dev-ci.yml, android.yml and website.yml had none. Also rejects three shapes that are valid YAML but invalid as workflows -- non-mapping top level, no jobs key, and jobs that is empty or a list -- because \"it parsed\" is the most misleading possible green. Refuses to report clean when it finds no workflows (exit 2). The attic is excluded deliberately: a retired .bak is never executed.",
+      "runners": { "check.sh": ["workflow syntax", "workflow syntax self-test"] }
+    },
+    {
+      "id": "selftests-wired",
+      "label": "self-tests wired",
+      "status": "required",
+      "_note": "Added 2026-09-29. Answers one question: does a checker's --self-test have a caller? A self-test no runner invokes rots in silence -- the cases still pass by hand and nothing says nobody runs them. Measured when it was written: 24 of 28 scripts/verify-*.py declared a --self-test and NINE were invoked from no runner at all; one of the nine had been printing \"nothing calls this flag\" in its own report. Deliberately narrow: it does not decide WHICH runner should invoke one, or whether a given self-test is any good, and a check.sh-only caller counts. It also ships with the bug class it was written to catch, found in the gate three times before it was right: a COMMENT mentioning the flag counted as a caller; a RETIRED .bak workflow counted as a caller; and the scope covered only verify-*.py, so check-*.py was invisible. Full-line comments are stripped, attic/ is excluded, and the scope is now verify-*/check-*.",
+      "runners": { "check.sh": ["self-tests wired", "self-tests wired self-test"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     }
   ]
 }
