@@ -16,13 +16,18 @@ next: none — crate is stable and well-tested | perf: N/A
 //! (appended automatically by `aes-gcm`).
 //!
 //! Reads are branch-tolerant: a row is accepted under whichever candidate
-//! derivation authenticates it - the family's legacy derivation or the
-//! `OZ_MASTER_KEY` HMAC derivation. Writes still use exactly one derivation,
-//! so bytes written today are unchanged.
+//! derivation authenticates it - the family's legacy derivation, the
+//! `OZ_MASTER_KEY` HMAC derivation, or (C1 slice S2b-1) a per-install key
+//! installed into this process with [`set_install_key`]. Writes still use
+//! exactly one derivation, selected by [`portable_key`]: install key when one is
+//! installed, else `OZ_MASTER_KEY`, else legacy. With no key installed the
+//! selection is byte-identical to the pre-S2b-1 behaviour, so this seam alone
+//! changes nothing at runtime.
 
 // rustdoc::private_intra_doc_links is allowed crate-wide, deliberately.
 //
 // The crate's public API is small (`encrypt`, `decrypt`, `install_key`,
+// `set_install_key`, `install_key_derivation_active`,
 // `master_key_derivation_active`) but its correctness argument lives in the
 // PRIVATE derivation helpers: `portable_key`, `candidate_keys`, `hmac_key`
 // and `master_key_from_env`. The public doc comments reference those helpers
@@ -47,6 +52,7 @@ use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, aead::generic_array::GenericArray}
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+use std::sync::OnceLock;
 
 /// Error type for cryptographic operations.
 #[derive(Debug, thiserror::Error)]
@@ -153,15 +159,44 @@ fn hmac_key(master: &[u8; 32], domain: &[u8]) -> [u8; 32] {
 
 /// Derive a portable at-rest key for `domain`.
 ///
-/// With a master key set (64 hex chars), the key is [`hmac_key`]
-/// derived — real at-rest confidentiality, at the cost of pinning the
-/// deployment to that master key. Without it, the family's `legacy`
-/// derivation runs so that values written before this mechanism
-/// existed keep decrypting (legacy derivations are deliberately kept
-/// byte-identical for backward compatibility).
+/// Precedence is **install > master > legacy** (decision D1, answered
+/// 2026-09-29):
+///
+/// 1. a per-install key installed into this process with [`set_install_key`] —
+///    the real key once it exists, which is why it wins;
+/// 2. otherwise the [`hmac_key`] derivation when a master key is set
+///    (64 hex chars) — real at-rest confidentiality, at the cost of pinning the
+///    deployment to that master key;
+/// 3. otherwise the family's `legacy` derivation, so that values written before
+///    either mechanism existed keep decrypting (legacy derivations are
+///    deliberately kept byte-identical for backward compatibility).
+///
+/// With no install key installed this is exactly the pre-S2b-1 selection, so the
+/// seam alone changes no ciphertext.
 fn portable_key(domain: &[u8], legacy: impl FnOnce(&[u8]) -> [u8; 32]) -> [u8; 32] {
-    match master_key_from_env() {
-        Some(m) => hmac_key(&m, domain),
+    let install = install_key_from_process();
+    let master = master_key_from_env();
+    portable_key_from(domain, install.as_ref(), master.as_ref(), legacy)
+}
+
+/// [`portable_key`]'s precedence with every key source injected.
+///
+/// Split out for the same reason [`master_key_raw_from`] and
+/// [`decrypt_smtp_at_rest_under`] are: the install key lives in a process
+/// global that cannot be un-set, so a test that installed one to observe the
+/// precedence would race every other case in this binary. Injecting the
+/// candidate sources makes the ordering observable without touching the global.
+fn portable_key_from(
+    domain: &[u8],
+    install: Option<&[u8; 32]>,
+    master: Option<&[u8; 32]>,
+    legacy: impl FnOnce(&[u8]) -> [u8; 32],
+) -> [u8; 32] {
+    if let Some(secret) = install {
+        return hmac_key(secret, domain);
+    }
+    match master {
+        Some(m) => hmac_key(m, domain),
         None => legacy(domain),
     }
 }
@@ -189,31 +224,64 @@ pub fn master_key_derivation_active() -> bool {
     master_key_from_env().is_some()
 }
 
-/// [`portable_key`] with an injected master (test seam).
+/// [`portable_key`] with an injected master and NO install key (test seam).
+///
+/// The install-key arm is deliberately not reachable from here: this helper is
+/// the pre-S2b-1 seam and every existing case that calls it is asserting the
+/// master-vs-legacy selection. Use [`portable_key_from`] directly to observe the
+/// install arm.
 #[cfg(test)]
 fn portable_key_with(
     domain: &[u8],
     master: &Option<[u8; 32]>,
     legacy: impl FnOnce(&[u8]) -> [u8; 32],
 ) -> [u8; 32] {
-    match master {
-        Some(m) => hmac_key(m, domain),
-        None => legacy(domain),
-    }
+    portable_key_from(domain, None, master.as_ref(), legacy)
 }
 
-/// Every key a `domain` row may have been written under, in try order:
-/// the family's `legacy` derivation first, then the master-key HMAC
-/// derivation when `OZ_MASTER_KEY` decodes to 32 bytes.
+/// Every key a `domain` row may have been written under, in try order: the
+/// per-install key when this process has one, then the family's `legacy`
+/// derivation, then the master-key HMAC derivation when a master key decodes to
+/// 32 bytes.
 ///
 /// This is [`portable_key`] widened for READING only. Writes still call
-/// [`portable_key`], so bytes written today are byte-identical; a reader
-/// that finds `OZ_MASTER_KEY` newly set can still open rows the legacy
-/// branch wrote before it existed.
+/// [`portable_key`], so bytes written today are byte-identical; a reader that
+/// finds a newly installed key can still open rows the legacy and master
+/// branches wrote before it existed.
+///
+/// The install branch lands in the SAME slice as the [`portable_key`] arm
+/// (hazard H1): a writer that used a derivation no reader tries would brick the
+/// install immediately, on its own rows.
 fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8; 32]> {
-    let mut keys = vec![legacy(domain)];
-    if let Some(master) = master_key_from_env() {
-        keys.push(hmac_key(&master, domain));
+    let install = install_key_from_process();
+    let master = master_key_from_env();
+    candidate_keys_from(domain, install.as_ref(), master.as_ref(), legacy)
+}
+
+/// [`candidate_keys`] with every key source injected. See that function for the
+/// try order and why it is a read-only concern.
+fn candidate_keys_from(
+    domain: &[u8],
+    install: Option<&[u8; 32]>,
+    master: Option<&[u8; 32]>,
+    legacy: impl Fn(&[u8]) -> [u8; 32],
+) -> Vec<[u8; 32]> {
+    let mut keys = Vec::with_capacity(3);
+    // The install branch is tried FIRST: it is the newest derivation, so it is
+    // the one a row written since the upgrade is most likely to be under. The
+    // legacy-then-master tail keeps the order it had before this slice, so a
+    // process with no install key produces a byte-identical list -- including
+    // which error surfaces when every candidate fails. The plan that scoped this
+    // slice wrote the order as "install -> master -> legacy"; the tail order is
+    // preserved instead because AES-GCM's tag is the only oracle, so the order
+    // decides nothing but the failure message, and preserving it is the strictly
+    // smaller change.
+    if let Some(secret) = install {
+        keys.push(hmac_key(secret, domain));
+    }
+    keys.push(legacy(domain));
+    if let Some(master) = master {
+        keys.push(hmac_key(master, domain));
     }
     keys
 }
@@ -221,25 +289,26 @@ fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8;
 /// Derive a portable at-rest key from a **per-install** secret rather than
 /// from the environment or the public static constant.
 ///
-/// # Status: DORMANT (C1 slice S2a)
+/// # Status: the seam is live, the source is not (C1 slices S2a + S2b-1)
 ///
-/// Nothing in production calls this yet, and no call path changed when it
-/// landed — [`portable_key`] and [`candidate_keys`] remain the only
-/// derivations any shipping code reaches. It exists so that the later slices
-/// have one seam to plug into instead of three call sites to retrofit:
-/// **S2b** holds the secret in the OS keychain (entry `oz-pos/at-rest-key.v1`)
-/// and calls this with what it reads back, and **S2c** (`oz rekey`) re-writes
-/// rows under a newly rotated secret. Until S2b lands there is no source for
-/// `install_secret`, which is exactly why this is dormant rather than wired.
+/// Nothing in production calls this directly yet — there is still no keychain
+/// read, which is S2b-2. But as of S2b-1 the derivation is reachable through the
+/// public path: [`set_install_key`] installs a secret into this process, and
+/// [`portable_key`] and [`candidate_keys`] then select and try it. This function
+/// stays the pure, stateless form of that derivation — what the tests drive, and
+/// what S2c's re-encryption calls per row.
 ///
-/// # Why it is a separate function and not a change to [`portable_key`]
+/// **S2b-2** resolves the secret from the OS keychain (entry
+/// `oz-pos/at-rest-key.v1`) at boot and hands it to [`set_install_key`];
+/// **S2c** (`oz rekey`) re-writes rows under a newly rotated secret.
+///
+/// # Why the derivation is separate from [`portable_key`]
 ///
 /// [`portable_key`] is load-bearing for READING and its `legacy` arm must stay
-/// byte-identical forever — existing rows decrypt through it. This function is
-/// a third, additive derivation (public-constant legacy, `OZ_MASTER_KEY`,
-/// per-install); it intentionally does **not** participate in
-/// [`candidate_keys`], so no reader acquires a new branch and no existing
-/// ciphertext changes meaning.
+/// byte-identical forever — existing rows decrypt through it. This function is a
+/// third, additive derivation (public-constant legacy, `OZ_MASTER_KEY`,
+/// per-install), and it is reached only through an *installed* key, so a process
+/// that installs none derives exactly as it did before this seam existed.
 ///
 /// # Threat model
 ///
@@ -255,26 +324,73 @@ fn candidate_keys(domain: &[u8], legacy: impl Fn(&[u8]) -> [u8; 32]) -> Vec<[u8;
 ///
 /// Switching a live deployment to a per-install key orphans every row written
 /// under the previous derivation unless the reader is branch-tolerant for the
-/// new candidate too — the same prerequisite (D1) that gates S2b. Do not call
-/// this from a boot path until that decision is made.
+/// new candidate too — the same prerequisite (D1) that gated S2b, and which the
+/// branch-tolerant reader satisfied before S2b-1 landed. The remaining ordering
+/// rule is the other half: the candidate branch and the write arm ship together
+/// (they did, in S2b-1), and a boot path must never install a key it cannot
+/// re-read on the next boot (hazard H3 — see [`set_install_key`]).
 #[must_use]
 pub fn install_key(domain: &[u8], install_secret: &[u8; 32]) -> [u8; 32] {
     hmac_key(install_secret, domain)
 }
 
-/// Whether a per-install key derivation is available, as a plain bool.
+/// The process-wide per-install at-rest key, installed once at boot.
 ///
-/// Always `false` while S2a is dormant: no keychain-backed source exists yet
-/// (that is S2b). It is defined now so the earlier fail-closed callers and any
-/// future diagnostics can ask the question without a second change, and so the
-/// answer cannot drift from the code path it will eventually describe — the
-/// same reasoning [`master_key_derivation_active`] records for itself.
+/// C1 slice S2b-1. A `OnceLock` rather than a parameter threaded through the
+/// derivation: the six decrypt functions are called from `platform/core`, the
+/// bridge and both shells at points far from any boot closure, so threading a
+/// key would touch every caller and every test. A process global set once is the
+/// smaller, safer change.
 ///
-/// It reports **whether an install-key source exists**, never any key
-/// material, and never whether a deployment is correctly configured.
+/// It is deliberately **optional**. A process that never installs a key behaves
+/// exactly as it did before this seam existed — hazard H2, where a missing key
+/// must degrade to today's derivation rather than become an error.
+static INSTALL_KEY: OnceLock<[u8; 32]> = OnceLock::new();
+
+/// Install the process-wide per-install key. Idempotent; the first call wins.
+///
+/// Returns `true` when this call installed the key, `false` when one was already
+/// present. The key is never logged, printed or returned.
+///
+/// **A `false` is not a failure.** It means another boot path already resolved
+/// the same key, which is the expected outcome when more than one place installs
+/// it. Boot code should treat both answers as success and must never treat a
+/// missing keychain entry as an error (hazard H2).
+///
+/// # The caller must guarantee the key is durable (hazard H3)
+///
+/// This function cannot tell where the secret came from, so it cannot refuse a
+/// key read from an in-memory keyring that starts empty on every boot. Installing
+/// one of those orphans every row written under it. S2b-2's boot path is
+/// responsible for detecting the in-memory fallback and **refusing to generate**
+/// a key there — the decision recorded for D1 on 2026-09-29.
+pub fn set_install_key(secret: [u8; 32]) -> bool {
+    INSTALL_KEY.set(secret).is_ok()
+}
+
+/// The per-install key installed into this process, if any.
+fn install_key_from_process() -> Option<[u8; 32]> {
+    INSTALL_KEY.get().copied()
+}
+
+/// Whether a per-install key derivation is active **in this process**, as a plain
+/// bool.
+///
+/// Returns `true` exactly when [`set_install_key`] has installed a key, i.e. when
+/// that key is the derivation [`portable_key`] selects and the first candidate
+/// [`candidate_keys`] tries. It reports **which derivation this process selected**
+/// and nothing else: not whether a keychain source exists, not whether a
+/// deployment is correctly configured, and never any key material — the same
+/// reasoning [`master_key_derivation_active`] records for itself.
+///
+/// It reads the same [`install_key_from_process`] the derivations read, so the
+/// answer cannot drift from the code path it describes.
+///
+/// Before S2b-2 wires a keychain read at boot this returns `false` everywhere,
+/// which is the pre-seam behaviour rather than an error.
 #[must_use]
 pub fn install_key_derivation_active() -> bool {
-    false
+    install_key_from_process().is_some()
 }
 
 /// Internal: decrypt with the first candidate key that authenticates.

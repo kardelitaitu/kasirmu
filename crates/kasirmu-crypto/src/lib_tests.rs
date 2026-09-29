@@ -450,7 +450,7 @@ fn the_static_fallback_is_the_default_derivation_and_is_pinned_as_reachable() {
     );
 }
 
-// ── C1 slice S2a: the dormant per-install key seam ───────────────────
+// ── C1 slices S2a + S2b-1: the per-install key seam ──────────────────
 
 /// The install-key derivation is HMAC-SHA256(install_secret, domain) --
 /// domain separation identical in shape to the master-key derivation, so a
@@ -469,16 +469,176 @@ fn install_key_is_domain_separated_and_deterministic() {
     assert_ne!(a, other_secret, "different secrets must not share a key");
 }
 
-/// The seam must NOT be reachable through the reader's candidate list, or
-/// every existing row would silently gain a derivation its writer never used.
+/// The install branch enters the reader's candidate list ONLY when a key is
+/// installed, and it is tried FIRST.
+///
+/// This REPLACES the S2a-era pin that asserted the derivation could never appear
+/// in `candidate_keys`. S2b-1 changes that deliberately: hazard H1 is a writer
+/// using a derivation no reader tries, which bricks the install on its own rows
+/// immediately, so the candidate branch ships in the same slice as the write arm.
+/// What must stay true is the CONDITION — with no key installed the list is
+/// byte-identical to the pre-seam list, so no existing row gains a derivation its
+/// writer never used.
 #[test]
-fn install_key_is_absent_from_the_reader_candidate_list() {
+fn install_key_enters_the_candidate_list_only_when_installed_and_goes_first() {
     let secret = [7u8; 32];
-    let candidates = candidate_keys(SMTP_AT_REST_DOMAIN, derive_static_key);
+    let derived = install_key(SMTP_AT_REST_DOMAIN, &secret);
+
+    // Not installed: the pre-seam list, in the pre-seam order.
+    let without = candidate_keys_from(SMTP_AT_REST_DOMAIN, None, None, derive_static_key);
+    assert_eq!(
+        without,
+        vec![derive_static_key(SMTP_AT_REST_DOMAIN)],
+        "with no install key the candidate list must be the pre-S2b-1 list"
+    );
     assert!(
-        !candidates.contains(&install_key(SMTP_AT_REST_DOMAIN, &secret)),
-        "the per-install derivation must stay out of candidate_keys -- adding it \
+        !without.contains(&derived),
+        "an uninstalled derivation must never be a read candidate -- adding it \
          would widen READ acceptance for every family without any writer using it"
+    );
+
+    // Installed: present, first, and without dropping the legacy branch.
+    let with = candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&secret), None, derive_static_key);
+    assert_eq!(
+        with.first(),
+        Some(&derived),
+        "the newest derivation is the likeliest writer, so it is tried first"
+    );
+    assert!(
+        with.contains(&derive_static_key(SMTP_AT_REST_DOMAIN)),
+        "widening for reading must not drop the legacy branch"
+    );
+}
+
+/// With no key installed the derivation reports inactive — hazard H2's guard.
+///
+/// This REPLACES the S2a-era pin that asserted the seam was dormant *by
+/// construction*. S2b-1 makes the mechanism real, so what is pinned now is the
+/// behaviour that matters: a process that installs no key — which is every
+/// process until S2b-2 wires the keychain read at boot — must report inactive and
+/// derive exactly as before.
+///
+/// Nothing in this binary calls `set_install_key`, and that is deliberate: the
+/// global cannot be un-set, so installing one here would change the derivation
+/// for every other case in this file. The real global is driven in
+/// `tests/at_rest_key_lifecycle.rs`, which runs as its own process.
+#[test]
+fn install_key_derivation_is_inactive_until_a_key_is_installed() {
+    assert!(
+        !install_key_derivation_active(),
+        "no key is installed in the unit-test binary; if this now returns true, a \
+         case installed one into the process global and poisoned its siblings"
+    );
+}
+
+/// Precedence is install > master > legacy (D1, answered 2026-09-29).
+///
+/// Exercised through `portable_key_from` with every source injected, because the
+/// process global cannot be un-set and a `set_var` for the master key would race
+/// every other case in this binary.
+#[test]
+fn install_key_wins_over_master_and_legacy() {
+    let install = [0x07u8; 32];
+    let master = [0x42u8; 32];
+
+    let all_three = portable_key_from(
+        SMTP_AT_REST_DOMAIN,
+        Some(&install),
+        Some(&master),
+        derive_static_key,
+    );
+    assert_eq!(
+        all_three,
+        hmac_key(&install, SMTP_AT_REST_DOMAIN),
+        "the per-install key is the real key once it exists, so it must win"
+    );
+    assert_ne!(all_three, hmac_key(&master, SMTP_AT_REST_DOMAIN));
+    assert_ne!(all_three, derive_static_key(SMTP_AT_REST_DOMAIN));
+
+    // Without an install key the master override still beats legacy...
+    assert_eq!(
+        portable_key_from(SMTP_AT_REST_DOMAIN, None, Some(&master), derive_static_key),
+        hmac_key(&master, SMTP_AT_REST_DOMAIN)
+    );
+    // ...and with neither source the family's legacy derivation runs, unchanged.
+    assert_eq!(
+        portable_key_from(SMTP_AT_REST_DOMAIN, None, None, derive_static_key),
+        derive_static_key(SMTP_AT_REST_DOMAIN)
+    );
+}
+
+/// Hazards H1 and H4 together, through the PRODUCTION reader.
+///
+/// H1: a row written under an installed key is readable while that key is a
+/// candidate — the self-brick the slice exists to prevent.
+/// H4: a row written under the legacy derivation still reads once a key exists.
+///
+/// Driven through `decrypt_smtp_at_rest_under`, the production read with its key
+/// list injected, so this asserts the real path rather than a reimplementation.
+#[test]
+fn install_key_rows_read_and_legacy_rows_survive_the_upgrade() {
+    let install = [0x09u8; 32];
+    let derived = install_key(SMTP_AT_REST_DOMAIN, &install);
+
+    // H4: written BEFORE the key existed, under the legacy derivation.
+    let legacy_row = encrypt(
+        "written-before-upgrade",
+        &derive_static_key(SMTP_AT_REST_DOMAIN),
+    )
+    .unwrap();
+    // H1: written AFTER, under the installed key.
+    let install_row = encrypt("written-after-upgrade", &derived).unwrap();
+
+    let candidates =
+        candidate_keys_from(SMTP_AT_REST_DOMAIN, Some(&install), None, derive_static_key);
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&legacy_row, &candidates).expect("legacy row must still read"),
+        "written-before-upgrade",
+        "H4: the upgrade must not orphan rows written under the legacy derivation"
+    );
+    assert_eq!(
+        decrypt_smtp_at_rest_under(&install_row, &candidates).expect("install row must read"),
+        "written-after-upgrade",
+        "H1: a writer's own rows must be readable by the same process"
+    );
+
+    // The pre-upgrade reader CANNOT open the new row — which is exactly why the
+    // candidate branch had to ship in the same slice as the write arm.
+    assert!(
+        decrypt_smtp_at_rest_under(&install_row, &[derive_static_key(SMTP_AT_REST_DOMAIN)])
+            .is_err(),
+        "an install-key row is unreadable without the install branch: H1's failure mode"
+    );
+}
+
+/// S2b-1's own gate: with no key installed, nothing on the production path moved.
+///
+/// Asserts the PRODUCTION selector and the production candidate list rather than
+/// the injectable helpers, so the pin cannot pass while the real path is broken.
+#[test]
+fn no_install_key_leaves_the_production_path_unchanged() {
+    assert!(
+        !install_key_derivation_active(),
+        "a case installed a key into the process global and poisoned this one"
+    );
+    let ambient_master = master_key_from_env();
+
+    // `portable_key` is what every at-rest write calls.
+    let expected = match ambient_master {
+        Some(m) => hmac_key(&m, SMTP_AT_REST_DOMAIN),
+        None => derive_static_key(SMTP_AT_REST_DOMAIN),
+    };
+    assert_eq!(
+        portable_key(SMTP_AT_REST_DOMAIN, derive_static_key),
+        expected,
+        "with no install key the selection must be the pre-S2b-1 selection"
+    );
+
+    // The candidate list must not have gained an arm.
+    assert_eq!(
+        candidate_keys(SMTP_AT_REST_DOMAIN, derive_static_key).len(),
+        if ambient_master.is_some() { 2 } else { 1 },
+        "an uninstalled derivation must not widen the read candidate list"
     );
 }
 
@@ -497,17 +657,5 @@ fn install_key_round_trips_and_is_not_interchangeable() {
     assert!(
         decrypt(&ciphertext, &derive_static_key(SMTP_AT_REST_DOMAIN)).is_err(),
         "the public-constant derivation must not open an install-key row"
-    );
-}
-
-/// S2a is DORMANT. If this fails, a source was wired without the D1 decision
-/// -- which is the one thing the slice was scoped to avoid.
-#[test]
-fn install_key_derivation_is_currently_inactive() {
-    assert!(
-        !install_key_derivation_active(),
-        "no per-install key source exists yet (S2b); if this now returns true, \
-         a keychain-backed source was wired and C1's D1 decision must have been \
-         taken deliberately in the same change"
     );
 }
