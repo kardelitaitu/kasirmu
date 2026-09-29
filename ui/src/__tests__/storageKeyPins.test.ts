@@ -80,6 +80,12 @@ const EXPECTED_KEYS: Record<string, string> = {
   'resto_rcpt_show_footer': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
   'resto_rcpt_tax_rate': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
   'resto_rcpt_logo': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // The 2-column receipt header's three editable lines (f2c3339c3).
+  'resto_rcpt_header_title': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_header_line1': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_header_line2': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // Where the logo sits in the 2-column header (left / right).
+  'resto_rcpt_logo_pos': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
