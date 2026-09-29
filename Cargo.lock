@@ -3413,6 +3413,7 @@ dependencies = [
  "hmac 0.12.1",
  "image 0.25.10",
  "kasirmu-core",
+ "kasirmu-crypto",
  "kasirmu-hal",
  "kasirmu-lua",
  "kasirmu-plugin",

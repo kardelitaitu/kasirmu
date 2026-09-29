@@ -198,6 +198,128 @@ pub async fn rotate_encryption_key_scoped(
     rotate_encryption_key().await
 }
 
+/// Install the per-install at-rest key for this process (C1 slice S2b-2b).
+///
+/// Reads the keychain entry `oz-pos/at-rest-key.v1` (or generates it, once, on a
+/// durable keyring) and hands the secret to `kasirmu_crypto::set_install_key`, so
+/// every at-rest derivation in this process uses it. Call this **before the first
+/// credential is decrypted**; see the ordering note below.
+///
+/// # Synchronous on purpose
+///
+/// This is a boot-path call and Tauri's `.setup()` closure is synchronous, so
+/// there is no async context to await in and none to nest a keyring backend's
+/// private runtime inside. It therefore does the same thing
+/// [`with_keyring`](crate::security::with_keyring) does — run the keyring
+/// operation on a dedicated OS thread — but by spawning and joining directly
+/// rather than through a oneshot channel. Calling `block_on` from the setup
+/// closure would be the alternative and is deliberately avoided: it would enter
+/// the runtime the Linux Secret Service backend must stay out of.
+///
+/// # This never fails boot, deliberately
+///
+/// A missing or unusable keychain is not an error here, because the whole feature
+/// is opt-in: with no key installed the six at-rest families derive exactly as
+/// they did before the seam existed (hazard H2). Every outcome is reported as a
+/// plain [`InstallKeyOutcome`] so the boot path can log it, and none of them is
+/// fatal. Making any of them fatal would stop a machine that worked yesterday
+/// from starting today.
+///
+/// # The H3 refusal is why this returns an outcome rather than a bool
+///
+/// `resolve_install_key` refuses to generate a key on a non-durable keyring (the
+/// in-memory fallback, which starts empty every boot). That refusal must be
+/// visible and distinct from "the keychain had nothing and we made one", because
+/// they mean opposite things to an operator.
+///
+/// # Ordering rule (do not move this call later)
+///
+/// The key must be installed **before the first decrypt of a portable credential**,
+/// or that read uses the legacy derivation and, on an install that already has
+/// keyed rows, returns a decryption failure for data that is intact. Installing it
+/// late is therefore worse than not installing it at all. The desktop shell calls
+/// this in its `setup` closure ahead of `AppState::new`.
+pub fn install_at_rest_key() -> InstallKeyOutcome {
+    use kasirmu_security::install_key::{InstallKeyResolution, InstallKeySource as SecSource};
+
+    // The worker's result type. `InstallKeyOutcome` is not `Send`-constrained by
+    // anything but is a plain enum, so it crosses the join boundary fine.
+    let worker = std::thread::spawn(|| -> Result<InstallKeyResolution, String> {
+        let keyring = kasirmu_security::default_keyring().map_err(|e| e.to_string())?;
+        kasirmu_security::install_key::resolve_install_key(keyring.as_ref())
+            .map_err(|e| e.to_string())
+    });
+
+    // A panicked worker must not take the boot path down with it: the whole
+    // point of this function is that no keychain outcome is fatal.
+    let resolved = match worker.join() {
+        Ok(result) => result,
+        Err(_) => Err("the keychain worker thread panicked".to_string()),
+    };
+
+    match resolved {
+        Ok(InstallKeyResolution::Ready { secret, source }) => {
+            // `set_install_key` returning false means another boot path already
+            // installed this key — the documented non-failure (see its doc).
+            let installed_now = kasirmu_crypto::set_install_key(secret);
+            InstallKeyOutcome::Ready {
+                installed_now,
+                source: match source {
+                    SecSource::Loaded => InstallKeySource::Loaded,
+                    SecSource::Generated => InstallKeySource::Generated,
+                    // `InstallKeySource` is `#[non_exhaustive]` upstream, so a new
+                    // arm must not break this build. Treat an unknown origin as
+                    // `Generated`: that is the arm telling an operator the key did
+                    // not pre-exist, which is the more cautious reading.
+                    _ => InstallKeySource::Generated,
+                },
+            }
+        }
+        Ok(InstallKeyResolution::RefusedNonDurableKeyring) => {
+            InstallKeyOutcome::RefusedNonDurableKeyring
+        }
+        Err(reason) => InstallKeyOutcome::Unavailable(reason),
+    }
+}
+
+/// How [`install_at_rest_key`] resolved, for the caller to log.
+///
+/// A plain data type rather than a `Result`, because **no arm is a failure the
+/// caller should propagate**: each one leaves the process on a well-defined
+/// derivation, and the operator-facing decision is what to log, not whether to
+/// abort.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum InstallKeyOutcome {
+    /// A key is installed. `installed_now` is false when a previous boot path
+    /// had already installed it (not an error).
+    Ready {
+        /// Whether this call performed the install.
+        installed_now: bool,
+        /// Whether the key was read from the keychain or freshly generated.
+        source: InstallKeySource,
+    },
+    /// No key was generated because the keyring is not durable (hazard H3).
+    /// The process stays on the previous derivation.
+    RefusedNonDurableKeyring,
+    /// The keychain could not be read or written. The process stays on the
+    /// previous derivation. Carries the reason for the log, never key material.
+    Unavailable(String),
+}
+
+/// Whether a per-install at-rest key was loaded or generated.
+///
+/// Mirrors `kasirmu_security::InstallKeySource` so a caller of this bridge
+/// function does not have to import the security crate, and so the mapping is
+/// exhaustive here (where the source enum is non-exhaustive upstream).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallKeySource {
+    /// The keychain already held a usable key.
+    Loaded,
+    /// No entry existed and a fresh key was generated and stored.
+    Generated,
+}
+
 #[cfg(test)]
 #[path = "security_tests.rs"]
 mod tests;
