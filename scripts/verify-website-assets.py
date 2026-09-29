@@ -17,6 +17,15 @@ each with a different failure mode:
      zero-grep-count stops meaning "unused". That self-disabling is the whole
      reason this third check is safe to enforce rather than advisory.
 
+NO --self-test HERE, AND THE REASON IS MEASURED, NOT ASSUMED. Measured 2026-09-29:
+LITERAL_IMPORT was mutated to a pattern that cannot match, and this gate went LOUD --
+exit 1, with every asset reported ORPHAN. Its two extraction paths both fail toward
+noise rather than silence: break the import regex and references vanish, so everything
+looks unreferenced; break the dynamic-resolver regex and find_dynamic_resolvers() returns
+empty, which ENABLES the orphan check rather than disabling it. A liveness test is for
+gates that can go quiet, and this one cannot. It was left without a self-test on that
+reasoning in round 14, before anything had been measured; this is the measurement.
+
 KNOWN LIMIT -- what the orphan rule cannot see while a dynamic resolver exists.
 In that state this tool grades NOTHING about whether an asset is referenced: an
 unreferenced file that is a real vector and fits under --max-bytes walks through
