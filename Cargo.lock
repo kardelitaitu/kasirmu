@@ -3605,13 +3605,11 @@ version = "0.0.40"
 dependencies = [
  "chrono",
  "filetime",
- "libc",
  "thiserror 1.0.69",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
