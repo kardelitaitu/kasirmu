@@ -297,6 +297,7 @@ const SCREENS: ScreenEntry[] = [
     // screen's markup.
     //
     // `segmented-tab` is the second whole-name mute, and it is the composed-child
+    // `segmented-tab` is the second whole-name entry, and it is the composed-child
     // shape rather than a sibling one: this sheet carries a scoped override at
     // :160 — `.staff-mgmt-header .segmented-tab[role="tab"]` drops the shared
     // strip's extra track padding so the header settles on the touch-target token
@@ -305,9 +306,17 @@ const SCREENS: ScreenEntry[] = [
     // The walk reads this entry's markup plus additionalTsx, and additionalTsx
     // DOES include StaffTabs.tsx (:290) — but that file renders the component,
     // it never spells `segmented-tab`, so the base stays unseen from here and the
-    // rule reads dead without the mute. A prefix would over-reach: it would excuse
-    // any future segmented-* name in this sheet, and only this one is claimed.
-    externalClasses: ['memo-stack', 'segmented-tab'],
+    // rule reads dead without the entry.
+    //
+    // It lives in dynamicClassPrefixes rather than externalClasses (moved
+    // 2026-09-29): the ledger case requires an externalClasses value to be
+    // defined OUTSIDE the entry's own css (:2511-2515), and the rule that makes
+    // this name matter is the one at StaffManagementScreen.css:160, which IS this
+    // entry's own sheet. A whole-name entry is not a wildcard — the census credits
+    // p === cls only through this list — so it excuses exactly `segmented-tab`
+    // and does not reach any future segmented-* name.
+    dynamicClassPrefixes: ['segmented-tab'],
+    externalClasses: ['memo-stack'],
   },
 
   // ── Setup ─────────────────────────────────────────────
@@ -1362,6 +1371,25 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card--added',
       'restaurant-card--disabled',
       'restaurant-card--pinned',
+      // `is-resizing` moved here from externalClasses (2026-09-29), and this is
+      // the ONLY list that can carry it. It is a body state applied by
+      // classList.add at sales/hooks/useCartResize.ts:56, never through a
+      // className sink, so the dead walk would call its rule at
+      // RestaurantMenu.css:755-764 unreachable. The three mechanisms that excuse
+      // a dead name do not fit:
+      //   - externalClasses is out on the ledger case's own terms — that case
+      //     requires the value to be defined OUTSIDE the entry's own css
+      //     (:2511-2515), and this rule lives in the sheet this entry owns;
+      //   - knownDynamicFragments excuses only the used-but-undefined direction
+      //     (:2069), never the dead one, which is why a fragment attempt printed
+      //     "Dead classes: is-resizing";
+      //   - `used` and `composed` are what the walk wants, and neither can see a
+      //     class the component never spells.
+      // A whole-name entry is not a wildcard: the census credits p === cls only
+      // through this list, so it excuses exactly `is-resizing` and nothing else.
+      // The rule stays because deleting it would un-freeze this screen's cards
+      // under the sales divider's drag, which is the entire point of the pairing.
+      'is-resizing',
     ],
     // Trusted child component, named whole: the pin badge's Tooltip renders
     // `tooltip-wrapper` + `tooltip-wrapper--inline` (Tooltip.tsx:225), defined
@@ -1377,16 +1405,9 @@ const SCREENS: ScreenEntry[] = [
       'restaurant-card',
       'tooltip-wrapper',
       'tooltip-wrapper--inline',
-      // non-JSX: applied to document.body by classList.add at
-      // sales/hooks/useCartResize.ts:56 (removed at :67), never through a
-      // className sink, so it cannot enter the used set. The rule it carries is
-      // `body.is-resizing .restaurant-card` (:542-551) -- a GLOBAL state class
-      // that the sales screen's divider sets in order to freeze this screen's
-      // card transforms mid-drag, which is why the two halves live in different
-      // features. Same shape as KdsScreen's no-anim, and it carries the same
-      // ledger member below; deleting the rule instead would un-freeze the
-      // cards under the moving cursor.
-      'is-resizing',
+      // (Folded with the Agent-3-era 'restaurant-card' above into one list
+      // rather than a duplicate key — duplicate keys are legal JS but the second
+      // silently wins, which would have dropped the original.)
     ],
     // The Agent 3 extraction moved the tile/tab-strip/grid/overlay JSX into
     // components/*.tsx; they share the screen's stylesheet (global classes).
@@ -2307,19 +2328,9 @@ const EXTERNAL_CLASS_LEDGER: { entry: string; value: string; reason: string }[] 
     reason: 'non-JSX: the base is assigned to a local at features/restaurant/components/MenuItemTile.tsx:189 (let cardClass of the literal) and only the composed value reaches className, so the extractor never sees the base; its entry already carries a restaurant-card-- prefix which cannot cover the base either',
   },
   {
-    entry: 'RestaurantMenu',
-    value: 'is-resizing',
-    reason: 'non-JSX: applied to document.body by classList.add at features/sales/hooks/useCartResize.ts:56, outside every component JSX and every prefix shape; the rule is a global body-state selector (body.is-resizing .restaurant-card, RestaurantMenu.css:542-551) whose whole purpose is to freeze THIS screen\'s cards while the sales screen\'s divider drags, so the setter and the rule cannot be brought into one feature',
-  },
-  {
     entry: 'KdsScreen',
     value: 'no-anim',
     reason: 'non-JSX: applied to document.body by classList.toggle at features/kds/KdsScreen.tsx:93-94, outside every component JSX and every prefix shape',
-  },
-  {
-    entry: 'StaffManagementScreen',
-    value: 'segmented-tab',
-    reason: 'composed child: defined once at components/SegmentedTabs.css:118, rendered by the shared <SegmentedTabs> that staff/components/StaffTabs.tsx:74 composes; this entry\'s own sheet carries a scoped override for it at StaffManagementScreen.css:160, so the rule lives in the citing sheet while the name never appears in any walked TSX — StaffTabs.tsx renders the component without spelling the class',
   },
 ];
 
