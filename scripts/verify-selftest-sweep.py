@@ -95,16 +95,31 @@ def run(path: Path) -> tuple[int, str]:
                           + (tail[-1] if tail else (r.stderr or "").strip()[-120:]))
 
 
+def verdict(rc: int) -> str:
+    """The ONLY classification this gate applies to a checker's exit code.
+
+    Zero is a pass. Everything else is a failure, and that is the whole rule. There was
+    once a second outcome for "the flag was rejected", and it hid real failures behind a
+    friendlier label: verify-selftests-wired.py returns 2 from self_test() when a CASE
+    fails, so a genuine failure was summarised as a usage problem while the count of
+    failed cases read zero. The reason is now carried on the line as a prefix instead,
+    where it can inform the reader without touching the verdict or the count.
+    """
+    return "pass" if rc == 0 else "failed"
+
+
 def self_test() -> int:
     """Pure classification over synthetic exit codes. Nothing is executed."""
     bad: list[str] = []
 
-    def bucket(rc: int) -> str:
-        return {0: "pass", 2: "usage", 1: "case-failed"}.get(rc, "error")
-
-    for rc, want in ((0, "pass"), (2, "usage"), (1, "case-failed"), (3, "error")):
-        if bucket(rc) != want:
-            bad.append(f"exit {rc} must bucket as {want!r}, got {bucket(rc)!r}")
+    # Tests verdict() -- the function main() ACTUALLY calls. The previous cases
+    # here tested a local bucket() that nothing invoked, so they passed while proving
+    # nothing about the sweep: the same "a self-test that tests nothing" trap this
+    # session has refused in six other checkers, created here by removing the bucket
+    # from main() and forgetting the cases that described it.
+    for rc, want in ((0, "pass"), (1, "failed"), (2, "failed"), (3, "failed"), (127, "failed")):
+        if verdict(rc) != want:
+            bad.append(f"exit {rc} must verdict as {want!r}, got {verdict(rc)!r}")
 
     # The checkers in this directory must be discoverable, or the sweep is vacuous.
     found = [p.name for p in checkers() if declares_selftest(p)]
@@ -138,7 +153,7 @@ def main() -> int:
     for p in todo:
         rc, tail = run(p)
         line = f"{p.name}: rc={rc} {tail}"
-        (passed if rc == 0 else failed).append(line)
+        (passed if verdict(rc) == "pass" else failed).append(line)
 
     for line in failed:
         print("  FAILED " + line)
