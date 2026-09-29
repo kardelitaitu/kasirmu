@@ -1,6 +1,6 @@
 # PLAN: Multi-Terminal EDC Hardware Binding (R4) & Resilient Abstraction
 
-**Status:** IN PROGRESS · **Date:** 2026-09-29 · **Scope:** `crates/kasirmu-bridge`, `apps/desktop-tauri`, `apps/mobile-tauri`, `ui/src/api/edc.ts`, `ui/src/features/settings`, `ui/src/features/sales/payment`
+**Status:** COMPLETED · **Date:** 2026-09-29 · **Scope:** `crates/kasirmu-bridge`, `apps/desktop-tauri`, `apps/mobile-tauri`, `ui/src/api/edc.ts`, `ui/src/features/settings`, `ui/src/features/sales/payment`
 
 ---
 
@@ -28,26 +28,26 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
 ## 3. Implementation Phases
 
 ### Phase 1: Bridge & Tauri IPC Routing
-- [ ] In `crates/kasirmu-bridge/src/edc.rs`:
+- [x] In `crates/kasirmu-bridge/src/edc.rs`:
   - `resolve_terminal(ctx, terminal_id: Option<&str>)`
   - Update `edc_terminal_status`, `edc_terminal_status_scoped`, `edc_sale`, `edc_refund`, `edc_void` to accept `terminal_id: Option<String>`.
   - Add `list_edc_terminals_scoped(ctx, session_token)` returning `Vec<EdcTerminalConfigDto>`.
   - Add CRUD: `create_edc_terminal_scoped`, `update_edc_terminal_scoped`, `delete_edc_terminal_scoped`.
-- [ ] In `apps/desktop-tauri` and `apps/mobile-tauri`:
+- [x] In `apps/desktop-tauri` and `apps/mobile-tauri`:
   - Update command signatures in `commands/edc.rs`.
   - Register new commands in `lib.rs`.
   - Verify with sibling unit tests in `crates/kasirmu-bridge/src/edc_tests.rs`.
 
 ### Phase 2: UI API & Dev-Mock
-- [ ] In `ui/src/api/edc.ts`:
+- [x] In `ui/src/api/edc.ts`:
   - Add `terminalId?: string | null` to all EDC payment methods.
   - Define `EdcTerminalDto`, `NewEdcTerminalDto`, `UpdateEdcTerminalDto`.
   - Export `listEdcTerminalsScoped`, `createEdcTerminalScoped`, `updateEdcTerminalScoped`, `deleteEdcTerminalScoped`.
-- [ ] In `ui/src/dev-mock/handlers/payment.ts`:
+- [x] In `ui/src/dev-mock/handlers/payment.ts`:
   - Add mock handlers supporting multi-terminal simulation with distinct statuses.
 
 ### Phase 3: Hardware Settings Management UI
-- [ ] In `ui/src/features/settings/`:
+- [x] In `ui/src/features/settings/`:
   - Add `EdcTerminalsCard` to Hardware Settings.
   - Show list of configured terminals with connection type badges.
   - "Test Connection" button to probe terminal status on-demand.
@@ -55,7 +55,7 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
   - Option to set as "Register Default" in register hardware preferences.
 
 ### Phase 4: Checkout Multi-Terminal Picker
-- [ ] In `ui/src/features/sales/payment/`:
+- [x] In `ui/src/features/sales/payment/`:
   - In `useEdcTenderPhase.ts`:
     - Fetch active terminals on mount.
     - Manage `selectedTerminalId`, defaulting to register's preferred terminal.
@@ -65,7 +65,7 @@ In Indonesian and global retail/hospitality, registers frequently connect to **m
     - If multiple terminals are active, render selection chips (`[BCA Counter 1]`, `[Mandiri Pax]`).
     - Display preflight status for the selected terminal.
     - If offline, provide clear error message and option to switch to another active terminal.
-- [ ] Tests:
+- [x] Tests:
   - Unit tests in `useEdcTenderPhase.test.ts` and `PaymentModalSaleFlow.test.tsx`.
 
 ---
