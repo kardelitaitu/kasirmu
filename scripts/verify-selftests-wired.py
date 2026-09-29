@@ -76,6 +76,14 @@ def runner_text() -> str:
     for r in RUNNERS:
         if r.is_dir():
             for p in sorted(r.rglob("*.yml")) + sorted(r.rglob("*.yaml")):
+                # .github/workflows/attic/ holds RETIRED workflows, and GitHub never
+                # executes a .bak. Counting one as a caller would report a checker as
+                # wired on the strength of a runner that stopped existing months ago --
+                # which is how verify-flaky-quarantine.py looked live: its only two
+                # invocations were in ci.yml.bak and nightly.yml.bak. Measured, not
+                # assumed: the attic here is where the false negative came from.
+                if "attic" in {q.lower() for q in p.parts}:
+                    continue
                 try:
                     parts.append(p.read_text(encoding="utf-8", errors="replace"))
                 except OSError:

@@ -553,6 +553,15 @@ step "plugin-guide parity" "python3 scripts/verify-plugin-guide-parity.py" pytho
 # verify-selftests-wired.py, which is what found them: both declared a --self-test
 # that no runner invoked. The meta-gate goes first -- it is what keeps the next
 # one from being the same finding again.
+step "flaky quarantine" "python3 scripts/verify-flaky-quarantine.py" python3 scripts/verify-flaky-quarantine.py
+step "flaky quarantine self-test" "python3 scripts/verify-flaky-quarantine.py --self-test" python3 scripts/verify-flaky-quarantine.py --self-test
+
+# This gate ran in ci.yml and nightly.yml, both retired to .bak, and in no live runner
+# since. It is wired HERE only -- a local-matrix step makes it runnable without claiming
+# it is enforced on a merge, which is a policy decision and not this commit's to make.
+# The self-test is beside it per the convention, and it is the piece that was missing:
+# --self-test used to be REFUSED here, so the strict-argument rule that already had one
+# documented silent fall-through had no way to be tested at all.
 step "self-tests wired" "python3 scripts/verify-selftests-wired.py" python3 scripts/verify-selftests-wired.py
 step "self-tests wired self-test" "python3 scripts/verify-selftests-wired.py --self-test" python3 scripts/verify-selftests-wired.py --self-test
 step "deployment verification" "python3 scripts/verify-deployment.py" python3 scripts/verify-deployment.py
