@@ -201,3 +201,64 @@ fn the_outcome_debug_carries_no_key_material() {
         "the Debug rendering must not contain key material: {rendered}"
     );
 }
+
+/// A rotation in flight is resolved as BOTH keys, so the boot path can install the
+/// outgoing one as a read candidate (C1 slice S2c). Without this the parked key
+/// never reaches `kasirmu-crypto` and an interrupted rotation strands every row
+/// still under it.
+#[test]
+fn resolve_at_rest_keys_returns_the_parked_outgoing_key_when_a_rotation_is_in_flight() {
+    use kasirmu_security::install_key::{
+        INSTALL_KEY_ENTRY, INSTALL_KEY_PREV_ENTRY, InstallKeyResolution,
+    };
+
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+
+    // No rotation: the current key only, and nothing parked.
+    keyring
+        .set_secret(INSTALL_KEY_ENTRY, &hex::encode([0x0Au8; 32]))
+        .unwrap();
+    let (current, previous) = resolve_at_rest_keys(&keyring).expect("resolves");
+    assert!(
+        matches!(current, InstallKeyResolution::Ready { .. }),
+        "a seeded current entry resolves Ready"
+    );
+    assert_eq!(
+        previous, None,
+        "with nothing parked there is no outgoing key"
+    );
+
+    // Rotation in flight: both keys come back.
+    keyring
+        .set_secret(INSTALL_KEY_PREV_ENTRY, &hex::encode([0x0Bu8; 32]))
+        .unwrap();
+    let (_, previous) = resolve_at_rest_keys(&keyring).expect("resolves");
+    assert_eq!(
+        previous,
+        Some([0x0Bu8; 32]),
+        "the parked outgoing key must reach the caller, or an interrupted rotation \
+         strands the rows still under it"
+    );
+}
+
+/// A malformed parked entry is an ERROR, never a silent `None`: it may be the only
+/// key that reads rows the sweep has not reached, and dropping it would orphan them.
+#[test]
+fn resolve_at_rest_keys_surfaces_a_malformed_parked_entry() {
+    use kasirmu_security::install_key::{INSTALL_KEY_ENTRY, INSTALL_KEY_PREV_ENTRY};
+
+    let keyring = kasirmu_security::InMemoryKeyring::new();
+    keyring
+        .set_secret(INSTALL_KEY_ENTRY, &hex::encode([0x0Au8; 32]))
+        .unwrap();
+    keyring
+        .set_secret(INSTALL_KEY_PREV_ENTRY, "not-hex")
+        .unwrap();
+
+    let err = resolve_at_rest_keys(&keyring)
+        .expect_err("a malformed parked entry must not be silently dropped");
+    assert!(
+        err.contains(INSTALL_KEY_PREV_ENTRY),
+        "the error must name the parked entry, got: {err}"
+    );
+}

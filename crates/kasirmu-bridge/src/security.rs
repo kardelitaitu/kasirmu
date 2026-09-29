@@ -19,6 +19,7 @@ use serde::Serialize;
 
 use kasirmu_core::permissions;
 use kasirmu_security::Keyring;
+use kasirmu_security::install_key::InstallKeyResolution;
 
 use crate::ctx::BridgeCtx;
 use crate::error::BridgeError;
@@ -240,15 +241,16 @@ pub async fn rotate_encryption_key_scoped(
 /// late is therefore worse than not installing it at all. The desktop shell calls
 /// this in its `setup` closure ahead of `AppState::new`.
 pub fn install_at_rest_key() -> InstallKeyOutcome {
-    use kasirmu_security::install_key::{InstallKeyResolution, InstallKeySource as SecSource};
+    use kasirmu_security::install_key::InstallKeySource as SecSource;
 
     // The worker's result type. `InstallKeyOutcome` is not `Send`-constrained by
     // anything but is a plain enum, so it crosses the join boundary fine.
-    let worker = std::thread::spawn(|| -> Result<InstallKeyResolution, String> {
-        let keyring = kasirmu_security::default_keyring().map_err(|e| e.to_string())?;
-        kasirmu_security::install_key::resolve_install_key(keyring.as_ref())
-            .map_err(|e| e.to_string())
-    });
+    let worker = std::thread::spawn(
+        || -> Result<(InstallKeyResolution, Option<[u8; 32]>), String> {
+            let keyring = kasirmu_security::default_keyring().map_err(|e| e.to_string())?;
+            resolve_at_rest_keys(keyring.as_ref())
+        },
+    );
 
     // A panicked worker must not take the boot path down with it: the whole
     // point of this function is that no keychain outcome is fatal.
@@ -257,8 +259,25 @@ pub fn install_at_rest_key() -> InstallKeyOutcome {
         Err(_) => Err("the keychain worker thread panicked".to_string()),
     };
 
-    match resolved {
-        Ok(InstallKeyResolution::Ready { secret, source }) => {
+    let (current, previous) = match resolved {
+        Ok(pair) => pair,
+        Err(reason) => return InstallKeyOutcome::Unavailable(reason),
+    };
+
+    // Install the parked key FIRST, so both slots are populated before any decrypt
+    // runs. It is a READ candidate only — `portable_key` never consults it — so a
+    // write still always uses the current key.
+    if let Some(secret) = previous {
+        let installed_now = kasirmu_crypto::set_previous_install_key(secret);
+        tracing::warn!(
+            installed_now,
+            "at-rest key rotation in flight: the outgoing key is parked and installed as a read \
+             candidate; rows under it stay readable until `oz rekey` completes and retires it"
+        );
+    }
+
+    match current {
+        InstallKeyResolution::Ready { secret, source } => {
             // `set_install_key` returning false means another boot path already
             // installed this key — the documented non-failure (see its doc).
             let installed_now = kasirmu_crypto::set_install_key(secret);
@@ -275,11 +294,30 @@ pub fn install_at_rest_key() -> InstallKeyOutcome {
                 },
             }
         }
-        Ok(InstallKeyResolution::RefusedNonDurableKeyring) => {
+        InstallKeyResolution::RefusedNonDurableKeyring => {
             InstallKeyOutcome::RefusedNonDurableKeyring
         }
-        Err(reason) => InstallKeyOutcome::Unavailable(reason),
     }
+}
+
+/// Resolve BOTH at-rest keys from `keyring`: the current one, and the OUTGOING key
+/// parked by an in-flight rotation if there is one (C1 slice S2c).
+///
+/// Split out from [`install_at_rest_key`] so the resolution is testable without
+/// touching the process-global key slots: installing one in the unit-test binary
+/// would change the derivation for every sibling case, which is why the crypto
+/// crate's own tests drive the injectable cores instead.
+///
+/// A malformed entry in either slot is an error, not a `None`: the parked key may
+/// be the only thing that reads rows the sweep has not reached.
+fn resolve_at_rest_keys(
+    keyring: &dyn Keyring,
+) -> Result<(InstallKeyResolution, Option<[u8; 32]>), String> {
+    let current =
+        kasirmu_security::install_key::resolve_install_key(keyring).map_err(|e| e.to_string())?;
+    let previous = kasirmu_security::install_key::resolve_previous_install_key(keyring)
+        .map_err(|e| e.to_string())?;
+    Ok((current, previous))
 }
 
 /// How [`install_at_rest_key`] resolved, for the caller to log.
