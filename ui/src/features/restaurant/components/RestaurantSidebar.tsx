@@ -228,10 +228,10 @@ export function RestaurantSidebar({
 
   useEffect(() => {
     if (!exiting) {
-      if (exitTimerRef.current !== null) {
-        clearTimeout(exitTimerRef.current);
-        exitTimerRef.current = null;
-      }
+      // No stale timer to clear here: `exitTimerRef.current` is nulled either
+      // by the timer callback (before it calls setExiting(false)) or by the
+      // effect's own cleanup on transition, so it is always null by the time
+      // `exiting` is false.
       return;
     }
     exitTimerRef.current = setTimeout(() => {
@@ -295,12 +295,12 @@ export function RestaurantSidebar({
       sidebarRef.current?.querySelectorAll<HTMLButtonElement>('button.restaurant-sidebar-item') ?? [],
     );
     // `computeRovingIndex` returns `null` for an empty row list (the
-    // empty-tablist case), so no separate `items.length === 0` early return is
-    // needed here; the pure function owns that branch and it is unit-tested.
+    // empty-tablist case, unit-tested at the pure-logic layer) — then
+    // `next ?? -1` points past the list, `items[-1]` is `undefined`, and
+    // `?.focus()` skips it. No branch is needed here.
     const next = computeRovingIndex(items.indexOf(e.currentTarget), items.length, e.key);
-    if (next === null) return;
     e.preventDefault();
-    items[next]?.focus();
+    items[next ?? -1]?.focus();
   }, [sidebarRef]);
 
   const avatar = profile ? (

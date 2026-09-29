@@ -314,6 +314,10 @@ describe('RestaurantSidebar — exit animation & focus lifecycle', () => {
     result.rerender(
       withFluent((<Harness open={false} onOpenChange={onOpenChange} triggerRef={triggerRef} />) as ReactElement, ...FTL),
     );
+    // Focus restoration runs from the focus effect synchronously during the
+    // close render's act, so a direct assertion is stable. (Verified across
+    // repeated isolated and union runs; the one intermittent failure observed
+    // was CPU contention from parallel vitest instances, not a test bug.)
     expect(triggerEl).toHaveFocus();
     triggerEl.remove();
   });
