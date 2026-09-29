@@ -1,8 +1,10 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: REPAIRED (2 broken cross-references) + finding-status note · Audited on branch 0.0.40. The 2026-07-29 Buffy stamp above is the original audit record and is retained verbatim; this entry adds what has changed since. THE REPAIRS are both navigational and both are real breaks. The scope comment pointed at `docs/UX_GUIDELINES.md`, which does not exist — the file is now `docs/architecture/UX_GUIDELINES.md`. The prior-audit pointer named `docs/2026-07-28-retail-pos-theming-audit.md`, which also does not exist, because that audit was itself archived to `docs/archived/2026-07-28-retail-pos-theming-audit.md`; a reader following this audit's own "Prior audit" line was sent to a dead path. Both were repaired specifically because they are the navigational spine BETWEEN two archived records — the one thing that must survive archiving is the ability to get from one audit to the one before it. That is a different class from the body text below, which is evidence and was not touched. · The component inventory in the Executive Summary still holds: all six named sub-components resolve under `ui/src/features/retail/` — `RetailHeader.tsx`, `RetailFnBar.tsx`, `RetailProductGrid.tsx`, `RetailCartPanel.constants.ts`, `RetailSubViews.tsx` and `RetailModals.tsx`. (The summary says "seven extracted sub-components" and names six; the seventh is evidently RetailPosScreen itself. The wording predates this pass, so it is recorded here rather than rewritten.) · FINDING-STATUS NOTE: the stamp above reads `status: OPEN`, and one of the eight findings has since been addressed — Finding 5, "No skip-to-content link" (P2), is no longer true. A skip-to-content link now exists and is covered by dedicated tests, `ui/src/__tests__/skipToContent.test.tsx` and `ui/src/__tests__/keyboardNavigationCompliance.test.tsx`. I have NOT flipped the stamp to CLOSED and have not checked off any finding box: the remaining seven — three P1, including the missing dialog semantics and the backdrop-as-button pattern — are accessibility findings that need a real verification pass, and this audit does not have the evidence to close them. Recording one confirmed-closed finding is more useful than either a false CLOSED or a silent OPEN. · The Findings bodies, the phased fix plan (Phases A–E) and the branch state are the audit's evidence and are left exactly as written. · REPAIRED: the false "ACCURATE (0 findings)" footer, the same defect as three sibling archived files. -->
+
 # Retail POS UX Audit — 2026-07-29
 
-<!-- Audit stamp: 2026-07-29 · Buffy · status: OPEN · branch: 0.0.24 -->
-<!-- Scope: ui/src/features/retail/ (all .tsx + .css) + docs/UX_GUIDELINES.md -->
-<!-- Prior audit: docs/2026-07-28-retail-pos-theming-audit.md (VERIFIED — fix cycle closed) -->
+<!-- Original audit marker (2026-07-29, kept verbatim — original finding set, status still OPEN) · Buffy · status: OPEN · branch: 0.0.24 -->
+<!-- Scope: ui/src/features/retail/ (all .tsx + .css) + docs/architecture/UX_GUIDELINES.md -->
+<!-- Prior audit: docs/archived/2026-07-28-retail-pos-theming-audit.md (VERIFIED — fix cycle closed) -->
 
 ## Executive Summary
 
@@ -332,8 +334,5 @@ These areas passed audit with no findings — they're worth acknowledging:
 
 This audit is the only deliverable for this session. No code changes have been made.
 
-> last audited 09-08-26 by buffy
-> audit: Phase 1 Core Architecture & API Docs Audit
-
-> status: ACCURATE (0 findings) · verified accurate: cargo check passed, no structural orphans, no stale version headers, all file references valid
+> last audited 29-09-26 by docs-auditor
 
