@@ -344,3 +344,69 @@ So (b) is only worth doing **together with** the operator surface that lets the 
 | **C. Split WITH the operator surface** | Add the key, the seed migration, an IPC command, a Settings control and strings, and decide the rotation semantics | The only option that makes the split mean anything; closes (b) properly | The largest of the three; needs the two questions above answered first |
 
 **Recommendation: A or C — not B, which is the one option that costs exposure and buys nothing.** I am not choosing between A and C unilaterally, because C commits to building a Settings surface and to a rotation-semantics change, and both are product calls. **Separately: C14(a) is NOT part of this ask** — it is one-way dependent on C1's S2b landing and is tracked there.
+
+---
+
+## Verification addendum to the open asks (2026-09-29)
+
+Read-only, and deliberately **not a ruling** — D12, D13 and D14 remain the owner's to
+decide. This pass re-measured two factual claims the asks rest on; one of them is stale.
+
+### D12 — its own caveat is now resolved, and the resolution does not change the ask
+
+D12's caveat is *"Confirm A against the pending researcher finding on the outbox tenant
+before scoping it."* That finding is now available from source.
+
+`crates/kasirmu-core/src/db/offline/enqueue.rs` is the only writer of `offline_queue`, and
+it has two lanes:
+
+- **The sale lane** — `enqueue_sale_outbox_in_tx:241`, `enqueue_refund_outbox_in_tx:306`,
+  `enqueue_void_sale_outbox_in_tx:360`, `enqueue_payment_recorded_outbox_in_tx:393` — reads
+  the tenant from the sale row (`SELECT COALESCE(tenant_id, 'default') FROM sales WHERE id = ?1`,
+  e.g. `:247`). So the outbox carries **the sale's tenant**, not a hardcoded literal.
+- **The scoped lane** — `enqueue_offline_scoped:91` — takes `tenant_id` as a required
+  caller argument; the priority helper `enqueue_offline_priority:77` still hardcodes
+  `"default"`, which the module documents as a known pre-existing bug.
+
+On the **desktop** the sale row's tenant is `'default'` (D9 facts 1–2: the store DB is
+single-tenant by construction), so the desktop outbox carries `'default'` in practice —
+i.e. **another literal, not a real per-tenant value.** That is the second branch of D9's
+own sequencing: *"if it carries another literal, A is a small sync-boundary change."*
+
+**Consequence:** the caveat resolves in the direction that *strengthens* the
+recommendation. The remedy is the ingest boundary — `apps/cloud-server/src/sync_store/pg.rs:39-45`
+and `:76-87` already stamp `offline_queue` from the authenticated request's JWT claim via
+the `oz.tenant_id` GUC — and option C (stamping a tenant on the terminal) is refuted by the
+same measurement. **A or B, not C, unchanged; A is now the better-supported of the two.**
+
+### D13 — the closing claim about C29's "(13)" is stale
+
+D13's last sentence says *"C29's own '(13)' count matches nothing … §13's table has 10
+rows."* Both halves were already corrected in the checklist on 2026-09-27
+(`manager-codebase-review-checklist.md:445`), and this pass confirms the correction:
+
+- **"(13)" is not a count — it is a SECTION POINTER.** §13 of `manager-codebase-review.md`
+  is titled "Declared, documented, and inert" (`:455`), and C29 uses the same parenthetical
+  convention throughout (`(6.7)`, `(14.1)`, `(10.2)`). There is nothing to reconcile.
+- **§13's table holds 11 data rows, not 10.** Verified by line count: header at `:459`,
+  separator at `:460`, data rows at `:461`–`:471`.
+
+So D13's final clause — *"any ruling should also settle which list is authoritative"* — asks
+the owner to settle a question that is already settled. The real D13 question (delete vs
+keep the two remaining surfaces) stands unchanged, as does the recommendation to rule on
+them separately.
+
+### D14 — the source claims re-verified
+
+- `crates/kasirmu-local-api/src/lib.rs:431` (`admin_key: Some(secret.clone())`) and `:434`
+  (`api_secret: secret.clone()`) clone one `secret` into two authorities. Confirmed.
+- **No `local_api.admin_key` and no `SETTINGS_ADMIN_KEY` exists anywhere in the tree** — the
+  only `admin_key` hit in the crate is the clone above, so there is still exactly one key.
+  Confirmed.
+- The "Rotate secret" control (`ui/src/features/settings/sections/LocalApiSection.tsx:296-311`)
+  warns *"Rotating invalidates every minted token immediately and changes the operator key."*
+  Confirmed — one button rotates both roles today.
+
+**Note on sequencing, recorded so it is not lost:** D14's text says C14(a) is *"one-way
+dependent on C1's S2b landing."* C1 S2b has now landed — S2b-2a in `f2932f6f8` and the
+bridge half of S2b-2b in `625c47290` — so C14(a) is no longer waiting on it.
