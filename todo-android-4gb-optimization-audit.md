@@ -1,383 +1,1645 @@
-# Android 4GB POS Optimization Audit
+# Android 4GB Optimization Audit
 
-**Status:** AUDIT COMPLETE. Supersedes the unexecuted draft checklist; no item earned a clean CORRECT, the rest are corrected, merged, deferred or deleted below.
-**Date:** 2026-09-23
-**Branch:** 0.0.40 (version locked at 0.0.40)
-**supersedes: `.agents/archived/todo-android-checklist.md` (left byte-identical; do not edit)** — moved there from the repo root on 2026-09-28, bytes verified unchanged by hash.
-**Status 2026-09-28 — R1, R2 and R3 have LANDED since this audit was written; R4, R5 and R6 remain.** Evidence, read this pass: R1 is in the tree (`ui/index.mobile.html:9` carries `interactive-widget=resizes-content`); R2 is in the tree (`apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt:109-111` sets `FLAG_KEEP_SCREEN_ON`, called from `onCreate` at `:46`); R3 shipped as `usePagedList`/`LIST_PAGE_SIZE` (`ui/src/features/products/ProductManagementScreen.tsx:12,113`) plus optional additive `limit`/`offset` with `page_window` (`apps/mobile-tauri/src/commands/products.rs:119-121,396-406`). The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys window` reporting `KEEP_SCREEN_ON`) are still unrun, and R4/R5/R6 are untouched.
-**Scope:** Tauri v2 Android POS terminals assumed at 4GB RAM minimum. Covers the UI/WebView layer, the Tauri IPC command surface, the native Android scaffold, and the pre-release verification gate. Excludes cloud-server and desktop-tauri behaviour except where a shared command contract is at risk.
-**Evidence provenance:** three independent investigation passes over the working tree.
-- **Pass A, dependency and policy census:** every third-party package the checklist names was grepped against the workspace manifests and the UI source, and every claimed policy was checked against the file that actually encodes it.
-- **Pass B, IPC and command-surface census:** the registered command list, the paging behaviour of each list command, and the front-end call sites that consume them.
-- **Pass C, native scaffold and CI-gate census:** the committed `gen/android` tree, the Android manifest, the mobile `MainActivity`, and the live legs of the Android workflow.
-
-Citations are `file:line` where the claim is local and resolved during one of those three passes. Claims that rest on external platform policy (Android 15 foreground-service limits, Google Play and AMAPI rules) have no local citation and are marked as external where they appear. Claims that did not resolve at all are listed in section 5 rather than being silently dropped.
+**Project:** `kasirmu`  
+**Document:** `todo-android-4gb-optimization-audit.md`  
+**Status:** Draft for execution  
+**Last Reviewed:** 2026-09-29  
+**Target Platform:** Android tablets / POS devices with 4GB RAM  
+**Primary Goal:** Make `kasirmu` reliable, fast, and memory-safe on low-RAM Android devices without compromising POS correctness, offline durability, security, or recoverability.
 
 ---
 
-## 1. How to read this document
+## 1. Objective
 
-- Section 2 is the adjudication of the draft. It is not a rewrite of the draft; it is a verdict per item with the evidence that decided it.
-- Section 3 is what survives, ranked by what a cashier would notice on a 4GB terminal, not by what is cheapest to build.
-- Section 4 is what was deleted and why. Nothing in section 4 should be resurrected without new evidence.
-- Section 5 is a first-class deliverable. Everything listed there is an unknown; do not cite it as a finding.
-- Section 6 replaces the draft's pre-release gate.
-- Section 7 is the citation index for the whole document.
+This audit is not primarily an APK-size reduction exercise.
 
----
+The primary success condition is:
 
-## 2. Verdict table
+> A full retail shift can run on a 4GB Android device without OOM kills, ANRs, data loss, excessive startup delay, unbounded memory growth, or unacceptable UI stutter.
 
-One row per original checklist item, plus the pre-release gate.
-
-| Item | Verdict | Decisive evidence | Action |
-|---|---|---|---|
-| P1.1 DOM virtualization | WRONG as written | `@tanstack/react-virtual` is policy-banned; the large-list policy already exists at `ui/src/utils/list-policy.ts:20,27` (50 per page, virtualize at >=20 pages); `react-window` is live in 2 screens | Corrected action (page the unbounded lists) is worth doing. Folded into R3 |
-| P1.2 Pagination and lazy loading (LIMIT/OFFSET over IPC) | PARTLY CORRECT | IPC paging exists only for customers: `apps/mobile-tauri/src/commands/customers.rs:230-255`, `limit.unwrap_or(50)` | Direction right, ordering wrong: UI-side paging first, IPC bounds second. Folded into R3 |
-| P1.3 State disconnect | OBSOLETE (unmeasured) | 9 contexts, none holding bulk rows; no leak evidence produced | Not worth doing. Deleted |
-| P1.4 Image optimization | PARTLY CORRECT | Content-addressed WebP plus LRU plus 40 per cycle cap ALREADY DONE at `apps/mobile-tauri/src/image_download.rs:195-276`; the 400x400 cap is MISSING and needs a new image dependency; the "WebView GPU crash" cause is unverified | Defer until an incident is measured. Deferred to R6 |
-| P2.1 Compute offloading | OBSOLETE | 343 commands already registered at `apps/mobile-tauri/src/lib.rs:584-971`; no named JS algorithm was produced to move | Deleted |
-| P2.2 IPC payload minimization | UNIMPLEMENTABLE-AS-WRITTEN | "Localized payloads" contradicts the Fluent/i18n contract (localization is UI-side); "tailored to the viewport" is P1.2 restated | Merged into R3, then deleted as a separate item |
-| P2.3 Connection pooling (r2d2) | WRONG | `platform/core/src/database/pool.rs:9-11` documents that SQLite gains nothing from a multi-connection pool; the shape it uses instead is the single `Arc<Mutex<Connection>>` at `pool.rs:31-33`; r2d2 and deadpool-sqlite have 0 hits; `apps/mobile-tauri/src/state.rs:22-25` defers it explicitly | Deleted |
-| P3.1 Tailwind breakpoints | WRONG | Tailwind is not a dependency (0 hits) and there are 0 utility classes across 140 CSS files; the real mechanism is tokens plus 338 `@media` rules plus `ui/src/theme/responsive.css`, `ui/src/app/tablet/tablet.css` and `themeTokenCompliance.test.ts` | Deleted |
-| P3.2 resizeToAvoidBottomInset / flex | WRONG API (Flutter-only) | Keyboard avoidance already EXISTS: `AndroidManifest.xml:138` (`adjustResize`) plus `ui/src/hooks/useKeyboardAvoidance.ts`. The REAL verified gap is `ui/index.mobile.html:9`, which lacks `interactive-widget=resizes-content`, leaving the WebView on `resizes-visual` | Do the meta fix. Promoted to R1 |
-| P3.3 Touch targets 48dp | PARTLY CORRECT | Tokens exist at `ui/src/theme/tokens.css:277-278` (44px min, 48px comfortable) and dp is not px; the gap is unproven adoption on checkout controls | Cheap verification pass only. Promoted to R4 |
-| P4.1 WakeLock Kotlin plugin | PARTLY CORRECT | The plugin API path is correct, but a WakeLock does not address the LMK; screen-on needs `FLAG_KEEP_SCREEN_ON` with no plugin and no permission | Reframe to a one-line MainActivity change. Promoted to R2, highest impact per line in this document |
-| P4.2 Foreground Service for sync | WRONG (legally bounded) | The repo targets SDK 36 (`apps/mobile-tauri/gen/android/app/build.gradle.kts:36`) and Android 15 caps `dataSync` at 6h per 24h (`Service.onTimeout`), so the checklist's own 8-hour test exceeds the legal window; Play requires a declaration plus a demo video per declared type | Deleted as written |
-| P4.3 WebView anchoring via Play Console | UNIMPLEMENTABLE-AS-WRITTEN | No such mechanism exists; AMAPI `autoUpdateMode POSTPONED` caps at 90 days and then force-updates; WebView is a Play-updated system app | Deleted |
-| P5.1 OpenAPI/JSON contract archival | ALREADY DONE (wrong premise) | `docs/guides/developer/api-reference.md` is an 881-line audit-stamped IPC reference; real OpenAPI exists for the HTTP surface (`crates/kasirmu-api/src/spec/`, merged by `apps/cloud-server/src/openapi.rs`); none exists for the Tauri IPC surface | Deleted |
-| P5.2 Schema freeze | ALREADY DONE | 69 `.sql` files plus the `include_str!` registry at `crates/kasirmu-core/src/migrations.rs:49-61` | Deleted |
-| GATE (8h idle / stress / offline drop) | WRONG as written; MISSING as automation | The 8-hour screen-on idle test is invalid twice over: the Android 15 foreground-service window caps it, and screen-on is not the LMK scenario | Keep ONE redefined soak leg. Promoted to R5 |
-
-Rows whose decisive evidence is external policy rather than a local file: P4.3 (Google Play and AMAPI rules), and the Android 15 foreground-service window in P4.2 and the GATE row. Every other row above rests on a local citation.
-
-### 2.1 Verdict roll-up
-
-| Verdict | Count | Items |
-|---|---|---|
-| CORRECT | 0 | none |
-| PARTLY CORRECT | 4 | P1.2, P1.4, P3.3, P4.1 |
-| WRONG | 5 | P1.1, P2.3, P3.1, P3.2, P4.2 |
-| OBSOLETE | 2 | P1.3, P2.1 |
-| ALREADY DONE | 2 | P5.1, P5.2 |
-| UNIMPLEMENTABLE-AS-WRITTEN | 2 | P2.2, P4.3 |
-| (gate, outside the 15 items) | 1 | pre-release gate |
-
-Sixteen rows adjudicated. Six items survived in some form: P1.1 and P1.2 merged into R3, P1.4 deferred to R6, P3.2 promoted to R1, P3.3 promoted to R4, P4.1 promoted to R2. P2.2 is not one of the six: it was found unimplementable as written and its one valid half is P1.2 restated, so it is absorbed into R3 rather than counted as a survivor. Two were promoted as originally intended plus a correction (R1, R2), two were reduced to verification or deferral (R4, R6), and one was merged two ways (R3). Everything else was deleted.
+This document defines the measurement baseline, memory budgets, subsystem audits, optimization phases, governance gates, and acceptance criteria required to reach that condition.
 
 ---
 
-## 3. Surviving work
+## 2. Non-Negotiable Correctness Invariants
 
-Ranked by cashier-visible impact on a 4GB Android POS terminal. R1 through R5 are in scope now; R6 is deferred behind a measured incident.
+Before optimizing anything, preserve these properties:
 
-### R1. Keyboard viewport (S)
+- [ ] Checkout remains synchronous and transactional.
+- [ ] Sale commits remain durable.
+- [ ] Active cart / draft sale is never lost due to memory pressure.
+- [ ] Refunds and voids remain auditable.
+- [ ] Offline mode continues to work without network access.
+- [ ] Backup integrity is not sacrificed for streaming convenience.
+- [ ] Payment data remains masked / secured.
+- [ ] Lua plugin sandboxing and capability governance remain intact.
+- [ ] SQLite durability settings are not weakened without an explicit ADR and risk acceptance.
+- [ ] Security-sensitive operations, including Argon2id and key storage, are not degraded below policy without review.
 
-- **Purpose:** Stop the soft keyboard from hiding the pay button while a cashier types an amount.
-- **Why this rank:** it is the only surviving item that is both fully verified and one line long. A cashier who cannot see the pay button is blocked at the exact moment of sale.
-- **Fence:** `ui/index.mobile.html:9` only. One attribute in one meta tag.
-- **Acceptance:** the meta tag contains `interactive-widget=resizes-content`; on device, focusing a numeric input keeps the field AND the pay button visible under `adjustResize`.
-- **Size:** S.
-- **Dependencies:** none. Do this first.
+---
 
-### R2. Keep screen on (S)
+## 3. Explicit Non-Goals
 
-- **Purpose:** Stop the terminal from sleeping on an idle cashier station without asking for a foreground service or a permission.
-- **Why this rank:** highest impact per line in the whole document, but it lands inside the committed scaffold, so it carries a regeneration risk that R1 does not.
-- **Fence:** `apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt` only.
-- **Acceptance:** the screen stays on for >=5 minutes idle with the app foreground (`adb shell dumpsys window` reports `KEEP_SCREEN_ON`); no new permission is declared.
-- **Size:** S.
-- **Dependencies:** none. Verify the scaffold-regeneration risk in section 5 before committing.
+The following are out of scope for this audit unless a measured blocker forces reconsideration:
 
-### R3. Bounded list data path (M/L)
+- [ ] Do not redesign the React frontend.
+- [ ] Do not replace SQLite.
+- [ ] Do not introduce WASM plugins.
+- [ ] Do not introduce async saga orchestration for normal checkout.
+- [ ] Do not optimize debug builds as the source of truth.
+- [ ] Do not make correctness-damaging tradeoffs for small memory wins.
+- [ ] Do not delete code without evidence from profiling or census.
+- [ ] Do not enable aggressive R8 / ProGuard shrinking without full release-flow validation.
 
-- **Purpose:** Bound memory and serialization on the list screens that fetch and render every row, plus the one screen whose fetch is unbounded while its render is already paged.
-- **Why this rank:** the largest user-visible risk class after the two one-liners, and the only slice that touches both layers. It is ranked third because it is the only one that can be done in the wrong order.
-- **Fence (UI):** the four screens below, all to consume `usePagedList` / `LIST_PAGE_SIZE` (pattern already live at `RetailPosScreen.tsx`).
+---
 
-| Screen | Site |
+## 4. Reference Device Profile
+
+“4GB Android device” is too vague. Optimization targets must be tied to a concrete profile.
+
+### 4.1 Minimum Reference Profile
+
+- [ ] Android version range: Android 10–14 unless product policy narrows it.
+- [ ] Total RAM: 4GB.
+- [ ] Usable app memory before pressure: assume significantly less than 4GB.
+- [ ] Storage: 64GB eMMC/UFS or equivalent.
+- [ ] SoC class: Snapdragon 680 / Dimensity 700 / equivalent low-mid tier.
+- [ ] GPU: integrated.
+- [ ] WebView: recent Android System WebView.
+- [ ] Network: unstable Wi-Fi, frequent offline intervals.
+- [ ] Display: tablet-class touchscreen.
+- [ ] Input: HID scanner and/or camera scanner.
+- [ ] Printer: ESC/POS thermal printer.
+- [ ] Cash drawer: optional, but lifecycle must be considered.
+- [ ] Payment terminal: QRIS and/or external terminal, as configured.
+
+### 4.2 Workload Profile
+
+- [ ] Catalog size: 10,000 SKUs.
+- [ ] Customer records: 5,000.
+- [ ] Sales history: 50,000 transactions.
+- [ ] Daily receipts: 200–500.
+- [ ] Shift length: 8 hours.
+- [ ] Peak concurrency: one active cashier, but background sync/reporting may overlap.
+- [ ] Offline duration: at least several hours.
+- [ ] Backup frequency: daily or per-shift, configurable.
+- [ ] Report usage: daily, weekly, monthly, product, tender, staff, inventory valuation.
+- [ ] Scanner usage: sustained scanning during peak hours.
+- [ ] Printer usage: sustained receipt printing during peak hours.
+
+### 4.3 Device Profile Validation Checklist
+
+- [ ] Confirm exact minimum Android API level.
+- [ ] Confirm supported WebView versions.
+- [ ] Confirm storage partition available to app.
+- [ ] Confirm whether device has removable storage or restricted scoped storage.
+- [ ] Confirm OEM low-memory killer behavior.
+- [ ] Confirm whether device supports foreground services reliably.
+- [ ] Confirm thermal behavior under sustained camera/printing/sync load.
+- [ ] Record baseline battery drain during an 8-hour simulated shift.
+
+---
+
+## 5. Memory Budgets
+
+Budgets must be measured on release builds using the reference device profile.
+
+### 5.1 Initial Budget Targets
+
+| Metric | Target |
+|---|---:|
+| Idle PSS after launch | ≤ 350 MB |
+| Checkout peak PSS | ≤ 650 MB |
+| Reporting peak PSS | ≤ 800 MB |
+| Backup / restore peak PSS | ≤ 700 MB |
+| Camera scanning peak PSS | ≤ 750 MB |
+| Printing peak PSS | ≤ 650 MB |
+| JS heap idle | ≤ 120 MB |
+| JS heap peak | ≤ 250 MB |
+| SQLite page cache | ≤ 16 MB |
+| Image memory cache | ≤ 64 MB |
+| Lua plugin total memory | ≤ 64 MB |
+| Memory growth during 8-hour soak | ≤ 50 MB, no monotonic climb |
+| Install size | ≤ 150 MB |
+| Runtime cache growth per week | bounded and cleanable |
+
+### 5.2 Budget Enforcement Checklist
+
+- [ ] Agree on final numeric budgets before optimization work begins.
+- [ ] Record current baseline values for each metric.
+- [ ] Mark metrics that already fail budget.
+- [ ] Prioritize failing metrics by user impact and implementation risk.
+- [ ] Add budget checks to release readiness review.
+- [ ] Add automated smoke thresholds where practical.
+- [ ] Document any accepted budget exceptions with owner and expiry date.
+
+---
+
+## 6. Startup Budgets
+
+Startup must be measured separately from runtime memory.
+
+### 6.1 Targets
+
+| Metric | Target |
+|---|---:|
+| Cold start to interactive dashboard P95 | ≤ 3.5 seconds |
+| Cold start to first-sale-capable P95 | ≤ 5.0 seconds |
+| Warm start P95 | ≤ 1.2 seconds |
+| Database migration impact on cold start | ≤ 500 ms typical, bounded worst case |
+| Plugin load impact on cold start | deferred or ≤ 300 ms typical |
+
+### 6.2 Startup Audit Checklist
+
+- [ ] Instrument process start timestamp.
+- [ ] Instrument Android shell init completion.
+- [ ] Instrument WebView creation completion.
+- [ ] Instrument frontend asset load completion.
+- [ ] Instrument Rust core init completion.
+- [ ] Instrument database open completion.
+- [ ] Instrument migration completion.
+- [ ] Instrument module registration completion.
+- [ ] Instrument plugin load completion.
+- [ ] Instrument login-ready state.
+- [ ] Instrument dashboard-interactive state.
+- [ ] Instrument first-sale-capable state.
+- [ ] Identify blocking work on the main/UI thread.
+- [ ] Identify work that can be deferred until after dashboard ready.
+- [ ] Identify work that can be moved off the critical startup path.
+- [ ] Verify startup behavior with populated database, not empty database only.
+
+---
+
+## 7. Storage and I/O Budgets
+
+Low-RAM devices often have slow storage and limited free space.
+
+### 7.1 Targets
+
+| Metric | Target |
+|---|---:|
+| App data directory growth per week | bounded |
+| Cache directory growth per week | bounded and cleanable |
+| SQLite WAL size during normal shift | bounded |
+| Temp files during backup/report/export | bounded and cleaned |
+| Disk space preflight margin | sufficient for backup, restore, sync, logs |
+| Log rotation | automatic |
+| Crash log accumulation | bounded |
+
+### 7.2 Storage Audit Checklist
+
+- [ ] Measure app data size after fresh install.
+- [ ] Measure app data size after simulated 1-day shift.
+- [ ] Measure app data size after simulated 7-day usage.
+- [ ] Measure cache directory size.
+- [ ] Measure SQLite database size.
+- [ ] Measure WAL file size.
+- [ ] Measure temp file usage during backup.
+- [ ] Measure temp file usage during restore.
+- [ ] Measure temp file usage during report export.
+- [ ] Measure temp file usage during sync.
+- [ ] Measure log file growth.
+- [ ] Verify old backups are pruned according to policy.
+- [ ] Verify crashed temp files are cleaned on startup or periodic maintenance.
+- [ ] Add disk-space preflight before backup, restore, import, export, and large sync.
+- [ ] Define minimum free-space threshold for risky operations.
+
+---
+
+## 8. Profiling Methodology
+
+All final decisions must come from release builds on real devices or highly representative emulators.
+
+### 8.1 Required Build Mode
+
+- [ ] Use release Android build.
+- [ ] Use production Vite frontend build.
+- [ ] Use minified JS.
+- [ ] Disable dev server.
+- [ ] Disable source maps in production artifacts unless separately stored.
+- [ ] Enable R8 / ProGuard only after validating full flows.
+- [ ] Strip Rust symbols where safe and validated.
+- [ ] Do not make final optimization decisions from debug builds.
+
+### 8.2 Required Tools
+
+- [ ] `adb shell dumpsys meminfo <package>`
+- [ ] Android Studio Profiler
+- [ ] Perfetto
+- [ ] heapprofd for native allocations
+- [ ] WebView remote debugging
+- [ ] Chrome DevTools heap snapshots
+- [ ] React Profiler
+- [ ] Vite bundle analyzer
+- [ ] SQLite `EXPLAIN QUERY PLAN`
+- [ ] SQLite `PRAGMA` inspection
+- [ ] `adb shell am send-trim-memory`
+- [ ] `adb shell dumpsys gfxinfo`
+- [ ] `adb shell dumpsys activity`
+- [ ] `adb bugreport` for incident capture
+- [ ] Custom app telemetry for PSS, heap, startup stages, and operation latency
+
+### 8.3 Baseline Artifact Checklist
+
+- [ ] Capture idle PSS baseline.
+- [ ] Capture checkout peak PSS baseline.
+- [ ] Capture reporting peak PSS baseline.
+- [ ] Capture backup peak PSS baseline.
+- [ ] Capture restore peak PSS baseline.
+- [ ] Capture camera scanning peak PSS baseline.
+- [ ] Capture printing peak PSS baseline.
+- [ ] Capture sync peak PSS baseline.
+- [ ] Capture JS heap snapshot at dashboard idle.
+- [ ] Capture JS heap snapshot after 100-item cart.
+- [ ] Capture JS heap snapshot after report viewing.
+- [ ] Capture native allocation trace during checkout.
+- [ ] Capture native allocation trace during backup.
+- [ ] Capture native allocation trace during reporting.
+- [ ] Capture thread count at idle and peak.
+- [ ] Capture file descriptor count at idle and peak.
+- [ ] Capture APK/AAB size report.
+- [ ] Capture bundle size report.
+- [ ] Capture startup timing trace.
+- [ ] Capture 1-hour soak result.
+- [ ] Capture 8-hour soak result if device availability allows.
+
+---
+
+## 9. Subsystem Audit Areas
+
+Each subsystem must be measured independently. Avoid vague conclusions like “the app uses too much memory.”
+
+### 9.1 Android Shell
+
+Audit focus:
+
+- [ ] Process lifecycle behavior.
+- [ ] Activity recreation.
+- [ ] Saved instance state.
+- [ ] Foreground service usage.
+- [ ] Wake lock usage.
+- [ ] Notification usage.
+- [ ] Permission minimization.
+- [ ] Storage access scoping.
+- [ ] Cache directory hygiene.
+- [ ] Low-memory callbacks.
+- [ ] R8 / ProGuard configuration.
+- [ ] JNI keep rules.
+- [ ] Native library size and stripping.
+- [ ] Thread pool bounds.
+- [ ] ANR risk on main thread.
+
+Required checks:
+
+- [ ] Verify app survives process death during active cart.
+- [ ] Verify app restores draft sale after process death.
+- [ ] Verify memory trim callbacks are received.
+- [ ] Verify no unnecessary wake locks are held.
+- [ ] Verify no background service leaks threads or FDs.
+- [ ] Verify release build does not break Tauri/JNI/serde reflection.
+
+### 9.2 Tauri / WebView
+
+Audit focus:
+
+- [ ] WebView version compatibility.
+- [ ] Hardware acceleration.
+- [ ] WebView cache directory size.
+- [ ] LocalStorage usage.
+- [ ] IndexedDB usage.
+- [ ] Custom protocol asset loading.
+- [ ] Window count.
+- [ ] Background WebView retention.
+- [ ] JS-to-Rust command payload size.
+- [ ] Rust-to-JS event payload size.
+- [ ] Memory pressure forwarding to frontend.
+- [ ] File upload/download buffers.
+- [ ] Console log overhead.
+
+Required checks:
+
+- [ ] Measure WebView process contribution to total PSS.
+- [ ] Measure JS heap separately from native heap.
+- [ ] Verify large payloads do not cross WebView/Rust boundary as one giant JSON string when chunking/streaming is possible.
+- [ ] Verify report data transfer is paged or streamed.
+- [ ] Verify backup progress events do not accumulate unbounded listeners.
+- [ ] Verify sync events do not flood frontend with oversized payloads.
+- [ ] Verify image assets are loaded efficiently.
+- [ ] Verify WebView cache is bounded and cleanable.
+
+### 9.3 React Frontend
+
+Audit focus:
+
+- [ ] Bundle size.
+- [ ] Route-level code splitting.
+- [ ] Lazy-loaded reports/admin screens.
+- [ ] Virtualized product lists.
+- [ ] Virtualized sale history tables.
+- [ ] Memoized selectors.
+- [ ] Global state size.
+- [ ] Re-render frequency.
+- [ ] Listener cleanup.
+- [ ] Timer cleanup.
+- [ ] WebSocket/polling buffer size.
+- [ ] Image lazy loading.
+- [ ] Font subsetting.
+- [ ] Source map exclusion from production.
+
+Required checks:
+
+- [ ] Run bundle analyzer on production frontend build.
+- [ ] Identify largest JS chunks.
+- [ ] Identify routes that can be lazy-loaded.
+- [ ] Profile product grid rendering with 10,000 SKUs.
+- [ ] Profile sale history rendering with 50,000 transactions.
+- [ ] Profile report table rendering with large date ranges.
+- [ ] Verify no full catalog is loaded into memory unnecessarily.
+- [ ] Verify no full sales history is loaded into memory unnecessarily.
+- [ ] Verify event listeners are removed on unmount.
+- [ ] Verify timers/intervals are cleared on unmount.
+- [ ] Verify React state does not retain large arrays after navigation.
+- [ ] Capture JS heap snapshot after repeated navigation flows.
+
+### 9.4 Rust Core
+
+Audit focus:
+
+- [ ] Native allocation hotspots.
+- [ ] Large `Vec`, `HashMap`, `BTreeMap`, or buffer allocations.
+- [ ] Serialization/deserialization peak memory.
+- [ ] Command latency.
+- [ ] Background thread usage.
+- [ ] File handle lifetime.
+- [ ] SQLite statement lifetime.
+- [ ] Backup/restore buffers.
+- [ ] Sync payload assembly.
+- [ ] Report query result materialization.
+- [ ] Image processing buffers.
+- [ ] Printer buffer construction.
+- [ ] Lua bridge allocations.
+
+Required checks:
+
+- [ ] Run heapprofd during checkout.
+- [ ] Run heapprofd during reporting.
+- [ ] Run heapprofd during backup.
+- [ ] Run heapprofd during restore.
+- [ ] Run heapprofd during sync.
+- [ ] Run heapprofd during camera scanning if native image handling is involved.
+- [ ] Run heapprofd during printing.
+- [ ] Identify top 10 allocation sites by retained size.
+- [ ] Identify top 10 allocation sites by allocation count.
+- [ ] Verify no unbounded result sets are collected into memory.
+- [ ] Verify no large byte buffers are cloned unnecessarily.
+- [ ] Verify no file handles remain open after operations complete.
+- [ ] Verify no SQLite statements leak across operations.
+
+### 9.5 SQLite / Database
+
+Audit focus:
+
+- [ ] Database size.
+- [ ] WAL size.
+- [ ] Page cache setting.
+- [ ] mmap size setting.
+- [ ] Journal mode.
+- [ ] Synchronous setting.
+- [ ] Temp store behavior.
+- [ ] Index coverage.
+- [ ] Query plans.
+- [ ] Transaction duration.
+- [ ] Prepared statement cache.
+- [ ] Migration runtime.
+- [ ] Backup interaction.
+- [ ] Report query cost.
+- [ ] N+1 query patterns.
+- [ ] Large JSON blobs in rows.
+- [ ] Unbounded `SELECT *`.
+
+Required checks:
+
+- [ ] Inspect current PRAGMA settings.
+- [ ] Verify checkout durability settings are acceptable.
+- [ ] Do not set `PRAGMA synchronous = OFF` for sale-critical paths without explicit ADR.
+- [ ] Measure SQLite page cache usage.
+- [ ] Measure WAL growth during an 8-hour shift.
+- [ ] Define WAL checkpoint policy.
+- [ ] Run `EXPLAIN QUERY PLAN` on checkout queries.
+- [ ] Run `EXPLAIN QUERY PLAN` on common report queries.
+- [ ] Run `EXPLAIN QUERY PLAN` on product search queries.
+- [ ] Run `EXPLAIN QUERY PLAN` on sale history queries.
+- [ ] Run `EXPLAIN QUERY PLAN` on refund/void lookup queries.
+- [ ] Add missing indexes for hot paths.
+- [ ] Remove or redesign queries that scan large tables unnecessarily.
+- [ ] Convert unbounded report queries to paged or streamed queries.
+- [ ] Avoid loading all products into memory for search.
+- [ ] Avoid loading all sales for a report.
+- [ ] Run `ANALYZE` periodically or after major migrations.
+- [ ] Avoid `VACUUM` during active trading hours unless scheduled safely.
+- [ ] Verify migrations are tested against realistic database size.
+
+### 9.6 Reporting
+
+Reporting is a high-risk memory area because it can scale with business history.
+
+Audit focus:
+
+- [ ] Daily sales report.
+- [ ] Product sales report.
+- [ ] Category report.
+- [ ] Tender split.
+- [ ] Staff performance.
+- [ ] Customer purchase history.
+- [ ] Inventory valuation.
+- [ ] Low stock alerts.
+- [ ] Refund/void analysis.
+- [ ] CSV export.
+- [ ] PDF export.
+- [ ] Date-range boundaries.
+- [ ] Timezone handling.
+- [ ] Cached report results.
+- [ ] Report cancellation.
+
+Required checks:
+
+- [ ] Measure peak PSS for each common report.
+- [ ] Measure JS heap for each common report.
+- [ ] Measure native allocation for each common report.
+- [ ] Measure query duration for each common report.
+- [ ] Verify reports aggregate in SQLite where possible.
+- [ ] Verify large report results are streamed or paged.
+- [ ] Verify CSV export writes to file stream, not giant in-memory string.
+- [ ] Verify PDF export uses bounded chunks or temp-file pipeline.
+- [ ] Verify long-running report jobs can be cancelled cleanly.
+- [ ] Verify report caches are bounded.
+- [ ] Verify report caches are evicted under memory pressure.
+- [ ] Verify reporting uses the sanctioned cross-vertical facade.
+- [ ] Verify no new raw cross-vertical SQL is added outside approved facades.
+
+### 9.7 Sync
+
+Offline sync can quietly consume memory and disk.
+
+Audit focus:
+
+- [ ] Outbox size.
+- [ ] Inbound batch size.
+- [ ] Conflict resolution buffers.
+- [ ] Retry backoff.
+- [ ] Delta vs full sync.
+- [ ] Compression.
+- [ ] Chunking.
+- [ ] Persistent queue vs in-memory queue.
+- [ ] Network response buffering.
+- [ ] Partial failure recovery.
+- [ ] Duplicate event suppression.
+
+Required checks:
+
+- [ ] Measure outbox row count after offline shift.
+- [ ] Measure outbox payload size after offline shift.
+- [ ] Measure sync peak PSS.
+- [ ] Measure sync temp disk usage.
+- [ ] Verify sync queue is disk-backed, not only in RAM.
+- [ ] Verify sync batch size is bounded.
+- [ ] Verify retries do not duplicate unbounded payloads.
+- [ ] Verify conflict resolution does not load entire datasets into memory.
+- [ ] Verify sync can pause under memory pressure.
+- [ ] Verify sync resumes safely after network restoration.
+- [ ] Verify sync does not block checkout.
+- [ ] Verify sync logs do not leak sensitive payment data.
+
+### 9.8 Backup / Restore
+
+`.kasirpkg` backup flows are high-risk if they load whole archives into memory.
+
+Audit focus:
+
+- [ ] Archive creation memory.
+- [ ] Encryption/decryption buffers.
+- [ ] Checksum calculation.
+- [ ] Temporary file usage.
+- [ ] Disk space preflight.
+- [ ] Restore transaction size.
+- [ ] Cancel behavior.
+- [ ] Partial restore recovery.
+- [ ] Validation before swap.
+- [ ] Old backup cleanup.
+
+Required checks:
+
+- [ ] Measure backup peak PSS with realistic database size.
+- [ ] Measure restore peak PSS with realistic backup size.
+- [ ] Verify backup streams instead of loading full archive into memory.
+- [ ] Verify restore streams instead of loading full archive into memory.
+- [ ] Verify encryption/decryption uses bounded buffers.
+- [ ] Verify checksums are computed incrementally.
+- [ ] Verify temp files are cleaned after success and failure.
+- [ ] Verify disk-space preflight before backup and restore.
+- [ ] Verify restore validates archive before swapping live data.
+- [ ] Verify interrupted restore can be recovered or rolled back safely.
+- [ ] Verify old backups are pruned according to policy.
+- [ ] Verify backup/restore progress events do not leak listeners.
+
+### 9.9 Images and Assets
+
+Product images can dominate memory if mishandled.
+
+Audit focus:
+
+- [ ] Source image dimensions.
+- [ ] Thumbnail generation.
+- [ ] Decoding into Bitmap.
+- [ ] Memory cache policy.
+- [ ] Disk cache policy.
+- [ ] Lazy loading.
+- [ ] Placeholder usage.
+- [ ] EXIF rotation.
+- [ ] WebP/AVIF support.
+- [ ] Bundled assets vs downloaded assets.
+
+Required checks:
+
+- [ ] Measure image cache peak size.
+- [ ] Verify product images are stored or resized near display size.
+- [ ] Verify full-resolution images are not decoded into grid thumbnails.
+- [ ] Verify image decoding happens off the UI thread where appropriate.
+- [ ] Verify image cache is bounded.
+- [ ] Verify image cache is cleared under memory pressure.
+- [ ] Verify unused bundled assets are removed.
+- [ ] Verify fonts are subsetted.
+- [ ] Verify icons and logos are compressed appropriately.
+- [ ] Verify lazy loading is used for long product lists.
+
+### 9.10 Camera / Scanner
+
+On 4GB devices, camera memory can dominate quickly.
+
+Audit focus:
+
+- [ ] CameraX or camera API usage.
+- [ ] ImageAnalysis resolution.
+- [ ] Frame format.
+- [ ] NV21/YUV handling.
+- [ ] Bitmap conversion.
+- [ ] Rotation/crop allocations.
+- [ ] Preview surface usage.
+- [ ] Torch duty cycle.
+- [ ] Scanner cooldown.
+- [ ] QR decode library memory.
+- [ ] Frame dropping policy.
+- [ ] Buffer reuse.
+- [ ] `ImageProxy` close behavior.
+
+Required checks:
+
+- [ ] Measure camera scanning peak PSS.
+- [ ] Verify camera uses lowest resolution that reliably scans.
+- [ ] Verify frames are not converted to Bitmap unless required.
+- [ ] Verify `ImageProxy` objects are closed promptly.
+- [ ] Verify frame buffers are reused where possible.
+- [ ] Verify scanner stops cleanly when view unmounts.
+- [ ] Verify torch does not cause thermal or battery issues.
+- [ ] Verify sustained 30-minute scanning remains stable.
+- [ ] Verify repeated open/close scanner does not leak threads or FDs.
+- [ ] Verify camera permission denial does not crash app.
+- [ ] Verify fallback to HID scanner works cleanly.
+
+### 9.11 Printing
+
+Thermal printing can become memory-heavy with logos, QR codes, or images.
+
+Audit focus:
+
+- [ ] ESC/POS command buffer size.
+- [ ] Image raster width/height.
+- [ ] Bitmap decoding.
+- [ ] Byte array cloning.
+- [ ] Spool file growth.
+- [ ] Retry buffers.
+- [ ] Concurrent print jobs.
+- [ ] Printer discovery sockets.
+- [ ] Printer timeout behavior.
+
+Required checks:
+
+- [ ] Measure printing peak PSS.
+- [ ] Verify print jobs are bounded in memory.
+- [ ] Verify large prints are spooled to temp files or streamed in chunks.
+- [ ] Verify receipt logos are pre-sized and compressed.
+- [ ] Verify QR code generation does not allocate oversized bitmaps.
+- [ ] Verify print retries do not accumulate unbounded buffers.
+- [ ] Verify printer sockets are closed after job completion or failure.
+- [ ] Verify sustained 200-print session remains stable.
+- [ ] Verify print cancellation cleans resources.
+- [ ] Verify printer discovery does not leak network sockets.
+
+### 9.12 Lua Plugins
+
+The plugin system is powerful, but on 4GB devices it needs guardrails.
+
+Audit focus:
+
+- [ ] Per-plugin memory limit.
+- [ ] Total plugin memory limit.
+- [ ] Hook execution timeout.
+- [ ] Allocation metering.
+- [ ] Script size limit.
+- [ ] Loop/instruction limit.
+- [ ] Sandbox escape prevention.
+- [ ] Plugin reload memory cleanup.
+- [ ] Native binding reference cycles.
+
+Required checks:
+
+- [ ] Verify per-plugin memory limit exists or is planned.
+- [ ] Verify total plugin memory limit exists or is planned.
+- [ ] Verify hook runtime timeout exists or is planned.
+- [ ] Verify script size limit exists or is planned.
+- [ ] Test runaway Lua loop does not hang checkout.
+- [ ] Test large Lua table allocation does not OOM app.
+- [ ] Test plugin reload releases previous plugin memory.
+- [ ] Test disabled plugin does not remain registered.
+- [ ] Test plugin capability denial works.
+- [ ] Test plugin hooks remain deterministic.
+- [ ] Document plugin resource contract for plugin authors.
+
+Suggested initial plugin limits:
+
+| Limit | Target |
+|---|---:|
+| Per-plugin max heap | 16 MB |
+| All plugins combined max heap | 64 MB |
+| Max hook runtime | 50–100 ms |
+| Max script size | 1 MB |
+
+- [ ] Validate these limits with profiling.
+- [ ] Adjust limits based on measured plugin workload.
+- [ ] Ensure limits fail safely without corrupting sale state.
+
+### 9.13 Logging
+
+Verbose logging can hurt memory, I/O, battery, and privacy.
+
+Audit focus:
+
+- [ ] Release log level.
+- [ ] Ring buffer size.
+- [ ] Async logging overhead.
+- [ ] File rotation.
+- [ ] PII/PAN leakage.
+- [ ] Crash log accumulation.
+- [ ] WebView console logs.
+- [ ] Rust tracing subscriber overhead.
+- [ ] Android logcat spam.
+
+Required checks:
+
+- [ ] Verify release build log level is not overly verbose.
+- [ ] Verify logs are rotated.
+- [ ] Verify total log directory size is bounded.
+- [ ] Verify crash logs are bounded.
+- [ ] Verify PAN/card data is redacted.
+- [ ] Verify customer PII is minimized in logs.
+- [ ] Verify WebView console logging is disabled or bounded in release.
+- [ ] Verify async logging does not allocate unbounded buffers.
+- [ ] Verify logging does not run on UI thread for heavy workloads.
+- [ ] Verify log cleanup occurs on app upgrade if format changes.
+
+### 9.14 Security and Privacy
+
+Optimization must not weaken security.
+
+Audit focus:
+
+- [ ] Argon2id memory cost on low-RAM devices.
+- [ ] AES-GCM buffer sizes.
+- [ ] Android Keystore usage where appropriate.
+- [ ] PAN masking.
+- [ ] Receipt data minimization.
+- [ ] Secure backup encryption.
+- [ ] Plugin capability enforcement.
+- [ ] Log redaction.
+- [ ] Temp file cleanup.
+- [ ] Memory zeroization for secrets where practical.
+
+Required checks:
+
+- [ ] Measure Argon2id runtime and memory on reference device.
+- [ ] Verify Argon2id parameters meet minimum security policy.
+- [ ] Do not weaken password hashing solely for startup speed.
+- [ ] Verify secret keys are not written to logs.
+- [ ] Verify temporary files containing sensitive data are securely cleaned.
+- [ ] Verify backup encryption uses bounded buffers.
+- [ ] Verify PAN data is masked before reaching frontend logs or analytics.
+- [ ] Verify plugin capabilities cannot bypass security boundaries.
+- [ ] Verify release builds do not embed debug secrets.
+- [ ] Verify Android backup/auto-restore settings do not leak sensitive app data.
+
+---
+
+## 10. Memory Pressure Policy
+
+Android can signal memory pressure. The app must respond deliberately.
+
+### 10.1 Trim Memory Ladder
+
+- [ ] On `TRIM_MEMORY_BACKGROUND`:
+  - clear non-critical image caches.
+  - reduce SQLite page cache if safe.
+  - close inactive report views.
+  - drop cached product lookup maps.
+- [ ] On `TRIM_MEMORY_MODERATE`:
+  - evict all non-active module caches.
+  - pause background sync.
+  - release camera buffers if not active.
+  - compress or flush in-memory outbox batches to disk.
+- [ ] On `TRIM_MEMORY_COMPLETE`:
+  - persist active draft sale immediately.
+  - release all disposable caches.
+  - navigate to lightweight dashboard if safe.
+  - prepare for possible process restart.
+
+### 10.2 Critical Protection Rule
+
+- [ ] Memory pressure handling must never discard:
+  - active cart.
+  - unsaved sale.
+  - pending payment state.
+  - incomplete refund.
+  - incomplete void.
+  - in-progress backup critical metadata.
+  - unsynced local facts that have not been persisted.
+
+### 10.3 Memory Pressure Validation
+
+- [ ] Test with `adb shell am send-trim-memory <package> BACKGROUND`.
+- [ ] Test with `adb shell am send-trim-memory <package> MODERATE`.
+- [ ] Test with `adb shell am send-trim-memory <package> COMPLETE`.
+- [ ] Verify active cart survives each level.
+- [ ] Verify draft sale is persisted before cache eviction.
+- [ ] Verify app can recover after process death.
+- [ ] Verify no crash occurs when caches are cleared during report viewing.
+- [ ] Verify no crash occurs when caches are cleared during sync.
+- [ ] Verify no crash occurs when caches are cleared during camera scanning.
+
+---
+
+## 11. Active Sale Protection Policy
+
+The active sale is critical state.
+
+Required behavior:
+
+- [ ] Persist draft cart frequently enough that process death does not lose meaningful work.
+- [ ] Persist draft cart before memory-pressure cache eviction.
+- [ ] Persist draft cart before navigating away from checkout if safe.
+- [ ] Restore draft cart after app relaunch.
+- [ ] Restore draft cart after process death.
+- [ ] Prevent concurrent draft corruption.
+- [ ] Ensure refund/void drafts are also protected.
+- [ ] Ensure payment terminal handoff state is recoverable or safely abortable.
+- [ ] Ensure active sale state is not stored only in React memory.
+- [ ] Ensure active sale state is not stored only in Rust memory without persistence.
+
+Validation:
+
+- [ ] Kill app during active cart and verify recovery.
+- [ ] Trigger memory trim during active cart and verify recovery.
+- [ ] Rotate device during active cart if supported and verify recovery.
+- [ ] Lose network during active cart and verify offline continuity.
+- [ ] Open report during active cart and verify cart remains intact.
+- [ ] Start sync during active cart and verify cart remains intact.
+- [ ] Start backup during active cart and verify cart remains intact.
+
+---
+
+## 12. Streaming and Bounding Policy
+
+Any path that can scale with business data should stream or page.
+
+### 12.1 High-Risk Paths
+
+- [ ] Backup creation.
+- [ ] Backup restore.
+- [ ] Large report export.
+- [ ] CSV generation.
+- [ ] PDF generation.
+- [ ] Sync payload assembly.
+- [ ] Inventory stocktake import/export.
+- [ ] Product image bulk processing.
+- [ ] Sale history archival.
+- [ ] Bulk product import.
+- [ ] Bulk customer import.
+
+### 12.2 Rule
+
+- [ ] Do not load unbounded datasets into:
+  - JS strings.
+  - Rust `Vec<u8>`.
+  - Rust `String`.
+  - SQLite in-memory result sets.
+  - React global state.
+  - temporary JSON payloads larger than a defined bound.
+
+### 12.3 Preferred Patterns
+
+- [ ] Aggregate in SQLite where possible.
+- [ ] Stream rows to frontend in pages.
+- [ ] Export CSV via file stream.
+- [ ] Generate PDF via bounded chunks or native/temp-file pipeline.
+- [ ] Cache only small summary results.
+- [ ] Cancel long-running jobs cleanly.
+- [ ] Use disk-backed queues for sync and print jobs.
+- [ ] Use bounded buffers for encryption, compression, and hashing.
+
+---
+
+## 13. SQLite Tuning Policy
+
+SQLite must be tuned, not weakened.
+
+Allowed tuning:
+
+- [ ] Review `page_size`.
+- [ ] Bound `cache_size`.
+- [ ] Review `mmap_size` carefully.
+- [ ] Use WAL if compatible with current design.
+- [ ] Checkpoint WAL predictably.
+- [ ] Avoid huge transactions.
+- [ ] Stream large report queries.
+- [ ] Use indexes for common POS queries.
+- [ ] Avoid `SELECT *` on large tables.
+- [ ] Limit prepared statement cache.
+- [ ] Monitor temp store and spill-to-disk.
+- [ ] Run `ANALYZE` periodically.
+- [ ] Avoid `VACUUM` during active trading hours.
+
+Forbidden without explicit ADR:
+
+- [ ] Do not set `PRAGMA synchronous = OFF` for sale-critical paths.
+- [ ] Do not disable transactions to reduce overhead.
+- [ ] Do not sacrifice durability for startup speed.
+- [ ] Do not change journal mode in a way that risks sale loss.
+- [ ] Do not allow unbounded WAL growth.
+
+Validation:
+
+- [ ] Measure checkout latency after tuning.
+- [ ] Measure report latency after tuning.
+- [ ] Measure WAL size after 8-hour soak.
+- [ ] Measure crash recovery behavior.
+- [ ] Measure backup/restore behavior after tuning.
+- [ ] Verify all tests pass on release build.
+
+---
+
+## 14. Frontend Optimization Policy
+
+The frontend must be measured, not guessed.
+
+Required actions:
+
+- [ ] Add route-level code splitting.
+- [ ] Lazy-load reports.
+- [ ] Lazy-load admin screens.
+- [ ] Lazy-load settings screens if heavy.
+- [ ] Virtualize product lists.
+- [ ] Virtualize sale history tables.
+- [ ] Virtualize refund/void history if large.
+- [ ] Memoize expensive selectors.
+- [ ] Avoid full catalog re-renders.
+- [ ] Avoid storing full sales history in global state.
+- [ ] Lazy-load images.
+- [ ] Clean up event listeners.
+- [ ] Clean up timers.
+- [ ] Limit polling/WebSocket buffers.
+- [ ] Use disk-backed caches for large datasets where appropriate.
+- [ ] Remove source maps from production bundle.
+- [ ] Subset fonts.
+- [ ] Compress static assets.
+
+Validation:
+
+- [ ] Capture JS heap snapshot at dashboard idle.
+- [ ] Capture JS heap snapshot after 100-item cart.
+- [ ] Capture JS heap snapshot after report viewing.
+- [ ] Capture JS heap snapshot after repeated navigation.
+- [ ] Verify no listener leaks.
+- [ ] Verify no timer leaks.
+- [ ] Verify no detached DOM growth.
+- [ ] Verify product grid remains smooth with 10,000 SKUs.
+- [ ] Verify sale history remains smooth with 50,000 transactions.
+
+---
+
+## 15. Tauri / WebView Boundary Policy
+
+Large payloads should not cross the WebView/Rust boundary unnecessarily.
+
+Required actions:
+
+- [ ] Audit all JS-to-Rust commands for payload size.
+- [ ] Audit all Rust-to-JS events for payload size.
+- [ ] Chunk large report responses.
+- [ ] Stream large backup progress data.
+- [ ] Stream large sync status data.
+- [ ] Avoid sending full product catalog in one IPC payload unless bounded.
+- [ ] Avoid sending full sales history in one IPC payload.
+- [ ] Avoid sending large base64 images through IPC when file/path references can be used.
+- [ ] Forward memory pressure events to frontend in a controlled way.
+- [ ] Ensure frontend can respond by clearing caches without losing active sale.
+
+Validation:
+
+- [ ] Measure IPC payload size for checkout.
+- [ ] Measure IPC payload size for reports.
+- [ ] Measure IPC payload size for sync.
+- [ ] Measure IPC payload size for backup.
+- [ ] Measure IPC payload size for product search.
+- [ ] Measure IPC latency under low-RAM conditions.
+- [ ] Verify no IPC response causes JS heap spike beyond budget.
+
+---
+
+## 16. Camera / Scanner Policy
+
+Required actions:
+
+- [ ] Use lowest reliable scan resolution.
+- [ ] Avoid converting every frame to Bitmap.
+- [ ] Reuse frame buffers where possible.
+- [ ] Close `ImageProxy` promptly.
+- [ ] Drop frames when decode backlog grows.
+- [ ] Add scanner cooldown to prevent excessive triggers.
+- [ ] Stop camera analysis when screen is not active.
+- [ ] Release camera resources on navigation away.
+- [ ] Handle camera permission denial gracefully.
+- [ ] Support HID scanner fallback.
+
+Validation:
+
+- [ ] Run 30-minute sustained scanning test.
+- [ ] Measure PSS growth during sustained scanning.
+- [ ] Measure thread count during sustained scanning.
+- [ ] Measure FD count during sustained scanning.
+- [ ] Verify no camera OOM.
+- [ ] Verify no preview freeze.
+- [ ] Verify no duplicate scan events after cooldown.
+- [ ] Verify scanner stops cleanly on unmount.
+
+---
+
+## 17. Printing Policy
+
+Required actions:
+
+- [ ] Bound ESC/POS command buffers.
+- [ ] Avoid large in-memory rasters.
+- [ ] Pre-size receipt logos.
+- [ ] Compress receipt images appropriately.
+- [ ] Spool large print jobs to bounded temp files if needed.
+- [ ] Limit concurrent print jobs.
+- [ ] Clean printer sockets after completion or failure.
+- [ ] Bound retry buffers.
+- [ ] Add print job timeout.
+- [ ] Add print cancellation cleanup.
+
+Validation:
+
+- [ ] Run 200-print sustained test.
+- [ ] Measure PSS growth during print session.
+- [ ] Measure temp file growth during print session.
+- [ ] Measure FD count during print session.
+- [ ] Verify no printer socket leak.
+- [ ] Verify no print job duplication after retry.
+- [ ] Verify failed print does not block subsequent prints.
+- [ ] Verify receipt content remains correct under memory pressure.
+
+---
+
+## 18. Sync Policy
+
+Required actions:
+
+- [ ] Make sync outbox disk-backed.
+- [ ] Bound outbox batch size.
+- [ ] Bound inbound batch size.
+- [ ] Compress sync payloads where practical.
+- [ ] Use delta sync where practical.
+- [ ] Pause sync under memory pressure.
+- [ ] Resume sync safely.
+- [ ] Avoid loading entire conflict dataset into memory.
+- [ ] Avoid unbounded retry duplication.
+- [ ] Persist sync cursor/checkpoint reliably.
+- [ ] Ensure sync does not block checkout.
+
+Validation:
+
+- [ ] Simulate 8-hour offline shift.
+- [ ] Measure outbox size after offline shift.
+- [ ] Measure sync peak PSS.
+- [ ] Measure sync duration.
+- [ ] Measure sync temp disk usage.
+- [ ] Verify sync survives app restart.
+- [ ] Verify sync resumes after network loss.
+- [ ] Verify duplicate events are suppressed.
+- [ ] Verify partial sync failure does not corrupt local data.
+
+---
+
+## 19. Backup / Restore Policy
+
+Required actions:
+
+- [ ] Stream backup creation.
+- [ ] Stream backup restore.
+- [ ] Use bounded encryption/decryption buffers.
+- [ ] Compute checksums incrementally.
+- [ ] Precheck disk space before backup.
+- [ ] Precheck disk space before restore.
+- [ ] Clean temp files after success.
+- [ ] Clean temp files after failure.
+- [ ] Validate archive before swapping live data.
+- [ ] Support safe rollback if restore fails.
+- [ ] Prune old backups according to policy.
+- [ ] Ensure backup progress events do not leak listeners.
+
+Validation:
+
+- [ ] Create backup with realistic database size.
+- [ ] Restore backup into sandbox database.
+- [ ] Measure backup peak PSS.
+- [ ] Measure restore peak PSS.
+- [ ] Measure temp disk usage.
+- [ ] Interrupt backup and verify cleanup.
+- [ ] Interrupt restore and verify recovery/rollback.
+- [ ] Verify backup checksum correctness.
+- [ ] Verify restored data integrity.
+- [ ] Verify old backups are pruned.
+
+---
+
+## 20. Reporting Policy
+
+Required actions:
+
+- [ ] Use sanctioned reporting facade for cross-vertical reads.
+- [ ] Aggregate in SQLite where possible.
+- [ ] Page large report results.
+- [ ] Stream large report exports.
+- [ ] Bound report cache size.
+- [ ] Evict report cache under memory pressure.
+- [ ] Cancel long-running report jobs cleanly.
+- [ ] Avoid loading entire sales history into JS.
+- [ ] Avoid loading entire product history into JS.
+- [ ] Avoid building giant CSV/PDF strings in memory.
+
+Validation:
+
+- [ ] Run daily report with 50,000 sales.
+- [ ] Run monthly report with realistic dataset.
+- [ ] Run product sales report with 10,000 SKUs.
+- [ ] Run inventory valuation report.
+- [ ] Run tender split report.
+- [ ] Run staff performance report.
+- [ ] Export CSV for large date range.
+- [ ] Export PDF for large date range.
+- [ ] Measure peak PSS for each.
+- [ ] Measure JS heap for each.
+- [ ] Measure query duration for each.
+- [ ] Verify cancellation cleans resources.
+
+---
+
+## 21. Lua Plugin Policy
+
+Required actions:
+
+- [ ] Define per-plugin memory limit.
+- [ ] Define total plugin memory limit.
+- [ ] Define hook timeout.
+- [ ] Define script size limit.
+- [ ] Add allocation metering if practical.
+- [ ] Prevent runaway loops from blocking checkout.
+- [ ] Ensure plugin reload releases previous memory.
+- [ ] Ensure disabled plugins are fully unregistered.
+- [ ] Ensure plugin capabilities remain enforced.
+- [ ] Document plugin resource contract.
+
+Validation:
+
+- [ ] Load plugin with large table allocation.
+- [ ] Run plugin with infinite loop.
+- [ ] Run plugin with slow hook.
+- [ ] Reload plugin repeatedly.
+- [ ] Disable plugin repeatedly.
+- [ ] Measure PSS growth.
+- [ ] Verify checkout is not blocked beyond timeout.
+- [ ] Verify app does not OOM due to plugin.
+
+---
+
+## 22. Logging Policy
+
+Required actions:
+
+- [ ] Set release log level appropriately.
+- [ ] Bound ring buffers.
+- [ ] Rotate log files.
+- [ ] Bound crash logs.
+- [ ] Redact PII/PAN.
+- [ ] Disable or bound WebView console logs in release.
+- [ ] Avoid heavy logging on UI thread.
+- [ ] Clean old logs on app upgrade if needed.
+- [ ] Ensure async logging does not allocate unbounded buffers.
+
+Validation:
+
+- [ ] Measure log directory size after 8-hour soak.
+- [ ] Measure log I/O during checkout.
+- [ ] Measure log I/O during sync.
+- [ ] Measure log I/O during reporting.
+- [ ] Verify no PAN appears in logs.
+- [ ] Verify no raw card data appears in logs.
+- [ ] Verify no excessive secret material appears in logs.
+- [ ] Verify log rotation works.
+
+---
+
+## 23. Release Build Validation Policy
+
+All optimizations must be validated on release builds.
+
+Required checks:
+
+- [ ] Build release APK/AAB.
+- [ ] Install on reference device.
+- [ ] Run login flow.
+- [ ] Run checkout flow.
+- [ ] Run refund flow.
+- [ ] Run void flow.
+- [ ] Run report flow.
+- [ ] Run backup flow.
+- [ ] Run restore flow.
+- [ ] Run sync flow.
+- [ ] Run camera scanning flow.
+- [ ] Run printing flow.
+- [ ] Run plugin hook flow.
+- [ ] Run memory trim flow.
+- [ ] Run process death recovery flow.
+- [ ] Verify R8/ProGuard does not break JNI, serde, Tauri, plugins, or reflection.
+- [ ] Verify stripped native libraries still load.
+- [ ] Verify production frontend assets load correctly.
+- [ ] Verify no dev-only code is included in release.
+
+---
+
+## 24. Soak Test Scenario
+
+A short test is insufficient for POS reliability.
+
+### 24.1 8-Hour Soak Script
+
+- [ ] Launch app cold.
+- [ ] Login.
+- [ ] Open cash drawer / terminal session.
+- [ ] Scan 1,000 items.
+- [ ] Complete 200 sales.
+- [ ] Process 20 refunds.
+- [ ] Process 10 voids.
+- [ ] Generate 5 daily reports.
+- [ ] Run 3 inventory stocktakes.
+- [ ] Perform 2 backups.
+- [ ] Restore 1 backup into sandbox.
+- [ ] Sync 3 times with intermittent network.
+- [ ] Print 200 receipts.
+- [ ] Use camera QR scanning for 30 minutes.
+- [ ] Leave dashboard idle for 1 hour.
+- [ ] Trigger memory trim at intervals.
+- [ ] Measure memory growth.
+- [ ] Measure FD count.
+- [ ] Measure thread count.
+- [ ] Measure SQLite WAL size.
+- [ ] Measure crash count.
+- [ ] Measure ANR count.
+- [ ] Measure UI stutter incidents.
+
+### 24.2 Soak Pass Criteria
+
+- [ ] No OOM crash.
+- [ ] No unbounded memory growth.
+- [ ] No file descriptor leak.
+- [ ] No thread leak.
+- [ ] No WAL explosion.
+- [ ] No UI freeze longer than 500 ms during normal interaction.
+- [ ] Active cart survives memory pressure.
+- [ ] Draft sale survives process death.
+- [ ] Sync queue remains bounded.
+- [ ] Backup temp files are cleaned.
+- [ ] Logs remain bounded.
+- [ ] Plugin memory remains bounded.
+
+---
+
+## 25. CI and Governance Gates
+
+Modularity and performance regressions must be mechanically prevented.
+
+### 25.1 Memory Smoke Gate
+
+- [ ] Add automated release-build smoke test.
+- [ ] Launch app.
+- [ ] Login.
+- [ ] Add 100 items.
+- [ ] Checkout.
+- [ ] Open daily report.
+- [ ] Trigger memory trim.
+- [ ] Assert PSS below threshold.
+- [ ] Assert no crash.
+
+### 25.2 Bundle Size Gate
+
+- [ ] Fail if JS bundle exceeds threshold.
+- [ ] Fail if native libraries exceed threshold.
+- [ ] Fail if assets exceed threshold.
+- [ ] Fail if APK/AAB size regresses beyond allowed delta.
+
+### 25.3 Startup Gate
+
+- [ ] Fail if cold start P95 exceeds threshold.
+- [ ] Fail if database migration adds unacceptable startup delay.
+- [ ] Fail if plugin load blocks dashboard-ready beyond threshold.
+
+### 25.4 Soak Gate
+
+- [ ] Run 2-hour soak nightly where device lab allows.
+- [ ] Run 8-hour soak before release candidate.
+- [ ] Fail release on OOM, unbounded growth, FD leak, or thread leak.
+
+### 25.5 Leak Gate
+
+- [ ] Detect JS listener leaks.
+- [ ] Detect Rust allocation growth.
+- [ ] Detect SQLite statement leaks.
+- [ ] Detect file descriptor leaks.
+- [ ] Detect thread leaks.
+- [ ] Detect Bitmap/image cache leaks.
+
+### 25.6 Security Gate
+
+- [ ] Fail if PAN-like data appears in logs.
+- [ ] Fail if secrets appear in release assets.
+- [ ] Fail if plugin capability checks are bypassed.
+- [ ] Fail if Argon2id parameters drop below policy without approval.
+
+---
+
+## 26. Phase Plan
+
+### Phase 0 — Reference Profile and Baseline
+
+Goal: know the truth before changing code.
+
+Tasks:
+
+- [ ] Define exact reference 4GB device profile.
+- [ ] Define workload profile.
+- [ ] Capture release-build baseline.
+- [ ] Measure cold/warm startup.
+- [ ] Measure idle PSS.
+- [ ] Measure checkout peak PSS.
+- [ ] Measure report peak PSS.
+- [ ] Measure backup peak PSS.
+- [ ] Measure restore peak PSS.
+- [ ] Measure camera peak PSS.
+- [ ] Measure printing peak PSS.
+- [ ] Measure sync peak PSS.
+- [ ] Measure JS heap.
+- [ ] Measure native allocations.
+- [ ] Measure SQLite WAL/cache behavior.
+- [ ] Measure APK/AAB size.
+- [ ] Record current crashes/ANRs.
+- [ ] Identify top 10 memory hotspots.
+- [ ] Identify top 10 startup hotspots.
+- [ ] Identify top 10 I/O hotspots.
+
+Exit criteria:
+
+- [ ] Baseline report exists.
+- [ ] Budgets are agreed.
+- [ ] Top hotspots are ranked.
+- [ ] No optimization ticket is created without baseline evidence.
+
+---
+
+### Phase 1 — Quick Wins Without Architectural Risk
+
+Goal: reduce obvious waste.
+
+Tasks:
+
+- [ ] Enable production minification.
+- [ ] Remove source maps from release frontend.
+- [ ] Strip Rust symbols where safe.
+- [ ] Configure R8/ProGuard correctly.
+- [ ] Reduce release logging.
+- [ ] Prune unused assets.
+- [ ] Subset fonts.
+- [ ] Compress images.
+- [ ] Disable unused WebView features.
+- [ ] Bound image memory cache.
+- [ ] Bound SQLite page cache.
+- [ ] Add cache cleanup on app upgrade.
+- [ ] Verify release build on real device.
+- [ ] Re-measure after each change.
+
+Exit criteria:
+
+- [ ] Measurable PSS/startup improvement.
+- [ ] No functional regression.
+- [ ] Release build remains stable.
+- [ ] No security regression.
+
+---
+
+### Phase 2 — Memory Pressure and Lifecycle Hardening
+
+Goal: survive low-memory conditions.
+
+Tasks:
+
+- [ ] Implement Android trim memory callbacks.
+- [ ] Forward memory pressure to frontend.
+- [ ] Persist active draft sale before cache eviction.
+- [ ] Release inactive report caches.
+- [ ] Pause background sync under pressure.
+- [ ] Release camera buffers when not scanning.
+- [ ] Add recovery from process death.
+- [ ] Test with `adb shell am send-trim-memory`.
+- [ ] Verify active cart survives pressure.
+- [ ] Verify refund/void drafts survive pressure.
+
+Exit criteria:
+
+- [ ] App survives simulated memory pressure.
+- [ ] Active cart is never lost.
+- [ ] Dashboard recovers cleanly.
+- [ ] No crash during trim-memory tests.
+
+---
+
+### Phase 3 — Data Layer Optimization
+
+Goal: prevent SQLite/sync/report memory explosions.
+
+Tasks:
+
+- [ ] Audit all unbounded queries.
+- [ ] Add pagination/streaming to reports.
+- [ ] Add indexes for hot queries.
+- [ ] Bound sync outbox.
+- [ ] Make sync queue disk-backed.
+- [ ] Stream backup creation.
+- [ ] Stream backup restore.
+- [ ] Add temp-space preflight.
+- [ ] Add WAL checkpoint policy.
+- [ ] Add query plan tests.
+- [ ] Remove `SELECT *` from large-table hot paths.
+- [ ] Fix N+1 query patterns.
+- [ ] Bound prepared statement cache.
+
+Exit criteria:
+
+- [ ] Large dataset scenario stays within budget.
+- [ ] Backup/restore does not load full archive into memory.
+- [ ] Reports stream or page results.
+- [ ] Sync queue remains bounded after offline shift.
+
+---
+
+### Phase 4 — Frontend Rendering Optimization
+
+Goal: reduce JS heap and UI jank.
+
+Tasks:
+
+- [ ] Add route-level code splitting.
+- [ ] Lazy-load reports/admin.
+- [ ] Virtualize product lists.
+- [ ] Virtualize sale history.
+- [ ] Memoize selectors.
+- [ ] Reduce global state size.
+- [ ] Lazy-load images.
+- [ ] Clean up listeners.
+- [ ] Profile React renders.
+- [ ] Add bundle size budget.
+- [ ] Remove large arrays from persistent global state.
+- [ ] Ensure navigation clears disposable caches.
+
+Exit criteria:
+
+- [ ] JS heap within budget.
+- [ ] Scroll/filter interactions smooth.
+- [ ] No listener leaks in soak test.
+- [ ] No detached DOM growth.
+
+---
+
+### Phase 5 — Hardware/Media Optimization
+
+Goal: control camera, scanner, printer memory.
+
+Tasks:
+
+- [ ] Lower camera resolution to safe minimum.
+- [ ] Reuse frame buffers.
+- [ ] Avoid unnecessary Bitmap conversion.
+- [ ] Close `ImageProxy` promptly.
+- [ ] Bound print buffers.
+- [ ] Spool large prints.
+- [ ] Test sustained scanning.
+- [ ] Test sustained printing.
+- [ ] Add scanner cooldown.
+- [ ] Add print job timeout.
+- [ ] Clean printer sockets.
+
+Exit criteria:
+
+- [ ] 30-minute scanning session stable.
+- [ ] 200-print session stable.
+- [ ] No camera OOM.
+- [ ] No printer socket leak.
+- [ ] No thread/FD leak from hardware paths.
+
+---
+
+### Phase 6 — Plugin and Resource Governance
+
+Goal: prevent extensions from destabilizing low-RAM devices.
+
+Tasks:
+
+- [ ] Add per-plugin memory limit.
+- [ ] Add total plugin memory limit.
+- [ ] Add hook timeout.
+- [ ] Add script size limit.
+- [ ] Add allocation metering if possible.
+- [ ] Test runaway Lua loop.
+- [ ] Test plugin reload cleanup.
+- [ ] Document plugin resource contract.
+- [ ] Ensure disabled plugins are unregistered.
+- [ ] Ensure plugin capabilities cannot bypass governance.
+
+Exit criteria:
+
+- [ ] Misbehaving plugin cannot OOM app.
+- [ ] Plugin hooks remain deterministic.
+- [ ] Plugin reload does not leak memory.
+- [ ] Plugin timeout does not corrupt sale state.
+
+---
+
+### Phase 7 — Soak, Release Gate, and Monitoring
+
+Goal: prove stability.
+
+Tasks:
+
+- [ ] Run 8-hour soak.
+- [ ] Add memory telemetry sampling.
+- [ ] Add crash/OOM classification.
+- [ ] Add FD/thread monitoring.
+- [ ] Add release checklist.
+- [ ] Add rollback plan.
+- [ ] Add post-release monitoring review.
+- [ ] Capture bugreport on failure.
+- [ ] Define hotfix criteria for OOM/ANR regressions.
+
+Exit criteria:
+
+- [ ] No OOM.
+- [ ] No ANR spike.
+- [ ] No unbounded growth.
+- [ ] Release candidate approved.
+- [ ] Rollback plan documented.
+
+---
+
+## 27. Optimization Ticket Template
+
+Every optimization ticket should use this shape:
+
+- [ ] State measured baseline.
+- [ ] State budget being targeted.
+- [ ] State subsystem affected.
+- [ ] State hypothesis.
+- [ ] State change being made.
+- [ ] State correctness risks.
+- [ ] State security risks.
+- [ ] State release-build validation plan.
+- [ ] State after-change measurement.
+- [ ] State rollback plan.
+
+Forbidden ticket pattern:
+
+- [ ] Do not create tickets like “optimize memory” without a measured hotspot.
+- [ ] Do not create tickets like “reduce APK size” without runtime memory impact analysis.
+- [ ] Do not create tickets that weaken checkout durability.
+- [ ] Do not create tickets that remove active handlers without census.
+- [ ] Do not create tickets that enable aggressive shrinking without release-flow validation.
+
+---
+
+## 28. Risk Register
+
+| Risk | Mitigation |
 |---|---|
-| `ui/src/features/products/ProductManagementScreen.tsx` | :440 |
-| `ui/src/features/customers/CustomerManagementScreen.tsx` | :549 |
-| `ui/src/features/sales/VoidOrdersScreen.tsx` | :414 |
-| `ui/src/features/inventory/ThresholdConfigScreen.tsx` | :194 |
-
-- **Fence (IPC, not render):** `ui/src/features/sales/SalesHistoryScreen.tsx` already bounds its render (`:225` `pageSize` state, `:365-370` slice, `:945` render) but its fetch at `:239` is unbounded. It belongs to the IPC fence, not the unbounded-render fence.
-
-- **Fence (IPC):** `apps/mobile-tauri/src/commands/products.rs:338-341` and `apps/mobile-tauri/src/commands/history.rs:263-266`, mirroring the existing shape at `customers.rs:250`; wrappers at `ui/src/api/products.ts:59-60` and `ui/src/api/sales.ts:513-514`.
-- **Acceptance:** zero unbounded `.map(` over fetched rows remains in those four files, and the `SalesHistoryScreen.tsx` fetch at `:239` is bounded even though its render was already paged; both commands take and return `limit` plus `offset` defaulting to 50; `list-policy.test.ts` and the affected screen tests pass; one assert proves page 2 offsets correctly.
-- **Size:** M for the UI half, L once the two commands and their desktop consumers are included.
-- **Dependencies:** R1 and R2 are independent; do them first because they are smaller. R3 merges the original P1.1 and P1.2; P2.2's one valid half is P1.2 restated. The IPC half is not optional past the virtualize threshold; see the failure modes in section 5.
-- **Ordering inside the slice:** UI paging first, because it is reversible and proves the offset arithmetic; IPC bounds second, because the signature change is the part that can break the desktop shell.
-
-### R4. Touch-target proof (S)
-
-- **Purpose:** Replace an unproven claim about checkout control sizes with an assertion.
-- **Why this rank:** it is a verification, not a feature. It cannot be ranked above work that changes behaviour, and it must run after the screens it asserts on stop moving.
-- **Fence:** `ui/src/theme/tokens.css:277-278` plus the accessibility test suite.
-- **Acceptance:** checkout buttons, grid selectors and menu icons assert >=44px and are raised to the 48px token.
-- **Size:** S.
-- **Dependencies:** run only after R1 through R3.
-
-### R5. Soak gate wired, not invented (S/M)
-
-- **Purpose:** Turn the pre-release gate into an automated leg that measures the LMK scenario instead of asserting it.
-- **Why this rank:** it protects the other slices rather than the cashier, but it is cheap to wire because the workflow legs and the device scripts already exist.
-- **Fence:** `.github/workflows/android.yml` (the live steps `Decode keystore`, `Build Android APK` and `Assert the APK exists`) plus `scripts/android-preflight.sh` and `scripts/android-cdp.mjs`.
-- **Acceptance:** one leg samples RSS via adb across a 30 to 60 minute background/doze cycle and fails on a stated threshold; the 8-hour screen-on form is gone.
-- **Size:** S to wire the leg, M to make the threshold stable.
-- **Dependencies:** none technically, but it needs a recorded baseline before it can fail meaningfully.
-
-### R6. 400x400 image cap (L, DEFERRED)
-
-- **Purpose:** Bound stored catalog asset dimensions, if a memory or GPU incident is ever measured.
-- **Why this rank:** last, because its stated cause is unverified and its cost is the highest of any slice. Ranking it higher would mean spending the most on the least evidenced item.
-- **Fence:** `apps/mobile-tauri/src/image_download.rs:195-276` plus a new image dependency in `apps/mobile-tauri/Cargo.toml`.
-- **Acceptance:** stored asset max dimension <=400 with a decode test.
-- **Size:** L. The size is an estimate, not a measurement.
-- **Dependencies:** start only after a measured GPU or memory incident. The rest of the image pipeline (content-addressed WebP, LRU, 40 per cycle cap) already ships, so this slice is only the cap.
-
-### 3.1 Slice summary
-
-| Slice | Size | Layer | Merges | Gate |
-|---|---|---|---|---|
-| R1 Keyboard viewport | S | UI shell | P3.2 (corrected) | do first |
-| R2 Keep screen on | S | native scaffold | P4.1 (reframed) | after R1 |
-| R3 Bounded list data path | M/L | UI plus IPC | P1.1, P1.2 | after R1, R2 |
-| R4 Touch-target proof | S | theme plus tests | P3.3 (narrowed) | after R1 to R3 |
-| R5 Soak gate | S/M | CI plus device scripts | gate (redefined) | independent |
-| R6 400x400 image cap | L | Rust plus Cargo | P1.4 (deferred) | after a measured incident |
+| Optimizing APK size while runtime still OOMs | Start with PSS/heap profiling, not file size. |
+| Aggressive R8 shrinking breaks Tauri/JNI/serde | Validate full release flows on real device. |
+| Memory pressure drops active cart | Persist draft before eviction; protect critical state. |
+| SQLite tuning causes data loss | Keep checkout durability strong; require ADR for relaxation. |
+| Reports become memory bombs | Stream, page, aggregate in SQL, cap exports. |
+| Plugins destabilize low-RAM devices | Add memory/time limits and watchdogs. |
+| Camera/print sessions leak buffers | Include sustained scanning/printing in soak tests. |
+| Sync queue grows unbounded | Make queue disk-backed and bounded. |
+| Backup loads full archive into memory | Stream backup/restore with bounded buffers. |
+| Logging leaks PII/PAN | Add redaction and log scanning gate. |
+| Startup slows due to migrations/plugins | Defer non-critical work; measure startup stages. |
+| WebView/IPC payloads spike JS heap | Chunk/stream large payloads; avoid giant JSON IPC. |
 
 ---
 
-## 4. Rejected items
+## 29. Acceptance Criteria
 
-Each of these is deleted from the plan. The reason is one line; the evidence is in section 2.
+The audit is complete only when all of these are answered and evidenced:
 
-| Item | Reason it was deleted |
-|---|---|
-| P1.3 State disconnect | No leak was ever measured and no context holds bulk rows. |
-| P2.1 Compute offloading | 343 commands already exist and no JS algorithm was named. |
-| P2.3 Connection pooling | The codebase already documents that SQLite does not benefit. |
-| P3.1 Tailwind breakpoints | The dependency is absent and the layout mechanism is tokens plus media queries. |
-| P4.2 Foreground Service for sync | The platform's own time cap invalidates the checklist's test. |
-| P4.3 WebView anchoring | No such Play Console mechanism exists. |
-| P5.1 OpenAPI/JSON contract archival | Already done, and the premise about what is missing is wrong. |
-| P5.2 Schema freeze | Already done and already enforced by a registry. |
-| The original 8-hour screen-on idle test | Invalid on both the legal window and the scenario. |
-
-Nine entries above, none of which also appears as a surviving slice in section 3. Two items the draft carried are deliberately absent from this table: P2.2 is not a rejection on its own merits (it was found unimplementable as written and absorbed into R3, which is where its one valid half lives), and P1.4 is not a rejection at all (it was deferred into R6). Neither is counted here.
-
----
-
-## 5. Unverified claims and open unknowns
-
-This section is a first-class deliverable. Anything here is an unknown, not a finding; do not cite it as evidence.
-
-### 5.1 Unverified claims
-
-1. **The "4GB minimum" fleet assumption itself.** No terminal model, Android version or installed-base evidence was produced in any pass. Every ranking in section 3 inherits this unknown.
-2. **The "WebView GPU crashes" claim.** No incident, log or reproduction was produced. This is the stated cause for the P1.4 400x400 cap and the sole justification for R6.
-3. **State-disconnect leak magnitude.** Explicitly not measured; P1.3 is unmeasured, not disproven.
-4. **The 8-hour idle test's premise that Rust sync loops accumulate memory.** Never measured. The test asserted a mechanism nobody has observed.
-5. **Whether a persistent sync thread even runs on mobile.** The outbox/sync shape appears in none of the three investigation passes. If nothing runs, both the original gate's premise and the foreground-service item are moot for a second, independent reason.
-6. **Whether 44px tokens are adequate on a 10-inch tablet.** The physical dp mapping is unstated; tokens are px. R4 asserts a number whose physical meaning on the target hardware is unverified.
-7. **Whether edits to the committed `gen/android` scaffold survive `tauri android init` regeneration.** This is the single largest risk to R2.
-8. **Whether `MainActivity.kt` can carry the keep-screen-on flag** without the scaffold change being clobbered on the next regeneration. Related to item 7 but separable: even a regenerable scaffold has to expose an override point.
-9. **Who administers the fleet and under what MDM.** This determines whether P4.3-style fleet controls exist at all through some other channel, and it determines how an R5 threshold could be pushed fleet-wide.
-10. **Whether IPC paging breaks the ProductLookupScreen barcode-scan flow.** That screen is not in the R3 fence and was not traced end to end. A barcode scan that assumes a full in-memory list would regress silently.
-11. **The size of R6.** It is an estimate, not a measurement, and it depends on which image dependency is chosen.
-
-### 5.2 Concrete failure modes
-
-- **UI-only paging still ships the full payload.** On a very large product table the IPC serialization alone can stall the WebView, so R3's IPC half is not optional once a table passes the virtualize threshold. Shipping the UI half alone would look like a fix and would not be one.
-- **Adding LIMIT/OFFSET to `products.rs` and `history.rs` changes shared command contracts used by the desktop shell.** Any signature change must be additive (optional `limit`/`offset`) or desktop breaks. This is why the IPC half is second inside R3, not first.
-- **Editing `gen/android` risks being overwritten by the next `tauri android init`.** R2 lives entirely inside that scaffold, so an unverified regeneration path can delete the fix with no test failure.
-- **The soak gate (R5) fails closed on a flaky adb sample.** It needs a generous threshold plus a recorded baseline, or it will be disabled by the first person it blocks. A gate that gets disabled is worse than no gate, because it reads as coverage.
-
-### 5.3 How to close these unknowns
-
-| Unknown | Cheapest evidence that would close it |
-|---|---|
-| 4GB fleet assumption | one terminal model plus its Android version from the deployment records |
-| WebView GPU crashes | one incident report, log or reproduction, or a decision to drop the claim |
-| state-disconnect leak | an RSS sample before and after a long session |
-| Rust sync memory accumulation | the same RSS sample, cross-referenced with whether a sync thread is running |
-| persistent mobile sync thread | one trace of the mobile process during a sync window |
-| 44px adequacy on a 10-inch tablet | the device's reported density plus one measured control |
-| scaffold regeneration | one `tauri android init` run on a scratch copy |
-| MainActivity override point | the same run, inspecting the generated MainActivity |
-| fleet administration | a direct answer from the owner; no code evidence exists |
-| ProductLookupScreen barcode flow | one trace of that screen against a paged API |
-| R6 size | a spike once an image dependency is chosen |
+- [ ] Exact reference device is defined.
+- [ ] Supported Android versions are defined.
+- [ ] Maximum catalog size is defined.
+- [ ] Maximum daily transaction volume is defined.
+- [ ] Memory budgets are defined.
+- [ ] Startup budgets are defined.
+- [ ] Storage/cache budgets are defined.
+- [ ] Peak memory during checkout is measured.
+- [ ] Peak memory during reporting is measured.
+- [ ] Peak memory during backup/restore is measured.
+- [ ] Peak memory during camera scanning is measured.
+- [ ] Peak memory during printing is measured.
+- [ ] Peak memory during sync is measured.
+- [ ] Behavior under memory pressure is tested.
+- [ ] Active cart protection is verified.
+- [ ] Process death recovery is verified.
+- [ ] Release-build validation is completed.
+- [ ] CI gates are added or planned.
+- [ ] Soak test duration is defined.
+- [ ] Rollback criteria are defined.
+- [ ] Security constraints are documented.
+- [ ] Top memory hotspots are ranked.
+- [ ] Phase plan is assigned to owners.
+- [ ] Each optimization has before/after measurements.
 
 ---
 
-## 6. Pre-release gate (redefined)
+## 30. Immediate Next Actions
 
-The original gate bundled three tests, of which one is invalid and the other two are real but uninstrumented. The redefined gate:
+Start here:
 
-| Leg | State | What it must do |
-|---|---|---|
-| Soak | REPLACES the 8-hour screen-on idle test | One leg samples RSS via adb across a 30 to 60 minute background/doze cycle and fails on a stated threshold. Screen-on is not the LMK scenario, and a foreground service cannot legally run the 8-hour form anyway. |
-| Rapid checkout stress | KEPT, needs instrumentation | Tap through 30 mock sales in quick succession while scanning barcodes; the pass condition must be a measured RSS ceiling, not "confirm memory resets". |
-| Offline drop | KEPT, needs instrumentation | Cut Wi-Fi mid-transaction and assert that the local `rusqlite` write completes and that no unhandled JS exception hangs the WebView thread. |
-
-Why the 8-hour form is gone, in two independent reasons:
-
-1. **The legal window.** The repo targets SDK 36 (`apps/mobile-tauri/gen/android/app/build.gradle.kts:36`), and Android 15 caps a `dataSync` foreground service at 6 hours per 24 hours (`Service.onTimeout`; external platform policy, no local citation). An 8-hour screen-on soak held open by such a service cannot pass on a compliant device.
-2. **The scenario.** Screen-on is not the Low Memory Killer scenario. Keeping the screen awake removes the very condition the test claims to measure, so even a passing 8-hour run would not be evidence about LMK behaviour.
-
-The gate is not considered wired until the soak leg runs in `.github/workflows/android.yml` (R5) rather than by hand. Stress and offline-drop stay as manual legs until they have instrumentation; they are real tests, not placeholders.
-
----
-
-## 7. Evidence index
-
-| Citation | Supports |
-|---|---|
-| `ui/src/utils/list-policy.ts:20,27` | 50 per page, virtualize at >=20 pages (P1.1) |
-| `ui/src/theme/tokens.css:277-278` | 44px min, 48px comfortable (P3.3, R4) |
-| `ui/src/theme/responsive.css` | The real responsive mechanism (P3.1) |
-| `ui/src/app/tablet/tablet.css` | The real responsive mechanism (P3.1) |
-| `themeTokenCompliance.test.ts` | The test that enforces the token mechanism (P3.1) |
-| `ui/src/hooks/useKeyboardAvoidance.ts` | Keyboard avoidance exists (P3.2) |
-| `ui/index.mobile.html:9` | Missing `interactive-widget=resizes-content` (P3.2, R1) |
-| `ui/src/features/products/ProductManagementScreen.tsx:440` | Unbounded list site (R3) |
-| `ui/src/features/customers/CustomerManagementScreen.tsx:549` | Unbounded list site (R3) |
-| `ui/src/features/sales/VoidOrdersScreen.tsx:414` | Unbounded list site (R3) |
-| `ui/src/features/inventory/ThresholdConfigScreen.tsx:194` | Unbounded list site, the threshold table row map (R3) |
-| `ui/src/features/sales/SalesHistoryScreen.tsx:239` | Unbounded IPC fetch (R3) |
-| `ui/src/features/sales/SalesHistoryScreen.tsx:225,365-370,945` | Render already paged, so not an unbounded-render site (R3) |
-| `ui/src/api/products.ts:59-60` | IPC wrapper to extend (R3) |
-| `ui/src/api/sales.ts:513-514` | IPC wrapper to extend (R3) |
-| `apps/mobile-tauri/src/commands/customers.rs:230-255` | The only existing IPC paging (P1.2, R3) |
-| `apps/mobile-tauri/src/commands/customers.rs:250` | `limit.unwrap_or(50)`, the default to mirror (R3) |
-| `apps/mobile-tauri/src/commands/products.rs:338-341` | Command to bound (R3) |
-| `apps/mobile-tauri/src/commands/history.rs:263-266` | Command to bound (R3) |
-| `apps/mobile-tauri/src/lib.rs:584-971` | 343 registered commands (P2.1) |
-| `apps/mobile-tauri/src/image_download.rs:195-276` | WebP, LRU and 40 per cycle cap already done (P1.4, R6) |
-| `apps/mobile-tauri/src/state.rs:22-25` | Pooling explicitly deferred (P2.3) |
-| `apps/mobile-tauri/gen/android/app/src/main/java/mu/kasir/mobile/MainActivity.kt` | The R2 fence |
-| `platform/core/src/database/pool.rs:9-11` | SQLite gains nothing from a multi-connection pool (P2.3) |
-| `platform/core/src/database/pool.rs:31-33` | The single `Arc<Mutex<Connection>>` shape that replaces the pool (P2.3) |
-| `crates/kasirmu-core/src/migrations.rs:49-61` | `include_str!` migration registry (P5.2) |
-| `crates/kasirmu-api/src/spec/mod.rs:1-4` | Shared OpenAPI 3.1 document for the HTTP surface (P5.1) |
-| `apps/cloud-server/src/openapi.rs` | Merges the cloud-only paths onto that spec (P5.1) |
-| `docs/guides/developer/api-reference.md` | 881-line audit-stamped IPC reference (P5.1) |
-| `AndroidManifest.xml:138` | `adjustResize` already configured (P3.2) |
-| `apps/mobile-tauri/gen/android/app/build.gradle.kts:36` | `targetSdk = 36` (P4.2, section 6) |
-| `.github/workflows/android.yml`, steps `Decode keystore`, `Build Android APK`, `Assert the APK exists` | Live Android CI steps (R5) |
-| `scripts/android-preflight.sh` | Existing device tooling to extend (R5) |
-| `scripts/android-cdp.mjs` | Existing device tooling to extend (R5) |
+- [ ] Create a real or representative 4GB test device profile.
+- [ ] Build release APK/AAB from current main.
+- [ ] Install on reference device.
+- [ ] Capture idle PSS.
+- [ ] Capture cold startup timing.
+- [ ] Capture warm startup timing.
+- [ ] Run one simulated checkout and capture peak PSS.
+- [ ] Run one daily report and capture peak PSS.
+- [ ] Run one backup and capture peak PSS.
+- [ ] Run one restore into sandbox and capture peak PSS.
+- [ ] Run 30-minute camera scanning and capture PSS growth.
+- [ ] Run 50-print test and capture PSS growth.
+- [ ] Capture JS heap snapshot at dashboard.
+- [ ] Capture native allocation trace for checkout.
+- [ ] Produce baseline report.
+- [ ] Rank top 10 hotspots.
+- [ ] Create optimization tickets only from ranked hotspots.
+- [ ] Begin Phase 1 quick wins after baseline exists.
 
 ---
 
-## Naming note
+## 31. Final Status
 
-The filename keeps the `todo-` prefix deliberately. `check-dead-refs.py` exempts plan files, and the file is renamed to `done-todo-*` only once its own acceptance commands have actually run and passed. R1 and R2 have since landed in the tree and R3 shipped with them (see the status note at the top); R4, R5 and R6 have not run, and no acceptance step has been observed on a device, so the token stays `todo-`.
+This audit should be treated as a measurement program, not a wish list.
 
----
+The correct sequence is:
 
-## Status pass — 2026-09-28, second (BK)
-
-Adds to the header note above, which this pass confirms as far as R1/R2/R3 go.
-Two of its claims are corrected below. Corrections are appended forward rather
-than edited in, so the dated record keeps its own history.
-
-### Correction 1: R4 is NOT untouched
-
-The header says "R4, R5 and R6 are untouched". **R4 is already paid**, by a
-stronger instrument than §3 specifies.
-
-`ui/src/__tests__/touchTargetSizing.test.tsx` walks every stylesheet under
-`ui/src` (`:734` — derived from the filesystem, explicitly so a hand-kept list
-cannot drift), grades **width as well as height** including inside
-`@media (pointer: coarse)` (`:754`), resolves tokens and `calc()` so a quoted
-figure is the computed one (`:760`), holds an exact ratchet that fails on both a
-new violation and a stale exemption (`:770`), requires every exemption to carry
-a written reason (`:811`), and reports its debt as a count — **15** at `:808`.
-
-The three categories R4 names (checkout buttons, grid selectors, menu icons)
-are a subset of that sweep, so the `>=44px` half of R4's acceptance is met
-repo-wide, not just for those three.
-
-What is genuinely still open is §5.1 item 6: the floor is asserted in **px**,
-and its physical meaning on a 10-inch tablet is still unverified.
-
-### Correction 2: R3's sales clause cannot be done as written
-
-R3's acceptance says the `SalesHistoryScreen.tsx` fetch at `:239` must be
-bounded "even though its render was already paged". Taken literally — as
-`offset: (page - 1) * pageSize` — that is a **regression**, not a fix.
-
-That screen filters and sorts **client-side**. `filteredSales` derives from the
-whole fetched array (`:362`), and only then does `paginatedSales` slice it
-(`:365-370`). A server-side offset hands those filters a single page, so the
-search box, status filter, cashier filter, date range and column sort would each
-operate on only the page the cashier is currently looking at.
-
-This is the same failure class §5.2 predicted for `ProductLookupScreen`'s
-barcode flow, landing on a screen that was not in the fence.
-
-Shipped instead (`02653a441`): a count ceiling, `SALES_FETCH_LIMIT = 500`,
-passed as `limit` only with `offset` left unset. It bounds the IPC payload and
-the renderer's copy — which is what R3 asks for — without moving the
-filter/sort boundary. The unscoped `listSales()` fallback is untouched because
-plain `list_sales` (`history.rs:61`) declares no bounds, so passing them would
-be phantom arguments. True offset paging here needs filter and sort to move
-server-side; that is out of proportion to this slice and is not proposed.
-
-`974926b50` added five `page_window` tests (`products.rs:119`). Its doc comment
-claimed the Rust and UI halves of the paging arithmetic "cannot drift apart"
-with nothing enforcing it; the UI half was already proved at
-`list-policy.test.ts:65`.
-
-### R5: instrument shipped, CI leg not wired
-
-`scripts/android-soak.sh` samples the resident set over adb across a forced doze
-cycle, reports min/mean/max, prefers `TOTAL RSS` and prints whichever metric it
-actually parsed, and **fails loudly rather than recording a zero** when
-`dumpsys meminfo` cannot be parsed. Two deliberate choices, both from §5.2/§5.3:
-
-- **The threshold is opt-in.** With no `--max-rss-mb` the run is a baseline and
-  exits 0, because §5.3 requires "a recorded baseline before it can fail
-  meaningfully".
-- **It is not wired into `.github/workflows/android.yml`.** That workflow
-  compiles an APK and asserts one exists; it has **no device and no emulator
-  step**, and its own header (`:16-23`) records that it has never been run. A
-  30-60 minute leg needing a real device would add an unrunnable job to an
-  unrunnable workflow, and §5.2 warns such a gate "will be disabled by the
-  first person it blocks".
-
-So §6's condition — wired in CI "rather than by hand" — is **still unmet**, and
-this file still does not earn a `done-todo-*` rename. The 8-hour screen-on form
-is gone, which is half of R5's acceptance; the other half waits on a device
-runner plus a recorded baseline.
-
-### Still open
-
-- §5.1 item 1 (the 4GB fleet assumption) — no terminal model produced.
-- §5.1 item 2 (WebView GPU crashes) — still the sole justification for R6.
-- §5.1 item 5 (whether a persistent sync thread runs on mobile) — still untraced.
-- §5.1 item 6 (44px vs physical dp) — R4 asserts the number; its physical
-  meaning on the target hardware is still unverified.
-- §5.1 items 7-8 (scaffold regeneration) — argued by the `MainActivity.kt`
-  comment at `:53-63`, not yet confirmed by a scratch `tauri android init` run.
-- The device-side halves of R1/R2 (a real tablet, 5+ minutes idle, `dumpsys
-  window` reporting `KEEP_SCREEN_ON`) are still unrun.
-
----
-
-## Status pass — 2026-09-29, third
-
-Re-verified the state of R1 through R6 in this checkout:
-- **R1:** In tree (`ui/index.mobile.html:9` with `interactive-widget=resizes-content`).
-- **R2:** In tree (`MainActivity.kt:109-111` `FLAG_KEEP_SCREEN_ON`).
-- **R3:** In tree (`ProductManagementScreen.tsx`, `products.rs:119-121`, `SALES_FETCH_LIMIT = 500`).
-- **R4:** Verified green (`cd ui && npm run test -- touchTargetSizing.test.tsx` → 8 passed in 355ms).
-- **R5:** `scripts/android-soak.sh` exists; CI leg waits on hardware runner with recorded baseline.
-- **R6:** Deferred pending measured GPU incidents.
-
-Per `AGENTS.md` §7.4, this audit continues to hold `todo-` until hardware verification on a real tablet (soak test & screen-on idle) can be executed.
-
+- [ ] Define device profile.
+- [ ] Define budgets.
+- [ ] Measure release baseline.
+- [ ] Identify hotspots.
+- [ ] Prioritize by impact and risk.
+- [ ] Optimize subsystem by subsystem.
+- [ ] Protect POS correctness at every step.
+- [ ] Re-measure after each change.
+- [ ] Add CI gates.
+- [ ] Run long soak before release.
