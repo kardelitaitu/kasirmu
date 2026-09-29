@@ -68,7 +68,15 @@ def run(path: Path) -> tuple[int, str]:
     except OSError as exc:
         return 4, f"could not run {cmd[0]}: {exc}"
     tail = (r.stdout or "").strip().splitlines()
-    return r.returncode, (tail[-1] if tail else (r.stderr or "").strip()[-120:])
+    text = (r.stdout or "") + (r.stderr or "")
+    # USAGE is decided by the OUTPUT, never by the exit code. rc 2 was assumed to mean
+    # argparse had rejected the flag, and a mutation of verify-selftests-wired.py on
+    # 2026-09-29 proved that wrong: that checker returns 2 from self_test() when a CASE
+    # fails, so a real failure was filed under USAGE and the summary said "0 failed a
+    # case". Exit codes are per-checker conventions and cannot carry a shared meaning;
+    # argparse's own words are unambiguous.
+    usage = ("usage:" in text) or ("unrecognized arguments" in text)
+    return (2 if usage else r.returncode), (tail[-1] if tail else (r.stderr or "").strip()[-120:])
 
 
 def self_test() -> int:
