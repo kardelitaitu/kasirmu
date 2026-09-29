@@ -38,10 +38,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-# Vendored trees are not this repo's shell and must never fail its gate. node_modules
-# alone holds two dozen .sh files from playwright and cytoscape, and a syntax rule
-# judged against a third party's script is a false positive waiting to happen.
-VENDORED = ("node_modules", ".git", "target", "dist", "build", ".venv", "vendor")
+# SCOPE IS "TRACKED FILES", enforced by git ls-files rather than by a list of
+# directory names to avoid. The first version walked the filesystem and excluded
+# ("node_modules", ".git", "target", "dist", "build", ".venv", "vendor") -- a maintained
+# list standing in for a rule, which is the same shape of assumption that shipped three
+# scope bugs this session. A vendored tree is gitignored by definition, so it cannot be
+# tracked: `git ls-files` gets the right answer for every vendored directory that exists
+# now AND every one added later, with no edit here. The name list is kept only as a
+# belt-and-braces skip for a checkout where git is unavailable.
 
 
 def targets() -> list[Path]:
@@ -56,6 +60,24 @@ def targets() -> list[Path]:
     image that will not come up. Those are now covered.
     """
     out: list[Path] = []
+    tracked: set[str] | None = None
+    try:
+        r = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"],
+                           capture_output=True, text=True, check=True)
+        tracked = {p for p in r.stdout.split("\0") if p}
+    except (OSError, subprocess.CalledProcessError):
+        tracked = None          # no git: fall back to walking, see VENDORED above
+
+    if tracked is not None:
+        for rel in sorted(tracked):
+            name = rel.rsplit("/", 1)[-1]
+            if not name.endswith(".sh") or name.endswith(".sample"):
+                continue
+            p = ROOT / rel
+            if p.is_file():
+                out.append(p)
+        return sorted(out)
+
     for dirpath, dirnames, filenames in os.walk(ROOT):
         dirnames[:] = [d for d in dirnames
                        if d.lower() not in VENDORED and not d.startswith(".git")]
