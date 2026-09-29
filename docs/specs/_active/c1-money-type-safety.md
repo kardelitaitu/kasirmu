@@ -1,3 +1,4 @@
+<!-- Audit stamp: 2026-09-29 · docs-auditor · status: audited on branch 0.0.40 · First pass over this file: 145 lines, carrying a structured audit block rather than a narrative stamp — an audit ID, an ISO timestamp, a named auditor, a status and a lint result, a format this campaign has now seen in only one other place and is worth noting as a convention. · THE SUBJECT IS THE REPOSITORY'S HARDEST INVARIANT, and the narrow scope follows from why. Money here is integer minor units, never float, enforced by convention, by a lint, and by the type itself — and the exchange-rate case audited in this document is the one place a float could plausibly enter, because a rate is naturally a fraction. Converting it to integer millionths removes the last obvious door. · A NOTE ON WHY IT IS STILL IN THE ACTIVE DIRECTORY, since a reader may reasonably wonder whether it is finished: it is a closure document for a finding raised in a parent desktop audit, and the numbered C-series in this folder is a set of audit-closure specifications rather than a work backlog — several siblings share that shape. Worth a reader knowing, because the folder name invites the opposite assumption. · The invariant it protects is independently visible: the money type carries minor units rather than a decimal value, and the workspace lint configuration carries an explicit deny list. A float money path is therefore not merely discouraged but lint-rejected. · NOT re-measured: the conversion's own correctness, its rounding behaviour at conversion boundaries, or whether the closure claim is accurate against the parent audit. A rounding boundary needs a test, not an audit. · No machine-readable stamp existed; this is the first, and the existing block is retained as original evidence. -->
 # C-1 — Money type safety (exchange rates `f64` → `i64` millionths)
 
 ## Audit Stamp
@@ -143,3 +144,5 @@ helper, which is documented and non-arithmetic.
 - `apps/tablet-client/src/commands/exchange_rates.rs`
 - `platform/startup/src/rate_sync.rs`
 - Commit `ac38ab9` on branch `0.0.5`
+
+> last audited 29-09-26 by docs-auditor
