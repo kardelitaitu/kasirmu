@@ -672,6 +672,151 @@ fn the_previous_branch_adds_nothing_outside_a_rotation() {
     );
 }
 
+/// Every family carries its OWN domain and its OWN legacy closure (hazard H5).
+///
+/// Eight families, eight distinct domains, and rows 7–8 on `derive_static_key`
+/// while rows 1–6 use `derive_key(d, "static")`. Unifying the two closures — the
+/// "tidy" refactor — would silently change what existing ciphertext means for one
+/// group, so the difference is pinned rather than left to a comment.
+#[test]
+fn every_at_rest_family_has_its_own_domain_and_legacy_closure() {
+    use AtRestFamily::{
+        LanPsk, LocalApiSecret, PgSyncPassword, ProfileAtRest, RateApiKey, SmtpAtRest, SyncApiKey,
+        SyncTerminalSecret,
+    };
+
+    let families = [
+        SyncApiKey,
+        SyncTerminalSecret,
+        PgSyncPassword,
+        RateApiKey,
+        LanPsk,
+        LocalApiSecret,
+        SmtpAtRest,
+        ProfileAtRest,
+    ];
+    let mut seen = std::collections::HashSet::new();
+    for family in families {
+        let (domain, legacy) = family.derivation();
+        assert!(
+            seen.insert(domain),
+            "two families share a domain, so one key would open the other's rows: {family:?}"
+        );
+        let uses_static = matches!(family, SmtpAtRest | ProfileAtRest);
+        assert_eq!(
+            legacy(domain) == derive_static_key(domain),
+            uses_static,
+            "the wrong legacy closure is attached to {family:?} (hazard H5)"
+        );
+    }
+    assert_eq!(seen.len(), 8, "all eight families must be distinct");
+}
+
+/// A legacy plaintext row is re-encrypted for every family, and the result opens
+/// under the current key alone — which is the whole job of a rotation sweep.
+///
+/// The fixture differs for `LocalApiSecret` on purpose: that family accepts only its
+/// real pre-encryption shape (64 lowercase hex), because its legacy form is
+/// base64-shaped and the shared gate cannot tell it from ciphertext. So "a legacy
+/// row" is not one string across the eight families, and a test that used one would
+/// be asserting the wrong contract for the eighth.
+#[test]
+fn rewrap_converts_a_legacy_plaintext_row_into_ciphertext_for_every_family() {
+    use AtRestFamily::*;
+
+    for family in [
+        SyncApiKey,
+        SyncTerminalSecret,
+        PgSyncPassword,
+        RateApiKey,
+        LanPsk,
+        LocalApiSecret,
+        SmtpAtRest,
+        ProfileAtRest,
+    ] {
+        let plaintext = match family {
+            LocalApiSecret => "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90",
+            _ => "kafe-lima-0725",
+        };
+        let rewritten = rewrap(family, plaintext)
+            .unwrap_or_else(|e| panic!("{family:?} rewrap failed: {e}"))
+            .unwrap_or_else(|| panic!("{family:?} refused a plaintext legacy row"));
+        assert_ne!(rewritten, plaintext, "{family:?} did not encrypt");
+        assert!(
+            looks_like_ciphertext(&rewritten),
+            "{family:?} produced something that is not ciphertext-shaped"
+        );
+        assert!(
+            opens_under_current_key_only(family, &rewritten),
+            "{family:?}: a rewritten row must open under the current key alone, or \
+             retiring the outgoing key would orphan it"
+        );
+        assert!(
+            !opens_under_current_key_only(family, plaintext),
+            "{family:?}: the legacy plaintext must NOT pass the verification — it is \
+             exactly the row the sweep exists to convert"
+        );
+    }
+}
+
+/// `local_api.secret` is the one family whose legacy plaintext is base64-SHAPED, so
+/// it uses a positive discriminator instead of the shared shape gate. This pins
+/// both halves: the collision that makes the gate unusable, and the refusal that
+/// the positive test buys (a shape-gated family would happily "migrate" junk).
+#[test]
+fn the_local_api_family_uses_a_positive_legacy_test_not_the_shape_gate() {
+    use AtRestFamily::{LocalApiSecret, SyncApiKey};
+
+    let legacy = "3f2a91c4e07b5d6812ab34cd56ef7890a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    assert_eq!(legacy.len(), 64);
+    assert!(
+        is_legacy_local_api_secret(legacy),
+        "the shipped generator's shape must be recognised"
+    );
+    assert!(
+        looks_like_ciphertext(legacy),
+        "THE COLLISION: the legacy value passes the crate's own ciphertext shape \
+         test, which is why this family cannot use the shared gate"
+    );
+
+    assert!(
+        rewrap(LocalApiSecret, legacy).unwrap().is_some(),
+        "the real legacy shape must be migrated, not refused"
+    );
+
+    // The discriminator's value: short junk is NOT the legacy shape, so the positive
+    // test refuses it. A family using `!looks_like_ciphertext` would have encrypted
+    // it — turning a corrupt row into a confident-looking ciphertext row.
+    assert!(
+        !is_legacy_local_api_secret("short-junk"),
+        "the positive test must not accept arbitrary junk"
+    );
+    assert_eq!(
+        rewrap(LocalApiSecret, "short-junk").unwrap(),
+        None,
+        "local_api.secret must refuse a value that is neither readable nor the legacy shape"
+    );
+    assert!(
+        rewrap(SyncApiKey, "short-junk").unwrap().is_some(),
+        "and the contrast: a shape-gated family DOES migrate it, which is the \
+         behaviour the positive test deliberately does not copy"
+    );
+}
+
+/// A value we cannot read is left ALONE. Overwriting it would destroy whatever a
+/// key restore could still open — the one outcome a sweep must never produce.
+#[test]
+fn rewrap_leaves_a_foreign_or_corrupt_value_untouched() {
+    // Ciphertext-shaped, but written under a key no candidate list contains.
+    let foreign = encrypt("someone-elses-row", &[0x99u8; 32]).unwrap();
+    assert!(looks_like_ciphertext(&foreign));
+    assert_eq!(
+        rewrap(AtRestFamily::SyncApiKey, &foreign).unwrap(),
+        None,
+        "an unreadable ciphertext-shaped row must be skipped, not re-encrypted over"
+    );
+}
+
 /// With no key installed the derivation reports inactive — hazard H2's guard.
 ///
 /// This REPLACES the S2a-era pin that asserted the seam was dormant *by

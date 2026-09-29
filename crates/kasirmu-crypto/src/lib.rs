@@ -713,6 +713,132 @@ pub fn decrypt_profile_field(encrypted_b64: &str) -> Result<String, CryptoError>
     )
 }
 
+// ── Rotation: re-encrypting a row under the current key (C1 slice S2c) ──
+
+/// One install-key-derived at-rest family, for a rotation sweep.
+///
+/// The variants exist because a rotation must ask a family two questions that no
+/// single `encrypt_*`/`decrypt_*` pair answers: *what does this row decrypt to,
+/// whatever key wrote it*, and *does it now decrypt under the current key ALONE*.
+/// Both need the family's domain and its legacy closure, and both are private to
+/// this crate — which is why a sweep is driven from here rather than from the
+/// caller.
+///
+/// Deliberately does NOT include the two machine-bound families
+/// ([`encrypt_api_key`], [`encrypt_smtp_password`]): their key material is the
+/// installation fingerprint, so their ciphertext does not change meaning when the
+/// install key rotates and a rotation must not touch them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtRestFamily {
+    /// `settings.sync_api_key`.
+    SyncApiKey,
+    /// `settings.sync_terminal_secret`.
+    SyncTerminalSecret,
+    /// `settings.pg_sync.password`.
+    PgSyncPassword,
+    /// `settings.rate_sync.api_key`.
+    RateApiKey,
+    /// `settings.lan_server.psk`.
+    LanPsk,
+    /// `settings.local_api.secret`.
+    LocalApiSecret,
+    /// The `password` FIELD inside `settings.smtp_config`'s JSON blob.
+    SmtpAtRest,
+    /// The `users.national_id` and `users.monthly_take_home_minor` columns.
+    ProfileAtRest,
+}
+
+impl AtRestFamily {
+    /// The family's domain-separation prefix and its byte-identical legacy closure.
+    ///
+    /// The two closures are **not** interchangeable (hazard H5): `SmtpAtRest` and
+    /// `ProfileAtRest` derive through [`derive_static_key`], the other six through
+    /// `derive_key(d, "static")`. Unifying them would change what existing
+    /// ciphertext means.
+    fn derivation(self) -> (&'static [u8], fn(&[u8]) -> [u8; 32]) {
+        match self {
+            Self::SyncApiKey => (SYNC_API_KEY_DOMAIN, |d| derive_key(d, "static")),
+            Self::SyncTerminalSecret => (SYNC_TERMINAL_SECRET_DOMAIN, |d| derive_key(d, "static")),
+            Self::PgSyncPassword => (PG_SYNC_PASSWORD_DOMAIN, |d| derive_key(d, "static")),
+            Self::RateApiKey => (RATE_API_KEY_DOMAIN, |d| derive_key(d, "static")),
+            Self::LanPsk => (LAN_PSK_DOMAIN, |d| derive_key(d, "static")),
+            Self::LocalApiSecret => (LOCAL_API_SECRET_DOMAIN, |d| derive_key(d, "static")),
+            Self::SmtpAtRest => (SMTP_AT_REST_DOMAIN, derive_static_key),
+            Self::ProfileAtRest => (PROFILE_AT_REST_DOMAIN, derive_static_key),
+        }
+    }
+
+    /// Whether a value that is NOT this crate's ciphertext is a legacy plaintext
+    /// this family should re-encrypt during a rotation.
+    ///
+    /// Seven of the eight answer "anything not in our ciphertext format", which is
+    /// the same gate their own readers use. [`Self::LocalApiSecret`] cannot use that
+    /// gate and takes a **positive** test instead: its legacy plaintext is exactly
+    /// 64 lowercase hex characters, which IS valid base64 of 48 bytes and so passes
+    /// [`looks_like_ciphertext`]. See [`is_legacy_local_api_secret`].
+    fn accepts_legacy_plaintext(self, value: &str) -> bool {
+        match self {
+            Self::LocalApiSecret => is_legacy_local_api_secret(value),
+            _ => !looks_like_ciphertext(value),
+        }
+    }
+}
+
+/// The pre-encryption shape of `local_api.secret`: exactly 64 lowercase hex
+/// characters — 32 CSPRNG bytes, hex-encoded, which is what every shipped build's
+/// secret generator produced.
+///
+/// Stated as a whitelist rather than inferred from [`looks_like_ciphertext`],
+/// because that predicate returns **true** for this value: 64 hex chars are valid
+/// base64 and decode to 48 bytes. Exposed so that every instrument which classifies
+/// a stored form gives the same answer; `platform/core/src/settings/typed.rs` and
+/// `crates/kasirmu-cli/src/commands/credential_deltas.rs` hold private copies of
+/// this predicate and should delegate here.
+#[must_use]
+pub fn is_legacy_local_api_secret(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Re-encrypt one stored at-rest value under the CURRENT install key.
+///
+/// Returns `Ok(Some(new_value))` when the value was readable — ciphertext under any
+/// candidate key (current, previous, legacy, master) or a legacy plaintext — and has
+/// been re-encrypted; `Ok(None)` when it could not be read at all, so a sweep leaves
+/// it untouched rather than destroying it.
+///
+/// This is the read half of a rotation. The write half is the `encrypt_*` arm
+/// [`portable_key`] selects, which is always the current key.
+///
+/// # Errors
+///
+/// Only from the encrypt step — an RNG or AEAD failure. An unreadable value is
+/// `Ok(None)`, deliberately not an error: pre-existing damage must not stop a sweep.
+pub fn rewrap(family: AtRestFamily, value: &str) -> Result<Option<String>, CryptoError> {
+    let (domain, legacy) = family.derivation();
+    if let Ok(plaintext) = decrypt_with_candidates(value, &candidate_keys(domain, legacy)) {
+        return Ok(Some(encrypt(&plaintext, &portable_key(domain, legacy))?));
+    }
+    if family.accepts_legacy_plaintext(value) {
+        return Ok(Some(encrypt(value, &portable_key(domain, legacy))?));
+    }
+    Ok(None)
+}
+
+/// Whether `value` decrypts under the CURRENT install key **alone**.
+///
+/// The rotation's verification question, and the one that decides whether the
+/// outgoing key may be retired. A legacy plaintext, or a row still under the
+/// previous / master / legacy derivation, answers `false` — which is exactly what
+/// must block the retirement.
+#[must_use]
+pub fn opens_under_current_key_only(family: AtRestFamily, value: &str) -> bool {
+    let (domain, legacy) = family.derivation();
+    decrypt(value, &portable_key(domain, legacy)).is_ok()
+}
+
 // ── Internal encrypt / decrypt ───────────────────────────────────────
 
 /// Whether `value` has the shape of this crate's ciphertext
