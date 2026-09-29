@@ -65,6 +65,19 @@ fn print_sales_receipt_args_deserialise() {
     assert_eq!(args.payments.len(), 1);
 }
 
+#[test]
+fn line_item_dto_deserialise_with_note() {
+    let json = r#"{
+        "name": "Nasi Goreng Spesial",
+        "quantity": 1,
+        "unitPrice": { "minor_units": 35000, "currency": "IDR" },
+        "totalPrice": { "minor_units": 35000, "currency": "IDR" },
+        "note": "pedas"
+    }"#;
+    let item: LineItemDto = serde_json::from_str(json).unwrap();
+    assert_eq!(item.note.as_deref(), Some("pedas"));
+}
+
 // -- DTO struct tests --
 
 #[test]

@@ -793,6 +793,7 @@ export interface LineItemDto {
   unitPrice: MoneyDto;
   totalPrice: MoneyDto;
   taxAmount?: MoneyDto;
+  note?: string | null;
 }
 
 /** A payment entry for receipt printing. */

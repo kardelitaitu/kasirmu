@@ -102,6 +102,8 @@ export interface CartLine {
   readonly coursingStatus?: CoursingStatus;
   /** Optional modifier selections attached to this line. */
   readonly modifiers?: ModifierSelection[];
+  /** Optional customer/kitchen note for this item (e.g. "pedas", "less ice"). */
+  readonly note?: string;
 }
 
 /**

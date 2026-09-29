@@ -89,6 +89,11 @@ export default function ReceiptPreview({
               <span className="receipt-preview-item-line">
                 {formatLine(item.name, item.quantity, item.unitPrice, item.totalPrice)}
               </span>
+              {item.note && (
+                <span className="receipt-preview-item-note">
+                  {item.note}
+                </span>
+              )}
               {item.taxAmount && (
                 <span className="receipt-preview-item-tax">
                   Tax: {formatMoney(dtoToMoney(item.taxAmount))}

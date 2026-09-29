@@ -96,6 +96,9 @@ pub struct LineItemDto {
     #[serde(default)]
     /// Tax Amount.
     pub tax_amount: Option<MoneyDto>,
+    #[serde(default)]
+    /// Optional menu order note (e.g. "pedas").
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

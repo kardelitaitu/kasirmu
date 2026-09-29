@@ -679,7 +679,38 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     expect(screen.getByText('93.781')).toBeInTheDocument();
     expect(screen.getByText('6.219')).toBeInTheDocument();
   });
+
+  it('renders menu order note pedas under Nasi Goreng Spesial and toggles with showItemNotes', async () => {
+    const user = userEvent.setup();
+    await renderWithProviders(
+      <RestaurantReceiptsScreen tablesEnabled={true} />,
+      salesFtl,
+      productsFtl,
+      inventoryFtl,
+      settingsFtl,
+    );
+
+    // Note 'pedas' is visible by default under 1x Nasi Goreng Spesial
+    expect(screen.getByText('1x Nasi Goreng Spesial')).toBeInTheDocument();
+    const noteEl = screen.getByText('pedas');
+    expect(noteEl).toBeInTheDocument();
+    expect(noteEl).toHaveClass('resto-receipt-item-note');
+
+    // Toggle off Menu Order Notes
+    const toggleNotes = screen.getByRole('switch', { name: 'Show Menu Order Notes' });
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'true');
+    await user.click(toggleNotes);
+
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByText('pedas')).toBeNull();
+
+    // Toggle back on
+    await user.click(toggleNotes);
+    expect(toggleNotes).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('pedas')).toBeInTheDocument();
+  });
 });
+
 
 
 

@@ -93,6 +93,7 @@ export function buildCompletedSaleReceipt({
           currency: line.unit_price.currency,
         },
         ...(tax ? { taxAmount: tax } : {}),
+        ...(line.note ? { note: line.note } : {}),
       };
     }),
     subtotal: completedSale

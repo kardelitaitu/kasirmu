@@ -159,6 +159,8 @@ pub struct LineItem {
     pub total_price: Money,
     /// Tax amount for this line (None if tax is not itemised).
     pub tax_amount: Option<Money>,
+    /// Optional menu order note (e.g. "pedas", "less ice").
+    pub note: Option<String>,
 }
 
 // ── Payment info ─────────────────────────────────────────
@@ -484,6 +486,12 @@ pub fn format_sales_receipt(r: &SalesReceipt, config: &ReceiptConfig) -> Vec<u8>
             total_pad = total_pad,
         );
         b.text(&line);
+        if let Some(ref note) = item.note {
+            let trimmed = note.trim();
+            if !trimmed.is_empty() {
+                b.text(&format!("  {trimmed}"));
+            }
+        }
         if config.show_tax
             && let Some(ref tax) = item.tax_amount
         {

@@ -30,6 +30,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(350),
                 total_price: usd_money(350),
                 tax_amount: Some(usd_money(35)),
+                note: None,
             },
             LineItem {
                 name: "Bread White".into(),
@@ -37,6 +38,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(200),
                 total_price: usd_money(400),
                 tax_amount: Some(usd_money(40)),
+                note: None,
             },
             LineItem {
                 name: "Eggs (dozen)".into(),
@@ -44,6 +46,7 @@ fn sample_receipt() -> SalesReceipt {
                 unit_price: usd_money(450),
                 total_price: usd_money(450),
                 tax_amount: Some(usd_money(45)),
+                note: None,
             },
         ],
         subtotal: usd_money(1200),
@@ -351,6 +354,7 @@ fn sales_receipt_prints_idr_without_trailing_decimal() {
             unit_price: money(4_450_000),
             total_price: money(4_450_000),
             tax_amount: None,
+            note: None,
         }],
         subtotal: money(4_450_000),
         tax: None,
@@ -684,3 +688,16 @@ fn sales_receipt_prints_faktur_pajak_when_present() {
         "receipt must print Faktur Pajak line: {text}"
     );
 }
+
+#[test]
+fn prints_menu_order_note_under_item() {
+    let mut r = sample_receipt();
+    r.items[0].note = Some("pedas".into());
+    let data = format_sales_receipt(&r, &default_config());
+    let text = String::from_utf8_lossy(&data);
+    assert!(
+        text.contains("  pedas"),
+        "receipt must print menu order note under item: {text}"
+    );
+}
+

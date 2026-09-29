@@ -95,6 +95,7 @@ export default function RestaurantReceiptsScreen({
   const [showDateTime, setShowDateTime] = useState(true);
   const [showStaffName, setShowStaffName] = useState(true);
   const [showFooter, setShowFooter] = useState(true);
+  const [showItemNotes, setShowItemNotes] = useState(true);
   const [showTax, setShowTax] = useState(true);
   const [taxRatePercent, setTaxRatePercent] = useState(10);
   const [businessLogo, setBusinessLogo] = useState<string>('');
@@ -170,6 +171,8 @@ export default function RestaurantReceiptsScreen({
       if (localStaff !== null) setShowStaffName(localStaff === 'true');
       const localFooter = localStorage.getItem('resto_rcpt_show_footer');
       if (localFooter !== null) setShowFooter(localFooter === 'true');
+      const localItemNotes = localStorage.getItem('resto_rcpt_show_item_notes');
+      if (localItemNotes !== null) setShowItemNotes(localItemNotes === 'true');
       const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
       if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
         setTaxRatePercent(clamp(Number(localTaxRate), 0, 100));
@@ -215,6 +218,9 @@ export default function RestaurantReceiptsScreen({
           }
           if (p['resto_rcpt_show_footer'] !== undefined) {
             setShowFooter(p['resto_rcpt_show_footer'] === 'true');
+          }
+          if (p['resto_rcpt_show_item_notes'] !== undefined) {
+            setShowItemNotes(p['resto_rcpt_show_item_notes'] === 'true');
           }
           if (p['resto_rcpt_tax_rate'] !== undefined) {
             const parsed = Number(p['resto_rcpt_tax_rate']);
@@ -270,6 +276,7 @@ export default function RestaurantReceiptsScreen({
         showDateTime: true,
         showStaffName: true,
         showFooter: true,
+        showItemNotes: true,
         taxRatePercent: 10,
         businessLogo: settings.store.logo ?? '',
         logoPosition,
@@ -304,6 +311,7 @@ export default function RestaurantReceiptsScreen({
       showDateTime,
       showStaffName,
       showFooter,
+      showItemNotes,
       taxRatePercent,
       businessLogo,
       logoPosition,
@@ -334,6 +342,7 @@ export default function RestaurantReceiptsScreen({
     showDateTime,
     showStaffName,
     showFooter,
+    showItemNotes,
     taxRatePercent,
     businessLogo,
     logoPosition,
@@ -416,6 +425,7 @@ export default function RestaurantReceiptsScreen({
             quantity: 1,
             unitPrice: { minorUnits: 25000, currency },
             totalPrice: { minorUnits: 25000, currency },
+            ...(showItemNotes ? { note: 'pedas' } : {}),
           },
           {
             name: 'Es Teh Manis',
@@ -445,7 +455,7 @@ export default function RestaurantReceiptsScreen({
     } finally {
       setTestingPrint(false);
     }
-  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, tablesEnabled, showTableNumber, l10n, addToast]);
+  }, [sessionToken, settings.store.currency, showTax, taxRatePercent, tablesEnabled, showTableNumber, showItemNotes, l10n, addToast]);
 
   // ── Save handler ────────────────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -487,6 +497,7 @@ export default function RestaurantReceiptsScreen({
             { key: 'resto_rcpt_show_dt', value: String(showDateTime) },
             { key: 'resto_rcpt_show_staff', value: String(showStaffName) },
             { key: 'resto_rcpt_show_footer', value: String(showFooter) },
+            { key: 'resto_rcpt_show_item_notes', value: String(showItemNotes) },
             { key: 'resto_rcpt_tax_rate', value: String(taxRatePercent) },
             { key: 'resto_rcpt_logo', value: businessLogo },
             { key: 'resto_rcpt_logo_pos', value: logoPosition },
@@ -504,6 +515,7 @@ export default function RestaurantReceiptsScreen({
         localStorage.setItem('resto_rcpt_show_dt', String(showDateTime));
         localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
         localStorage.setItem('resto_rcpt_show_footer', String(showFooter));
+        localStorage.setItem('resto_rcpt_show_item_notes', String(showItemNotes));
         localStorage.setItem('resto_rcpt_tax_rate', String(taxRatePercent));
         localStorage.setItem('resto_rcpt_logo', businessLogo);
         localStorage.setItem('resto_rcpt_logo_pos', logoPosition);
@@ -525,6 +537,7 @@ export default function RestaurantReceiptsScreen({
         showDateTime,
         showStaffName,
         showFooter,
+        showItemNotes,
         taxRatePercent,
         businessLogo,
         logoPosition,
@@ -586,6 +599,7 @@ export default function RestaurantReceiptsScreen({
     showReceiptCode,
     showDateTime,
     showStaffName,
+    showItemNotes,
     taxRatePercent,
     businessLogo,
     logoPosition,
@@ -771,6 +785,9 @@ export default function RestaurantReceiptsScreen({
                     <span className="resto-receipt-item-name">1x Nasi Goreng Spesial</span>
                     <span className="resto-receipt-item-price">{formatPrice(35000)}</span>
                   </div>
+                  {showItemNotes && (
+                    <div className="resto-receipt-item-note">pedas</div>
+                  )}
                   <div className="resto-receipt-item-row">
                     <span className="resto-receipt-item-name">2x Es Teh Manis</span>
                     <span className="resto-receipt-item-price">{formatPrice(16000)}</span>
@@ -1275,6 +1292,30 @@ export default function RestaurantReceiptsScreen({
                 </button>
               </div>
             )}
+
+            {/* Toggle: Menu Order Notes */}
+            <div className="resto-toggle-row">
+              <div className="resto-toggle-info">
+                <span className="resto-toggle-title">
+                  <Localized id="restaurant-toggle-item-notes">Show Menu Order Notes</Localized>
+                </span>
+                <span className="resto-toggle-desc">
+                  <Localized id="restaurant-toggle-item-notes-desc">
+                    Print cooking requests and special item notes under menu items
+                  </Localized>
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showItemNotes}
+                aria-label={l10n.getString('restaurant-toggle-item-notes') || 'Show Menu Order Notes'}
+                className="resto-switch-btn"
+                onClick={() => setShowItemNotes(!showItemNotes)}
+              >
+                <span className="resto-switch-handle" aria-hidden="true" />
+              </button>
+            </div>
 
             {/* Toggle: Currency Symbol */}
             <div className="resto-toggle-row">

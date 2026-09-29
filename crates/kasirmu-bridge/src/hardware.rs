@@ -180,6 +180,9 @@ pub struct LineItemDto {
     #[serde(default)]
     /// Tax Amount.
     pub tax_amount: Option<MoneyDto>,
+    #[serde(default)]
+    /// Optional menu order note (e.g. "pedas").
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -353,6 +356,7 @@ pub async fn run_print_receipt_inner(
                     unit_price: i.unit_price.to_money()?,
                     total_price: i.total_price.to_money()?,
                     tax_amount: i.tax_amount.map(|t| t.to_money()).transpose()?,
+                    note: i.note,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?,

@@ -308,7 +308,7 @@
 .resto-receipt-header-line {
   font-size: calc(var(--rcpt-size-meta, 10px) * 0.85);
   color: var(--receipt-paper-ink-soft);
-  line-height: 1.15;
+  line-height: var(--leading-condensed);
   word-break: break-word;
   overflow-wrap: break-word;
   text-align: center;
@@ -320,7 +320,7 @@
   font-size: var(--rcpt-size-title, var(--text-base));
   font-weight: bold;
   letter-spacing: 0.5px;
-  line-height: 1.15;
+  line-height: var(--leading-condensed);
   margin-bottom: 1px;
   text-align: center;
   width: 100%;
@@ -371,6 +371,15 @@
 .resto-receipt-item-price {
   white-space: nowrap;
   font-weight: 500;
+}
+
+.resto-receipt-item-note {
+  font-size: var(--rcpt-size-meta, 10px);
+  color: var(--receipt-paper-ink-soft);
+  font-style: italic;
+  padding-left: 10px;
+  margin: -1px 0 2px 0;
+  word-break: break-word;
 }
 
 .resto-receipt-totals-block {

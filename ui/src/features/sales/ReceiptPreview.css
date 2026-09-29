@@ -133,6 +133,14 @@
   line-height: 1.6;
 }
 
+.receipt-preview-item-note {
+  font-size: var(--text-2xs);
+  color: var(--color-fg-secondary);
+  font-style: italic;
+  padding-left: var(--space-4);
+  line-height: 1.4;
+}
+
 .receipt-preview-item-tax {
   font-size: var(--text-2xs);
   color: var(--color-fg-tertiary);
