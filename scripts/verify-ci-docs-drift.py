@@ -242,6 +242,70 @@ def load_gates() -> list[dict] | None:
     return gates
 
 
+def dangling_ci_refs(
+    gates: list[dict],
+    live: dict[str, set[str]] | None = None,
+    baks: set[str] | None = None,
+) -> list[str]:
+    """Active gates whose `ci` mapping names a workflow or job that cannot run.
+
+    load_gates() proves a `ci` block is WELL FORMED -- non-empty strings, a valid
+    advisory_at, a ci mapping on every required-on-push gate. It never proves the names
+    RESOLVE. So a gate can keep asserting `dev-ci.yml#ui-test` through a job rename, or
+    name a workflow that was retired to .bak, and every schema rule still passes: the gate
+    reads as blocking CI coverage that does not exist. A promise about a job that is not
+    there is worse than no promise, because it is counted as coverage.
+
+    This is the layer above the one check-ci-claims.py works at: that one asks whether a
+    DOCUMENT claims a job, this asks whether the MANIFEST that defines the coverage does.
+    Both fail the same way, by going quiet.
+
+    Reported rather than hard-errored, for the same reason unrecorded_active_gates reports:
+    a dangling name is a finding to fix, whereas a malformed file is a broken manifest and
+    load_gates() already exits 2 on that. `status: retired` is exempt by design -- several
+    retired rows deliberately name a job in a workflow that no longer runs, and that is the
+    row working as intended, not a bug.
+
+    `live` and `baks` are parameters so the self-test can drive this with fixtures and
+    never touch .github/. Default None reads the real tree.
+    """
+    if live is None:
+        live = {}
+        if WORKFLOWS_DIR.is_dir():
+            for wf in sorted(WORKFLOWS_DIR.glob("*.yml")):
+                live[wf.name] = workflow_jobs(wf)
+    if baks is None:
+        baks = set()
+        if WORKFLOWS_DIR.is_dir():
+            for wf in sorted(WORKFLOWS_DIR.rglob("*.yml.bak")):
+                baks.add(wf.name[: -len(".yml.bak")] + ".yml")
+    out: list[str] = []
+    for g in gates:
+        if g.get("status") == "retired":
+            continue
+        ci = g.get("ci")
+        if not isinstance(ci, dict):
+            continue
+        wf, job = ci.get("workflow"), ci.get("job")
+        if not isinstance(wf, str) or not isinstance(job, str):
+            continue  # load_gates() already hard-errors on this shape
+        if wf not in live:
+            where = ("only as a .bak, which GitHub never executes" if wf in baks
+                     else "neither live nor as a .bak")
+            out.append(
+                f"gate '{g['id']}': ci.workflow '{wf}' is not a live workflow -- "
+                f"it exists {where}"
+            )
+            continue
+        if job not in live[wf]:
+            have = ", ".join(sorted(live[wf])) or "(none)"
+            out.append(
+                f"gate '{g['id']}': ci.job '{job}' is not defined in {wf} "
+                f"(that workflow defines: {have})"
+            )
+    return out
+
+
 def unrecorded_active_gates(gates: list[dict]) -> list[str]:
     """Active gates that name no CI job and give no reason why not.
 
@@ -637,6 +701,42 @@ def self_test() -> int:
         check("an empty manifest orphans every scripted step",
               len(hook_step_orphans([])) > 0, True)
 
+        print("\n  dangling_ci_refs")
+        # Control: every live gate's ci mapping resolves against the real workflows.
+        check("current gates.json names only runnable workflow/job pairs",
+              dangling_ci_refs(full), [])
+        # Fixtures, so this half never reads .github/ and cannot rot on a rename.
+        LIVE = {"dev-ci.yml": {"ui-test", "i18n", "static-gates"},
+                "release.yml": {"release-validate"}}
+        BAKS = {"ci.yml", "nightly.yml"}
+        mk = lambda **kw: [dict({"id": "g", "label": "G", "status": "required"}, **kw)]
+
+        check("a live workflow and a live job resolve",
+              dangling_ci_refs(mk(ci={"workflow": "dev-ci.yml", "job": "ui-test"}),
+                               LIVE, BAKS), [])
+        check("a job renamed out of the workflow is reported",
+              len(dangling_ci_refs(mk(ci={"workflow": "dev-ci.yml", "job": "gone"}),
+                                   LIVE, BAKS)), 1)
+        check("a job in a DIFFERENT live workflow is still reported",
+              len(dangling_ci_refs(mk(ci={"workflow": "release.yml", "job": "ui-test"}),
+                                   LIVE, BAKS)), 1)
+        check("a workflow that exists only as .bak is reported",
+              len(dangling_ci_refs(mk(ci={"workflow": "ci.yml", "job": "ui-test"}),
+                                   LIVE, BAKS)), 1)
+        check("a workflow that exists nowhere is reported",
+              len(dangling_ci_refs(mk(ci={"workflow": "ghost.yml", "job": "x"}),
+                                   LIVE, BAKS)), 1)
+        # The exemption that keeps the check from firing on this repo today: retired rows
+        # deliberately name ci.yml#security-pr, which no live workflow runs.
+        check("a retired gate naming a dead workflow is exempt",
+              dangling_ci_refs(mk(status="retired",
+                                   ci={"workflow": "ci.yml", "job": "security-pr"}),
+                               LIVE, BAKS), [])
+        check("a gate with no ci mapping is not this check's business",
+              dangling_ci_refs(mk(_note="local only"), LIVE, BAKS), [])
+        check("an empty manifest reports nothing rather than everything",
+              dangling_ci_refs([], LIVE, BAKS), [])
+
         print("\n  unrecorded_active_gates")
         # Control: the manifest as it stands answers every active gate with either a
         # job or a reason.
@@ -933,6 +1033,9 @@ def main() -> int:
     # `orphans`: an orphan is a step the manifest never saw, this is a gate the manifest
     # claims to track while recording nothing about whether anything enforces it.
     unrecorded = unrecorded_active_gates(gates)
+    # Gates whose ci mapping NAMES a workflow/job that cannot run. The schema rules above
+    # cannot express this: a well-formed mapping to a retired job still passes every one.
+    dangling = dangling_ci_refs(gates)
     # Hook prose pointing at a workflow GitHub never runs.
     pointers = hook_workflow_pointers()
 
@@ -1228,6 +1331,19 @@ def main() -> int:
         for u in unrecorded:
             print(f"    {u}")
         print()
+    if dangling:
+        print(
+            f"  GATES NAMING A WORKFLOW/JOB THAT CANNOT RUN — {len(dangling)}:\n"
+            "    load_gates() checks that a \u0060ci\u0060 mapping is well formed. It cannot"
+            " check\n"
+            "    that the names resolve, so a gate can keep asserting a job through a\n"
+            "    rename, or a workflow that was retired to .bak, and pass every schema\n"
+            "    rule while counting as coverage that does not exist. Retired rows are\n"
+            "    exempt by design. Fix by renaming to the live job, or by retiring the"
+        )
+        for d in dangling:
+            print(f"    {d}")
+        print()
     if pointers:
         print(
             f"  HOOK COMMENTS CITING A DEAD WORKFLOW — {len(pointers)}:\n"
@@ -1334,6 +1450,12 @@ def main() -> int:
         # -- so the check is green in the same commit that introduces it and cannot be
         # dismissed as a gate written to be bypassed.
         + len(unrecorded)
+        # Blocking for the same reason: a well-formed ci mapping onto a job that was
+        # renamed or a workflow that was retired is a claim about enforcement that is now
+        # false, and it is the one such claim the manifest itself makes rather than a
+        # document. Arrives green -- every live gate here resolves today -- so it cannot be
+        # dismissed as a gate written to be bypassed.
+        + len(dangling)
         # Escalated from informational to blocking. It was informational while it
         # compared against ci.yml's jobs, i.e. while it could never find anything;
         # pointed at the live workflows it immediately found four undocumented
