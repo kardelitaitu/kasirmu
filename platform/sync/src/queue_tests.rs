@@ -2630,6 +2630,130 @@ fn apply_remote_atomic_refund_without_the_sale_applies_the_effect() {
     assert_eq!(sales_row_count(&store), 0, "no sales row may be fabricated");
 }
 
+/// C64 closing evidence, sync side: the `refund_sale` with-sale arm REVERSES
+/// customer lifetime spend for ANY sale row it finds — it carries no status
+/// predicate — so its safety does not rest on the arm itself but on a
+/// TOPOLOGY invariant: no sync arm ever INSERTs a `sales` row.
+///
+/// The C64 investigation (commit 0adb58ddf) closed the item on the bridge
+/// guard alone (`process_refund_unchecked` refuses a non-completed sale).
+/// That guard is real, but a replicated refund does not pass through it. This
+/// test records the SECOND guard the sync lane relies on, so a future arm that
+/// starts materialising `sales` rows from the wire is caught here:
+///
+///   1. every arm that names a sale (`complete_sale`, `finalize_sale`,
+///      `void_sale`, `refund_sale`, `payment.recorded`) UPDATES or reads an
+///      existing row and is guarded so it never inserts one;
+///   2. an INCOMING `refund_sale` therefore finds a row only where a local
+///      checkout minted it, and that terminal had to complete the sale before
+///      its own bridge would enqueue the refund — so the accrual the reversal
+///      nets against is already present and the `MAX(..., 0)` floor cannot be
+///      reached;
+///   3. where no row exists the refund takes `credit_refund_effect_without_sale`
+///      (stock only, never customer spend).
+///
+/// The NULL status predicate is asserted directly so the trust boundary is
+/// visible rather than assumed: seed a PENDING sale row with an accrued base
+/// and the replicated refund still reverses the spend, exactly as it would for
+/// a completed one.
+#[test]
+fn apply_remote_atomic_refund_reverses_spend_for_any_status_and_never_mints_a_sale() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    // A PENDING sale row (the shape the with-sale arm tests for) with the
+    // customer's spend already accrued, as if a local completion had run.
+    seed_sale_row(&store, "sale-pending-1", "pending");
+    store
+        .conn()
+        .execute(
+            "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at) \
+             VALUES ('cust-1', 'Alice', '', 1000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    store
+        .conn()
+        .execute(
+            "UPDATE sales SET customer_id = 'cust-1', base_total_minor = 1000 \
+             WHERE id = 'sale-pending-1'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(customer_total_spent(&store), 1000);
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload_with_total("refund-pending-1", "sale-pending-1", 400),
+    );
+    assert!(
+        queue
+            .apply_remote_atomic_full(&store, &remote)
+            .expect("a refund against an existing row applies")
+            .applied
+    );
+
+    // The arm reversed the spend WITHOUT asking the row's status: 1000 - 400.
+    assert_eq!(
+        customer_total_spent(&store),
+        600,
+        "the with-sale arm carries no status predicate — it nets against any row it finds"
+    );
+    assert_eq!(
+        sale_status(&store, "sale-pending-1"),
+        "pending",
+        "the refund must not transition the sale it reverses"
+    );
+    assert_eq!(
+        sales_row_count(&store),
+        1,
+        "exactly the row the test seeded — the arm mints none"
+    );
+}
+
+/// The other half of the C64 sync invariant: an incoming `refund_sale` for a
+/// sale this terminal has NO row for reverses NO customer spend, because it
+/// routes to `credit_refund_effect_without_sale` (stock only).
+///
+/// This is why the absent-sale topology is safe even though the with-sale arm
+/// has no status guard: the two arms partition on row EXISTENCE, and existence
+/// is exactly the terminal that already accrued.
+#[test]
+fn apply_remote_atomic_refund_without_a_row_reverses_no_spend() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    // The customer exists with an accrued balance, but NO sale row does.
+    store
+        .conn()
+        .execute(
+            "INSERT INTO customers (id, name, notes, total_spent_minor, created_at, updated_at) \
+             VALUES ('cust-1', 'Alice', '', 1000, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            [],
+        )
+        .unwrap();
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new(
+        "refund_sale",
+        refund_payload_with_total("refund-orphan-2", "sale-not-here-2", 400),
+    );
+    assert!(
+        queue
+            .apply_remote_atomic_full(&store, &remote)
+            .expect("an absent sale is a topology fact, not a malformed payload")
+            .applied
+    );
+    assert_eq!(
+        customer_total_spent(&store),
+        1000,
+        "with no sale row the arm credits stock only and leaves spend untouched"
+    );
+    assert_eq!(sales_row_count(&store), 0, "no sales row may be fabricated");
+}
+
 /// C4: `void_sale` moves an active sale to voided, and a replay is a no-op.
 #[test]
 fn apply_remote_atomic_void_sale_moves_active_to_voided_and_replay_is_noop() {

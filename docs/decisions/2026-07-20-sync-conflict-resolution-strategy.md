@@ -582,3 +582,51 @@ The marker now records both dispositions and `next:` reads `none`.
 M-2 is genuinely fixed: `transform()` performs exactly ONE `image::load_from_memory` decode (`crates/kasirmu-media/src/pipeline.rs:172`) after the M-1 header-only dimension probe, then runs crop/compress/thumbnails on the in-memory `DynamicImage` via the `auto_crop_img` / `compress_img` / `thumbnail_img` stage variants. The pre-fix flow re-encoded each stage to JPEG and re-decoded it in the next.
 
 The `next:` line now records the one genuinely open item in the crate — the `MediaStorage` backend returns `NotImplemented` until `LocalStorage`/`ObjectStorage` land, and keys must then be sanitised (no path separators, no `..`) before being joined to the root (MED-D).
+
+## The refund-with-sale sync arm trusts row existence, not sale status (C64 closing evidence, 2026-10-04)
+
+C64 (`manager-codebase-review-checklist.md`) reported that `customers.total_spent_minor`
+has two writers with opposite signs — `accrue_lifetime_spend_in_tx` (on sale
+completion) and `reverse_lifetime_spend_in_tx` (on refund, `MAX(..., 0)`) — and that
+the zero floor would swallow a refund that lands before its sale is counted. The item
+was **closed 2026-09-25 (commit `0adb58ddf`)** on the finding that the ordering is
+UNREACHABLE, with the arithmetic reproduced and two guards pinned. This note records
+the sync-side half of that evidence, which the closure stated only for the bridge.
+
+The closure's guard 1 is the bridge: `process_refund_unchecked`
+(`crates/kasirmu-bridge/src/refunds.rs:109`) refuses a sale whose status is not
+`Completed`, and both shells route through it (desktop
+`apps/desktop-tauri/src/commands/refunds.rs:39`; tablet has the identical check in its
+own `run_process_refund`, `apps/mobile-tauri/src/commands/refunds.rs:98`). So on the
+terminal that ORIGINATES a refund the sale is necessarily already completed, and its
+accrual is already in the column the reversal nets against — the floor is never reached.
+
+The sync lane does not pass through that bridge, so its safety is a SEPARATE fact, and
+until now it was asserted rather than pinned. A replicated `refund_sale` is applied by
+`apply_refund_with_sale_in_tx` (`platform/sync/src/queue/appliers.rs:535`), which carries
+**no status predicate**: it reverses customer spend
+(`reverse_customer_spend_for_refund_in_tx`, appliers.rs:685) for ANY sale row it finds.
+The arm is safe because of a topology invariant, not a validator: **no sync arm ever
+INSERTs a `sales` row.** Every action that names a sale — `complete_sale`,
+`finalize_sale` (`sales_lifecycle.rs:113`, an `UPDATE ... WHERE status = 'pending'`),
+`void_sale`, `refund_sale`, `payment.recorded` — operates on an EXISTING row. A `sales`
+row therefore exists only where a local checkout minted it (
+`crates/kasirmu-core/src/db/sales_checkout.rs`, via `core`), and that terminal had to
+complete the sale before its own bridge would enqueue the refund. When no row exists,
+the dispatcher (`platform/sync/src/queue.rs:526`) routes to
+`credit_refund_effect_without_sale` (`appliers.rs:805`), which credits STOCK only and
+never touches customer spend.
+
+Two pins in `platform/sync/src/queue_tests.rs` now hold this boundary:
+
+- `apply_remote_atomic_refund_reverses_spend_for_any_status_and_never_mints_a_sale` —
+  seeds a `pending` sale row with an accrued base and shows the arm reverses the spend
+  400 of 1000 without consulting the status, leaves the status `pending`, and mints no
+  extra row. This makes the NULL predicate visible rather than assumed, and fails if a
+  future arm starts inserting `sales` rows from the wire.
+- `apply_remote_atomic_refund_without_a_row_reverses_no_spend` — the complement: with no
+  sale row the spend is untouched (1000 stays 1000), because the effect-only arm runs.
+
+No production code changed. The two writers remain in different transactions by design;
+the floor stays because reaching it requires violating the topology invariant the pins
+above now enforce.
