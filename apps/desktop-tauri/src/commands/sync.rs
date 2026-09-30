@@ -22,12 +22,13 @@
 use std::sync::Arc;
 
 use rusqlite::Connection;
-use tauri::{Emitter, State};
+use tauri::State;
 
 use kasirmu_core::events::SettingsUpdated;
 #[allow(unused_imports)] // sibling sync_tests.rs depends on it
 use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult};
+use kasirmu_bridge::ctx::EventSink;
 use platform_sync::daemon::SettingsChangedSink;
 use platform_sync::pg_daemon::PgDaemonStatus;
 
@@ -102,14 +103,20 @@ pub fn update_pg_sync_settings_data(
 /// event (the same wire shape the frontend SettingsContext listens for)
 /// so the UI refetches the changed scope. Local saves already publish the
 /// domain event; this closes the loop for the sync-applied path.
-pub fn settings_changed_sink(app: &tauri::AppHandle) -> SettingsChangedSink {
-    let app_handle = app.clone();
+///
+/// R10 #3: the event rides the bridge's injected `EventSink` (the same seam
+/// every delegated door uses), not a raw `AppHandle`, so a second shell binds
+/// to one emitter. `sink` is `None` in headless/test contexts, where the
+/// broadcast is a documented no-op (never a command failure).
+pub fn settings_changed_sink(sink: Option<Arc<dyn EventSink>>) -> SettingsChangedSink {
     Arc::new(move |event: &SettingsUpdated| {
         let payload = serde_json::json!({
             "changed_keys": event.changed_keys,
             "terminal_id": event.terminal_id,
         });
-        let _ = app_handle.emit("settings_updated", payload);
+        if let Some(sink) = sink.as_ref() {
+            sink.emit("settings_updated", payload);
+        }
     })
 }
 
@@ -190,7 +197,6 @@ pub async fn pg_sync_status_scoped(
 /// PG sync start (scoped).
 #[tauri::command]
 pub async fn pg_sync_start_scoped(
-    app_handle: tauri::AppHandle,
     session_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
@@ -199,7 +205,7 @@ pub async fn pg_sync_start_scoped(
     require_permission_for_session(&state, &session, permissions::SYNC_MANAGE).await?;
     state.resolve_scope(&session_token)?;
     let db = state.db.clone();
-    let sink = settings_changed_sink(&app_handle);
+    let sink = settings_changed_sink(state.bridge_ctx().emitter.clone());
     if !state.pg_sync_daemon.start_with_sink(db, sink).await {
         // The daemon reports an explicit `false` when a start landed on a
         // live daemon; surfacing it as an error — never a silent `Ok(())` —

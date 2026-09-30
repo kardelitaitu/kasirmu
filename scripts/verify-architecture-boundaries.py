@@ -99,6 +99,7 @@ RULES = {
     "ui-direct-invoke": {"category": "ui", "severity": "P2", "hint": "Route Tauri IPC through ui/src/api or a documented infrastructure adapter."},
     "bridge-toolkit-purity": {"category": "renderer", "severity": "P1", "hint": "Keep crates/, modules/, platform/ and foundation/ toolkit-free (ADR #49, ADR #53): a tauri/gtk/webkit dependency or reference removes the headless seam a second renderer binds to."},
     "ui-framework-vocabulary": {"category": "renderer", "severity": "P2", "hint": "Keep renderer vocabulary out of app-layer prose (ADR #53): cite the caller by its role, not by its .tsx/.css filename."},
+    "event-sink-seam": {"category": "renderer", "severity": "P1", "hint": "Route UI events through BridgeCtx::emitter (kasirmu_bridge::ctx::EventSink), not a raw app handle: the EventSink seam is what keeps a second shell bindable (R10 #3)."},
 }
 BUSINESS_PREFIX = "modules-"
 CORE_CRATE = "kasirmu-core"
@@ -116,6 +117,27 @@ CHAR_LITERAL_PATTERN = re.compile(r"'(?:\\.|[^\\'])'")
 # `reactivate`, and `.tsx`/`.css` are lowercase in every citation this tree holds.
 UI_VOCABULARY_ROOTS = ("crates", "modules", "platform", "foundation")
 UI_VOCABULARY_PATTERN = re.compile(r"\bReact\b|\.tsx|\.css|component to render")
+
+# R10 #3: events cross the shell/bridge seam through `EventSink`. The bridge
+# holds `BridgeCtx::emitter: Option<Arc<dyn EventSink>>` and every shell
+# implements it over its AppHandle (`TauriEventSink`). A command body that
+# reaches for its own handle and calls `app.emit(..)` forks the event path the
+# seam exists to centralize, so a second shell inherits a private emitter.
+EVENT_SINK_ROOTS = ("apps",)
+# A raw-handle broadcast: `app.emit(`, `app_handle.emit(`, `handle.emit(`.
+# `sink.emit(`/`self.emit(`/`emitter.emit(` are the seam and never match.
+RAW_EMIT_PATTERN = re.compile(r"\b(?:app|app_handle|handle)\.emit\s*\(")
+# The seam's own implementation is the exemption, not a finding: these are the
+# `impl EventSink for TauriEventSink` bodies the bridge documents at
+# `crates/kasirmu-bridge/src/ctx.rs:48-56`.
+EVENT_SINK_IMPL_PATTERN = re.compile(r"impl(?:<[^>]*>)?\s+EventSink\s+for\s+")
+# The one raw-handle broadcast that is NOT a bypass: the shell's composition
+# root installs `platform_startup::event_handlers::set_settings_emit_fn` with a
+# closure over its own handle. The platform hook speaks a plain
+# `Box<dyn Fn(&str, Value)>`, not `EventSink`, so the handle is converted at
+# exactly this boundary — the installation of the emit function, not a second
+# event path. Every line of that call argument list is exempt.
+EVENT_SINK_HOOK_PATTERN = re.compile(r"set_settings_emit_fn\s*\(")
 
 
 def configure_streams() -> None:
@@ -785,6 +807,119 @@ def ui_vocabulary_findings(root: Path, scope: dict[str, int]) -> list[dict[str, 
     return dedupe_findings(findings)
 
 
+# A Rust LIFETIME (`'_'`, `'a`, `'static`, `'de`) is an apostrophe that the
+# simple comment/string masker reads as a character-literal opener, after which
+# it swallows the following code as a "string" until the next apostrophe. Shell
+# command signatures are full of `State<'_, AppState>`, so the rule must mask a
+# lifetime-neutralized copy: the replacement keeps byte offsets (spaces of equal
+# length), so reported line numbers still match the original file.
+RUST_LIFETIME_PATTERN = re.compile(r"'(?:static|[A-Za-z_][A-Za-z0-9_]*)")
+
+
+def neutralize_lifetimes(text: str) -> str:
+    """Blank Rust lifetimes so the simple masker does not open a fake string.
+
+    Offsets are preserved: each match is replaced by as many spaces as it is
+    wide, and every lifetime match is on one line by construction (`'` and an
+    identifier contain no newline), so line numbering is unaffected.
+    """
+    return RUST_LIFETIME_PATTERN.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def event_sink_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
+    """Report raw AppHandle broadcasts that bypass the EventSink seam (R10 #3).
+
+    The bridge's emitter is the one door UI events leave a command through:
+    `BridgeCtx::emitter: Option<Arc<dyn EventSink>>` is injected by the shell and
+    every command is handed it. A body that keeps its own `app`/`app_handle`
+    and calls `.emit(..)` on it forks that path — the desktop and tablet shells
+    then hold two ways to broadcast, and a third shell would have to find and
+    copy the forked one. The rule flags the raw-handle call only.
+
+    Scanned through `mask_comments_and_strings`, so a doc comment that mentions
+    `app.emit(..)` (the accepted pattern IS named in prose) is invisible, and
+    the string event name beside a real call is invisible too. The
+    `impl EventSink for TauriEventSink` body is the seam itself and is exempt:
+    inside it, `handle.emit(..)` is exactly the delegation the trait wants, so
+    the impl's line range is skipped rather than the call being flagged.
+    """
+    findings: list[dict[str, Any]] = []
+    for top in EVENT_SINK_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            continue
+        for path in sorted(base.rglob("*.rs")):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read shell source: {path}: {exc}") from exc
+            scope["shell_files"] += 1
+            code = mask_comments_and_strings(neutralize_lifetimes(raw))
+            exempt = exempt_event_impl_lines(code)
+            for match in RAW_EMIT_PATTERN.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                if line in exempt:
+                    continue
+                findings.append(
+                    make_finding(
+                        "event-sink-seam",
+                        relative_path(path, root),
+                        match.group(0).rstrip(" \t(").strip(),
+                        line,
+                    )
+                )
+    return dedupe_findings(findings)
+
+
+def exempt_event_impl_lines(code: str) -> set[int]:
+    """Line numbers inside an `impl EventSink for ...` block, or a
+    `set_settings_emit_fn(...)` call.
+
+    The impl block is brace-walked from the `impl` keyword so the whole body is
+    exempt (the trait's default `emit_ui` forwards to `emit`, and a literal
+    brace count would be blind to a nested closure). The platform hook is
+    paren-walked from `set_settings_emit_fn(` for the mirror reason: its
+    `Box<dyn Fn(..)>` argument list has no `EventSink` to route through, so the
+    handle conversion there is the hook's installation, not a fork.
+    """
+    lines: set[int] = set()
+    for match in EVENT_SINK_IMPL_PATTERN.finditer(code):
+        depth = 0
+        opened = False
+        i = match.end()
+        start_line = code.count("\n", 0, match.start()) + 1
+        while i < len(code):
+            char = code[i]
+            if char == "{":
+                depth += 1
+                opened = True
+            elif char == "}":
+                depth -= 1
+                if opened and depth == 0:
+                    end_line = code.count("\n", 0, i) + 1
+                    lines.update(range(start_line, end_line + 1))
+                    break
+            i += 1
+    for match in EVENT_SINK_HOOK_PATTERN.finditer(code):
+        depth = 0
+        opened = False
+        i = match.end() - 1
+        start_line = code.count("\n", 0, match.start()) + 1
+        while i < len(code):
+            char = code[i]
+            if char == "(":
+                depth += 1
+                opened = True
+            elif char == ")":
+                depth -= 1
+                if opened and depth == 0:
+                    end_line = code.count("\n", 0, i) + 1
+                    lines.update(range(start_line, end_line + 1))
+                    break
+            i += 1
+    return lines
+
+
 def make_finding(rule: str, path: str, target: str, line: int | None) -> dict[str, Any]:
     policy = RULES[rule]
     return {"rule": rule, "category": policy["category"], "severity": policy["severity"], "path": normalize_path(path), "line": line, "target": target, "baseline_status": "new", "remediation": policy["hint"]}
@@ -952,6 +1087,7 @@ def new_scope() -> dict[str, int]:
         "bridge_files": 0,
         "app_layer_roots": 0,
         "app_layer_files": 0,
+        "shell_files": 0,
         "baseline_entries": 0,
     }
 
@@ -971,6 +1107,7 @@ def population_clause(scope: dict[str, int]) -> str:
         f"{scope['bridge_files']} file(s) scanned below the application layer, "
         f"{scope['app_layer_files']} app-layer .rs file(s) scanned across "
         f"{scope['app_layer_roots']}/{len(UI_VOCABULARY_ROOTS)} root(s), "
+        f"{scope['shell_files']} shell .rs file(s) scanned for the event seam, "
         f"{scope['baseline_entries']} baseline entry(ies)]"
     )
 
@@ -1040,6 +1177,7 @@ def main() -> int:
             + ui_findings(root, scope)
             + bridge_toolkit_findings(root, scope)
             + ui_vocabulary_findings(root, scope)
+            + event_sink_findings(root, scope)
         )
         scope["baseline_entries"] = len(baseline)
         tracked, blocking, stale, expired = apply_baseline(findings, baseline)

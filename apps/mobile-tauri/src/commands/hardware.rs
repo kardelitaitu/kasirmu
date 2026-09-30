@@ -9,7 +9,7 @@
 //! for commands that touch no database row.
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, State, command};
+use tauri::{State, command};
 
 use kasirmu_core::{Currency, Money, Settings};
 use kasirmu_hal::DisplayContent;
@@ -212,9 +212,11 @@ pub async fn print_receipt_scoped(
     let lines: Vec<&str> = args.body.lines().collect();
     let n = lines.len();
     printer.print_receipt(&args.body).await?;
-    // Emit a completion event so the front-end can show a toast.
-    if let Some(ref app) = state.app {
-        let _ = app.emit("receipt:printed", serde_json::json!({ "lines": n }));
+    // Emit a completion event so the front-end can show a toast. R10 #3: the
+    // event rides the bridge's injected EventSink (BridgeCtx::emitter), the
+    // same seam the delegated doors use, not a raw AppHandle.
+    if let Some(sink) = state.bridge_ctx().emitter {
+        sink.emit("receipt:printed", serde_json::json!({ "lines": n }));
     }
     Ok(PrintReceiptResult { printed_lines: n })
 }
@@ -371,8 +373,9 @@ pub async fn print_sales_receipt_scoped(
 
     printer.print_raw(&data).await?;
 
-    if let Some(ref app) = state.app {
-        let _ = app.emit(
+    // R10 #3: broadcast through the bridge's EventSink, not a raw handle.
+    if let Some(sink) = state.bridge_ctx().emitter {
+        sink.emit(
             "receipt:printed",
             serde_json::json!({ "lines": line_count }),
         );

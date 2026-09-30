@@ -455,7 +455,11 @@ pub fn run() {
             // saves already publish the domain event; this closes the loop
             // for the sync-applied path. The sink is shared by the SQLite
             // and PostgreSQL daemons.
-            let settings_sink = commands::sync::settings_changed_sink(&app_handle);
+            // R10 #3: the sink emits through the bridge's EventSink seam, built
+            // from the running AppState's BridgeCtx, not a raw handle.
+            let settings_sink = commands::sync::settings_changed_sink(
+                app.state::<AppState>().bridge_ctx().emitter.clone(),
+            );
             let sqlite_sink = settings_sink.clone();
             let pg_sink = settings_sink.clone();
             platform_startup::spawn_daemon("sync daemon", async move {

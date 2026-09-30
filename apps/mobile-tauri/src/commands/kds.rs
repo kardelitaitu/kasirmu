@@ -19,7 +19,7 @@
 //! implementation. `create_kds_order_from_sale_scoped` is deliberately
 //! **not** delegated — see its own doc comment for the measured reason.
 
-use tauri::{Emitter, State, command};
+use tauri::{State, command};
 
 use kasirmu_core::KdsOrder;
 use kasirmu_core::db::Store;
@@ -35,12 +35,15 @@ use crate::state::AppState;
 /// delegated to `kasirmu_bridge::kds`; the four delegated doors emit the same
 /// event through `BridgeCtx::emitter` instead.
 ///
+/// R10 #3: the event rides the bridge's injected `EventSink` (the same seam
+/// the delegated doors use), not a raw `AppHandle`.
+///
 /// Called only after the store-DB guard has been released and the core
 /// transaction has committed, so listeners never observe a phantom
-/// change. Best-effort: a missing app handle (tests/headless) skips.
-fn emit_orders_changed(app: Option<&tauri::AppHandle>) {
-    if let Some(app) = app {
-        let _ = app.emit("kds:orders-changed", ());
+/// change. Best-effort: a missing sink (tests/headless) skips.
+fn emit_orders_changed(sink: Option<&dyn kasirmu_bridge::ctx::EventSink>) {
+    if let Some(sink) = sink {
+        sink.emit("kds:orders-changed", serde_json::Value::Null);
     }
 }
 
@@ -148,7 +151,7 @@ pub async fn create_kds_order_from_sale_scoped(
     }; // guard released before the emit
 
     if !orders.is_empty() {
-        emit_orders_changed(state.app.as_ref());
+        emit_orders_changed(state.bridge_ctx().emitter.as_deref());
     }
     Ok(orders)
 }
