@@ -1198,6 +1198,15 @@ jobs:
         run: python3 scripts/verify-shell-syntax.py
       - name: Shell syntax self-test
         run: python3 scripts/verify-shell-syntax.py --self-test
+      # PowerShell syntax: the same argument as the shell gate, for the language
+      # that has no shebang, so is_shell() cannot reach it. ubuntu-latest DOES ship
+      # PowerShell, so this runs for real rather than refusing -- the gate returns
+      # exit 2 when no host is found, and that would be visible here rather than
+      # silently skipped, which is the outcome the refusal exists to produce.
+      - name: PowerShell syntax
+        run: python3 scripts/verify-ps-syntax.py
+      - name: PowerShell syntax self-test
+        run: python3 scripts/verify-ps-syntax.py --self-test
       # workflow syntax: catches a sibling workflow that stopped being valid YAML. It
       # cannot catch THIS file -- if dev-ci.yml were unparseable, no job here would run
       # to report it -- so its value is android.yml, website.yml and release.yml, and
