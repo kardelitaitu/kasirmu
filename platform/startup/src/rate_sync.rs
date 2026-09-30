@@ -22,8 +22,8 @@ next: none | perf: blocking DB work off the async runtime
 //!   the shared `AppState` connection (`apps/desktop-tauri/src/lib.rs`,
 //!   `apps/mobile-tauri/src/lib.rs`). The cloud server deliberately does not:
 //!   rates are a per-store client concern.
-//! - **Frontend:** `ui/src/features/currency/ExchangeRateScreen.tsx` carries the
-//!   auto-sync toggle that writes `rate_sync.enabled`.
+//! - **Frontend:** the currency screen's auto-sync toggle writes
+//!   `rate_sync.enabled`.
 //! - **Cycle order changed with the wiring:** the daemon now TICKS FIRST and
 //!   sleeps after, and re-reads `rate_sync.enabled` + `rate_sync.interval` every
 //!   cycle, so enabling takes effect on the next round (≤ 5 min while disabled)
