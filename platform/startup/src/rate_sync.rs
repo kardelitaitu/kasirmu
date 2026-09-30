@@ -18,7 +18,7 @@ next: none | perf: blocking DB work off the async runtime
 //! both ends: nothing started it and nothing configured it. As of 2026-09-29:
 //!
 //! - **Backend:** each Tauri shell's `setup` closure starts it via
-//!   `platform_startup::spawn_once("rate-sync", …)` → [`init_rate_sync_at`] with
+//!   `platform_startup::spawn_once("rate-sync", …)` → [`init_rate_sync_at`](crate::init_rate_sync_at) with
 //!   the shared `AppState` connection (`apps/desktop-tauri/src/lib.rs`,
 //!   `apps/mobile-tauri/src/lib.rs`). The cloud server deliberately does not:
 //!   rates are a per-store client concern. (The wrapper takes a
