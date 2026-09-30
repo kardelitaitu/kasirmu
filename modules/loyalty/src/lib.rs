@@ -93,8 +93,9 @@ impl Module for LoyaltyModule {
 
     fn dependencies(&self) -> &'static [&'static str] {
         // Mirrors `dependencies` in modules/loyalty/manifest.json: a loyalty
-        // account belongs to a CRM customer.
-        &["crm"]
+        // account belongs to a CRM customer, and loyalty redeems gift cards
+        // whose table the `giftcards` module owns (P3.3 makes that declared).
+        &["crm", "giftcards"]
     }
 
     fn on_load(&mut self) -> ModuleResult {

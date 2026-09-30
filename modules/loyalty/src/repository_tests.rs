@@ -105,3 +105,55 @@ fn get_gift_card_by_number_with_expiry() {
     let card = repo.get_gift_card_by_number("9999").unwrap().unwrap();
     assert_eq!(card.expiry_date.as_deref(), Some("2026-01-01"));
 }
+
+// ── P3.2/P3.3: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not widen the module's reach: loyalty reads its own table
+/// ungranted, reads gift_cards only through a granted read handle, and is
+/// refused every other foreign table.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace_and_one_grant() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(
+        Store::new(&conn),
+        ModuleId("loyalty"),
+        Grants::read([ModuleId("giftcards")]),
+    );
+
+    // Own table: no grant needed.
+    ns.own()
+        .query("SELECT 1 FROM loyalty_accounts", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .expect("loyalty must read its own table");
+
+    // The one granted cross-vertical read: a ReadOnly handle on giftcards.
+    ns.read(ModuleId("giftcards"))
+        .expect("giftcards is granted")
+        .query("SELECT 1 FROM gift_cards", [], |row| row.get::<_, i64>(0))
+        .expect("a granted read must work");
+
+    // A write through the granted read handle is refused (ReadOnly posture).
+    let err = ns
+        .read(ModuleId("giftcards"))
+        .expect("giftcards is granted")
+        .execute("DELETE FROM gift_cards", [])
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Sql(_)),
+        "a granted read must not write, got {err:?}"
+    );
+
+    // An ungranted foreign table is refused outright.
+    let err = ns
+        .own()
+        .query("SELECT 1 FROM sales", [], |row| row.get::<_, i64>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}

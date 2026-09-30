@@ -11,8 +11,9 @@ use platform_kernel::Kernel;
 
 /// Minimal stand-in for a module `loyalty` depends on.
 ///
-/// `LoyaltyModule::dependencies()` declares `crm`, so any test that
-/// drives `load_all`/`start_all` must register that id or dependency
+/// `LoyaltyModule::dependencies()` declares `crm` and `giftcards` (P3.3: the
+/// cross-vertical gift-card read is a declared dependency), so any test that
+/// drives `load_all`/`start_all` must register both ids or dependency
 /// resolution fails with `MissingDependency`.
 #[derive(Debug)]
 struct StubModule(&'static str);
@@ -29,6 +30,9 @@ fn kernel_with_deps() -> Kernel {
         .register(Box::new(StubModule("crm")))
         .expect("register crm stub");
     kernel
+        .register(Box::new(StubModule("giftcards")))
+        .expect("register giftcards stub");
+    kernel
 }
 
 #[test]
@@ -38,8 +42,8 @@ fn loyalty_module_id() {
 }
 
 #[test]
-fn loyalty_module_declares_crm_dependency() {
-    assert_eq!(LoyaltyModule::new().dependencies(), &["crm"]);
+fn loyalty_module_declares_its_dependencies() {
+    assert_eq!(LoyaltyModule::new().dependencies(), &["crm", "giftcards"]);
 }
 
 #[test]
@@ -56,8 +60,22 @@ fn loyalty_module_manifest_matches_declaration() {
 }
 
 #[test]
-fn loyalty_module_load_fails_without_crm() {
+fn loyalty_module_load_fails_without_its_dependencies() {
+    // With neither dependency registered, load must fail closed rather than
+    // silently load a module whose gift-card read has no owner to declare.
     let mut kernel = Kernel::new();
+    kernel.register(Box::new(LoyaltyModule::new())).unwrap();
+    assert!(kernel.load_all().is_err());
+}
+
+#[test]
+fn loyalty_module_load_fails_with_giftcards_but_no_crm() {
+    // P3.3: declaring $giftcards$ adds a second dependency; a kernel that
+    // registers only one of the two still refuses to load.
+    let mut kernel = Kernel::new();
+    kernel
+        .register(Box::new(StubModule("giftcards")))
+        .expect("register giftcards stub");
     kernel.register(Box::new(LoyaltyModule::new())).unwrap();
     assert!(kernel.load_all().is_err());
 }
@@ -67,7 +85,8 @@ fn loyalty_module_lifecycle() {
     let mut kernel = kernel_with_deps();
     kernel.register(Box::new(LoyaltyModule::new())).unwrap();
     assert!(kernel.is_registered("loyalty"));
-    assert_eq!(kernel.module_count(), 2);
+    // crm + giftcards stubs + loyalty itself.
+    assert_eq!(kernel.module_count(), 3);
 
     kernel.load_all().unwrap();
     assert!(kernel.is_loaded());
