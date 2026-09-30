@@ -216,6 +216,8 @@ impl LoopbackEdcTerminal {
     /// Force [`status`](Self::status) to report `Some(status)` regardless of
     /// scripted behaviour; pass `None` to revert to derived behaviour.
     pub fn set_status(&self, status: Option<TerminalStatus>) {
+        // INVARIANT: stores a Copy Option and nothing else; the critical section is a
+        // plain assignment that cannot panic, so the lock cannot be poisoned.
         *self
             .forced_status
             .lock()
@@ -225,6 +227,8 @@ impl LoopbackEdcTerminal {
     /// Set an artificial delay before operations complete to simulate cardholder
     /// interactions or network latency.
     pub fn set_delay(&self, delay: Option<Duration>) {
+        // INVARIANT: stores a Copy Option and nothing else; the critical section is a
+        // plain assignment that cannot panic, so the lock cannot be poisoned.
         *self.delay.lock().expect("loopback delay lock poisoned") = delay;
     }
 
@@ -235,6 +239,8 @@ impl LoopbackEdcTerminal {
     }
 
     async fn apply_delay(&self) {
+        // INVARIANT: reads a Copy Option out and drops the guard before the await;
+        // nothing in the critical section can panic, so the lock cannot be poisoned.
         let d = *self.delay.lock().expect("loopback delay lock poisoned");
         if let Some(duration) = d {
             tokio::time::sleep(duration).await;
@@ -310,6 +316,8 @@ impl Default for LoopbackEdcTerminal {
 impl EdcTerminal for LoopbackEdcTerminal {
     async fn status(&self) -> Result<TerminalStatus, HalError> {
         self.apply_delay().await;
+        // INVARIANT: reads a Copy Option out and drops the guard immediately; nothing in
+        // the critical section can panic, so the lock cannot be poisoned.
         if let Some(forced) = *self
             .forced_status
             .lock()
