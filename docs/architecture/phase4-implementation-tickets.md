@@ -33,7 +33,7 @@ with a declared dependency; 0 undeclared-dependency notes; 0 stale grants; 0 uno
 |---|---|
 | Enable strict `NamespacedStore` enforcement | P4.1 — make the wrap strict at boot (manifest half DONE) |
 | Reject unauthorized cross-namespace table access | P4.1 + P4.4 — strict `check_statement` and denial tests |
-| Require reporting queries to go through `ReportingFacade` | P4.2 — define and route the trait |
+| Require reporting queries to go through `ReportingFacade` | P4.2 — define and route the trait (DONE) |
 | Remove legacy shared-connection escape hatches | P4.3 — delete `raw()` |
 | Add CI gate that fails on new namespace violations | P4.5 — flip `namespace-governance` from soft to strict (DONE) |
 | Add CI gate that ratchets `kasirmu-core` size downward | **DONE** (Phase 3 P3.4, gate `core-size-ratchet`) |
@@ -103,6 +103,19 @@ build/tooling, not convention alone."
 ---
 
 ## 3. P4.2 — Define and route `ReportingFacade`
+
+**Status: DONE 2026-10-03.** `trait ReportingFacade` now lives in
+`crates/kasirmu-core/src/db/facade.rs` (re-exported as `kasirmu_core::ReportingFacade`), implemented for
+`Store<'_>` by delegating to the inherent methods. The four families are `daily_revenue`, `hourly_heatmap`
+(operational summary), `top_products` (product rollups), and `low_stock_alerts_at_location` (stock
+alerts) — the plan's `low_stock_alerts` is `#[deprecated]`, so the trait takes its successor rather than
+freezing the deprecation (recorded in `docs/architecture/reporting-facade-inventory.md` §5). The one
+sanctioned write (`acknowledge_stock_alert`) is deliberately NOT on the trait: it is a READ contract.
+`facade_tests.rs` binds all four through the trait and pins the count at four. The live bridge consumer
+surface routes its four family call sites through `ReportingFacade::` explicitly
+(`crates/kasirmu-bridge/src/reports.rs` `get_daily_revenue`, `get_top_products`, `get_hourly_heatmap`,
+`get_low_stock_alerts`). `cargo test -p kasirmu-core --lib facade` 4 pass; `cargo test -p kasirmu-bridge
+reports` 53 pass; clippy `-D warnings` clean on both crates.
 
 **Problem (verified).** Plan §9.5 and §11.2 require "reporting queries to go through `ReportingFacade`".
 `grep -rn 'trait ReportingFacade'` finds **no** such trait in the tree; the capability ships as inherent

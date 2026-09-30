@@ -148,6 +148,9 @@ pub mod refunds;
 /// Regional-configuration reads — the effective locale / timezone / currency
 /// for a location, resolved across the §H scopes.
 pub mod regional;
+/// The `ReportingFacade` trait — the sanctioned cross-vertical read path
+/// (Phase 4 P4.2, ADR-62 D5).
+pub mod facade;
 /// Report generation queries.
 pub mod reports;
 /// Role authoring — update / delete for custom roles (ADR #47 ruling 4).

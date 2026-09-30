@@ -151,9 +151,18 @@ through `kasirmu_core::db::reports`, not widen the sanctioned interface. If a fi
 necessary, it is added to the trait deliberately, with this doc amended — the trait grows by
 decision, not by mechanical mirroring.
 
-**Not in scope for Phase 1:** defining the trait in code. No `trait ReportingFacade` exists in the
-tree today (verified). This section records the TARGET SHAPE so the NamespacedStore migration has a
-destination; implementing it is Phase 2.
+**Landed in code 2026-10-03 (Phase 4 P4.2).** `trait ReportingFacade` now exists in
+`crates/kasirmu-core/src/db/facade.rs` (re-exported as `kasirmu_core::ReportingFacade`), implemented for
+`Store<'_>` by delegating to the inherent methods. The four families are represented by `daily_revenue`,
+`hourly_heatmap` (operational summary), `top_products` (product rollups), and
+`low_stock_alerts_at_location` (stock alerts). One deviation from this section's literal list: the plan
+names `low_stock_alerts` for the stock family, but that method is `#[deprecated]` in favour of
+`low_stock_alerts_at_location` (`product_sales.rs:218`), so the trait takes the successor rather than
+freezing a deprecation. A test (`facade_tests.rs::the_trait_is_exactly_four_aggregate_families`) binds all
+four through the trait, and `the_documented_method_count_matches_the_trait` pins the count at four. The
+live bridge consumer surface (`crates/kasirmu-bridge/src/reports.rs`) routes its four family call sites
+(`get_daily_revenue`, `get_top_products`, `get_hourly_heatmap`, `get_low_stock_alerts`) through
+`ReportingFacade::` explicitly.
 
 ## 6. Reporting-bypass set (T5 item 4) — the migration checklist
 

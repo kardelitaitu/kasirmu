@@ -292,6 +292,7 @@ pub use cart::{Cart, CartError, CartId, CartLine};
 pub use cash_payout::CashPayout;
 pub use category::Category;
 pub use customer::Customer;
+pub use db::facade::ReportingFacade;
 pub use db::plans::TenantPlan;
 pub use db::reports::{
     CategoryBreakdownRow, DailyRevenueRow, HourlyHeatmapRow, LowStockAlert, MonthlyRevenueRow,
