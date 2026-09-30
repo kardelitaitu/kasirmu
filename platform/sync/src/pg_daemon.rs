@@ -45,6 +45,11 @@ const PG_STOP_GRACE: Duration = Duration::from_secs(30);
 /// workflows before running a single PG round-trip.
 const PG_WAKEUP_DEBOUNCE: Duration = Duration::from_millis(1_500);
 
+/// Sentinel [`PgDaemonStatus::pending_count`] reports when the offline queue
+/// depth could not be read — kept distinct from `0`, which is a real
+/// measurement of an empty queue. Matches `SyncStore::PENDING_COUNT_UNKNOWN`
+/// and `HealthResponse::sync_queue_depth` on the cloud server.
+pub const PENDING_COUNT_UNKNOWN: i64 = -1;
 /// Snapshot of the PG daemon's current state, observable via
 /// [`PgSyncDaemon::status`]. Serialized camelCase for the Tauri command
 /// boundary (the desktop client's `pg_sync_status` IPC returns this
@@ -62,7 +67,15 @@ pub struct PgDaemonStatus {
     pub last_pulled: usize,
     /// Error message from the last cycle, if any.
     pub last_error: Option<String>,
-    /// Number of items currently pending in the offline queue.
+    /// Number of items currently pending in the offline queue, or
+    /// [`PENDING_COUNT_UNKNOWN`] when the count could not be read.
+    ///
+    /// The third state exists because `0` is a real measurement of an empty
+    /// queue, and the same value must not also mean "the read failed". A
+    /// caller that reads a failure as `0` concludes the backlog is drained and
+    /// stops retrying — the same defect the HTTP `SyncStatusResponse::
+    /// pending_count` and `HealthResponse::sync_queue_depth` already avoid with
+    /// the `-1` sentinel.
     pub pending_count: i64,
 }
 
@@ -561,15 +574,36 @@ impl PgSyncDaemon {
             }
         }
 
-        // Get pending count
+        // Get pending count. A read that fails reports PENDING_COUNT_UNKNOWN
+        // rather than 0: `pg_sync_status` feeds the operator's "is my backlog
+        // draining?" indicator, so answering 0 for a dropped table / poisoned
+        // lock / panicked worker tells a broken terminal its queue is empty.
+        // The two failure points are logged distinctly (the HTTP status path
+        // does the same for its four).
         let db_clone = db.clone();
-        let pending_count = tokio::task::spawn_blocking(move || {
+        let pending_count = match tokio::task::spawn_blocking(move || {
             let conn = db_clone.blocking_lock();
             let store = Store::new(&conn);
-            store.pending_offline_count().unwrap_or(0)
+            store.pending_offline_count()
         })
         .await
-        .unwrap_or(0);
+        {
+            Ok(Ok(count)) => count,
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: could not read the offline queue depth; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "pg sync status: the queue-depth read panicked; reporting unknown"
+                );
+                PENDING_COUNT_UNKNOWN
+            }
+        };
 
         // Update daemon status
         let mut s = daemon_status.write().await;

@@ -627,6 +627,33 @@ fn pending_count_zero_when_empty() {
     assert_eq!(store.pending_offline_count().unwrap(), 0);
 }
 
+/// The sentinel exists so "the count could not be read" is not the same value
+/// as "the queue is genuinely empty". `pg_sync_status` feeds the operator's
+/// backlog indicator, and `-1` must never be confused with a drained queue.
+#[test]
+fn pending_count_unknown_sentinel_is_distinct_from_zero() {
+    assert_eq!(PENDING_COUNT_UNKNOWN, -1);
+    assert_ne!(
+        PENDING_COUNT_UNKNOWN, 0,
+        "unknown must be a value an empty queue can never produce"
+    );
+}
+
+/// The read path the daemon's tick calls genuinely fails when the table is
+/// gone — which is what makes the `-1` arm reachable rather than decorative.
+/// Before this, the tick collapsed exactly this error into `0` via
+/// `unwrap_or(0)`, so a dropped `offline_queue` table read as an idle queue.
+#[test]
+fn pending_offline_count_errors_when_the_table_is_missing() {
+    let conn = migrations::fresh_db();
+    conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+    let store = Store::new(&conn);
+    assert!(
+        store.pending_offline_count().is_err(),
+        "a dropped offline_queue table must surface as an error, not as 0"
+    );
+}
+
 // ── Graceful shutdown ──────────────────────────────────────────
 
 #[tokio::test]

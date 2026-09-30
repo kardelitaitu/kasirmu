@@ -209,6 +209,9 @@ export interface PgDaemonStatusDto {
   lastPushed: number;
   lastPulled: number;
   lastError: string | null;
+  /** Pending offline items, or -1 when the count could not be read. -1 is
+   *  unknown, not an empty queue: a consumer that reads it as 0 concludes the
+   *  backlog is drained and stops retrying. */
   pendingCount: number;
 }
 
