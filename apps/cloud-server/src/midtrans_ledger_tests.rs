@@ -29,6 +29,54 @@ async fn lookup_unknown_order_is_none() {
     assert!(ledger().lookup("QRIS-nope").await.unwrap().is_none());
 }
 
+/// A query FAILURE is not a missing row. The pair with the test above is the
+/// rule: `None` means "this order is not ours", and the webhook turns that into
+/// `{status: ignored, reason: unmatched_order_id}`; `Err` means "we could not
+/// find out", which is the only honest answer when the read itself broke.
+///
+/// **The consequence is money-shaped and sender-visible.** `lookup` had one
+/// SQLite arm that ended in `.ok()` and handed back `Ok(None)` for BOTH outcomes,
+/// while the Postgres arm in the same function already propagated the same
+/// failure as `Err`. So a broken table, a column mismatch, a corrupt page or a
+/// locked database told Midtrans "we do not know this order" about a row that
+/// exists — and the settlement it describes was never applied, with no signal
+/// anywhere that anything had gone wrong.
+///
+/// The failure is manufactured by dropping the table AFTER the row is written, so
+/// the test cannot be satisfied by an order id that simply was never recorded.
+#[tokio::test]
+async fn a_broken_query_is_an_error_not_a_missing_row() {
+    let l = ledger();
+    l.record_issue("QRIS-broken", "tenant-A", "sale-broken", 15000, "IDR")
+        .await
+        .unwrap();
+    // The row is real, so "no ledger row" is not available as an explanation.
+    assert!(
+        l.lookup("QRIS-broken").await.unwrap().is_some(),
+        "the row must exist before the schema is broken, or this case passes for
+        the wrong reason"
+    );
+
+    {
+        let conn = l.db.lock().await;
+        conn.execute("DROP TABLE midtrans_transactions", [])
+            .expect("drop the ledger table");
+    }
+
+    let outcome = l.lookup("QRIS-broken").await;
+    assert!(
+        outcome.is_err(),
+        "a failed read must not be reported as an absent row: the caller answers
+        Midtrans with unmatched_order_id and silently drops the settlement"
+    );
+    let msg = outcome.unwrap_err();
+    assert!(
+        msg.starts_with("ledger lookup:"),
+        "the error must be attributed to the lookup, as the Postgres arm already
+        does, so a failure is traceable: got {msg:?}"
+    );
+}
+
 /// A collision is still REFUSED — the invariant the replay case must not have
 /// relaxed.
 ///

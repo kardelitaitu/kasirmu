@@ -291,24 +291,42 @@ impl LedgerDb {
             }));
         }
         let conn = self.db.lock().await;
-        let row = conn
-            .query_row(
-                "SELECT order_id, tenant_id, sale_id, amount_minor, currency, status
-                 FROM midtrans_transactions WHERE order_id = ?1 LIMIT 1",
-                params![order_id],
-                |r| {
-                    Ok(LedgerEntry {
-                        order_id: r.get::<_, String>(0)?,
-                        tenant_id: r.get::<_, String>(1)?,
-                        sale_id: r.get::<_, String>(2)?,
-                        amount_minor: r.get::<_, i64>(3)?,
-                        currency: r.get::<_, String>(4)?,
-                        status: r.get::<_, String>(5)?,
-                    })
-                },
-            )
-            .ok();
-        Ok(row)
+        // `.optional()`, not `.ok()`. These are different outcomes and the webhook
+        // below treats them differently, so collapsing them is a policy decision
+        // dressed as a convenience:
+        //
+        //   no such row      -> Ok(None) -> the handler logs "verified but no
+        //                       ledger row -- ignored" and returns
+        //                       {status: ignored, reason: unmatched_order_id}
+        //   query FAILED    -> previously also Ok(None), so a broken table, a
+        //                       column mismatch, a corrupt page or a locked DB was
+        //                       reported to Midtrans as "we do not know this order".
+        //
+        // The second one is a lie with money attached: the row exists, we merely
+        // failed to read it, and the settlement it describes is then never applied
+        // while the sender is told we declined to act. The PG branch directly above
+        // propagates the same failure as Err, so the two backends disagreed about
+        // whether a database error is an error. Measured with sqlite3 3.50.4: an
+        // absent row and a broken query are distinguishable -- an absent row simply
+        // yields no row, while `no such column` / `no such table` raise -- which is
+        // exactly what OptionalExtension encodes.
+        conn.query_row(
+            "SELECT order_id, tenant_id, sale_id, amount_minor, currency, status
+             FROM midtrans_transactions WHERE order_id = ?1 LIMIT 1",
+            params![order_id],
+            |r| {
+                Ok(LedgerEntry {
+                    order_id: r.get::<_, String>(0)?,
+                    tenant_id: r.get::<_, String>(1)?,
+                    sale_id: r.get::<_, String>(2)?,
+                    amount_minor: r.get::<_, i64>(3)?,
+                    currency: r.get::<_, String>(4)?,
+                    status: r.get::<_, String>(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| format!("ledger lookup: {e}"))
     }
 
     /// Record the latest (non-terminal) status verbatim. A row already in a
