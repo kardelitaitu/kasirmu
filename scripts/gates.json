@@ -734,6 +734,14 @@
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
+      "id": "ps-syntax",
+      "label": "powershell syntax",
+      "status": "required",
+      "_note": "Added 2026-09-30, the shell gate's twin for the language shell's scope rule cannot reach. That rule is a shebang, read as a fact about the file, and PowerShell has no shebang -- so 26 tracked .ps1 files were parsed by nothing, including ops/install/win/{install,uninstall}.ps1 which run on a USER's machine. A separate file rather than a flag: putting a parser-per-language switch inside is_shell() would mean every future Windows question had to be answered in a file named for shells. Paid for itself on the class it was written for: scripts/profile.ps1 had a backtick inside a double-quoted string, and backtick is PowerShell's ESCAPE, so the closing quote was itself escaped, the string never terminated, and the parser reported it 65 lines later as 'The string is missing the terminator' plus a phantom 'Missing closing }'. ParseFile is an AST parse and never executes, so it is as safe to run first as sh -n. Refuses with exit 2 when neither pwsh nor powershell is present, and when it finds no .ps1 at all: a clean run must be distinguishable from a starved one.",
+      "runners": { "check.sh": ["powershell syntax", "powershell syntax self-test"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+    },
+    {
       "id": "workflow-syntax",
       "label": "workflow syntax",
       "status": "required",

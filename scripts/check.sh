@@ -608,6 +608,14 @@ step "workflow syntax self-test" "python3 scripts/verify-workflow-syntax.py --se
 step "shell syntax" "python3 scripts/verify-shell-syntax.py" python3 scripts/verify-shell-syntax.py
 step "shell syntax self-test" "python3 scripts/verify-shell-syntax.py --self-test" python3 scripts/verify-shell-syntax.py --self-test
 
+# PowerShell has no shebang, so is_shell() cannot see it and this needs its own
+# parser. The two gates disagree about nothing: both are the cheapest gate in the
+# tree and both protect files that silently stop working when they do not parse.
+# It refuses with exit 2 on a machine with no PowerShell rather than reporting a
+# clean run it did not earn.
+step "powershell syntax" "python3 scripts/verify-ps-syntax.py" python3 scripts/verify-ps-syntax.py
+step "powershell syntax self-test" "python3 scripts/verify-ps-syntax.py --self-test" python3 scripts/verify-ps-syntax.py --self-test
+
 step "chokepoints" "python3 scripts/check-chokepoints.py" python3 scripts/check-chokepoints.py
 step "chokepoints self-test" "python3 scripts/check-chokepoints.py --self-test" python3 scripts/check-chokepoints.py --self-test
 
