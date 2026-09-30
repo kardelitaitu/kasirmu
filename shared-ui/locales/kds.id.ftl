@@ -112,7 +112,7 @@ kds-course-other = LAINNYA
 kds-course-loading = Memuat item...
 kds-course-modifier-separator =: 
 
-# ── 3f: Add items button + product picker (TODO 3f) ──
+# ── 3f: Add items button + product picker ──
 kds-add-items-btn = Tambah Item
 kds-add-items-btn-aria = Tambah item ke pesanan
 kds-picker-title = Tambah Item ke Pesanan
