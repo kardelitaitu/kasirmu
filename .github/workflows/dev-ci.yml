@@ -109,15 +109,34 @@ jobs:
           files=$(git diff --name-only "$BASE" "$HEAD_SHA")
           echo "changed files:"; echo "$files" | sed 's/^/    /'
 
-          if printf '%s\n' "$files" | grep -qE '^\.github/workflows/dev-ci\.yml$'; then
+          # The list is grepped once per bucket below. It is written to a file
+          # ONCE and every check reads that file, because the obvious form --
+          # `printf '%s\n' "$files" | grep -qE ...` -- is silently WRONG for any
+          # diff larger than the 64 KiB pipe buffer. `grep -q` exits at its FIRST
+          # match, closing the pipe while printf is still writing; printf then
+          # takes SIGPIPE, and `set -o pipefail` turns that into a failed
+          # pipeline, so the `||` branch runs and the bucket is reported ABSENT
+          # even though it matched. Measured 2026-09-30 on run 36682329958: a
+          # 1,729-file diff reported rust/docs/go/release all `false` while that
+          # same diff contained 548 `crates/`, 280 `docs/`, 73 `platform/` and 16
+          # `apps/license-server/` paths, and the job log carried five
+          # `printf: write error: Broken pipe` lines. It is a race, so which
+          # buckets go wrong varies run to run. A file argument has no writer
+          # that can be SIGPIPEd, which is why this is a file and not a here-
+          # string: bash may implement `<<<` with a pipe.
+          files_file="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/dev-ci-changed-files.txt"
+          printf '%s\n' "$files" > "$files_file"
+
+          if grep -qE '^\.github/workflows/dev-ci\.yml$' "$files_file"; then
             all "this workflow changed"
           fi
 
           # Rust: every workspace member (crates/*, modules/*, platform/*,
           # foundation, the three apps, tools/fuzz, the updater compat check) plus
           # anything that changes how cargo resolves the build.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^crates/|^modules/|^platform/|^foundation/|^apps/(cloud-server|desktop-tauri|mobile-tauri)/|^tools/fuzz/|^scripts/updater-compat-check/|^Cargo\.(toml|lock)$|^\.cargo/|^rust-toolchain' \
+            "$files_file" \
             && echo "rust=true"  >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
 
           # Go: `apps/license-server` is a SEPARATE Go module, not a cargo
@@ -131,7 +150,7 @@ jobs:
           # PR regardless. Splitting the Go steps into their own job without
           # this output would have silently stopped checking Go on exactly the
           # PRs that change it -- a gate that goes quiet is worse than no gate.
-          printf '%s\n' "$files" | grep -qE '^apps/license-server/' \
+          grep -qE '^apps/license-server/' "$files_file" \
             && echo "go=true" >> "$GITHUB_OUTPUT" || echo "go=false" >> "$GITHUB_OUTPUT"
 
           # UI: `ui/` is the vitest suite's boundary, but it is NOT self-contained.
@@ -141,13 +160,14 @@ jobs:
           # i18n/barePlaceholderScan.ts read across that boundary. A bundle edit
           # can therefore break the suite at import time, so it must route here
           # as well as to i18n -- which is what scripts/test-ci-routing.sh pins.
-          printf '%s\n' "$files" | grep -qE '^ui/|^shared-ui/locales/' \
+          grep -qE '^ui/|^shared-ui/locales/' "$files_file" \
             && echo "ui=true" >> "$GITHUB_OUTPUT" || echo "ui=false" >> "$GITHUB_OUTPUT"
 
           # i18n: the .ftl bundles, any TSX/TS the parity scanner reads, and the
           # four scripts that implement the gates.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^shared-ui/locales/|^ui/src/.*\.(ts|tsx)$|^scripts/lint-i18n\.sh$|^scripts/verify-bundle-parity\.py$|^scripts/dedupe-ftl\.py$|^scripts/verify-ftl-orphans\.py$' \
+            "$files_file" \
             && echo "i18n=true" >> "$GITHUB_OUTPUT" || echo "i18n=false" >> "$GITHUB_OUTPUT"
 
           # prototypes/ is not under website/, but its HTML ships VERBATIM:
@@ -158,7 +178,7 @@ jobs:
           # rule existed a prototypes-only PR matched no bucket at all and ran NO
           # job: not the test suite, not the post-build gate, so that page could
           # lose its h1 with nothing to notice it.
-          printf '%s\n' "$files" | grep -qE '^website/|^prototypes/' \
+          grep -qE '^website/|^prototypes/' "$files_file" \
             && echo "website=true" >> "$GITHUB_OUTPUT" || echo "website=false" >> "$GITHUB_OUTPUT"
 
           # Docs/CI truthfulness: the drift checker compares docs/operations/
@@ -167,8 +187,9 @@ jobs:
           # docs/ generally -- a docs-only PR is exactly the change that can make
           # the CI documentation lie, and before this output existed it ran
           # nothing at all.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^docs/|^\.github/workflows/|^scripts/(gates\.json|verify-ci-docs-drift\.py|check\.sh|check-ui\.mjs)$' \
+            "$files_file" \
             && echo "docs=true" >> "$GITHUB_OUTPUT" || echo "docs=false" >> "$GITHUB_OUTPUT"
 
           # Release readiness. R36-11 was filed because the release workflow was
@@ -181,8 +202,9 @@ jobs:
           # `tauri.conf.json` is in here because it carries the updater `pubkey`:
           # rotate or typo that key and every client auto-update rejects the
           # signature, which is precisely what check-updater-compat.mjs detects.
-          printf '%s\n' "$files" | grep -qE \
+          grep -qE \
             '^scripts/(check-release-version|check-updater-compat|generate-latest-json|verify-updater-signature)\.mjs$|^scripts/updater-compat-check/|^apps/desktop-tauri/tauri\.conf\.json$|^apps/desktop-tauri/Cargo\.toml$|^\.github/workflows/release\.yml$|^docs/releases/' \
+            "$files_file" \
             && echo "release=true" >> "$GITHUB_OUTPUT" || echo "release=false" >> "$GITHUB_OUTPUT"
 
       - name: Decisions

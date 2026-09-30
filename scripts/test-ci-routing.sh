@@ -151,6 +151,29 @@ check "unrelated file"      "rust=false ui=false i18n=false website=false docs=f
 # that does not touch Go would be skipped silently rather than failing loudly.
 check "dispatch event"      "rust=true ui=true i18n=true website=true docs=true release=true go=true"     "README.md" "workflow_dispatch"
 
+# ── The size the router used to be blind to ─────────────────────────
+# Every case above is 1-2 paths, and that is precisely why this defect survived
+# them. The router routed each bucket with
+#
+#     printf '%s\n' "$files" | grep -qE '<pattern>' && echo x=true || echo x=false
+#
+# `grep -q` exits at its FIRST match, which closes the pipe while printf is
+# still writing. printf then takes SIGPIPE, and `set -o pipefail` -- which the
+# Route body sets -- turns that into a failed pipeline, so the `||` branch ran
+# and the bucket was reported ABSENT even though it had matched. It only bites
+# once the diff exceeds the 64 KiB pipe buffer (~1,400 paths), so a fixture of
+# one or two paths can never reach it. Measured on run 36682329958
+# (2026-09-30): a 1,729-file diff reported rust=false docs=false go=false
+# release=false while that same diff contained 548 `crates/`, 280 `docs/`, 73
+# `platform/` and 16 `apps/license-server/` paths, and the job log carried five
+# `printf: write error: Broken pipe` lines. The buckets whose first match sat
+# late in the list (ui, i18n, website) happened to come out right, which is the
+# race: WHICH buckets go wrong varies run to run, so a green bucket here is not
+# evidence the router works. 3,000 paths / ~81,000 bytes is deliberately larger
+# than that buffer. Generated with printf's format reuse -- no external `seq`.
+big="$(printf 'crates/probe%05d/src/lib.rs\n' {1..1500}; printf 'docs/notes/probe%05d.md\n' {1..1500})"
+check "large diff (rust+docs)" "rust=true ui=false i18n=false website=false docs=true release=false go=false" "$big"
+
 echo
 echo "$pass/$((pass+fail)) routing cases correct"
 if [ "$fail" -ne 0 ]; then
