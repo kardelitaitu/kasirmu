@@ -266,6 +266,45 @@ async fn store_push_batch_empty_returns_empty() {
     assert_eq!(store.pending_count("tenant-empty").await, 0);
 }
 
+/// A count that could not be read must not read as an empty queue.
+///
+/// `pending_count` is what every terminal polls on its heartbeat to decide
+/// whether its offline backlog is draining. Reporting a failed read as 0 tells
+/// the client everything has synced, so it stops retrying and the backlog is
+/// stranded. The two answers have to stay distinguishable, and dropping the
+/// table is the honest way to make the read fail — the row is proven readable
+/// first, so what the assertion below is about is the failure, not a fixture
+/// that never had data in it.
+#[tokio::test]
+async fn an_unreadable_queue_depth_is_unknown_not_an_empty_queue() {
+    let conn = fresh_db();
+    let store = SyncStore::sqlite(conn.clone());
+
+    let item = sample_item("depth-1");
+    assert!(matches!(
+        store.push_item(&item, "tenant-a").await.unwrap(),
+        PushOutcome::Accepted
+    ));
+    assert_eq!(
+        store.pending_count("tenant-a").await,
+        1,
+        "the count is readable before the schema is broken"
+    );
+
+    {
+        let guard = conn.lock().await;
+        guard
+            .execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+
+    assert_eq!(
+        store.pending_count("tenant-a").await,
+        SyncStore::PENDING_COUNT_UNKNOWN,
+        "a failed read must be unknown, not 0: 0 tells the client its backlog is empty"
+    );
+}
+
 /// Integration test against a live Postgres instance (the same Docker
 /// service `db.rs` uses, port 15432). Skips when unreachable, so the
 /// suite stays green on machines without a running Postgres.

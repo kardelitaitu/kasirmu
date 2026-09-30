@@ -53,7 +53,7 @@ pub(super) fn build_cloud_schemas() -> Value {
             "properties": {
                 "status": { "type": "string", "description": "Server health status", "example": "ok" },
                 "version": { "type": "string", "description": "Server package version" },
-                "pending_count": { "type": "integer", "format": "int64", "description": "Queue items with status pending for this tenant" },
+                "pending_count": { "type": "integer", "format": "int64", "description": "Queue items with status pending for this tenant, or -1 when the count could not be read. -1 is unknown, not an empty queue: a client that reads it as 0 stops retrying while its backlog is still there." },
                 "heartbeat_interval_secs": { "type": "integer", "format": "int64", "description": "Recommended client poll interval (P-3 tiered heartbeat: <1000 tenants → 120s, 1000–5000 → 300s, above → scaled)" }
             }
         },
