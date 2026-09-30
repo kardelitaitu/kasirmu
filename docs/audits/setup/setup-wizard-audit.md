@@ -325,3 +325,21 @@ would require amending that record first. Reported, not acted on.
 *No code was changed by this audit.*
 
 > last audited 29-09-26 by docs-auditor
+>
+> **Recommendation 4 is closed (2026-09-30, DSH).** The offline hard-block has both halves now: the
+> unit suite covers it, and `ui/e2e/provisioning-offline.spec.ts` pins it from outside — linking
+> refused with a reason, the standalone path still completing, and a link earned online surviving a
+> dropped connection (`17ad9a0f3`). Recommendation 1 is likewise closed: the wizard was deleted in
+> `badd31d2e`, and its coverage was re-pointed rather than dropped.
+>
+> **What this audit missed entirely, and a later round found.** All five findings above name
+> `ProvisioningFlow` as the live path and treat it as sound. The reason a merchant could not get
+> past its first screen was never in this file: the server routes the live tablet calls pair with
+> were 404 on the deployed host, so no test of this component could ever have been green about it.
+> A component-level audit cannot see a deployment. The re-measurement is in
+> `setup-state-of-the-art.md` round 34 (the blocker) and round 35 (it is gone; the routes answer).
+> The five dead-end fixes this flow still needed — a named submit gate, an offline way out, a
+> pairing code that replaces itself, a default route a solo merchant can use, and a disclosed
+> currency/timezone — are in `bf5db7b94`.
+>
+> > last audited 30-09-26 by DSH (recommendation status; findings above unchanged) · last full audited 29-09-26 by docs-auditor

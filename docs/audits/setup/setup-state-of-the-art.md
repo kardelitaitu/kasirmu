@@ -1647,4 +1647,64 @@ outstanding step.
 
 **No code commits.** Build artifact at `apps/mobile-tauri/gen/android/app/build/outputs/apk/universal/release/`.
 
-> last audited 29-09-26 by docs-auditor
+---
+
+## Round 35 — the stale deploy is history: the pairing routes are live
+
+Round 34 ended with a production blocker and a deliberately deferred remedy. Re-measured on
+**2026-09-30**, the blocker is gone — someone shipped it in the intervening days. The three 404s
+in the Round 34 table are now the routes working, and the finding above is kept verbatim as the
+dated record it is.
+
+### What the live host answers now
+
+```
+POST https://license.kasir.mu/api/v1/pairing/start
+  { "machine_id": "final-probe", "device_name": "probe" }
+  → 200
+  {"code":"FNR6-3B5W","expires_at":"2026-09-30T21:25:35Z",
+   "poll_token":"2a3c6890…","qr_url":"https://kasir.mu/pair?code=FNR6-3B5W"}
+
+POST https://license.kasir.mu/api/v1/pairing/poll   { "poll_token": "2a3c6890…" }
+  → 200  {"status":"pending"}
+```
+
+The 400s the empty-body probes return are the handler's own validation, not absence of a route —
+`handlePairingStart` answers `{"error":"machine_id is required"}` at `pairing.go:186` and
+`{"error":"invalid JSON body"}` at `:182`, both on a body it received and parsed. A missing
+route answers 404 for every method and every body, which is exactly what Round 34 measured and
+what the host no longer does. Three separate sessions were minted during this pass, each with a
+distinct 8-character Crockford code (`DR40-HMWN`, `DQED-3VYQ`, `FNR6-3B5W`), so this is a live
+code path and not a cached first response.
+
+### The one thing that is still odd, and is not a defect
+
+`GET /api/v1/health` reports `{"status":"ok","version":"0.0.39"}` while the repository is on
+`0.0.40`, and the pairing routes that only exist on this branch answer anyway. Round 34 read that
+`version` field as evidence of a stale deploy; it is not. The host runs the **Rust cloud-server**,
+not the Go licence server: `GET /metrics` serves `webhook_5xx_total`, which is a cloud-server
+counter asserted in `apps/cloud-server/src/main_tests.rs:236` and present in no Go handler.
+`/api/health` returns the cloud server's extended shape (`db`, `rls_posture`,
+`portable_derivation_uses_master_key`) where `apps/license-server/health.go:47-62` returns a
+different one entirely (`smtp`, `admin`, `paddle`, `midtrans`, `market_prices`, `rsa`, `discord`).
+Both services ship a `version` field drawn from the workspace version, so `0.0.39` is the tag the
+running container was cut at — and the pairing routes prove it was cut from a commit that HAS
+them. The field is a build stamp, not a route inventory; it cannot answer "is this deploy current".
+
+### Honest scope of this round
+
+- **Proved from outside:** the three pairing routes exist, parse a body, validate it, mint a code,
+  and poll to `pending` on the live host.
+- **Not proved:** the claim leg. `POST /api/v1/pairing/claim` answers
+  `401 {"error":"missing or invalid session token"}`, which is a web-session requirement
+  (`pairing.go:253` also admits an admin key), and completing a claim needs a signed-in account
+  this session does not have.
+- **Not possible at all today:** the on-device re-run Round 34 asked for. `adb devices` reports
+  an empty device list on this host, so there is no Redmi Pad SE to re-provision. The hardware
+  verification of the activation screen past its first server call remains outstanding, and the
+  Round 34 APK on the device is from before the deploy.
+
+So the blocker a merchant would have hit is gone, but the thing Round 34 actually wanted — a
+terminal completing first-run against the live server on real hardware — is still unmeasured.
+
+> last audited 30-09-26 by DSH (round 35 · live re-measure of round 34's deferred deploy)
