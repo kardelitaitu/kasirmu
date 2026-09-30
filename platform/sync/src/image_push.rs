@@ -50,6 +50,38 @@ fn env_or<T: std::str::FromStr>(name: &str, default: T) -> T {
         .unwrap_or(default)
 }
 
+// ── HTTP client ───────────────────────────────────────────────────────
+
+/// COR-31: the scheduler's HTTP client MUST be bounded.
+///
+/// It used to be a bare `reqwest::Client::new()`, which has no timeout at
+/// all. In a daemon that is worse than in a request path: a hung POST to
+/// `/api/v1/images:batch` (or the `:missing` GET) never returns, `drain_once`
+/// never completes, and the drain loop never reaches its next tick — the
+/// image queue silently stops draining while the scheduler still reports
+/// itself alive. The same warning is recorded in `platform/startup/src/rate_sync.rs`.
+///
+/// 10s connect / 30s total matches the convention for the other bounded
+/// non-bulk JSON calls (`sync_client`, `whatsapp`, the payment drivers).
+/// budget is generous rather than tight.
+const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const HTTP_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Build the bounded client shared by the scheduler and its tests.
+pub(crate) fn bounded_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(HTTP_CONNECT_TIMEOUT)
+        .timeout(HTTP_REQUEST_TIMEOUT)
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!(
+                error = %e,
+                "could not build bounded HTTP client for image push; falling back to an unbounded client"
+            );
+            reqwest::Client::new()
+        })
+}
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 /// The image push scheduler.
@@ -72,7 +104,7 @@ impl ImagePushScheduler {
         Self {
             db,
             cache_dir,
-            client: reqwest::Client::new(),
+            client: bounded_http_client(),
         }
     }
 

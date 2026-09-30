@@ -510,3 +510,17 @@ The marker `COR-32` (LOW-MED) recorded that no production mutation path cleared 
 Pinned red-first by `set_workspace_inventory_locations_invalidates_the_location_cache` (`crates/kasirmu-core/src/db/inventory_tests.rs`): bind A, resolve (populating the cache), rebind to B, resolve again — the post-fix resolve returns B, and the pre-fix run returned the stale A.
 
 > COR-32 fixed 2026-10-04; the binding mutator invalidates the location cache.
+
+---
+
+## The image-push daemon's HTTP client is now bounded (COR-31 residual, fixed 2026-10-04)
+
+`ImagePushScheduler` (`platform/sync/src/image_push.rs`) — re-exported as `crate::image_push` and run as a background daemon by `apps/desktop-tauri/src/lib.rs` via `platform_startup::spawn_daemon("image push", ...)` — built its HTTP client with a bare `reqwest::Client::new()`. That constructor sets **no timeout at all**, and the client is used for two real calls: `POST {server}/api/v1/images:batch` and `GET {server}/api/v1/images:missing`.
+
+This is the last known COR-31 site, and it is worse in a daemon than in a request path: a hung POST never returns, `drain_once` never completes, and the drain loop never reaches its next tick — the image queue silently stops draining while the scheduler is still alive and reporting healthy. The identical hazard is already documented for `platform/startup/src/rate_sync.rs`.
+
+**Fix:** a shared `pub(crate) fn bounded_http_client()` builds through `reqwest::Client::builder()` with `connect_timeout(10s)` and `timeout(30s)` — the same budget the other bounded non-bulk JSON calls use (`sync_client`, `whatsapp`, the payment drivers). The batch payload is capped at `batch_max_bytes()` (512 KB), so 30s is generous. The fallback arm keeps the old unbounded client but logs at `error`, matching the `rate_sync.rs` and payment-driver pattern.
+
+Pinned by `push_client_is_bounded_by_a_timeout` (`platform/sync/src/image_push_tests.rs`): reqwest's `Client` does not expose its configured timeouts, so the coupling — "the constructor builds through `Client::builder()` with a connect and a total timeout, and no bare `client: reqwest::Client::new()` remains" — is asserted over the source with `include_str!`, the same technique `apps/cloud-server/src/sync_api_tests.rs` uses for source contracts. The test harness's own struct literal now builds through `super::bounded_http_client()` too, so the tests exercise the real shape.
+
+> COR-31 residual fixed 2026-10-04; the image-push daemon's client is bounded at 10s connect / 30s total.

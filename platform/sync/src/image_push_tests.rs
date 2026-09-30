@@ -13,7 +13,7 @@ fn test_scheduler(cache_dir: &std::path::Path) -> ImagePushScheduler {
     ImagePushScheduler {
         db,
         cache_dir: cache_dir.to_path_buf(),
-        client: reqwest::Client::new(),
+        client: super::bounded_http_client(),
     }
 }
 
@@ -166,4 +166,43 @@ fn batch_outcome_parse_marks_stored_as_success() {
         Some("rejected")
     );
     assert!(!map.contains_key("dddddddddddddddd"));
+}
+
+// ── COR-31: the scheduler's HTTP client must be bounded ─────────────
+
+/// The scheduler used a bare `reqwest::Client::new()`, which has NO
+/// timeout. In a daemon that is worse than in a request path: a hung
+/// POST to `/api/v1/images:batch` never returns, the drain loop never
+/// reaches its next tick, and the queue silently stops draining while
+/// the scheduler is still alive. `run_sync_cycle`'s cousin in
+/// `rate_sync.rs` carries the same warning.
+///
+/// Why an `include_str!` assertion and not a behavioural one: reqwest's
+/// `Client` does not expose its configured timeouts, so a bounded
+/// client and an unbounded one are indistinguishable at runtime. The
+/// coupling we care about is "the constructor builds through
+/// `Client::builder()` with an explicit timeout", which is a property
+/// of the source. (Same technique `apps/cloud-server/src/sync_api_tests.rs`
+/// uses for the sync-store source contract.)
+#[test]
+fn push_client_is_bounded_by_a_timeout() {
+    let src = include_str!("image_push.rs");
+    assert!(
+        src.contains("reqwest::Client::builder()"),
+        "the scheduler must build its client through Client::builder() so a timeout can be set",
+    );
+    assert!(
+        src.contains(".connect_timeout("),
+        "the scheduler's client must bound the connect phase",
+    );
+    assert!(
+        src.contains(".timeout("),
+        "the scheduler's client must bound the total request",
+    );
+    // The bare constructor must not survive anywhere in the file: a
+    // later edit that reintroduces it would restore the unbounded hang.
+    assert!(
+        !src.contains("client: reqwest::Client::new()"),
+        "the bare Client::new() in the constructor is the COR-31 defect; it must not come back",
+    );
 }
