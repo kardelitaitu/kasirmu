@@ -1,8 +1,15 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: collect-all-failures design, testable inner function; COR-3 MEDIUM: error messages embed DATABASE_URL prefix (may contain user:password) and full REDIS_URL (may embed credentials) — leaks into retained logs on misconfiguration
-next: redact userinfo before embedding URLs in messages (COR-3) | perf: N/A
+findings: collect-all-failures design, testable inner function. COR-3 FIXED
+2026-10-04: both URL-embedding messages now redact userinfo before the
+string is built - redact_url(db_url) at :121 (DATABASE_URL scheme mismatch)
+and redact_url(redis_url) at :210 (REDIS_URL), so a user:password@ in
+either URL can no longer reach the retained log. redact_url collapses the
+userinfo section to [redacted] and truncates an unrecognised scheme to 80
+chars; pinned by redact_url_removes_userinfo / redact_url_no_userinfo_passthrough
+in config_validator_tests.rs.
+next: none | perf: N/A
 */
 //! Startup configuration validator.
 //!

@@ -2,7 +2,19 @@
 last audited 25-07-26 by RSA-Agent (platform-core slice E: terminal_profile verified)
 crate: platform-core | status: SAFE | lint: CLEAN
 findings: clean typed kiosk-profile persistence (save/load/ensure-default); PC-1 INFO: filename interpolates terminal_id without sanitization (line 173) - same hardening note as manager.rs store paths; ids UUID-minted in normal flows
-next: sanitize terminal ids (PC-1) | perf: N/A
+next: none | perf: N/A
+PC-1 remains INFO and is deliberately NOT closed by sanitising here:
+profile_path (terminal_profile.rs:187) joins format!("{terminal_id}.json")
+with no filter, so a traversal-shaped id ("../x", an absolute path, a
+separator) would escape terminal_profiles/. It is unreachable today because
+the only production callers - kasirmu-bridge get_hardware_settings
+(settings.rs:327) and set_hardware_settings_scoped (settings.rs:704), plus
+platform-startup hardware.rs:143 - pass the
+terminal_id held in AppState, which is set at startup from the registered
+terminal row (UUID-minted), never from renderer input. Recorded rather than
+hardened so the invariant that keeps it unreachable (ids are DB-minted) is
+explicit; if a caller ever accepts a terminal id from IPC, sanitise at the
+edge before this function.
 */
 //! Per-terminal hardware profile — stores printer, scanner, scale, and
 //! local preference configuration in per-terminal JSON files under

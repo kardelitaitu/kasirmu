@@ -3,8 +3,22 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-api slice B: pg deep read)
 crate: kasirmu-api | status: SAFE | lint: CLEAN
-findings: RLS contract exemplary — every tenant-scoped function opens a tx and sets oz.tenant_id LOCAL (12 sites verified; LOCAL scope auto-resets so pooled connections never leak scope); verify_terminal_credentials is a documented pre-tenant read via a scoped discovery role (SET LOCAL ROLE inside read-only tx) with digest comparison in SQL; all SQL parameterized ($n), format! only builds error strings and static SELECT prefixes; API-3 INFO: sale reads unwrap_or(0) tip_minor/service_charge_minor (1211-1212) and enum fallbacks product_type/status (610/1149) silently zero/default on drift (COR-13/25 family)
-next: propagate sale money-column read errors (API-3) | perf: PRODUCT_SELECT reuses stock_summary aggregate
+findings: RLS contract exemplary — every tenant-scoped function opens a tx and sets oz.tenant_id LOCAL; LOCAL scope auto-resets so pooled connections never leak scope. verify_terminal_credentials is a documented pre-tenant read via a scoped discovery role (SET LOCAL ROLE inside read-only tx) with digest comparison in SQL; all SQL parameterized ($n), format! only builds error strings and static SELECT prefixes.
+API-3: the money-column half is FIXED 2026-10-04; the enum half is
+DELIBERATE, not outstanding. Both live in pg/ submodules now (this file was
+split - the line numbers formerly cited here, 1211-1212/610/1149, predate
+the split and no longer resolve).
+- Money: tip_minor / service_charge_minor in pg/sales.rs use try_get and
+  propagate PgError::Db. 0 is a real answer nothing downstream could tell
+  apart from a drifted read, so the read must fail rather than default.
+- Enums: SaleStatus (pg/sales.rs) and ProductType (pg/products.rs) still fall
+  back (Pending / Retail via parse_stored_or_default) on an unmapped label.
+  That is intentional and documented at each site: neither column carries a
+  CHECK constraint, so a writer from a newer build can store a label this
+  build does not know, and failing the whole read would cost the sale. Each
+  fallback emits a tracing::warn! so the ambiguous case is visible in logs.
+  Closing them would require a schema-level guarantee that does not exist.
+next: none | perf: PRODUCT_SELECT reuses stock_summary aggregate
 */
 //!
 //! The desktop/tablet/cloud POS share one SQLite data layer
