@@ -5,7 +5,7 @@
 # replaces the active database, and validates with a smoke query.
 #
 # Usage:
-#   bash scripts/restore-db.sh backups/kasir-20260720-120000.db.gz
+#   bash scripts/restore-db.sh var/backups/kasir-20260720-120000.db.gz
 #   bash scripts/restore-db.sh var/backups/kasir-20260720-120000.db.gz var/kasir.db
 #   RESTORE_NO_CONFIRM=1 bash scripts/restore-db.sh ...   # skip prompt
 #
@@ -87,7 +87,19 @@ if [ -f "$TARGET_DB" ]; then
   echo "restore-db: pre-restore backup saved to ${TARGET_DB}.pre-restore"
 fi
 
-# Replace the active database
+# Replace the active database. mkdir -p the parent first: the default target is
+# var/kasir.db, and on a fresh clone nothing has created var/ yet, so `mv` would fail
+# with a bare "No such file or directory" that names neither the directory it wanted
+# nor the fact that creating it would have worked. Same reason apps/cloud-server/src/db.rs
+# and crates/kasirmu-cli/src/commands/mod.rs create their parent before opening.
+TARGET_PARENT=$(dirname "$TARGET_DB")
+if [ -n "$TARGET_PARENT" ] && [ ! -d "$TARGET_PARENT" ]; then
+  if ! mkdir -p "$TARGET_PARENT"; then
+    echo "restore-db: ERROR — cannot create target directory: $TARGET_PARENT" >&2
+    exit 1
+  fi
+  echo "restore-db: created target directory $TARGET_PARENT"
+fi
 mv "$RESTORE_DB" "$TARGET_DB"
 
 # Drop the stale WAL/SHM sidecar files. They belong to the OLD database
