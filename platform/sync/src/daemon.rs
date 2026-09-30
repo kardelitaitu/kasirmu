@@ -211,6 +211,12 @@ impl<T: HasRunningFlag + Send + Sync + 'static> Drop for RunningFlagGuard<T> {
     }
 }
 
+/// Sentinel [`DaemonStatus::pending_count`] (and [`crate::pg_daemon::
+/// PgDaemonStatus::pending_count`]) reports when the offline queue depth could
+/// not be read — kept distinct from `0`, which is a real measurement of an
+/// empty queue. Matches `SyncStore::PENDING_COUNT_UNKNOWN` and
+/// `HealthResponse::sync_queue_depth` on the cloud server.
+pub const PENDING_COUNT_UNKNOWN: i64 = -1;
 /// Snapshot of the daemon's current state, observable via [`SyncDaemon::status`].
 #[derive(Debug, Clone, Default)]
 pub struct DaemonStatus {
@@ -228,7 +234,12 @@ pub struct DaemonStatus {
     pub consecutive_failures: u32,
     /// Backoff delay applied before the current cycle, if any.
     pub backoff_ms: Option<u64>,
-    /// Number of items currently pending in the offline queue.
+    /// Number of items currently pending in the offline queue, or
+    /// [`PENDING_COUNT_UNKNOWN`] when the count could not be read.
+    ///
+    /// `0` means only a real measurement of an empty queue; it must not also
+    /// mean "the read failed", or a terminal reading `sync_status` concludes a
+    /// broken daemon's backlog has drained and stops retrying.
     pub pending_count: i64,
 }
 

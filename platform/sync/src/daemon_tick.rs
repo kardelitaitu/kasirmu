@@ -613,15 +613,35 @@ async fn update_daemon_status(
     sync_error: &Option<String>,
     read_error: &Option<String>,
 ) {
-    // Get pending count
+    // Get pending count. A read that fails reports PENDING_COUNT_UNKNOWN
+    // rather than 0: `sync_status` feeds the operator's "is my backlog
+    // draining?" indicator, so answering 0 for a dropped table / poisoned
+    // lock / panicked worker tells a broken terminal its queue is empty.
+    // Same third state and same two logged failure points as the PG daemon.
     let db_clone = db.clone();
-    let pending_count = tokio::task::spawn_blocking(move || {
+    let pending_count = match tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
         let store = Store::new(&conn);
-        store.pending_offline_count().unwrap_or(0)
+        store.pending_offline_count()
     })
     .await
-    .unwrap_or(0);
+    {
+        Ok(Ok(count)) => count,
+        Ok(Err(e)) => {
+            tracing::warn!(
+                error = %e,
+                "sync status: could not read the offline queue depth; reporting unknown"
+            );
+            PENDING_COUNT_UNKNOWN
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "sync status: the queue-depth read panicked; reporting unknown"
+            );
+            PENDING_COUNT_UNKNOWN
+        }
+    };
 
     // Update daemon status
     let mut s = daemon_status.write().await;

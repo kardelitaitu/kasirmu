@@ -45,11 +45,11 @@ const PG_STOP_GRACE: Duration = Duration::from_secs(30);
 /// workflows before running a single PG round-trip.
 const PG_WAKEUP_DEBOUNCE: Duration = Duration::from_millis(1_500);
 
-/// Sentinel [`PgDaemonStatus::pending_count`] reports when the offline queue
-/// depth could not be read — kept distinct from `0`, which is a real
-/// measurement of an empty queue. Matches `SyncStore::PENDING_COUNT_UNKNOWN`
-/// and `HealthResponse::sync_queue_depth` on the cloud server.
-pub const PENDING_COUNT_UNKNOWN: i64 = -1;
+// The sentinel is defined once, in `daemon.rs` beside `DaemonStatus`; both
+// daemons share the value so a client cannot read one queue depth as 0 and the
+// other as unknown. Re-exported here to keep the `pg_daemon::PENDING_COUNT_UNKNOWN`
+// path this daemon's own code and tests use.
+pub use crate::daemon::PENDING_COUNT_UNKNOWN;
 /// Snapshot of the PG daemon's current state, observable via
 /// [`PgSyncDaemon::status`]. Serialized camelCase for the Tauri command
 /// boundary (the desktop client's `pg_sync_status` IPC returns this

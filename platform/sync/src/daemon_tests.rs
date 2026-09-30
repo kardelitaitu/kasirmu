@@ -753,6 +753,33 @@ fn read_config_and_pending_returns_pending_count() {
     assert!(config.is_none());
 }
 
+/// The HTTP daemon's `pending_count` must distinguish "the queue is empty"
+/// from "the count could not be read". It feeds `sync_status`, the operator's
+/// backlog-draining indicator, so a failure reported as `0` would tell a broken
+/// terminal everything has synced. Same sentinel as the PG daemon and the cloud
+/// server's `SyncStatusResponse::pending_count`.
+#[test]
+fn daemon_pending_count_unknown_sentinel_is_shared_and_distinct_from_zero() {
+    // One value, defined on the base daemon module, re-exported by the PG one.
+    assert_eq!(PENDING_COUNT_UNKNOWN, -1);
+    assert_eq!(
+        PENDING_COUNT_UNKNOWN,
+        crate::pg_daemon::PENDING_COUNT_UNKNOWN
+    );
+    assert_ne!(PENDING_COUNT_UNKNOWN, 0);
+}
+
+/// The read path `update_daemon_status` calls fails when the table is gone —
+/// which is what makes the `-1` arm reachable rather than decorative. Before
+/// this, `update_daemon_status` collapsed exactly this error into `0`.
+#[test]
+fn daemon_pending_offline_count_errors_when_the_table_is_missing() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+    let store = Store::new(&conn);
+    assert!(store.pending_offline_count().is_err());
+}
+
 // ── SYNC-01: idempotent remote application ───────────────────────
 
 /// Spawn a mock sync server whose pull endpoint ALWAYS returns the
