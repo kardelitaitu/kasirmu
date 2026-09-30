@@ -57,6 +57,29 @@ riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih banyak lokasi dan
 register, plus pembayaran QRIS, sinkron cloud, dan otomasi; ruang kerja gudang
 mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
 
+## Pilih titik awal Anda
+
+Wizard pengaturan dan pemilih ruang kerja dibangun di sekitar beberapa bentuk
+toko. Pilih milik Anda dan dokumentasi sejajar dengan layar yang benar-benar
+akan Anda lihat:
+
+- **Toko ritel atau warung** — kisi produk, barcode, stok. Provisi sebagai
+  🛒 **Toko**; bekerja di **POS Ritel**. Mulai dari
+  [Transaksi Pertama Anda](../first-sale/) dan
+  [Inventaris & Gudang](../inventory/).
+- **Restoran atau kafe** — kategori menu, meja, dapur. Provisi sebagai
+  🍽️ **Restoran atau kafe**; bekerja di **POS Restoran**, dan tambahkan
+  **Layar Dapur** saat juru masak butuh antrean tiket. Mulai dari
+  [Transaksi Pertama Anda](../first-sale/) dan [Ruang Kerja](../workspaces/).
+- **Gudang atau back office** — stok masuk/keluar dan laporan. Ruang kerja
+  **Gudang** mencakup produk, level stok, bundel, dan laporan inventaris;
+  manajer bekerja dari **Admin**. Mulai dari
+  [Inventaris & Gudang](../inventory/).
+
+Tidak yakin? Jalur [Mulai Cepat](../quickstart/) berlaku untuk semua bentuk
+— jalur ini memprovisi salah satu di atas, menambah produk uji, dan menghitung
+transaksi uji terlepas dari pilihan Anda.
+
 ## Mulai dari sini
 
 Terburu-buru? [Mulai Cepat](../quickstart/) membawa Anda dari unduhan ke

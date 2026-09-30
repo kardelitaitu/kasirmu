@@ -56,6 +56,28 @@ kasir.mu is **free forever** to get started — one location, one register, and
 payments, cloud sync, and automation; warehouse workspaces come with Premium.
 See [Licensing & Plans](../licensing/).
 
+## Pick your starting point
+
+The setup wizard and workspace picker are built around a handful of shop
+shapes. Pick yours and the docs line up with the screens you will actually
+see:
+
+- **A retail shop or warung** — product grid, barcodes, stock. Provision
+  as 🛒 **Shop**; work in **Retail POS**. Start with
+  [Your First Sale](../first-sale/) and [Inventory & Warehouses](../inventory/).
+- **A restaurant or cafe** — menu categories, tables, kitchen.
+  Provision as 🍽️ **Restaurant or cafe**; work in **Restaurant POS**, and
+  add a **Kitchen Display** when cooks need a ticket queue. Start with
+  [Your First Sale](../first-sale/) and [Workspaces](../workspaces/).
+- **A warehouse or back office** — inward/outward stock and reports. The
+  **Warehouse** workspace covers products, stock levels, bundles, and
+  inventory reports; managers work from **Admin**. Start with
+  [Inventory & Warehouses](../inventory/).
+
+Not sure? The [Quickstart](../quickstart/) path works for every shape —
+it provisions one of the above, adds a test product, and rings a test sale
+regardless of which you picked.
+
 ## Where to start
 
 In a hurry? [Quickstart](../quickstart/) takes you from download to a
