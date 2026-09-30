@@ -35,8 +35,23 @@ step() {
     local name=$1; shift
     local retry_cmd=$1; shift
     local step_str; step_str=$(printf "%02d" "${step_counter}")
-    echo -n "${step_str}. checking ${name}... "
+
+    # CHECK_FROM: skip everything before step N without paying for it. The matrix has 120
+    # steps and the first 36 take about 20 minutes, so re-running it from the top to reach
+    # step 37 is how a late leg stays unverified for a hundred rounds. The comparison is
+    # against this step's OWN number, before the increment, and the counter still advances
+    # for skipped steps -- so a step number printed by a resumed run means exactly what it
+    # means in a full one, and the log filename is unchanged. Set it only when you know the
+    # earlier steps passed: this trusts you, it proves nothing.
+    if [ -n "${CHECK_FROM:-}" ] && [ "${step_counter}" -lt "$CHECK_FROM" ]; then
+        echo -n "${step_str}. skipping ${name} (CHECK_FROM=${CHECK_FROM})... "
+        echo -e "${YELLOW}SKIPPED${NC}"
+        step_counter=$((step_counter + 1))
+        return 0
+    fi
     step_counter=$((step_counter + 1))
+
+    echo -n "${step_str}. checking ${name}... "
 
     # Keep the output instead of discarding it. This used to be `>/dev/null 2>&1`
     # plus a "re-run it by hand" hint, and that is precisely how the rustdoc step
