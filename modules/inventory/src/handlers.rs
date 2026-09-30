@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-inventory slice A: handlers deep read)
 crate: modules-inventory | status: SAFE | lint: CLEAN
-findings: MSL-3 INFO — InventoryStockHandler deduction is tx-safe (error path drops tx, rollback) and BOM-aware, but two error-swallow patterns exist: (1) stock_summary writes are .ok()-swallowed best-effort (derived-cache drift self-heals via the ADR #6 rebuild); (2) a recipe-table read error would yield an empty ingredient list and deduct the composite product instead of ingredients (infrastructure-failure only; unknown-SKU and non-inventory skips are correct). UPDATE-RETURNING no-row maps to insufficient-stock error (fail-closed, misleading message)
-next: tighten stock_summary error surfacing | perf: N/A
+findings: MSL-3 — InventoryStockHandler deduction is tx-safe (error path drops tx, rollback) and BOM-aware. Pattern (2) FIXED in 0ae9a43bb 'fix(inventory): refuse a sale whose recipe row cannot be read' — the old `ings.flatten()` dropped row-level FromSql errors, so an empty list made the code take the simple-product arm and deduct the COMPOSITE while leaving ingredients untouched; every row must now decode (`ingredients.push(i?)`), so an unreadable recipe row refuses the sale and rolls the deduction back. Pinned by an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_deducting (modules/inventory/src/handlers_tests.rs:39). Pattern (1) is DELIBERATE and verified, not pending: the stock_summary writes stay .ok()-swallowed best-effort because stock_summary is a derived cache rebuilt from the movement ledger (rebuild_stock_summary) by the sync daemon (platform/sync/src/daemon_tick.rs, pg_daemon.rs); the authoritative deduction is fail-closed via `UPDATE inventory ... RETURNING qty` + the new_qty>=0 check. UPDATE-RETURNING no-row maps to insufficient-stock error (fail-closed, misleading message)
+next: none | perf: N/A
 */
 //! Event handlers for the Inventory module.
 //!

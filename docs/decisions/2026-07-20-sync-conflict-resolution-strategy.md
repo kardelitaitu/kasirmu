@@ -565,3 +565,12 @@ The `auth.rs` findings line now records the correction and `next:` reads `none`.
 The no-feature arm now emits `tracing::debug!("cache-redis feature is not compiled; using noop cache")`. The feature arm keeps its existing `error = %e` warning and gains a `let _ = (redis_url, ttl_seconds);` so its parameters stay used under both `cfg`s.
 
 Pinned by `create_cache_without_the_feature_is_distinguishable_from_a_dead_server` in `crates/kasirmu-core/src/cache_create_tests.rs` (a source-level guard: a log line cannot be observed behaviourally). The remaining cache observations (pub/sub listener does not reconnect; the `Sender` cannot report its own death) stay recorded — neither is reachable, since nothing calls `start_inventory_pubsub` or `publish_inventory_change`.
+
+## The inventory handler's recipe-read swallow was already fixed (marker correction, 2026-10-04)
+
+`modules/inventory/src/handlers.rs` carried an MSL-3 findings line and `next: tighten stock_summary error surfacing` that described two error-swallow patterns as open. Pattern (2) had already been closed:
+
+- **Recipe-table read error** — commit `0ae9a43bb` ("fix(inventory): refuse a sale whose recipe row cannot be read"). The old `ings.flatten()` dropped row-level `FromSql` errors, so an undecodable recipe row produced an empty ingredient list, the handler took the simple-product arm, and the COMPOSITE item was deducted while its INGREDIENTS were never touched. Every row must now decode (`ingredients.push(i?)`), so an unreadable recipe row refuses the sale and the whole deduction rolls back. Pinned by `an_undecodable_recipe_row_refuses_the_sale_rather_than_mis_deducting` (`modules/inventory/src/handlers_tests.rs:39`).
+- **`stock_summary` writes are `.ok()`-swallowed** — this one is DELIBERATE and verified, not pending. `stock_summary` is a derived cache rebuilt from the movement ledger by `rebuild_stock_summary`, which the sync daemon invokes (`platform/sync/src/daemon_tick.rs`, `pg_daemon.rs`); the authoritative deduction is fail-closed via `UPDATE inventory ... RETURNING qty` plus the `new_qty >= 0` check, so a lost summary update self-heals rather than corrupting a sale.
+
+The marker now records both dispositions and `next:` reads `none`.
