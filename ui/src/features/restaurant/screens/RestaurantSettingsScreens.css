@@ -1156,6 +1156,10 @@
   flex-shrink: 0;
 }
 
+[data-theme='dark'] .resto-logo-thumb-box {
+  background: #e8e8e8;
+}
+
 .resto-logo-thumb {
   max-width: 100%;
   max-height: 100%;
