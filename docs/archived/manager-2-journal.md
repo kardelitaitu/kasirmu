@@ -2749,4 +2749,6 @@ transport/tooling defects 5 . waves-to-integrate for Wave E/F: 2 (the gate + one
 - GATES: tablet check CLEAN; tablet --lib 652/652 (staff 41/41); bridge --lib 1305/1305; fmt; G6 495/506 delta 11 VALID; parity — only the kds lane's 2 tablet registrations remain; scoped-coverage PASS; wtree-guard clean.
 - NEXT: products (ProductDto divergence: bridge has id/image_hash/images the tablet lacks 
 
-> last audited 29-09-26 by docs-auditor— check whether the tablet's product surface genuinely has no images before touching it) and settings (HardwareSettingsDto: tablet 5 fields vs bridge 15 — a real subset, scale/printer/sound config; must establish whether the tablet UI can reach those setters before re-exporting, else the re-export widens the tablet wire without a consumer). product_variants was already field-identical (6/6) → ready to re-export. 6 basename-dupes still queued. Nothing pushed.
+- NEXT: products (ProductDto divergence: bridge has id/image_hash/images the tablet lacks — check whether the tablet's product surface genuinely has no images before touching it) and settings (HardwareSettingsDto: tablet 5 fields vs bridge 15 — a real subset, scale/printer/sound config; must establish whether the tablet UI can reach those setters before re-exporting, else the re-export widens the tablet wire without a consumer). product_variants was already field-identical (6/6) → ready to re-export. 6 basename-dupes still queued. Nothing pushed.
+
+> last audited 29-09-26 by docs-auditor
