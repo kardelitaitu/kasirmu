@@ -1320,6 +1320,22 @@
       }
     },
     {
+      "id": "settled-read-copies",
+      "label": "settled-read copies",
+      "status": "required",
+      "_note": "Added 2026-09-30. The settled-read contract -- a failed read returns { ok: false } with no value, so a caller cannot mistake it for \"answered, and the answer was empty\" -- reached FOUR hand-copied implementations before any check could see them: BootRead in app/AppShell.tsx, BootReadResult in utils/boot-retry.ts, Read in stock-transfers/StockTransfersScreen.tsx and warehouse/WarehouseCountFlow.tsx. Each was type-correct, each passed the whole suite, and two documented the contract by citing a COPY at a line range that had already moved. Nothing in scripts/ referenced settleRead at all, so the fifth copy would have arrived the same silent way. Shape-based, not name-based: naming those four in a list would make the checker report zero findings the day after it was written, which is how the first four got there. It grades declarations only -- a caller may legitimately name the type in a signature -- and it does not judge whether a second verdict SHAPE is ever warranted; boot-retry.ts keeps its own function because a read that must be RE-ISSUED against a timeout cannot reuse settleRead, and this checker is what records that the distinction is deliberate rather than accidental.",
+      "runners": {
+        "check.sh": [
+          "settled-read copies",
+          "settled-read copies self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
       "id": "checker-selftest-companions",
       "label": "checker self-test companions",
       "status": "required",

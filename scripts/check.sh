@@ -748,6 +748,16 @@ step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-t
 # so it can be a step rather than a note.
 step "fluent dynamic families" "python3 scripts/verify-fluent-dynamic-families.py" python3 scripts/verify-fluent-dynamic-families.py
 
+# The settled-read verdict union had FOUR hand-copied declarations before this
+# gate existed, and none of them was visible to any other check: each was
+# type-correct, each passed the whole suite, and two of them documented the
+# contract by citing a COPY of it at a line range that had already moved. A
+# contract worth copying needs a gate saying it is copied once -- otherwise the
+# fifth copy is as acceptable as the first four were. Shape-based, not
+# name-based: naming the four would have made it silent the day after.
+step "settled-read copies" "python3 scripts/verify-settled-read-copies.py" python3 scripts/verify-settled-read-copies.py
+step "settled-read copies self-test" "python3 scripts/verify-settled-read-copies.py --self-test" python3 scripts/verify-settled-read-copies.py --self-test
+
 step "selftest sweep" "python3 scripts/verify-selftest-sweep.py" python3 scripts/verify-selftest-sweep.py
 step "selftest sweep self-test" "python3 scripts/verify-selftest-sweep.py --self-test" python3 scripts/verify-selftest-sweep.py --self-test
 

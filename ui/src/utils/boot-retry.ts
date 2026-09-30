@@ -2,6 +2,7 @@ import { getLicenseStatus, type LicenseStatusDto } from '@/api/license';
 import { getFirstRunState, type FirstRunState } from '@/api/settings';
 import { hasUsers, type HasUsersResult } from '@/api/staff';
 import { getDeviceId } from '@/api/system';
+import type { SettledRead } from '@/utils/settle-read';
 
 /**
  * Boot-gate read recovery for lost IPC responses.
@@ -26,8 +27,10 @@ import { getDeviceId } from '@/api/system';
  */
 export const bootRetryConfig = { attempts: 4, timeoutMs: 5000 };
 
-/** A settled boot read: the value, or "the read never answered". */
-export type BootReadResult<T> = { ok: true; value: T } | { ok: false };
+// The verdict shape is the shared one (ui/src/utils/settle-read.ts): the value,
+// or "the read never answered" with no value to mistake for an answer. This
+// file used to declare its own copy of the union, which is how a fifth copy can
+// appear unnoticed -- the gate that now forbids one is scripts/verify-settled-read-copies.py.
 
 /**
  * Run one boot read with the lost-response retry above.
@@ -39,7 +42,7 @@ export type BootReadResult<T> = { ok: true; value: T } | { ok: false };
  * harmless (the caller has already moved on) and there is no cancellation
  * channel to reach through.
  */
-export async function readWithRetry<T>(fn: () => Promise<T>): Promise<BootReadResult<T>> {
+export async function readWithRetry<T>(fn: () => Promise<T>): Promise<SettledRead<T>> {
   for (let attempt = 1; attempt <= bootRetryConfig.attempts; attempt++) {
     const outcome = await Promise.race([
       fn()

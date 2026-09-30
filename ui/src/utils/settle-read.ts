@@ -44,6 +44,9 @@ export type SettledRead<T> = { ok: true; value: T } | { ok: false };
  *   - AppShell.tsx -- every boot read (`boot ` prefix)
  *   - StockTransfersScreen.tsx (`stock-transfers ` prefix)
  *   - WarehouseCountFlow.tsx (`warehouse-count ` prefix)
+ *   - boot-retry.ts -- the tablet boot gate, whose lost-response retry
+ *     settles to the same verdict (it cannot reuse the FUNCTION: the read
+ *     has to be re-issued, not just awaited, so the contracts differ)
  */
 export async function settleRead<T>(label: string, read: Promise<T>): Promise<SettledRead<T>> {
   try {

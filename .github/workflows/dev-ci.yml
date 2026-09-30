@@ -1265,6 +1265,16 @@ jobs:
         run: python3 scripts/verify-selftests-wired.py
       - name: Self-tests are wired self-test
         run: python3 scripts/verify-selftests-wired.py --self-test
+      # The settled-read verdict union had FOUR hand-copied declarations before this
+      # gate existed, none visible to any other check: each was type-correct, each
+      # passed the whole suite, and two documented the contract by citing a COPY of it
+      # at a line range that had already moved. CI runs it because the copies were
+      # found by reading, not by a gate -- which is exactly what should not be the
+      # only way a class of drift is ever found.
+      - name: Settled-read copies
+        run: python3 scripts/verify-settled-read-copies.py
+      - name: Settled-read copies self-test
+        run: python3 scripts/verify-settled-read-copies.py --self-test
 
       # Both added 2026-09-29 after existing only as check.sh steps, which was the wrong
       # side for gates whose entire subject is a file that silently does not run: a
