@@ -53,6 +53,7 @@ impl<'a> LoyaltyRepository<'a> {
         &self,
         card_number: &str,
     ) -> Result<Option<GiftCard>, LoyaltyError> {
+        // namespace: cross-vertical read gift_cards granted (loyalty redeems gift cards but giftcards owns the table; Phase 4 replaces this with a store read API)
         let mut stmt = self.conn.prepare(
             "SELECT id, card_number, initial_balance_minor, current_balance_minor, currency, status, issued_to, issue_date, expiry_date, created_by, updated_at
              FROM gift_cards WHERE card_number = ?1",

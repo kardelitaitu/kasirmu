@@ -39,6 +39,23 @@ ownership map in §3. A reference to a table outside the file's own module (and 
 is a **verdict** (exit 1) *only if it is not already in the frozen baseline*
 (`scripts/namespace-governance-baseline.json`). Existing violations are inventoried, not failed.
 
+**Grant markers (T3):** a baseline entry no longer excuses a cross-vertical read on its own. The call
+site must carry an in-code marker naming exactly the table it reads:
+
+```rust
+// namespace: cross-vertical read sales granted (daily revenue aggregate; Phase 4 moves this behind a store read API)
+let mut stmt = self.conn.prepare("SELECT ... FROM sales WHERE ...")?;
+```
+
+The marker must sit within a four-line window **above** the statement and name the same table; a
+marker naming a different table, or sitting below the statement, does not grant. A reference that
+carries a matching marker is permitted and reported as *granted* (whether or not it is baselined); a
+baselined reference **without** a marker is blocking, with the marker's absence named as the
+remediation. A marker that sits on a reference to the module's **own** table is a `stale-grant`
+finding: the exception outlived the coupling it excused, and leaving it would let a future unrelated
+read hide behind it. The intended end state is a zero-entry baseline: every remaining edge carries a
+visible, reviewable grant.
+
 ### Rule 2 — No new unclassified handlers
 
 Every registered event handler carries a classification, drawn from ADR-62 D4's vocabulary:
@@ -122,12 +139,14 @@ module code. Each is either allowlisted (deliberate, with a reason) or baselined
 
 | Site | Reads | Owner module | Verdict |
 |---|---|---|---|
-| `modules/reporting/src/repository.rs:33` | `sales` | sales | **Baselined debt.** Reporting is the sanctioned cross-vertical reader (ADR-62 D5), but this site (`generate_daily_report`) bypasses the facade with its own SQL. Plan §9.5 target: route through `kasirmu_core::db::reports`. `modules/reporting/src/lib.rs:33-40` already records this surface as zero non-test callers. |
-| `modules/loyalty/src/repository.rs:58` | `gift_cards` | giftcards | **Baselined debt.** `get_gift_card_by_number` reads a table owned by the `giftcards` module, but loyalty declares only `deps: ["crm"]`. Not surfaced by the plan; found by this inventory. |
+| `modules/reporting/src/repository.rs:34` | `sales` | sales | **Baselined debt + grant marker.** Reporting is the sanctioned cross-vertical reader (ADR-62 D5), but this site (`generate_daily_report`) bypasses the facade with its own SQL. Carries the T3 marker `// namespace: cross-vertical read sales granted (…)`. Plan §9.5 target: route through `kasirmu_core::db::reports`, after which the marker is deleted. `modules/reporting/src/lib.rs:33-40` already records this surface as zero non-test callers. |
+| `modules/loyalty/src/repository.rs:59` | `gift_cards` | giftcards | **Baselined debt + grant marker.** `get_gift_card_by_number` reads a table owned by the `giftcards` module, but loyalty declares only `deps: ["crm"]`. Carries the T3 marker. Not surfaced by the plan; found by this inventory. |
 | `modules/inventory/src/handlers.rs` (72, 89, 127, 155, 161, 180, 187, 195) | `products`, `product_recipes`, `inventory`, `stock_summary` | inventory | **Not a violation** — all four tables are inventory's own. The file's cross-file concern (it is a dead test-only handler) is the census's, not this rule's. |
 
-**Genuine cross-vertical edges: 2** (reporting→sales, loyalty→gift_cards). Both are baselined; neither
-is new, so the gate is green today and a *new* one fails.
+**Genuine cross-vertical edges: 2** (reporting→sales, loyalty→gift_cards). Both are baselined
+**and** carry a T3 grant marker; neither is new, so the gate is green today and a *new* one fails. The
+baseline is now only a bookkeeping record of the edges that still need their Phase 4 replacement —
+permission itself comes from the marker, so the baseline can shrink to zero without weakening the gate.
 
 ---
 

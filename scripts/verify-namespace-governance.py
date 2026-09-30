@@ -186,6 +186,19 @@ EVENT_HANDLER_RE = re.compile(
 # exact: a row is stale when its named line is not the impl it claims.
 SITE_RE = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+)$")
 
+# The in-code grant marker (T3): a comment naming the table a cross-vertical
+# read is allowed to touch and the reason it exists.
+#   // namespace: cross-vertical read gift_cards granted (T3: loyalty C9 lookup)
+GRANT_MARKER_RE = re.compile(
+    r"//\s*namespace:\s*cross-vertical\s+read\s+(?P<table>[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"granted\s*\(\s*(?P<reason>[^)]*?)\s*\)"
+)
+
+# How far above a SQL literal to look for its grant marker. The marker sits on
+# or immediately above the statement, so a few lines suffice; a wider window
+# would let a marker for one query silently excuse its neighbour.
+GRANT_MARKER_WINDOW = 4
+
 # The Rust spelling of a handler's declared seam type, inside the handler_type
 # method the EventHandler trait provides (T2). Captures the variant name; the
 # snake_case registry category is looked up in RUST_HANDLER_TYPE_TO_CATEGORY.
@@ -460,18 +473,27 @@ SQL_VERB_RE = re.compile(
     r"^\s*(?:SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH)\b", re.IGNORECASE
 )
 
+# A literal that is a single clause of a larger statement: the repo splits long
+# queries across string continuations, so the tail ('FROM sales WHERE ...') is
+# still query text. Anchored at the start and requiring a table-like token, so
+# prose ('from the cart') cannot match.
+SQL_FRAGMENT_RE = re.compile(
+    r"^\s*(?:FROM|JOIN|UPDATE|DELETE\s+FROM)\s+[A-Za-z_][A-Za-z0-9_]*", re.IGNORECASE
+)
+
 
 def is_sql_literal(body: str) -> bool:
-    """True when a literal body is a SQL statement rather than prose.
+    """True when a literal body is SQL text rather than prose.
 
     A table-like token can sit inside a HUMAN string ('failed to construct
     sale from cart') and a keyword-anchored regex cannot tell the two apart.
-    SQL statements in this repo always open with a verb, so the literal must
-    start with one; an error message or log line does not. This is the
-    cheapest honest filter -- a literal that opens with SELECT/INSERT/UPDATE/
-    DELETE/REPLACE/WITH is query text, everything else is prose.
+    SQL statements in this repo always open with a verb. A FRAGMENT (the
+    multi-line continuations this repo builds in place, e.g. 'FROM sales
+    WHERE status = ?1') opens with a clause keyword instead, which is no
+    longer prose: a log or error line does not start with FROM/JOIN/WHERE.
+    Both spellings are query text; everything else is prose.
     """
-    return bool(SQL_VERB_RE.match(body))
+    return bool(SQL_VERB_RE.match(body)) or bool(SQL_FRAGMENT_RE.match(body))
 
 
 def relative_path(path: Path, root: Path) -> str:
@@ -529,8 +551,40 @@ def production_sources(base: Path) -> list[Path]:
     return [p for p in sorted(base.rglob("*.rs")) if is_production_source(p)]
 
 
+def grant_markers(raw: str) -> list[tuple[str, int, str]]:
+    """Every grant marker in a source file: (table, 1-based line, reason)."""
+    markers: list[tuple[str, int, str]] = []
+    for line_number, text in enumerate(raw.split("\n"), start=1):
+        for match in GRANT_MARKER_RE.finditer(text):
+            markers.append((match.group("table").lower(), line_number, match.group("reason")))
+    return markers
+
+
+def grant_for(table: str, literal_start: int, markers: list[tuple[str, int, str]]) -> tuple[str, int] | None:
+    """The marker granting a table on or shortly above its statement, if any.
+
+    Returns (reason, marker_line). The window is deliberately small and anchored
+    above the statement: a marker further away, or one naming a different table,
+    does not excuse this reference.
+    """
+    for marker_table, marker_line, reason in markers:
+        if marker_table != table:
+            continue
+        if 0 <= literal_start - marker_line <= GRANT_MARKER_WINDOW or marker_line == literal_start:
+            return reason, marker_line
+    return None
+
+
 def module_sql_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
-    """Every cross-vertical table a module names in raw SQL (Rule 1's subject)."""
+    """Every cross-vertical table a module names in raw SQL (Rule 1 subject).
+
+    A cross-vertical reference is PERMITTED when it carries a grant marker for
+    exactly its target table (T3): the finding is still emitted, but flagged
+    granted so the baseline layer lets it through and the report shows the
+    reason. A marker on a reference to the module own table is a stale grant
+    (stale-grant) -- the exception outlived the coupling, and leaving it
+    would let a future unrelated read hide behind it.
+    """
     findings: list[dict[str, Any]] = []
     modules_root = root / MODULE_SOURCE_ROOT
     if not modules_root.is_dir():
@@ -543,7 +597,8 @@ def module_sql_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any
         try:
             raw = path.read_text(encoding="utf-8")
         except OSError as exc:
-            raise ValueError(f"cannot read module source: {path}: {exc}") from exc
+            raise ValueError("cannot read module source: " + str(path) + ": " + str(exc)) from exc
+        markers = grant_markers(raw)
         seen_tables: set[str] = set()
         for body, start_line in sql_literals(raw):
             if not is_sql_literal(body):
@@ -558,16 +613,31 @@ def module_sql_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any
                 owner = TABLE_TO_MODULE.get(table)
                 rel = relative_path(path, root)
                 line = start_line + body.count("\n", 0, match.start())
+                grant = grant_for(table, start_line, markers)
                 if owner is None:
                     scope["unowned_tables"] += 1
                     findings.append(make_finding("unowned-table", rel, table, line, "note"))
                     continue
                 if owner == owner_module:
+                    if grant is not None:
+                        # A marker that outlived the coupling it excused.
+                        scope["stale_grants"] += 1
+                        finding = make_finding(
+                            "stale-grant", rel, table + " (owned by this module)",
+                            grant[1], "verdict",
+                        )
+                        finding["grant_reason"] = grant[0]
+                        findings.append(finding)
                     continue
                 scope["cross_vertical_refs"] += 1
-                findings.append(make_finding("cross-vertical-sql", rel, f"{table} (owned by {owner})", line, "verdict"))
+                finding = make_finding(
+                    "cross-vertical-sql", rel, table + " (owned by " + owner + ")", line, "verdict"
+                )
+                if grant is not None:
+                    finding["granted"] = True
+                    finding["grant_reason"] = grant[0]
+                findings.append(finding)
     return findings
-
 
 def handler_findings(root: Path, classifications: set[str], scope: dict[str, int]) -> list[dict[str, Any]]:
     """New EventHandler implementations with no classification (Rule 2)."""
@@ -928,6 +998,7 @@ RULE_REMEDIATION = {
     "unclassified-handler": "Add the handler type to scripts/handler-classification.json with one of the ADR-62 D4 categories.",
     "undeclared-dependency": "Declare the owning module in modules/<id>/manifest.json dependencies.",
     "unowned-table": "Add the table to TABLE_OWNERS in this checker if a module owns it.",
+    "stale-grant": "Delete the grant marker: the reference now names a table this module owns, so the exception is no longer needed.",
     "stale-handler-row": "Update the registry row's 'site' to where the impl now lives, or remove the row if the handler was deleted.",
     "retired-handler-row": "Confirm the handler was deleted, then remove its registry row (or re-point it if it was renamed).",
 }
@@ -980,9 +1051,10 @@ def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
             if not isinstance(entry.get(field), str) or not entry[field].strip():
                 raise ValueError(f"baseline entry missing non-empty '{field}'")
         if entry["rule"] != "cross-vertical-sql":
-            # Only Rule 1 findings are baselined. A new unclassified handler or a
-            # stale entry is not forgiven by a baseline entry -- those fail
-            # directly, so an entry claiming otherwise is malformed input.
+            # Only Rule 1 findings are baselined. A new unclassified handler, a
+            # stale grant or a stale registry row is not forgiven by a baseline
+            # entry -- those fail directly, so an entry claiming otherwise is
+            # malformed input.
             raise ValueError(
                 f"baseline entry has non-baselineable rule '{entry['rule']}': "
                 "only 'cross-vertical-sql' findings may be frozen"
@@ -995,6 +1067,14 @@ def load_baseline(path: Path, root: Path) -> list[dict[str, Any]]:
 
 
 def apply_baseline(findings: list[dict[str, Any]], baseline: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split findings into (tracked, blocking, stale) under the grant rule (T3).
+
+    A cross-vertical reference is permitted when it carries a valid grant marker
+    (T3): it is reported as tracked/granted whether or not a baseline entry
+    exists. A baseline entry whose finding has NO grant marker no longer excuses
+    it -- the whole point of T3 is that the exception must be visible at the call
+    site, so the finding becomes blocking and says why.
+    """
     baseline_by_key = {(e["rule"], e["path"], e["target"]): e for e in baseline}
     matched: set[tuple[str, str, str]] = set()
     tracked: list[dict[str, Any]] = []
@@ -1006,6 +1086,30 @@ def apply_baseline(findings: list[dict[str, Any]], baseline: list[dict[str, Any]
             continue
         key = finding_key(finding)
         entry = baseline_by_key.get(key)
+        granted = bool(finding.get("granted"))
+        if finding["rule"] == "cross-vertical-sql" and granted:
+            # Permitted by an in-code grant. A baseline entry, if present, is
+            # marked matched so it is not reported stale -- the edge is still
+            # frozen AND now carries its marker, which is what T3 requires.
+            if entry is not None:
+                matched.add(key)
+                finding["baseline_entry"] = entry
+            finding["baseline_status"] = "granted"
+            tracked.append(finding)
+            continue
+        if entry is not None and finding["rule"] == "cross-vertical-sql" and not granted:
+            # A frozen edge that still has no marker: fail, and say the marker is
+            # what is missing rather than the access itself.
+            matched.add(key)
+            finding["baseline_status"] = "unmarked"
+            finding["baseline_entry"] = entry
+            finding["remediation"] = (
+                "Add an in-code grant marker above the statement: "
+                "// namespace: cross-vertical read <table> granted (<reason>). "
+                "A baseline entry no longer excuses an unmarked cross-vertical read."
+            )
+            blocking.append(finding)
+            continue
         if entry is None:
             blocking.append(finding)
         else:
@@ -1084,6 +1188,7 @@ def new_scope() -> dict[str, Any]:
         "unowned_tables": 0,
         "stale_handler_rows": 0,
         "retired_handler_rows": 0,
+        "stale_grants": 0,
         "_baseline": [],
     }
 
@@ -1484,6 +1589,91 @@ def self_test() -> int:
             failures.append("build_registry accepted a row with no Rust declaration")
         except ValueError:
             pass
+
+    # T3: grant markers -- no marker fails, matching marker passes, wrong
+    # table (and own-table) marker fails or is stale.
+    check("GRANT_MARKER_RE reads table and reason",
+          GRANT_MARKER_RE.search(
+              "// namespace: cross-vertical read sales granted (daily report)").groups(),
+          ("sales", "daily report"))
+    check("GRANT_MARKER_RE tolerates extra spacing",
+          GRANT_MARKER_RE.search(
+              "//  namespace:  cross-vertical  read  gift_cards  granted ( x )").group("table"),
+          "gift_cards")
+    check("grant_markers reports 1-based line numbers",
+          [(t, ln) for t, ln, _ in grant_markers("let a = 1;\n// namespace: cross-vertical read sales granted (r)\n")],
+          [("sales", 2)])
+    check("grant_for finds a marker within the window above the statement",
+          grant_for("sales", 5, grant_markers(
+              "l1\nl2\n// namespace: cross-vertical read sales granted (r)\nl4\nl5")),
+          ("r", 3))
+    check("grant_for is one-way: a marker BELOW the statement does not grant",
+          grant_for("sales", 1, grant_markers(
+              "l1\nl2\n// namespace: cross-vertical read sales granted (r)")),
+          None)
+    check("grant_for ignores a marker further than the window",
+          grant_for("sales", 10, grant_markers(
+              "// namespace: cross-vertical read sales granted (r)")),
+          None)
+    check("grant_for ignores a marker naming another table",
+          grant_for("gift_cards", 1, grant_markers(
+              "// namespace: cross-vertical read sales granted (r)")),
+          None)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp)
+        src = tree / "modules" / "loyalty" / "src"
+        src.mkdir(parents=True)
+        scope = new_scope()
+        baseline = [{"rule": "cross-vertical-sql",
+                     "path": "modules/loyalty/src/repository.rs",
+                     "target": "gift_cards (owned by giftcards)",
+                     "reason": "frozen edge"}]
+
+        def sql_file(body: str) -> None:
+            (src / "repository.rs").write_text(body, encoding="utf-8")
+
+        # An unmarked frozen edge is blocking: the baseline is not enough.
+        sql_file('let q = "FROM gift_cards WHERE card_number = ?1";\n')
+        findings = module_sql_findings(tree, scope)
+        tracked, blocking, stale = apply_baseline(findings, baseline)
+        check("T3: an unmarked frozen edge blocks",
+              [len(tracked), [f["baseline_status"] for f in blocking]], [0, ["unmarked"]])
+
+        # The same edge WITH a matching marker is permitted (tracked/granted).
+        sql_file("// namespace: cross-vertical read gift_cards granted (gift card redemption)\n"
+                 'let q = "FROM gift_cards WHERE card_number = ?1";\n')
+        findings = module_sql_findings(tree, scope)
+        tracked, blocking, stale = apply_baseline(findings, baseline)
+        check("T3: a matching grant marker permits the frozen edge",
+              [len(blocking), [f["baseline_status"] for f in tracked]], [0, ["granted"]])
+        check("T3: the granted finding carries the marker's reason",
+              tracked[0]["grant_reason"], "gift card redemption")
+
+        # A marker naming the wrong table does not grant.
+        sql_file("// namespace: cross-vertical read sales granted (wrong)\n"
+                 'let q = "FROM gift_cards WHERE card_number = ?1";\n')
+        findings = module_sql_findings(tree, scope)
+        tracked, blocking, stale = apply_baseline(findings, baseline)
+        check("T3: a wrong-table marker does not grant",
+              [len(tracked), [f["baseline_status"] for f in blocking]], [0, ["unmarked"]])
+
+        # A marker on a reference to the module's own table is a stale grant.
+        sql_file("// namespace: cross-vertical read loyalty_accounts granted (outlived)\n"
+                 'let q = "FROM loyalty_accounts WHERE id = ?1";\n')
+        findings = module_sql_findings(tree, scope)
+        check("T3: a marker on the module's own table is a stale grant",
+              [f["rule"] for f in findings], ["stale-grant"])
+        tracked, blocking, stale = apply_baseline(findings, baseline)
+        check("T3: a stale grant always blocks",
+              [len(tracked), [f["rule"] for f in blocking]], [0, ["stale-grant"]])
+
+        # An unowned table with a marker is still just informational.
+        sql_file("// namespace: cross-vertical read sqlite_master granted (introspection)\n"
+                 'let q = "FROM sqlite_master";\n')
+        findings = module_sql_findings(tree, scope)
+        check("T3: an unowned table stays a note even with a marker",
+              [f["rule"] for f in findings], ["unowned-table"])
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)

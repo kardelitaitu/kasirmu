@@ -161,12 +161,12 @@ around instead of with:
    today is to edit `scripts/namespace-governance-baseline.json` — an opaque `(rule, path, target)` tuple
    list with no owner, date, or expiry by design. That is fine for *freezing pre-existing debt*, but it is
    the wrong shape for *granting new access*, because the grant is invisible at the call site.
-2. **No in-code marker.** A reviewer reading `modules/loyalty/src/repository.rs:58` sees a raw `SELECT`
+2. **No in-code marker.** A reviewer reading `modules/loyalty/src/repository.rs:59` sees a raw `SELECT`
    against `gift_cards` with nothing pointing at the governance doc or the grant.
 
 **Verified facts the ticket rests on:**
-- The two frozen edges are exactly: `modules/reporting/src/repository.rs:33` → `sales` (owner sales), and
-  `modules/loyalty/src/repository.rs:58` → `gift_cards` (owner giftcards; `loyalty` declares only `[crm]`).
+- The two frozen edges are exactly: `modules/reporting/src/repository.rs:34` → `sales` (owner sales), and
+  `modules/loyalty/src/repository.rs:59` → `gift_cards` (owner giftcards; `loyalty` declares only `[crm]`).
 - Both are *reads*. There is no production cross-vertical *write* today — so T3 does not need a write grant
   vocabulary yet, and should not invent one.
 - `modules/reporting/src/repository.rs` is scheduled to migrate onto the facade by the NamespacedStore
@@ -199,6 +199,19 @@ code — that is the whole point over a silent baseline edit.
 - Removing one marker turns the run red naming that file:line and its target.
 - A new unmarked cross-vertical read is a *blocking* finding (exit 1), not informational.
 - `--self-test` covers marker-present, marker-absent, and marker-wrong-table.
+
+**Status: DONE 2026-10-02.** `GRANT_MARKER_RE` accepts
+`// namespace: cross-vertical read <table> granted (<reason>)` and must sit within a four-line window
+*above* the statement; `grant_for(table, literal_start, markers)` matches the marker to the table the
+literal actually names. `apply_baseline` now splits three ways: a marker-granted reference is
+*tracked/granted* (baselined or not), a baselined reference with no marker is **blocking** with the
+missing marker named as the remediation, and a marker on an own-table reference is a new `stale-grant`
+verdict. Both frozen edges (`modules/reporting/src/repository.rs:34`, `modules/loyalty/src/repository.rs:59`)
+now carry markers and the run is green. The check exposed one pre-existing bug: a partial-clause literal
+(`"FROM sales WHERE …"`) did not match the SELECT-anchored verb regex and was silently treated as prose,
+so both edges were invisible to the gate before T3; `SQL_FRAGMENT_RE` now recognises a leading
+FROM/JOIN/UPDATE/DELETE FROM clause. `--self-test` covers no-marker/wrong-table/below-statement/stale-grant
+and the fixture drives the real `module_sql_findings`.
 
 **Depends on:** nothing. **Constraint:** Rule 1 stays *soft* in Phase 1; no new gate ID beyond the existing
 `namespace-governance`.
@@ -288,7 +301,7 @@ ADR-62 D5 ('reads through it, never writes') and must be resolved explicitly, no
 3. Reconcile §9.5's four-method target trait with the real ~24-method surface: state whether the trait is
    a *narrow* facade (four methods, the plan's intent) or a *mirror* of everything. Pick narrow; a trait
    that re-exports every inherent method adds an indirection with no boundary.
-4. Sequence the migration: `generate_daily_report` (`modules/reporting/src/repository.rs:33`) is the one
+4. Sequence the migration: `generate_daily_report` (`modules/reporting/src/repository.rs:34`) is the one
    named candidate; list any *other* reporting-module query that names a foreign table, so §9.5's
    'no new direct SQL' becomes a checklist rather than an aspiration.
 

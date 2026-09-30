@@ -28,6 +28,7 @@ impl<'a> ReportingRepository<'a> {
         // per-line `tax_minor` lives on `sale_lines`); the previous
         // `SUM(tax_minor)` failed at runtime with "no such column" on
         // every call.
+        // namespace: cross-vertical read sales granted (read-only daily sales aggregate; reporting owns no sales data and Phase 4 moves this behind a store read API)
         let mut stmt = self.conn.prepare(
             "SELECT COUNT(*), COALESCE(SUM(total_minor), 0), COALESCE(SUM(tax_total_minor), 0)
              FROM sales WHERE strftime('%Y-%m-%d', created_at) = ?1 AND status = 'completed'",
