@@ -47,6 +47,14 @@ vi.mock('@/api/settings', () => ({
   setSettingScoped: (...args: unknown[]) => mockSetSettingScoped(...args),
 }));
 
+// The screen resolves the store's IANA zone to pre-fill the effective date
+// (ADR #48 Decision 3). Mocked because the assertion is about WHICH zone the
+// date comes from, not about the location fetch itself.
+const mockGetPrimaryLocationScoped = vi.fn();
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function makeRate(overrides: Record<string, unknown> = {}) {
@@ -81,6 +89,10 @@ describe('ExchangeRateScreen', () => {
     mockListCurrenciesScoped.mockReset();
     mockCreateExchangeRateScoped.mockReset();
     mockDeleteExchangeRateScoped.mockReset();
+    mockGetPrimaryLocationScoped.mockReset();
+    // No store zone by default: a store profile that never loads is the
+    // fallback path, and it must still not fall back to the DEVICE.
+    mockGetPrimaryLocationScoped.mockResolvedValue(null);
     workspaceMock.sessionToken = '';
   });
 
@@ -456,5 +468,89 @@ describe('ExchangeRateScreen — auto-sync toggle', () => {
       expect(screen.getByText('Could not save the auto-sync setting')).toBeTruthy();
     });
     expect(sw.checked).toBe(false);
+  });
+
+  // ── The effective date anchors to the STORE, not the device ──────────
+  //
+  // These two cases exist because the two "creates a rate" tests above assert
+  // effective_date: expect.any(String) -- which is satisfied by ANY date, on
+  // any host, in any zone. That is why a device-local prefill could ship
+  // despite ADR #48 Decision 3 (the effective date is a business date in the
+  // store's IANA zone) being implemented correctly in the backend.
+  //
+  // The assertion is by VALUE against a store zone the test controls, so it
+  // cannot pass on a host that happens to agree.
+  describe('effective date anchoring', () => {
+    /** The date the store's zone is currently on, computed the way the backend computes it. */
+    function storeToday(tz: string): string {
+      const now = new Date();
+      // Fixed-offset zones are all this needs, and keeping it explicit means the
+      // test's expectation is derived rather than pasted.
+      const m = /^([+-])(\d{2}):?(\d{2})$/.exec(tz);
+      if (!m) return new Date(now.getTime()).toISOString().slice(0, 10);
+      const sign = m[1] === '-' ? -1 : 1;
+      const offset = sign * (Number(m[2]) * 60 + Number(m[3])) * 60_000;
+      return new Date(now.getTime() + offset).toISOString().slice(0, 10);
+    }
+
+    /** Open the create modal and return its date input. */
+    async function openCreateDateField(): Promise<HTMLInputElement> {
+      const user = userEvent.setup();
+      await user.click(screen.getByText('Add'));
+      const input = (await screen.findByDisplayValue(/^\d{4}-\d{2}-\d{2}$/)) as HTMLInputElement;
+      return input;
+    }
+
+    it('pre-fills the store business date, not the device date', async () => {
+      // +14:00 (Kiritimati) is the largest offset that can put the store's
+      // calendar a full day AHEAD of UTC, and therefore ahead of any west-of-UTC
+      // device.
+      const storeTz = '+14:00';
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockResolvedValue({ timezone: storeTz });
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      expect(input.value).toBe(storeToday(storeTz));
+    });
+
+    it('re-seeds the prefill once the store zone arrives after first paint', async () => {
+      // The zone is fetched, so the first render has only the UTC fallback. If
+      // the form captured its default at module load the prefill would stay on
+      // the fallback forever, and the ADR #48 rule would hold only in the
+      // narrow case where the profile is already cached. This pins that the
+      // value is read when the form is OPENED, not at import time.
+      const storeTz = '+14:00';
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockResolvedValue({ timezone: storeTz });
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      // Same value as the case above, reached through a different path: this
+      // one fails if the prefill is computed once at module scope.
+      expect(input.value).toBe(storeToday(storeTz));
+      expect(input.value).not.toBe(storeToday('+00:00'));
+    });
+
+    it('falls back to the store default, never the device, when the profile never loads', async () => {
+      // A store profile that fails to load must not silently become the host
+      // zone: that is the exact failure ADR #48 was written to prevent, and
+      // FALLBACK_STORE_TZ (UTC) is the schema's own column default.
+      workspaceMock.sessionToken = 'test-token';
+      mockGetPrimaryLocationScoped.mockRejectedValue(new Error('offline'));
+      mockListExchangeRatesScoped.mockResolvedValue([]);
+      mockListCurrenciesScoped.mockResolvedValue([]);
+
+      renderScreen();
+      const input = await openCreateDateField();
+
+      expect(input.value).toBe(storeToday('+00:00'));
+    });
   });
 });

@@ -19,13 +19,27 @@ import { SettingsPopup, requiredLocalized } from '@/components';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { parseMinorUnits } from '@/types/domain';
+import { isoToday } from '@/features/analytics/analytics-data';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import './ExchangeRateScreen.css';
 
-function todayStr(): string {
-  const d = new Date();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
+// The default effective date used to be today's date read off the DEVICE
+// calendar. That is not merely a different-looking value -- it defeated a
+// documented contract. create_exchange_rate_scoped resolves the store's IANA
+// zone and defaults the effective date to that zone's business date (ADR #48,
+// Decision 3: "as_of is a business date resolved in the location's IANA
+// zone, not a raw UTC instant"). This form pre-filled the field, so
+// effective_date was always sent and the backend default was never reached:
+// a terminal in any zone other than the store's saved a rate one day off the
+// boundary where the rate goes live.
+//
+// isoToday() is the shared anchor (features/analytics/analytics-data) that
+// reads the store calendar, with FALLBACK_STORE_TZ (UTC, the schema's own
+// column default) when the profile has not loaded. reports/DashboardScreen
+// made the identical replacement for the identical reason -- see the REP-03
+// comment above its own date helpers.
+function todayStr(storeTz?: string | null): string {
+  return isoToday(storeTz);
 }
 
 interface FormData {
@@ -36,13 +50,15 @@ interface FormData {
   effectiveDate: string;
 }
 
-const EMPTY_FORM: FormData = {
+// The effective date is pre-filled rather than left blank, so the field opens
+// on a sensible day. It takes storeTz (not the device) — see todayStr above.
+const emptyForm = (storeTz?: string | null): FormData => ({
   fromCurrency: '',
   toCurrency: '',
   rate: '',
   source: '',
-  effectiveDate: todayStr(),
-};
+  effectiveDate: todayStr(storeTz),
+});
 
 /** Settings key read/written by the auto-sync toggle (platform/core keys.rs). */
 const RATE_SYNC_ENABLED_KEY = 'rate_sync.enabled';
@@ -62,7 +78,7 @@ export default function ExchangeRateScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+  const [form, setForm] = useState<FormData>(() => emptyForm());
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExchangeRateDto | null>(null);
@@ -144,10 +160,26 @@ export default function ExchangeRateScreen() {
     [sessionToken, l10n, addToast],
   );
 
+  // ADR #48 Decision 3: the effective date is a business date in the store's
+  // IANA zone. The zone is read the same way AnalyticsScreen and
+  // reports/DashboardScreen read it — getPrimaryLocationScoped — so all three
+  // screens anchor to one value instead of each inventing its own default.
+  // Until it loads (or if the fetch fails) the anchor is FALLBACK_STORE_TZ
+  // (UTC, the schema's column default), never the device zone.
+  const [storeTz, setStoreTz] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionToken) return;
+    let alive = true;
+    getPrimaryLocationScoped(sessionToken)
+      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
+      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
+    return () => { alive = false; };
+  }, [sessionToken]);
+
   const openCreate = useCallback(() => {
-    setForm(EMPTY_FORM);
+    setForm(emptyForm(storeTz));
     setShowModal(true);
-  }, []);
+  }, [storeTz]);
 
   const handleDeleteClick = useCallback((rate: ExchangeRateDto) => {
     setDeleteTarget(rate);

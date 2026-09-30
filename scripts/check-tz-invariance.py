@@ -68,6 +68,16 @@ TESTS = [
     # disagree on the WEST side of UTC only, so AnalyticsScreen, whose failures
     # were all east-of-UTC month rollover, would not have caught it.
     "src/__tests__/analytics-data.test.ts",
+    # Added 2026-09-30 with the effective-date anchoring repair. A second
+    # screen reading the calendar, but by a different route: the range screens
+    # ask analytics-data for a window, while ExchangeRateScreen pre-fills a
+    # form field, so the host dependency is in the value the user is SHOWN and
+    # then sends. The two existing "creates a rate" cases assert
+    # effective_date: expect.any(String), which any date satisfies -- that is
+    # how a device-local prefill shipped with ADR #48 implemented correctly
+    # behind it. The new cases assert by value against a store zone the test
+    # controls, so they only pass if the anchor is the store and not the host.
+    "src/__tests__/ExchangeRateScreen.test.tsx",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
