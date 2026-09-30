@@ -9,6 +9,7 @@
 //! checks the `NamespacedStore` boundary from P1.
 
 use foundation::contracts::{Module, ModuleId};
+use kasirmu_core::db::namespaced::ModuleId as NsModuleId;
 use platform_kernel::{Capability, Kernel, KernelError, ModuleCapabilities};
 use platform_startup::init_module_system;
 use rusqlite::Connection;
@@ -164,4 +165,108 @@ fn namespaced_store_refuses_a_foreign_read_without_a_grant() {
         .expect("granted read handle")
         .query("SELECT id FROM sales", [], |r| r.get::<_, String>(0))
         .expect("granted read runs");
+}
+
+// ── 4. P4.4: the manifest capabilities ARE the boot-path boundary ────────
+
+/// Resolve the repository `modules/` directory from this crate's location.
+fn modules_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("modules")
+}
+
+/// The `read:<module>` grants a manifest declares, as namespace grants.
+///
+/// [`NsModuleId`] holds a `&'static str`, so the declared target is interned
+/// with `Box::leak` — a test-only lifetime widening, not production behavior.
+fn declared_read_grants(manifest: &platform_kernel::ModuleManifest) -> Vec<NsModuleId> {
+    manifest
+        .capabilities
+        .iter()
+        .filter_map(|cap| cap.strip_prefix("read:"))
+        // `read:<own>` is the module's own namespace, not a foreign grant.
+        .filter(|module| *module != manifest.id)
+        .map(|module| NsModuleId(Box::leak(module.to_string().into_boxed_str())))
+        .collect()
+}
+
+/// Every real module's manifest-declared capabilities name exactly the
+/// namespaces the ownership map and its dependency list allow. This is the
+/// test-level companion to the `capability-parity` gate: without it, replacing
+/// `--check-capabilities` with a hand-edit could let a manifest declare a grant
+/// no dependency justifies, and nothing in the running app would notice.
+#[test]
+fn real_manifests_declare_a_grant_only_for_a_declared_dependency() {
+    let dir = modules_dir();
+    let entries = std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+    let mut checked = 0;
+    for entry in entries {
+        let entry = entry.expect("readable dir entry");
+        let manifest_path = entry.path().join("manifest.json");
+        if !manifest_path.is_file() {
+            continue;
+        }
+        let manifest = platform_kernel::ModuleManifest::load_from_file(&manifest_path)
+            .unwrap_or_else(|e| panic!("{} is invalid: {e}", manifest_path.display()));
+        for cap in &manifest.capabilities {
+            let Some(target) = cap.strip_prefix("read:") else {
+                continue; // write:<own> and read:<own> are self-scoped
+            };
+            if target == manifest.id {
+                continue;
+            }
+            assert!(
+                manifest.dependencies.iter().any(|d| d == target),
+                "{} declares capability '{cap}' but does not list '{target}' in dependencies {:?}",
+                manifest_path.display(),
+                manifest.dependencies
+            );
+        }
+        checked += 1;
+    }
+    assert!(checked >= 14, "expected the full module set, checked {checked}");
+}
+
+/// P4.4 acceptance: a module whose store carries only its manifest-declared
+/// read grants is refused a table owned by a vertical it does NOT declare.
+/// The real `reporting` manifest declares `read:inventory` and `read:sales`;
+/// `loyalty` is a real vertical it must not reach.
+#[test]
+fn a_module_cannot_read_a_table_outside_its_declared_capabilities() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, NamespaceError, NamespacedStore};
+
+    let manifest_path = modules_dir().join("reporting").join("manifest.json");
+    let manifest = platform_kernel::ModuleManifest::load_from_file(&manifest_path)
+        .expect("reporting manifest must load");
+    let grants = Grants::read(declared_read_grants(&manifest));
+    assert!(
+        grants.allows(NsModuleId("sales")),
+        "reporting declares read:sales, so the grant must include it"
+    );
+
+    let (_dir, db_path) = temp_db();
+    let conn = Connection::open(&db_path).expect("open");
+    let ns = NamespacedStore::new(Store::new(&conn), NsModuleId("reporting"), grants);
+
+    // Declared: a read on `sales` is allowed through its own table name.
+    ns.read(NsModuleId("sales"))
+        .expect("sales is a declared grant")
+        .query("SELECT id FROM sales", [], |r| r.get::<_, String>(0))
+        .expect("declared read runs");
+
+    // Undeclared: `loyalty_accounts` is owned by `loyalty`, which reporting
+    // never declares — the store refuses it before it reaches the database.
+    let err = ns
+        .own()
+        .query("SELECT id FROM loyalty_accounts", [], |r| {
+            r.get::<_, String>(0)
+        })
+        .expect_err("undeclared foreign read must be refused");
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "loyalty_accounts"),
+        "expected Foreign on loyalty_accounts, got {err:?}"
+    );
 }

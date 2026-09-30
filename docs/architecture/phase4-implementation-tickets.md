@@ -181,6 +181,18 @@ can currently bypass the parse-and-validate step by calling `raw()`.
 
 ## 5. P4.4 — Cross-vertical access-denial tests
 
+**Status: DONE 2026-10-03.** Item 1 was already satisfied by the Phase 3 wraps: all 8 boundary tests
+(`modules/{terminal,settings,loyalty,staff,tax,crm,sales,inventory}/src/repository_tests.rs`) assert the
+error payload, e.g. `matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales")`, and
+`NamespaceError::Foreign` carries `{ table, owner, self_owner }` (`crates/kasirmu-core/src/db/namespaced.rs:87`),
+so the failure names the table AND the owner. Item 2 landed as two tests in
+`platform/startup/tests/boot_capability.rs`: `real_manifests_declare_a_grant_only_for_a_declared_dependency`
+(every `read:<dep>` in a real manifest must name a declared dependency — the test-level companion to the
+`capability-parity` gate) and `a_module_cannot_read_a_table_outside_its_declared_capabilities` (builds a
+`NamespacedStore` for `reporting` from its manifest's declared read grants, proves `sales` passes, and proves
+`loyalty_accounts` — owned by a vertical reporting never declares — is refused with `Foreign`).
+`cargo test -p platform-startup --test boot_capability` 6 pass; clippy `-D warnings` clean.
+
 **Problem.** Phase 3 added per-module own-passes / foreign-refused boundary tests, but the plan's Phase 4
 task "Add tests for cross-vertical access denial" wants the *strict* path proven: a foreign read fails,
 and the failure names the table and the owner.
