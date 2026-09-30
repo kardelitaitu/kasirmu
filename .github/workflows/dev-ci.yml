@@ -984,6 +984,19 @@ jobs:
           fetch-depth: 0
       - name: Architecture boundaries
         run: python3 scripts/verify-architecture-boundaries.py --strict
+      # The two SQLite maintenance scripts' own self-tests, beside the gate they
+      # protect and in the job that already runs their sibling self-tests
+      # (dev-ci.yml#static-gates). The defect they pin is a PATH one: MSYS2 does
+      # not translate a POSIX path embedded in a sqlite3 dot-command, so on a
+      # Windows/Git-Bash operator machine an absolute path made the restore abort
+      # at its own pre-restore safety step. On ubuntu-latest cygpath is absent, so
+      # the translator is a no-op and the self-test exercises the pass-through --
+      # these steps pin the RELATIVE form there and the absolute form on a
+      # Windows dev box; dropping the translator call is proven to fail both.
+      - name: DB backup script self-test
+        run: bash scripts/backup-db.sh --self-test
+      - name: DB restore script self-test
+        run: bash scripts/restore-db.sh --self-test
       - name: No hardcoded money formatting
         run: python3 scripts/verify-no-hardcoded-money-format.py
       - name: Windows config drift

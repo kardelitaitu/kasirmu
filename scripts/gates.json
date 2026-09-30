@@ -230,6 +230,26 @@
       }
     },
     {
+      "id": "db-script-self-tests",
+      "label": "DB script self-tests",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "db backup script self-test",
+          "db restore script self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "DB backup script self-test",
+          "DB restore script self-test"
+        ]
+      },
+      "_note": "Two `--self-test` flags, one gate row: scripts/backup-db.sh and scripts/restore-db.sh each gained one in the same commit, and they are the same defect. A sqlite3 .backup DESTINATION embedded in a dot-command is NOT path-translated by MSYS2 (measured on MINGW64_NT-10.0-26200 with sqlite3 3.50.6), so an absolute path failed with a bare `cannot open /c/...` and the restore ABORTED at its own pre-restore safety step -- the worst possible place for a path bug. Both scripts' documented invocations are RELATIVE (backup-db.sh header :9-12), which is why the defect survived; the relative leg is asserted in each self-test for exactly that reason, so a translator that breaks the common case fails too. Mutation proof: dropping the `$(sqlite3_dot_arg ...)` call leaves the relative leg green and takes the absolute leg to 0 backups (backup) and 2 rows instead of 1 (restore). A gate that cannot fail is decoration, and the sibling precedent is the same (`pg-receipt-selftest`, `scoped-ambient-reads-self-test`)."
+    },
+    {
       "id": "root-policy",
       "label": "Root policy (P8)",
       "status": "required",

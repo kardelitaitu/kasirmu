@@ -710,6 +710,15 @@ step "updater signature self-test" "node scripts/verify-updater-signature.mjs --
 # reasoning: docs/records/audit-open-findings.md, finding GI-4.
 step "quota coverage self-test" "bash scripts/verify-quota-coverage.sh --self-test" bash scripts/verify-quota-coverage.sh --self-test
 
+# The two SQLite maintenance scripts carry a --self-test each, because the defect
+# they guard is invisible on the documented (relative-path) invocation: a
+# sqlite3 .backup destination embedded in a dot-command is NOT path-translated by
+# MSYS, so an absolute path failed with "cannot open /c/..." and the RESTORE aborted
+# at its own pre-restore safety step. Each self-test asserts the relative AND the
+# absolute form, so a translator that breaks the common case fails too.
+step "db backup script self-test" "bash scripts/backup-db.sh --self-test" bash scripts/backup-db.sh --self-test
+step "db restore script self-test" "bash scripts/restore-db.sh --self-test" bash scripts/restore-db.sh --self-test
+
 step "runner claims" "python3 scripts/verify-runner-claims.py" python3 scripts/verify-runner-claims.py
 step "runner claims self-test" "python3 scripts/verify-runner-claims.py --self-test" python3 scripts/verify-runner-claims.py --self-test
 # Runs EVERY checker's self-test in one roster. Added 2026-09-29 because until now the
