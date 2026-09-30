@@ -8,7 +8,7 @@ import {
   closeShiftScoped,
   type ShiftDto,
 } from '@/api/shifts';
-import type { CartLine } from '@/types/domain';
+import { type CartLine, parseBalanceInput } from '@/types/domain';
 
 /** Structural twin of the caller's useRef(l10n) result — non-null current, same bundle type. */
 type L10nRef = { current: ReturnType<typeof useLocalization>['l10n'] };
@@ -20,6 +20,8 @@ export interface UsePosShiftsParams {
   lines: CartLine[];
   /** Bundle ref, threaded in so the callbacks keep their stable dep chain. */
   l10nRef: L10nRef;
+  /** Active store currency code (e.g. 'IDR', 'USD'). Defaults to 'IDR'. */
+  currency?: string;
 }
 
 /**
@@ -32,7 +34,7 @@ export interface UsePosShiftsParams {
  * Moved verbatim out of PosScreen.tsx — same names, same logic, same memo
  * dependencies, same 60s tick interval, same error text.
  */
-export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShiftsParams) {
+export function usePosShifts({ sessionToken, userId, lines, l10nRef, currency = 'IDR' }: UsePosShiftsParams) {
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
   const activeShiftRef = useRef(activeShift);
   activeShiftRef.current = activeShift;
@@ -165,10 +167,9 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
 
   const handleConfirmCloseShift = useCallback(async () => {
     if (!activeShift) return;
-    // Whole-number minor units — reject fractional input instead of
-    // silently truncating it via parseInt.
-    const balance = Number(closingBalance);
-    if (!Number.isInteger(balance) || balance < 0) return;
+    // MONEY-02 + MONEY-05: exact decimal parse scaled to currency exponent
+    const balance = closingBalance.trim() === '' ? null : parseBalanceInput(closingBalance, currency);
+    if (balance === null || balance < 0) return;
 
     setClosingShift(true);
     setCloseShiftError(null);
@@ -182,7 +183,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } finally {
       setClosingShift(false);
     }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10nRef]); // l10n via ref - stable dep, see above
+  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10nRef, currency]); // l10n via ref - stable dep, see above
 
   const handleOpenShiftClick = useCallback(() => {
     setOpeningBalance('');
@@ -190,12 +191,13 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
   }, []);
 
   const handleConfirmOpenShift = useCallback(async () => {
-    const balance = Number(openingBalance);
-    const safeBalance = !Number.isNaN(balance) && Number.isInteger(balance) && balance >= 0 ? balance : 0;
+    // MONEY-02 + MONEY-05: exact decimal parse scaled to currency exponent
+    const balance = parseBalanceInput(openingBalance, currency);
+    if (balance === null || balance < 0) return;
 
     setOpeningShift(true);
     try {
-      const shift = await openShiftScoped(sessionToken, safeBalance);
+      const shift = await openShiftScoped(sessionToken, balance);
       setActiveShift(shift);
       openShiftExit.requestClose();
     } catch (err) {
@@ -212,7 +214,7 @@ export function usePosShifts({ sessionToken, userId, lines, l10nRef }: UsePosShi
     } finally {
       setOpeningShift(false);
     }
-  }, [openingBalance, openShiftExit, sessionToken, l10nRef, setCloseShiftError]);
+  }, [openingBalance, openShiftExit, sessionToken, l10nRef, setCloseShiftError, currency]);
 
   return {
     activeShift,

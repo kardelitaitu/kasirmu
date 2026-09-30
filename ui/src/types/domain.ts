@@ -224,6 +224,34 @@ export function parseMinorUnits(input: string, scaleExponent: number): number | 
   return Number(q);
 }
 
+/**
+ * Parse a user-entered balance or money amount in major units
+ * (e.g. "100" for USD $100.00 -> 10000 minor units; "100000" for IDR Rp 100.000 -> 100000 minor units)
+ * scaled to the currency's minor units.
+ *
+ * For currencies with 0 exponent (e.g. IDR), rejects fractional input (contains decimal point).
+ * For currencies with exponent > 0 (e.g. USD), rejects fractional input that has more decimal
+ * places than the exponent.
+ *
+ * Returns null if input is invalid or negative.
+ */
+export function parseBalanceInput(input: string, currency: string): number | null {
+  const trimmed = input.trim();
+  if (trimmed === '') return 0;
+  const exp = minorUnitExponent(currency);
+  if (exp === 0 && trimmed.includes('.')) {
+    return null;
+  }
+  const parts = trimmed.split('.');
+  const frac = parts[1];
+  if (frac !== undefined && frac.length > exp) {
+    return null;
+  }
+  const val = parseMinorUnits(trimmed, exp);
+  if (val === null || val < 0) return null;
+  return val;
+}
+
 /** Render a fixed-point millionths value (LOYALTY-01 tier multipliers)
  *  as a plain decimal string without trailing zeros: 1_400_000 → "1.4",
  *  1_000_000 → "1", 1_070_000 → "1.07". Pure integer arithmetic — the

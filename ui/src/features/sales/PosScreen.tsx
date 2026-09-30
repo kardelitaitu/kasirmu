@@ -24,7 +24,8 @@ import { useSwipe } from '@/hooks/useSwipe';
 import {
   deleteHeldCartScoped,
 } from '@/api/sales';
-import { getReceiptSettingsScoped, getSettingScoped } from '@/api/settings';
+import { getReceiptSettingsScoped, getSettingScoped, getStoreSettingsScoped } from '@/api/settings';
+import { useOptionalCurrency } from '@/contexts/CurrencyContext';
 import type { CartTaxCacheState } from '@/hooks/useCartTax';
 import type { CartLineTaxInput } from '@/api/tax';
 import { lookupByBarcodeScoped, lookupProductBySkuScoped } from '@/api/products';
@@ -277,6 +278,28 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     [],
   );
 
+  const [storeCurrency, setStoreCurrency] = useState<string>('IDR');
+  const currencyCtx = useOptionalCurrency();
+
+  useEffect(() => {
+    if (currencyCtx?.currency) {
+      setStoreCurrency(currencyCtx.currency);
+      return;
+    }
+    if (!sessionToken) return;
+    let cancelled = false;
+    getStoreSettingsScoped(sessionToken)
+      .then((settings) => {
+        if (!cancelled && settings.currency) {
+          setStoreCurrency(settings.currency);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionToken, currencyCtx?.currency]);
+
+  const activeCurrency = currencyCtx?.currency ?? storeCurrency ?? subtotal?.currency ?? 'IDR';
+
   const {
     activeShift,
     activeShiftRef,
@@ -304,7 +327,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     handleConfirmCloseShift,
     handleOpenShiftClick,
     handleConfirmOpenShift,
-  } = usePosShifts({ sessionToken, userId, lines, l10nRef });
+  } = usePosShifts({ sessionToken, userId, lines, l10nRef, currency: activeCurrency });
   // ── Cart actions: cart handle, deduction binding, add/qty/override ──
   const {
     overrideTarget,
@@ -883,11 +906,13 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         closingShift={closingShift}
         setShowCloseShift={setShowCloseShift}
         handleConfirmCloseShift={handleConfirmCloseShift}
+        currency={activeCurrency}
       />
 
       <ShiftSummary
         shiftSummaryExit={shiftSummaryExit}
         closedShiftSummary={closedShiftSummary}
+        currency={activeCurrency}
       />
 
       <OpenShiftModal
@@ -896,6 +921,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
         setOpeningBalance={setOpeningBalance}
         openingShift={openingShift}
         handleConfirmOpenShift={handleConfirmOpenShift}
+        currency={activeCurrency}
       />
 
       {/* ── FastPIN Overlay (ADR-19 §17: badge click → manager override) ── */}

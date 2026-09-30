@@ -17,7 +17,7 @@ import { Button } from '@/components/Button';
 import { EmptyState } from '@/components';
 import { NoShiftsIcon } from '@/components/EmptyStateIllustrations';
 import { Skeleton } from '@/components/Skeleton';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import {
   listShiftsScoped,
   openShiftScoped,
@@ -103,10 +103,12 @@ export default function ShiftManagementScreen() {
   // ── Open shift ────────────────────────────────────────────────────
 
   const handleOpenShift = useCallback(async () => {
-    // SHIFT-03: opening balance is integer minor units — reject fractional
-    // input instead of silently truncating it via parseInt.
-    const balance = openingBalance.trim() === '' ? 0 : Number(openingBalance);
-    if (!Number.isInteger(balance) || balance < 0) {
+    // SHIFT-03 + MONEY-02 + MONEY-05: opening balance is entered in major units
+    // scaled by the active currency's exponent. Reject fractional input for
+    // 0-decimal currencies (like IDR) or fractional input exceeding currency precision.
+    const trimmed = openingBalance.trim();
+    const balance = trimmed === '' ? 0 : parseBalanceInput(trimmed, currency);
+    if (balance === null || balance < 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-opening-balance'));
       return;
     }
@@ -124,14 +126,15 @@ export default function ShiftManagementScreen() {
     } finally {
       setSaving(false);
     }
-  }, [openingBalance, sessionToken, load, l10n]);
+  }, [openingBalance, currency, sessionToken, load, l10n]);
 
   // ── Close shift ───────────────────────────────────────────────────
 
   const handleCloseShift = useCallback(async () => {
     if (!activeShift) return;
-    const balance = Number(closingBalance);
-    if (!Number.isInteger(balance) || balance < 0) {
+    const trimmed = closingBalance.trim();
+    const balance = trimmed === '' ? null : parseBalanceInput(trimmed, currency);
+    if (balance === null || balance < 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-balance'));
       return;
     }
@@ -153,7 +156,7 @@ export default function ShiftManagementScreen() {
     } finally {
       setSaving(false);
     }
-  }, [activeShift, closingBalance, shiftNotes, sessionToken, l10n]);
+  }, [activeShift, closingBalance, currency, shiftNotes, sessionToken, l10n]);
 
 
   const dismissCloseSummary = useCallback(async () => {
@@ -169,8 +172,9 @@ export default function ShiftManagementScreen() {
 
   const handleCreatePayout = useCallback(async () => {
     if (!activeShift) return;
-    const amount = Number(payoutAmount);
-    if (!Number.isInteger(amount) || amount <= 0) {
+    const trimmed = payoutAmount.trim();
+    const amount = trimmed === '' ? null : parseBalanceInput(trimmed, currency);
+    if (amount === null || amount <= 0) {
       setError(requiredLocalized(l10n, 'shift-invalid-payout-amount'));
       return;
     }
@@ -195,7 +199,7 @@ export default function ShiftManagementScreen() {
     // surfaced as a generic retryable error, so the operator would press Save again on a form
     // that could not succeed until the screen remounted. :186 also awaits load(), which now
     // refreshes against the same session as the write.
-  }, [activeShift, payoutAmount, payoutReason, load, l10n, sessionToken]);
+  }, [activeShift, payoutAmount, payoutReason, currency, load, l10n, sessionToken]);
 
   // ── Format time/date helpers ───────────────────────────────────────
 
@@ -547,9 +551,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="open-balance"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder="e.g. 500 for $5.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-opening-balance')}
@@ -612,9 +617,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="payout-amount"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="1"
-                    placeholder="e.g. 20000 for $200.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 200.00" : "e.g. 200000"}
                     value={payoutAmount}
                     onChange={(e) => setPayoutAmount(e.target.value)}
                     aria-label={l10n.getString('shift-field-payout-amount')}
@@ -654,7 +660,11 @@ export default function ShiftManagementScreen() {
                   variant="primary"
                   onClick={handleCreatePayout}
                   loading={saving}
-                  disabled={!payoutAmount || !Number.isInteger(Number(payoutAmount)) || Number(payoutAmount) <= 0}
+                  disabled={
+                    !payoutAmount.trim() ||
+                    parseBalanceInput(payoutAmount.trim(), currency) === null ||
+                    (parseBalanceInput(payoutAmount.trim(), currency) ?? 0) <= 0
+                  }
                 >
                   Record Payout
                 </Button>
@@ -744,9 +754,10 @@ export default function ShiftManagementScreen() {
                   <input
                     id="close-balance"
                     type="number"
+                    step="any"
                     className="shift-mgmt-input"
                     min="0"
-                    placeholder="e.g. 15000 for $150.00"
+                    placeholder={minorUnitExponent(currency) > 0 ? "e.g. 150.00" : "e.g. 150000"}
                     value={closingBalance}
                     onChange={(e) => setClosingBalance(e.target.value)}
                     aria-label={l10n.getString('shift-field-closing-balance')}
@@ -787,7 +798,11 @@ export default function ShiftManagementScreen() {
                   variant="primary"
                   onClick={handleCloseShift}
                   loading={saving}
-                  disabled={!closingBalance || !Number.isInteger(Number(closingBalance)) || Number(closingBalance) < 0}
+                  disabled={
+                    !closingBalance.trim() ||
+                    parseBalanceInput(closingBalance.trim(), currency) === null ||
+                    (parseBalanceInput(closingBalance.trim(), currency) ?? -1) < 0
+                  }
                 >
                   Close Shift
                 </Button>

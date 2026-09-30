@@ -97,3 +97,11 @@ export function useCurrency(): CurrencyContextValue {
   }
   return ctx;
 }
+
+/**
+ * Access the store's default currency if inside a `<CurrencyProvider>`, or null otherwise.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useOptionalCurrency(): CurrencyContextValue | null {
+  return useContext(CurrencyContext);
+}

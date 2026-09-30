@@ -24,7 +24,7 @@
 import { useLocalization } from '@fluent/react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Localized } from '@/components/Localized';
-import { formatMoney } from '@/types/domain';
+import { formatMoney, minorUnitExponent, parseBalanceInput } from '@/types/domain';
 import type { ShiftDto } from '@/api/shifts';
 import type { UseExitAnimationResult } from '@/hooks/useExitAnimation';
 
@@ -38,7 +38,7 @@ export interface CloseShiftConfirmProps {
   /** Inline error banner text, or null when there is none. */
   closeShiftError: string | null;
   setCloseShiftError: Dispatch<SetStateAction<string | null>>;
-  /** Counted cash in drawer, minor units as typed (raw string). */
+  /** Counted cash in drawer, major units as typed (raw string). */
   closingBalance: string;
   setClosingBalance: Dispatch<SetStateAction<string>>;
   shiftNotes: string;
@@ -48,6 +48,7 @@ export interface CloseShiftConfirmProps {
   /** Snap-close used by Cancel (no fade); Escape goes through the exit handle. */
   setShowCloseShift: Dispatch<SetStateAction<boolean>>;
   handleConfirmCloseShift: () => void;
+  currency?: string;
 }
 
 /**
@@ -67,8 +68,10 @@ export function CloseShiftConfirm({
   closingShift,
   setShowCloseShift,
   handleConfirmCloseShift,
+  currency,
 }: CloseShiftConfirmProps) {
   const { l10n } = useLocalization();
+  const storeCurrency = currency ?? 'IDR';
   if (!closeShiftExit.shouldRender || !activeShift) return null;
   return (
           <div
@@ -106,7 +109,7 @@ export function CloseShiftConfirm({
                 <Localized id="pos-close-shift-opening-balance">
                   <span>Opening balance</span>
                 </Localized>
-                <span>{formatMoney({ minor_units: activeShift.openingBalanceMinor, currency: 'USD' })}</span>
+                <span>{formatMoney({ minor_units: activeShift.openingBalanceMinor, currency: storeCurrency })}</span>
               </div>
             </div>
 
@@ -120,18 +123,12 @@ export function CloseShiftConfirm({
                 <input
                   id="closing-balance"
                   type="number"
+                  step="any"
                   className="pos-close-shift-input"
                   min="0"
-                  placeholder="e.g. 15000 for $150.00"
+                  placeholder={minorUnitExponent(storeCurrency) > 0 ? "e.g. 150.00" : "e.g. 150000"}
                   value={closingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setClosingBalance(e.target.value);
-                    }
-                  }}
+                  onChange={(e) => setClosingBalance(e.target.value)}
                   aria-label={l10n.getString('pos-close-shift-balance-aria')}
                 />
               </Localized>
@@ -177,9 +174,9 @@ export function CloseShiftConfirm({
                 onClick={handleConfirmCloseShift}
                 disabled={
                   closingShift ||
-                  !closingBalance ||
-                  !Number.isInteger(Number(closingBalance)) ||
-                  Number(closingBalance) < 0
+                  !closingBalance.trim() ||
+                  parseBalanceInput(closingBalance, storeCurrency) === null ||
+                  (parseBalanceInput(closingBalance, storeCurrency) ?? -1) < 0
                 }
               >
                 <Localized id={closingShift ? 'pos-close-shift-closing' : 'pos-close-shift-confirm'}>
@@ -199,6 +196,7 @@ export interface ShiftSummaryProps {
   shiftSummaryExit: UseExitAnimationResult;
   /** The shift that just closed - null until a close succeeds. */
   closedShiftSummary: ShiftDto | null;
+  currency?: string;
 }
 
 /**
@@ -208,8 +206,10 @@ export interface ShiftSummaryProps {
 export function ShiftSummary({
   shiftSummaryExit,
   closedShiftSummary,
+  currency,
 }: ShiftSummaryProps) {
   const { l10n } = useLocalization();
+  const storeCurrency = currency ?? 'IDR';
   if (!shiftSummaryExit.shouldRender || !closedShiftSummary) return null;
   return (
           <div
@@ -231,7 +231,7 @@ export function ShiftSummary({
                   <span className="pos-close-shift-summary-label">Total Sales</span>
                 </Localized>
                 <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalSalesMinor, currency: 'USD' })}
+                  {formatMoney({ minor_units: closedShiftSummary.totalSalesMinor, currency: storeCurrency })}
                 </span>
               </div>
               <div className="pos-close-shift-summary-item">
@@ -239,7 +239,7 @@ export function ShiftSummary({
                   <span className="pos-close-shift-summary-label">Cash Sales</span>
                 </Localized>
                 <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCashMinor, currency: 'USD' })}
+                  {formatMoney({ minor_units: closedShiftSummary.totalCashMinor, currency: storeCurrency })}
                 </span>
               </div>
               <div className="pos-close-shift-summary-item">
@@ -247,7 +247,7 @@ export function ShiftSummary({
                   <span className="pos-close-shift-summary-label">Card Sales</span>
                 </Localized>
                 <span className="pos-close-shift-summary-value">
-                  {formatMoney({ minor_units: closedShiftSummary.totalCardMinor, currency: 'USD' })}
+                  {formatMoney({ minor_units: closedShiftSummary.totalCardMinor, currency: storeCurrency })}
                 </span>
               </div>
               <div className="pos-close-shift-summary-item">
@@ -256,7 +256,7 @@ export function ShiftSummary({
                 </Localized>
                 <span className="pos-close-shift-summary-value">
                   {closedShiftSummary.expectedCashMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.expectedCashMinor, currency: 'USD' })
+                    ? formatMoney({ minor_units: closedShiftSummary.expectedCashMinor, currency: storeCurrency })
                     : '—'}
                 </span>
               </div>
@@ -266,7 +266,7 @@ export function ShiftSummary({
                 </Localized>
                 <span className="pos-close-shift-summary-value">
                   {closedShiftSummary.closingBalanceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.closingBalanceMinor, currency: 'USD' })
+                    ? formatMoney({ minor_units: closedShiftSummary.closingBalanceMinor, currency: storeCurrency })
                     : '—'}
                 </span>
               </div>
@@ -284,7 +284,7 @@ export function ShiftSummary({
                   }`}
                 >
                   {closedShiftSummary.cashDifferenceMinor !== null
-                    ? formatMoney({ minor_units: closedShiftSummary.cashDifferenceMinor, currency: 'USD' })
+                    ? formatMoney({ minor_units: closedShiftSummary.cashDifferenceMinor, currency: storeCurrency })
                     : '—'}
                   {closedShiftSummary.cashDifferenceMinor !== null && closedShiftSummary.cashDifferenceMinor !== 0 && (
                     <span className="pos-close-shift-diff-tag">
@@ -323,12 +323,13 @@ export function ShiftSummary({
 export interface OpenShiftModalProps {
   /** Exit handle from usePosShifts (a successful open runs requestClose()). */
   openShiftExit: UseExitAnimationResult;
-  /** Opening drawer float, minor units as typed (raw string). */
+  /** Opening drawer float, major units as typed (raw string). */
   openingBalance: string;
   setOpeningBalance: Dispatch<SetStateAction<string>>;
   /** True while the open is in flight - disables both buttons. */
   openingShift: boolean;
   handleConfirmOpenShift: () => void;
+  currency?: string;
 }
 
 /**
@@ -342,8 +343,10 @@ export function OpenShiftModal({
   setOpeningBalance,
   openingShift,
   handleConfirmOpenShift,
+  currency,
 }: OpenShiftModalProps) {
   const { l10n } = useLocalization();
+  const storeCurrency = currency ?? 'IDR';
   if (!openShiftExit.shouldRender) return null;
   return (
           <div
@@ -371,18 +374,12 @@ export function OpenShiftModal({
                 <input
                   id="opening-balance"
                   type="number"
+                  step="any"
                   className="pos-close-shift-input"
                   min="0"
-                  placeholder="e.g. 500 for $5.00"
+                  placeholder={minorUnitExponent(storeCurrency) > 0 ? "e.g. 50.00" : "e.g. 50000"}
                   value={openingBalance}
-                  onChange={(e) => {
-                    // Whole number only — ignore fractional in-progress input
-                    // instead of silently truncating it via parseInt.
-                    const v = Number(e.target.value);
-                    if (e.target.value === '' || (Number.isInteger(v) && v >= 0)) {
-                      setOpeningBalance(e.target.value);
-                    }
-                  }}
+                  onChange={(e) => setOpeningBalance(e.target.value)}
                   aria-label={l10n.getString('pos-open-shift-balance-aria')}
                 />
               </Localized>
@@ -404,7 +401,12 @@ export function OpenShiftModal({
                 type="button"
                 className="pos-close-shift-confirm-btn"
                 onClick={handleConfirmOpenShift}
-                disabled={openingShift}
+                disabled={
+                  openingShift ||
+                  (openingBalance.trim() !== '' &&
+                    (parseBalanceInput(openingBalance, storeCurrency) === null ||
+                      (parseBalanceInput(openingBalance, storeCurrency) ?? -1) < 0))
+                }
               >
                 <Localized id={openingShift ? 'pos-open-shift-opening' : 'pos-open-shift-title'}>
                   <span>{openingShift ? 'Opening…' : 'Open Shift'}</span>
