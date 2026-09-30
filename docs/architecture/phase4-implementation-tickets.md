@@ -277,6 +277,12 @@ Phase 4 end state. The gate is already wired (`namespace-governance`, required, 
 
 ## 7. P4.6 — Document migration completion criteria
 
+**Status: DONE 2026-10-03** — `docs/architecture/module-namespace-firewall.md` exists and states what is
+mechanically true per plan §10/§13, with every claim pointing at a file:line or a gate id, plus an explicit
+§7 "What is NOT yet true" recording the P4.1 runtime gap. Linked from
+`docs/architecture/module-namespace-governance.md` §5 and `docs/architecture/module-boot-sequence.md` §9;
+`check-dead-refs.py` clean. The plan §10/§13 boxes are ticked in `todo-modular-scaffolding.md`.
+
 **Problem.** The plan's §13 acceptance criteria are a mix of delivered (Phases 0–3) and Phase 4 work;
 without a written completion statement, "the firewall is done" is a judgement call.
 

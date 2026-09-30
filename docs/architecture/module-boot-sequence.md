@@ -161,6 +161,12 @@ frozen record of what is tolerated until then is
 | The registry fails fast and names the first unsatisfied module | `platform/kernel/src/capability_tests.rs`, `platform/kernel/src/kernel/capability_lifecycle_tests.rs` |
 | Manifest ids match the registered set | `platform/startup/src/startup_tests.rs` (`every_module_manifest_is_registered`) |
 
+## 9. Firewall completion criteria
+
+What the namespace firewall as a whole now guarantees — and the one named runtime gap
+(P4.1 partial) — is stated on one page:
+[`module-namespace-firewall.md`](module-namespace-firewall.md).
+
 ## References
 
 - `docs/architecture/phase2-implementation-tickets.md` — the P1–P5 tickets

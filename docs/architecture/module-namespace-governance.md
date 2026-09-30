@@ -216,6 +216,11 @@ When P4.6 lands, the allowlist and the baseline in §4 both empty. Until then, t
 
 ---
 
+
+> **Completion criteria** for the firewall this document describes are stated on one
+> page: [`module-namespace-firewall.md`](module-namespace-firewall.md). It names what is
+> mechanically true today and the one named runtime gap (P4.1 partial).
+
 ## References
 
 - ADR-62 — `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` (the seams this governs)

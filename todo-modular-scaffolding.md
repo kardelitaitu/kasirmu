@@ -801,23 +801,26 @@ Exit criteria:
 
 **Goal:** Enforce the modular boundaries mechanically.
 
-> **Status 2026-10-03:** open. Executable tickets: `docs/architecture/phase4-implementation-tickets.md`
-> (P4.1–P4.6). Two of its gates shipped early in Phase 3 — the
-> core-size ratchet and the handler-classification gate — because they are structural and do not
-> depend on strict enforcement. The remaining work: a `ReportingFacade` trait, strict
-> `NamespacedStore` rejection of ungranted access, removing `NamespacedStore::raw()`, lifting
-> the ownership map into core to move the BOM deduction, and the per-vertical capability
-> declarations in each `modules/*/manifest.json`.
+> **Status 2026-10-03:** **largely delivered; one named gap.** Executable tickets:
+> `docs/architecture/phase4-implementation-tickets.md` (P4.1–P4.6). Done: P4.3 (`raw()` deleted),
+> P4.4 (cross-vertical denial tests), P4.5 (`namespace-governance` gate flipped to `--strict`),
+> P4.2 (`ReportingFacade` trait defined and routed), P4.6 (completion criteria on
+> `docs/architecture/module-namespace-firewall.md`). **P4.1 is partial**: the manifest
+> `capabilities` half and the `Grants::from_capabilities` derivation + boot-boundary proof landed,
+> but production repositories still hardcode their `Grants` and the kernel does not yet reject a
+> grant naming an undeclared dependency. Two gates shipped early in Phase 3 — the core-size ratchet
+> and the handler-classification gate. The remaining extraction (lifting the ownership map into core
+> to move the BOM deduction) is Phase 4 follow-on.
 
-- [ ] Enable strict `NamespacedStore` enforcement.
-- [ ] Reject unauthorized cross-namespace table access.
-- [ ] Require reporting queries to go through `ReportingFacade`.
-- [ ] Remove legacy shared-connection escape hatches where possible.
-- [ ] Add CI gate that fails on new namespace violations.
+- [ ] Enable strict `NamespacedStore` enforcement. *(partial 2026-10-03: runtime rejection + `raw()` removal are in (P4.3/P4.4), but production repositories still hardcode their `Grants` — see `docs/architecture/module-namespace-firewall.md` §7.)*
+- [x] Reject unauthorized cross-namespace table access. *(2026-10-03: `check_statement` + `NamespaceError::Foreign`, no-grant foreign read refused; P4.4 denial tests.)*
+- [x] Require reporting queries to go through `ReportingFacade`. *(2026-10-03: `crates/kasirmu-core/src/db/facade.rs`, P4.2.)*
+- [x] Remove legacy shared-connection escape hatches where possible. *(2026-10-03: `NamespacedStore::raw()` deleted, P4.3 commit `45c991d94`.)*
+- [x] Add CI gate that fails on new namespace violations. *(2026-10-03: `namespace-governance` gate now `--strict`, P4.5 commit `ec280cde9`.)*
 - [x] Add CI gate that ratchets `kasirmu-core` size downward. *(2026-10-03: gate `core-size-ratchet` — shipped in Phase 3 P3.4, before the strict-enforcement work.)*
 - [x] Add CI gate that requires handler classification metadata. *(2026-10-03: `verify-namespace-governance.py` Rule 2 vs `scripts/handler-classification.json`, gate `namespace-governance`.)*
-- [ ] Add tests for cross-vertical access denial.
-- [ ] Document migration completion criteria.
+- [x] Add tests for cross-vertical access denial. *(2026-10-03: eight module boundary tests + `platform/startup/tests/boot_capability.rs`, P4.4.)*
+- [x] Document migration completion criteria. *(2026-10-03: `docs/architecture/module-namespace-firewall.md`, P4.6.)*
 
 Exit criteria:
 
