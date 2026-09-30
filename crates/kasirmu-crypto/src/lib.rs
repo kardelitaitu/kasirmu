@@ -504,6 +504,15 @@ const PROFILE_AT_REST_DOMAIN: &[u8] = b"oz-pos.user-profile-at-rest.v1:";
 /// signing key for the local REST API and doubles as the operator `X-Admin-Key`.
 const LOCAL_API_SECRET_DOMAIN: &[u8] = b"oz-pos.local-api-secret.v1:";
 
+/// Cloud-export credential at-rest domain-separation prefix.
+///
+/// COR-17/30: the BigQuery service-account key and the Snowflake password were
+/// persisted as plaintext inside the `cloud_export_config` JSON blob -- base64 is
+/// an encoding, not encryption -- so they rode every `.db` snapshot in the clear.
+/// Like `SMTP_AT_REST_DOMAIN` this seals ONE field of a JSON row rather than a
+/// whole settings value.
+const CLOUD_EXPORT_AT_REST_DOMAIN: &[u8] = b"oz-pos.cloud-export-at-rest.v1:";
+
 // ── Machine-bound (API key / SMTP password) ──────────────────────────
 
 /// Encrypt an API key with a machine-bound key.
@@ -713,6 +722,37 @@ pub fn decrypt_profile_field(encrypted_b64: &str) -> Result<String, CryptoError>
     )
 }
 
+/// Encrypt a cloud-export credential field (a BigQuery service-account key or a
+/// Snowflake password) for at-rest storage inside the `cloud_export_config` JSON
+/// blob. Static, portable key, mirroring [`encrypt_smtp_at_rest`].
+///
+/// Returns the error on encryption failure instead of the plaintext: a fallback
+/// that stored the cleartext would be read back by [`decrypt_cloud_export_secret`]
+/// as legacy plaintext and silently accepted, which is the exact hole COR-17/30
+/// records.
+pub fn encrypt_cloud_export_secret(plaintext: &str) -> Result<String, CryptoError> {
+    let key = portable_key(CLOUD_EXPORT_AT_REST_DOMAIN, derive_static_key);
+    encrypt(plaintext, &key)
+}
+
+/// Decrypt a cloud-export credential field stored with
+/// [`encrypt_cloud_export_secret`].
+///
+/// Legacy passthrough is format-gated exactly as in [`decrypt_smtp_at_rest`]: a
+/// value that is not in our ciphertext format is a pre-sealing plaintext and is
+/// returned unchanged; one that IS and fails every candidate key is tampering and
+/// errors rather than handing back ciphertext.
+pub fn decrypt_cloud_export_secret(encrypted: &str) -> Result<String, CryptoError> {
+    match decrypt_with_candidates(
+        encrypted,
+        &candidate_keys(CLOUD_EXPORT_AT_REST_DOMAIN, derive_static_key),
+    ) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(_) if !looks_like_ciphertext(encrypted) => Ok(encrypted.to_string()),
+        Err(e) => Err(e),
+    }
+}
+
 // ── Rotation: re-encrypting a row under the current key (C1 slice S2c) ──
 
 /// One install-key-derived at-rest family, for a rotation sweep.
@@ -746,6 +786,9 @@ pub enum AtRestFamily {
     SmtpAtRest,
     /// The `users.national_id` and `users.monthly_take_home_minor` columns.
     ProfileAtRest,
+    /// A credential FIELD inside `settings.cloud_export_config`'s JSON blob:
+    /// the BigQuery `service_account_key_b64` or the Snowflake `password`.
+    CloudExportAtRest,
 }
 
 /// The signature every install-key derivation closure in this crate shares: a
@@ -773,6 +816,7 @@ impl AtRestFamily {
             Self::LocalApiSecret => (LOCAL_API_SECRET_DOMAIN, |d| derive_key(d, "static")),
             Self::SmtpAtRest => (SMTP_AT_REST_DOMAIN, derive_static_key),
             Self::ProfileAtRest => (PROFILE_AT_REST_DOMAIN, derive_static_key),
+            Self::CloudExportAtRest => (CLOUD_EXPORT_AT_REST_DOMAIN, derive_static_key),
         }
     }
 

@@ -531,11 +531,20 @@ impl Store<'_> {
     }
 
     /// Save the cloud export configuration to the settings table.
+    ///
+    /// The two credential FIELDS -- the BigQuery service-account key and the
+    /// Snowflake password -- are sealed with [`crate::crypto`] before the JSON is
+    /// written. Base64 is an encoding, not encryption, so without this the keys
+    /// rode every `.db` / `.backup.db` snapshot in the clear (COR-17/30). The
+    /// remaining fields (project/dataset/table/username/host) are identifiers, not
+    /// secrets, and stay legible for operator debugging, exactly as
+    /// `smtp_config` seals only its password field.
     pub fn save_cloud_export_config(
         &self,
         config: &cloud_destination::CloudExportConfig,
     ) -> Result<(), CoreError> {
-        let json = serde_json::to_string(config).map_err(|e| {
+        let sealed = cloud_destination::seal_cloud_export_credentials(config)?;
+        let json = serde_json::to_string(&sealed).map_err(|e| {
             CoreError::Internal(format!("failed to serialize cloud export config: {e}"))
         })?;
         self.set_setting(CLOUD_EXPORT_SETTINGS_KEY, &json)
@@ -543,6 +552,11 @@ impl Store<'_> {
 
     /// Load the cloud export configuration from the settings table.
     /// Returns `None` if no config has been saved yet.
+    ///
+    /// Unseals the credential fields sealed by [`Self::save_cloud_export_config`];
+    /// a value saved before sealing was introduced is passed through as legacy
+    /// plaintext, so an upgraded install keeps working and is re-sealed on its next
+    /// save.
     pub fn get_cloud_export_config(
         &self,
     ) -> Result<Option<cloud_destination::CloudExportConfig>, CoreError> {
@@ -553,7 +567,9 @@ impl Store<'_> {
             serde_json::from_str(&raw).map_err(|e| {
                 CoreError::Internal(format!("failed to deserialize cloud export config: {e}"))
             })?;
-        Ok(Some(config))
+        Ok(Some(cloud_destination::unseal_cloud_export_credentials(
+            config,
+        )?))
     }
 
     /// Load the report schedule configuration from the settings table.

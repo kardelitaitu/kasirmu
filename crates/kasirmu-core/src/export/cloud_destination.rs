@@ -3,7 +3,7 @@
 last audited 31-08-26 by TDD-Agent (rounds H+I follow-up to slice D2; identifiers validated, request bounds added)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: COR-35 FIXED 25-07-26 for VALUES only — bind variables take row values out of the SQL text, but database/schema/table were still interpolated into the INSERT verbatim, and project_id/dataset/table into the insertAll URL path. Both closed in round H: snowflake_insert_statement and bigquery_insert_url are pure, tested, and reject anything outside the identifier grammar. The stamp's "eliminating the backslash-escape injection class" read as the class being shut, which is why the other half sat open for a month. COR-31 FIXED HERE in round I: all three request sites now build through http_client(), which bounds connect (10s) and total (120s) time; the total stays above the 60s statement timeout the request itself asks for, and a test pins that relationship. COR-31 repo-wide status, corrected in round L: an earlier version of this stamp claimed "15 untimed Client::new() sites in 10 other files" and that number was WRONG — it was produced by grepping for Client::new() and .build() without checking whether the resulting request carried a request-level .timeout(). It counted doc-comment mentions, MockNotificationClient::new() examples, and code that was already bounded. The measured set was 7 sites in 4 files: whatsapp x2, sync_pull x1, platform/startup/src/rate_sync.rs x1 (all three fixed in round L), plus the three kasirmu-payment drivers (stripe, square, qris), which are genuinely untimed but were deliberately LEFT that way — see the payment note. license_verification x5 and sync_client are already bounded by RequestBuilder::timeout and never needed anything. Lesson recorded where the bad claim was written: an unbounded-request audit has to end at the request, not at the client. Still open, unchanged: service-account key + Snowflake password persisted in settings JSON (base64 != encryption, COR-17/30 family).
-next: encrypt stored warehouse credentials (COR-17/30); wire save/get_cloud_export_config to a caller — neither has one today, which is the only reason the above are latent. The "carry the http_client() pattern to the 15 remaining COR-31 sites" clause is STRUCK 2026-10-04: the findings above already corrected that count to 7 sites in 4 files, all fixed in round L, and the last genuine site (the image-push daemon, platform/sync/src/image_push.rs) was bounded 2026-10-04. The four conflict-list/resolve commands the 2026-10-04 sweep named are now bounded: the tablet pair went through `bounded_conflict_client()` in 1704147fc (apps/mobile-tauri/src/commands/sync.rs:555), and the desktop pair through the same helper added 2026-10-04 (apps/desktop-tauri/src/commands/sync.rs:416). User-initiated UI calls, but a hang there pins the operator's spinner forever, so both shells bound connect (10s) and total (30s). | perf: 50-row batched inserts
+next: COR-17/30 FIXED 2026-10-04 — the BigQuery service-account key and the Snowflake password are now sealed at rest by seal_cloud_export_credentials/unseal_cloud_export_credentials (crate::crypto CloudExportAtRest family), so the stored cloud_export_config JSON carries ciphertext for its two secret fields while identifiers stay legible; a pre-sealing plaintext row is still read as legacy and re-sealed on next save. Remaining: wire save/get_cloud_export_config to a caller — neither has one today, which is the only reason the above are latent. The "carry the http_client() pattern to the 15 remaining COR-31 sites" clause is STRUCK 2026-10-04: the findings above already corrected that count to 7 sites in 4 files, all fixed in round L, and the last genuine site (the image-push daemon, platform/sync/src/image_push.rs) was bounded 2026-10-04. The four conflict-list/resolve commands the 2026-10-04 sweep named are now bounded: the tablet pair went through `bounded_conflict_client()` in 1704147fc (apps/mobile-tauri/src/commands/sync.rs:555), and the desktop pair through the same helper added 2026-10-04 (apps/desktop-tauri/src/commands/sync.rs:416). User-initiated UI calls, but a hang there pins the operator's spinner forever, so both shells bound connect (10s) and total (30s). | perf: 50-row batched inserts
 */
 //!
 //! Defines export targets (BigQuery, Snowflake) and their respective
@@ -156,6 +156,76 @@ impl Default for CloudExportConfig {
 
 /// Settings key used to persist the cloud export config.
 pub const CLOUD_EXPORT_SETTINGS_KEY: &str = "cloud_export_config";
+
+/// Seal the credential fields of a [`CloudExportConfig`] for at-rest storage.
+///
+/// Only two fields are secrets: `BigQueryConfig::service_account_key_b64` and
+/// `SnowflakeConfig::password`. Everything else is an identifier and stays
+/// legible. The values are sealed with [`crate::crypto`] under the
+/// `CloudExportAtRest` family, exactly as `smtp_config` seals its password field.
+///
+/// Idempotent enough to be safe on an already-sealed config: sealing twice wraps
+/// ciphertext in another layer that unsealing still peels, but callers should pass
+/// a fresh config from the UI, which they do. The round-trip pin calls save then
+/// load and asserts the plaintext returns, so the two halves cannot drift.
+pub fn seal_cloud_export_credentials(
+    config: &CloudExportConfig,
+) -> Result<CloudExportConfig, crate::error::CoreError> {
+    let mut sealed = config.clone();
+    match &mut sealed.destination {
+        ExportDestination::BigQuery(cfg) => {
+            cfg.service_account_key_b64 = crate::crypto::encrypt_cloud_export_secret(
+                &cfg.service_account_key_b64,
+            )
+            .map_err(|e| {
+                crate::error::CoreError::Internal(format!(
+                    "failed to encrypt BigQuery service-account key: {e}"
+                ))
+            })?;
+        }
+        ExportDestination::Snowflake(cfg) => {
+            cfg.password =
+                crate::crypto::encrypt_cloud_export_secret(&cfg.password).map_err(|e| {
+                    crate::error::CoreError::Internal(format!(
+                        "failed to encrypt Snowflake password: {e}"
+                    ))
+                })?;
+        }
+    }
+    Ok(sealed)
+}
+
+/// Reverse of [`seal_cloud_export_credentials`].
+///
+/// A credential that is not in our ciphertext format is a pre-sealing plaintext
+/// and is returned unchanged (legacy passthrough), so an install that stored a
+/// config before sealing existed keeps working; a value in ciphertext format that
+/// fails to authenticate errors rather than being handed back as ciphertext.
+pub fn unseal_cloud_export_credentials(
+    mut config: CloudExportConfig,
+) -> Result<CloudExportConfig, crate::error::CoreError> {
+    match &mut config.destination {
+        ExportDestination::BigQuery(cfg) => {
+            cfg.service_account_key_b64 = crate::crypto::decrypt_cloud_export_secret(
+                &cfg.service_account_key_b64,
+            )
+            .map_err(|e| {
+                crate::error::CoreError::Internal(format!(
+                    "failed to decrypt BigQuery service-account key: {e}"
+                ))
+            })?;
+        }
+        ExportDestination::Snowflake(cfg) => {
+            cfg.password =
+                crate::crypto::decrypt_cloud_export_secret(&cfg.password).map_err(|e| {
+                    crate::error::CoreError::Internal(format!(
+                        "failed to decrypt Snowflake password: {e}"
+                    ))
+                })?;
+        }
+    }
+    Ok(config)
+}
 
 /// Result of a cloud export operation.
 #[derive(Debug, Clone, Serialize)]
@@ -779,3 +849,7 @@ mod tests;
 #[cfg(test)]
 #[path = "cloud_destination_sql_tests.rs"]
 mod sql_tests;
+
+#[cfg(test)]
+#[path = "cloud_export_sealing_tests.rs"]
+mod sealing_tests;
