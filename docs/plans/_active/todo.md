@@ -55,7 +55,9 @@ Current `kds.spec.ts` covers basic render + single advance. Missing:
 - Full lifecycle through all 4 statuses
 - Layout switching (Kanban ↔ Focus ↔ Metro)
 - Settings panel interaction (sound, thresholds)
-- Per-item line item status advance (TODO 3e)
+- Per-item line item status advance — pointer retired 2026-09-30: the coverage this bullet
+  asked for exists at `ui/e2e/e2e-kds-critical-path.spec.ts:182`, and the 3e ID it cited is
+  defined nowhere in this tree, so the pointer was unresolvable rather than outstanding.
 - History panel toggle
 
 **File:** `ui/e2e/e2e-kds-critical-path.spec.ts`
@@ -660,6 +662,43 @@ For each trigger:
 ---
 
 > **Phase C complete.** All items C0–C4.3 shipped.
+
+---
+
+## 🔇 Phase D — Debt adopted from plans that are not in this tree
+
+> **Added 2026-09-30 (docs-auditor).** This section is not part of the July 31, 2026
+> backlog above. It exists because two code sites cite a debt ID that no tracked
+> document defined, and a citation that points at nothing is worse than no citation.
+
+### 4e — Make the `hardware_profiles` row the canonical hardware-settings store
+
+**Status:** Open (2026-09-30, adopted from an untracked plan)
+
+**Why:** Both hardware-settings readers document a three-step read order and mark the
+first step as not yet authoritative: `apps/desktop-tauri/src/commands/settings.rs:142`
+and `crates/kasirmu-bridge/src/settings.rs:270`. Each reads the `hardware_profiles`
+table, then falls back to `terminal_profiles/<id>.json`, then to a legacy SQLite
+settings store. While the JSON fallback stays live, two terminals that hold different
+profiles for the same id resolve differently depending on which fallback fires, and
+any process that can write the profile directory can still change a profile behind
+the database's back.
+
+**Why this entry exists:** the two sites above cite the ID `4e` as a `TODO`, but no
+tracked document defined it — the number came from a local plan that is not in this
+tree, so the citation resolved to nothing. The debt is real and the readers are
+already written, so the ID is adopted here instead of being deleted from the code.
+This heading is the definition both citations now resolve to.
+
+**File:** `apps/desktop-tauri/src/commands/settings.rs`,
+`crates/kasirmu-bridge/src/settings.rs`
+
+- [ ] Make the `hardware_profiles` row authoritative: once a row exists for the
+      terminal id, neither the JSON file nor the legacy store is consulted.
+- [ ] Decide what happens when a terminal has no row — seed one from the JSON file
+      once, then stop reading that file — and write that decision down here.
+- [ ] Pin the precedence order with a test, so a fallback added below the database
+      read cannot silently take priority later.
 
 ---
 
