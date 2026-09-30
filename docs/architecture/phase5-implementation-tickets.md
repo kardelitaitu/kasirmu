@@ -109,13 +109,22 @@ in `modules/ownership.json` and `docs/architecture/module-namespace-firewall.md`
 
 **Landed:** `payments` was moved under the `sales` owner in `modules/ownership.json` (the settlement transaction at `sales_lifecycle.rs:555` writes it, and `sales` is the natural owner of its own tender rows), and `crates/kasirmu-core/src/db/ownership.rs` was regenerated. `owner_of("payments") == Some("sales")` now, so the P5.1 declaration dropped `payments` from `FOREIGN_WRITES` (only `customers` remains foreign) and `the_foreign_write_declaration_is_not_empty` asserts payments is *not* foreign and is sales-owned — a re-home fails that test.
 
-### P5.5 — Flip the sale path onto the strict store and retire the exemption
+### P5.5 — Flip the sale path onto the strict store and retire the exemption — **DONE 2026-10-03**
 
 Once P5.2–P5.4 land, `sales_lifecycle.rs` performs no ungoverned foreign write. Update the
 firewall doc §7 to state the path is closed, and lower the core-size ratchet to the new (smaller or
 equal — track whatever it is) ceiling with `scripts/verify-core-size.py --emit-baseline`.
 **Acceptance:** `docs/architecture/module-namespace-firewall.md` has no “BOM deduction” gap;
 `python scripts/verify-core-size.py` exits 0.
+
+**Landed:** §7 of `docs/architecture/module-namespace-firewall.md` no longer lists a
+“BOM deduction” gap — the sale-settlement path's reads and writes are both behind
+core-owned seams (`inventory_seam` from P5.2, `customers` from P5.3), the settlement
+INSERT is sales-owned after P5.4, and the only remaining caveat is the general one that
+`NamespacedStore` is enforced only where a module routes SQL through it. The core-size
+ceiling was re-emitted to 36783 as part of the P5.2 commit (`--emit-baseline`), so
+`python scripts/verify-core-size.py` exits 0 at 0 lines of headroom. Phase 5 is complete:
+P5.1–P5.5 all DONE.
 
 ## Verification for every ticket
 

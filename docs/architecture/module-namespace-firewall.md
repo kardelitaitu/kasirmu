@@ -98,23 +98,26 @@ deliberate `--emit-baseline` commit. Current baseline: **36659 lines across 177 
 
 ## 7. What is NOT yet true
 
-The Phase 4 work closed the named gaps. What remains is out of Phase 4 scope:
+The Phase 4 work closed the named gaps, and the Phase 5 core extraction closed the sale-settlement path's foreign reach. What remains is the general, structural caveat:
 
 - `NamespacedStore` is enforced *where a module routes its SQL through it*; nothing
   forces a module to stop taking a bare `&Connection`. The governance gate catches new
   foreign tables in literal SQL, and `Namespace::raw()` (the escape hatch) was deleted in
   P4.3, but a future module could still take `&Connection` and reach a table the static
   gate sees only if the SQL is a literal.
-- Moving `crates/kasirmu-core/src/db/sales_lifecycle.rs`'s cross-vertical BOM deduction
-  behind the ownership map is a core extraction, tracked as Phase 5
-  (`docs/architecture/phase5-implementation-tickets.md`). Progress: P5.1 declared the
-  path's foreign writes machine-checkably; P5.4 assigned `payments` to `sales` in
-  `modules/ownership.json`; P5.3 made `crates/kasirmu-core/src/db/customers.rs` the
-  single writer of `customers` (four seam functions), so `sales_lifecycle.rs` issues no
-  `UPDATE customers` and the loyalty/refunds paths route through the same surface; P5.2
-  extracted the shortfall decision logic into `plan_resolution_deductions`.
-  Open: P5.2's `products`/`stock_summary`/`workspace_inventory_locations` reads still sit
-  at the call site.
+- The Phase 5 core extraction closed the sale-settlement path's cross-vertical
+  reach. `crates/kasirmu-core/src/db/sales_lifecycle.rs` now performs no ungoverned
+  foreign read or write: P5.1 declared the path's foreign writes
+  machine-checkably; P5.4 assigned `payments` to `sales` in `modules/ownership.json`,
+  so the settlement INSERT is an own-table write; P5.3 made
+  `crates/kasirmu-core/src/db/customers.rs` the single writer of `customers`; and P5.2
+  moved the `products` / `stock_summary` / `workspace_inventory_locations` reads into
+  the core-owned seam `crates/kasirmu-core/src/db/inventory_seam.rs`. The inventory
+  *write* side (`adjust_stock_batch`) already lived behind
+  `products_stock_adjust`. Both seams are core-owned because core cannot depend on
+  the vertical modules without inverting the layering; each is guarded by mutation
+  tests that fail if a statement is re-inlined. The remaining gap is the general one
+  above, not a named sale-path hole.
 
 Everything the firewall was built to enforce is now mechanical:
 
