@@ -415,6 +415,19 @@ step "namespace governance self-test" "python3 scripts/verify-namespace-governan
 step "ownership map generate check" "node scripts/generate-ownership-map.mjs --check" node scripts/generate-ownership-map.mjs --check
 step "ownership map parity" "python3 scripts/verify-namespace-governance.py --check-ownership" python3 scripts/verify-namespace-governance.py --check-ownership
 
+# ── Core size ratchet — the extraction has a number (Phase 3) ──────────────
+# The plan's boundary rule is that crates/kasirmu-core must not grow as modules
+# move out. Without a measured ceiling that rule is reversible by accident: new
+# logic lands back in core and nothing notices. This counts NON-BLANK production
+# lines under crates/kasirmu-core/src, minus whole test files and inline
+# #[cfg(test)] mod blocks, and fails when the count rises above
+# scripts/core-size-baseline.json. LOWERING the ceiling is a deliberate edit,
+# exactly how a retired namespace edge leaves namespace-governance-baseline.json.
+# Mutation-proven (adding three lines to audit.rs fails with +3). The self-test
+# runs beside it (verify-selftests-wired.py).
+step "core size ratchet" "python3 scripts/verify-core-size.py" python3 scripts/verify-core-size.py
+step "core size ratchet self-test" "python3 scripts/verify-core-size.py --self-test" python3 scripts/verify-core-size.py --self-test
+
 # ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
 # This is the runner that deny.toml's own header used to say did not exist.
 # Three deliberate absences, each load-bearing:

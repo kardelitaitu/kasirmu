@@ -182,20 +182,40 @@ reachable).
 
 ## 5. P3.4 — Add the `kasirmu-core` size ratchet
 
+**Status: DONE 2026-10-03.** `scripts/verify-core-size.py` and `scripts/core-size-baseline.json` exist,
+the gate is wired into `scripts/gates.json` (id `core-size-ratchet`) and `scripts/check.sh` (steps "core size
+ratchet" and "core size ratchet self-test"), and `verify-ci-docs-drift` reports 0 drift with the new gate
+listed. The ceiling is **36590** production lines across 176 files. Mutation-proven against a real core
+file: appending `pub fn __ratchet_probe() -> u8 { 0 }` to `crates/kasirmu-core/src/audit.rs` fails with
+`measured 36593 vs ceiling 36590 (+3 lines)`, and removing it passes at `0 lines, headroom 0`. The measure
+excludes whole test files (`*_tests.rs`, `tests.rs`, any `tests/` directory) and inline `#[cfg(test)] mod`
+blocks, with comments and string bodies masked first; the external-declaration form
+`#[cfg(test)] #[path = "…"] mod tests;` is also excluded (this was the bug the first draft shipped — see
+below). Self-test 16/16.
+
+**Bug found and fixed during acceptance.** The first `strip_test_modules` scan used
+`brace_at = lines[j].find("{")`, which returns `-1` (not `None`) when the `mod` line has no brace — i.e. an
+external test declaration. The guard `if brace_at is not None` then passed for `-1`, so a file whose test
+module is external, followed within the scan window by any `{`, had its following lines consumed: adding a
+function to `audit.rs` *lowered* the count by 3 instead of raising it. The scan now records the mod line and
+the brace column only when a real `{` is found, and drops external-declaration lines outright. Two
+regression cases pin it (`external test declaration is not production`; `code after an external declaration
+still counts`).
+
 **Problem.** Plan §11.1 ("Core Size Ratchet") and the Phase 3 task "Ratchet `kasirmu-core` line count
 downward" have no gate. Without one, extraction can be silently undone by new logic landing in core.
 
 **Ticket P3.4 — a measured ratchet, in the house style.**
 
 1. Measure the current `kasirmu-core` production line count (excluding `tests` modules and test files) and
-   record it as the ceiling in a checked-in baseline (to be created at `scripts/core-size-baseline.json`), the same shape
+   record it as the ceiling in a checked-in baseline (`scripts/core-size-baseline.json`), the same shape
    as `namespace-governance-baseline.json`.
-2. Add a checker (to be created at `scripts/verify-core-size.py`, or a mode on an existing script) that fails when the
+2. Add a checker (`scripts/verify-core-size.py`) that fails when the
    count **rises** above the ceiling, and prints the delta. Lowering the ceiling is a deliberate edit to the
    baseline, exactly as a namespace edge leaves the baseline.
 3. Wire it into `scripts/gates.json` + `scripts/check.sh` under a new gate id.
 
-**Files:** `scripts/verify-core-size.py` (to be created), `scripts/core-size-baseline.json` (to be created),
+**Files:** `scripts/verify-core-size.py`, `scripts/core-size-baseline.json`,
 `scripts/gates.json`, `scripts/check.sh`.
 
 **Acceptance criteria:**
@@ -237,7 +257,7 @@ without a characterisation test is incomplete by construction.
    measurable win.)
 2. **P3.2 + P3.5** — wrap the self-contained modules, one commit per module, each with its boundary test.
 3. **P3.3** — declare loyalty's gift-card grant; the undeclared-dependency note drops to 0.
-4. **P3.4** — set the core-size ratchet from the count the extraction produced.
+4. **P3.4** — set the core-size ratchet from the count the extraction produced. **DONE 2026-10-03** (ceiling 36590).
 5. **Phase 4** — strict enforcement (its own ticket document).
 
 Each ticket is independently reviewable and independently revertible. None is a prerequisite for the others
