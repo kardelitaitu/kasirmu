@@ -108,6 +108,22 @@ wants each module's data access to go through a namespace it owns.
   **staff** (`modules/staff/src/repository.rs`), **tax** (`modules/tax/src/repository.rs`),
   **terminal** (`modules/terminal/src/repository.rs`), **sales** (`modules/sales/src/repository.rs`),
   **inventory** (`modules/inventory/src/repository.rs`) — each names only tables it owns.
+
+**Status: DONE 2026-10-03.** All seven repositories now hold a `NamespacedStore` built with their own
+`ModuleId` and `Grants::none()`, route every statement through `ns.own()`, carry a `Namespace(#[from]
+NamespaceError)` error variant, promote `kasirmu-core` from dev-dep to dep, and each gained an own-passes /
+foreign-refused boundary test in its `repository_tests.rs`. Commits, in order: `d7f3437e0` (settings),
+`aec184fb5` (terminal), `dccbaec11` (tax + staff), `0ee3d48b6` (crm — first write path, transaction-store
+pattern), `e191fdbe3` (inventory), `41c2d8e89` (sales — two owned tables, read+write). Two wraps forced an
+addition to the store API rather than a workaround:
+- **inventory** fails closed with a *domain* error ("invalid currency code", "invalid SKU"), which
+  `Namespace::query` (pinned to `rusqlite::Result`) cannot express, so `Namespace::query_try<T,P,F,E>`
+  was added (`crates/kasirmu-core/src/db/namespaced.rs`, mapper error `E: From<rusqlite::Error> +
+  From<NamespaceError>`).
+- **sales** reuses the same `query_try` for its fail-closed stored-status check (MSL-1).
+Both the settings UPSERT (`ON CONFLICT … DO UPDATE SET`) and the crm/sales transaction inserts are covered by
+the check; the settings wrap exposed and fixed a scanner bug that read `DO UPDATE SET` as a table named
+`set`.
 - `modules/inventory/src/handlers.rs` names other inventory-owned tables; the Phase 0 census found it
   **dead/test-only** (never registered), so it is out of scope and stays as-is.
 - The genuinely cross-vertical BOM deduction lives in **core** (`crates/kasirmu-core/src/db/sales_lifecycle.rs`),
