@@ -106,7 +106,13 @@ The Phase 4 work closed the named gaps. What remains is out of Phase 4 scope:
   P4.3, but a future module could still take `&Connection` and reach a table the static
   gate sees only if the SQL is a literal.
 - Moving `crates/kasirmu-core/src/db/sales_lifecycle.rs`'s cross-vertical BOM deduction
-  behind the ownership map is a core extraction, tracked with the plan's remaining work.
+  behind the ownership map is a core extraction, tracked as Phase 5
+  (`docs/architecture/phase5-implementation-tickets.md`). Progress: P5.1 declared the
+  path's foreign writes machine-checkably; P5.4 assigned `payments` to `sales` in
+  `modules/ownership.json`, so the settlement `INSERT INTO payments` is an own-table
+  write; P5.2 extracted the shortfall decision logic into `plan_resolution_deductions`.
+  Open: P5.2's reads still sit at the call site, and P5.3 still routes the `customers`
+  accrual (the one remaining foreign write) behind the crm seam.
 
 Everything the firewall was built to enforce is now mechanical:
 

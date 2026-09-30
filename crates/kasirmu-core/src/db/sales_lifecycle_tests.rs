@@ -565,13 +565,14 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
 /// so no `NamespacedStore` sees its statements, and this list is what keeps a new
 /// cross-vertical write from slipping in unannounced.
 ///
-/// `payments` has no owner in `modules/ownership.json` (`owner_of` returns `None`);
-/// that is the known open question Phase 5 P5.4 resolves, so it is allowed here
-/// explicitly rather than silently.
-const FOREIGN_WRITES: &[&str] = &["customers", "payments"];
+/// `payments` is NOT here: Phase 5 P5.4 assigned it to `sales` in
+/// `modules/ownership.json`, so the settlement INSERT (:555) is an own-table write.
+/// `customers` remains the one foreign write (crm-owned); P5.3 routes it behind the
+/// crm seam, at which point this list empties.
+const FOREIGN_WRITES: &[&str] = &["customers"];
 
-/// Module dependencies of `sales`. Mirrors `dependencies` in
-/// `modules/sales/manifest.json`; a foreign write's owner must appear here.
+/// Module dependencies of `sales` that a foreign write's owner must appear in.
+/// Mirrors `dependencies` in `modules/sales/manifest.json`; P5.3 adds `crm` there.
 const MODULE_DEPENDENCIES: &[&str] = &["inventory", "crm"];
 
 /// Every table this path writes that it does not own must be owned by a module
@@ -579,30 +580,36 @@ const MODULE_DEPENDENCIES: &[&str] = &["inventory", "crm"];
 /// declaring its owner (here or in modules/sales/manifest.json) fails this test,
 /// which is the whole point of the declaration: the sale lifecycle runs in core,
 /// so this is the only place a new cross-vertical write gets caught.
+///
+/// Since P5.4 every such table must be mapped: an unmapped table is a governance
+/// gap, not an allowed case.
 #[test]
 fn the_foreign_writes_name_owners_that_sales_declares() {
     use crate::db::ownership::owner_of;
     for table in FOREIGN_WRITES {
-        match owner_of(table) {
-            Some(owner) => assert!(
-                MODULE_DEPENDENCIES.contains(&owner),
-                "sale lifecycle writes '{table}', owned by '{owner}', but sales does not declare that dependency"
-            ),
-            // `payments` is deliberately unowned (Phase 5 P5.4). Allow a table the
-            // ownership map does not name, but only that one, and only while the
-            // ticket is open. Anything else unmapped is a governance gap.
-            None => assert_eq!(
-                *table, "payments",
-                "'{table}' has no owner in modules/ownership.json and is not the known open case"
-            ),
-        }
+        let owner = owner_of(table).unwrap_or_else(|| {
+            panic!(
+                "sale lifecycle writes '{table}', which no module owns in modules/ownership.json"
+            )
+        });
+        assert!(
+            MODULE_DEPENDENCIES.contains(&owner),
+            "sale lifecycle writes '{table}', owned by '{owner}', but sales does not declare that dependency"
+        );
     }
 }
 
-/// The declaration is not vacuous: it must name the two foreign writes the path
-/// actually performs (`customers` accrual, `payments` insert).
+/// The declaration is not vacuous: it must name the foreign write the path still
+/// performs (`customers` accrual). `payments` left this list in P5.4 when it
+/// became sales-owned.
 #[test]
 fn the_foreign_write_declaration_is_not_empty() {
     assert!(FOREIGN_WRITES.contains(&"customers"));
-    assert!(FOREIGN_WRITES.contains(&"payments"));
+    // P5.4: payments is sales-owned now, so it must NOT be a foreign write.
+    assert!(!FOREIGN_WRITES.contains(&"payments"));
+    assert_eq!(
+        crate::db::ownership::owner_of("payments"),
+        Some("sales"),
+        "P5.4 assigned payments to sales; a re-home must update this declaration"
+    );
 }

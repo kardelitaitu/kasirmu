@@ -17,6 +17,8 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 
 // Cross-vertical write contract for this core-owned path: Phase 5 P5.1, checked by
 // `the_foreign_writes_name_owners_that_sales_declares` in `sales_lifecycle_tests.rs`.
+// `payments` became sales-owned in P5.4 (modules/ownership.json); `customers` is the
+// one remaining foreign write, routed behind the crm seam by P5.3.
 
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///

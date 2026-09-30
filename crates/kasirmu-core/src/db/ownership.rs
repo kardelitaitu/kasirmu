@@ -10,7 +10,7 @@
 
 /// The module id that owns each table, per `modules/ownership.json`.
 pub const TABLE_OWNERS: &[(&str, &[&str])] = &[
-    ("sales", &["sales", "sale_lines"]),
+    ("sales", &["sales", "sale_lines", "payments"]),
     (
         "inventory",
         &["products", "product_recipes", "inventory", "stock_summary"],

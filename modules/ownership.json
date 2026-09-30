@@ -4,7 +4,8 @@
   "owners": {
     "sales": [
       "sales",
-      "sale_lines"
+      "sale_lines",
+      "payments"
     ],
     "inventory": [
       "products",

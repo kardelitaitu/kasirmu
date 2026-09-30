@@ -86,12 +86,14 @@ today (a captured payment must never roll back on a CRM problem). The loyalty ea
 moves, and record the decision. **Acceptance:** `UPDATE customers` no longer appears in
 `sales_lifecycle.rs`; the non-fatal contract is pinned by a test.
 
-### P5.4 — Settle the `payments` ownership question
+### P5.4 — Settle the `payments` ownership question — **DONE 2026-10-03**
 
 `INSERT INTO payments` at :555 lists no owner in `modules/ownership.json` (no module owns
 `payments`). Either assign it deliberately (to `sales`, whose settlement writes it) or document why
 it is intentionally unowned. **Acceptance:** `owner_of("payments")` is `Some(_)` *or* a dated note
 in `modules/ownership.json` and `docs/architecture/module-namespace-firewall.md` explains the gap.
+
+**Landed:** `payments` was moved under the `sales` owner in `modules/ownership.json` (the settlement transaction at `sales_lifecycle.rs:555` writes it, and `sales` is the natural owner of its own tender rows), and `crates/kasirmu-core/src/db/ownership.rs` was regenerated. `owner_of("payments") == Some("sales")` now, so the P5.1 declaration dropped `payments` from `FOREIGN_WRITES` (only `customers` remains foreign) and `the_foreign_write_declaration_is_not_empty` asserts payments is *not* foreign and is sales-owned — a re-home fails that test.
 
 ### P5.5 — Flip the sale path onto the strict store and retire the exemption
 
