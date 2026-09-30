@@ -865,6 +865,11 @@ TCP+TLS re-established every tick. *Fix:* build the two `SinglePart`s once; cach
 `DATE(s.created_at) BETWEEN ?1 AND ?2` cannot use an index; only `query_top_products` has a
 `LIMIT`, so `query_daily_summary`, `query_sales_by_hour` and `query_menu_engineering` materialise
 the whole history. *Fix:* half-open range predicates plus paging.
+**UPDATE 2026-09-30 — half this item is now moot.** `crates/kasirmu-reporting/src/daily_summary.rs`
+was retired under checklist C29, which took `query_daily_summary`, `query_sales_by_hour` and
+`query_top_products` with it — so the only query in the set that had a `LIMIT` no longer exists, and
+the remaining non-sargable surface is `query_menu_engineering` (`menu_engineering.rs:88-108`) plus
+`margin.rs:76-88`. Scope the fix to those two.
 
 ```sql
 130           AND DATE(s.created_at) BETWEEN ?1 AND ?2
@@ -980,8 +985,8 @@ is a public `f64` and quadrant classification compares `(margin_minor as f64) >=
 *Fix:* keep medians in `i64` minor units.
 
 **O-L21 · truncating `as` casts on computed numerics** —
-`crates/kasirmu-reporting/src/daily_summary.rs:137` ✔ (`hour` i64→u8);
-`crates/kasirmu-media/src/thumbnail.rs:94-95` ◦ (u64→u32, unclamped) (3C-13). *Fix:* `try_from`
+`crates/kasirmu-reporting/src/daily_summary.rs:137` ✔ (`hour` i64→u8) — **retired 2026-09-30 with the module (checklist C29), so this half is historical**;
+`crates/kasirmu-media/src/thumbnail.rs:94-95` ◦ (u64→u32, unclamped) (3C-13) — **this half is still live**. *Fix:* `try_from`
 with an explicit clamp.
 
 **O-L22 · modules-sales — status string via a `serde_json` round trip; INSERT re-prepared per
