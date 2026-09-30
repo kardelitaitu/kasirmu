@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Skill drift detection — runs the 15 mechanical checks described in
+# Skill drift detection — runs the 16 mechanical checks described in
 # .agents/skills/skill-drift-guard/SKILL.md and emits a markdown report.
 #
 # Usage:
@@ -247,7 +247,7 @@ audit_footer_check_in_file() {
 # Findings: associative array of category -> lines
 declare -A FINDINGS
 for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit \
-           version-lock crate-prefix ci-jobs workflow-claims git-policy; do
+           version-lock crate-prefix ci-jobs workflow-claims git-policy rs-audit-stamp; do
   FINDINGS[$cat]=""
 done
 
@@ -831,6 +831,52 @@ if should_run git-policy; then
 fi
 
 # ---------------------------------------------------------------------------
+# Check 16 — Unsubstituted audit-stamp placeholder in .rs headers (taxonomy #17)
+#
+# A Rust audit stamp is a `/* … */` block comment whose first line reads
+# `last audited <DD-MM-YY> by <who>`, with `FIXED <DD-MM-YY>` notes on the
+# findings line. NOTHING checked it: AUDIT_RE and FOOTER_RE (Checks 9/10) both
+# require a leading `> ` markdown blockquote, and Check 10's corpus is
+# md_footer_files (`*.md` only) — so no `.rs` file was ever in a corpus this
+# guard reads. Measured 2026-09-30: `grep -rn '^> last audited' --include='*.rs'`
+# returns 0, and the unsubstituted template had survived in 31 production
+# files / 43 occurrences. Same defect class as a lint declared but inert: a
+# convention with no instrument behind it rots silently, and Check 10's own
+# comment claims the convention "would re-accumulate silently without this
+# check" — it did, in `.rs`.
+#
+# Scope is deliberately NARROW: the literal placeholder token, not the footer
+# shape. The `.rs` stamp is a different convention (block comment, richer
+# fields) and imposing the markdown footer regex on it would be wrong. An
+# unknown date is legitimate and is written `(date unknown)`; what is
+# forbidden is leaving the template in place, which reads as a date to a
+# careless reader and as nothing to a careful one. Scoped to `.rs` because
+# every other file type that mentions the token (AGENTS.md, the skill docs,
+# docs-auditor's own checker, this script) documents the convention on purpose.
+#
+# Corpus is a PRUNED `find`, not `find . -not -path …`: `-not -path` filters
+# the OUTPUT but still DESCENDS into target/ and node_modules/, which on a box
+# with several cargo target lanes made every tree-walking check take minutes.
+# `-prune` skips the traversal itself.
+#
+# The scan is BATCHED into one `-exec grep … +` per find batch, never one
+# `grep` per file. The per-file form was written first and measured here: 1,383
+# `.rs` files x one process spawn each took over 60s on Git Bash and the run
+# had to be killed, where the batched form finishes in ~1s. This is the same
+# 15x regression Check 10's perf test pins for the markdown corpus.
+# `-H` forces the filename prefix even when a batch holds a single file.
+# ---------------------------------------------------------------------------
+if should_run rs-audit-stamp; then
+  while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    loc="${hit%%:*}"; rest="${hit#*:}"; line="${rest%%:*}"
+    FINDINGS[rs-audit-stamp]+="${loc}:${line}: unsubstituted audit-stamp placeholder — \`DD-MM-YY\` was never replaced (use a real date, or \`(date unknown)\`)"$'\n'
+  done < <(find . \
+             \( -name .git -o -name target -o -name node_modules -o -name dist \) -prune -o \
+             -name '*.rs' -exec grep -nHE 'DD-MM-YY' {} + 2>/dev/null)
+fi
+
+# ---------------------------------------------------------------------------
 # Auto-patch (safe categories only)
 # ---------------------------------------------------------------------------
 if $AUTO_PATCH; then
@@ -858,7 +904,7 @@ report=""
 report+="# Skill drift report — $today"$'\n\n'
 
 for cat in paths crates api versions golden refs fluent audit-date audit-format doc-audit \
-           version-lock crate-prefix ci-jobs workflow-claims git-policy; do
+           version-lock crate-prefix ci-jobs workflow-claims git-policy rs-audit-stamp; do
   body="${FINDINGS[$cat]}"
   if [ -z "$body" ]; then continue; fi
   manual_count=$((manual_count + $(echo "$body" | grep -c . || true)))
