@@ -1,0 +1,58 @@
+/* ── UnsavedChangesDialog ─────────────────────────────────────── */
+
+.unsaved-changes-dialog-panel {
+  max-width: 480px;
+}
+
+.unsaved-dialog-body {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+}
+
+.unsaved-dialog-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--color-warning-bg, rgba(245, 158, 11, 0.12));
+  color: var(--color-warning, #f59e0b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.unsaved-dialog-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.unsaved-dialog-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.unsaved-dialog-headline {
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-fg-primary);
+  line-height: var(--leading-snug);
+}
+
+.unsaved-dialog-subtext {
+  font-size: var(--text-sm);
+  color: var(--color-fg-secondary);
+  line-height: var(--leading-relaxed);
+}
+
+.unsaved-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+}

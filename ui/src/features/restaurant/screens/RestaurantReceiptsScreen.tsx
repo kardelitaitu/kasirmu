@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } f
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
 import { useToast } from '@/components/Toast';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -2153,51 +2153,18 @@ export default function RestaurantReceiptsScreen({
       </div>
 
       {/* Unsaved-changes guard dialog — shown when back/Escape is triggered with a dirty form */}
-      <ConfirmDialog
+      <UnsavedChangesDialog
         open={showUnsavedDialog}
         onCancel={() => setShowUnsavedDialog(false)}
-        onConfirm={() => {
+        onDiscard={() => {
           setShowUnsavedDialog(false);
           onBack?.();
         }}
-        title={l10n.getString('restaurant-unsaved-dialog-title') || 'Unsaved Changes'}
-        message={l10n.getString('restaurant-unsaved-dialog-message') || 'You have unsaved changes. Save before leaving, or discard them.'}
-        variant="warning"
-        footer={
-          <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-            <Button
-              variant="ghost"
-              size="md"
-              onClick={() => setShowUnsavedDialog(false)}
-              data-testid="unsaved-dialog-cancel"
-            >
-              <Localized id="cancel"><span>Cancel</span></Localized>
-            </Button>
-            <Button
-              variant="danger"
-              size="md"
-              onClick={() => {
-                setShowUnsavedDialog(false);
-                onBack?.();
-              }}
-              data-testid="unsaved-dialog-discard"
-            >
-              <Localized id="restaurant-unsaved-discard"><span>Discard</span></Localized>
-            </Button>
-            <Button
-              variant="primary"
-              size="md"
-              loading={saving}
-              onClick={async () => {
-                await handleSave();
-                setShowUnsavedDialog(false);
-              }}
-              data-testid="unsaved-dialog-save"
-            >
-              <Localized id="save"><span>Save</span></Localized>
-            </Button>
-          </div>
-        }
+        onSave={async () => {
+          await handleSave();
+          setShowUnsavedDialog(false);
+        }}
+        saving={saving}
       />
     </div>
   );

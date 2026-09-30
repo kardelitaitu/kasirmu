@@ -53,6 +53,7 @@ nav-inventory = Inventory
 cancel = Cancel
 confirm = Confirm
 save = Save
+discard = Discard
 delete = Delete
 edit = Edit
 close = Close

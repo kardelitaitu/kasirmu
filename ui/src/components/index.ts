@@ -28,6 +28,8 @@ export { SettingsPopup } from './SettingsPopup';
 export type { SettingsPopupProps, SettingsPopupSize } from './SettingsPopup';
 export { ConfirmDialog } from '@/components/ConfirmDialog';
 export type { ConfirmDialogProps, ConfirmVariant } from '@/components/ConfirmDialog';
+export { UnsavedChangesDialog } from '@/components/UnsavedChangesDialog';
+export type { UnsavedChangesDialogProps } from '@/components/UnsavedChangesDialog';
 export { useContextMenu } from './useContextMenu';
 export type { ContextMenuState } from './useContextMenu';
 export { ContextMenu } from './ContextMenu';

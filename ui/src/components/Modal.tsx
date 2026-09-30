@@ -18,6 +18,12 @@ export interface ModalProps {
   footer?: ReactNode;
   /** Whether to show the close (X) button in the header. @default true */
   showCloseButton?: boolean;
+  /** Position of the close button. 'inside' (in header) or 'outside' (floating outside panel). @default 'inside' */
+  closeButtonPosition?: 'inside' | 'outside';
+  /** Optional additional class name applied to the modal panel. */
+  className?: string;
+  /** Optional ARIA label for the dialog when title is omitted. */
+  ariaLabel?: string;
 }
 
 // ── Component ─────────────────────────────────────────────────────
@@ -52,6 +58,9 @@ export function Modal({
   children,
   footer,
   showCloseButton = true,
+  closeButtonPosition = 'inside',
+  className,
+  ariaLabel,
 }: ModalProps) {
   const { l10n } = useLocalization();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -79,44 +88,74 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={`modal-panel${exiting ? ' modal-panel--exiting' : ''}`}
+        className={`modal-panel${className ? ` ${className}` : ''}${exiting ? ' modal-panel--exiting' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
+        aria-label={!title && ariaLabel ? ariaLabel : undefined}
       >
-        {/* ── Header ────────────────────────────── */}
-        <div className="modal-header">
-          {title && (
-            <h2 id={titleId} className="modal-title">
-              {title}
-            </h2>
-          )}
-
-          {showCloseButton && (
-            <button
-              type="button"
-              className="modal-close-btn"
-              onClick={requestClose}
-               aria-label={l10n.getString('modal-close-aria')}
+        {/* ── Outside close button (floating over top-right corner) ── */}
+        {showCloseButton && closeButtonPosition === 'outside' && (
+          <button
+            type="button"
+            className="modal-close-btn modal-close-btn--outside"
+            onClick={requestClose}
+            aria-label={l10n.getString('modal-close-aria')}
+            data-testid="modal-close-btn-outside"
+          >
+            {/* X icon */}
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              {/* X icon */}
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
+
+        {/* ── Header ────────────────────────────── */}
+        {(title || (showCloseButton && closeButtonPosition !== 'outside')) && (
+          <div className="modal-header">
+            {title && (
+              <h2 id={titleId} className="modal-title">
+                {title}
+              </h2>
+            )}
+
+            {showCloseButton && closeButtonPosition !== 'outside' && (
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={requestClose}
+                aria-label={l10n.getString('modal-close-aria')}
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          )}
-        </div>
+                {/* X icon */}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── Body ──────────────────────────────── */}
         <div className="modal-body">{children}</div>

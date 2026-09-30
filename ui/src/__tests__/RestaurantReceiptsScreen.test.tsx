@@ -370,6 +370,35 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
   });
 
+  it('renders redesigned unsaved dialog with 2-row text, outside close button, and no heading', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'REDESIGN TEST');
+
+    await user.click(screen.getByTestId('restaurant-receipts-back-btn'));
+
+    // Redesigned 2-row text
+    expect(screen.getByText(/You have unsaved changes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Save before leaving, or discard them/i)).toBeInTheDocument();
+
+    // No separate heading inside the dialog (unlike before, no 'Unsaved Changes' title)
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('heading')).not.toBeInTheDocument();
+
+    // Outside close button closes dialog without navigating
+    const outsideClose = screen.getByTestId('modal-close-btn-outside');
+    expect(outsideClose).toBeInTheDocument();
+    await user.click(outsideClose);
+    expect(onBack).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
+    });
+  });
+
   it('saves a dirty change when Save is clicked and calls onSaved', async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();

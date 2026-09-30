@@ -2,6 +2,7 @@
 
 save = Simpan
 cancel = Batal
+discard = Buang
 delete = Hapus
 edit = Ubah
 close = Tutup
