@@ -276,7 +276,7 @@ export default function EmailReportSettings() {
               className="settings-input"
               type="text"
               id="settings-email-host"
-              placeholder="smtp.example.com"
+              placeholder={l10n.getString('settings-email-host-placeholder')}
               value={config.host}
               onChange={(e) => updateField('host', e.target.value)}
               autoComplete="off"
@@ -390,7 +390,7 @@ export default function EmailReportSettings() {
               className="settings-input"
               type="email"
               id="settings-email-from"
-              placeholder="reports@mystore.com"
+              placeholder={l10n.getString('settings-email-from-placeholder')}
               value={config.from}
               onChange={(e) => updateField('from', e.target.value)}
               autoComplete="off"
@@ -575,7 +575,7 @@ export default function EmailReportSettings() {
                 className="settings-input"
                 type="text"
                 value={schedule.timezone}                    onChange={(e) => updateSchedField('timezone', e.target.value)}
-                placeholder="UTC"
+                placeholder={l10n.getString('settings-schedule-timezone-placeholder')}
                 aria-label={l10n.getString('settings-schedule-timezone')}
                 style={{ maxWidth: '220px' }}
               />
