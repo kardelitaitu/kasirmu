@@ -388,6 +388,25 @@ function mondayFirst(jsDay: number): number {
   return (jsDay + 6) % 7;
 }
 
+/**
+ * An ISO `YYYY-MM-DD` as a Date, read on the UTC calendar.
+ *
+ * `new Date(`${iso}T00:00:00`)` — the shape that was in the three call
+ * sites below — has no timezone designator, so it is parsed in the HOST's zone.
+ * Every hour west of UTC therefore reads the date as the PREVIOUS day: under
+ * TZ=Asia/Jakarta, `2026-01-01` parses as local Dec 31, and `.getDate()` says
+ * 31 for a row the backend labelled the 1st. That is the same host-dependence
+ * `isoToday()` was fixed for, one layer down: the window is now store-anchored,
+ * so a row inside it still landed in the wrong cell whenever the device zone
+ * was not UTC.
+ *
+ * The UTC read matches `addDaysUtc()` below and the rest of this file, which
+ * already spell `T00:00:00Z`.
+ */
+function parseIsoDate(iso: string): Date {
+  return new Date(`${iso}T00:00:00Z`);
+}
+
 /** Aggregated raw revenue + order count for one heatmap cell key. */
 interface HeatTotals {
   minor: number;
@@ -402,16 +421,16 @@ export interface HeatCell extends HeatTotals {
 
 /** The yearly heatmap's `YYYY-MM:week` cell key for a Monday week_start. */
 function yearlyWeekKey(weekStart: string): string {
-  const d = new Date(`${weekStart}T00:00:00`);
-  const month = d.getMonth();
+  const d = parseIsoDate(weekStart);
+  const month = d.getUTCMonth();
   // Ordinal of the week among the month's Monday weeks (0-based) — the same
   // Monday-first structure as the trend cards' weekStartKey. The old
   // day-of-month arithmetic capped at 3, silently merging the 5th Monday of
   // a month into the 4th week's cell. The key carries the week_start's
   // YYYY-MM so a multi-year range never merges two Januaries into one column.
   let week = 0;
-  for (let day = 1; day <= d.getDate(); day++) {
-    if (mondayFirst(new Date(d.getFullYear(), month, day).getDay()) === 0) week += 1;
+  for (let day = 1; day <= d.getUTCDate(); day++) {
+    if (mondayFirst(new Date(Date.UTC(d.getUTCFullYear(), month, day)).getUTCDay()) === 0) week += 1;
   }
   return `${weekStart.slice(0, 7)}:${week - 1}`;
 }
@@ -436,7 +455,7 @@ function heatTotals(
   };
   if (g === 'monthly') {
     for (const r of data.daily ?? []) {
-      add(String(new Date(`${r.date}T00:00:00`).getDate()), r.total_minor, r.sale_count);
+      add(String(parseIsoDate(r.date).getUTCDate()), r.total_minor, r.sale_count);
     }
   } else if (g === 'yearly') {
     for (const r of data.weekly ?? []) {
@@ -707,10 +726,10 @@ export async function loadHeatmapRows(q: AnalyticsQuery): Promise<{
 
 /** Completed table-bound orders per day → per-bucket turn minutes. */
 function weekStartKey(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const dow = (d.getDay() + 6) % 7; // Monday-first
-  d.setDate(d.getDate() - dow);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const d = parseIsoDate(iso);
+  const dow = (d.getUTCDay() + 6) % 7; // Monday-first
+  d.setUTCDate(d.getUTCDate() - dow);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 function monthDays(ym: string): number {

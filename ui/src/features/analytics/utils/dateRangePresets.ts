@@ -101,8 +101,3 @@ export const cardRange = (
   return rangeForGranularity(cardGranularity(card, g), customFrom, customTo, storeTz);
 }
 
-/** Number of days in the current month (28–31). */
-export const daysInCurrentMonth = (): number => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-}

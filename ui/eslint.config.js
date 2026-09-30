@@ -34,7 +34,6 @@ export default ts.config(
             'smartScale',
             'cardGranularity',
             'cardRange',
-            'daysInCurrentMonth',
             'monthCalendarGrid',
             'isProductActive',
             'RETAIL_COLUMN_ORDER',

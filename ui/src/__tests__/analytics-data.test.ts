@@ -480,6 +480,19 @@ describe('heatmap intensity builders', () => {
     expect(map.get('27')).toBe(4);
   });
 
+  it('monthDayIntensities reads a row date on the UTC calendar, not the host\'s', () => {
+    // The key was built as new Date(`${r.date}T00:00:00`).getDate(). With no
+    // timezone designator that parses in the HOST's zone, so every host west of
+    // UTC read the day before: under TZ=Asia/Jakarta a row the backend labelled
+    // the 1st landed in cell '31' of the previous month. The ISO string is the
+    // row's own label, so it is read with the UTC getters.
+    const day1 = monthDayIntensities([
+      { date: '2026-01-01', total_minor: 100, currency: 'USD', sale_count: 1, cogs_minor: 0, gross_profit_minor: 100, gross_margin_percent: 100 },
+    ]);
+    expect(day1.get('1')).toBe(4);
+    expect(day1.get('31')).toBeUndefined();
+  });
+
   it('monthDayIntensities sums multi-currency rows on the same day', () => {
     // The backend emits one daily row per currency — the cell must show the
     // COMBINED revenue, not one currency's row overwriting the other.
@@ -503,6 +516,19 @@ describe('heatmap intensity builders', () => {
     ]);
     // July 2026 Mondays are 6, 13, 20, 27 → the 21st's week is ordinal 3 → 2.
     expect(map.get('2026-07:2')).toBe(4);
+  });
+
+  it('yearlyWeekIntensities counts Mondays on the UTC calendar, not the host\'s', () => {
+    // The same host-local parse, in the year key and the ordinal band. A
+    // week_start of 2026-03-30 is the FIFTH Monday of March; read as local
+    // Feb 28 on a host west of UTC it became March's fourth Monday and the
+    // revenue vanished into the band below — the exact defect the 5-Monday
+    // test above was written to prevent, arriving from the other direction.
+    const fifthMonday = yearlyWeekIntensities([
+      { week_start: '2026-03-30', total_minor: 100, currency: 'USD', sale_count: 1, cogs_minor: 0, gross_profit_minor: 100, gross_margin_percent: 100 },
+    ]);
+    expect(fifthMonday.get('2026-03:4')).toBe(4);
+    expect(fifthMonday.get('2026-03:3')).toBeUndefined();
   });
 
   it('yearlyWeekIntensities keeps the 5th Monday of a month in its own band', () => {
