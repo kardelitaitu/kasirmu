@@ -223,6 +223,11 @@ plan match the repository') is satisfied by a correction the next reader can see
 
 **Depends on:** T1 optionally, for the corrected table content. Can be done in either order.
 
+**Status: DONE 2026-10-02** (commit `e33dfb83a`). All 10 plan mentions annotated and the two stale diagram
+nodes commented; the plan file itself was committed at the same time (it had been left out of its own commit
+and `scripts/verify-root-policy.py` already allowlists it). Evidence: `check-dead-refs.py` clean on both files,
+`verify-debt-markers.py` exit 0.
+
 ---
 
 ## 6. T5 — Reporting facade inventory
