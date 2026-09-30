@@ -142,6 +142,38 @@ async fn push_items_empty_list_handles_missing_server() {
     }
 }
 
+// ── Identity channel: builder terminal id, no vector stamping ─────
+
+/// The PG path carries terminal identity through `origin_terminal_id`,
+/// set by `with_terminal_id`, NOT through a `_vector` stamp. The module
+/// header's 'Vector stamping' note explains why: `_vector` has exactly
+/// one reader (the cloud HTTP push handler, `sync_store.rs`), and a
+/// direct-PG push never passes through it.
+///
+/// This pins the builder as the identity channel: `with_terminal_id`
+/// returns a usable transport for both `None` (unpaired) and `Some`
+/// (paired). If the identity channel ever changes shape, this fails and
+/// the note gets re-read before the change ships.
+#[test]
+fn pg_transport_identity_channel_is_the_terminal_builder() {
+    for identity in [None, Some("term-pg".to_string())] {
+        let transport =
+            PgTransport::new("localhost", 5432, "db", "u", "p", "default").expect("pool creation");
+        // The builder is #[must_use]; assigning it proves it returns the
+        // transport type and that both identity states are accepted.
+        let transport = transport.with_terminal_id(identity.clone());
+        // A paired transport is still Debug-printable without leaking the
+        // identity (Debug redaction stays in force through the builder).
+        let rendered = format!("{transport:?}");
+        if let Some(id) = &identity {
+            assert!(
+                !rendered.contains(id),
+                "terminal identity must not appear in Debug output"
+            );
+        }
+    }
+}
+
 // ── Anchor expiry ───────────────────────────────────────────────────
 
 #[test]

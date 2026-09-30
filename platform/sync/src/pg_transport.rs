@@ -3,12 +3,29 @@
 /*
 last audited 25-07-26 by RSA-Agent (platform-sync slice F: pg_transport deep read)
 crate: platform-sync | status: SAFE | lint: CLEAN
-findings: exemplary — every query tenant-scoped via SET LOCAL oz.tenant_id GUC inside a transaction plus WHERE tenant_id (FORCEd-RLS safe); fully parameterized static SQL; commit failure surfaces as Err (documented fix: a swallowed commit previously reported Accepted locally while the remote never received the items); tenant mismatch rejected per item; TLS via rustls native roots with sslmode Require; redacted Debug; composite (created_at,id) cursor with cursor-from-kept-row truncation (RUST-07); anchor-expiry MIN query tenant-scoped inside the tx; users snapshot query excludes pin_hash (SYNC-06 PG parity); synced_at decoded as Option avoiding first-row panic
+findings: exemplary — every query tenant-scoped via SET LOCAL oz.tenant_id GUC inside a transaction plus WHERE tenant_id (FORCEd-RLS safe); NO vector stamping here, BY DESIGN (see the module note 'Vector stamping'); fully parameterized static SQL; commit failure surfaces as Err (documented fix: a swallowed commit previously reported Accepted locally while the remote never received the items); tenant mismatch rejected per item; TLS via rustls native roots with sslmode Require; redacted Debug; composite (created_at,id) cursor with cursor-from-kept-row truncation (RUST-07); anchor-expiry MIN query tenant-scoped inside the tx; users snapshot query excludes pin_hash (SYNC-06 PG parity); synced_at decoded as Option avoiding first-row panic
 next: none | perf: deadpool pool max 5 with bounded timeouts
 */
 //!
 //! This transport bypasses the HTTP sync server and writes directly to a
 //! cloud PostgreSQL database (AWS RDS, Azure Database for PostgreSQL, etc.).
+//!
+//! # Vector stamping
+//!
+//! This path does NOT stamp payloads with `_vector`/`_terminal`, and that is
+//! deliberate, not an omission. `_vector` is consumed by exactly one reader:
+//! the cloud HTTP push handler (`apps/cloud-server/src/sync_store.rs`), which
+//! runs `extract_vector` before inserting a pushed item. A direct-PG push
+//! never passes through that handler — it inserts into the remote
+//! `offline_queue` table, and the peer pulls the row and applies it locally
+//! through `SyncQueue::apply_remote_atomic_full` (the shared resolution path).
+//! A vector would have no reader here.
+//!
+//! The transport still carries terminal identity, but on a different
+//! channel: `with_terminal_id` sets `origin_terminal_id` on the inserted row,
+//! and the pull excludes the sender's own rows. That column is the identity
+//! this path uses; `_vector` is the identity the HTTP path uses. Do not
+//! "fix" the missing stamp by adding one — it would be dead metadata.
 
 use deadpool_postgres::Pool;
 use kasirmu_core::offline::{OfflineQueueItem, OfflineQueueStatus};
