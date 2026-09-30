@@ -8,17 +8,29 @@ next: none | perf: N/A
 
 use crate::error::TaxError;
 use crate::models::TaxRate;
-use rusqlite::{Connection, params};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespacedStore};
+use rusqlite::Connection;
+
+/// The tax module's own namespace id, as the ownership map names it.
+const OWNER: ModuleId = ModuleId("tax");
 
 /// Database access repository for tax rates.
+///
+/// Phase 3 P3.2: reaches the database through a [`NamespacedStore`] scoped to
+/// the `tax` namespace rather than a bare `&Connection`, so every statement is
+/// checked against `modules/ownership.json` before it runs. `tax` owns
+/// `tax_rates`, so the store carries `Grants::none()`.
 pub struct TaxRepository<'a> {
-    conn: &'a Connection,
+    ns: NamespacedStore<'a>,
 }
 
 impl<'a> TaxRepository<'a> {
-    /// Create a new `TaxRepository`.
+    /// Create a new `TaxRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self {
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+        }
     }
 
     /// Retrieve an active tax rate by ID.
@@ -29,26 +41,23 @@ impl<'a> TaxRepository<'a> {
     /// contract test `modules/tax/tests/boundary_contract.rs` pins this
     /// parity.
     pub fn get_tax_rate(&self, id: &str) -> Result<Option<TaxRate>, TaxError> {
-        let mut stmt = self.conn.prepare(
+        let rows = self.ns.own().query(
             "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at
              FROM tax_rates WHERE id = ?1 AND is_active = 1",
+            rusqlite::params![id],
+            |row| {
+                Ok(TaxRate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    rate_bps: row.get(2)?,
+                    is_default: row.get::<_, i64>(3)? != 0,
+                    is_inclusive: row.get::<_, i64>(4)? != 0,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            },
         )?;
-
-        let mut rows = stmt.query(params![id])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        Ok(Some(TaxRate {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            rate_bps: row.get(2)?,
-            is_default: row.get::<_, i64>(3)? != 0,
-            is_inclusive: row.get::<_, i64>(4)? != 0,
-            created_at: row.get(5)?,
-            updated_at: row.get(6)?,
-        }))
+        Ok(rows.into_iter().next())
     }
 
     /// List all active tax rates, ordered by name.
@@ -59,24 +68,23 @@ impl<'a> TaxRepository<'a> {
     /// boundary only ever see assignable rates. The cross-layer contract
     /// test `modules/tax/tests/boundary_contract.rs` pins this parity.
     pub fn list_tax_rates(&self) -> Result<Vec<TaxRate>, TaxError> {
-        let mut stmt = self.conn.prepare(
+        let rows = self.ns.own().query(
             "SELECT id, name, rate_bps, is_default, is_inclusive, created_at, updated_at
              FROM tax_rates WHERE is_active = 1 ORDER BY name",
+            [],
+            |row| {
+                Ok(TaxRate {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    rate_bps: row.get(2)?,
+                    is_default: row.get::<_, i64>(3)? != 0,
+                    is_inclusive: row.get::<_, i64>(4)? != 0,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            },
         )?;
-
-        let rows = stmt.query_map([], |row| {
-            Ok(TaxRate {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                rate_bps: row.get(2)?,
-                is_default: row.get::<_, i64>(3)? != 0,
-                is_inclusive: row.get::<_, i64>(4)? != 0,
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })?;
-
-        rows.map(|r| Ok(r?)).collect()
+        Ok(rows)
     }
 }
 

@@ -16,6 +16,9 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 foundation = { workspace = true }
 platform-core = { workspace = true }
+# Phase 3 P3.2: the repository reaches the DB through
+# kasirmu_core::db::namespaced, so core is a normal dependency.
+kasirmu-core = { workspace = true }
 rusqlite = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
@@ -25,4 +28,3 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 platform-kernel = { workspace = true }
-kasirmu-core = { workspace = true }

@@ -7,6 +7,7 @@ next: none | perf: N/A
 
 //! Error type for the staff domain.
 
+use kasirmu_core::db::namespaced::NamespaceError;
 use thiserror::Error;
 
 /// Errors that can originate in the staff/user domain.
@@ -15,6 +16,10 @@ pub enum StaffError {
     /// A database operation failed.
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    /// A namespace check rejected the statement (Phase 3 P3.2).
+    #[error("namespace error: {0}")]
+    Namespace(#[from] NamespaceError),
 
     /// A platform infrastructure error.
     #[error("platform error: {0}")]

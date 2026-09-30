@@ -72,3 +72,29 @@ fn get_role_roundtrip() {
     assert_eq!(role.name, "cashier");
     assert_eq!(role.permissions, r#"["sales:process"]"#);
 }
+
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach: its own table passes the
+/// ownership check, a foreign table through the same handle is refused.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("staff"), Grants::none());
+
+    ns.own()
+        .query("SELECT 1 FROM users", [], |row| row.get::<_, i64>(0))
+        .expect("staff must be allowed to read users");
+
+    let err = ns
+        .own()
+        .query("SELECT 1 FROM sales", [], |row| row.get::<_, i64>(0))
+        .unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "sales"),
+        "expected Foreign on sales, got {err:?}"
+    );
+}
