@@ -62,6 +62,10 @@ lighthouse*
 *.db-journal
 *.sqlite
 *.sqlite3
+# Program-generated state lives here, not at the root: the database, its
+# WAL sidecars, and backups. One gitignored directory is what lets
+# scripts/verify-root-policy.py keep its no-patterns allowlist honest.
+/var/
 # Env files — keep the committed template trackable (negation below).
 .env
 .env.*

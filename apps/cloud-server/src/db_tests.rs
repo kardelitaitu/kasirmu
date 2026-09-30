@@ -84,6 +84,37 @@ fn sqlite_from_path_creates_db() {
     assert!(path.exists(), "database file should exist");
 }
 
+/// The default OZ_DB_PATH is now var/kasir.db, and rusqlite will not create a
+/// missing parent directory. Without this test the migration would pass CI, where
+/// the default is never opened, and fail on a fresh clone that has no var/.
+#[test]
+fn sqlite_creates_a_missing_parent_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("var").join("nested").join("kasir.db");
+    assert!(!nested.parent().unwrap().exists(), "precondition: parent is absent");
+    let pool = DbPool::connect_sqlite(nested.to_str().unwrap()).unwrap();
+    assert!(pool.is_sqlite());
+    assert!(nested.exists(), "database file should exist");
+    assert!(
+        dir.path().join("var").is_dir(),
+        "the parent directory should have been created"
+    );
+}
+
+/// A bare filename has an empty Path::parent(); create_dir_all("") fails, so the
+/// guard has to hold or every such open dies.
+#[test]
+fn sqlite_accepts_a_bare_filename_with_no_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(dir.path()).unwrap();
+    let result = DbPool::connect_sqlite("bare.db");
+    std::env::set_current_dir(cwd).unwrap();
+    let pool = result.unwrap();
+    assert!(pool.is_sqlite());
+    assert!(dir.path().join("bare.db").exists());
+}
+
 #[tokio::test]
 async fn postgres_url_parsing_rejects_bad_url() {
     let result = DbPool::connect_postgres("not-a-url", false, 20, true).await;

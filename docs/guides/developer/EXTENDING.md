@@ -76,7 +76,7 @@ deployment, by design:
 ```bash
 # SQLite-backed dev server, admin key unset => token minting is OPEN (dev mode)
 cargo run -p oz-cloud-server
-# env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default kasir.db),
+# env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default var/kasir.db),
 #            OZ_ADMIN_KEY, OZ_API_SECRET, OZ_CORS_ORIGINS, OZ_PRODUCTION
 ```
 

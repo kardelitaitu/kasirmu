@@ -7,19 +7,19 @@
 #
 # Usage:
 #   bash scripts/backup-db.sh                           # backup to default dir
-#   bash scripts/backup-db.sh /path/to/kasir.db        # specific DB file
-#   BACKUP_DIR=/backups bash scripts/backup-db.sh       # custom backup dir
+#   bash scripts/backup-db.sh var/kasir.db             # specific DB file
+#   BACKUP_DIR=var/backups bash scripts/backup-db.sh    # custom backup dir
 #   RETENTION_DAYS=90 bash scripts/backup-db.sh         # keep 90 days
 #
 # Defaults:
-#   DB file: ./kasir.db (or OZ_DB_PATH env var)
-#   Backup dir: ./backups/
+#   DB file: ./var/kasir.db (or OZ_DB_PATH env var)
+#   Backup dir: ./var/backups/
 #   Retention: 30 days
 
 set -euo pipefail
 
-DB_FILE="${1:-${OZ_DB_PATH:-kasir.db}}"
-BACKUP_DIR="${BACKUP_DIR:-backups}"
+DB_FILE="${1:-${OZ_DB_PATH:-var/kasir.db}}"
+BACKUP_DIR="${BACKUP_DIR:-var/backups}"
 RETENTION_DAYS="${RETENTION_DAYS:-30}"
 
 # Ensure DB exists

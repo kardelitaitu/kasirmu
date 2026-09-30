@@ -129,7 +129,9 @@ fn cli_parse_restore() {
 #[test]
 fn cli_parse_default_db() {
     let cli = Cli::try_parse_from(["oz", "migrate"]).unwrap();
-    assert_eq!(cli.db, "kasir.db");
+    // Program state lives under var/ so the repo root stays clean and
+    // scripts/verify-root-policy.py keeps its no-patterns allowlist honest.
+    assert_eq!(cli.db, "var/kasir.db");
 }
 
 #[test]

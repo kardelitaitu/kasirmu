@@ -29,7 +29,7 @@ pub enum LogFormat {
 /// every module that needs environment-derived settings.
 #[derive(Debug, Clone)]
 pub struct CloudServerConfig {
-    /// Path to the SQLite database file (default: `kasir.db`).
+    /// Path to the SQLite database file (default: `var/kasir.db`).
     /// Ignored when `database_url` points to a PostgreSQL server.
     pub db_path: String,
 
@@ -217,7 +217,11 @@ impl CloudServerConfig {
             .filter(|s| !s.is_empty());
 
         let database_url = std::env::var("DATABASE_URL").ok();
-        let db_path = std::env::var("OZ_DB_PATH").unwrap_or_else(|_| "kasir.db".into());
+        // Program state lives under var/ so the repo root stays clean and
+        // scripts/verify-root-policy.py keeps its no-patterns allowlist honest.
+        // The parent directory is created in Db::connect_sqlite, not here, so
+        // that reading this config never touches the filesystem.
+        let db_path = std::env::var("OZ_DB_PATH").unwrap_or_else(|_| "var/kasir.db".into());
         let require_tls = resolve_require_tls(env_bool("OZ_DB_REQUIRE_TLS"), production);
         let db_pool_size = env_usize("OZ_DB_POOL_SIZE", 8);
         // Schema application is on by default; only an explicit `0`/`false`/

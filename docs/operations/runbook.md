@@ -1433,7 +1433,7 @@ kasir --db "$DB" restore --input "$DB.pre-migration.bak"
 ```
 
 `kasir` is the CLI binary name (`crates/kasirmu-cli/Cargo.toml:10-12`), `--db` is the global
-database flag defaulting to `./kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
+database flag defaulting to `./var/kasir.db` (`crates/kasirmu-cli/src/cli.rs:31-33`), and
 `restore --input` takes the backup path (`:68-73`). It checkpoints the WAL, closes the
 connection, then hands the swap to `restore_from` — validate, snapshot, drop the
 `-wal`/`-shm` sidecars, stage and verify, atomic rename, re-verify, roll back on failure

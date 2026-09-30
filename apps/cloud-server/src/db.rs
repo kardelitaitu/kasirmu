@@ -129,6 +129,16 @@ impl DbPool {
                  path such as /data/kasir.db"
             )));
         }
+        // rusqlite will not create a missing parent, so a fresh clone with no
+        // var/ would fail to open the database at all. Created here rather than
+        // in config so that reading the config stays side-effect free.
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    DbError::Config(format!("cannot create database directory {parent:?}: {e}"))
+                })?;
+            }
+        }
         let mut conn = rusqlite::Connection::open(path)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;

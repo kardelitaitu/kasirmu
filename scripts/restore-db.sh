@@ -6,7 +6,7 @@
 #
 # Usage:
 #   bash scripts/restore-db.sh backups/kasir-20260720-120000.db.gz
-#   bash scripts/restore-db.sh backups/kasir-20260720-120000.db.gz /path/to/kasir.db
+#   bash scripts/restore-db.sh var/backups/kasir-20260720-120000.db.gz var/kasir.db
 #   RESTORE_NO_CONFIRM=1 bash scripts/restore-db.sh ...   # skip prompt
 #
 # Safety: creates a pre-restore backup of the current DB before replacing it.
@@ -16,12 +16,12 @@ set -euo pipefail
 if [ $# -lt 1 ]; then
   echo "Usage: bash scripts/restore-db.sh <backup-file> [target-db]"
   echo "  backup-file: path to .db or .db.gz backup"
-  echo "  target-db:   path to replace (default: kasir.db)"
+  echo "  target-db:   path to replace (default: var/kasir.db)"
   exit 1
 fi
 
 BACKUP_FILE="$1"
-TARGET_DB="${2:-${OZ_DB_PATH:-kasir.db}}"
+TARGET_DB="${2:-${OZ_DB_PATH:-var/kasir.db}}"
 
 # Verify backup exists
 if [ ! -f "$BACKUP_FILE" ]; then

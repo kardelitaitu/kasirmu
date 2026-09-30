@@ -28,8 +28,8 @@ use clap::{Args, Parser, Subcommand};
     about = "kasir.mu maintenance and migration CLI"
 )]
 pub struct Cli {
-    /// Path to the SQLite database (default: ./kasir.db).
-    #[arg(short, long, global = true, default_value = "kasir.db")]
+    /// Path to the SQLite database (default: ./var/kasir.db).
+    #[arg(short, long, global = true, default_value = "var/kasir.db")]
     pub db: String,
 
     #[command(subcommand)]

@@ -63,7 +63,10 @@ CLAIM_RES = [
 HISTORICAL = re.compile(
     r"\b(?:retired|was in|were in|used to|no longer|formerly|previously|"
     r"histor(?:y|ical)|at the time|once|dead|did not run)\b", re.I)
-SKIP_DIRS = ("archived", "attic", "node_modules", "target", "dist", ".git", "__tests__")
+# "var" is program-generated state (the database, its WAL sidecars, backups);
+# a backup archive in there is a filename, not a claim about CI.
+SKIP_DIRS = ("archived", "attic", "node_modules", "target", "dist", ".git",
+             "__tests__", "var")
 SCAN_SUFFIX = (".md", ".yml", ".yaml", ".sh", ".rs", ".toml", ".json", ".ps1",
               ".txt", ".py", ".mjs", ".ts", ".tsx")
 # .py/.mjs were MISSING at first, so a claim in a Python docstring or a Node comment was
