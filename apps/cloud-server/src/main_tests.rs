@@ -401,6 +401,91 @@ async fn cloud_health_reports_queue_depth() {
     assert!(!json["last_sync_at"].is_null());
 }
 
+/// An unreadable queue depth must not borrow the answer of an IDLE queue.
+///
+/// **0 is the value an operator is watching for a stalled sync.** They look at
+/// `/health`, see `sync_queue_depth: 0`, and conclude the queue is draining. The
+/// SQLite arm read the depth with `.unwrap_or(0)`, so a dropped `offline_queue`
+/// table, a corrupt page or a locked database produced exactly that value: the
+/// health signal for "sync has stopped" is identical to the health signal for
+/// "sync has nothing to do". `rls_posture` already models this third state as
+/// `"unknown"`; the depth now uses `-1` for the same reason.
+#[tokio::test]
+async fn an_unreadable_queue_depth_reports_unknown_not_zero() {
+    let state = CloudServerState {
+        db: Arc::new(Mutex::new(fresh_db())),
+        pg: None,
+        started_at: Instant::now(),
+        health_depth_cache: HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+    };
+    let app = build_router(
+        state.clone(),
+        crate::rate_limit::RateLimiterState::new(),
+        &test_config(),
+        None,
+    );
+
+    // An idle but healthy queue really does report 0. That is the value the
+    // broken read must NOT be allowed to reuse.
+    let req = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(
+        json["sync_queue_depth"], 0,
+        "precondition: a readable queue with no pending items really is 0"
+    );
+
+    // Now make the depth unreadable. A SECOND state is built rather than cloning
+    // the first, because `health_depth_cache` lives in the state and the probe
+    // above legitimately cached 0 for 10s. Cloning would serve that cached 0 and
+    // the case would pass without ever reaching the query.
+    let broken = CloudServerState {
+        db: state.db.clone(),
+        pg: None,
+        started_at: Instant::now(),
+        health_depth_cache: HealthDepthCache::default(),
+        stripe_webhook_secret: None,
+        square_webhook_signature_key: None,
+        square_webhook_url: None,
+        midtrans_server_key: None,
+        midtrans_sandbox: false,
+        midtrans_qris_acquirer: None,
+    };
+    {
+        let conn = broken.db.lock().await;
+        conn.execute("DROP TABLE offline_queue", [])
+            .expect("drop offline_queue");
+    }
+    let app2 = build_router(
+        broken,
+        crate::rate_limit::RateLimiterState::new(),
+        &test_config(),
+        None,
+    );
+    let req2 = Request::builder()
+        .uri("/health")
+        .body(Body::empty())
+        .unwrap();
+    let resp2 = app2.oneshot(req2).await.unwrap();
+    let body2 = resp2.into_body().collect().await.unwrap().to_bytes();
+    let json2: serde_json::Value = serde_json::from_slice(&body2).unwrap();
+    assert_eq!(
+        json2["sync_queue_depth"], -1,
+        "a depth that could not be read must report unknown. Reporting 0 here
+        tells an operator watching a stalled sync that the queue is simply empty"
+    );
+}
+
 #[tokio::test]
 async fn cloud_health_reports_last_sync_at() {
     let state = CloudServerState {
