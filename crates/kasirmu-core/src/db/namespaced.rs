@@ -270,6 +270,34 @@ impl Namespace<'_, '_> {
         Ok(out)
     }
 
+    /// Validate a statement, then run it and map rows with a mapper that may
+    /// itself fail with a domain error.
+    ///
+    /// [`query`](Self::query) pins the mapper to [`rusqlite::Result`], which
+    /// cannot express a *deliberate* domain rejection such as "this column is not
+    /// a valid currency". Modules that fail closed on parsed values use this
+    /// variant instead: `E` is the module error, which must be constructible
+    /// from both a [`rusqlite::Error`] and a [`NamespaceError`].
+    ///
+    /// # Errors
+    /// Returns `E` when the statement is rejected by the check, the database
+    /// rejects it, or the mapper rejects a row.
+    pub fn query_try<T, P, F, E>(&self, sql: &str, params: P, mut map: F) -> Result<Vec<T>, E>
+    where
+        P: rusqlite::Params,
+        F: FnMut(&rusqlite::Row<'_>) -> Result<T, E>,
+        E: From<rusqlite::Error> + From<NamespaceError>,
+    {
+        check_statement(self.owner, &Grants::none(), sql, self.posture).map_err(E::from)?;
+        let mut stmt = self.conn.prepare(sql).map_err(E::from)?;
+        let mut rows = stmt.query(params).map_err(E::from)?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().map_err(E::from)? {
+            out.push(map(row)?);
+        }
+        Ok(out)
+    }
+
     /// Escape hatch for the migration window: run the check and return the SQL
     /// unchanged. Removed in Phase 4.
     ///

@@ -256,4 +256,77 @@ mod db_backed {
         let err = ns.own().raw("SELECT * FROM customers").unwrap_err();
         assert!(matches!(err, NamespaceError::Foreign { .. }), "{err:?}");
     }
+
+    /// A stand-in domain error for the query_try tests: it can be built from the
+    /// two errors the namespace layer produces, exactly like a module's own error.
+    #[derive(Debug)]
+    // The Db/Ns variants are only ever constructed by the `?`/map_err
+    // conversions below; keeping them wrapped is the point of the test.
+    #[allow(dead_code)]
+    enum DemoError {
+        Db(rusqlite::Error),
+        Ns(NamespaceError),
+        Domain(&'static str),
+    }
+
+    impl From<rusqlite::Error> for DemoError {
+        fn from(e: rusqlite::Error) -> Self {
+            Self::Db(e)
+        }
+    }
+
+    impl From<NamespaceError> for DemoError {
+        fn from(e: NamespaceError) -> Self {
+            Self::Ns(e)
+        }
+    }
+
+    #[test]
+    fn query_try_surfaces_a_domain_rejection() {
+        // The whole point of query_try: a mapper may fail closed with the module's
+        // OWN error, which plain query (pinned to rusqlite::Result) cannot express.
+        let conn = mem();
+        conn.execute("INSERT INTO sales (id, total_minor) VALUES ('s1', 1)", [])
+            .expect("seed a row so the mapper actually runs");
+        let ns = NamespacedStore::new(Store::new(&conn), SALES, Grants::none());
+        let err = ns
+            .own()
+            .query_try("SELECT total_minor FROM sales", [], |_row| {
+                Err::<i64, DemoError>(DemoError::Domain("not a valid value"))
+            })
+            .unwrap_err();
+        assert!(
+            matches!(err, DemoError::Domain("not a valid value")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn query_try_still_checks_the_namespace() {
+        // The check runs before the mapper: a foreign table is refused with the
+        // module error (via From<NamespaceError>), not silently queried.
+        let conn = mem();
+        let ns = NamespacedStore::new(Store::new(&conn), SALES, Grants::none());
+        let err = ns
+            .own()
+            .query_try::<i64, _, _, DemoError>("SELECT id FROM customers", [], |r| Ok(r.get(0)?))
+            .unwrap_err();
+        assert!(
+            matches!(err, DemoError::Ns(NamespaceError::Foreign { ref table, .. }) if table == "customers"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn query_try_passes_rows_through() {
+        let conn = mem();
+        let ns = NamespacedStore::new(Store::new(&conn), SALES, Grants::none());
+        let rows = ns
+            .own()
+            .query_try::<i64, _, _, DemoError>("SELECT total_minor FROM sales", [], |r| {
+                Ok(r.get(0)?)
+            })
+            .expect("own-table read");
+        assert!(rows.is_empty());
+    }
 }
