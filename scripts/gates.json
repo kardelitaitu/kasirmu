@@ -458,6 +458,21 @@
       }
     },
     {
+      "id": "font-claims",
+      "label": "Font claims",
+      "status": "required",
+      "runners": {
+        "check.sh": [
+          "font-claims"
+        ]
+      },
+      "_note": "check-font-claims.mjs re-executes the font lane’s published claims andcompares each against the expectation stated in the script, so a claimcannot rot silently. It had no caller at all: the only job that ever ranit was retired to attic/ci.yml.bak, which is exactly the failure its ownheader names — \"a documented check nobody executes becomes adescription of a past run\". 17 s. Node is a hard requirement here, sounlike skill-drift-tests there is no skip branch: a missing node is abroken checkout, not an optional dependency.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates"
+      }
+    },
+    {
       "id": "panic-inventory",
       "label": "Panic inventory",
       "status": "required",
