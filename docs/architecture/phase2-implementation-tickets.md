@@ -188,6 +188,8 @@ startup behavior is deterministic". A unit test on the registry (P2) does not pr
 
 **Depends on:** P3.
 
+**Status: DONE 2026-10-03.** `platform/startup/tests/boot_capability.rs` (created) is the boot-path integration test. It registers a `FixtureModule` that requires `write:sales` with no grant and asserts `load_all` fails with `KernelError::MissingCapability { module: "fixture-ungranted", missing: "write:sales" }`; the paired positive control registers the same module WITH the grant and asserts a clean load — so the grant is what flips the result. A second test calls `init_module_system` twice and asserts both boots succeed and register an identical (>= 14) module set, pinning deterministic startup. A third exercises the `NamespacedStore` boundary from P1: `reporting` reading `sales` without the grant is refused with `NamespaceError::Foreign`, and a granted read handle runs the same query. `cargo test -p platform-startup` runs 104 lib + 4 boot_capability + 1 doctest, all green; clippy `-D warnings`, rustfmt, and `cargo check --workspace --all-targets` are clean.
+
 ---
 
 ## 6. P5 — Document the boot sequence
