@@ -126,13 +126,16 @@ After making changes, run this mental checklist:
 
 ```bash
 # 1. Rust compiles
-cargo check -p oz-pos-app
+cargo check -p kasirmu-app
 
 # 2. UI tests pass
 cd ui && npx vitest run
 
 # 3. App starts fresh
-#    - Delete or rename kasir.db to test fresh DB flow
+#    - Delete or rename the store to test fresh DB flow. The desktop app
+#      resolves it to app_data_dir()/kasir.db (mu.kasir.app, so on Windows
+#      %APPDATA%\mu.kasir.app\kasir.db) — NOT the repo root. The repo root
+#      holds nothing: the CLI and the matrix default to var/kasir.db.
 #    - App should show CreatePinScreen (not StaffLoginScreen)
 #    - Bootstrap owner with username "owner" / PIN "1234"
 #    - After bootstrap, workspace picker appears with demo workspaces
