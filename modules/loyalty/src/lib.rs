@@ -98,6 +98,14 @@ impl Module for LoyaltyModule {
         &["crm", "giftcards"]
     }
 
+    fn namespace_grants(&self) -> &'static [&'static str] {
+        // Phase 4 P4.1: the loyalty repository reads `gift_cards`, owned by the
+        // `giftcards` module (modules/ownership.json), so its store carries a
+        // foreign read grant. That grant must name a declared dependency; the
+        // kernel refuses boot otherwise. `giftcards` is in `dependencies()` above.
+        &["giftcards"]
+    }
+
     fn on_load(&mut self) -> ModuleResult {
         info!("loyalty module: on_load — validating configuration");
         // In future phases, this will:

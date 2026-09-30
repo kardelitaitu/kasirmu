@@ -268,3 +268,28 @@ fn a_module_cannot_read_a_table_outside_its_declared_capabilities() {
         "expected Foreign on loyalty_accounts, got {err:?}"
     );
 }
+
+// ── 5. P4.1: a real module's namespace grant is a declared dependency ────
+
+/// The real `loyalty` module reads the `gift_cards` table through a foreign
+/// grant, and `giftcards` is a declared dependency, so the boot-path grant
+/// check (`Kernel::verify_namespace_grants`, Phase 4 P4.1) accepts it. If
+/// `LoyaltyModule::namespace_grants()` and its `dependencies()` ever disagree,
+/// the real boot in `real_boot_is_deterministic_across_two_runs` fails, and this
+/// test names the invariant directly.
+#[test]
+fn the_real_loyalty_grant_names_a_declared_dependency() {
+    use foundation::contracts::Module;
+    let module = modules_loyalty::LoyaltyModule::new();
+    let deps = module.dependencies();
+    for granted in module.namespace_grants() {
+        assert!(
+            deps.contains(granted),
+            "loyalty declares a namespace grant for '{granted}', which is not in dependencies {deps:?}"
+        );
+    }
+    assert!(
+        module.namespace_grants().contains(&"giftcards"),
+        "loyalty reads gift_cards, so its namespace grant must include giftcards"
+    );
+}

@@ -166,13 +166,46 @@ impl Kernel {
         Ok(())
     }
 
-    /// Verify that every declared capability is granted.
+    /// Verify that every declared capability is granted, and that every
+    /// namespace grant a module declares names a module it depends on.
     ///
     /// # Errors
     /// Returns [`KernelError::MissingCapability`] naming the first module
-    /// (in id order) with an ungranted requirement.
+    /// (in id order) with an ungranted requirement, or
+    /// [`KernelError::UndeclaredNamespaceGrant`] naming the first module
+    /// (in id order) whose `namespace_grants()` includes a module it does not
+    /// declare in `dependencies()`.
     pub fn verify_capabilities(&self) -> Result<(), KernelError> {
-        self.capabilities.verify_all()
+        self.capabilities.verify_all()?;
+        self.verify_namespace_grants()
+    }
+
+    /// Reject a module whose `namespace_grants()` names a module it does not
+    /// depend on (Phase 4 P4.1).
+    ///
+    /// Deterministic: registered module ids are visited in sorted order, so the
+    /// error names the first offender.
+    ///
+    /// # Errors
+    /// [`KernelError::UndeclaredNamespaceGrant`] for the first offender.
+    fn verify_namespace_grants(&self) -> Result<(), KernelError> {
+        let mut ids: Vec<&'static str> = self.modules.keys().copied().collect();
+        ids.sort_unstable();
+        for id in ids {
+            let Some(module) = self.modules.get(id) else {
+                continue;
+            };
+            let deps = module.dependencies();
+            for granted in module.namespace_grants() {
+                if !deps.contains(granted) {
+                    return Err(KernelError::UndeclaredNamespaceGrant {
+                        module: id,
+                        granted,
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Register a service with the kernel.

@@ -86,6 +86,17 @@ pub enum KernelError {
     #[error("no modules registered")]
     NoModulesRegistered,
 
+    /// A module declared a namespace grant for a module it does not depend on.
+    #[error(
+        "module '{module}' declares a namespace grant for '{granted}', which is not in its dependencies"
+    )]
+    UndeclaredNamespaceGrant {
+        /// The module that declared the grant.
+        module: &'static str,
+        /// The foreign module named by the grant.
+        granted: &'static str,
+    },
+
     /// An internal error occurred.
     #[error("internal error: {0}")]
     Internal(String),

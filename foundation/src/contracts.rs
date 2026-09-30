@@ -82,6 +82,20 @@ pub trait Module: Debug + Send + Sync {
         Ok(())
     }
 
+    /// The foreign namespaces this module's stores intend to read (Phase 4 P4.1).
+    ///
+    /// This mirrors what the module's repositories put in a `Grants` value, as
+    /// plain module ids. The kernel rejects a grant that names a module the
+    /// module does not declare in [`dependencies`](Self::dependencies), so a
+    /// code-level grant with no manifest/dependency basis fails boot instead of
+    /// silently widening the namespace boundary.
+    ///
+    /// Defaults to no foreign reads, so a module that reads only its own
+    /// namespace need not implement it.
+    fn namespace_grants(&self) -> &'static [ModuleId] {
+        &[]
+    }
+
     /// Receive the platform context after the kernel loads the module
     /// (Phase 2, plan §7). Default no-op so existing modules compile
     /// unchanged; a module that needs a platform service overrides it.

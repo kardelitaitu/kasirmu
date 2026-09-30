@@ -166,3 +166,120 @@ fn context_for_is_scoped_to_the_named_module() {
     assert!(kernel.context_for("inventory").has("read:sales"));
     assert!(!kernel.context_for("crm").has("read:sales"));
 }
+
+// ── Phase 4 P4.1: namespace grants must name a declared dependency ──────
+
+/// A module that declares foreign namespaces its stores intend to read.
+#[derive(Debug)]
+struct GrantingModule {
+    id: &'static str,
+    deps: &'static [&'static str],
+    grants: &'static [&'static str],
+}
+
+impl Module for GrantingModule {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+
+    fn dependencies(&self) -> &'static [foundation::contracts::ModuleId] {
+        self.deps
+    }
+
+    fn namespace_grants(&self) -> &'static [foundation::contracts::ModuleId] {
+        self.grants
+    }
+}
+
+
+/// A no-op module used to satisfy a dependency edge in a boot test.
+#[derive(Debug)]
+struct LeafModule {
+    id: &'static str,
+}
+
+impl Module for LeafModule {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+}
+
+#[test]
+fn load_fails_when_a_namespace_grant_is_not_a_declared_dependency() {
+    let mut kernel = Kernel::new();
+    // Register the declared dependency so dependency resolution passes and the
+    // grant check is what decides the outcome.
+    kernel.register(Box::new(LeafModule { id: "sales" })).unwrap();
+    kernel
+        .register(Box::new(GrantingModule {
+            id: "reporting",
+            deps: &["sales"],
+            // `loyalty` is NOT a declared dependency, so the grant is illegal.
+            grants: &["sales", "loyalty"],
+        }))
+        .unwrap();
+    let err = kernel.load_all().expect_err("load must fail");
+    match err {
+        KernelError::UndeclaredNamespaceGrant { module, granted } => {
+            assert_eq!(module, "reporting");
+            assert_eq!(granted, "loyalty");
+        }
+        other => panic!("expected UndeclaredNamespaceGrant, got {other:?}"),
+    }
+}
+
+#[test]
+fn load_succeeds_when_every_namespace_grant_is_a_declared_dependency() {
+    let mut kernel = Kernel::new();
+    kernel.register(Box::new(LeafModule { id: "sales" })).unwrap();
+    kernel
+        .register(Box::new(LeafModule { id: "inventory" }))
+        .unwrap();
+    kernel
+        .register(Box::new(GrantingModule {
+            id: "reporting",
+            deps: &["sales", "inventory"],
+            grants: &["sales", "inventory"],
+        }))
+        .unwrap();
+    kernel.load_all().expect("declared grants must load");
+}
+
+#[test]
+fn a_module_with_no_namespace_grants_is_unaffected() {
+    let mut kernel = Kernel::new();
+    kernel
+        .register(Box::new(GrantingModule {
+            id: "settings",
+            deps: &[],
+            grants: &[],
+        }))
+        .unwrap();
+    kernel.load_all().expect("no grants is the default");
+}
+
+#[test]
+fn the_grant_check_names_the_first_offender_in_id_order() {
+    let mut kernel = Kernel::new();
+    // `a-module` < `b-module` in byte order; both offend. The error must name
+    // `a-module` (deterministic), not whichever was registered first.
+    kernel
+        .register(Box::new(GrantingModule {
+            id: "b-module",
+            deps: &[],
+            grants: &["crm"],
+        }))
+        .unwrap();
+    kernel
+        .register(Box::new(GrantingModule {
+            id: "a-module",
+            deps: &[],
+            grants: &["loyalty"],
+        }))
+        .unwrap();
+    let err = kernel.load_all().expect_err("both offend");
+    match err {
+        KernelError::UndeclaredNamespaceGrant { module, .. } => assert_eq!(module, "a-module"),
+        other => panic!("expected UndeclaredNamespaceGrant, got {other:?}"),
+    }
+}

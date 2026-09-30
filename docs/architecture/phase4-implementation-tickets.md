@@ -67,9 +67,14 @@ real manifest, so the repository-side API and the boundary proof cannot disagree
 Item 2 is **not fully done**: each module still hardcodes `Grants::none()` / `Grants::read(...)` in its
 repository constructor (122 `Repository::new(` call sites), with no manifest access at `NamespacedStore::new`
 time, so production repositories do not yet route their grants from the manifest. Item 3 (reject a
-`NamespacedStore` grant naming an undeclared module at `verify_capabilities`) also remains open — the
-static `--check-capabilities` gate covers the manifest side, but the kernel does not see a module's
-`Grants` at boot.
+`NamespacedStore` grant naming an undeclared module at `verify_capabilities`) is NOW DONE: the `Module`
+trait gained `namespace_grants() -> &'static [ModuleId]` (foundation/src/contracts.rs), and
+`Kernel::verify_capabilities` runs `verify_namespace_grants()` (platform/kernel/src/kernel/lifecycle.rs)
+before any `on_load`, returning `KernelError::UndeclaredNamespaceGrant { module, granted }` for the first
+module (in id order) whose grant names a module outside its `dependencies()`. `LoyaltyModule` is the one
+real implementer (it reads `gift_cards` via the `giftcards` dependency); the boot-path test
+`the_real_loyalty_grant_names_a_declared_dependency` (platform/startup/tests/boot_capability.rs) pins it.
+The only open P4.1 element is therefore item 2's per-repository wiring (122 `Repository::new(` call sites).
 
 **Problem (verified).** The `NamespacedStore` boundary is advisory today: every module builds its store
 with `Grants::none()` (or, for loyalty, one read grant), and `check_statement` refuses a foreign table —

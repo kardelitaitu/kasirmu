@@ -80,6 +80,14 @@ namespace grant set from a manifest capability list, and the boot-boundary proof
 (`platform/startup/tests/boot_capability.rs`) derives the `reporting` grant set through it
 from the real `modules/reporting/manifest.json`.
 
+A module also declares the foreign namespaces its stores intend to read through
+`Module::namespace_grants()` (`foundation/src/contracts.rs`), and the kernel rejects a
+grant that names a module the module does not depend on: `Kernel::verify_namespace_grants`
+(`platform/kernel/src/kernel/lifecycle.rs`) runs inside `verify_capabilities`, before any
+`on_load`, and returns `KernelError::UndeclaredNamespaceGrant { module, granted }`. The one
+real implementer today is `LoyaltyModule` (it reads `gift_cards` via its `giftcards`
+dependency), and `the_real_loyalty_grant_names_a_declared_dependency` pins the invariant.
+
 ## 6. The extraction has a number
 
 `scripts/verify-core-size.py` enforces a ceiling on `crates/kasirmu-core` production lines
@@ -98,10 +106,9 @@ One named gap remains, tracked as **P4.1 (partial)** in
   sites). The derivation API (`Grants::from_capabilities`) exists and is proven at the
   boot boundary, but the per-repository wiring from `modules/*/manifest.json` is not done,
   because `NamespacedStore::new` has no manifest access today.
-- The kernel does not yet reject at `verify_capabilities` a `Grants` entry naming a module
-  the manifest does not depend on. The static `--check-capabilities` gate covers the
-  manifest side; the kernel-side runtime half is open because the kernel never sees a
-  module’s `Grants`.
+(The kernel-side half of the grant check — rejecting a `Grants` entry naming a module the
+module does not depend on — is now done via `Module::namespace_grants()`, so the remaining
+gap is only the per-repository wiring above.)
 
 Until both land, §2–§6 hold for what the *tooling* enforces, and item 1 above means a
 *future* module could compile a raw cross-namespace read that the static gate would
