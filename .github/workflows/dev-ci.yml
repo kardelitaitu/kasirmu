@@ -1172,6 +1172,12 @@ jobs:
       # developer's machine could tell whether they still passed.
       - name: UI typecheck gate self-test
         run: bash scripts/test-typecheck-gate.sh
+      # The post-commit tripwire is a SECOND, independent typecheck guard. It was
+      # written but never wired to any runner, so nothing outside one developer's
+      # machine could tell whether the block was still in the hook, still above the
+      # four early `exit 0` paths, and still writing a verdict when npm ran.
+      - name: UI typecheck tripwire self-test
+        run: bash scripts/test-typecheck-tripwire.sh
       - name: EOL guard self-test
         run: bash scripts/test-eol-guard.sh
       # Gate: scripts/gates.json -> "cbm-hook-guard". Polices .githooks/post-commit,
@@ -1180,6 +1186,13 @@ jobs:
       # place its resolution order and ghost guard can be re-checked on a clean box.
       - name: post-commit index guard self-test
         run: bash scripts/test-cbm-hook.sh
+      # The records-index generator RUNS in ci-docs-drift, which --check only
+      # proves it regenerates its own output faithfully. This test is what says
+      # its cell sanitizer still bites: it drives the live generator, then a
+      # frozen unfixed one that must FAIL the same exploit assertion. Unwired until
+      # now, so an escaping regression would have been invisible to every runner.
+      - name: Records index escaping self-test
+        run: bash scripts/test-records-index-escaping.sh
       - name: Test shadow copies
         run: python3 scripts/verify-test-shadow-copies.py
       # The IPC parity pair moved to job 7c on 2026-09-24. Its self-test alone

@@ -826,6 +826,16 @@ step "api surface" "python3 .agents/skills/docs-auditor/scripts/check-api-surfac
 # deferred to avoid crying wolf had let the wolf in.
 # Gate: scripts/gates.json -> "records-index".
 step "records index freshness" "node scripts/generate-records-index.mjs --check" node scripts/generate-records-index.mjs --check
+# The generator above RUNS, so it cannot say anything about whether its cell
+# sanitizer still bites: --check is happy with whatever the generator writes. That
+# guard is scripts/test-records-index-escaping.sh, and it ran in no runner at all --
+# not check.sh, not any workflow -- so an escaping regression would have shipped a
+# generator that still regenerated its own output faithfully. It drives the LIVE
+# generator through KASIRMU_RECORDS_ROOT and then a frozen deliberately-unfixed one
+# that MUST fail the same exploit assertion, so a green run proves the guard bites
+# rather than merely that the fixture is well formed. Measured 2.3s.
+# Gate: scripts/gates.json -> "records-index-escaping".
+step "records index escaping" "bash scripts/test-records-index-escaping.sh" bash scripts/test-records-index-escaping.sh
 # The hand table in docs/decisions/README.md has reconciled its status column
 # against ADR frontmatter by hand three times (2026-08-09 x26 empty cells,
 # 2026-09-23 x3 trailing ones), and that file's Conventions order the column
@@ -919,6 +929,15 @@ step "eol guard" "bash scripts/test-eol-guard.sh" bash scripts/test-eol-guard.sh
 # drives it against a throwaway git repo with a stubbed npm.
 # Gate: scripts/gates.json -> "typecheck-gate".
 step "typecheck gate" "bash scripts/test-typecheck-gate.sh" bash scripts/test-typecheck-gate.sh
+
+# .githooks/post-commit carries a SECOND typecheck tripwire, and this one was never wired to
+# any runner. It defends the failure modes the pre-commit gate cannot see: a pathspec that
+# matches nothing, a block placed BELOW one of the hook's four early `exit 0` paths, and a
+# verdict written even though npm never ran. The test extracts the live block between the
+# '# tripwire-start' and '# tripwire-end' markers rather than reimplementing the trigger, so a
+# test carrying its own copy would pass forever while the real tripwire silently never runs.
+# Gate: scripts/gates.json -> "typecheck-tripwire".
+step "typecheck tripwire" "bash scripts/test-typecheck-tripwire.sh" bash scripts/test-typecheck-tripwire.sh
 
 # .githooks/post-commit refreshes the codebase-memory graph on every commit. It
 # ran 535 commits without indexing once and nothing reported it: it resolved the

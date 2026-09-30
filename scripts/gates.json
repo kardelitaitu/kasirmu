@@ -961,6 +961,42 @@
       }
     },
     {
+      "id": "typecheck-tripwire",
+      "label": "typecheck tripwire",
+      "status": "required",
+      "_note": "Promoted 2026-09-30. scripts/test-typecheck-tripwire.sh policed the SECOND typecheck guard in .githooks/post-commit -- the one that fires after a commit stages ui/src TypeScript -- and was wired to NO runner at all, in check.sh or in any workflow. The sibling test for the pre-commit step of the same name (test-typecheck-gate.sh) has been a required gate since 0.0.37, so the two guards looked equally defended and one was not. The tripwire defends the failure modes the pre-commit gate cannot see: a pathspec matching nothing, a block placed BELOW one of the hook's four early `exit 0` paths, and a verdict written when npm never ran. It extracts the live block between the '# tripwire-start' and '# tripwire-end' markers rather than reimplementing the trigger, so a copy in the test would pass forever while the real tripwire silently never ran. Measured cost under a second with only npm stubbed and a throwaway git repo, so it belongs beside its siblings in the job that already runs nine of them.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "UI typecheck tripwire self-test"
+        ]
+      },
+      "runners": {
+        "check.sh": [
+          "typecheck tripwire"
+        ]
+      }
+    },
+    {
+      "id": "records-index-escaping",
+      "label": "records index escaping",
+      "status": "required",
+      "_note": "Promoted 2026-09-30. scripts/test-records-index-escaping.sh policed the cell sanitizer in scripts/generate-records-index.mjs -- the guard that stops a record label containing '](x)' from becoming a fabricated link in docs/records/README.md -- and was wired to NO runner. The generator itself does run, in ci-docs-drift, but that step is `--check`, which is happy with whatever the generator writes, so it can only ever say the output is faithful to the input; it says nothing about whether a hostile label is neutralised. An escaping regression would have shipped a generator that still regenerated its own index perfectly. The test drives the LIVE generator through KASIRMU_RECORDS_ROOT and then a frozen deliberately-unfixed one that MUST fail the same exploit assertion, which is what makes a green run evidence rather than a tautology. Measured 2.3s, and it writes only inside a mktemp dir.",
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Records index escaping self-test"
+        ]
+      },
+      "runners": {
+        "check.sh": [
+          "records index escaping"
+        ]
+      }
+    },
+    {
       "id": "cbm-hook-guard",
       "label": "post-commit index guard",
       "status": "required",
