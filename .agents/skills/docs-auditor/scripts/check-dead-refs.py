@@ -435,6 +435,205 @@ def is_historical_doc(path, text):
 # file's own comment warns about, so the scope is one directory, not eight.
 RENAME_RESCUE_PREFIXES = ("docs/specs/_active/",)
 
+# ---- cargo package names (C72) -------------------------------------------------
+# RENAME_PREFIXES below maps crate DIRECTORIES. A doc that says "cargo test -p oz-core"
+# names no directory, so that table is structurally blind to it, and PATH_RE cannot see
+# it either: the token has no slash, so it is not a TOP-prefixed path. Measured
+# 2026-09-30: 1,130 "cargo -p" occurrences across the repo markdown name 50 distinct
+# packages, 17 of which no longer exist. The 2026-09-29 rebrand renamed the package
+# names themselves, not just the directories, so every one of those 17 is a command a
+# reader would copy, paste, and watch fail on "did not match any packages".
+#
+# The package set is DERIVED from the workspace, never maintained here: Cargo.toml
+# globs crates/*, modules/* and platform/*, so a hand-written list would go stale the
+# day a vertical is added -- and a stale list is the exact failure this rule exists to
+# catch. That is why it reads the manifests rather than reusing RENAME_PREFIXES.
+CARGO_PKG_RE = re.compile(
+    r"\bcargo\s+(?:run|test|check|build|clippy|doc|tree|fmt|bench|publish|install|update|audit)\s+"
+    r"(?:[^\n]*?\s)?(?:-p|--package)[ =]([A-Za-z0-9_-]+)")
+
+# cargo update -p and cargo add -p take a REGISTRY name, not a workspace member:
+# "cargo update -p rustls" is a valid command about a transitive dependency that will
+# never be a member here. Grading those against the workspace would invent findings
+# about commands that work, so they are excluded by verb, not by name.
+CARGO_REGISTRY_VERBS = ("update", "add", "audit", "publish")
+
+# Single-letter and word-shape names that are SCHEMES for a package, not claims about
+# one. AGENTS.md:48 writes the batching rule as `cargo check -p x && cargo test -p x
+# <name>` -- x is a stand-in, and the second token is caught by PLACEHOLDER. Grading
+# it would put a finding in the file every agent reads first, about a command that is
+# not meant to run verbatim. Kept as an explicit list, not a rule, so the set of
+# exemptions stays visible and reviewable instead of hiding inside a regex.
+CARGO_TRIVIAL_NAMES = frozenset({"x", "<name>", "name", "crate", "pkg"})
+
+# What may legally follow a captured package name on the same line. A template writes
+# its variable inside angle brackets or braces -- modules-<id>, ${crate} -- and
+# CARGO_PKG_RE stops before the bracket, so the name alone looks real.
+TEMPLATE_TAIL_RE = re.compile(r"\s*(?:<[^>]*>|\$\{[^}]*\})")
+
+# A document that is a DELIVERY RECORD may keep a command that no longer runs, but only
+# if it SAYS SO, in a stamp a human wrote, naming both the dead name and the live one:
+#     <!-- superseded-package: oz-cloud-server · current-package: kasirmu-cloud -->
+# Both names are required, deliberately. A bare "this is stale" would silence every
+# claim in the file forever; naming the replacement is what makes the note a finding a
+# reviewer can check, and it is why docs/architecture/MODULAR_APP_PLAN.md can keep a
+# [x] phase item verbatim without this gate going quiet. The pair is read from the
+# whole document, not the line, because a stamp lives at the top of a file that is
+# hundreds of lines long.
+SUPERSEDED_PKG_RE = re.compile(
+    r"superseded-package:\s*`?([A-Za-z0-9_.-]+)`?\s*[\u00b7|,;/\n-]+"
+    r"\s*current-package:\s*`?([A-Za-z0-9_.-]+)`?")
+
+
+def superseded_packages(text):
+    """Dead-name -> live-name pairs the document has acknowledged, for `text`."""
+    return {m.group(1): m.group(2) for m in SUPERSEDED_PKG_RE.finditer(text)}
+
+# What marks a line as a RECORD OF AN OBSERVATION rather than an instruction: an
+# arrow into a result ("-> exit 101, 6 passed; 1 failed"), or a quoted cargo failure
+# string. Checked on both sides of the match, because a document can put the result
+# before the command as easily as after it.
+EVIDENCE_TAIL_RE = re.compile(
+    r"(?:\u2192|->)\s*(?:exit\s+\d|`?\s*\d+\s+passed)|"
+    r"did not match any packages|package\(s\).*not found in workspace|"
+    r"could not determine which binary")
+
+# The prose window, and the RESULT that must accompany it. A record announces itself
+# in prose -- "on your current bytes this is exit 101", "prints, verbatim" -- and the
+# result often wraps onto the next line, so a same-line tail test cannot see it. Look
+# at the statement and its immediate continuation together, and never further: a
+# document that says "this is stale" two paragraphs from a command is still
+# instructing you.
+EVIDENCE_WINDOW = 2
+
+# These two are deliberately SEPARATE, and the split is the whole rule. EVIDENCE_LEAD
+# must be on the command's own line: it is the announcement of a measurement.
+# EVIDENCE_PROSE is the RESULT, and may sit in the window. Requiring both is what
+# stops the window from swallowing an ordinary instruction that merely has a number
+# nearby -- "must be exit 0 with **zero warnings**" is an instruction, not a record.
+#
+# The split is not decoration. EVIDENCE_WINDOW includes the command's own line, so a
+# single regex that matched lead phrases would always be satisfied by the announcement
+# alone: "- `cargo test -p oz-core` -- on your current bytes this is the plan and it
+# should be run" would be graded as a measurement, and the command would go unreported.
+# A probe showed exactly that, which is why the lead phrases appear only in
+# EVIDENCE_LEAD_RE and never in EVIDENCE_PROSE_RE.
+EVIDENCE_PROSE_RE = re.compile(
+    r"\*\*exit\s+\d|\bexit\s+\d+\b|\d+\s+passed|did not match any packages")
+EVIDENCE_LEAD_RE = re.compile(
+    r"prints,?\s+verbatim|on your current bytes|\u2192|did not match any packages")
+
+
+
+def workspace_packages(root=None):
+    """The set of package names "cargo -p <name>" would accept in this tree.
+
+    Reads the workspace manifests rather than asking cargo, because the self-test must
+    work with a fixture tree and because a manifest read is honest about a member that
+    does not yet compile. Returns None when the workspace root is not found, so a caller
+    can tell "no packages" (alarming) from "no workspace" (a fixture that never had one).
+    """
+    import tomllib
+    base = pathlib.Path(root) if root is not None else ROOT
+    try:
+        with (base / "Cargo.toml").open("rb") as fh:
+            ws = tomllib.load(fh).get("workspace", {})
+    except (OSError, ValueError):
+        return None
+    names = set()
+    for pattern in ws.get("members", []):
+        # A member entry is a path or a one-level glob, which is all this Cargo.toml
+        # uses. Resolve the glob, then read the name out of each manifest -- a
+        # directory name is NOT the package name (apps/desktop-tauri holds the package
+        # "kasirmu-app"), so guessing from the path is how this rule would invent
+        # findings about a command that works.
+        for path in sorted(base.glob(pattern)):
+            pkg = path / "Cargo.toml"
+            if not pkg.is_file():
+                continue
+            try:
+                with pkg.open("rb") as fh:
+                    name = tomllib.load(fh).get("package", {}).get("name")
+            except (OSError, ValueError):
+                continue
+            if name:
+                names.add(name)
+    return names
+
+
+def bad_package_claims(path, text, packages, acknowledged=None):
+    """(line, verb, name) for each "cargo -p" naming something not in `packages`.
+
+    Pure over (path, text, packages): --self-test drives it with a fixture set and
+    touches no file, so a rule that proved itself once keeps proving itself after the
+    tree moves. The live/historical split belongs to the caller, matching the
+    convention check-dead-refs already applies to dead paths: a
+    "cargo test -p oz-core  # 1317 passed" line in an archived plan is a recorded
+    MEASUREMENT, and rewriting it would falsify the record. It is reported, never
+    blocked on.
+
+    `acknowledged`, if a list is passed, collects (line, verb, name, replacement) for
+    claims the document's own supersession stamp excuses. It is an out-parameter rather
+    than part of the return value so the seventeen existing self-test cases keep
+    comparing against plain lists, and so a reader of the return value is looking at
+    everything that is still a FINDING.
+    """
+    if not packages:
+        return []
+    hits = []
+    rows = text.split(chr(10))
+    # A document may acknowledge a dead name in a stamp, and then keep the record. The
+    # acknowledgement only counts if its replacement really exists, so a typo in a stamp
+    # cannot buy silence; and the name it acknowledges must be the one we found.
+    superseded = superseded_packages(text)
+    for n, line in enumerate(rows, 1):
+        # A record's result often wraps onto the next line, so the evidence window is
+        # the statement plus its immediate continuation, never more.
+        window = chr(10).join(rows[n - 1:n - 1 + EVIDENCE_WINDOW])
+        for m in CARGO_PKG_RE.finditer(line):
+            name, verb = m.group(1), m.group(0).split()[1]
+            if verb in CARGO_REGISTRY_VERBS or name in packages:
+                continue
+            # Grade the CAPTURED NAME, never the whole line. PLACEHOLDER exists to
+            # skip "cargo check -p <name>", but its pattern also contains * and ?,
+            # which are markdown emphasis: testing the line silenced every claim that
+            # merely had bold prose after it, and two real ones in the tablet handover
+            # ledger were lost exactly that way. A placeholder is a property of the
+            # package name, so that is what gets tested.
+            # A TEMPLATE is a placeholder too, and the regex cannot see one: it
+            # captures [A-Za-z0-9_-]+, so "cargo test -p modules-<id> --lib" yields the
+            # name "modules-" and stops at the angle bracket. modules/README.md:86
+            # defines the package as exactly that literal, so the doc never claimed a
+            # package that exists. Rather than widen CARGO_PKG_RE to swallow the rest of
+            # the token (which would then need its own placeholder rules), look at what
+            # follows: an angle bracket or a brace on the same line is a template marker
+            # wherever it sits.
+            if PLACEHOLDER.search(name) or name.lower() in CARGO_TRIVIAL_NAMES:
+                continue
+            if TEMPLATE_TAIL_RE.search(line[m.end():]):
+                continue
+            # ACKNOWLEDGED. The document's own stamp names this dead package and the live
+            # one that replaced it, and the live one IS in the workspace, so this line is
+            # a record of what was true when the record was written rather than an
+            # instruction anyone would run. The replacement is checked against the
+            # workspace on purpose: a stamp with a typo in the new name buys no silence.
+            if superseded.get(name) in packages:
+                acknowledged.append((n, verb, name, superseded[name]))
+                continue
+            # EVIDENCE is not a claim. A doc that reports what a command PRINTED --
+            # "-> exit 101, `6 passed; 1 failed`", or prose that quotes the error
+            # "package ID specification did not match any packages" -- is recording an
+            # observation, and rewriting its package name would falsify the record it
+            # exists to keep. The tablet handover ledger and the manager review
+            # checklist both open by promising exactly this, and both were reported.
+            # An arrow into a result, or a quoted failure string, marks the difference.
+            if EVIDENCE_TAIL_RE.search(line[m.end():]) or EVIDENCE_TAIL_RE.search(line[:m.start()]) \
+                    or (EVIDENCE_PROSE_RE.search(window) and EVIDENCE_LEAD_RE.search(line)):
+                continue
+            hits.append((n, verb, name))
+    return hits
+
+
 RENAME_PREFIXES = (
     ("crates/oz-bridge/", "crates/kasirmu-bridge/"),
     ("crates/oz-core/", "crates/kasirmu-core/"),
@@ -785,6 +984,122 @@ def self_test():
     cases.append(("rename  every table entry's OLD path is gone from this checkout",
                   not any((ROOT / old.rstrip("/")).exists()
                           for old, _new in RENAME_PREFIXES)))
+    # ---- C72: cargo package names --------------------------------------------------
+    # The rule exists because RENAME_PREFIXES maps DIRECTORIES, so "cargo test -p
+    # oz-core" was structurally invisible to this file: no slash, no TOP prefix, no
+    # path to resolve. Every case below drives bad_package_claims with a FIXTURE set,
+    # so the resolution logic is pinned without the tree moving under it.
+    PKGS = {"kasirmu-core", "kasirmu-app", "kasirmu-cloud"}
+    cases.append(("C72  a pre-rebrand package name is reported",
+                  bad_package_claims("docs/g.md", "Run cargo test -p oz-core --lib", PKGS)
+                  == [(1, "test", "oz-core")]))
+    cases.append(("C72  a live package name stays quiet",
+                  bad_package_claims("docs/g.md", "cargo test -p kasirmu-core", PKGS) == []))
+    cases.append(("C72  the long --package form and an = argument are both seen",
+                  bad_package_claims("docs/g.md", "cargo build --package=oz-core", PKGS)
+                  == [(1, "build", "oz-core")] and
+                  bad_package_claims("docs/g.md", "cargo build --package oz-core", PKGS)
+                  == [(1, "build", "oz-core")]))
+    cases.append(("C72  a registry verb is not a workspace claim",
+                  bad_package_claims("docs/g.md", "cargo update -p rustls", PKGS) == [] and
+                  bad_package_claims("docs/g.md", "cargo audit -p schemars", PKGS) == []))
+    cases.append(("C72  a placeholder package is not a finding",
+                  bad_package_claims("docs/g.md", "cargo check -p <name>", PKGS) == [] and
+                  bad_package_claims("docs/g.md", "cargo check -p XXX", PKGS) == [] and
+                  # AGENTS.md:48, verbatim: the batching rule, where x is a stand-in.
+                  bad_package_claims("AGENTS.md",
+                                     "a failure is tolerable): `cargo check -p x && "
+                                     "cargo test -p x <name>`. Never one", PKGS) == [] and
+                  # modules/README.md:95, verbatim. The regex captures "modules-" and
+                  # stops at the angle bracket, so without the tail rule this reports a
+                  # package the same document defines as a template at :86.
+                  bad_package_claims("modules/README.md",
+                                     "cargo test -p modules-<id> --lib", PKGS) == [] and
+                  # .agents/management-journal/tablet-mockdispatcher-row.md:116, verbatim:
+                  # a measured result with a timestamp. Rewriting the package name inside
+                  # a recorded exit code would falsify the record it exists to keep.
+                  bad_package_claims(
+                      ".agents/management-journal/tablet-mockdispatcher-row.md",
+                      "- `cargo test -p oz-core registration_gate` \u2192 exit 101, "
+                      "`running 7 tests`, `6 passed; 1", PKGS) == [] and
+                  bad_package_claims("manager-codebase-review-checklist.md",
+                                     "a `cargo test -p oz-core` form that prints "
+                                     "\"package ID specification did not match any "
+                                     "packages\"", PKGS) == []))
+    # Regression, found by reading the gate's own output rather than trusting it: a
+    # claim followed by bold prose was silently skipped, because PLACEHOLDER was
+    # tested against the LINE and its pattern contains * and ?. The line below is an
+    # INSTRUCTION with bold prose after it -- the old code reported nothing.
+    cases.append(("C72  emphasis after the command does not hide the claim",
+                  bad_package_claims("docs/g.md",
+                                     "- `cargo test -p oz-core registration` -- **the 7 "
+                                     "tests cover the gate**; see below", PKGS)
+                  == [(1, "test", "oz-core")] and
+                  bad_package_claims("docs/g.md",
+                                     "- `cargo check -p oz-core --tests` -- must be exit 0 "
+                                     "with **zero warnings**, because", PKGS)
+                  == [(1, "check", "oz-core")]))
+    # The complement, so the two can never be confused: the same ledger line WITH the
+    # measurement lead is a record, and a record is not a claim. One is an instruction
+    # to run, the other is a result already taken.
+    cases.append(("C72  a measured result on the same line is evidence, not a claim",
+                  bad_package_claims(
+                      ".agents/management-journal/tablet-mockdispatcher-row.md",
+                      "- `cargo test -p oz-core registration` \u2014 on your current bytes "
+                      "this is **exit 101, `6 passed; 1", PKGS) == []))
+    # The lead is necessary but NOT sufficient. A measurement is announced AND reports a
+    # result; this line has the announcement and then says the plan is still to be run,
+    # which makes it an instruction wearing a measurement's clothes. EVIDENCE_WINDOW
+    # includes the command's own line, so folding the lead phrases into
+    # EVIDENCE_PROSE_RE would make this pass as a record -- it did, until a duplicate
+    # definition of EVIDENCE_PROSE_RE shadowed the tight one and a probe caught it.
+    cases.append(("C72  a lead with no result anywhere is still a claim",
+                  bad_package_claims(
+                      "docs/g.md",
+                      "- `cargo test -p oz-core registration` -- on your current bytes "
+                      "this is the plan\n  and it should be run first.", PKGS)
+                  == [(1, "test", "oz-core")]))
+    cases.append(("C72  the finding keeps the line number for a reported claim",
+                  bad_package_claims("docs/g.md",
+                                     "intro\ncargo test -p oz-api\ntail", PKGS)
+                  == [(2, "test", "oz-api")]))
+    cases.append(("C72  no packages visible means no verdict, not a clean run",
+                  bad_package_claims("docs/g.md", "cargo test -p oz-core", None) == [] and
+                  bad_package_claims("docs/g.md", "cargo test -p oz-core", set()) == []))
+    # The supersession marker. Three properties, and the middle one is the point: a stamp
+    # excuses a dead name ONLY when the replacement it names is a real package. A stamp
+    # naming a typo'd replacement must not buy silence, because a silent exemption that
+    # came from a bad stamp is indistinguishable from a clean run -- the exact failure
+    # this feature exists to make impossible.
+    acked = []
+    cases.append(("C72  a stamp naming both packages excuses the dead one and is recorded",
+                  bad_package_claims(
+                      "docs/architecture/MODULAR_APP_PLAN.md",
+                      "<!-- superseded-package: oz-core | current-package: kasirmu-core -->\n"
+                      "- [x] build: `cargo build --release --package oz-core`",
+                      PKGS, acked) == [] and
+                  acked == [(2, "build", "oz-core", "kasirmu-core")]))
+    cases.append(("C72  a stamp whose replacement is not in the workspace buys no silence",
+                  bad_package_claims(
+                      "docs/architecture/MODULAR_APP_PLAN.md",
+                      "<!-- superseded-package: oz-core | current-package: kasirmu-coree -->\n"
+                      "- [x] build: `cargo build --release --package oz-core`",
+                      PKGS) == [(2, "build", "oz-core")]))
+    cases.append(("C72  a stamp that names only the dead package excuses nothing",
+                  bad_package_claims(
+                      "docs/architecture/MODULAR_APP_PLAN.md",
+                      "<!-- superseded-package: oz-core, this is stale -->\n"
+                      "- [x] build: `cargo build --release --package oz-core`",
+                      PKGS) == [(2, "build", "oz-core")]))
+    # Trees-bound: the package set is DERIVED, and derivation is the load-bearing part.
+    # If someone "simplifies" workspace_packages into returning member DIRECTORY names,
+    # apps/desktop-tauri would come back as a package, and every doc naming it would be
+    # wrongly reported while every doc naming kasirmu-app would be wrongly cleared. This
+    # case dies the moment that happens.
+    real = workspace_packages()
+    cases.append(("C72  the derived package set is non-empty and is not a path guess",
+                  real is not None and "kasirmu-app" in real and "desktop-tauri" not in real))
+
     bad = [n for n, ok in cases if not ok]
     if bad:
         print("SELF-TEST WRONG: " + ", ".join(bad), file=sys.stderr)
@@ -830,6 +1145,15 @@ def main():
 
     live, hist, errs, scanned = [], [], [], 0
     rows = []            # (file, line, candidate, historical) - filtered below
+    pkg_rows = []        # (file, line, verb, name, historical) - C72, graded below
+    pkg_acked = []       # (file, line, verb, dead, live) - excused by a supersession stamp
+    stale_stamps = []    # stamps whose current-package is not in the workspace
+    packages = workspace_packages()
+    if packages is None:
+        # A checker that cannot see the workspace must say so instead of printing a
+        # clean run it did not earn: silence is indistinguishable from "no drift".
+        print("WORKSPACE NOT FOUND: cannot grade 'cargo -p' package names.")
+        return 2
     for t in targets:
         if any(x in t for x in ("/node_modules/", "/target/", "/references/")):
             continue
@@ -842,6 +1166,24 @@ def main():
             continue
         for n, cand in hits:
             rows.append((t, n, cand, historical))
+        try:
+            with open(t, encoding="utf-8", errors="replace") as fh:
+                doc = fh.read()
+        except OSError:
+            doc = None
+        if doc is not None:
+            acked = []
+            for n, verb, name in bad_package_claims(t, doc, packages, acked):
+                pkg_rows.append((t, n, verb, name, historical))
+            for row in acked:
+                pkg_acked.append((t,) + row)
+            # A stamp that excuses a claim and names a replacement the workspace does not
+            # contain is a stamp with a typo, and a typo that silenced a real finding
+            # would be the worst outcome this rule can have. Say so out loud.
+            for dead, live in superseded_packages(doc).items():
+                if live not in packages:
+                    stale_stamps.append("%s: superseded-package: %s -> current-package: %s"
+                                        % (t, dead, live))
 
     # One batched git query decides which unresolved paths are ignored on purpose,
     # so the answer comes from .gitignore rather than a hardcoded extension list.
@@ -904,6 +1246,16 @@ def main():
     hist = [(t, h) for t, h in hist if h]
     live.sort(key=lambda x: -len(x[1]))
 
+    # C72: grade the "cargo -p" claims with the same live/historical split already
+    # applied to dead paths, so an archived plan that records a measured "cargo test -p
+    # oz-core  # 1317 passed" is listed rather than blocked on -- rewriting it would
+    # falsify the record, which is the one thing an audit may not do.
+    pkg_acc, pkg_hist = {}, {}
+    for f, n, verb, name, historical in pkg_rows:
+        (pkg_hist if historical else pkg_acc).setdefault(f, []).append((n, verb, name))
+    pkg_live = sorted(pkg_acc.items())
+    pkg_hist = sorted(pkg_hist.items())
+
     print("indexed %d files / %d dirs; scanned %d markdown files (%d live with hits)"
           % (len(files), len(dirs), scanned, live_n))
     print("")
@@ -932,10 +1284,62 @@ def main():
     if errs:
         print("read errors: " + "; ".join(errs[:4]))
 
+    pkg_total = sum(len(h) for _, h in pkg_live)
+    if pkg_live:
+        print("LIVE DOCS NAMING A CARGO PACKAGE THAT DOES NOT EXIST -- %d file(s):" % len(pkg_live))
+        for t, h in pkg_live:
+            print("  %s  (%d)" % (t, len(h)))
+            shown = h if args.verbose else h[:5]
+            for n, verb, name in shown:
+                print("      L%-5d cargo %s -p %s   -> no such package in this workspace"
+                      % (n, verb, name))
+            if len(h) > len(shown):
+                print("      ... %d more (use --verbose)" % (len(h) - len(shown)))
+    else:
+        print("LIVE DOCS: every 'cargo -p' names a package in this workspace.")
+
+    # An excused claim is still a claim, and "green" must never mean "nobody looked".
+    # Every supersession the gate honoured is printed, so a reviewer can see which
+    # records are being carried on a stamp's word and re-check the stamp itself.
+    if pkg_acked:
+        print("")
+        print("DEAD PACKAGE NAMES KEPT AS RECORDS, excused by the document's own stamp -- "
+              "%d claim(s):" % len(pkg_acked))
+        for t, n, verb, dead, live in pkg_acked[:20 if not args.verbose else len(pkg_acked)]:
+            print("      %s L%-5d cargo %s -p %s   -> superseded by `%s` (named in a stamp)"
+                  % (t, n, verb, dead, live))
+        if len(pkg_acked) > 20 and not args.verbose:
+            print("      ... %d more (use --verbose)" % (len(pkg_acked) - 20))
+    if stale_stamps:
+        print("")
+        print("SUPERSESSION STAMPS THAT NAME A PACKAGE THIS WORKSPACE DOES NOT HAVE -- "
+              "%d (the claims stay reported):" % len(stale_stamps))
+        for line in stale_stamps[:10]:
+            print("      " + line)
+
     print("")
-    print("check-dead-refs: %d unresolved reference(s) in %d live doc(s)."
-          % (total, len(live)))
-    return 1 if total else 0
+    if args.include_historical:
+        print("dated records, stale package names (reported, NOT counted as drift): "
+              "%d file(s), %d claim(s)"
+              % (len(pkg_hist), sum(len(h) for _, h in pkg_hist)))
+        for t, h in pkg_hist[:10]:
+            print("  %s  (%d)" % (t, len(h)))
+    else:
+        print("dated records with stale package names skipped: %d file(s). "
+              "Use --include-historical to list." % len(pkg_hist))
+    if errs:
+        print("read errors: " + "; ".join(errs[:4]))
+
+    print("")
+    print("check-dead-refs: %d unresolved reference(s) in %d live doc(s); "
+          "%d stale cargo package name(s) in %d live doc(s); "
+          "%d kept as a record under a supersession stamp."
+          % (total, len(live), pkg_total, len(pkg_live), len(pkg_acked)))
+    # A stamp naming a package the workspace does not contain is a broken exemption, and
+    # a broken exemption that still goes green is the one failure mode this feature could
+    # not defend against, so it fails the run even though the claim it excuses was also
+    # reported above.
+    return 1 if (total or pkg_total or stale_stamps) else 0
 
 
 if __name__ == "__main__":
