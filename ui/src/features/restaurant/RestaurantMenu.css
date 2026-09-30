@@ -432,9 +432,8 @@
   flex-shrink: 0;
   width: var(--space-8);
   height: var(--space-8);
-  border-radius: var(--radius-xl);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  border: none;
   color: var(--color-fg-secondary);
   transition: color var(--duration-100) var(--ease-out);
 }
