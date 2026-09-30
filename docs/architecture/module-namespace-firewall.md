@@ -98,22 +98,25 @@ deliberate `--emit-baseline` commit. Current baseline: **36659 lines across 177 
 
 ## 7. What is NOT yet true
 
-One named gap remains, tracked as **P4.1 (partial)** in
-`docs/architecture/phase4-implementation-tickets.md`:
+The Phase 4 work closed the named gaps. What remains is out of Phase 4 scope:
 
-- Production module repositories still build their store with a hardcoded
-  `Grants::none()` / `Grants::read(...)` in their constructor (122 `Repository::new(` call
-  sites). The derivation API (`Grants::from_capabilities`) exists and is proven at the
-  boot boundary, but the per-repository wiring from `modules/*/manifest.json` is not done,
-  because `NamespacedStore::new` has no manifest access today.
-(The kernel-side half of the grant check — rejecting a `Grants` entry naming a module the
-module does not depend on — is now done via `Module::namespace_grants()`, so the remaining
-gap is only the per-repository wiring above.)
+- `NamespacedStore` is enforced *where a module routes its SQL through it*; nothing
+  forces a module to stop taking a bare `&Connection`. The governance gate catches new
+  foreign tables in literal SQL, and `Namespace::raw()` (the escape hatch) was deleted in
+  P4.3, but a future module could still take `&Connection` and reach a table the static
+  gate sees only if the SQL is a literal.
+- Moving `crates/kasirmu-core/src/db/sales_lifecycle.rs`'s cross-vertical BOM deduction
+  behind the ownership map is a core extraction, tracked with the plan's remaining work.
 
-Until both land, §2–§6 hold for what the *tooling* enforces, and item 1 above means a
-*future* module could compile a raw cross-namespace read that the static gate would
-catch only if the SQL is a literal. That is the honest boundary of the firewall today.
+Everything the firewall was built to enforce is now mechanical:
 
+- Each wrapped repository derives its grant set from its own embedded manifest
+  (`Grants::from_manifest_json(OWNER, include_str!("../manifest.json"))`), so a
+  hardcoded grant cannot drift from the declaration.
+- The kernel rejects a grant with no dependency basis at boot (`Module::namespace_grants()`
+  + `Kernel::verify_namespace_grants`).
+- The `capability-parity` gate keeps each manifest's `capabilities` equal to
+  `{read:<own>, write:<own>} ∪ {read:<dep>}`.
 ## 8. Gate index
 
 | Gate id | What it enforces |

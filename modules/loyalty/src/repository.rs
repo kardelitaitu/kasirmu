@@ -15,18 +15,25 @@ use rusqlite::Connection;
 /// The loyalty module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("loyalty");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// The module whose table loyalty reads across the vertical seam (P3.3).
+/// Kept as a named constant for the read handle; the grant itself comes from
+/// the embedded manifest (Phase 4 P4.1).
 const GIFTCARDS: ModuleId = ModuleId("giftcards");
 
 /// Database access repository for loyalty accounts and gift cards.
 ///
-/// Phase 3 P3.2/P3.3: reaches the database through a [`NamespacedStore`] scoped
-/// to the `loyalty` namespace. `loyalty_accounts` is its own table, so its read
-/// goes through `ns.own()` with no grant; `gift_cards` belongs to the
-/// `giftcards` module, so that read goes through a granted
-/// [`read`](NamespacedStore::read) handle in the `ReadOnly` posture. The
-/// `giftcards` dependency is now declared in `modules/loyalty/manifest.json`,
-/// so the checker has no undeclared-dependency note left to raise.
+/// Phase 3 P3.2/P3.3, tightened in Phase 4 P4.1: reaches the database through a
+/// [`NamespacedStore`] scoped to the `loyalty` namespace. `loyalty_accounts` is
+/// its own table, so its read goes through `ns.own()`; `gift_cards` belongs to
+/// the `giftcards` module, so that read goes through a granted
+/// [`read`](NamespacedStore::read) handle in the `ReadOnly` posture. The grant
+/// set is derived from the embedded manifest, so a code-level grant the
+/// manifest does not declare (or a missing one it does) cannot drift:
+/// `giftcards` is in `capabilities` and `dependencies`.
 pub struct LoyaltyRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -35,7 +42,7 @@ impl<'a> LoyaltyRepository<'a> {
     /// Create a new `LoyaltyRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::read([GIFTCARDS])),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 

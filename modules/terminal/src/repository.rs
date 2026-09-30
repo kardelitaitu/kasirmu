@@ -15,13 +15,18 @@ use rusqlite::Connection;
 /// The terminal module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("terminal");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// Database access repository for terminal records.
 ///
 /// Phase 3 P3.2: the repository reaches the database through a
 /// [`NamespacedStore`] scoped to the `terminal` namespace rather than a bare
 /// `&Connection`. `terminal` owns the `terminals` table
-/// (`modules/ownership.json`), so the store carries `Grants::none()` and the
-/// statement is checked against the ownership map before it runs.
+/// (`modules/ownership.json`), so it holds no foreign grant; the grant set is
+/// derived from the embedded manifest (Phase 4 P4.1) and every statement is
+/// checked against the ownership map before it runs.
 pub struct TerminalRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -30,7 +35,7 @@ impl<'a> TerminalRepository<'a> {
     /// Create a new `TerminalRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 

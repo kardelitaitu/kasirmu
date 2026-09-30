@@ -812,7 +812,7 @@ Exit criteria:
 > and the handler-classification gate. The remaining extraction (lifting the ownership map into core
 > to move the BOM deduction) is Phase 4 follow-on.
 
-- [ ] Enable strict `NamespacedStore` enforcement. *(partial 2026-10-03: runtime rejection + `raw()` removal are in (P4.3/P4.4), but production repositories still hardcode their `Grants` — see `docs/architecture/module-namespace-firewall.md` §7.)*
+- [x] Enable strict `NamespacedStore` enforcement. *(2026-10-03: runtime rejection + `raw()` removal are in (P4.3/P4.4), and every wrapped repository now derives its grants from its embedded manifest — P4.1 commit `130dc212a` reversed the hardcoding; see `docs/architecture/module-namespace-firewall.md` §7.)*
 - [x] Reject unauthorized cross-namespace table access. *(2026-10-03: `check_statement` + `NamespaceError::Foreign`, no-grant foreign read refused; P4.4 denial tests.)*
 - [x] Require reporting queries to go through `ReportingFacade`. *(2026-10-03: `crates/kasirmu-core/src/db/facade.rs`, P4.2.)*
 - [x] Remove legacy shared-connection escape hatches where possible. *(2026-10-03: `NamespacedStore::raw()` deleted, P4.3 commit `45c991d94`.)*

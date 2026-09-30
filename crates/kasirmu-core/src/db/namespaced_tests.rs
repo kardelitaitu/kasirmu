@@ -364,3 +364,38 @@ mod db_backed {
         );
     }
 }
+
+#[test]
+fn grants_from_manifest_json_reads_the_capabilities_array() {
+    let manifest = serde_json::json!({
+        "id": "reporting",
+        "capabilities": ["read:inventory", "read:sales", "read:reporting", "write:reporting"]
+    })
+    .to_string();
+    let grants = Grants::from_manifest_json(ModuleId("reporting"), &manifest);
+    assert!(grants.allows(ModuleId("inventory")));
+    assert!(grants.allows(ModuleId("sales")));
+    assert!(!grants.allows(ModuleId("reporting")), "own read is not a grant");
+    assert_eq!(grants.modules().len(), 2);
+}
+
+#[test]
+fn grants_from_manifest_json_fails_closed_without_capabilities() {
+    let manifest = serde_json::json!({ "id": "crm", "dependencies": [] }).to_string();
+    let grants = Grants::from_manifest_json(ModuleId("crm"), &manifest);
+    assert_eq!(grants.modules().len(), 0);
+
+    let malformed = Grants::from_manifest_json(ModuleId("crm"), "not json");
+    assert_eq!(malformed.modules().len(), 0);
+}
+
+#[test]
+fn a_manifest_derived_grant_lets_a_declared_dependency_read_pass() {
+    // The real reporting manifest declares read:inventory, so a store built
+    // from it may read inventory's tables but nothing else.
+    let manifest = include_str!("../../../../modules/reporting/manifest.json");
+    let grants = Grants::from_manifest_json(ModuleId("reporting"), manifest);
+    assert!(grants.allows(ModuleId("inventory")));
+    assert!(grants.allows(ModuleId("sales")));
+    assert!(!grants.allows(ModuleId("loyalty")));
+}

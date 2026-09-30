@@ -117,10 +117,13 @@ fn the_repository_is_scoped_to_its_own_namespace_and_one_grant() {
     use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
 
     let conn = fresh();
+    // Phase 4 P4.1: the grant is derived from the real embedded manifest, not
+    // hardcoded here, so this test fails if the manifest stops declaring the
+    // giftcards capability the repository depends on.
     let ns = NamespacedStore::new(
         Store::new(&conn),
         ModuleId("loyalty"),
-        Grants::read([ModuleId("giftcards")]),
+        Grants::from_manifest_json(ModuleId("loyalty"), include_str!("../manifest.json")),
     );
 
     // Own table: no grant needed.

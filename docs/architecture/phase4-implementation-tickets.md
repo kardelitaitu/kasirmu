@@ -31,7 +31,7 @@ with a declared dependency; 0 undeclared-dependency notes; 0 stale grants; 0 uno
 
 | Plan §10 Phase 4 item | Ticket |
 |---|---|
-| Enable strict `NamespacedStore` enforcement | P4.1 — make the wrap strict at boot (manifest half DONE) |
+| Enable strict `NamespacedStore` enforcement | **DONE** — P4.1 make the wrap strict at boot |
 | Reject unauthorized cross-namespace table access | P4.1 + P4.4 — strict `check_statement` and denial tests |
 | Require reporting queries to go through `ReportingFacade` | P4.2 — define and route the trait (DONE) |
 | Remove legacy shared-connection escape hatches | P4.3 — delete `raw()` |
@@ -50,8 +50,8 @@ reporting facade (P4.2), then the tests (P4.4), gate flip (P4.5), and documentat
 
 ## 2. P4.1 — Strict `NamespacedStore` enforcement
 
-**Status: PARTIAL 2026-10-03 — manifest half done; the grant-derivation API and the boot-boundary
-proof have landed; per-repository runtime wiring remains.**
+**Status: DONE 2026-10-03.** Manifest capabilities, the grant-derivation API, per-repository runtime
+wiring, and the kernel-side undeclared-grant rejection have all landed.
 Every `modules/*/manifest.json` now declares its `capabilities` set, derived mechanically from
 `modules/ownership.json` + the manifest `dependencies` (`read:<id>` + `write:<id>` when the module owns
 tables, plus `read:<dep>` per dependency — 36 capabilities across 14 manifests), and a new required gate
@@ -64,9 +64,15 @@ property, so the test failed on the newly-populated manifests — fixed in the s
 (own `read:<id>`/`write:<id>` skipped; every other `read:<module>` interned as a foreign grant), and the boot
 boundary at `platform/startup/tests/boot_capability.rs` derives the `reporting` grant set through it from the
 real manifest, so the repository-side API and the boundary proof cannot disagree about `read:<module>`.
-Item 2 is **not fully done**: each module still hardcodes `Grants::none()` / `Grants::read(...)` in its
-repository constructor (122 `Repository::new(` call sites), with no manifest access at `NamespacedStore::new`
-time, so production repositories do not yet route their grants from the manifest. Item 3 (reject a
+Item 2 is NOW DONE: `Grants::from_manifest_json(module, json)` (`crates/kasirmu-core/src/db/namespaced.rs`)
+parses a manifest's `capabilities`, and every wrapped module's repository constructor builds its store from
+`Grants::from_manifest_json(OWNER, MANIFEST)` where `MANIFEST = include_str!("../manifest.json")` — so the
+runtime grant set is the manifest declaration, not a hardcoded literal (8 modules: terminal, sales,
+inventory, tax, staff, settings, crm, loyalty). Because the `capability-parity` gate already forces each
+manifest's `capabilities` to equal `{read:<own>, write:<own>} ∪ {read:<dep> : dep ∈ dependencies}`, the
+grant a repository enforces can only name a declared dependency. Mutation-proof: deleting `read:giftcards`
+from `modules/loyalty/manifest.json` makes `LoyaltyRepository` refuse the `gift_cards` read at runtime
+(6 tests fail), then restored byte-identical. Item 3 (reject a
 `NamespacedStore` grant naming an undeclared module at `verify_capabilities`) is NOW DONE: the `Module`
 trait gained `namespace_grants() -> &'static [ModuleId]` (foundation/src/contracts.rs), and
 `Kernel::verify_capabilities` runs `verify_namespace_grants()` (platform/kernel/src/kernel/lifecycle.rs)
@@ -74,7 +80,8 @@ before any `on_load`, returning `KernelError::UndeclaredNamespaceGrant { module,
 module (in id order) whose grant names a module outside its `dependencies()`. `LoyaltyModule` is the one
 real implementer (it reads `gift_cards` via the `giftcards` dependency); the boot-path test
 `the_real_loyalty_grant_names_a_declared_dependency` (platform/startup/tests/boot_capability.rs) pins it.
-The only open P4.1 element is therefore item 2's per-repository wiring (122 `Repository::new(` call sites).
+With item 2 (below) also landed, P4.1 is complete: every wrapped repository derives its grants from its
+manifest, and the kernel rejects a grant with no dependency basis.
 
 **Problem (verified).** The `NamespacedStore` boundary is advisory today: every module builds its store
 with `Grants::none()` (or, for loyalty, one read grant), and `check_statement` refuses a foreign table —

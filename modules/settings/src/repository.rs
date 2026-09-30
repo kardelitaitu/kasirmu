@@ -15,15 +15,20 @@ use rusqlite::Connection;
 /// The settings module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("settings");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// Database access repository for key-value settings.
 ///
 /// Phase 3 P3.2: the repository now reaches the database through a
 /// [`NamespacedStore`] scoped to the `settings` namespace rather than a bare
 /// `&Connection`. `settings` owns the `settings` table
-/// (`modules/ownership.json`), so the store carries `Grants::none()` and every
-/// statement is checked against the ownership map before it runs — a future
-/// edit that reached for another vertical's table would fail the check instead
-/// of compiling into a silent foreign read.
+/// (`modules/ownership.json`), so it holds no foreign grant; the grant set is
+/// derived from the embedded manifest (Phase 4 P4.1). Every statement is
+/// checked against the ownership map before it runs — a future edit that
+/// reached for another vertical's table would fail the check instead of
+/// compiling into a silent foreign read.
 pub struct SettingsRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -32,7 +37,7 @@ impl<'a> SettingsRepository<'a> {
     /// Create a new `SettingsRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 

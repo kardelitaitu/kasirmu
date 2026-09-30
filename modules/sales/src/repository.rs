@@ -17,12 +17,17 @@ use crate::models::{Sale, SaleLine};
 /// The sales module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("sales");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// Database access repository for sales data.
 ///
 /// Phase 3 P3.2: reaches the database through a [`NamespacedStore`] scoped to the
 /// `sales` namespace rather than a bare `&Connection`, so every statement is
 /// checked against `modules/ownership.json` before it runs. `sales` owns both
-/// `sales` and `sale_lines`, so the store carries `Grants::none()`.
+/// `sales` and `sale_lines` and declares no foreign read, so its embedded
+/// manifest (Phase 4 P4.1) yields no grant.
 pub struct SalesRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -31,7 +36,7 @@ impl<'a> SalesRepository<'a> {
     /// Create a new `SalesRepository` borrowing a SQLite connection.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 
@@ -166,7 +171,7 @@ impl<'a> SalesRepository<'a> {
         // A transaction is a property of the connection, so a store built over
         // the passed `tx` writes inside the caller's transaction while still
         // running the namespace check.
-        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::none());
+        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::from_manifest_json(OWNER, MANIFEST));
         ns.own().execute(
             "INSERT INTO sales (id, status, total_minor, line_count, currency, payment_method, tendered_minor, user_id, created_at, updated_at, discount_percent, discount_label, subtotal_minor, tax_total_minor, customer_id, version, base_currency, base_total_minor, tender_rate_millionths, tip_minor, service_charge_minor)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",

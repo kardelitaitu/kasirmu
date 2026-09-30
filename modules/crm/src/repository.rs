@@ -16,12 +16,17 @@ use rusqlite::{Connection, Transaction};
 /// The crm module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("crm");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// Database repository for customer records.
 ///
 /// Phase 3 P3.2: reads and writes go through a [`NamespacedStore`] scoped to the
 /// `crm` namespace rather than a bare `&Connection`, so every statement is
 /// checked against `modules/ownership.json` before it runs. `crm` owns
-/// `customers`, so the store carries `Grants::none()`.
+/// `customers` and declares no foreign read, so its embedded manifest
+/// (Phase 4 P4.1) yields no grant.
 pub struct CrmRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -30,7 +35,7 @@ impl<'a> CrmRepository<'a> {
     /// Create a new `CrmRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 
@@ -75,7 +80,7 @@ impl<'a> CrmRepository<'a> {
         // store over the same transaction writes inside it. We build the store
         // from the passed `tx` so the statement is namespace-checked in exactly
         // the same way as `get_customer`.
-        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::none());
+        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::from_manifest_json(OWNER, MANIFEST));
         ns.own().execute(
             "INSERT INTO customers (id, name, email, phone, loyalty_points, total_spent_minor, currency, notes, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",

@@ -16,12 +16,17 @@ use rusqlite::Connection;
 /// The inventory module's own namespace id, as the ownership map names it.
 const OWNER: ModuleId = ModuleId("inventory");
 
+/// The module's own manifest, embedded so the runtime grant set is derived from
+/// the same declaration the governance checker reads (Phase 4 P4.1 item 2).
+const MANIFEST: &str = include_str!("../manifest.json");
+
 /// Repository for inventory and product database operations.
 ///
 /// Phase 3 P3.2: reaches the database through a [`NamespacedStore`] scoped to the
 /// `inventory` namespace rather than a bare `&Connection`, so `get_product` is
 /// checked against `modules/ownership.json` before it runs. `inventory` owns
-/// `products`, so the store carries `Grants::none()`.
+/// `products` and declares no foreign read, so its embedded manifest
+/// (Phase 4 P4.1) yields no grant.
 pub struct InventoryRepository<'a> {
     ns: NamespacedStore<'a>,
 }
@@ -30,7 +35,7 @@ impl<'a> InventoryRepository<'a> {
     /// Create a new `InventoryRepository` borrowing a SQLite connection.
     pub fn new(conn: &'a Connection) -> Self {
         Self {
-            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::from_manifest_json(OWNER, MANIFEST)),
         }
     }
 

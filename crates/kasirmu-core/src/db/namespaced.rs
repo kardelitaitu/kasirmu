@@ -98,6 +98,37 @@ impl Grants {
         Self { read }
     }
 
+    /// Build read grants from a module manifest's JSON text.
+    ///
+    /// Phase 4 P4.1 item 2: this is the bridge from the declared boundary to the
+    /// runtime one. A repository calls it with its own manifest, so the grant set
+    /// it enforces is exactly the set the manifest declares, and a hardcoded
+    /// grant that drifts from (or exceeds) the manifest cannot survive:
+    ///
+    /// ```ignore
+    /// const GRANTS: &str = include_str!("../manifest.json");
+    /// let ns = NamespacedStore::new(store, OWNER, Grants::from_manifest_json(OWNER, GRANTS));
+    /// ```
+    ///
+    /// A manifest with no `capabilities` key (or a malformed one) yields no
+    /// grants, so an undeclared foreign read fails closed at query time rather
+    /// than silently passing. The `module` argument is the owning module's id,
+    /// so its own `read:<id>` is not mistaken for a foreign grant.
+    #[must_use]
+    pub fn from_manifest_json(module: ModuleId, manifest_json: &str) -> Self {
+        let capabilities = serde_json::from_str::<serde_json::Value>(manifest_json)
+            .ok()
+            .and_then(|v| v.get("capabilities").cloned())
+            .and_then(|v| v.as_array().cloned())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_default();
+        Self::from_capabilities(module, &capabilities)
+    }
+
     /// Whether `module` may be read.
     #[must_use]
     pub fn allows(&self, module: ModuleId) -> bool {
