@@ -16,7 +16,7 @@
 //! which lives in `platform-sync`, a crate the bridge does not depend on; the
 //! same goes for `settings_changed_sink`, which the shell's lib.rs uses to
 //! build that daemon's sink. The DTOs moved to the bridge and come back
-//! through `pub use`; the free functions `sync_tests.rs` calls directly stay
+//! through `pub use`; the free functions the moved test module called directly stay
 //! as `AppError`-returning adapters over the bridge originals.
 
 use std::sync::Arc;
@@ -24,11 +24,12 @@ use std::sync::Arc;
 use rusqlite::Connection;
 use tauri::State;
 
+use kasirmu_bridge::ctx::EventSink;
 use kasirmu_core::events::SettingsUpdated;
-#[allow(unused_imports)] // sibling sync_tests.rs depends on it
+#[allow(unused_imports)] // kept by the Wave-F extraction contract; the tests that
+// exercised these adapters live in crates/kasirmu-bridge/src/sync_tests.rs
 use kasirmu_core::settings::Settings;
 use kasirmu_core::sync_client::{self, PullResult, SyncAttemptResult};
-use kasirmu_bridge::ctx::EventSink;
 use platform_sync::daemon::SettingsChangedSink;
 use platform_sync::pg_daemon::PgDaemonStatus;
 
@@ -64,9 +65,10 @@ pub async fn get_sync_settings_scoped(
 /// relies on to distinguish a cleared+disabled install from a fresh one.
 ///
 /// Adapter over `kasirmu_bridge::sync::update_sync_settings_data`: the name,
-/// parameter list and `AppError` return are unchanged so `sync_tests.rs`
-/// keeps exercising the atomicity + clearing contract without a Tauri runtime.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
+/// parameter list and `AppError` return are unchanged so the bridge's tests
+/// keep exercising the atomicity + clearing contract without a Tauri runtime.
+#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
+// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
 pub fn update_sync_settings_data(
     conn: &Connection,
     args: &UpdateSyncSettingsArgs,
@@ -79,8 +81,9 @@ pub fn update_sync_settings_data(
 /// Business logic for `get_pg_sync_settings` (extracted for testing).
 ///
 /// Adapter over `kasirmu_bridge::sync::run_get_pg_sync_settings`, kept
-/// `AppError`-returning for `sync_tests.rs`.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
+/// `AppError`-returning for the bridge's tests.
+#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
+// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
 fn run_get_pg_sync_settings(conn: &Connection) -> Result<PgSyncSettingsDto, AppError> {
     kasirmu_bridge::sync::run_get_pg_sync_settings(conn).map_err(Into::into)
 }
@@ -90,7 +93,8 @@ fn run_get_pg_sync_settings(conn: &Connection) -> Result<PgSyncSettingsDto, AppE
 /// Extracted as a free function so the persistence contract (optional
 /// field clearing + password preservation) can be tested without a Tauri
 /// runtime, mirroring `update_sync_settings_data`.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
+#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
+// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
 pub fn update_pg_sync_settings_data(
     conn: &Connection,
     args: &UpdatePgSyncSettingsArgs,
@@ -126,7 +130,8 @@ pub fn settings_changed_sink(sink: Option<Arc<dyn EventSink>>) -> SettingsChange
 /// fallback is intentionally added here rather than in the frontend so the
 /// status indicator can recover even while auto-provisioning is still writing
 /// the persisted settings row.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
+#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
+// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
 fn resolve_sync_probe_url(
     candidate: Option<String>,
     saved: Option<String>,
@@ -139,7 +144,8 @@ fn resolve_sync_probe_url(
 ///
 /// Extracted as a free function so the consent gate can be unit-tested
 /// without a Tauri runtime.
-#[allow(dead_code)] // retained by the Wave-F extraction contract for sibling sync_tests.rs
+#[allow(dead_code)] // retained by the Wave-F extraction contract; its tests live in
+// crates/kasirmu-bridge/src/sync_tests.rs (moved there in 9b14d9d0b)
 fn validate_pull_consent(args: &SyncPullArgs) -> Result<(), AppError> {
     kasirmu_bridge::sync::validate_pull_consent(args).map_err(Into::into)
 }
@@ -395,6 +401,28 @@ pub struct SyncConflictDto {
     pub created_at: String,
 }
 
+/// COR-31: a bounded client for the conflict list/resolve commands.
+///
+/// Both commands used a bare `reqwest::Client::new()`, which has no timeout at
+/// all. They are user-initiated UI calls — the operator taps the conflict queue,
+/// then resolves a row — so an unbounded hang pins the command forever and the
+/// spinner never clears. 10s connect / 30s total matches the convention for the
+/// other bounded non-bulk JSON calls (`sync_client`, the tablet's own
+/// `bounded_conflict_client`, the payment drivers).
+fn bounded_conflict_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!(
+                error = %e,
+                "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
+            );
+            reqwest::Client::new()
+        })
+}
+
 /// The configured sync server URL and API key.
 ///
 /// Returns `None` when no server is configured — an unconfigured terminal has
@@ -437,7 +465,7 @@ pub async fn list_sync_conflicts_scoped(
         return Ok(Vec::new());
     };
 
-    let mut request = reqwest::Client::new().get(format!("{base}/api/sync/conflicts"));
+    let mut request = bounded_conflict_client().get(format!("{base}/api/sync/conflicts"));
     if let Some(status) = &args.status {
         request = request.query(&[("status", status)]);
     }
@@ -485,7 +513,7 @@ pub async fn resolve_sync_conflict_scoped(
         return Ok(false);
     };
 
-    let mut request = reqwest::Client::new()
+    let mut request = bounded_conflict_client()
         .post(format!("{base}/api/sync/conflicts/{}/resolve", args.id))
         .json(&serde_json::json!({ "resolution": args.resolution }));
     if let Some(key) = key {
@@ -518,3 +546,7 @@ pub async fn settings_changed_sink_scoped(
         .await
         .map_err(Into::into)
 }
+
+#[cfg(test)]
+#[path = "sync_test_pins.rs"]
+mod test_pins;
