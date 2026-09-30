@@ -318,6 +318,17 @@ silent doc change).
 **Depends on:** T3 for the marker vocabulary on the baselined edges. **Blocks:** NamespacedStore draft §5
 row 2.4 (the reporting migration).
 
+**Status: DONE 2026-10-02.** [docs/architecture/reporting-facade-inventory.md](reporting-facade-inventory.md)
+inventories all 24 public facade methods with their submodules, line numbers and tables. Corrections it
+records: the surface is 24 methods not 4; the plan's claim that reporting reads `payments` through the
+facade is false (no facade SQL names it); and the facade is not read-only. The write question is decided
+(option 2a — narrow the exception to alert-acknowledgement state and amend ADR-62 D5, which was done).
+The trait shape is decided NARROW (the plan's four methods; not implemented in Phase 1). The
+reporting-bypass set has exactly one member (`modules/reporting/src/repository.rs:34`), already baselined
+with a T3 marker, and is the sole migration target. Six facade-only tables with no ownership-map entry
+(`refunds`, `refund_lines`, `kds_orders`, `categories`, `stock_thresholds`, `stock_alert_events`) are
+surfaced as a follow-up rather than silently assigned.
+
 ---
 
 ## 7. Execution order and what 'Phase 1 done' means

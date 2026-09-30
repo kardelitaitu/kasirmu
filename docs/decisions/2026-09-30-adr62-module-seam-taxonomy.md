@@ -83,13 +83,22 @@ lifecycle | plugin_bridge | internal_helper`. The Phase 0 census supplies the fi
 this classification. The class is metadata, not prose, so the future gate (§11.3) can check it
 mechanically and a missing classification is a failure rather than a judgement call.
 
-**D5 — The reporting facade is a sanctioned cross-vertical READ exception, not a write licence.**
+**D5 — The reporting facade is a sanctioned cross-vertical READ exception, with one named write.**
 `kasirmu_core::db::reports` is the official read facade. Reporting may read sales, inventory,
-refunds, payments and product data THROUGH it; reporting may NOT write another vertical's tables, and
-new reporting queries are added to the facade rather than issued from module repositories. The
-facade's existing and sanctioned breadth is the REASON it is exempt from D1/D2 — it is the seam that
-lets reporting stay read-only across verticals (plan §9.5) — and the exemption is bounded: it covers
-reads through the facade, and nothing else.
+refunds and product data THROUGH it; reporting may NOT write another vertical's tables, and new
+reporting queries are added to the facade rather than issued from module repositories. The facade's
+existing and sanctioned breadth is the REASON it is exempt from D1/D2 — it is the seam that lets
+reporting stay read-only across verticals (plan §9.5) — and the exemption is bounded.
+
+**Amended 2026-10-02 (T5).** The facade is NOT strictly read-only: `acknowledge_stock_alert`
+(`crates/kasirmu-core/src/db/reports/product_sales.rs:355`) writes alert-acknowledgement state. The
+facade may therefore WRITE **only alert-acknowledgement state, and only the alert tables it already
+reads** (`stock_alert_events`); every other write is still out of bounds. This is recorded rather than
+relocated because the write is a self-guarding status flip on a row the facade already owns the read
+of (`active_stock_alerts`), and splitting it out would give one narrow table two owners. Option 2b
+(reclassify `acknowledge_stock_alert` as a command contributor outside the facade) was rejected: no
+command-contributor home exists for it today. Full reconciliation:
+[docs/architecture/reporting-facade-inventory.md](../architecture/reporting-facade-inventory.md) §4.
 
 **D6 — Lifecycle handlers, plugin bridges and internal helpers are internal, not seams.** They are
 classified so the census is complete, but they carry no cross-module contract: a lifecycle handler
