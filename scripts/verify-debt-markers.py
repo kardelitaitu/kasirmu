@@ -31,7 +31,6 @@ Exit codes
   1  an unresolvable ID, or a marker already annotated as done
   2  a REFUSED command line, or the marker corpus is empty (a starved scan
      that printed "OK" would be indistinguishable from a clean tree)
-     that printed "OK" would be indistinguishable from a clean tree)
 
 """
 
@@ -51,14 +50,33 @@ ROOTS = ["crates", "apps", "platform", "modules", "foundation", "scripts", "ui/s
 
 # Files a marker lives in. Kept broad on purpose -- a debt marker in a .md is
 # as real as one in a .rs, and the plan that defines an ID is usually a .md.
+#
+# .ftl was MISSING for the whole life of the first version, and the cost was
+# real rather than theoretical: shared-ui is a declared root, so the gate
+# claimed to be reading it while silently skipping every file in it. The two
+# (TODO 3f) locale banners were invisible for exactly that reason. This is the
+# same failure mode as a stale package name in a CI claim -- the tool reports
+# what it knows, and the gap is where the bug lives.
+#
+# .json is absent ON PURPOSE. scripts/gates.json carries this gate's own _note
+# quoting TODO 2a and TODO 4e as examples, and a manifest that cites the
+# markers it polices must not be graded for them.
 SOURCE_SUFFIXES = {".rs", ".go", ".ts", ".tsx", ".js", ".mjs", ".sh", ".ps1",
-                   ".py", ".md", ".toml", ".yml", ".yaml", ".sql", ".css", ".bat"}
+                   ".py", ".md", ".toml", ".yml", ".yaml", ".sql", ".css", ".bat",
+                   ".ftl"}
 
-# Everything git tracks, minus build output and vendored trees. git ls-files is
-# used rather than os.walk so the corpus is exactly what is committed: a marker
-# in an untracked scratch file is not yet the repository's debt.
-SKIP_PREFIXES = ("node_modules/", "target/", ".git/", "vendor/", "dist/",
-                 "build/", "coverage/")
+# Directory NAMES skipped wherever they appear in the path, not just at the
+# root. git ls-files is used rather than os.walk so the corpus is exactly what is
+# committed: a marker in an untracked scratch file is not yet the repository's
+# debt. But ls-files was doing the real filtering by accident -- being prefix
+# anchored, this list never matched crates/x/vendor/ or ui/node_modules/, which
+# is why SKIP_DIRS is matched segment-wise below. The suffix test alone would let
+# a vendored .rs through the moment one of those trees was tracked.
+SKIP_DIRS = ("node_modules", "target", ".git", "vendor", "dist",
+             "build", "coverage")
+# Kept as a name so the self-test can assert the boundary directly; matching is
+# done on whole segments, never on a bare prefix.
+SKIP_PREFIXES = tuple(d + "/" for d in SKIP_DIRS)
 
 # The marker itself. Three shapes exist in this repo and all three are real:
 #   TODO 2a           a section-local plan ID
@@ -128,6 +146,19 @@ CITATION_DIRS = ("docs/records/", "docs/archived/", "docs/decisions/",
                  ".agents/planning/", ".agents/reviews/")
 CITATION_FILES = ("orchestrator-journal.md", "pr_body.md", "skill-drift-report.md")
 
+# The tool that hunts a marker is the one file in the tree that MUST contain one
+# in every shape it recognises: its docstring shows what a marker looks like, its
+# comments cite the real findings it was built from, and its self-test cases are
+# string literals of the very lines being hunted. Exempting the checker by name
+# would have been the easy version, and it is the version that cannot be checked.
+# So the exemption is DERIVED instead: a file that defines the shape of the thing
+# it searches for is describing markers, not asserting debts, which is the same
+# reasoning scripts/gates.json gets from the .json exclusion in SOURCE_SUFFIXES.
+#
+# This was not hypothetical. The first corpus run reported five unresolvable IDs
+# and THREE of them were this file's own docstring, comments and fixtures.
+TOOL_FILES = ("scripts/verify-debt-markers.py",)
+
 # An HTML comment, which is where every audit stamp in this repository lives.
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -149,6 +180,22 @@ def root_present(repo: Path) -> list[str]:
     return [r for r in ROOTS if (repo / r).exists()]
 
 
+def is_scannable(rel: str) -> bool:
+    """True for a tracked file this gate is able to read a marker out of.
+
+    Split out of tracked_files so the corpus boundary is a thing the self-test
+    can assert on directly. A filter that can only be exercised by running a
+    git subprocess is a filter nothing tests, and an untested corpus boundary
+    is exactly how a whole directory of first-party source -- every .ftl in
+    shared-ui -- went unread for the life of the first version.
+    """
+    if not rel:
+        return False
+    if any(part in SKIP_DIRS for part in rel.split("/")):
+        return False
+    return Path(rel).suffix.lower() in SOURCE_SUFFIXES
+
+
 def tracked_files(repo: Path) -> list[str]:
     """Every tracked source file, relative to repo, build output excluded."""
     try:
@@ -162,9 +209,7 @@ def tracked_files(repo: Path) -> list[str]:
     keep = []
     for line in out.stdout.splitlines():
         rel = line.strip().replace("\\", "/")
-        if not rel or rel.startswith(SKIP_PREFIXES):
-            continue
-        if Path(rel).suffix.lower() in SOURCE_SUFFIXES:
+        if is_scannable(rel):
             keep.append(rel)
     return sorted(keep)
 
@@ -211,6 +256,8 @@ def is_citation(rel: str) -> bool:
     mute the tool.
     """
     if is_record(rel):
+        return True
+    if rel in TOOL_FILES:
         return True
     return rel.startswith(CITATION_DIRS) or rel.rsplit("/", 1)[-1] in CITATION_FILES
 
@@ -511,7 +558,36 @@ def self_test() -> int:
     #    be the most expensive false pass in the set.
     cases.append(("an empty corpus is refused rather than reported clean",
                   refuse_nothing_to_scan() == 2))
-    
+
+    # 9. The corpus boundary itself, which the first version had no way to test.
+    #    .ftl was absent from SOURCE_SUFFIXES for the whole life of the gate
+    #    while shared-ui stayed a declared root, so the run reported a healthy
+    #    file count over a tree it had silently stopped reading -- and two real
+    #    (TODO 3f) banners went unseen. A boundary nothing can assert on is a
+    #    boundary that will drift again, so it gets the same treatment as every
+    #    other rule here. The .json case is the mirror half: the manifest cites
+    #    the markers it polices, so it must stay out.
+    cases.append(("a locale file is scannable and the gate manifest is not",
+                  is_scannable("shared-ui/locales/kds.ftl") and
+                  not is_scannable("scripts/gates.json") and
+                  not is_scannable("ui/node_modules/x/index.js") and
+                  is_scannable("shared-ui/locales/kds.id.ftl")))
+    cases.append(("a backtick-quoted citation is not a marker",
+                  markers_in("# a gate note: A `TODO 2a` in a comment\n",
+                             "README.md") == []))
+
+    # 10. The exemption for the tool itself, and the guard against it becoming a
+    #     blanket mute. A file that names the shape of what it searches for is
+    #     describing markers; anything else is still graded. The second half of
+    #     the case is the one that matters: the exemption is scoped to the exact
+    #     path, so a second checker at scripts/verify-something-else.py, and this
+    #     file seen under a different name, are both still graded normally.
+    cases.append(("the tool describing markers is exempt, its neighbour is not",
+                  markers_in("# TODO 3f\n", "scripts/verify-debt-markers.py") == []
+                  and markers_in("// TODO 2a\n", "scripts/verify-anything.py")
+                  and is_citation("scripts/verify-debt-markers.py") and
+                  not is_citation("scripts/verify-runner-claims.py")))
+
     bad = [name for name, ok in cases if not ok]
     if bad:
         print("SELF-TEST WRONG: " + ", ".join(bad), file=sys.stderr)
