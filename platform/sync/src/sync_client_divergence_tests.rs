@@ -403,43 +403,62 @@ fn crdt_merge_reenqueue_preserves_retry_count_and_tenant() {
     );
 }
 
-/// Dossier item 3 - the poison-item nesting, pinned cheaply.
+/// Dossier item 3 - the poison-item nesting, now CLOSED by a depth guard.
 ///
-/// resolve_stock_crdt wraps whatever payload it is handed, so a second conflict
-/// on a merged row nests the envelope. Depth one is consumable (queue.rs
-/// unwraps local and remote when merge_type is crdt_delta); depth two is not,
-/// because the inner local is itself an envelope and has no sku/delta. That
-/// deserialisation failure is the only thing stopping the loop today - there is
-/// no depth guard and no warning anywhere.
+/// resolve_stock_crdt used to wrap whatever payload it was handed, so a second
+/// conflict on a merged row nested the envelope: `{local: {local, remote,
+/// merge_type}, ...}`. Depth one was consumable (queue.rs unwraps local and
+/// remote when merge_type is crdt_delta); depth two was not, because the inner
+/// local was itself an envelope with no sku/delta, and that deserialisation
+/// failure - not a guard - was the only thing stopping a conflict loop. It was
+/// silent.
+///
+/// The resolver now FLATTENS instead of nesting: every leaf delta on both sides
+/// becomes one of the envelope's own sides, so the result is always exactly one
+/// level deep and every delta still decodes as a StockAdjustmentPayload. This
+/// test pins that a re-merge over an already-merged row stays depth one.
 #[test]
-fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
+fn re_merging_a_merged_envelope_stays_one_level_deep() {
     let depth_one = crate::conflict::resolve_stock_crdt(
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":10}"#),
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":-3}"#),
     )
     .winner;
 
-    // Depth one: the merge arm can still read both sides.
+    // Depth one: the merge arm can read both sides.
     let v1: Value = serde_json::from_str(&depth_one.payload).unwrap();
     assert_eq!(v1["merge_type"], "crdt_delta");
     let side: StockAdjustmentPayload = serde_json::from_value(v1["local"].clone()).unwrap();
-    assert_eq!(side.delta, 10, "UNDECIDED: depth one is consumable");
+    assert_eq!(side.delta, 10);
 
-    // Depth two: the merged row conflicts again, so it is handed back in.
+    // Depth two: the merged row conflicts again. It must NOT nest.
     let depth_two = crate::conflict::resolve_stock_crdt(&depth_one, &depth_one)
         .winner
         .payload;
     let v2: Value = serde_json::from_str(&depth_two).unwrap();
-    assert_eq!(
-        v2["merge_type"], "crdt_delta",
-        "UNDECIDED: the envelope nests silently, with no depth guard and no warning - the resolver wraps whatever payload it is handed"
-    );
-    let inner: Result<(), serde_json::Error> =
-        serde_json::from_value::<StockAdjustmentPayload>(v2["local"].clone()).map(|_| ());
+    assert_eq!(v2["merge_type"], "crdt_delta", "still an envelope");
+
+    // Every side decodes as a delta - the failure mode that used to be the only
+    // thing stopping the loop is gone, because there is no inner envelope.
+    let as_delta = |v: &Value| -> StockAdjustmentPayload {
+        serde_json::from_value(v.clone()).expect("every carried side is a leaf stock delta")
+    };
+    assert_eq!(as_delta(&v2["local"]).delta, 10);
+    assert_eq!(as_delta(&v2["remote"]).delta, -3);
     assert!(
-        inner.is_err(),
-        "UNDECIDED: a depth-two payload fails to deserialize as StockAdjustmentPayload, and that failure is the only thing that stops the loop - got {inner:?}"
+        v2["local"].get("merge_type").is_none(),
+        "a side is a leaf delta, never a nested envelope"
     );
+
+    // Both depth-one halves came from the SAME merged row, so flattening
+    // produces four deltas: local/remote plus an extra array carrying the
+    // duplicate pair. Nothing is dropped and nothing nests.
+    let extras = v2["extra"]
+        .as_array()
+        .expect("the surplus deltas are carried in extra");
+    assert_eq!(extras.len(), 2, "two further deltas survive the flatten");
+    assert_eq!(as_delta(&extras[0]).delta, 10);
+    assert_eq!(as_delta(&extras[1]).delta, -3);
 }
 
 /// Row 5 - the duplicate-id Rejected, the one row with a live producer.
@@ -459,6 +478,7 @@ fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
 ///     (and its negative twin ..._genuine_rejection_marks_failed);
 ///   * the SyncEngine arm was added in the same sweep and is pinned here plus
 ///     in lib_tests.rs:1627.
+///
 /// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
 /// and Ownership" and its "Second parity gap" appendix, still describe both as
 /// open; that text is now historical (a reader should trust the arms above).

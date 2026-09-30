@@ -358,3 +358,17 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **The divergence suite's doc no longer calls it a gap.** `platform/sync/src/sync_client_divergence_tests.rs` row 5 documents the four appliers and is renamed `duplicate_id_rejection_is_synced_on_all_four_appliers`; its remaining `UNDECIDED` messages concern the CRDT merge path and the depth-two envelope, not the duplicate-id arm.
 
 > Parity gaps closed 2026-10-04.
+
+---
+
+## The CRDT envelope no longer nests (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it records the depth guard added to `resolve_stock_crdt`.*
+
+- **The defect.** `resolve_stock_crdt` (`platform/sync/src/conflict.rs:215`) wrapped whatever payload it was handed into `{local, remote, merge_type: "crdt_delta"}`. A merged winner is itself a queue row, so a second conflict on it produced `{local: {local, remote, merge_type}, ...}`. The appliers read only one level (`payload.get("local")`), so the inner envelope failed to deserialise as a stock delta — and that failure, not a guard, was **the only thing stopping a conflict loop**, silently.
+- **The repair.** The resolver now FLATTENS: `flatten_stock_deltas` returns the ordered list of leaf deltas a payload carries (a plain delta yields itself; an envelope yields `local`, `remote`, and `local_extra`/`remote_extra` when present). The first two become `local` and `remote` — the keys the four `queue.rs` consumers already read — and any surplus deltas ride in an `extra` array that those consumers also apply. The result is always exactly one level deep and no delta is dropped. A nested envelope is logged once via `tracing::warn!` (flags only, never payload contents).
+- **Every consumer was taught the new key.** The four envelope sites in `platform/sync/src/queue.rs` (`stock.adjusted` and `stock.movement`, in both the atomic and legacy dispatchers) now apply `local`, `remote`, and each entry of `extra`. `remote_effect_key` (`platform/sync/src/queue/appliers.rs:448`) is unchanged: a CRDT-enveloped stock item still has no single effect key by design.
+- **The pin flipped.** `nested_crdt_envelope_fails_to_deserialize_at_depth_two` was the pin that recorded the old nesting; it is replaced by `re_merging_a_merged_envelope_stays_one_level_deep` (`platform/sync/src/sync_client_divergence_tests.rs`), which asserts a re-merge over a merged row stays depth one and every carried side decodes as a `StockAdjustmentPayload`.
+- **Still latent.** No server in this repository emits the conflict tag, so this guard hardens a path that is not live yet (same activation caveat as the rest of this ADR). A typed replacement for the envelope exists but is unadopted: `platform/sync/src/crdt/delta_mutation.rs` (`DeltaMutation`), whose migration remains separate work.
+
+> Depth guard added 2026-10-04.

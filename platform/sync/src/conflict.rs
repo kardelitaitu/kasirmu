@@ -144,20 +144,113 @@ pub fn resolve_sale_lww(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
     }
 }
 
+/// Flatten one payload into the ordered list of leaf stock deltas it carries.
+///
+/// A plain delta (or any value that is not a `crdt_delta` envelope) yields a
+/// one-element list containing itself. An envelope yields its `local` followed
+/// by its `remote`, and — so a re-merge of an already-flattened envelope never
+/// drops a delta — also `local_extra` / `remote_extra` when present. The
+/// returned flag says whether a flattening actually happened, which is what the
+/// caller logs.
+///
+/// Recursion is bounded: the envelope form this function produces is exactly
+/// one level deep, so a decoded envelope contributes leaf deltas, never another
+/// envelope.
+fn flatten_stock_deltas(payload: &str) -> (Vec<Value>, bool) {
+    let Ok(value) = serde_json::from_str::<Value>(payload) else {
+        // Unparseable: hand it through verbatim; the applier reports it.
+        return (vec![Value::Null], false);
+    };
+
+    let is_envelope = value.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta");
+    if !is_envelope {
+        return (vec![value], false);
+    }
+
+    let mut deltas = Vec::with_capacity(4);
+    for key in ["local", "remote", "local_extra", "remote_extra"] {
+        if let Some(side) = value.get(key) {
+            // A side that is itself still an envelope (should not happen once
+            // this guard is in place, but old rows exist) is flattened here too,
+            // so the result is always leaf deltas.
+            if side.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
+                let nested = serde_json::to_string(side).unwrap_or_default();
+                let (mut inner, _) = flatten_stock_deltas(&nested);
+                deltas.append(&mut inner);
+            } else {
+                deltas.push(side.clone());
+            }
+        }
+    }
+    (deltas, true)
+}
+
 /// Resolve a conflict for stock movements using CRDT delta merge.
 ///
 /// Stock movements are immutable delta rows — both deltas are valid and
 /// should be applied. The merged winner carries both payloads combined.
 ///
 /// **Used for:** `stock.adjusted`, `stock.movement`
+///
+/// # Refusing to nest (the depth guard)
+///
+/// A merged winner is itself a queue row, so a later conflict on it arrives
+/// here with a side that is ALREADY an envelope. Wrapping it again produced
+/// `{local: {local, remote, merge_type}, ...}`, and the appliers read only one
+/// level (`payload.get("local")`), so the inner envelope failed to deserialize
+/// as a stock delta. That failure — not a guard — was the only thing stopping a
+/// conflict loop, and it was silent.
+///
+/// This function now refuses to nest. Every leaf delta on both sides is
+/// FLATTENED into one level: the first two become the envelope's `local` and
+/// `remote` (the keys the four `queue.rs` consumers already read), and any
+/// further deltas are carried in an `extra` array that those consumers also
+/// apply. When both sides are envelopes the four sub-deltas therefore survive as
+/// `local`, `remote` and two `extra` entries — no delta is dropped, and the
+/// result is never more than one level deep.
+///
+/// A side that is neither a valid envelope nor a valid delta is passed through
+/// as-is: this function must not invent a payload, and the applier's own error
+/// message is the authority on a malformed one.
 pub fn resolve_stock_crdt(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> ResolvedItem {
-    // CRDT merge: both deltas are valid. The merged payload carries both.
-    let merged_payload = serde_json::json!({
-        "local": serde_json::from_str::<Value>(&local.payload).unwrap_or(Value::Null),
-        "remote": serde_json::from_str::<Value>(&remote.payload).unwrap_or(Value::Null),
-        "merge_type": "crdt_delta"
-    })
-    .to_string();
+    // CRDT merge: every leaf delta on both sides is valid and must survive.
+    let (mut deltas, local_flattened) = flatten_stock_deltas(&local.payload);
+    let (remote_deltas, remote_flattened) = flatten_stock_deltas(&remote.payload);
+    deltas.extend(remote_deltas);
+
+    // The envelope shape is fixed by its four consumers in `queue.rs`: they read
+    // `local` and `remote`. Keep those two keys for the first two deltas and
+    // carry any remaining ones in `extra`, so an already-flattened re-merge
+    // loses nothing while every existing reader keeps working unchanged.
+    let mut env = serde_json::Map::new();
+    let mut extras: Vec<Value> = Vec::new();
+    for (i, delta) in deltas.into_iter().enumerate() {
+        match i {
+            0 => env.insert("local".to_string(), delta),
+            1 => env.insert("remote".to_string(), delta),
+            _ => {
+                extras.push(delta);
+                continue;
+            }
+        };
+    }
+    if !extras.is_empty() {
+        env.insert("extra".to_string(), Value::Array(extras));
+    }
+    env.insert("merge_type".to_string(), Value::String("crdt_delta".into()));
+
+    // A nested envelope is a defect the old code tolerated by accident; record
+    // it once per flattening so the repair is visible in a log rather than
+    // silent. Never the payload contents — these are merchant stock deltas.
+    if local_flattened || remote_flattened {
+        tracing::warn!(
+            local_flattened,
+            remote_flattened,
+            "crdt: a merged stock envelope was flattened instead of re-nested (depth guard)"
+        );
+    }
+
+    let merged_payload = Value::Object(env).to_string();
 
     let winner = OfflineQueueItem {
         id: uuid::Uuid::now_v7().to_string(),

@@ -391,6 +391,13 @@ impl SyncQueue {
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
                     apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
                     apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
+                    // A flattened re-merge carries its surplus deltas here; apply
+                    // every one, or a delta silently disappears (depth guard).
+                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
+                        for extra in extras {
+                            apply_one(extra.clone())?;
+                        }
+                    }
                 } else {
                     apply_one(payload)?;
                 }
@@ -455,6 +462,12 @@ impl SyncQueue {
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
                     apply_one(payload.get("local").unwrap_or(&Value::Null))?;
                     apply_one(payload.get("remote").unwrap_or(&Value::Null))?;
+                    // Apply the surplus deltas of a flattened re-merge (depth guard).
+                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
+                        for extra in extras {
+                            apply_one(extra)?;
+                        }
+                    }
                 } else {
                     apply_one(&payload)?;
                 }
@@ -585,7 +598,8 @@ impl SyncQueue {
             // `{sku, delta}` payload AND the SYNC-05 CRDT merge envelope
             // (`{local, remote, merge_type: "crdt_delta"}`) produced by
             // `resolve_stock_crdt` — both deltas are valid CRDT facts and
-            // must be applied. NOTE: `adjust_stock` is NOT idempotent (it
+            // must be applied. A flattened re-merge additionally carries its
+            // surplus deltas in `extra`; every one is applied. NOTE: `adjust_stock` is NOT idempotent (it
             // appends a new stock_movements row), so re-applying a merged
             // winner must be prevented by the caller's replay ledger / queue
             // dedup (the daemon's sync_applied_items + mark-synced guards).
@@ -606,6 +620,12 @@ impl SyncQueue {
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
                     apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
                     apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
+                    // Surplus deltas of a flattened re-merge (depth guard).
+                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
+                        for extra in extras {
+                            apply_one(extra.clone())?;
+                        }
+                    }
                 } else {
                     apply_one(payload)?;
                 }
@@ -649,7 +669,8 @@ impl SyncQueue {
             // ADR #6: Remote stock movement from another store or register.
             // Insert directly into the ledger; the daemon rebuilds the
             // stock_summary cache after applying all remote items. Also
-            // accepts the SYNC-05 CRDT merge envelope (both rows inserted).
+            // accepts the SYNC-05 CRDT merge envelope (all rows inserted, including
+            // a flattened re-merge's `extra` deltas).
             "stock.movement" => {
                 let payload: Value = serde_json::from_str(&item.payload).map_err(|e| {
                     CoreError::Internal(format!("invalid stock.movement payload: {e}"))
@@ -673,6 +694,12 @@ impl SyncQueue {
                 if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
                     apply_one(payload.get("local").unwrap_or(&Value::Null))?;
                     apply_one(payload.get("remote").unwrap_or(&Value::Null))?;
+                    // Surplus deltas of a flattened re-merge (depth guard).
+                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
+                        for extra in extras {
+                            apply_one(extra)?;
+                        }
+                    }
                 } else {
                     apply_one(&payload)?;
                 }
