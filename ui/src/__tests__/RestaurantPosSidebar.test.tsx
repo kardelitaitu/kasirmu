@@ -656,14 +656,16 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     // Item 3: 42.000 * 100/110 = 38181.8181... -> shown: 38.182
     // Exact subtotal: 93.000 * 100/110 = 84545.4545... -> shown: 84.545
     // 84545.4545... * 0.10 = 8454.5454... -> round = 8455 -> Total: 84545 + 8455 = 93000 -> Change: 100000 - 93000 = 7000
+    // The preview mirrors the ESC/POS renderer: the major part is verbatim,
+    // with no thousands grouping (formatPrice in receiptLogic).
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
-    expect(screen.getByText('31.818')).toBeInTheDocument();
-    expect(screen.getByText('14.545')).toBeInTheDocument();
-    expect(screen.getByText('38.182')).toBeInTheDocument();
-    expect(screen.getByText('84.545')).toBeInTheDocument();
-    expect(screen.getByText('8.455')).toBeInTheDocument();
-    expect(screen.getByText('93.000')).toBeInTheDocument();
-    expect(screen.getByText('7.000')).toBeInTheDocument();
+    expect(screen.getByText('31818')).toBeInTheDocument();
+    expect(screen.getByText('14545')).toBeInTheDocument();
+    expect(screen.getByText('38182')).toBeInTheDocument();
+    expect(screen.getByText('84545')).toBeInTheDocument();
+    expect(screen.getByText('8455')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('7000')).toBeInTheDocument();
 
     // Switch to Truncate (Legacy)
     const truncateBtn = screen.getByRole('button', { name: 'Truncate (Legacy)' });
@@ -672,18 +674,18 @@ describe('RestaurantReceiptsScreen — Font Size & Table Number Gating', () => {
     // In truncate mode:
     // 84545.4545... * 0.10 = 8454.5454... -> floor = 8454 -> Total: 84545 + 8454 = 92999 -> Change: 100000 - 92999 = 7001
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
-    expect(screen.getByText('8.454')).toBeInTheDocument();
-    expect(screen.getByText('92.999')).toBeInTheDocument();
-    expect(screen.getByText('7.001')).toBeInTheDocument();
+    expect(screen.getByText('8454')).toBeInTheDocument();
+    expect(screen.getByText('92999')).toBeInTheDocument();
+    expect(screen.getByText('7001')).toBeInTheDocument();
 
     // Switch back to Round Half Up
     const halfUpBtn = screen.getByRole('button', { name: 'Round Half Up' });
     await user.click(halfUpBtn);
 
     expect(screen.getByText('PB1/TAX (10%)')).toBeInTheDocument();
-    expect(screen.getByText('8.455')).toBeInTheDocument();
-    expect(screen.getByText('93.000')).toBeInTheDocument();
-    expect(screen.getByText('7.000')).toBeInTheDocument();
+    expect(screen.getByText('8455')).toBeInTheDocument();
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    expect(screen.getByText('7000')).toBeInTheDocument();
   });
 
   it('renders menu order note pedas under Nasi Goreng Spesial and toggles with showItemNotes', async () => {

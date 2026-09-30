@@ -1,7 +1,7 @@
 /**
  * @file SettingsToggleButtons.test.tsx
  * @description Regression test suite ensuring all settings toggle buttons (enable/disable switches)
- * across the receipt/sync toggle owners (ReceiptSection/SyncSection), AppearanceSettings, and DataManagementScreen
+ * across the sync toggle owner (SyncSection), AppearanceSettings, and DataManagementScreen
  * are properly structured as <label htmlFor="...">
  * elements or wrap their inputs so that clicks on the visual slider track/wrapper delegate to the checkbox input.
  * Prevents regression where wrapper divs/spans blocked toggle button clicks.
@@ -9,12 +9,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProvidersSync } from '@/__tests__/test-utils/render';
 import settingsFtl from '@/locales/settings.ftl?raw';
 import sharedFtl from '@/locales/shared.ftl?raw';
-import ReceiptSection from '@/features/settings/sections/ReceiptSection';
 import SyncSection from '@/features/settings/sections/SyncSection';
 import { AppearanceSettings } from '@/features/settings/AppearanceSettings';
 import DataManagementScreen from '@/features/settings/DataManagementScreen';
@@ -25,7 +24,6 @@ import { LocaleContext } from '@/i18n/LocaleContext';
 import { getAvailableLocales, getLocaleLabel } from '@/i18n';
 import type { ReactLocalization } from '@fluent/react';
 import type { SyncSettingsDto } from '@/api/offline';
-import type { ReceiptSettingsDto } from '@/api/settings';
 
 // ── Session under test: the settings role gate ──────────────────────
 // SettingsPage.tsx:204-208 gates the whole shell on
@@ -246,35 +244,9 @@ const testL10n = {
   getString: (id: string) => id,
 } as unknown as ReactLocalization;
 
-const INITIAL_RECEIPT: ReceiptSettingsDto = {
-  showCurrency: false,
-  decimalSeparator: 'dot',
-  showTax: true,
-  footer: '',
-  paperWidth: 'standard',
-  showTableNumber: false,
-  marginTop: 0,
-  marginBottom: 0,
-  marginLeft: 0,
-  marginRight: 0,
-};
-
 // Stateful hosts: the old suite reached these toggles through SettingsPage, which owned
-// the receipt/sync state, so clicking a wrapper flipped the checked state via the real
-// setter. The hosts preserve that stateful arrangement around the direct section mounts.
-function ReceiptToggleHost() {
-  const [receipt, setReceipt] = useState(INITIAL_RECEIPT);
-  return (
-    <ReceiptSection
-      receipt={receipt}
-      setReceipt={setReceipt}
-      setDecimalSep={vi.fn()}
-      markDirty={vi.fn()}
-      l10n={testL10n}
-    />
-  );
-}
-
+// the sync state, so clicking a wrapper flipped the checked state via the real setter.
+// The host preserves that stateful arrangement around the direct section mount.
 const INITIAL_SYNC: SyncSettingsDto = { serverUrl: null, hasApiKey: false, enabled: false, resolvedOrigin: 'https://license.kasir.mu', resolvedOriginSource: 'main' };
 
 function SyncToggleHost() {
@@ -330,51 +302,15 @@ describe('Settings Toggle Buttons Regression Suite', () => {
     (invokeMock as any).mockImplementation((cmd: any) => defaultImpl(cmd));
   });
 
-  it('ensures all 4 toggle buttons are structured as <label htmlFor="..."> and delegate clicks', async () => {
+  it('ensures the sync toggle is structured as <label htmlFor="..."> and delegates clicks', async () => {
     const user = userEvent.setup();
-    // The flat-IA settings rebuild replaced the Operations → Receipt / Cloud Sync tab tree
-    // with 13 scaffold pages that intentionally render no controls (SettingsNavTree.tsx;
-    // screens/GeneralScreen.tsx:5 "Intentionally renders no controls"). The receipt and sync
-    // toggles still live in their owning components (sections/ReceiptSection.tsx,
-    // sections/SyncSection.tsx), so this suite mounts those directly — the DOM contract under
-    // test (label[for] + click delegation) is unchanged. No current page button renders them.
-    renderWithProvidersSync(
-      <TestWrapper>
-        <ReceiptToggleHost />
-      </TestWrapper>,
-      settingsFtl,
-      sharedFtl,
-    );
-
-    // Receipt section: show-currency, show-tax, show-table-number live here
-    await waitFor(() => {
-      expect(document.getElementById('receipt-show-currency')).not.toBeNull();
-    });
-
-    const expectedToggleIds = [
-      'receipt-show-currency',
-      'receipt-show-tax',
-      'receipt-show-table-number',
-    ];
-
-    for (const inputId of expectedToggleIds) {
-      const input = document.getElementById(inputId) as HTMLInputElement;
-      expect(input, `Input #${inputId} should exist`).not.toBeNull();
-
-      const toggleWrapper = input.closest('.settings-toggle') as HTMLLabelElement;
-      expect(toggleWrapper, `Wrapper for #${inputId} should have .settings-toggle class`).not.toBeNull();
-      expect(toggleWrapper.tagName.toLowerCase(), `Wrapper for #${inputId} MUST be a <label>`).toBe('label');
-      expect(toggleWrapper.getAttribute('for'), `Wrapper for #${inputId} MUST have for="${inputId}"`).toBe(inputId);
-
-      // Verify that clicking the label wrapper delegates click and toggles checked state
-      const initialChecked = input.checked;
-      await user.click(toggleWrapper);
-      expect(input.checked, `Clicking .settings-toggle wrapper should toggle input #${inputId}`).toBe(!initialChecked);
-    }
-
-    // Sync section: sync-enabled lives here. The old IA reached it by clicking the
-    // "Cloud Sync" nav button; the flat IA has no such page, so mount the owner directly.
-    cleanup();
+    // The flat-IA settings rebuild replaced the Operations → Cloud Sync tab tree with 13
+    // scaffold pages that intentionally render no controls (SettingsNavTree.tsx;
+    // screens/GeneralScreen.tsx:5 "Intentionally renders no controls"). The sync toggle
+    // still lives in its owning component (sections/SyncSection.tsx), so this suite mounts
+    // it directly — the DOM contract under test (label[for] + click delegation) is unchanged.
+    // (The receipt toggle owner, sections/ReceiptSection.tsx, was removed as dead code: the
+    // live receipt surface is RestaurantReceiptsScreen / ReceiptFormatSettingsCard.)
     renderWithProvidersSync(
       <TestWrapper>
         <SyncToggleHost />

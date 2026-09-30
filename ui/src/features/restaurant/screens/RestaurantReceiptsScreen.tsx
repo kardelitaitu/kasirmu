@@ -10,6 +10,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTerminalHardware } from '@/hooks/useTerminalHardware';
 import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesScoped } from '@/api/settings';
+import { getReceiptFormatScoped, setReceiptLayoutScoped } from '@/api/receipt-format';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '@/features/settings/SettingsSelect';
 import { tierSatisfies } from '@/utils/tierLevel';
@@ -151,6 +153,12 @@ export default function RestaurantReceiptsScreen({
   const [testingPrint, setTestingPrint] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
   const [dirtyVersion, setDirtyVersion] = useState(0);
+
+  // The workspace (primary-location) scope id used for the scoped
+  // receipt_formats layout write, resolved on load. Null until resolved; the
+  // scoped write is skipped while it is null so the screen degrades to the
+  // legacy path rather than writing to the wrong scope.
+  const [receiptWorkspaceId, setReceiptWorkspaceId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -373,6 +381,52 @@ export default function RestaurantReceiptsScreen({
         });
     }
   }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile]);
+
+  // Overlay the SCOPED receipt format (the same layer the Settings → Business
+  // Defaults card owns) on top of the legacy base above, and remember the
+  // workspace id so a save writes back to the scope it read from.
+  //
+  // Why this exists: the legacy `receipt.*` keys this screen historically
+  // wrote are a *fallback* for the scoped `receipt_formats` rows. When a
+  // manager saved the Business Defaults card, the scoped rows took effect on
+  // the printed receipt while this screen kept displaying (and later
+  // re-writing) the shadowed legacy values — a silent conflict. Reading the
+  // effective format here means the screen shows what actually prints, and
+  // the save below writes the same scope, so the two surfaces converge.
+  useEffect(() => {
+    if (!sessionToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const primary = await getPrimaryLocationScoped(sessionToken);
+        if (cancelled) return;
+        const workspaceId = primary?.id ?? null;
+        setReceiptWorkspaceId(workspaceId);
+        const eff = await getReceiptFormatScoped(sessionToken, effectiveTerminalId || null, workspaceId);
+        if (cancelled) return;
+        const l = eff.layout;
+        if (l.paperWidthMm !== null && l.paperWidthMm !== undefined) {
+          setPaperWidth(l.paperWidthMm <= 58 ? 'narrow' : 'standard');
+        }
+        if (l.marginTopMm !== null && l.marginTopMm !== undefined) setMarginTop(l.marginTopMm);
+        if (l.marginBottomMm !== null && l.marginBottomMm !== undefined) setMarginBottom(l.marginBottomMm);
+        if (l.marginLeftMm !== null && l.marginLeftMm !== undefined) setMarginLeft(l.marginLeftMm);
+        if (l.marginRightMm !== null && l.marginRightMm !== undefined) setMarginRight(l.marginRightMm);
+        if (l.showTableNumber !== null && l.showTableNumber !== undefined) setShowTableNumber(l.showTableNumber);
+        if (l.footerNote !== null && l.footerNote !== undefined) setFooter(l.footerNote);
+        if (eff.content) {
+          setShowTax(eff.content.showTax);
+          setShowCurrency(eff.content.showCurrency);
+        }
+        setDirtyVersion((v) => v + 1);
+      } catch {
+        // No scoped format (or no permission): the legacy values stand.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionToken, effectiveTerminalId]);
 
   // Sync hardware settings when profile arrives
   useEffect(() => {
@@ -672,12 +726,33 @@ export default function RestaurantReceiptsScreen({
         }),
       );
 
-      // 2. Save device hardware profile
+      // 2. Save the SCOPED layout (the layer the printed receipt actually
+      //    resolves through, shared with Settings → Business Defaults). Only
+      //    the fields this screen owns are written; null leaves the other
+      //    layers untouched. Skipped when no workspace scope was resolved, so
+      //    the legacy write above remains the sole (fallback) writer.
+      if (sessionToken && receiptWorkspaceId) {
+        tasks.push(
+          setReceiptLayoutScoped(sessionToken, receiptWorkspaceId, {
+            paperWidthMm: paperWidth === 'narrow' ? 58 : 80,
+            marginTopMm: marginTop,
+            marginBottomMm: marginBottom,
+            marginLeftMm: marginLeft,
+            marginRightMm: marginRight,
+            showLogo: null,
+            printCopies: null,
+            showTableNumber: tablesEnabled ? showTableNumber : false,
+            footerNote: showFooter ? footer : '',
+          }),
+        );
+      }
+
+      // 3. Save device hardware profile
       if (effectiveTerminalId && hw.profile) {
         tasks.push(hw.save());
       }
 
-      // 3. Save extended toggles & preferences
+      // 4. Save extended toggles & preferences
       if (sessionToken) {
         tasks.push(
           setUserPreferencesScoped(sessionToken, [
@@ -787,6 +862,7 @@ export default function RestaurantReceiptsScreen({
   }, [
     sessionToken,
     effectiveTerminalId,
+    receiptWorkspaceId,
     hw,
     showCurrency,
     settings.receipt.decimalSeparator,
@@ -833,7 +909,13 @@ export default function RestaurantReceiptsScreen({
     [paperWidth, printableAreaMm, fontSize],
   );
 
-  const formatPrice = (amount: number) => _formatPrice(amount, showCurrency, settings.store.currency);
+  const formatPrice = (amount: number) =>
+    _formatPrice(
+      amount,
+      showCurrency,
+      settings.store.currency,
+      (settings.receipt.decimalSeparator as 'dot' | 'comma' | 'none') ?? 'dot',
+    );
 
   // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
   // When showTax is true, line items show net price = 100/(100 + taxRatePercent) of gross,

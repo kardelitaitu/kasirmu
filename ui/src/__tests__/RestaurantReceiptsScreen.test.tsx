@@ -116,12 +116,14 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     const user = userEvent.setup();
     await renderScreen();
 
-    // Default showCurrency false -> bare id-ID number in the totals.
-    const total = screen.getByText('93.000');
+    // Default showCurrency false -> bare number in the totals. The preview
+    // mirrors the printed receipt, which renders the major part verbatim
+    // (no thousands grouping) — see formatPrice in receiptLogic.
+    const total = screen.getByText('93000');
     expect(total).toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/Show Currency/i));
-    expect(screen.getByText('Rp 93.000')).toBeInTheDocument();
+    expect(screen.getByText('Rp 93000')).toBeInTheDocument();
   });
 
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {

@@ -53,19 +53,36 @@ export const approxCols = (
   }
 };
 
+/** How fractional digits are displayed — mirrors the HAL `DecimalSeparator`. */
+export type DecimalSeparator = 'dot' | 'comma' | 'none';
+
 /**
- * Format an integer price for receipt display.
+ * Format a price for receipt display.
  *
- * Always uses Indonesian (`id-ID`) thousands separators (`.`). When `showCurrency`
- * is false only the bare number is returned; otherwise an IDR amount is prefixed
- * with `Rp ` and any other (or empty, which defaults to IDR) code is prefixed
- * with `<CODE> `.
+ * Mirrors the ESC/POS renderer (kasirmu-hal `format_amount`): the major part
+ * is rendered WITHOUT thousands grouping, an optional fractional part is joined
+ * by the configured separator, and the currency prefix (`Rp ` for IDR, the raw
+ * code otherwise — or nothing when `showCurrency` is false) is prepended.
+ *
+ * `decimalSeparator` is the SAME setting the printer resolves: `dot`/`comma`
+ * choose the fractional separator and `none` truncates fractional digits, so
+ * the preview cannot silently diverge from what actually prints. An integer
+ * (`frac === 0`) renders identically under all three, as it does on paper.
  */
-export const formatPrice = (amount: number, showCurrency: boolean, currency: string): string => {
-  const formattedNum = amount.toLocaleString('id-ID');
-  if (!showCurrency) return formattedNum;
-  const cur = currency || 'IDR';
-  return `${cur === 'IDR' ? 'Rp ' : `${cur} `}${formattedNum}`;
+export const formatPrice = (
+  amount: number,
+  showCurrency: boolean,
+  currency: string,
+  decimalSeparator: DecimalSeparator = 'dot',
+  fractionDigits = 0,
+): string => {
+  const negative = amount < 0;
+  const major = Math.abs(Math.trunc(amount)).toString();
+  const showFrac = decimalSeparator !== 'none' && fractionDigits > 0;
+  const sep = decimalSeparator === 'comma' ? ',' : '.';
+  const fraction = showFrac ? `${sep}${'0'.repeat(fractionDigits)}` : '';
+  const prefix = showCurrency ? ((currency || 'IDR') === 'IDR' ? 'Rp ' : `${currency || 'IDR'} `) : '';
+  return `${negative ? '-' : ''}${prefix}${major}${fraction}`;
 };
 
 /** The paper modifier class token for each font-size preset. */

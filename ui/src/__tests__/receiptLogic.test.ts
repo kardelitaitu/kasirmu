@@ -82,23 +82,35 @@ describe('approxCols', () => {
 });
 
 describe('formatPrice', () => {
-  it('formats with id-ID thousands separators and no prefix when hidden', () => {
-    expect(formatPrice(85255, false, 'IDR')).toBe('85.255');
-    expect(formatPrice(93000, false, 'USD')).toBe('93.000');
+  it('renders the major part verbatim, matching the ESC/POS renderer (no grouping)', () => {
+    expect(formatPrice(85255, false, 'IDR')).toBe('85255');
+    expect(formatPrice(93000, false, 'USD')).toBe('93000');
   });
 
   it('prefixes IDR with "Rp "', () => {
-    expect(formatPrice(85255, true, 'IDR')).toBe('Rp 85.255');
-    expect(formatPrice(85255, true, '')).toBe('Rp 85.255'); // empty currency defaults to IDR
+    expect(formatPrice(85255, true, 'IDR')).toBe('Rp 85255');
+    expect(formatPrice(85255, true, '')).toBe('Rp 85255'); // empty currency defaults to IDR
   });
 
   it('prefixes other currencies with the code + space', () => {
-    expect(formatPrice(85255, true, 'USD')).toBe('USD 85.255');
-    expect(formatPrice(85255, true, 'SGD')).toBe('SGD 85.255');
+    expect(formatPrice(85255, true, 'USD')).toBe('USD 85255');
+    expect(formatPrice(85255, true, 'SGD')).toBe('SGD 85255');
   });
 
   it('handles zero', () => {
     expect(formatPrice(0, true, 'IDR')).toBe('Rp 0');
+  });
+
+  it('applies the decimal separator only when there are fractional digits', () => {
+    expect(formatPrice(85255, true, 'IDR', 'dot', 2)).toBe('Rp 85255.00');
+    expect(formatPrice(85255, true, 'IDR', 'comma', 2)).toBe('Rp 85255,00');
+    expect(formatPrice(85255, true, 'IDR', 'none', 2)).toBe('Rp 85255');
+    // whole minor units render identically under dot/comma
+    expect(formatPrice(85255, true, 'IDR', 'comma')).toBe('Rp 85255');
+  });
+
+  it('renders a negative amount with a leading minus', () => {
+    expect(formatPrice(-5000, true, 'IDR')).toBe('-Rp 5000');
   });
 });
 

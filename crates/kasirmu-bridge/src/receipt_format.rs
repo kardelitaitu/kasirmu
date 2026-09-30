@@ -2,14 +2,20 @@
 //! missing saas-2 L167 axis).
 //!
 //! Wire contract: the core `EffectiveReceiptFormat` model is returned
-//! as-is (camelCase serde). Content (statutory, entity scope) is read-
-//! only on this surface — authoring it is a management surface, deferred
-//! like fiscal/payment entity-layer authoring. Layout (presentational)
-//! is writable at the workspace layer of the session's store db.
+//! as-is (camelCase serde).
 //!
-//! Read: `settings:read`. Write: `settings:edit` + the ADR #47
+//! Both halves are writable on this surface:
+//!   • Layout (presentational) is writable at the workspace layer of the
+//!     session's store db (`set_receipt_layout_scoped`).
+//!   • Content (statutory, entity scope) is writable through
+//!     `set_receipt_content_scoped`, which resolves the entity server-side
+//!     from the store's primary location and fails closed when there is no
+//!     linked legal entity.
+//!
+//! Read: `settings:read`. Layout write: `settings:edit` + the ADR #47
 //! location-resource gate (the workspace layer is keyed by the session's
-//! primary location id).
+//! primary location id). Content write: `settings:edit` + a location
+//! resource check against that same primary location.
 //!
 //! Wave D / D4b: the bodies moved here from
 //! `apps/desktop-tauri/src/commands/receipt_format.rs`; shims keep the

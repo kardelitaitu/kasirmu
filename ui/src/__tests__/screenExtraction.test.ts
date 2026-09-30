@@ -688,7 +688,6 @@ const SCREENS: ScreenEntry[] = [
     additionalTsx: [
       'settings/sections/GeneralSection.tsx',
       'settings/sections/AppearanceSection.tsx',
-      'settings/sections/ReceiptSection.tsx',
       'settings/sections/SyncSection.tsx',
       'settings/sections/AboutSection.tsx',
       // SettingsFooter.tsx carries the settings-footer-* markup (theme switch,

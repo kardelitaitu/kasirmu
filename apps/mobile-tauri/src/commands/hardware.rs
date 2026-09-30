@@ -246,6 +246,15 @@ pub async fn print_sales_receipt_scoped(
 
     // Load store info + display settings from the DB in a block
     // so the MutexGuard is dropped before any .await point.
+    //
+    // Display options resolve through `Store::effective_receipt_format`, the
+    // same single source of truth the desktop bridge print path uses: the
+    // scoped `receipt_formats` rows win and the legacy `receipt.*` keys are
+    // the fallback, so a tablet prints the same config the register does.
+    // The terminal id is awaited BEFORE the db guard is taken: the guard is
+    // a std Mutex (not Send), and holding it across an await point fails to
+    // compile the command future.
+    let terminal_id = state.terminal_id.lock().await.clone();
     let (config, store_info) = {
         let (_session, conn_arc) = state.resolve_scope(&session_token)?;
         let db_guard = conn_arc
@@ -256,26 +265,50 @@ pub async fn print_sales_receipt_scoped(
             Settings::get_store_name(&conn)?.unwrap_or_else(|| "kasir.mu Store".into());
         let store_address = Settings::get_store_address(&conn)?.unwrap_or_default();
         let store_tax_id = Settings::get_store_tax_id(&conn)?;
-        let decimals = Settings::get_receipt_decimal_separator(&conn)?;
-        let decimal_separator = match decimals.as_str() {
+        let effective = kasirmu_core::Store::new(conn).effective_receipt_format(
+            terminal_id.as_deref(),
+            None,
+        )?;
+        let decimal_separator = match effective
+            .content
+            .as_ref()
+            .map(|c| c.decimal_separator.as_str())
+            .unwrap_or("dot")
+        {
             "comma" => receipt::DecimalSeparator::Comma,
             "none" => receipt::DecimalSeparator::None,
             _ => receipt::DecimalSeparator::Dot,
         };
-        let paper_width = match Settings::get_receipt_paper_width(&conn)?.as_str() {
-            "narrow" => receipt::PaperWidth::Narrow,
+        let paper_width = match effective.layout.paper_width_mm {
+            Some(58) => receipt::PaperWidth::Narrow,
             _ => receipt::PaperWidth::Standard,
         };
+        let (show_tax, show_currency) = effective
+            .content
+            .as_ref()
+            .map(|c| (c.show_tax, c.show_currency))
+            .unwrap_or((
+                Settings::get_receipt_show_tax(&conn)?,
+                Settings::get_receipt_show_currency(&conn)?,
+            ));
+        let footer = effective
+            .content
+            .as_ref()
+            .map(|c| c.footer_text.clone())
+            .filter(|f| !f.is_empty())
+            .or_else(|| effective.layout.footer_note.clone().filter(|f| !f.is_empty()))
+            .or_else(|| {
+                Settings::get_receipt_footer(&conn)
+                    .ok()
+                    .filter(|f| !f.is_empty())
+            });
         let cfg = receipt::ReceiptConfig {
             paper_width,
-            show_currency: Settings::get_receipt_show_currency(&conn)?,
+            show_currency,
             decimal_separator,
-            show_tax: Settings::get_receipt_show_tax(&conn)?,
-            footer: {
-                let f = Settings::get_receipt_footer(&conn)?;
-                if f.is_empty() { None } else { Some(f) }
-            },
-            show_table_number: Settings::get_receipt_show_table_number(&conn)?,
+            show_tax,
+            footer,
+            show_table_number: effective.layout.show_table_number.unwrap_or(false),
             barcode_enabled: false,
             payment_link_template: None,
         };

@@ -268,43 +268,100 @@ pub async fn print_sales_receipt_scoped(
 ) -> Result<PrintSalesReceiptResult, BridgeError> {
     // ungated-ok: KNOWN GAP (BRIDGE-7) - device access is currently open to any
     // authenticated operator. Gating it is a product ruling, not a repair.
+    // The terminal id is read OUTSIDE the db lock so the guard never crosses
+    // an await point — it selects the terminal-scoped layout row that has the
+    // highest precedence in `effective_receipt_format`.
+    let terminal_id = ctx.terminal_id().await;
     let (config, store_info) = {
         let conn = ctx.resolve_store(session_token)?;
         let db = conn
             .lock()
             .map_err(|e| BridgeError::Internal(format!("store db lock: {e}")))?;
-        read_receipt_config(&db)?
+        read_receipt_config_for_scope(&db, terminal_id.as_deref())?
     }; // MutexGuard dropped here before any .await
     run_print_receipt_inner(ctx, args, config, store_info).await
 }
 
 /// Read receipt configuration and store info from the DB (synchronous — no async).
+///
+/// The display options resolve through [`Store::effective_receipt_format`], the
+/// single source of truth for receipt config: the scoped `receipt_formats`
+/// rows (entity content + terminal/workspace layout) win, and the ten pinned
+/// org-global legacy `receipt.*` settings keys fill whatever no scoped row
+/// supplied. A store that has only ever written legacy keys therefore prints
+/// exactly as it did before this resolution was introduced — the legacy values
+/// come back through the same fallback path the resolver already used.
 fn read_receipt_config(
     conn: &rusqlite::Connection,
+) -> Result<(receipt::ReceiptConfig, receipt::StoreInfo), BridgeError> {
+    read_receipt_config_for_scope(conn, None)
+}
+
+/// Resolve receipt configuration for a specific terminal (and the workspace it
+/// resolves to) through [`Store::effective_receipt_format`].
+///
+/// `terminal_id` is the terminal whose scoped layout row has the highest
+/// precedence; `None` skips the terminal layer and falls straight through to
+/// the workspace/legacy layers (the unscoped print path).
+fn read_receipt_config_for_scope(
+    conn: &rusqlite::Connection,
+    terminal_id: Option<&str>,
 ) -> Result<(receipt::ReceiptConfig, receipt::StoreInfo), BridgeError> {
     let store_name = Settings::get_store_name(conn)?.unwrap_or_else(|| "kasir.mu Store".into());
     let store_address = Settings::get_store_address(conn)?.unwrap_or_default();
     let store_tax_id = Settings::get_store_tax_id(conn)?;
-    let decimals = Settings::get_receipt_decimal_separator(conn)?;
-    let decimal_separator = match decimals.as_str() {
+
+    // Single source of truth: scoped rows first, legacy keys as the fallback.
+    // A core error here is a real corruption/lookup failure, so it propagates
+    // rather than silently downgrading an operator's configured paper width.
+    let store = kasirmu_core::Store::new(conn);
+    let effective = store.effective_receipt_format(terminal_id, None)?;
+
+    let decimal_separator = match effective
+        .content
+        .as_ref()
+        .map(|c| c.decimal_separator.as_str())
+        .unwrap_or("dot")
+    {
         "comma" => receipt::DecimalSeparator::Comma,
         "none" => receipt::DecimalSeparator::None,
         _ => receipt::DecimalSeparator::Dot,
     };
-    let paper_width = match Settings::get_receipt_paper_width(conn)?.as_str() {
-        "narrow" => receipt::PaperWidth::Narrow,
+    let paper_width = match effective.layout.paper_width_mm {
+        Some(58) => receipt::PaperWidth::Narrow,
         _ => receipt::PaperWidth::Standard,
     };
+    // Content is the statutory layer (entity) when present; when it is absent
+    // the resolver's legacy fallback may still have supplied it, so read the
+    // legacy keys directly to preserve the pre-existing behaviour exactly.
+    let (show_tax, show_currency) = effective
+        .content
+        .as_ref()
+        .map(|c| (c.show_tax, c.show_currency))
+        .unwrap_or((
+            Settings::get_receipt_show_tax(conn)?,
+            Settings::get_receipt_show_currency(conn)?,
+        ));
+    // Footer precedence: entity footer text, else the scoped layout note, else
+    // the legacy footer — the same order the resolver documents.
+    let footer = effective
+        .content
+        .as_ref()
+        .map(|c| c.footer_text.clone())
+        .filter(|f| !f.is_empty())
+        .or_else(|| effective.layout.footer_note.clone().filter(|f| !f.is_empty()))
+        .or_else(|| {
+            Settings::get_receipt_footer(conn)
+                .ok()
+                .filter(|f| !f.is_empty())
+        });
     let config = receipt::ReceiptConfig {
         paper_width,
-        show_currency: Settings::get_receipt_show_currency(conn)?,
+        show_currency,
         decimal_separator,
-        show_tax: Settings::get_receipt_show_tax(conn)?,
-        footer: {
-            let f = Settings::get_receipt_footer(conn)?;
-            if f.is_empty() { None } else { Some(f) }
-        },
-        show_table_number: Settings::get_receipt_show_table_number(conn)?,
+        show_tax,
+        footer,
+        show_table_number: effective.layout.show_table_number.unwrap_or(false),
         barcode_enabled: false,
         payment_link_template: None,
     };
