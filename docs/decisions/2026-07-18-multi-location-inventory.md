@@ -1646,5 +1646,36 @@ Instead of a `location_id` column, give each location its own SQLite file.
 - `docs/decisions/2026-07-10-workspace-type-instance-design.md` — ADR #4: Workspace instances (foundation)
 - `docs/decisions/2026-07-10-crdt-delta-ledger-offline-sync.md` — ADR #6: Stock movements delta ledger (foundation)
 
+
+## COR-13 — an unknown inventory transaction type must fail the read
+
+**Status:** Fixed 2026-10-04.
+
+`db/inventory.rs` has three read mappers that turn a stored `type` string back
+into an `InventoryTransactionType` — `list_inventory_transactions`,
+`get_inventory_transaction`, and the per-shift mapper in
+`list_inventory_transactions_for_shift`. All three used
+`from_stored_str(&type_str).unwrap_or(InventoryTransactionType::ManualAdjustment)`.
+
+That default is wrong. `InventoryTransactionType::from_stored_str`
+(`inventory_transaction.rs:72-74`) documents the opposite contract: an unknown
+value round-trips as `None` precisely so that a future migration adding a new
+transaction type fails LOUDLY rather than silently truncating audit history.
+Worse, `ManualAdjustment` is not a neutral placeholder — it is a legitimate,
+distinct type (a manager override adjustment), so an unknown future-migration
+row was silently relabelled as a real transaction kind.
+
+The fix adds `ParseError` (mirroring `crate::memo::ParseError`) and converts all
+three sites to `ok_or_else(|| rusqlite::Error::FromSqlConversionFailure(..))`, so
+a row whose type no current variant understands fails the read. The pin
+`an_unknown_transaction_type_fails_the_read_instead_of_relabelling_it` rebuilds
+`inventory_transactions` without its CHECK constraint (the only way to seed a
+value a future migration might add) and asserts both the list and the single-row
+mapper return `Err`.
+
+**Files:** `crates/kasirmu-core/src/db/inventory.rs`,
+`crates/kasirmu-core/src/inventory_transaction.rs`,
+`crates/kasirmu-core/src/db/inventory_tests.rs`.
+
 > last audited 29-09-26 by docs-auditor
 
