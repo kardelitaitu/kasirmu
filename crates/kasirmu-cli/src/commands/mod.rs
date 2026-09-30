@@ -66,6 +66,15 @@ use std::str::FromStr;
 
 /// Open the store database with the CLI's standard pragmas.
 pub(crate) fn open_db(path: &str) -> Result<Connection> {
+    // The default --db path is var/kasir.db, and rusqlite will not create a
+    // missing parent. Without this, a fresh clone fails the matrix's migration
+    // step on the first run, which is the only place the default is opened.
+    if let Some(parent) = std::path::Path::new(path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating database directory {parent:?}"))?;
+    }
     let conn = Connection::open(path).with_context(|| format!("opening database at {path}"))?;
     conn.pragma_update(None, "foreign_keys", "ON")
         .context("enabling foreign_keys")?;

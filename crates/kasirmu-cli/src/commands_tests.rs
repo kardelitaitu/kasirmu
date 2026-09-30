@@ -27,6 +27,25 @@ fn open_db_sets_foreign_keys_pragma() {
     assert!(fk);
 }
 
+/// The default --db path is var/kasir.db; rusqlite will not create a missing
+/// parent, so open_db has to. A fresh clone has no var/.
+#[test]
+fn open_db_creates_a_missing_parent_directory() {
+    let dir = std::env::temp_dir().join(format!(
+        "kasirmu-cli-opendb-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let nested = dir.join("var").join("nested").join("kasir.db");
+    assert!(
+        !nested.parent().unwrap().exists(),
+        "precondition: parent is absent"
+    );
+    open_db(nested.to_str().unwrap()).unwrap();
+    assert!(nested.exists(), "database file should exist");
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 // ── List commands on empty DB ──────────────────────────────────────
 
 #[test]

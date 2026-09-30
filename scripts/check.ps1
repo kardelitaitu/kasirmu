@@ -147,7 +147,7 @@ if ($nextestAvailable) {
 # --- Migration ----------------------------------------------------------
 Step -Name "migration smoke test" -RetryCommand "cargo run -p kasirmu-cli -- migrate" -ScriptBlock { cargo run -p kasirmu-cli -- migrate }
 Step -Name "migration idempotency" -RetryCommand "cargo run -p kasirmu-cli -- migrate" -ScriptBlock { cargo run -p kasirmu-cli -- migrate }
-Remove-Item -LiteralPath "kasir.db", "kasir.db-wal", "kasir.db-shm" -ErrorAction Ignore
+Remove-Item -LiteralPath "var/kasir.db", "var/kasir.db-wal", "var/kasir.db-shm" -ErrorAction Ignore
 
 # --- Skill drift guard --------------------------------------------------
 $gitBash = if (Test-Path "C:\Program Files\Git\bin\bash.exe") {

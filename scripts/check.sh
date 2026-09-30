@@ -327,7 +327,7 @@ fi
 # Recorded in scripts/gates.json -> "migration".
 step "migration smoke test" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
 step "migration idempotency" "cargo run -p kasirmu-cli -- migrate" cargo run -p kasirmu-cli -- migrate
-rm -f kasir.db kasir.db-wal kasir.db-shm
+rm -f var/kasir.db var/kasir.db-wal var/kasir.db-shm
 
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then
