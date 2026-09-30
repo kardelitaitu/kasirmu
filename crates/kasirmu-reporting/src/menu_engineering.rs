@@ -2,7 +2,18 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-reporting slice A: deep read)
 crate: kasirmu-reporting | status: SAFE | lint: CLEAN
 findings: R-1 INFO (menu_engineering merge_same_product_rows keeps the first-seen unit price/cost — the revenue-descending SQL order's first row, not the mode — so merged margin_per_unit can misrepresent; proposed: derive unit price as total_revenue/total_volume or document) | R-2 INFO (all reporting queries wrap DATE(s.created_at) in WHERE predicates — non-sargable, full table scans on large sales tables; fine today, propose sargable range predicates when volume grows)
-next: cosmetic analytics polish in fix-order | perf: DATE() non-sargable
+next: none | perf: DATE() non-sargable (R-2, deliberately NOT scheduled —
+  an INFO note to revisit if sales-table volume ever makes the full scan
+  visible; there are no sargable rewrites pending, and the tz-aware
+  DATE(created_at, tz) form is the current shape)
+R-1 RESOLVED 2026-10-04 by documentation, the audit's second option:
+  merge_same_product_rows (menu_engineering.rs) carries a `// REP-B:` comment
+  stating the kept unit price/cost is the FIRST-SEEN row from the
+  revenue-descending SQL — the highest-revenue price point, NOT the mode or
+  an average — so merged margin_per_unit is representative of that price
+  point; derive total_revenue/total_volume if an average is wanted.
+  The former `next: cosmetic analytics polish in fix-order` named a phase
+  that no longer exists in any live plan; R-2 was never a fix-order item.
 */
 //! Menu Engineering Analytics — volume, contribution margin, and quadrant
 //! classification for restaurant menu items.

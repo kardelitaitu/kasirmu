@@ -2,7 +2,14 @@
 last audited (date unknown) by DSH-Agent (Money audit)
 crate: foundation | status: SAFE | lint: CLEAN
 findings: zero unsafe, no IO in its own source, minimal deps (tracing + chrono added 2026-09-28 — see Cargo.toml; chrono's clock feature reaches the OS clock transitively, so this is a claim about this crate, not its graph), missing_docs enforced. Money audit COMPLETE: money.rs and percentage.rs arithmetic verified exemplary (overflow-free decomposition, i64::MIN-safe format_minor, checked_* everywhere, currency-mismatch -> None, no floats); MONEY-AUDIT-2/3 fixes verified intact; no float misuse in money paths (popularity.rs floats are non-money analytics). COR-33 FIXED (date unknown) — inline tests extracted to sibling files for percentage, cart, barcode, sku (4 crates of the COR-33 sweep).
-next: slice E (dto/contracts/contact/enums) still open | perf: Copy types in hot paths
+next: none | perf: Copy types in hot paths
+Slice E (dto/contracts/contact/enums) is CLOSED 2026-10-04, not open: the
+archived audit records it complete — '### Slice E — contracts.rs (476),
+enums.rs (359), contact.rs (393), dto.rs (447) -- foundation COMPLETE'
+(docs/archived/2026-08-31-glm-5.3f-crates-audit.md:1147-1148) — and all four
+files plus their _tests.rs siblings ship (foundation/src/{contracts,enums,
+contact,dto}.rs). The former 'still open' text was the pre-audit queue, not
+live work.
 */
 
 // P2-5: `clippy::pedantic` is enabled HERE, at the crate root, rather than in

@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 6)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean CRUD; update_promotion validates only the name while create also validates promo_type/value_minor/min_order_minor (COR-12-class asymmetry, INFO); window query uses SQLite strftime now()
-next: extend update validation | perf: N/A
+findings: clean CRUD; COR-12 asymmetry CLOSED 2026-10-04 — update_promotion (at :162) now calls the same shared validate_promotion(promo)? at :163 that create_promotion calls at :132, so update validates promo_type/value_minor/min_order_minor exactly like create (validator at :29 covers empty name, invalid promo_type, negative value_minor/min_order_minor, Percentage/BuyXGetY value_minor 1..=100, BuyXGetY specifics); window query uses SQLite strftime now()
+next: none | perf: N/A
 */
 
 use std::collections::HashMap;
