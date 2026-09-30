@@ -234,3 +234,20 @@ See `docs/specs/_active/p1-sync-batching-compression-retention.md` for full acce
 - `ui/src/components/FastPINOverlay.tsx` ✅
 
 > last audited 29-09-26 by docs-auditor
+
+---
+
+## Adoption status of the CRDT primitives (appended 2026-10-04)
+
+*Appended 2026-10-04. Corrects the `next:` notes in `platform/sync/src/crdt/`, which described work that had either landed elsewhere or was superseded.*
+
+Two of the four primitives are live, two are latent:
+
+- **`VersionVector` / `CausalOrder` — CONSUMED.** The cloud conflict detector imports them (`apps/cloud-server/src/conflict_resolution.rs` `extract_vector` + the four-way `CausalOrder` match) and `apps/cloud-server/src/sync_store/conflicts.rs` calls `observe`/`compare`. The old "Agent 2 consumes" note was a plan, and the plan shipped.
+- **`push_stamp` — CONSUMED.** Every HTTP push is stamped from the persisted settings counter (`crate::crdt::CLOCK_KEY`); this is the shipping conflict-detection mechanism.
+- **`LamportClock` + `ClockStore` — LATENT.** Nothing ticks a `LamportClock`. The daemon's stamping counter is a plain settings value (`daemon_tick::persist_stamped_counter`), not a clock-store read; the store's `load_clock` has no production caller. The primitive is the total-order building block a typed-merge adoption would need, not an outstanding wiring item.
+- **`delta_mutation` — LATENT, and the reason changed.** The `crdt_delta` blob was **not** retired. Instead the blob was made safe (content dedupe, idempotence, null-side skip, self-merge collapse; commits 5ac248e75 through 36127a9c4) and the four queue arms were routed through `appliers::envelope_deltas`. Swapping in the typed merge is a redesign of those arms, not a pending cleanup.
+
+The `next:` notes in `lamport.rs`, `clock_store.rs`, `delta_mutation.rs`, `mod.rs` and `version_vector.rs` now read `next: none` with the disposition above. `version_vector_tests.rs` pins that all four orderings the detector matches on are reachable, so a future change cannot silently make the detector's flag-for-review arm dead code.
+
+<!-- Audit stamp: 2026-10-04 · CRDT primitive adoption status recorded. -->

@@ -169,3 +169,26 @@ fn round_trips_through_the_stamp_shape() {
     assert_eq!(v.get("t9"), 4);
     assert_eq!(v.len(), 1);
 }
+
+/// The cloud conflict detector is the consumer of this type, and it is live.
+///
+/// `apps/cloud-server/src/conflict_resolution.rs` imports `CausalOrder` and
+/// `VersionVector` and matches all four orderings;
+/// `apps/cloud-server/src/sync_store/conflicts.rs` calls `observe`/`compare`.
+/// This test cannot call across the crate boundary, so it pins the part the
+/// detector depends on: every ordering the detector matches on is
+/// reachable from a real payload, not a vacuous enum arm. If a future change
+/// makes `Concurrent` unreachable, the detector's flag-for-review arm would
+/// go dead silently - this fails instead.
+#[test]
+fn every_ordering_consumed_by_the_conflict_detector_is_reachable() {
+    let base = vector(&[("a", 1)]);
+    let concurrent = vector(&[("b", 1)]);
+    let newer = vector(&[("a", 2)]);
+
+    // The four arms apps/cloud-server/src/conflict_resolution.rs matches.
+    assert_eq!(base.compare(&concurrent), CausalOrder::Concurrent);
+    assert_eq!(base.compare(&newer), CausalOrder::Before);
+    assert_eq!(newer.compare(&base), CausalOrder::After);
+    assert_eq!(base.compare(&base.clone()), CausalOrder::Equal);
+}
