@@ -411,7 +411,7 @@ kasir.mu/
 │   ├─ kasirmu-payment/     Card payment processing (Stripe, QRIS, Square, Paddle, mock)
 │   ├─ kasirmu-plugin/      Plugin sandbox & lifecycle (Lua scripting bridge)
 │   ├─ qris-core/           QRIS (EMVCo MPM) payload parse/build/decode/render for Indonesia
-│   ├─ kasirmu-reporting/   Report generation (CSV export, daily summaries, menu engineering)
+│   ├─ kasirmu-reporting/   Report generation (CSV export, menu engineering, margins)
 │   └─ kasirmu-security/    Auth, hashing, encryption
 │
 ├─ foundation/src/    Reusable zero-business-logic code
@@ -588,7 +588,7 @@ These crates were originally scaffolded and are now fully implemented:
 
 - **kasirmu-lua** — Embedded Lua scripting runtime built on [`mlua`](https://github.com/mlua-rs/mlua). Loads merchant scripts from `scripts/` and exposes business-rule hooks (`apply_discount`, `calc_line_tax`, `validate_order`). Sandboxed VM with instruction/memory limits and a restricted global environment.
 - **kasirmu-payment** — `PaymentProcessor` trait with Stripe, Square, QRIS/Midtrans, Paddle, and mock implementations. Supports authorize, capture, void, refund, and sale flows.
-- **kasirmu-reporting** — Daily summaries, sales-by-hour, top-products, menu-engineering, and inventory reports; optional `metrics` feature for Prometheus-style counters/gauges.
+- **kasirmu-reporting** — Menu-engineering and margin reports plus CSV export, reached through `kasirmu-bridge/src/reports.rs` and both shells' `commands/reports.rs`. The daily-summary and Prometheus-`metrics` modules were **retired on 2026-09-30** (checklist C29): `metrics` was gated on a feature no dependent enabled, so it compiled in no production build, and `daily_summary` had zero external callers while duplicating the live `kasirmu_core::db::reports`.
 
 ### kasirmu-security (implemented)
 - **Keyring trait** with three platform-native backends: Windows Credential Manager (`windows-sys`), macOS Keychain (`security-framework`), Linux Secret Service (`zbus`).

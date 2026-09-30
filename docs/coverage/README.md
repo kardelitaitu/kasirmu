@@ -31,7 +31,7 @@ cargo tarpaulin --workspace --out Html --output-dir coverage/rust
 | `kasirmu-payment` | ≥ 60% | ✅ 122 tests |
 | `kasirmu-lua` | ≥ 50% | ⚠️ 62 tests, narrow surface |
 | `kasirmu-security` | ≥ 50% | ⚠️ Keyring + rotation tests |
-| `kasirmu-reporting` | ≥ 50% | ⚠️ Menu engineering + metrics |
+| `kasirmu-reporting` | ≥ 50% | ⚠️ Menu engineering + margin |
 | `kasirmu-api` | ≥ 40% | ⚠️ Thin API wrapper |
 | `kasirmu-cli` | ≥ 40% | ⚠️ CLI entry points |
 | `kasirmu-plugin` | ≥ 40% | ⚠️ Manifest parsing |

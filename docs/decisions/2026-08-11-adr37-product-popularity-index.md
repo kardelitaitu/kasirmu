@@ -23,10 +23,13 @@ Current state of each signal:
 
 1. **Sold** — durable history already exists. `sale_lines` (sku, qty) joined to
    `sales` (`status = 'completed'`, created_at) is the authoritative record,
-   and `query_top_products` in `crates/kasirmu-reporting/src/daily_summary.rs`
-   (plus `Store::top_products` in `db/reports.rs`) already aggregates it. No
+   and `Store::top_products` in `db/reports.rs` already aggregates it. No
    new write path needed for the dominant signal — including historical
    backfill.
+   *(2026-09-30: this paragraph also named `query_top_products` in
+   `crates/kasirmu-reporting/src/daily_summary.rs`. That module was retired the
+   same day under checklist C29 — it had zero external callers and duplicated
+   `db/reports.rs` — so the live source is the one named above.)*
 2. **Searched** — nothing exists. Retail search is client-side filtering
    (`RetailPosScreen.tsx` searchQuery, `ProductLookupScreen.tsx`), so a search
    that results in a sale currently leaves no trace. Tracking requires a new

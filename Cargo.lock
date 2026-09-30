@@ -3756,7 +3756,6 @@ version = "0.0.40"
 dependencies = [
  "chrono",
  "kasirmu-core",
- "prometheus",
  "rusqlite",
  "serde",
  "serde_json",

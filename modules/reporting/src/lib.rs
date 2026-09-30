@@ -23,6 +23,31 @@ next: none | perf: N/A
 //! What remains here is the read-only surface: the report DTOs and
 //! [`ReportingRepository`], a thin query layer over the live tables.
 //!
+//! # Wiring status: the shell is registered, the domain surface is redundant
+//!
+//! [`ReportingModule`] is registered with the kernel at startup
+//! (`platform/startup/src/lib.rs:107`) and its lifecycle hooks run — but they
+//! only log, so the registration proves the vertical is wired, not that its
+//! domain code is used.
+//!
+//! **The domain surface below is unwired and redundant, and that is recorded
+//! rather than fixed.** [`ReportingService`], [`ReportingRepository`] and
+//! [`DailyReport`] have **zero non-test callers**, and the capability they
+//! implement is already shipped by `kasirmu_core::db::reports`, which is the
+//! live aggregate surface used by `kasirmu-bridge` and both shells. The
+//! duplication was narrowed on 2026-09-30 (checklist C29) when
+//! `kasirmu-reporting::daily_summary` — a third implementation of the same
+//! daily-summary job — was deleted from the sibling crate.
+//!
+//! It is **not** deleted here because this module shell is a registered
+//! vertical, and this repo deliberately keeps stub verticals (`purchasing`,
+//! `promotions`, `giftcards`, `kitchen`) that own a manifest, an id and
+//! dependency edges with no domain logic yet. Removing it means unregistering
+//! the module and editing the parity test that pins the registration block
+//! against the `modules/*/manifest.json` set — a convention change, not a
+//! cleanup. **If the vertical is ever dropped, this file's domain modules go
+//! with it**; until then the honest label is this paragraph.
+//!
 //! ## Module manifest
 //!
 //! See `modules/reporting/manifest.json` for the module metadata.

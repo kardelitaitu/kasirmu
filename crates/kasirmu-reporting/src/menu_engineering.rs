@@ -98,8 +98,9 @@ pub fn query_menu_engineering(
         // REP-A: LEFT JOIN, keyed on the SKU (which is what sale_lines carries)
         // with the SKU as the name/id fallback. An INNER join erased the whole
         // menu history of any product later deleted, while margin reporting and
-        // daily_summary still counted those lines (reproduced: 0 rows after
-        // delete_product). `sale_lines.sku` has no foreign key to products.
+        // `kasirmu_core::db::reports`'s daily aggregates still counted those
+        // lines (reproduced: 0 rows after delete_product). `sale_lines.sku` has
+        // no foreign key to products.
         // C22: `sl.currency` is part of BOTH the grouping and the ordering key.
         // Without it, USD and IDR amounts were added into one number that is
         // money in no currency, and the row carried no code for the UI to
