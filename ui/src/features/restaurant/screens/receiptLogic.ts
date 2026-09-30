@@ -75,13 +75,19 @@ export const formatPrice = (
   currency: string,
   decimalSeparator: DecimalSeparator = 'dot',
   fractionDigits = 0,
+  showThousandsSeparator = false,
 ): string => {
   const negative = amount < 0;
-  const major = Math.abs(Math.trunc(amount)).toString();
-  const showFrac = decimalSeparator !== 'none' && fractionDigits > 0;
+  const rawMajor = Math.abs(Math.trunc(amount)).toString();
+  const isIdr = (currency || 'IDR') === 'IDR';
   const sep = decimalSeparator === 'comma' ? ',' : '.';
+  const thousandChar = sep === ',' ? '.' : ',';
+  const major = showThousandsSeparator
+    ? rawMajor.replace(/\B(?=(\d{3})+(?!\d))/g, thousandChar)
+    : rawMajor;
+  const showFrac = decimalSeparator !== 'none' && fractionDigits > 0;
   const fraction = showFrac ? `${sep}${'0'.repeat(fractionDigits)}` : '';
-  const prefix = showCurrency ? ((currency || 'IDR') === 'IDR' ? 'Rp ' : `${currency || 'IDR'} `) : '';
+  const prefix = showCurrency ? (isIdr ? 'Rp ' : `${currency || 'IDR'} `) : '';
   return `${negative ? '-' : ''}${prefix}${major}${fraction}`;
 };
 

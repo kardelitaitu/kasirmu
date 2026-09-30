@@ -30,6 +30,7 @@ import {
   type ReceiptFontSize,
   type ReceiptLogoPosition,
   type TestPrintResult,
+  type DecimalSeparator,
 } from './receiptLogic';
 import './RestaurantSettingsScreens.css';
 
@@ -64,6 +65,8 @@ interface ReceiptFormValues {
   paperWidth: 'standard' | 'narrow';
   fontSize: ReceiptFontSize;
   showCurrency: boolean;
+  showThousandsSeparator: boolean;
+  showDecimals: boolean;
   showTax: boolean;
   showTableNumber: boolean;
   taxRoundingMode: 'half_up' | 'truncate';
@@ -127,6 +130,8 @@ export default function RestaurantReceiptsScreen({
   const [paperWidth, setPaperWidth] = useState<'standard' | 'narrow'>('standard');
   const [fontSize, setFontSize] = useState<ReceiptFontSize>('medium');
   const [showCurrency, setShowCurrency] = useState(false);
+  const [showThousandsSeparator, setShowThousandsSeparator] = useState(false);
+  const [showDecimals, setShowDecimals] = useState(false);
   const [showTableNumber, setShowTableNumber] = useState(false);
   const [taxRoundingMode, setTaxRoundingMode] = useState<'half_up' | 'truncate'>('half_up');
   const [footer, setFooter] = useState('');
@@ -204,6 +209,8 @@ export default function RestaurantReceiptsScreen({
     let initialShowStaff = true;
     let initialShowFooter = true;
     let initialShowItemNotes = true;
+    let initialShowThousandsSep = false;
+    let initialShowDecimals = false;
     let initialTaxRate = 10;
     let initialLogoPos: ReceiptLogoPosition = 'left';
 
@@ -229,6 +236,10 @@ export default function RestaurantReceiptsScreen({
       if (localFooter !== null) initialShowFooter = localFooter === 'true';
       const localItemNotes = localStorage.getItem('resto_rcpt_show_item_notes');
       if (localItemNotes !== null) initialShowItemNotes = localItemNotes === 'true';
+      const localThousandsSep = localStorage.getItem('resto_rcpt_thousands_sep');
+      if (localThousandsSep !== null) initialShowThousandsSep = localThousandsSep === 'true';
+      const localShowDecimals = localStorage.getItem('resto_rcpt_show_decimals');
+      if (localShowDecimals !== null) initialShowDecimals = localShowDecimals === 'true';
       const localTaxRate = localStorage.getItem('resto_rcpt_tax_rate');
       if (localTaxRate !== null && !isNaN(Number(localTaxRate))) {
         initialTaxRate = clamp(Number(localTaxRate), 0, 100);
@@ -246,6 +257,8 @@ export default function RestaurantReceiptsScreen({
     // Apply initial state
     setPaperWidth(initialPaperWidth);
     setShowCurrency(initialShowCurrency);
+    setShowThousandsSeparator(initialShowThousandsSep);
+    setShowDecimals(initialShowDecimals);
     setShowTax(initialShowTax);
     setShowTableNumber(initialShowTableNumber);
     setTaxRoundingMode(initialTaxRoundingMode);
@@ -287,6 +300,8 @@ export default function RestaurantReceiptsScreen({
       paperWidth: initialPaperWidth,
       fontSize: initialFontSize,
       showCurrency: initialShowCurrency,
+      showThousandsSeparator: initialShowThousandsSep,
+      showDecimals: initialShowDecimals,
       showTax: initialShowTax,
       showTableNumber: initialShowTableNumber,
       taxRoundingMode: initialTaxRoundingMode,
@@ -371,6 +386,16 @@ export default function RestaurantReceiptsScreen({
               const v = p['resto_rcpt_show_item_notes'] === 'true';
               setShowItemNotes(v);
               originalsRef.current.showItemNotes = v;
+            }
+            if (p['resto_rcpt_thousands_sep'] !== undefined) {
+              const v = p['resto_rcpt_thousands_sep'] === 'true';
+              setShowThousandsSeparator(v);
+              originalsRef.current.showThousandsSeparator = v;
+            }
+            if (p['resto_rcpt_show_decimals'] !== undefined) {
+              const v = p['resto_rcpt_show_decimals'] === 'true';
+              setShowDecimals(v);
+              originalsRef.current.showDecimals = v;
             }
             if (p['resto_rcpt_tax_rate'] !== undefined) {
               const parsed = Number(p['resto_rcpt_tax_rate']);
@@ -543,6 +568,8 @@ export default function RestaurantReceiptsScreen({
       paperWidth,
       fontSize,
       showCurrency,
+      showThousandsSeparator,
+      showDecimals,
       showTax,
       showTableNumber,
       taxRoundingMode,
@@ -576,6 +603,8 @@ export default function RestaurantReceiptsScreen({
     paperWidth,
     fontSize,
     showCurrency,
+    showThousandsSeparator,
+    showDecimals,
     showTax,
     showTableNumber,
     taxRoundingMode,
@@ -859,6 +888,8 @@ export default function RestaurantReceiptsScreen({
             { key: 'resto_rcpt_show_staff', value: String(showStaffName) },
             { key: 'resto_rcpt_show_footer', value: String(showFooter) },
             { key: 'resto_rcpt_show_item_notes', value: String(showItemNotes) },
+            { key: 'resto_rcpt_thousands_sep', value: String(showThousandsSeparator) },
+            { key: 'resto_rcpt_show_decimals', value: String(showDecimals) },
             { key: 'resto_rcpt_tax_rate', value: String(taxRatePercent) },
             { key: 'resto_rcpt_logo', value: businessLogo },
             { key: 'resto_rcpt_logo_pos', value: logoPosition },
@@ -877,6 +908,8 @@ export default function RestaurantReceiptsScreen({
         localStorage.setItem('resto_rcpt_show_staff', String(showStaffName));
         localStorage.setItem('resto_rcpt_show_footer', String(showFooter));
         localStorage.setItem('resto_rcpt_show_item_notes', String(showItemNotes));
+        localStorage.setItem('resto_rcpt_thousands_sep', String(showThousandsSeparator));
+        localStorage.setItem('resto_rcpt_show_decimals', String(showDecimals));
         localStorage.setItem('resto_rcpt_tax_rate', String(taxRatePercent));
         localStorage.setItem('resto_rcpt_logo', businessLogo);
         localStorage.setItem('resto_rcpt_logo_pos', logoPosition);
@@ -890,6 +923,8 @@ export default function RestaurantReceiptsScreen({
         paperWidth,
         fontSize,
         showCurrency,
+        showThousandsSeparator,
+        showDecimals,
         showTax,
         showTableNumber,
         taxRoundingMode,
@@ -959,6 +994,8 @@ export default function RestaurantReceiptsScreen({
     receiptWorkspaceId,
     hw,
     showCurrency,
+    showThousandsSeparator,
+    showDecimals,
     settings.receipt.decimalSeparator,
     showTax,
     showFooter,
@@ -1029,12 +1066,19 @@ export default function RestaurantReceiptsScreen({
     [paperWidth, printableAreaMm, fontSize],
   );
 
+  const effectiveDecimalSeparator: DecimalSeparator =
+    (settings.store.currency || 'IDR') === 'IDR'
+      ? 'comma'
+      : ((settings.receipt.decimalSeparator as DecimalSeparator) ?? 'dot');
+
   const formatPrice = (amount: number) =>
     _formatPrice(
       amount,
       showCurrency,
       settings.store.currency,
-      (settings.receipt.decimalSeparator as 'dot' | 'comma' | 'none') ?? 'dot',
+      effectiveDecimalSeparator,
+      showDecimals ? 2 : 0,
+      showThousandsSeparator,
     );
 
   // Sample gross prices: Nasi Goreng (35.000), Es Teh Manis (16.000), Ayam Bakar (42.000)
@@ -1753,6 +1797,54 @@ export default function RestaurantReceiptsScreen({
                     aria-label={l10n.getString('workspace-pos-show-currency') || 'Show Currency'}
                     className="resto-switch-btn"
                     onClick={() => setShowCurrency(!showCurrency)}
+                  >
+                    <span className="resto-switch-handle" aria-hidden="true" />
+                  </button>
+                </div>
+
+                {/* Toggle: Thousands Separator */}
+                <div className="resto-toggle-row">
+                  <div className="resto-toggle-info">
+                    <span className="resto-toggle-title">
+                      <Localized id="restaurant-toggle-thousands-sep">Show Thousands Separator</Localized>
+                    </span>
+                    <span className="resto-toggle-desc">
+                      <Localized id="restaurant-toggle-thousands-sep-desc">
+                        Format amounts with thousands separators (e.g. 10.000 vs 10000)
+                      </Localized>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showThousandsSeparator}
+                    aria-label={l10n.getString('restaurant-toggle-thousands-sep') || 'Show Thousands Separator'}
+                    className="resto-switch-btn"
+                    onClick={() => setShowThousandsSeparator(!showThousandsSeparator)}
+                  >
+                    <span className="resto-switch-handle" aria-hidden="true" />
+                  </button>
+                </div>
+
+                {/* Toggle: Show Decimals */}
+                <div className="resto-toggle-row">
+                  <div className="resto-toggle-info">
+                    <span className="resto-toggle-title">
+                      <Localized id="restaurant-toggle-decimals">Show Decimals</Localized>
+                    </span>
+                    <span className="resto-toggle-desc">
+                      <Localized id="restaurant-toggle-decimals-desc">
+                        Print cents and fractional units (e.g. ,00)
+                      </Localized>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showDecimals}
+                    aria-label={l10n.getString('restaurant-toggle-decimals') || 'Show Decimals'}
+                    className="resto-switch-btn"
+                    onClick={() => setShowDecimals(!showDecimals)}
                   >
                     <span className="resto-switch-handle" aria-hidden="true" />
                   </button>

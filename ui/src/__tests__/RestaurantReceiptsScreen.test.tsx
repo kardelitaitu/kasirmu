@@ -169,6 +169,28 @@ describe('RestaurantReceiptsScreen — toggles & tax', () => {
     expect(screen.getByText('Rp 93000')).toBeInTheDocument();
   });
 
+  it('toggles show-thousands-sep and formats prices with thousands separator', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/Show Thousands Separator/i));
+    expect(screen.getByText('93.000')).toBeInTheDocument();
+  });
+
+  it('toggles show-decimals and appends fractional units', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    expect(screen.getByText('93000')).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/Show Decimals/i));
+    expect(screen.getByText('93000,00')).toBeInTheDocument();
+
+    // Enabling both thousands separator and decimals
+    await user.click(screen.getByLabelText(/Show Thousands Separator/i));
+    expect(screen.getByText('93.000,00')).toBeInTheDocument();
+  });
+
   it('adjusts the tax rate input (clamped) and reflects it in the preview', async () => {
     const user = userEvent.setup();
     await renderScreen();

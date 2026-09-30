@@ -112,6 +112,24 @@ describe('formatPrice', () => {
   it('renders a negative amount with a leading minus', () => {
     expect(formatPrice(-5000, true, 'IDR')).toBe('-Rp 5000');
   });
+
+  it('formats with thousands separator when showThousandsSeparator is true', () => {
+    // With comma decimal separator (IDR convention): thousand separator is dot '.'
+    expect(formatPrice(10000, false, 'IDR', 'comma', 0, true)).toBe('10.000');
+    expect(formatPrice(10000, false, 'IDR', 'comma', 0, false)).toBe('10000');
+    expect(formatPrice(10000, false, 'IDR', 'comma', 2, true)).toBe('10.000,00');
+    expect(formatPrice(10000, false, 'IDR', 'comma', 2, false)).toBe('10000,00');
+
+    // With dot decimal separator (US convention): thousand separator is comma ','
+    expect(formatPrice(10000, false, 'USD', 'dot', 0, true)).toBe('10,000');
+    expect(formatPrice(10000, false, 'USD', 'dot', 0, false)).toBe('10000');
+    expect(formatPrice(10000, false, 'USD', 'dot', 2, true)).toBe('10,000.00');
+    expect(formatPrice(10000, false, 'USD', 'dot', 2, false)).toBe('10000.00');
+
+    // With currency prefix and large numbers
+    expect(formatPrice(1250000, true, 'IDR', 'comma', 0, true)).toBe('Rp 1.250.000');
+    expect(formatPrice(1250000, true, 'IDR', 'comma', 2, true)).toBe('Rp 1.250.000,00');
+  });
 });
 
 describe('fontSizeClass', () => {
