@@ -91,7 +91,10 @@ fn sqlite_from_path_creates_db() {
 fn sqlite_creates_a_missing_parent_directory() {
     let dir = tempfile::tempdir().unwrap();
     let nested = dir.path().join("var").join("nested").join("kasir.db");
-    assert!(!nested.parent().unwrap().exists(), "precondition: parent is absent");
+    assert!(
+        !nested.parent().unwrap().exists(),
+        "precondition: parent is absent"
+    );
     let pool = DbPool::connect_sqlite(nested.to_str().unwrap()).unwrap();
     assert!(pool.is_sqlite());
     assert!(nested.exists(), "database file should exist");
