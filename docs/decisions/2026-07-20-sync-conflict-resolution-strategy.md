@@ -411,3 +411,15 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **Scope.** Still the latent conflict path (no in-repo server emits the conflict tag). This is the FOURTH defect in the CRDT merge path, each uncovered by repairing the one before it: the winner's identity, the nesting, the dropped extras, and now the double-count.
 
 > Self-merge made idempotent 2026-10-04.
+
+---
+
+## The degenerate inputs of a content-dedupe merge (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it pins the edges the self-merge idempotence created.*
+
+- **Two identical payloads.** When both sides carry the same fact, collapsing identical deltas leaves the envelope with one delta, so it carries `local` but no `remote`. That is safe because the four appliers walk the payload through `appliers::envelope_deltas`, which iterates only the sides present — the earlier `payload.get("remote").unwrap_or(&Value::Null)` shape (which would have tried to deserialise NULL and failed the apply) is gone. `crdt_merge_of_two_identical_payloads_stays_consumable` (`platform/sync/src/conflict_tests.rs`) and `apply_remote_consumes_a_merge_of_two_identical_payloads` (`platform/sync/src/queue_tests.rs`, asserting +5 applied ONCE) pin it.
+- **Two movements that share every field but the id.** Content-dedupe keys on the serialised bytes, so it correctly keeps both — the ids differ, the bytes differ. `apply_remote_keeps_distinct_movements_that_share_their_fields` (`platform/sync/src/queue_tests.rs`) pins that a second movement with its own id is never deduped away. Identity for a movement is its id, and that id is part of the bytes; a same-id/different-field pair is instead collapsed by the ledger's `ON CONFLICT(id) DO NOTHING`.
+- **The proptests still hold.** `crdt_merge_preserves_two_distinct_deltas_rather_than_deduplicating` passes unchanged: the content-collapse only ever joins byte-identical deltas, which arise from repeating one input, never from two independent adjustments.
+
+> Dedupe edges pinned 2026-10-04.

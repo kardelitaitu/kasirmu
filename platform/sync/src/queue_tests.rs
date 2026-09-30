@@ -1324,6 +1324,65 @@ fn apply_remote_does_not_double_count_repeated_stock_adjustments() {
     );
 }
 
+/// Two movements with DIFFERENT ids but otherwise identical fields are two
+/// distinct facts - content dedupe must key on identity for movements, not on
+/// the serialised bytes alone.
+#[test]
+fn apply_remote_keeps_distinct_movements_that_share_their_fields() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let body = |id: &str| {
+        serde_json::json!({
+            "id": id, "item_id": "prod-coffee", "delta": 6,
+            "reason": "restock", "source_terminal_id": null,
+            "source_user_id": null, "store_id": "store-b",
+            "created_at": "2026-01-15T00:00:00Z"
+        })
+    };
+    // Same everything except the movement id: two genuine movements.
+    let merged = serde_json::json!({
+        "local": body("sm-a"),
+        "remote": body("sm-b"),
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.movement", &merged);
+
+    queue.apply_remote(&store, &remote).unwrap();
+
+    let movements = store.list_stock_movements("prod-coffee", 10, 0).unwrap();
+    let ids: Vec<&str> = movements.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"sm-a"), "local movement must be applied");
+    assert!(
+        ids.contains(&"sm-b"),
+        "a second movement with its own id must NOT be deduped away"
+    );
+}
+
+/// Two identical payloads merge to an envelope with ONE fact; the appliers
+/// must consume it (they walk envelope_deltas, so an absent second side is
+/// fine) rather than fail on a null remote.
+#[test]
+fn apply_remote_consumes_a_merge_of_two_identical_payloads() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    let local = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":5}"#);
+    let remote = OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":5}"#);
+    let merged = crate::conflict::resolve_stock_crdt(&local, &remote).winner;
+
+    queue.apply_remote(&store, &merged).unwrap();
+
+    // One fact, applied once: +5, not +10 and not a parse failure.
+    assert_eq!(inventory_qty(&store, "COFFEE"), base + 5);
+}
+
 #[test]
 fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue
