@@ -158,11 +158,18 @@ impl Store<'_> {
         store_id: &str,
         created_at: &str,
     ) -> Result<(), CoreError> {
+        // Replay-safe: a movement's id IS its identity, so re-inserting the
+        // same row is a no-op rather than an error. The daemon's replay ledger
+        // normally blocks a repeated ITEM, but a flattened CRDT envelope
+        // legitimately repeats ids across its `local`/`remote`/`extra`
+        // deltas (a re-merge of a row with itself), and a UNIQUE violation
+        // there would abort the entire apply.
         conn.execute(
             "INSERT INTO stock_movements (id, item_id, delta, reason,
                                           source_terminal_id, source_user_id,
                                           store_id, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO NOTHING",
             params![
                 id,
                 item_id,

@@ -130,6 +130,42 @@ fn insert_stock_movement_joins_a_caller_transaction() {
     assert_eq!(after, 0, "a rolled-back caller must leave no ledger row");
 }
 
+/// A movement id is its own identity: re-inserting the same row is a no-op,
+/// never a UNIQUE violation. A flattened CRDT envelope repeats ids across its
+/// local/remote/extra deltas, and an abort there would drop the whole apply.
+#[test]
+fn insert_stock_movement_is_idempotent_by_id() {
+    let conn = fresh();
+    let store = Store::new(&conn);
+
+    let insert = |delta: i64| {
+        store.insert_stock_movement(
+            "mv-once",
+            "item-1",
+            delta,
+            Some("replay"),
+            None,
+            None,
+            "default",
+            "2025-01-01T00:00:00.000Z",
+        )
+    };
+
+    insert(5).unwrap();
+    // The same id again — different delta on purpose — must be a no-op.
+    insert(999).unwrap();
+
+    let rows: Vec<(i64, String)> = conn
+        .prepare("SELECT delta, reason FROM stock_movements WHERE id = 'mv-once'")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(rows.len(), 1, "the id is stored once");
+    assert_eq!(rows[0].0, 5, "the first write wins; a replay cannot mutate");
+}
+
 /// P1.9 — the autocommit arm still persists, so the join did not become a
 /// silent no-op for every standalone caller.
 #[test]

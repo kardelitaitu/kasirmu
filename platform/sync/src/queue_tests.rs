@@ -1250,6 +1250,45 @@ fn apply_remote_consumes_crdt_merge_stock_movement() {
     );
 }
 
+/// A re-merged stock.movement envelope carries its surplus movement rows in
+/// `extra`. When the merge is over a row with itself those extras repeat the
+/// SAME movement ids — inserting them again must not abort the whole apply.
+#[test]
+fn apply_remote_tolerates_duplicate_ids_in_a_flattened_extra_array() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let side = serde_json::json!({
+        "id": "sm-dup-1", "item_id": "prod-coffee", "delta": 10,
+        "reason": "dup", "source_terminal_id": null,
+        "source_user_id": null, "store_id": "store-b",
+        "created_at": "2026-01-15T00:00:00Z"
+    });
+    // local/remote/extra all name the SAME movement id, as a re-merge of a
+    // one-row envelope with itself produces.
+    let merged = serde_json::json!({
+        "local": side,
+        "remote": side,
+        "extra": [side, side],
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.movement", &merged);
+
+    let result = queue.apply_remote(&store, &remote);
+    assert!(
+        result.is_ok(),
+        "a repeated movement id must be a no-op, not an apply failure: {result:?}"
+    );
+
+    // The row is present exactly once.
+    let movements = store.list_stock_movements("prod-coffee", 10, 0).unwrap();
+    let matching = movements.iter().filter(|m| m.id == "sm-dup-1").count();
+    assert_eq!(matching, 1, "the movement id is stored once");
+}
+
 #[test]
 fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue

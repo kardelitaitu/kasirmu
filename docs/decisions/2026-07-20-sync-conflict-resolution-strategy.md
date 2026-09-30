@@ -385,3 +385,16 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **Scope.** Still the same latent path: no in-repo server emits the conflict tag. Both the envelope and its flatten remain the legacy shape; the typed `DeltaMutation` migration (`platform/sync/src/crdt/delta_mutation.rs`) is unchanged separate work.
 
 > Surplus deltas preserved 2026-10-04.
+
+---
+
+## A flattened envelope may repeat a movement id (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it records the replay-safety repair the flatten made necessary.*
+
+- **The defect the flatten exposed.** A re-merge of a `stock.movement` envelope with itself legitimately repeats the SAME movement id across `local`, `remote` and the `extra` array. The applier inserted every one of them, and `stock_movements.id` is a PRIMARY KEY, so the second insert aborted the whole apply with `UNIQUE constraint failed: stock_movements.id` — the daemon's replay ledger guards a repeated ITEM, never a repeated id WITHIN one flattened envelope.
+- **The repair.** `insert_stock_movement_on` (`crates/kasirmu-core/src/db/products_stock_query.rs:150`) now inserts `ON CONFLICT(id) DO NOTHING`. A movement's id IS its identity, so a replay of the same ledger row is a no-op — the correct semantics for an immutable ledger, and the same idempotence the durable outbox rests on. The first write wins; a replay cannot mutate a settled row.
+- **The pins.** `insert_stock_movement_is_idempotent_by_id` (`crates/kasirmu-core/src/db/products_stock_query_tests.rs`) inserts the same id twice with different deltas and asserts one row holding the first delta. `apply_remote_tolerates_duplicate_ids_in_a_flattened_extra_array` (`platform/sync/src/queue_tests.rs`) applies a `stock.movement` envelope whose `local`/`remote`/`extra` all name one id and asserts the apply succeeds with the row stored once. The second FAILED before the repair with the UNIQUE violation above.
+- **Scope.** Still the latent conflict path (no in-repo server emits the conflict tag), but the idempotence is correct for ANY replay of a movement row, not only the CRDT one.
+
+> Movement replay made idempotent 2026-10-04.
