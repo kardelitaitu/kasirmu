@@ -309,4 +309,58 @@ mod db_backed {
             .expect("own-table read");
         assert!(rows.is_empty());
     }
+
+    #[test]
+    fn grants_from_capabilities_reads_only_foreign_read_actions() {
+        let caps = vec![
+            "read:inventory".to_string(),
+            "read:sales".to_string(),
+            "write:sales".to_string(),
+            "subscribe:sale.completed".to_string(),
+            "read:reporting".to_string(),
+        ];
+        let grants = Grants::from_capabilities(ModuleId("reporting"), &caps);
+        assert!(grants.allows(ModuleId("inventory")));
+        assert!(grants.allows(ModuleId("sales")));
+        // The module's own id is not a foreign grant.
+        assert!(!grants.allows(ModuleId("reporting")));
+        assert_eq!(grants.modules().len(), 2);
+    }
+
+    #[test]
+    fn grants_from_capabilities_ignores_a_self_read_and_non_read_actions() {
+        let caps = vec![
+            "read:terminal".to_string(),
+            "write:terminal".to_string(),
+            "subscribe:terminal.updated".to_string(),
+        ];
+        let grants = Grants::from_capabilities(ModuleId("terminal"), &caps);
+        assert!(grants.modules().is_empty(), "{grants:?}");
+    }
+
+    #[test]
+    fn grants_from_capabilities_lets_a_granted_read_pass_and_refuses_an_ungranted_one() {
+        let conn = mem();
+        conn.execute_batch("CREATE TABLE customers (id TEXT PRIMARY KEY);")
+            .expect("create customers");
+        let caps = vec!["read:crm".to_string()];
+        let ns = NamespacedStore::new(
+            Store::new(&conn),
+            SALES,
+            Grants::from_capabilities(SALES, &caps),
+        );
+        // `customers` is owned by `crm` and now granted.
+        ns.read(ModuleId("crm"))
+            .expect("granted foreign read")
+            .query("SELECT id FROM customers", [], |r| r.get::<_, String>(0))
+            .expect("granted foreign query");
+        // `loyalty` was not granted, so the handle itself is refused.
+        let err = ns
+            .read(ModuleId("loyalty"))
+            .expect_err("an ungranted module must not yield a handle");
+        assert!(
+            matches!(err, NamespaceError::NotGranted { module } if module == ModuleId("loyalty")),
+            "{err:?}"
+        );
+    }
 }

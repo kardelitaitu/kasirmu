@@ -9,7 +9,7 @@
 //! checks the `NamespacedStore` boundary from P1.
 
 use foundation::contracts::{Module, ModuleId};
-use kasirmu_core::db::namespaced::ModuleId as NsModuleId;
+use kasirmu_core::db::namespaced::{Grants, ModuleId as NsModuleId};
 use platform_kernel::{Capability, Kernel, KernelError, ModuleCapabilities};
 use platform_startup::init_module_system;
 use rusqlite::Connection;
@@ -177,19 +177,17 @@ fn modules_dir() -> std::path::PathBuf {
         .join("modules")
 }
 
-/// The `read:<module>` grants a manifest declares, as namespace grants.
+/// The namespace grants a manifest's `capabilities` list implies.
 ///
-/// [`NsModuleId`] holds a `&'static str`, so the declared target is interned
-/// with `Box::leak` — a test-only lifetime widening, not production behavior.
-fn declared_read_grants(manifest: &platform_kernel::ModuleManifest) -> Vec<NsModuleId> {
-    manifest
-        .capabilities
-        .iter()
-        .filter_map(|cap| cap.strip_prefix("read:"))
-        // `read:<own>` is the module's own namespace, not a foreign grant.
-        .filter(|module| *module != manifest.id)
-        .map(|module| NsModuleId(Box::leak(module.to_string().into_boxed_str())))
-        .collect()
+/// This is the P4.1 runtime half: rather than hand-rolling a filter in the test,
+/// the production `Grants::from_capabilities` derives the grant set from the
+/// module's own id and its declared capabilities, so the repository-side API and
+/// the boot-boundary proof cannot disagree about what `read:<module>` means.
+fn declared_grants(manifest: &platform_kernel::ModuleManifest) -> Grants {
+    Grants::from_capabilities(
+        NsModuleId(Box::leak(manifest.id.to_string().into_boxed_str())),
+        &manifest.capabilities,
+    )
 }
 
 /// Every real module's manifest-declared capabilities name exactly the
@@ -236,12 +234,12 @@ fn real_manifests_declare_a_grant_only_for_a_declared_dependency() {
 #[test]
 fn a_module_cannot_read_a_table_outside_its_declared_capabilities() {
     use kasirmu_core::db::Store;
-    use kasirmu_core::db::namespaced::{Grants, NamespaceError, NamespacedStore};
+    use kasirmu_core::db::namespaced::{NamespaceError, NamespacedStore};
 
     let manifest_path = modules_dir().join("reporting").join("manifest.json");
     let manifest = platform_kernel::ModuleManifest::load_from_file(&manifest_path)
         .expect("reporting manifest must load");
-    let grants = Grants::read(declared_read_grants(&manifest));
+    let grants = declared_grants(&manifest);
     assert!(
         grants.allows(NsModuleId("sales")),
         "reporting declares read:sales, so the grant must include it"

@@ -67,6 +67,37 @@ impl Grants {
         }
     }
 
+    /// Build read grants from a manifest `capabilities` list.
+    ///
+    /// Phase 4 P4.1: a module's own namespace is reached through `own()`, not a
+    /// grant, so `read:<own>` and `write:<own>` are skipped; every other
+    /// `read:<module>` becomes a foreign read grant. `write:<other>` is ignored
+    /// because [`Grants`] has no write field by construction. Entries that are
+    /// not `read:`/`write:` actions (such as `subscribe:<event>`) contribute
+    /// nothing.
+    ///
+    /// The `module` argument is the owning module's own id, so its `read:<id>`
+    /// entries are not mistaken for foreign grants.
+    ///
+    /// [`ModuleId`] holds a `&'static str`, so the borrowed capability targets
+    /// are interned for the process lifetime. This is a boot-time construction
+    /// (once per module), so the leak is bounded and intentional; callers on a
+    /// per-request path should build grants from `ModuleId` constants instead.
+    #[must_use]
+    pub fn from_capabilities(module: ModuleId, capabilities: &[String]) -> Self {
+        let read = capabilities
+            .iter()
+            .filter_map(|cap| cap.strip_prefix("read:"))
+            .filter(|target| *target != module.0)
+            .map(|target| {
+                // Module ids are `&'static str`; the manifest's capability
+                // strings are borrowed, so intern the target for the grant.
+                ModuleId(Box::leak(target.to_string().into_boxed_str()))
+            })
+            .collect();
+        Self { read }
+    }
+
     /// Whether `module` may be read.
     #[must_use]
     pub fn allows(&self, module: ModuleId) -> bool {
