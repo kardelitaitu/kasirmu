@@ -406,3 +406,30 @@ fn sqlite_header_uses_wal_matches_sqlites_own_answer() {
         "a non-SQLite file is not WAL"
     );
 }
+
+/// The SQLCipher retirement must stay recorded in the module header, and it
+/// must not be read as pending work: the module is the one a reader opens to
+/// ask "is the local DB encrypted". This pins that the header names the
+/// retired plan, the ADR that already carries the correction, and the real
+/// residual exposure (a plaintext snapshot), so the dangerous half cannot be
+/// silently dropped while the plan name survives.
+#[test]
+fn state_header_records_that_sqlcipher_is_retired_not_pending() {
+    let header = include_str!("state.rs");
+    assert!(
+        header.contains("SQLCipher: RETIRED 2026-10-04"),
+        "the header must date the retirement, not leave 'next: SQLCipher' implying live work"
+    );
+    assert!(
+        header.contains("docs/archived/sqlcipher-migration-plan.md"),
+        "the retired plan must be named so the reader can check its status itself"
+    );
+    assert!(
+        header.contains("PLAINTEXT") && header.contains("Store::backup"),
+        "the residual exposure (a plaintext .db / .backup.db snapshot) must stay stated"
+    );
+    assert!(
+        !header.contains("next: SQLCipher"),
+        "the marker must no longer advertise SQLCipher as next work"
+    );
+}

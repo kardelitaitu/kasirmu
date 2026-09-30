@@ -2,7 +2,22 @@
 last audited (date unknown) by DSH-Agent (consolidated from 25-07-26 + 12-07-27 stamps)
 crate: desktop-tauri | status: SAFE | lint: CLEAN
 findings: DB connection with foreign_keys ON + WAL (documented); kernel Drop with bounded lock-retry; test-only in-memory mock constructor. Prior findings preserved: unsafe env::set_var removed (C-2), terminal_id typed field, M-4 logging, M-5 plugin task handle. 0 production unwrap/expect (the in-memory Connection::open_in_memory().unwrap() at state.rs is test-constructor scope).
-next: SQLCipher (carried) | perf: Arc-clones on checkout hot path (carried)
+next: none | perf: Arc-clones on checkout hot path (carried)
+SQLCipher: RETIRED 2026-10-04, not pending work. The plan is
+docs/archived/sqlcipher-migration-plan.md ('Status: NEVER ADOPTED -
+superseded'); its checklist is deliberately left unchecked, and
+docs/decisions/2026-07-10-workspace-type-instance-design.md already
+records the correction (2026-09-12: no file-level encryption exists; the
+HMAC binding is a detection layer, not prevention). At-rest protection
+landed at the SETTINGS layer instead: secret values are encrypted (enc:v1)
+and non-exportable keys are filtered from every .ozpkg lane via
+Settings::load_exportable -> IngestPolicy::PortablePackage, which resolves
+through is_non_exportable_setting_key
+(platform/core/src/settings/keys.rs:577) plus is_manager_owned_key. The
+residual exposure the plan named is real and must not be read as pending:
+an unfiltered .db / .backup.db snapshot (Store::backup,
+crates/kasirmu-core/src/db/mod.rs:295) is PLAINTEXT and carries everything,
+so it must never be handed to anyone.
 */
 
 //! `AppState` — the long-lived state managed by Tauri and reached via
@@ -122,7 +137,7 @@ pub struct AppState {
     pub plugin_change_refused: Arc<AtomicU64>,
 
     /// Background sync daemon. Started during app setup via
-    /// [`SyncDaemon::start`](platform_sync::daemon::SyncDaemon::start).
+    /// `SyncDaemon::start` (platform_sync::daemon::SyncDaemon).
     pub sync_daemon: SyncDaemon,
 
     /// Background PostgreSQL sync daemon (the optional PG transport).
