@@ -574,3 +574,11 @@ Pinned by `create_cache_without_the_feature_is_distinguishable_from_a_dead_serve
 - **`stock_summary` writes are `.ok()`-swallowed** — this one is DELIBERATE and verified, not pending. `stock_summary` is a derived cache rebuilt from the movement ledger by `rebuild_stock_summary`, which the sync daemon invokes (`platform/sync/src/daemon_tick.rs`, `pg_daemon.rs`); the authoritative deduction is fail-closed via `UPDATE inventory ... RETURNING qty` plus the `new_qty >= 0` check, so a lost summary update self-heals rather than corrupting a sale.
 
 The marker now records both dispositions and `next:` reads `none`.
+
+## The media pipeline's `next:` contradicted its own findings (marker correction, 2026-10-04)
+
+`crates/kasirmu-media/src/pipeline.rs` said `M-2 FIXED` in its findings line — with evidence — while its `next:` line still read `M-2 INFO | perf: decode once when perf matters`, which reads as pending work one line below the statement that it is done.
+
+M-2 is genuinely fixed: `transform()` performs exactly ONE `image::load_from_memory` decode (`crates/kasirmu-media/src/pipeline.rs:172`) after the M-1 header-only dimension probe, then runs crop/compress/thumbnails on the in-memory `DynamicImage` via the `auto_crop_img` / `compress_img` / `thumbnail_img` stage variants. The pre-fix flow re-encoded each stage to JPEG and re-decoded it in the next.
+
+The `next:` line now records the one genuinely open item in the crate — the `MediaStorage` backend returns `NotImplemented` until `LocalStorage`/`ObjectStorage` land, and keys must then be sanitised (no path separators, no `..`) before being joined to the root (MED-D).

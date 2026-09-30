@@ -2,7 +2,7 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-media slice A: pipeline deep read; M-1 FIXED 25-07-26)
 crate: kasirmu-media | status: SAFE | lint: CLEAN
 findings: M-1 FIXED — transform() now probes image dimensions header-only (ImageReader::into_dimensions, no pixel allocation) BEFORE any decode and enforces BOTH MediaLimits.max_side and max_pixels, closing the decompression-bomb gap (previously only max_input_bytes was checked). 2 new guard tests use shrunken limits so no large allocations happen in tests (26 tests pass). M-2 FIXED — transform() now decodes the source exactly ONCE into a DynamicImage and runs crop/compress/thumbnails on in-memory frames via the new auto_crop_img/compress_img/thumbnail_img stage variants (pre-fix: crop 1x, compress 1x, dims 1x, then 2x per preset, each stage re-encoded to JPEG and re-decoded by the next). Storage stub returns NotImplemented everywhere; promotion note: enforce key sanitization (no path separators/dotdot) when LocalStorage lands
-next: M-2 INFO | perf: decode once when perf matters
+next: none on M-1/M-2 (both FIXED, see findings — the previous `M-2 INFO` here contradicted the `M-2 FIXED` two lines up and read as pending work, corrected 2026-10-04). The one genuinely open item in this crate is the MediaStorage backend: every method returns NotImplemented until LocalStorage/ObjectStorage are implemented, and when they are the key must be sanitised (no path separators, no `..`) before it is joined to the root (MED-D) | perf: single decode per transform; storage layer not yet implemented
 */
 //! Media pipeline orchestrator.
 //!
