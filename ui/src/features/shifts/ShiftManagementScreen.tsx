@@ -65,6 +65,16 @@ export default function ShiftManagementScreen() {
   const [showDetailModal, setShowDetailModal] = useState<ShiftDto | null>(null);
   const [shiftReport, setShiftReport] = useState<ShiftReportDto | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
+  // Same contract as `activeShiftUnknown` above, one level down. `null` is the
+  // honest answer to BOTH 'this shift has no report' and 'we could not ask',
+  // and the report is what a manager balances a drawer against: the payment
+  // breakdown, the hourly sales, the gross profit and the cash payouts. A read
+  // that failed used to render NOTHING, so a drawer short of cash and a drawer
+  // that never reconciled looked identical. `unknown` is the third state.
+  const [reportUnknown, setReportUnknown] = useState(false);
+  // Re-issuing the read is a new request, not a re-render, so the retry is a
+  // nonce in the effect's dependency list rather than a function call.
+  const [reportNonce, setReportNonce] = useState(0);
   const [openingBalance, setOpeningBalance] = useState('');
   const [closingBalance, setClosingBalance] = useState('');
   const [shiftNotes, setShiftNotes] = useState('');
@@ -110,14 +120,35 @@ export default function ShiftManagementScreen() {
   useEffect(() => {
     if (!showDetailModal) {
       setShiftReport(null);
+      setReportUnknown(false);
       return;
     }
+    let cancelled = false;
     setReportLoading(true);
-    getShiftReportScoped(sessionToken, showDetailModal.id)
-      .then(setShiftReport)
-      .catch(() => setShiftReport(null))
-      .finally(() => setReportLoading(false));
-  }, [showDetailModal, sessionToken]);
+    settleRead('shift_report', getShiftReportScoped(sessionToken, showDetailModal.id)).then((read) => {
+      if (cancelled) { return; }
+      if (read.ok) {
+        setShiftReport(read.value);
+        setReportUnknown(false);
+      } else {
+        // A refusal is an expected outcome, not a malfunction:
+        // crates/kasirmu-core/src/db/shifts.rs:382-392 answers NotFound when the
+        // shift row is gone, and the bridge passes that through
+        // (crates/kasirmu-bridge/src/shifts.rs:462-483). It is still not an
+        // answer about the drawer, so it becomes `unknown` rather than `null`.
+        setShiftReport(null);
+        setReportUnknown(true);
+      }
+      setReportLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [showDetailModal, sessionToken, reportNonce]);
+
+  // The retry is a new READ, not a re-render, so it bumps the nonce the effect
+  // above depends on. Calling the read directly from the handler instead would
+  // duplicate the settle/guard logic in a second place, where the next change
+  // to it would reach only one of the two.
+  const retryReportRead = useCallback(() => setReportNonce((n) => n + 1), []);
 
   // ── Open shift ────────────────────────────────────────────────────
 
@@ -1087,6 +1118,24 @@ export default function ShiftManagementScreen() {
                       <Skeleton width="30%" height="0.75rem" />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* ── Unanswered report read ──────────────────── */}
+              {reportUnknown && !reportLoading && (
+                <div className="shift-mgmt-report-unknown" role="alert">
+                  <Localized id="shift-report-unknown">
+                    <span>Could not load this shift report</span>
+                  </Localized>
+                  {/* A DIRECT child of the flex row, so the `> button` rule in
+                      .shift-mgmt-report-unknown pushes the retry right without
+                      a wrapper. The round-9 banner is the same shape, in its own
+                      class -- the rule is per-class, not inherited. */}
+                  <Button variant="secondary" onClick={retryReportRead}>
+                    <Localized id="retry">
+                      <span>Retry</span>
+                    </Localized>
+                  </Button>
                 </div>
               )}
 
