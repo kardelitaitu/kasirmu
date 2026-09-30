@@ -670,3 +670,13 @@ This also contradicted the crate's own documented behaviour. `parse_counter` sta
 `read_stamping_seed` now separates three cases: a terminal with no configured identity yields no stamping, unchanged; a clock never written yields `0`, which `ClockStore::load_counter` documents as correct; and a clock present but unreadable or corrupt returns `None` so the caller pushes WITHOUT vector stamps for that cycle. Unstamped is a defined state — the server treats such an item as coming from a peer that predates vector support and skips detection for it (`transport.rs:292-295`) — whereas a rewound counter mis-classifies pushes as stale. Both failures log at error level, and the persisted value is left untouched, so stamping resumes correctly once the store is healthy.
 
 Three pins in `platform/sync/src/daemon_tests.rs`: `read_stamping_seed_refuses_to_reuse_zero_when_the_clock_is_corrupt` (a corrupt row yields no seed), `read_stamping_seed_seeds_zero_only_when_the_clock_was_never_written` (the absent row still seeds `0`), and `read_stamping_seed_is_none_without_a_terminal_identity`.
+
+## A queue that cannot be read is not an empty queue (2026-10-04)
+
+The same fail-blind shape as the queue-depth sentinel and the stamping seed, on the push-read path. `read_config_and_pending` (`platform/sync/src/daemon.rs`) read the offline queue with `store.list_pending_offline().unwrap_or_default()`, flattening a read error into an empty `Vec`.
+
+An empty push list is indistinguishable from a healthy idle terminal. `run_tick` guards the entire push phase on `!pending.is_empty()` (`daemon_tick.rs:289`), so a failed read skipped the push, set `pushed = 0`, and left `last_error` clean — the operator's backlog indicator showed nothing wrong while nothing had been sent, and the durable backlog only grew.
+
+`read_config_and_pending` now returns `Result<_, String>` and propagates the queue-read error, which reaches `run_tick`'s `read_error` and surfaces on `last_error` (and so drives the daemon's backoff). The `SyncConfig::from_settings` read is deliberately left collapsing to `Ok(None)`: sync not being configured is a legitimate steady state and an unreadable setting maps to 'unconfigured' — that read is not the data path the queue is.
+
+Pinned by `read_config_and_pending_errors_when_the_offline_queue_cannot_be_read` (`platform/sync/src/daemon_tests.rs`), which drops `offline_queue` and demands `Err`; before the fix the function could only return `Ok((None, vec![]))`, so the failure was unobservable.
