@@ -383,6 +383,19 @@ fi
 step "debt markers" "python3 scripts/verify-debt-markers.py" python3 scripts/verify-debt-markers.py
 step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-test" python3 scripts/verify-debt-markers.py --self-test
 
+# ── Namespace governance — soft rules for module seams (Round 4) ────────
+# ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
+# the RULES and freezes today's debt as data. Deliberately SOFT: all modules share
+# one SQLite connection, so a namespace violation is not yet mechanically
+# expressible, and a strict gate now would fail on legitimate existing edges. This
+# reports Rule 1 (no new cross-vertical raw SQL) and Rule 2 (no new unclassified
+# handler) and fails only on a NEW finding; the two known cross-vertical edges are
+# baselined in scripts/namespace-governance-baseline.json. Rule 3 (undeclared
+# dependency) is informational. A gate whose parsers silently break checks
+# nothing, so the self-test runs beside it (verify-selftests-wired.py).
+step "namespace governance" "python3 scripts/verify-namespace-governance.py" python3 scripts/verify-namespace-governance.py
+step "namespace governance self-test" "python3 scripts/verify-namespace-governance.py --self-test" python3 scripts/verify-namespace-governance.py --self-test
+
 # ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
 # This is the runner that deny.toml's own header used to say did not exist.
 # Three deliberate absences, each load-bearing:
