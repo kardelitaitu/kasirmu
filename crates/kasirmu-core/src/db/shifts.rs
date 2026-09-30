@@ -58,27 +58,40 @@ impl Store<'_> {
 
         let tx = Transaction::new_unchecked(self.conn, TransactionBehavior::Immediate)?;
 
-        // Verify the user exists and is active.
-        let active: bool = tx
+        // In single-database / test setups, verify against the local users table.
+        // In store-scoped operation (ADR #4 / #35), users and permissions live
+        // exclusively in the global identity database and are authorized upstream
+        // by require_session_permission.
+        let users_present: bool = tx
             .query_row(
-                "SELECT is_active FROM users WHERE id = ?1",
-                params![user_id.trim()],
-                |row| row.get::<_, i64>(0),
+                "SELECT EXISTS(SELECT 1 FROM users LIMIT 1)",
+                [],
+                |row| row.get::<_, bool>(0),
             )
-            .map(|v| v != 0)
-            .map_err(|e| match e {
-                rusqlite::Error::QueryReturnedNoRows => CoreError::Validation {
-                    field: "user_id",
-                    message: "user not found".into(),
-                },
-                _ => CoreError::Db(e),
-            })?;
+            .unwrap_or(false);
 
-        if !active {
-            return Err(CoreError::Validation {
-                field: "user_id",
-                message: "user account is deactivated".into(),
-            });
+        if users_present {
+            let active: bool = tx
+                .query_row(
+                    "SELECT is_active FROM users WHERE id = ?1",
+                    params![user_id.trim()],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map(|v| v != 0)
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => CoreError::Validation {
+                        field: "user_id",
+                        message: "user not found".into(),
+                    },
+                    _ => CoreError::Db(e),
+                })?;
+
+            if !active {
+                return Err(CoreError::Validation {
+                    field: "user_id",
+                    message: "user account is deactivated".into(),
+                });
+            }
         }
 
         // Ensure no duplicate open shift for this user — evaluated under the

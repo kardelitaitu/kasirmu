@@ -162,3 +162,24 @@ fn create_cash_payout_args_debug() {
     let d = format!("{args:?}");
     assert!(d.contains("R"));
 }
+
+#[tokio::test]
+async fn open_shift_scoped_succeeds_end_to_end() {
+    let bridge = TestBridge::new();
+    let token = bridge.token_granting(permissions::SHIFTS_OPEN).await;
+
+    let args = OpenShiftScopedArgs {
+        terminal_id: Some("term-1".into()),
+        opening_balance_minor: 10000,
+    };
+    let shift = open_shift_scoped(&bridge.ctx(), &token, &args).await.unwrap();
+    assert_eq!(shift.opening_balance_minor, 10000);
+    assert_eq!(shift.status, "open");
+    assert_eq!(shift.terminal_id.as_deref(), Some("term-1"));
+
+    // And verify get_active_shift_scoped retrieves it
+    let active = get_active_shift_scoped(&bridge.ctx(), &token).await.unwrap();
+    assert!(active.is_some());
+    assert_eq!(active.unwrap().id, shift.id);
+}
+

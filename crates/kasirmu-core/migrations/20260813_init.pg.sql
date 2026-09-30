@@ -156,6 +156,15 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'document_number_sequences_new', 'document_number_sequences');
     END IF;
 
+    -- 'shifts_new' -> 'shifts'   (20261016_shifts_drop_cross_db_fks.sql)
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'shifts_new')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'shifts')
+    THEN
+        EXECUTE format('ALTER TABLE public.%I RENAME TO %I', 'shifts_new', 'shifts');
+    END IF;
+
     -- 'user_location_access'.'store_id' -> 'location_id'   (20260906_rename_store_to_location.sql)
     IF EXISTS (SELECT 1 FROM information_schema.columns
                 WHERE table_schema = 'public' AND table_name = 'user_location_access'
@@ -633,6 +642,26 @@ BEGIN
             ('receipt_number_counters', 'fiscal_year', 'TEXT', NULL::text, true),
             ('receipt_number_counters', 'counter', 'BIGINT', '0', true),
             ('receipt_number_counters', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'id', 'TEXT', NULL::text, true),
+            ('shifts', 'user_id', 'TEXT', NULL::text, true),
+            ('shifts', 'terminal_id', 'TEXT', NULL::text, false),
+            ('shifts', 'opened_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'closed_at', 'TEXT', NULL::text, false),
+            ('shifts', 'opening_balance_minor', 'BIGINT', '0', true),
+            ('shifts', 'closing_balance_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'expected_cash_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'cash_difference_minor', 'BIGINT', NULL::text, false),
+            ('shifts', 'total_sales_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_cash_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_card_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_other_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_voids_minor', 'BIGINT', '0', true),
+            ('shifts', 'total_refunds_minor', 'BIGINT', '0', true),
+            ('shifts', 'notes', 'TEXT', '''''', true),
+            ('shifts', 'status', 'TEXT', '''open''', true),
+            ('shifts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
+            ('shifts', 'total_payouts_minor', 'BIGINT', '0', true),
             ('exchange_rates', 'id', 'TEXT', NULL::text, true),
             ('exchange_rates', 'from_currency', 'TEXT', NULL::text, true),
             ('exchange_rates', 'to_currency', 'TEXT', NULL::text, true),
@@ -777,6 +806,11 @@ BEGIN
             ('memo_revisions', 'published_at', 'TEXT', NULL::text, true),
             ('memo_revisions', 'published_by', 'TEXT', NULL::text, true),
             ('memo_revisions', 'tenant_id', 'TEXT', '''default''', true),
+            ('cash_payouts', 'id', 'TEXT', NULL::text, true),
+            ('cash_payouts', 'shift_id', 'TEXT', NULL::text, true),
+            ('cash_payouts', 'amount_minor', 'BIGINT', NULL::text, true),
+            ('cash_payouts', 'reason', 'TEXT', '''''', true),
+            ('cash_payouts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('assignments', 'user_id', 'TEXT', NULL::text, true),
             ('assignments', 'role_id', 'TEXT', NULL::text, true),
             ('assignments', 'scope_mode', 'TEXT', '''global''', true),
@@ -989,26 +1023,6 @@ BEGIN
             ('inventory_shifts', 'notes', 'TEXT', '''''', true),
             ('inventory_shifts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('inventory_shifts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('shifts', 'id', 'TEXT', NULL::text, true),
-            ('shifts', 'user_id', 'TEXT', NULL::text, true),
-            ('shifts', 'terminal_id', 'TEXT', NULL::text, false),
-            ('shifts', 'opened_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('shifts', 'closed_at', 'TEXT', NULL::text, false),
-            ('shifts', 'opening_balance_minor', 'BIGINT', '0', true),
-            ('shifts', 'closing_balance_minor', 'BIGINT', NULL::text, false),
-            ('shifts', 'expected_cash_minor', 'BIGINT', NULL::text, false),
-            ('shifts', 'cash_difference_minor', 'BIGINT', NULL::text, false),
-            ('shifts', 'total_sales_minor', 'BIGINT', '0', true),
-            ('shifts', 'total_cash_minor', 'BIGINT', '0', true),
-            ('shifts', 'total_card_minor', 'BIGINT', '0', true),
-            ('shifts', 'total_other_minor', 'BIGINT', '0', true),
-            ('shifts', 'total_voids_minor', 'BIGINT', '0', true),
-            ('shifts', 'total_refunds_minor', 'BIGINT', '0', true),
-            ('shifts', 'notes', 'TEXT', '''''', true),
-            ('shifts', 'status', 'TEXT', '''open''', true),
-            ('shifts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('shifts', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('shifts', 'total_payouts_minor', 'BIGINT', '0', true),
             ('stock_transfers', 'id', 'TEXT', NULL::text, true),
             ('stock_transfers', 'transfer_number', 'TEXT', NULL::text, true),
             ('stock_transfers', 'status', 'TEXT', '''draft''', true),
@@ -1240,11 +1254,6 @@ BEGIN
             ('tables', 'sort_order', 'BIGINT', '0', true),
             ('tables', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('tables', 'updated_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
-            ('cash_payouts', 'id', 'TEXT', NULL::text, true),
-            ('cash_payouts', 'shift_id', 'TEXT', NULL::text, true),
-            ('cash_payouts', 'amount_minor', 'BIGINT', NULL::text, true),
-            ('cash_payouts', 'reason', 'TEXT', '''''', true),
-            ('cash_payouts', 'created_at', 'TEXT', 'to_char(now() AT TIME ZONE ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')', true),
             ('inventory_transactions', 'id', 'TEXT', NULL::text, true),
             ('inventory_transactions', 'type', 'TEXT', NULL::text, true),
             ('inventory_transactions', 'location_id', 'TEXT', NULL::text, true),
@@ -2027,6 +2036,31 @@ CREATE TABLE IF NOT EXISTS receipt_number_counters (
     PRIMARY KEY (tenant_id, terminal_idx, fiscal_year)
 );
 
+CREATE TABLE IF NOT EXISTS "shifts" (
+    id                    TEXT PRIMARY KEY,
+    user_id               TEXT NOT NULL,
+    terminal_id           TEXT,
+    opened_at             TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    closed_at             TEXT,
+    opening_balance_minor BIGINT NOT NULL DEFAULT 0,
+    closing_balance_minor BIGINT,
+    expected_cash_minor   BIGINT,
+    cash_difference_minor BIGINT,
+    total_sales_minor     BIGINT NOT NULL DEFAULT 0,
+    total_cash_minor      BIGINT NOT NULL DEFAULT 0,
+    total_card_minor      BIGINT NOT NULL DEFAULT 0,
+    total_other_minor     BIGINT NOT NULL DEFAULT 0,
+    total_voids_minor     BIGINT NOT NULL DEFAULT 0,
+    total_refunds_minor   BIGINT NOT NULL DEFAULT 0,
+    notes                 TEXT NOT NULL DEFAULT '',
+    status                TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    created_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    updated_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+    total_payouts_minor   BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_open_per_user ON shifts(user_id) WHERE status = 'open';
+
 CREATE TABLE IF NOT EXISTS exchange_rates (
     id              TEXT PRIMARY KEY,
     from_currency   TEXT NOT NULL REFERENCES currencies(code),
@@ -2234,6 +2268,14 @@ CREATE TABLE IF NOT EXISTS memo_revisions (
     published_at  TEXT NOT NULL,
     published_by  TEXT NOT NULL, tenant_id TEXT NOT NULL DEFAULT 'default',
     UNIQUE (memo_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS cash_payouts (
+    id          TEXT PRIMARY KEY,
+    shift_id    TEXT NOT NULL REFERENCES shifts(id),
+    amount_minor BIGINT NOT NULL CHECK(amount_minor > 0),
+    reason      TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
 CREATE TABLE IF NOT EXISTS assignments (
@@ -2562,32 +2604,6 @@ CREATE TABLE IF NOT EXISTS inventory_shifts (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_shifts_active_per_user_location
     ON inventory_shifts(user_id, location_id) WHERE status = 'active';
-
-CREATE TABLE IF NOT EXISTS shifts (
-    id                    TEXT PRIMARY KEY,
-    user_id               TEXT NOT NULL REFERENCES users(id),
-    terminal_id           TEXT REFERENCES terminals(id),
-    opened_at             TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    closed_at             TEXT,
-    opening_balance_minor BIGINT NOT NULL DEFAULT 0,
-    closing_balance_minor BIGINT,                     -- counted cash at close
-    expected_cash_minor   BIGINT,                     -- opening + cash sales - cash payouts
-    cash_difference_minor BIGINT,                     -- closing - expected (positive = over, negative = short)
-    total_sales_minor     BIGINT NOT NULL DEFAULT 0,  -- total sales amount during shift
-    total_cash_minor      BIGINT NOT NULL DEFAULT 0,  -- cash sales amount
-    total_card_minor      BIGINT NOT NULL DEFAULT 0,  -- card sales amount
-    total_other_minor     BIGINT NOT NULL DEFAULT 0,  -- other payment method sales
-    total_voids_minor     BIGINT NOT NULL DEFAULT 0,  -- voided amount
-    total_refunds_minor   BIGINT NOT NULL DEFAULT 0,  -- refunded amount
-    notes                 TEXT NOT NULL DEFAULT '',
-    status                TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
-    created_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
-    updated_at            TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-, total_payouts_minor BIGINT NOT NULL DEFAULT 0);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_shifts_open_per_user
-    ON shifts(user_id)
-    WHERE status = 'open';
 
 CREATE TABLE IF NOT EXISTS "stock_transfers" (
     id                     TEXT PRIMARY KEY,
@@ -2947,14 +2963,6 @@ CREATE TABLE IF NOT EXISTS tables (
     sort_order      BIGINT NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
     updated_at      TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-);
-
-CREATE TABLE IF NOT EXISTS cash_payouts (
-    id          TEXT PRIMARY KEY,
-    shift_id    TEXT NOT NULL REFERENCES shifts(id),
-    amount_minor BIGINT NOT NULL CHECK(amount_minor > 0),
-    reason      TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
 );
 
 CREATE TABLE IF NOT EXISTS inventory_transactions (

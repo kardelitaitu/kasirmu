@@ -432,6 +432,14 @@ pub const ALL: &[Migration] = &[
         id: "20261015_gift_cards_drop_pin.sql",
         sql: include_str!("../migrations/20261015_gift_cards_drop_pin.sql"),
     },
+    // Cross-database FK removal on shifts: under multi-store isolation (ADR #4 /
+    // #7 / #35), users and terminals live in the global identity DB (kasir.db)
+    // while shifts lives in store-scoped databases. The FK constraints to empty
+    // store-db tables caused SQLite foreign key violations on shift creation.
+    Migration {
+        id: "20261016_shifts_drop_cross_db_fks.sql",
+        sql: include_str!("../migrations/20261016_shifts_drop_cross_db_fks.sql"),
+    },
 ];
 
 /// Postgres DDL for the full schema, parallel to the SQLite `init.sql`.
