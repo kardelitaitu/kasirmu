@@ -178,13 +178,17 @@ describe('rangeForGranularity — store-timezone anchoring (REP-03)', () => {
     expect(junk.to).toBe('2026-08-31');
   });
 
-  it('null/undefined store tz keeps the legacy device-local anchor', () => {
-    const legacy = rangeForGranularity('daily', '', '');
-    const utc = rangeForGranularity('daily', '', '', null);
-    // On a UTC CI host these coincide; the contract is only that an
-    // explicit null behaves like the old call shape.
-    expect(legacy.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(utc.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  it('an unknown store tz anchors to the store fallback, never to the host', () => {
+    // This used to assert the OPPOSITE — that a null/undefined storeTz kept a
+    // device-local anchor — and the assertion was so loose (a regex on shape)
+    // that it passed on every host while the yearly heatmap rendered one extra
+    // month under TZ=Pacific/Kiritimati. Unknown-store-zone now means
+    // FALLBACK_STORE_TZ, the same instant isoToday() reads, so an unknown zone
+    // cannot make the window disagree with the calendar it is anchored to.
+    expect(rangeForGranularity('daily', '', '')).toEqual(rangeForGranularity('daily', '', '', null));
+    expect(rangeForGranularity('daily', '', '')).toEqual(rangeForGranularity('daily', '', '', 'UTC'));
+    // Shape only, since "now" moves: the value is a real calendar day.
+    expect(rangeForGranularity('daily', '', '', null).to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it('storeOffsetMs parses the contract', () => {

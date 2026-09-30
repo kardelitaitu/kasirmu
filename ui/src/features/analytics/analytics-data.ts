@@ -146,10 +146,21 @@ export function isoDaysAgo(daysAgo: number, storeTz?: string | null): string {
 /**
  * The inclusive `[from, to]` window for a granularity. Daily/Weekly/
  * Monthly/Yearly are anchored at "now"; Custom uses the picked range.
- * When `storeTz` is provided (the primary store's `timezone`, REP-03) the
- * anchor is the STORE's calendar day, not the device's — a laptop in
- * another region must still query "today" as the store sees it. Passing
- * `null`/`undefined` keeps the legacy device-local anchor.
+ *
+ * The anchor is always the STORE's calendar day (REP-03) — `storeTz` when the
+ * primary store's `timezone` has loaded, and FALLBACK_STORE_TZ before that.
+ *
+ * A null/undefined `storeTz` used to mean "fall back to the DEVICE's calendar"
+ * and that was wrong twice over. It made the query window depend on where the
+ * app happened to be running, which is the exact failure FALLBACK_STORE_TZ's
+ * own comment warns about ("a UTC CI runner and a UTC+7 workstation"), and it
+ * made this function disagree with `isoToday()` on the same instant — the
+ * yearly grid then rendered one more month than the calendar it was anchored
+ * to. TZ=Pacific/Kiritimati at 2026-09-30T12:00Z: host month 10, store month
+ * 9, 43 yearly cells against an expected 39.
+ *
+ * Null now means "the store zone is not known yet", which is what the value
+ * actually is while the profile is still loading.
  */
 export function rangeForGranularity(
   g: Granularity,
@@ -157,24 +168,15 @@ export function rangeForGranularity(
   customTo: string,
   storeTz?: string | null,
 ): { from: string; to: string } {
-  let y: number;
-  let m: number;
-  let d: number;
-  let dow: number; // 0 = Monday … 6 = Sunday
-  if (storeTz === undefined || storeTz === null || storeTz === '') {
-    const now = new Date();
-    y = now.getFullYear();
-    m = now.getMonth();
-    d = now.getDate();
-    dow = (now.getDay() + 6) % 7;
-  } else {
-    // UTC getters on the offset-shifted instant = the store's calendar.
-    const s = new Date(Date.now() + storeOffsetMs(storeTz));
-    y = s.getUTCFullYear();
-    m = s.getUTCMonth();
-    d = s.getUTCDate();
-    dow = (s.getUTCDay() + 6) % 7;
-  }
+  // One path, always. UTC getters on the offset-shifted instant read the
+  // STORE's calendar; storeOffsetMs('') and storeOffsetMs(null) are 0, so an
+  // unknown zone resolves to FALLBACK_STORE_TZ exactly as isoToday() does.
+  // Keeping a device-local branch here is what let the two drift apart.
+  const s = new Date(Date.now() + storeOffsetMs(storeTz ?? FALLBACK_STORE_TZ));
+  const y = s.getUTCFullYear();
+  const m = s.getUTCMonth();
+  const d = s.getUTCDate();
+  const dow = (s.getUTCDay() + 6) % 7; // 0 = Monday … 6 = Sunday
   // Calendar-safe day construction (month/year rollover via Date.UTC).
   const iso = (yy: number, mm: number, dd: number) =>
     new Date(Date.UTC(yy, mm, dd)).toISOString().slice(0, 10);
