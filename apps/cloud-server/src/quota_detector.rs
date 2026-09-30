@@ -148,46 +148,72 @@ pub fn resolve_tenant_tier_sqlite(
 }
 
 /// Count products for a tenant on SQLite.
-pub fn count_tenant_products_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read. The caller's predicate is
+/// `count > cap`, so a failed read collapsing to `0` reports the tenant as
+/// COMPLIANT -- a missing table or locked database would silence this axis for
+/// the tenant entirely. The PG sibling (`count_tenant_products_pg`) already
+/// propagates, so this is the SQLite half of the same rule.
+pub fn count_tenant_products_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM products WHERE tenant_id = ?1",
         params![tenant_id],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Count active staff users (excluding owner) for a tenant on SQLite.
-pub fn count_tenant_staff_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read, for the same reason as
+/// [`count_tenant_products_sqlite`]: `0` is the compliant answer.
+pub fn count_tenant_staff_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM users WHERE tenant_id = ?1 AND is_active = 1 AND role_id != ?2",
         params![tenant_id, kasirmu_core::builtin_roles::OWNER],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Count locations for a tenant on SQLite.
-pub fn count_tenant_locations_sqlite(conn: &rusqlite::Connection, tenant_id: &str) -> i64 {
+///
+/// Returns `Err` when the count could not be read, for the same reason as
+/// [`count_tenant_products_sqlite`]. Note this is the DEVICE path in the C36
+/// sense: the cloud cannot see these rows, but the shared function is still
+/// the one that must not answer `0` for a failed read.
+pub fn count_tenant_locations_sqlite(
+    conn: &rusqlite::Connection,
+    tenant_id: &str,
+) -> Result<i64, rusqlite::Error> {
     conn.query_row(
         "SELECT COUNT(*) FROM locations WHERE tenant_id = ?1",
         params![tenant_id],
         |row| row.get::<_, i64>(0),
     )
-    .unwrap_or(0)
 }
 
 /// Check quota violations for a single tenant on SQLite.
+///
+/// Returns `Err` when any count could not be read. A failure here used to be
+/// invisible: each `count_tenant_*` collapsed to `0`, the predicate is
+/// `0 > cap`, and the result was a tenant reported COMPLIANT because a read
+/// failed. The PG sibling (`check_tenant_quota_pg`) propagates the same way, so
+/// the two backends now agree on what a broken read means.
 pub fn check_tenant_quota_sqlite(
     conn: &rusqlite::Connection,
     tenant_id: &str,
-) -> Vec<TenantQuotaViolation> {
+) -> Result<Vec<TenantQuotaViolation>, rusqlite::Error> {
     let tier = resolve_tenant_tier_sqlite(conn, tenant_id);
     let mut violations = Vec::new();
 
     // Check products axis
     if let Some(cap) = tier.max_products() {
-        let count = count_tenant_products_sqlite(conn, tenant_id);
+        let count = count_tenant_products_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -201,7 +227,7 @@ pub fn check_tenant_quota_sqlite(
 
     // Check staff axis
     if let Some(cap) = tier.max_staff_users() {
-        let count = count_tenant_staff_sqlite(conn, tenant_id);
+        let count = count_tenant_staff_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -215,7 +241,7 @@ pub fn check_tenant_quota_sqlite(
 
     // Check locations axis
     if let Some(cap) = tier.max_locations() {
-        let count = count_tenant_locations_sqlite(conn, tenant_id);
+        let count = count_tenant_locations_sqlite(conn, tenant_id)?;
         if count > cap {
             violations.push(TenantQuotaViolation {
                 tenant_id: tenant_id.to_string(),
@@ -227,7 +253,7 @@ pub fn check_tenant_quota_sqlite(
         }
     }
 
-    violations
+    Ok(violations)
 }
 
 /// Enumerate distinct active tenants on SQLite.
@@ -272,7 +298,7 @@ pub fn scan_all_tenants_quota_sqlite(
     let tenants = enumerate_active_tenants_sqlite(conn)?;
     let mut all_violations = Vec::new();
     for tenant_id in &tenants {
-        all_violations.extend(check_tenant_quota_sqlite(conn, tenant_id));
+        all_violations.extend(check_tenant_quota_sqlite(conn, tenant_id)?);
     }
     Ok(all_violations)
 }

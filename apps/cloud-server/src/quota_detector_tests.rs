@@ -105,7 +105,7 @@ fn test_under_quota_no_violations() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(violations.is_empty(), "expected no violations under quota");
 }
 
@@ -134,7 +134,7 @@ fn test_at_quota_limit_no_violations() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "expected no violations when exactly at quota cap"
@@ -151,7 +151,7 @@ fn test_products_over_quota_detected() {
         seed_product(&conn, tenant, &format!("p-{i}"), &format!("SKU-{i}"));
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     let v = &violations[0];
     assert_eq!(v.tenant_id, tenant);
@@ -198,7 +198,7 @@ fn test_staff_over_quota_detected_excludes_owner_and_inactive() {
         1,
     );
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     let v = &violations[0];
     assert_eq!(v.tenant_id, tenant);
@@ -234,7 +234,7 @@ fn test_unlimited_tier_no_violations() {
         );
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "unlimited Enterprise tier must never report quota violations"
@@ -342,7 +342,7 @@ fn test_location_quota_under_and_at_limit() {
 
     // Free tier max_locations is 1
     seed_location(&conn, tenant, "loc-1");
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "1 location on Free tier should have no violations"
@@ -358,7 +358,7 @@ fn test_location_quota_exceeded_violation() {
     seed_location(&conn, tenant, "loc-1");
     seed_location(&conn, tenant, "loc-2");
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].tenant_id, tenant);
     assert_eq!(violations[0].dimension, QuotaDimensionKind::Locations);
@@ -383,7 +383,7 @@ fn test_location_quota_unlimited_enterprise() {
         seed_location(&conn, tenant, &format!("loc-{i}"));
     }
 
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     assert!(
         violations.is_empty(),
         "Enterprise tier allows unlimited locations"
@@ -457,7 +457,7 @@ fn test_locations_axis_is_structurally_inert() {
     for i in 1..=40 {
         seed_location(&conn, tenant, &format!("loc-{i}"));
     }
-    let device_side = count_tenant_locations_sqlite(&conn, tenant);
+    let device_side = count_tenant_locations_sqlite(&conn, tenant).expect("the count runs");
     assert_eq!(
         device_side, 40,
         "precondition: the device-side store really does hold 40 locations"
@@ -466,7 +466,7 @@ fn test_locations_axis_is_structurally_inert() {
     // Free/OneTime/Plus cap is 1, so 40 > 1 WOULD fire — if the cloud could see
     // them. On the PG path the count is always 0, so no Locations violation is
     // ever produced for any tenant.
-    let violations = check_tenant_quota_sqlite(&conn, tenant);
+    let violations = check_tenant_quota_sqlite(&conn, tenant).expect("the check runs");
     let locations_violations: Vec<_> = violations
         .iter()
         .filter(|v| v.dimension == QuotaDimensionKind::Locations)
@@ -581,6 +581,55 @@ fn a_broken_schema_makes_the_scan_fail_rather_than_report_nothing() {
         enumerate_active_tenants_sqlite(&conn).is_err(),
         "the enumeration is where the read fails, and it must say so rather than
         returning the 'default'-only list it would otherwise produce"
+    );
+}
+
+/// A COUNT that could not run must not look like a tenant under its cap.
+///
+/// The sibling pin above covers the ENUMERATION step. This one covers the step
+/// after it: each axis is `count > cap`, and `count_tenant_*_sqlite` used to
+/// collapse a failed count to `0` with `.unwrap_or(0)`. `0 > cap` is never true,
+/// so a dropped table or locked database made that axis report the tenant as
+/// COMPLIANT -- enforcement silently switched off for exactly the tenants whose
+/// row counts had become unreadable, which is the worst moment to stop looking.
+///
+/// `check_tenant_quota_sqlite` and the three counts now propagate, matching the
+/// PG backend (`check_tenant_quota_pg` / `count_tenant_*_pg`), which has always
+/// returned `Result` here. The scan is the observable surface: it must fail
+/// rather than return the healthy-deployment empty list.
+#[test]
+fn a_count_that_could_not_run_fails_the_check_rather_than_reporting_compliance() {
+    let conn = setup_test_db();
+    let tenant = "tenant-count-broken";
+    // 201 products: genuinely over the Free cap of 200, so a working count
+    // produces a violation and the test can tell success from silence.
+    for i in 1..=201 {
+        seed_product(&conn, tenant, &format!("p-{i}"), &format!("SKU-{i}"));
+    }
+    assert_eq!(
+        check_tenant_quota_sqlite(&conn, tenant)
+            .expect("the check runs against a live schema")
+            .len(),
+        1,
+        "precondition: the products axis fires while the schema is intact"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_ok(),
+        "precondition: the scan runs against a live schema"
+    );
+
+    // Break a table the COUNTS read (not the enumeration's tables), so the
+    // failure is attributable to the count path and not the enumerate step.
+    conn.execute("DROP TABLE products", [])
+        .expect("drop products");
+
+    assert!(
+        check_tenant_quota_sqlite(&conn, tenant).is_err(),
+        "a count that could not run must not report the tenant as compliant"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_err(),
+        "a scan whose counts could not run must not return the empty healthy list"
     );
 }
 
