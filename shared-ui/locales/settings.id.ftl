@@ -130,6 +130,31 @@ setup-provision-title = Siapkan terminal ini
 setup-provision-account-section = Akun kasir.mu
 setup-provision-account-hint = Hubungkan perangkat Anda ke akun gratis untuk mengaktifkan sinkronisasi otomatis dan perlindungan lisensi.
 setup-provision-offline-warn = Koneksi internet diperlukan untuk membuat atau menautkan akun Anda.
+# Jalan KELUAR dari kondisi offline, bukan hanya alasan jalan masuk tertutup.
+# provision_device adalah SQLite lokal, jadi merchant tanpa sinyal tetap bisa
+# menyiapkan terminal — tetapi pada mode tertaut (default) semua kontrol nonaktif
+# dan peringatan hanya menyebut alasannya. Ini satu klik ke mode yang masih jalan.
+setup-provision-offline-switch-local = Selesaikan tanpa akun
+# Yang sebenarnya dibutuhkan QR, dinyatakan sebelum merchant mengeklik: perangkat
+# kedua yang SUDAH masuk ke akun. Kalau tidak disebut, terbaca sebagai universal,
+# dan merchant yang menyiapkan satu terminal sendirian tidak dapat melakukannya.
+setup-account-pair-requirement = { ' Pasangkan QR membutuhkan HP kedua yang sudah masuk ke akun Anda.' }
+# Gerbang kirim, diberi nama. Tombol nonaktif tidak bisa ditekan dan tidak bisa
+# menjelaskan dirinya sendiri, dan kartu ini lebih tinggi dari viewport, sehingga
+# syarat yang belum terpenuhi maupun kontrol untuk memperbaikinya sama-sama
+# tak terlihat. Tiap butir adalah tombol: masing-masing memindahkan fokus ke kolom
+# yang harus diubah.
+setup-provision-gate-heading = Masih diperlukan sebelum penyiapan selesai:
+setup-provision-gate-account = Tautkan akun, atau pilih "Offline saja"
+setup-provision-gate-store-type = Pilih jenis usaha
+setup-provision-gate-location = Nama toko
+setup-provision-gate-owner-name = Nama Anda
+setup-provision-gate-username = Nama masuk
+setup-provision-gate-pin = PIN minimal 4 angka
+setup-provision-gate-pin-match = Kedua PIN sama
+# Yang akan dipakai terminal ini. provisionDevice selalu mengirim mata uang dan
+# zona waktu; merchant diberi tahu keduanya.
+setup-provision-locale-note = Disiapkan dalam { $currency } ({ $timezone }). Bisa diubah nanti di Pengaturan.
 # Label langkah untuk rel progres saat pertama kali dijalankan. Tiga langkah,
 # sesuai tiga keputusan yang benar-benar menjadi syarat pengiriman formulir:
 # cara terminal ditautkan, jenis tokonya, dan siapa yang bisa masuk. Rel ini

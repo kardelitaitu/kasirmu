@@ -51,6 +51,31 @@ setup-provision-title = Set up this terminal
 setup-provision-account-section = kasir.mu Account
 setup-provision-account-hint = Connect your device to your free account to enable automatic sync and license protection.
 setup-provision-offline-warn = Internet connection is required to create or link your account.
+# The way OUT of the offline state, not just the reason the way IN is shut.
+# provision_device is local SQLite, so a merchant with no signal can still set
+# the terminal up — but on the linked (default) mode every control is disabled
+# and the warning said only why. This is the one click that reaches the mode that
+# still works.
+setup-provision-offline-switch-local = Set up without an account instead
+# What QR pairing actually costs, stated before the merchant taps it: a second
+# device ALREADY signed in to the account. It reads as universal otherwise, and a
+# merchant setting up a single terminal alone cannot meet it.
+setup-account-pair-requirement = { ' QR pairing needs a second phone signed in to your account.' }
+# The submit gate, named. A disabled button cannot be pressed and cannot explain
+# itself, and this card is taller than the viewport, so the unmet requirement and
+# the control that fixes it were both invisible. Items are buttons: each moves
+# focus to the field that must change.
+setup-provision-gate-heading = Still needed before you can finish setup:
+setup-provision-gate-account = Link an account, or pick "Offline only"
+setup-provision-gate-store-type = Choose the kind of shop
+setup-provision-gate-location = Shop name
+setup-provision-gate-owner-name = Your name
+setup-provision-gate-username = Login name
+setup-provision-gate-pin = A PIN of at least 4 digits
+setup-provision-gate-pin-match = Both PINs the same
+# What the terminal is being provisioned WITH. provisionDevice has always sent
+# currency and timezone; the merchant was told neither.
+setup-provision-locale-note = Set up in { $currency } ({ $timezone }). You can change this later in Settings.
 # Step labels for the first-run progress rail. Three steps, matching the three
 # decisions the form actually gates submission on: how the terminal is linked,
 # what kind of shop it is, and who signs in. A rail is not decoration here — the

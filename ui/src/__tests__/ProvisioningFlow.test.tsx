@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import ProvisioningFlow from '../features/setup/ProvisioningFlow';
 import { getPresetFeatures, provisionDevice } from '@/api/settings';
 import {
@@ -87,6 +87,17 @@ vi.mock('@fluent/react', () => ({
           'setup-provision-pin-too-short': 'Use at least 4 digits.',
           'setup-provision-pin-mismatch': 'These PINs do not match yet.',
           'setup-provision-error': 'Could not finish setting up this terminal.',
+          'setup-provision-gate-heading': 'Still needed before you can finish setup:',
+          'setup-provision-gate-account': 'Link an account, or pick "Offline only"',
+          'setup-provision-gate-store-type': 'Choose the kind of shop',
+          'setup-provision-gate-location': 'Shop name',
+          'setup-provision-gate-owner-name': 'Your name',
+          'setup-provision-gate-username': 'Login name',
+          'setup-provision-gate-pin': 'A PIN of at least 4 digits',
+          'setup-provision-gate-pin-match': 'Both PINs the same',
+          'setup-provision-locale-note': 'Set up in { $currency } ({ $timezone }). You can change this later in Settings.',
+          'setup-provision-offline-switch-local': 'Set up without an account instead',
+          'setup-account-pair-requirement': ' QR pairing needs a second phone signed in to your account.',
           'auth-pair-waiting': 'Waiting for you to claim on your phone…',
           'auth-pair-success': 'Device paired successfully!',
           'auth-activating': 'Loading...',
@@ -100,6 +111,20 @@ vi.mock('@fluent/react', () => ({
 }));
 
 describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
+  /**
+   * Fake timers restored after EVERY test, not just the ones that install them.
+   *
+   * Two tests drive the 3s pairing poll with fake timers and call
+   * `vi.useRealTimers()` at the end of their body — but a test that FAILS
+   * before reaching that line leaves the clock frozen for the next one, whose
+   * `waitFor` then hangs to its 10s timeout and reports a timeout rather than
+   * the real failure. This is what makes a cascade of three failures out of one
+   * actual defect.
+   */
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(provisionDevice).mockResolvedValue({
@@ -113,6 +138,26 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     vi.mocked(isTabletShell).mockReturnValue(false);
     // Default: the preset lookup answers. Individual tests override it.
     vi.mocked(getPresetFeatures).mockResolvedValue({ features: [] });
+
+    // `clearAllMocks` above clears RECORDED CALLS, not implementations — and a
+    // `mockResolvedValueOnce` left unconsumed by one test is still queued for
+    // the next one. Two pairing tests were reading each other's session codes
+    // because of it, and one timed out waiting for a button that another
+    // test's queue had already answered. Every pairing/link mock is reset to a
+    // neutral default here, so a test starts from a known queue.
+    vi.mocked(startDevicePairing).mockReset();
+    vi.mocked(startDevicePairing).mockResolvedValue({
+      code: 'ABCD1234',
+      poll_token: 'poll-token-xyz',
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    // Pending forever by default: a test that cares about a claim sets it.
+    vi.mocked(pollDevicePairing).mockReset();
+    vi.mocked(pollDevicePairing).mockResolvedValue({ status: 'pending' });
+    vi.mocked(requestDeviceLinkCode).mockReset();
+    vi.mocked(consumeDeviceLinkCode).mockReset();
+    vi.mocked(linkDeviceGoogle).mockReset();
   });
 
   /**
@@ -155,11 +200,21 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     fireEvent.change(screen.getByLabelText(/Confirm PIN/i), { target: { value: '1234' } });
   };
 
+  /**
+   * The progress RAIL's listitems, and only those.
+   *
+   * `getAllByRole('listitem')` is screen-wide, and the submit-gate explainer
+   * introduced a second list (one item per unmet requirement). A test asserting
+   * "the rail has three steps" must not count those — the rail's list is
+   * identified by the one class name only it wears.
+   */
+  function railSteps(): HTMLElement[] {
+    return Array.from(document.querySelectorAll('.provisioning-step'));
+  }
+
   /** The progress-rail <li> whose visible label is `name` (it carries aria-current). */
   function stepLi(name: string): HTMLElement {
-    const li = screen
-      .getAllByRole('listitem')
-      .find((n) => n.textContent?.trim().endsWith(name));
+    const li = railSteps().find((n) => n.textContent?.trim().endsWith(name));
     if (!li) throw new Error(`no progress step labelled "${name}"`);
     return li;
   }
@@ -187,6 +242,10 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
       });
 
     render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // The QR view is not the default tab any more (fix 4 — the email leg is),
+    // and this failure renders in that view. Ask for it by name.
+    fireEvent.click(await screen.findByRole('tab', { name: /QR Pairing/i }));
 
     // The failure surfaces, and a control to retry is offered beside it.
     const retry = await screen.findByRole('button', { name: /Refresh Code/i });
@@ -307,7 +366,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Offering three steps, none complete, positioned at the first.
     // The three labels are the accessible names of their <li>, and aria-current
     // sits on the <li> — not on the inner label span `getByText` returns.
-    const steps = screen.getAllByRole('listitem');
+    //
+    // Scoped to the RAIL's own list: the submit-gate explainer is a second list
+    // on this screen (one <li> per unmet requirement), and a screen-wide
+    // count would now measure the explainer as well. The rail is what this
+    // test is about.
+    const steps = railSteps();
     expect(steps).toHaveLength(3);
     // The <li> is what carries aria-current; its label is a child span.
     expect(stepLi('Account')).toHaveAttribute('aria-current', 'step');
@@ -812,6 +876,12 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(screen.getByRole('tab', { name: /QR Pairing/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Email Code/i })).toBeInTheDocument();
 
+    // The EMAIL tab is the default now (fix 4): a merchant alone with one
+    // terminal cannot scan a QR with a second signed-in phone. This test is
+    // about the QR leg specifically, so it asks for it by name.
+    expect(screen.getByRole('tab', { name: /Email Code/i }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
+
     // Flush startDevicePairing microtasks
     await vi.runOnlyPendingTimersAsync();
 
@@ -825,6 +895,8 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     expect(pollDevicePairing).toHaveBeenCalledWith('poll-token-xyz');
     expect(screen.getByText(/Linked to tablet-merchant@example\.com\./i)).toBeInTheDocument();
 
+    // (Real timers are restored for every test by the afterEach hook, so a
+    // failure above cannot freeze the clock for the rest of the suite.)
     vi.useRealTimers();
 
     fillBasicForm();
@@ -867,10 +939,14 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
     // Switch to Mode 2
     fireEvent.click(screen.getByTestId('provision-mode-linked'));
 
-    // Switch to Email Code subtab
+    // The Email Code subtab is ALREADY the selected one (fix 4). This test used
+    // to click it, which passed on the old default too — so the assertion that
+    // it is selected is now the load-bearing part, not a side effect of a tap.
     const emailTab = screen.getByRole('tab', { name: /Email Code/i });
-    fireEvent.click(emailTab);
     expect(emailTab.getAttribute('aria-selected')).toBe('true');
+    // And the QR route is still exactly one tap away: the default changed, it
+    // was not removed.
+    expect(screen.getByRole('tab', { name: /QR Pairing/i })).toBeInTheDocument();
 
     // Input email and send code. Queried by its accessible NAME, not its
     // placeholder: the field used to have only a placeholder, which is not a
@@ -909,6 +985,296 @@ describe('ProvisioningFlow (ADR #56 §2.3 / §2.5)', () => {
         }),
       );
     }, FAST_WAIT);
+  });
+
+  // ── Fix 1: the submit gate explains itself, and takes you to the field ──
+  //
+  // A `disabled` button cannot be pressed, so it cannot explain itself either.
+  // Every unmet clause of `canSubmit` was a dead control with no stated reason,
+  // and two of them (store type, PIN length) are not fields the merchant is
+  // looking at. Worse, the card runs well past the viewport on the terminal this
+  // ships to, so naming the problem is not enough — focus has to move too.
+  //
+  // Every test here has a negative control: removing either half (the list, or
+  // the focus move) makes it fail.
+
+  it('names every unmet requirement of the submit gate beside the button', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // First paint, linked mode: the account is not linked and nothing is filled.
+    // The list sits ABOVE the button — the control that cannot be pressed.
+    const blockers = screen.getByTestId('provision-submit-blockers');
+    const submit = screen.getByTestId('provision-submit');
+    expect(submit).toBeDisabled();
+    expect(blockers.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // Announced politely, not as an interrupting alert: this list updates on
+    // every keystroke, and an alert per character would talk over typing.
+    expect(blockers.getAttribute('role')).toBe('status');
+
+    // The account step is named — the one requirement with no field of its own.
+    expect(within(blockers).getByText(/Link an account, or pick/i)).toBeInTheDocument();
+    // …and the store type, which is a decision the merchant can already see but
+    // has not made.
+    expect(within(blockers).getByText(/Choose the kind of shop/i)).toBeInTheDocument();
+  });
+
+  it('each gate item moves focus to the control that must change', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+
+    // Answering steps 1 and 2 opens the owner fields, so the remaining blockers
+    // are fields that exist and can take focus.
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    const blockers = screen.getByTestId('provision-submit-blockers');
+    expect(within(blockers).queryByText(/Choose the kind of shop/i)).not.toBeInTheDocument();
+
+    // The PIN item focuses the PIN field itself, not the confirm field: the
+    // length is what is missing.
+    fireEvent.click(within(blockers).getByText(/A PIN of at least 4 digits/i));
+    expect(document.activeElement).toBe(screen.getByLabelText(/^PIN/i));
+
+    // And it moves, rather than staying put on a repeat press — otherwise the
+    // control looks broken to a keyboard user.
+    fireEvent.click(within(blockers).getByText(/Shop name/i));
+    expect(document.activeElement).toBe(screen.getByLabelText(/Shop name/i));
+  });
+
+  it('drops a requirement from the gate as soon as it is satisfied', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    selectOfflineMode();
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+
+    const blockers = () => screen.getByTestId('provision-submit-blockers');
+    // Four owner fields are still empty, plus the PIN agreement.
+    expect(within(blockers()).getByText(/Shop name/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Shop name/i), { target: { value: 'Toko Berkah' } });
+    expect(within(blockers()).queryByText(/Shop name/i)).not.toBeInTheDocument();
+
+    // When nothing is left, the explainer leaves with the disabled button —
+    // it must not linger as a stale list under an enabled submit.
+    fillBasicForm();
+    expect(screen.queryByTestId('provision-submit-blockers')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provision-submit')).not.toBeDisabled();
+  });
+
+  it('the gate list cannot disagree with the gate: they agree at every step', () => {
+    // The load-bearing property. If the list and `canSubmit` ever come from
+    // different values, the merchant is told the form is complete while the
+    // button refuses (or worse, the reverse). Walking the form proves they are
+    // the same predicate by construction.
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    const submit = screen.getByTestId('provision-submit');
+    const outstanding = () =>
+      screen.queryAllByRole('listitem').filter((li) => li.closest('.provisioning-submit-blockers')).length;
+
+    expect(submit).toBeDisabled();
+    expect(outstanding()).toBeGreaterThan(0);
+
+    selectOfflineMode();
+    expect(outstanding()).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+
+    // One step closer: fewer requirements, still not submittable.
+    const beforeFields = outstanding();
+    expect(submit).toBeDisabled();
+    expect(beforeFields).toBeGreaterThan(0);
+
+    fillBasicForm();
+    expect(outstanding()).toBe(0);
+    expect(submit).not.toBeDisabled();
+  });
+
+  // ── Fix 2: offline is a warning WITH a way out, not a dead end ──────────
+  //
+  // `provision_device` is local SQLite — what offline blocks is the LINK, not
+  // the setup. The warning said only why linking was impossible while every
+  // control that could change that was disabled, which left the one mode that
+  // still works a tap away with no explanation of its own.
+
+  it('offers a one-click switch to the offline mode while disconnected', () => {
+    setOnline(false);
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // The reason is still stated…
+    expect(screen.getByTestId('provision-offline-switch')).toHaveTextContent(
+      /Internet connection is required/i,
+    );
+    // …AND the way out is on the same box.
+    const escape = screen.getByTestId('provision-offline-use-local');
+    fireEvent.click(escape);
+
+    // Which completes step 1, so the owner fields open: the merchant is no
+    // longer stranded at a decision they cannot act on.
+    expect(screen.getByTestId('provision-mode-local').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByTestId('store-type-simple-retail'));
+    expect(screen.getByLabelText(/Shop name/i)).toBeInTheDocument();
+  });
+
+  it('hides the offline escape once it has been taken', () => {
+    setOnline(false);
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    fireEvent.click(screen.getByTestId('provision-offline-use-local'));
+
+    // Pointing the merchant at the local mode while they are already in it is
+    // noise: the switch is a route out of the linked path only.
+    expect(screen.queryByTestId('provision-offline-use-local')).not.toBeInTheDocument();
+    // Stronger than that: on the local path there is no account box at all, so
+    // the warning it lived in goes with it — nothing is still claiming a
+    // connection is required for a mode that requires no connection.
+    expect(screen.queryByTestId('provision-offline-switch')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Internet connection is required/i)).not.toBeInTheDocument();
+  });
+
+  // ── Fix 3: an expired pairing code replaces itself ─────────────────────
+  //
+  // The expiry used to be reported only AFTER the merchant came back to the
+  // screen with a QR that no longer worked, and the only remedy was pressing
+  // "Refresh Code". Nothing appeared at the moment the code died, so the first
+  // reaction — scan it again, because it used to work — failed invisibly.
+
+  it('mints a fresh pairing code the moment the old one expires', async () => {
+    vi.useFakeTimers();
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    // The FIRST session is already expired when it arrives; the second is live.
+    // Both `expires_at` values are built from the FAKE clock, so the fake
+    // timers must be installed BEFORE the mock is set up — otherwise "one
+    // second ago" is measured against the real clock and the session is live.
+    vi.mocked(startDevicePairing)
+      .mockResolvedValueOnce({
+        code: 'OLD12345',
+        poll_token: 'tok-old',
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=OLD12345',
+      })
+      .mockResolvedValueOnce({
+        code: 'NEW12345',
+        poll_token: 'tok-new',
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=NEW12345',
+      });
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    // `getByRole`, not `findByRole`: fake timers are installed, and testing-library's
+    // `findBy` waits on those same fake timers, so it hangs until the 10s
+    // timeout instead of resolving.
+    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
+    // Exactly zero milliseconds: the first session's promise has to settle and
+    // paint, and the 3s poll must NOT have run yet. (runOnlyPendingTimersAsync
+    // would fire the interval here, so by the time we looked the replacement
+    // would already be on screen — which is the behaviour, but it left this
+    // test asserting a frame the merchant never sees.)
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The dead code is on screen first.
+    expect(screen.getByTestId('pairing-code-badge')).toHaveTextContent('OLD1 - 2345');
+
+    // One poll tick later — 3s, which is what the merchant would have had to
+    // wait before even learning the code was dead.
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(startDevicePairing).toHaveBeenCalledTimes(2);
+    // The replacement is on screen WITHOUT a press, and it is the one the
+    // merchant would scan.
+    expect(screen.getByTestId('pairing-code-badge')).toHaveTextContent('NEW1 - 2345');
+    // No "expired" notice competing with a perfectly good new code.
+    expect(screen.queryByText(/Pairing code expired/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the manual refresh available when the automatic one fails', async () => {
+    // The auto-refresh must not REPLACE the hand escape: it calls the same
+    // `loadPairingSession`, and if THAT fails the merchant is offline or the
+    // server is down — the case a button is for. If the failure had silently
+    // dropped the retry, this test would see a dead tab again.
+    vi.useFakeTimers();
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing)
+      .mockResolvedValueOnce({
+        code: 'OLD12345',
+        poll_token: 'tok-old',
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+        qr_url: 'https://kasir.mu/pair?code=OLD12345',
+      })
+      .mockRejectedValue(new Error('network down'));
+
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    // Same reason as the test above: `findByRole` waits on the fake clock.
+    fireEvent.click(screen.getByRole('tab', { name: /QR Pairing/i }));
+    // 0ms first: the dead session must be ON SCREEN before the poll can notice
+    // it is dead. 3s after that is the tick that mints the replacement.
+    await vi.advanceTimersByTimeAsync(0);
+    // 1st call: the first (already dead) session. This tick's 2nd call is the
+    // automatic refresh, and it is the one that fails.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(startDevicePairing).toHaveBeenCalledTimes(2);
+
+    // getByRole, not findByRole: the fake clock is still installed, and
+    // findBy waits on it, so the wait could only end in the 10s timeout.
+    const retry = screen.getByRole('button', { name: /Refresh Code/i });
+    // 3rd call: the merchant pressing it by hand.
+    fireEvent.click(retry);
+    expect(startDevicePairing).toHaveBeenCalledTimes(3);
+  });
+
+  // ── Fix 4: the tablet opens on the route a solo merchant can actually use ──
+
+  it('opens the tablet on the email route, and says what QR needs', () => {
+    vi.mocked(isTabletShell).mockReturnValue(true);
+    vi.mocked(startDevicePairing).mockResolvedValue({
+      code: 'ABCD1234',
+      poll_token: 'tok',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      qr_url: 'https://kasir.mu/pair?code=ABCD1234',
+    });
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // The DEFAULT is the email leg. QR asks for a second phone already signed
+    // in to the account — three-part precondition on the first screen of setup,
+    // which a merchant with one terminal alone cannot meet.
+    expect(screen.getByRole('tab', { name: /Email Code/i })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /QR Pairing/i })).toHaveAttribute('aria-selected', 'false');
+    // The cost is disclosed rather than discovered at the tab.
+    expect(screen.getByText(/QR pairing needs a second phone signed in/i)).toBeInTheDocument();
+
+    // And no pairing session is minted for a route the merchant did not open:
+    // starting one is a network call, and the automatic-start effect is gated
+    // on the QR tab for exactly that reason.
+    expect(startDevicePairing).not.toHaveBeenCalled();
+  });
+
+  // ── Fix 5: the currency and timezone this terminal is set up with ────────
+
+  it('discloses the currency and timezone the submit sends', async () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+
+    // Both have always been sent in the payload; before this the merchant was
+    // told neither, and discovered them after opening the register.
+    expect(screen.getByTestId('provisioning-locale-note')).toHaveTextContent('Set up in IDR (Asia/Jakarta)');
+
+    // The disclosure quotes the SAME constants the submit sends — a disclosure
+    // naming different ones would be worse than none. Asserted against the
+    // actual payload, not against the note.
+    selectOfflineMode();
+    fillBasicForm();
+    fireEvent.click(screen.getByTestId('provision-submit'));
+    // The submit awaits the device id and the preset lookup before provisioning,
+    // so the payload is asserted once it exists rather than synchronously.
+    await waitFor(() => {
+      expect(provisionDevice).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: 'IDR', timezone: 'Asia/Jakarta' }),
+      );
+    }, FAST_WAIT);
+  });
+
+  it('carries the version and IP footer every other setup surface shows', () => {
+    render(<ProvisioningFlow onProvisioned={mockOnProvisioned} />);
+    // The footer was already invented and agreed on (MobileSetupHub, the three
+    // auth modals, StaffLoginScreen, LicenseActivationScreen); this flow was
+    // the one screen that omitted it, so a merchant told their version on the
+    // next screen read a different one here.
+    expect(screen.getByTestId('provisioning-footer')).toHaveTextContent(
+      'v0.0.40 • kasir.mu © 2026 All rights reserved.',
+    );
   });
 });
 
