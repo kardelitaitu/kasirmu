@@ -132,4 +132,36 @@ Dated claims, true when the review closed on 2026-09-12; none is a design invari
   made this look like a leak was counting delta rows rather than reading what goes into them —
   the row exists, and the FORM of its value is what decides.
 
+
+## Amendment — COR-17/30, the cloud-export credential fields are sealed (2026-10-04)
+
+ADR-52's method is to read what goes INTO a row, not merely that a row exists. Applied
+to the last named cleartext carrier in `crates/kasirmu-core/src/export/cloud_destination.rs`,
+it found two credential FIELDS persisted in the `cloud_export_config` JSON blob in the
+clear: the BigQuery `service_account_key_b64` (a base64 ENCODING, not encryption) and the
+Snowflake `password`. Both rode every `.db` / `.backup.db` page copy — the same carrier
+the "What this does not do" section above names as unreachable by any funnel policy.
+
+`save_cloud_export_config` now seals those two fields through
+`seal_cloud_export_credentials` / `unseal_cloud_export_credentials`, using a new
+`AtRestFamily::CloudExportAtRest` (`crates/kasirmu-crypto/src/lib.rs`, static portable key,
+mirroring `SMTP_AT_REST`). Identifier fields (project, dataset, table, username, host) stay
+legible for debugging — the same shape as `smtp_config`, which seals only its password
+field and is admitted by `CLEARTEXT_CREDENTIAL_EXCEPTION` for exactly that reason. A
+pre-sealing plaintext row is still read: the unseal path is format-gated legacy passthrough,
+so an upgraded install keeps working and is re-sealed on its next save. Idempotency is
+deliberately NOT claimed — the callers pass a fresh config from the UI; the round-trip pin
+is what keeps the two halves from drifting.
+
+`crates/kasirmu-core/src/export/cloud_export_sealing_tests.rs` pins the property from both
+ends: the raw stored row must NOT contain the secret for either destination, while the
+save/load round-trip returns the plaintext unchanged, and a legacy plaintext row still
+loads. Both secrecy pins were verified RED against the unsealed writer and GREEN with it.
+
+This closes the `still open, unchanged: service-account key + Snowflake password persisted
+in settings JSON (base64 != encryption, COR-17/30 family)` note that
+`export/cloud_destination.rs` carried. The module still has NO production caller, so this
+was latent — but the fix is at the persistence boundary, which is where the carrier is,
+so a caller added later inherits it.
+
 > last audited 29-09-26 by docs-auditor
