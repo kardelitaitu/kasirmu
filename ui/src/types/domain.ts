@@ -74,6 +74,25 @@ export interface ModifierSelection {
   priceMinor: number;
 }
 
+/** A single modifier option within a group (e.g. "Rare", "Fries"). */
+export interface ModifierOption {
+  id: string;
+  name: string;
+  priceMinor: number;
+  sortOrder: number;
+  isDefault: boolean;
+}
+
+/** A modifier group for customizable items (e.g. "Doneness", "Sides"). */
+export interface ModifierGroup {
+  id: string;
+  name: string;
+  minSelections: number;
+  maxSelections: number;
+  sortOrder: number;
+  modifiers: ModifierOption[];
+}
+
 /** Label for a given course ID (legacy `drinks` resolves to Beverage). */
 export function courseLabel(courseId: CourseId | LegacyCourseId): string {
   const normalized = normalizeCourseId(courseId);
@@ -143,6 +162,8 @@ export interface Product {
   readonly defaultSupplierId?: string | null;
   /** Materialized popularity score (ADR #37) — retail grid sort key. */
   readonly popularityScore?: number;
+  /** Optional modifier groups configured for this item. */
+  readonly modifierGroups?: ModifierGroup[];
 }
 
 /** Mirrors `AppError` in `apps/desktop-tauri/src/error.rs`. */

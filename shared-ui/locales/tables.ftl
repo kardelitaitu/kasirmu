@@ -22,3 +22,4 @@ tables-load-error = Could not load the floor plan.
 tables-empty = No tables configured yet.
 tables-empty-desc = Add tables from the settings screen to build your floor plan.
 tables-empty-filtered = No tables in this section.
+tables-assign-to-order = Select for Order

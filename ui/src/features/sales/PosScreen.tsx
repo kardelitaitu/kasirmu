@@ -620,7 +620,12 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     return (
       <div className="pos-screen">
         <div style={{ flex: 1, overflow: 'auto' }}>
-          <TableManagementScreen />
+          <TableManagementScreen
+            onSelectTable={(tableName) => {
+              setTableNumber(tableName);
+              setShowTables(false);
+            }}
+          />
         </div>
         <div style={{ padding: '8px 16px', borderTop: '1px solid var(--color-border, #ddd)' }}>
           <button

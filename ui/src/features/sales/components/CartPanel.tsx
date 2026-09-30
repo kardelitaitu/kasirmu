@@ -528,14 +528,25 @@ export function CartPanel({
             </label>
             <input
               id="pos-table-number"
-              type="number"
+              type="text"
               className="pos-cart-table-input"
-              min="1"
               value={tableNumber}
               onChange={(e) => setTableNumber(e.target.value)}
               aria-label={l10n.getString('pos-cart-table-aria')}
               placeholder={l10n.getString('pos-cart-table-placeholder')}
             />
+            {isEnabled(FEATURES.TABLE_MANAGEMENT) && (
+              <button
+                type="button"
+                className="pos-cart-table-select-btn"
+                onClick={() => setShowTables(true)}
+                title={requiredLocalized(l10n, 'tables-title')}
+                aria-label={requiredLocalized(l10n, 'tables-title')}
+                data-testid="pos-cart-open-tables-btn"
+              >
+                🪑
+              </button>
+            )}
           </div>
         )}
 

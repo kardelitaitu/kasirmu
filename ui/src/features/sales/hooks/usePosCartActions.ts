@@ -15,7 +15,7 @@ import {
   overrideLinePriceScoped,
 } from '@/api/sales';
 import type { ShiftDto } from '@/api/shifts';
-import type { CartId, CartLine, Product } from '@/types/domain';
+import type { CartId, CartLine, CourseId, ModifierSelection, Product } from '@/types/domain';
 
 /** Exact addToast signature, taken from the Toast provider's own hook. */
 type AddToast = ReturnType<typeof useToast>['addToast'];
@@ -125,7 +125,11 @@ export function usePosCartActions({
   }, [cartId, addToast, sessionToken]);
 
   const handleAddProduct = useCallback(
-    (product: Product, qty?: number) => {
+    (
+      product: Product,
+      qtyOrMeta?: number | { courseId?: CourseId; modifiers?: ModifierSelection[] },
+      maybeMeta?: { courseId?: CourseId; modifiers?: ModifierSelection[] },
+    ) => {
       // Refuse only when the shift service is REACHABLE and no shift is
       // open. When it is unreachable the requirement does not apply: shifts
       // are informational, and blocking here would gate the till on a
@@ -139,7 +143,9 @@ export function usePosCartActions({
         addToast({ message: requiredLocalized(l10nRef.current, 'pos-cart-unbound-error'), type: 'error' });
         return;
       }
-      addProduct(product, qty);
+      const qty = typeof qtyOrMeta === 'number' ? qtyOrMeta : 1;
+      const meta = typeof qtyOrMeta === 'object' && qtyOrMeta !== null ? qtyOrMeta : maybeMeta;
+      addProduct(product, qty, meta);
     },
     [addProduct, addToast, cartId, activeShiftRef, shiftUnavailableRef, l10nRef], // refs stable; identity of the wrapped value must not enter deps
   );

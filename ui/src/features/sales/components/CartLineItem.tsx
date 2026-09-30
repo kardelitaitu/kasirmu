@@ -204,6 +204,20 @@ export function CartLineItem({
               </span>
             )}
           </div>
+          {line.modifiers && line.modifiers.length > 0 && (
+            <div className="pos-cart-line-modifiers" data-testid="cart-line-modifiers">
+              {line.modifiers.map((m) => (
+                <span key={`${m.groupId}-${m.modifierId}`} className="pos-cart-line-modifier-tag">
+                  {m.modifierName}
+                  {m.priceMinor > 0 && (
+                    <span className="pos-cart-line-modifier-price">
+                      {' '}(+{formatMoney({ minor_units: m.priceMinor, currency: line.unit_price.currency })})
+                    </span>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="pos-cart-line-price">
             <span className="pos-cart-line-price-at">@</span> {formatMoney(line.unit_price)}
           </div>

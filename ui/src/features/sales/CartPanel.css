@@ -413,6 +413,24 @@
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
+.pos-cart-table-select-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+  color: var(--color-fg-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pos-cart-table-select-btn:hover {
+  background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
 /* ── Footer wrapper (children live in CartPanelFooter.css) */
 
 .pos-cart-footer {

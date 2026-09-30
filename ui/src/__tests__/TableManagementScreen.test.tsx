@@ -453,4 +453,21 @@ describe('TableManagementScreen', () => {
     expect(detail?.textContent).toMatch(/Reserved/);
     expect(detail?.textContent).toMatch(/Patio/);
   });
+
+  it('assigns selected table name to onSelectTable callback when Select for Order is clicked', async () => {
+    const onSelectTable = vi.fn();
+    mockListTables.mockResolvedValue([makeTable({ name: 'VIP 2' })]);
+    renderWithWorkspace(
+      <LocalizationProvider l10n={l10n}>
+        <TableManagementScreen onSelectTable={onSelectTable} />
+      </LocalizationProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('VIP 2')).toBeDefined());
+    await userEvent.click(screen.getByText('VIP 2').closest('button')!);
+    await waitFor(() => expect(screen.getByTestId('tables-assign-to-order-btn')).toBeDefined());
+
+    await userEvent.click(screen.getByTestId('tables-assign-to-order-btn'));
+    expect(onSelectTable).toHaveBeenCalledWith('VIP 2');
+    await waitFor(() => expect(document.querySelector('.tables-detail')).toBeNull());
+  });
 });

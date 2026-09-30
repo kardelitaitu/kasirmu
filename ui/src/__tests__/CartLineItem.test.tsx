@@ -359,4 +359,31 @@ describe('CartLineItem — course assignment (restaurant coursing)', () => {
     expect(chip.className).toContain('pos-cart-course-chip--set');
     expect(chip.textContent).toContain('Main Course');
   });
+
+  it('renders modifier tags with prices when modifiers are attached to the line', () => {
+    const line: CartLine = {
+      ...makeLine({ name: 'Iced Coffee' }),
+      modifiers: [
+        {
+          groupId: 'grp-sugar',
+          groupName: 'Sugar',
+          modifierId: 'mod-less',
+          modifierName: 'Less Sugar',
+          priceMinor: 0,
+        },
+        {
+          groupId: 'grp-topping',
+          groupName: 'Topping',
+          modifierId: 'mod-boba',
+          modifierName: 'Boba',
+          priceMinor: 4000,
+        },
+      ],
+    };
+    renderItem({ line });
+    const tagsContainer = screen.getByTestId('cart-line-modifiers');
+    expect(tagsContainer).toBeDefined();
+    expect(tagsContainer.textContent).toContain('Less Sugar');
+    expect(tagsContainer.textContent).toContain('Boba');
+  });
 });

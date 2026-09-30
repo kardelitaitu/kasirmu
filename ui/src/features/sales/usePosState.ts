@@ -90,7 +90,12 @@ export function usePosState() {
     }
     triggerInteraction('add-to-cart');
     setLines((prev) => {
-      const existing = prev.find((l) => l.sku === product.sku);
+      const existing = prev.find((l) => {
+        if (l.sku !== product.sku) return false;
+        const lMods = (l.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
+        const newMods = (meta?.modifiers ?? []).map((m) => m.modifierId).sort().join(',');
+        return lMods === newMods;
+      });
       const metaSpread =
         meta?.courseId !== undefined || (meta?.modifiers && meta.modifiers.length > 0)
           ? {

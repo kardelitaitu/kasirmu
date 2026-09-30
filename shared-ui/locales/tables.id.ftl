@@ -20,5 +20,6 @@ tables-load-error = Gagal memuat denah.
 tables-empty = Belum ada meja yang dikonfigurasi.
 tables-empty-desc = Tambahkan meja dari layar pengaturan untuk membuat denah Anda.
 tables-empty-filtered = Tidak ada meja di bagian ini.
+tables-assign-to-order = Pilih untuk Pesanan
 
 # ── Tax Configuration ──
