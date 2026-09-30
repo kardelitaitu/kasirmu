@@ -233,7 +233,7 @@
 }
 
 [data-theme='light'] .resto-receipt-paper-wrapper {
-  background: var(--receipt-paper-scrim, #e8e9ec);
+  background: var(--receipt-paper-scrim);
 }
 
 .resto-receipt-paper {
@@ -814,7 +814,7 @@
   cursor: pointer;
   transition: background var(--duration-150) var(--ease-out), color var(--duration-150) var(--ease-out);
   text-align: center;
-  min-height: 38px;
+  min-height: var(--touch-target-min);
   display: inline-flex;
   align-items: center;
   justify-content: center;

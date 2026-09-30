@@ -62,8 +62,8 @@
   position: absolute;
   inset: 0;
   background: var(--color-border);
-  border-radius: var(--radius-pill, 999px);
-  transition: background var(--duration-fast, 150ms) ease;
+  border-radius: var(--radius-full);
+  transition: background var(--duration-150) ease;
   pointer-events: none;
 }
 
@@ -76,7 +76,7 @@
   height: 20px;
   border-radius: 50%;
   background: var(--color-bg);
-  transition: transform var(--duration-fast, 150ms) ease;
+  transition: transform var(--duration-150) ease;
 }
 
 .exchange-rate-switch input:checked + .exchange-rate-switch-slider {
