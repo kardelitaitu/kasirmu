@@ -14,6 +14,7 @@ use rusqlite::params;
 use crate::db::Store;
 use crate::error::CoreError;
 use crate::offline::OfflineQueueItem;
+use crate::offline::OfflineQueueStatus;
 use crate::offline::SyncPriority;
 
 use super::{currency_str, enqueue_origin, log_degraded};
@@ -61,6 +62,47 @@ impl Store<'_> {
             return Ok(None);
         }
         self.enqueue_offline(action, payload).map(Some)
+    }
+
+    /// Re-enqueue an EXISTING queue item, preserving the row identity the
+    /// caller already holds.
+    ///
+    /// Why this is not `enqueue_offline*({action, payload})`: the conflict
+    /// resolver (`platform/sync/src/conflict.rs` `resolve_stock_crdt`) builds a
+    /// merged winner that deliberately carries the local row's identity — the id
+    /// it minted, the tenant the delta belongs to, the `max(local, remote)`
+    /// retry ceiling (conflict.rs:167) and the originating terminal. The plain
+    /// enqueue helpers build a FRESH row: a second uuid, tenant `"default"`,
+    /// `retry_count` 0. A CRDT merge that keeps conflicting would therefore
+    /// acquire a new server-side identity every cycle, reset the retry bound to
+    /// zero (so the bound never engages) and re-enqueue a multi-store delta under
+    /// the wrong tenant. This helper persists the caller's item as given, so the
+    /// merge path keeps the guarantee the durable outbox (ADR #6) rests on:
+    /// re-sending the SAME row id is what makes a replay idempotent.
+    ///
+    /// Status is forced to `Pending`: the item is being handed back to the queue
+    /// for another push attempt, and a re-enqueued winner must be pushable. Every
+    /// other field (id, action, payload, tenant, priority, retry_count, origin,
+    /// created_at) is written verbatim.
+    ///
+    /// The subscription writability gate is enforced for the item's OWN tenant,
+    /// not a hardcoded one — a store-a delta is refused when store-a is past its
+    /// offline grace period.
+    pub fn enqueue_offline_preserving_item(
+        &self,
+        item: &OfflineQueueItem,
+    ) -> Result<OfflineQueueItem, CoreError> {
+        self.enforce_pos_writable_for_tenant(&item.tenant_id)?;
+
+        let mut stored = item.clone();
+        stored.status = OfflineQueueStatus::Pending;
+        stored.synced_at = None;
+        self.conn.execute(
+            "INSERT INTO offline_queue (id, action, payload, status, retry_count, last_error, created_at, synced_at, tenant_id, priority, origin_terminal_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![stored.id, stored.action, stored.payload, stored.status.as_stored_str(), stored.retry_count, stored.last_error, stored.created_at, stored.synced_at, stored.tenant_id, stored.priority as i32, stored.origin_terminal_id],
+        )?;
+        Ok(stored)
     }
 
     /// Enqueue a transaction for later sync, scoped to the given tenant.

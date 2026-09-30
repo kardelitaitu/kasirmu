@@ -157,7 +157,17 @@ impl SyncQueue {
             _ => true,
         };
         if is_new_winner {
-            store.enqueue_offline(&resolved.winner.action, &resolved.winner.payload)?;
+            // Preserve the winner's IDENTITY, not just its action and payload.
+            // The resolver built this row on purpose (conflict.rs
+            // resolve_stock_crdt): the id it minted, the tenant the delta
+            // belongs to, the `max(local, remote)` retry ceiling and the
+            // originating terminal. The plain enqueue helpers would mint a
+            // fresh uuid, reset retry_count to 0 and move the row to tenant
+            // "default" — so a merge that keeps conflicting would acquire a new
+            // server-side identity every cycle, never hit the retry bound, and a
+            // multi-store delta would re-enqueue under the wrong tenant. Reusing
+            // the SAME row id is what keeps the replay idempotent (ADR #6).
+            store.enqueue_offline_preserving_item(&resolved.winner)?;
         }
         Ok(())
     }

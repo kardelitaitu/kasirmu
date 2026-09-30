@@ -326,3 +326,18 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 > Activation and Ownership appended 09-09-26.
 
 > last audited 29-09-26 by docs-auditor
+
+---
+
+## The re-enqueue bound is closed (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it records that the first bullet of Activation and Ownership has been repaired, and how.*
+
+- **The bullet above is now historical.** `apply_resolution` no longer discards the merged winner's identity: the `is_new_winner` branch calls `Store::enqueue_offline_preserving_item(&resolved.winner)` (`platform/sync/src/queue.rs:170`) instead of `Store::enqueue_offline(&resolved.winner.action, &resolved.winner.payload)`.
+- **What the fix preserves, and why it matters.** The resolver already built the correct row — `resolve_stock_crdt` mints one uuid (`platform/sync/src/conflict.rs:163`), carries the local tenant (`:174`) and origin (`:178`) and computes `retry_count = local.max(remote)` (`:167`). The old call kept only two of those fields, so a merge that kept conflicting acquired a fresh server-side id every cycle, reset the retry ceiling to zero (the bound never engaged) and re-enqueued a multi-store delta under tenant `default`. Persisting the whole item is what keeps the replay idempotent — re-sending the **same** row id is the guarantee the durable outbox (ADR #6) rests on, and `apps/cloud-server/src/sync_store.rs` dedupes it with `ON CONFLICT (id) DO NOTHING`.
+- **The new seam.** `crates/kasirmu-core/src/db/offline/enqueue.rs:91` `enqueue_offline_preserving_item(&self, item: &OfflineQueueItem) -> Result<OfflineQueueItem, CoreError>` enforces the subscription writability gate for the item's **own** tenant (`enforce_pos_writable_for_tenant`, `crates/kasirmu-core/src/db/quota_gate.rs:74`), forces status `Pending`/`synced_at` `None`, and INSERTs all eleven columns verbatim. It is the identity-preserving counterpart to `enqueue_offline`, which deliberately mints a new row.
+- **The pin did its job.** `platform/sync/src/sync_client_divergence_tests.rs` test `crdt_merge_reenqueue_discards_retry_count_and_tenant` carried `UNDECIDED` in its assertion messages and was written to **fail loudly when someone picked a winner**. It did. It is renamed `crdt_merge_reenqueue_preserves_retry_count_and_tenant` and now asserts the corrected behaviour: `retry_count == 4`, `tenant_id == "store-a"`.
+- **The id assertion is derived, not pre-resolved.** The test does not compare the requeued row to the winner it resolved itself: `apply_push_conflict` re-resolves internally and mints a *different* uuid from the same millisecond, so the test re-derives the winner from the same inputs and asserts the persisted row's merged **payload** and **origin terminal** match, plus `requeued.id != row.id`. The unstable field is the id itself, by design.
+- **Activation state unchanged.** No server in this repository emits the conflict tag (`apps/cloud-server/src/sync_store.rs`, `platform/sync/src/pg_transport.rs` construct only `Accepted`/`Rejected`), so this repair is still latent-path work. The sibling parity gaps recorded above — the `pg_daemon` duplicate-id arm and the `SyncEngine` public-API fallthrough — are **not** addressed here.
+
+> Re-enqueue bound closed 2026-10-04.

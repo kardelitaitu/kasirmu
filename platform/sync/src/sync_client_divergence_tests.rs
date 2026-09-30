@@ -315,18 +315,20 @@ fn stock_conflict_loses_a_delta_on_one_path_only() {
     );
 }
 
-/// Dossier item 1 - the missing re-enqueue bound, pinned as CURRENT BEHAVIOUR.
+/// Dossier item 1 - the re-enqueue bound, now CLOSED (fixed 2026-10-04).
 ///
 /// resolve_stock_crdt computes retry_count = max(local, remote)
-/// (platform/sync/src/conflict.rs:167) and carries the local tenant_id, but
-/// apply_resolution re-enqueues through Store::enqueue_offline
-/// (platform/sync/src/queue.rs:331), which persists action and payload only and
-/// builds a fresh row: retry_count 0, tenant "default", and a second new uuid
-/// replacing the one the resolver made. A conflict that keeps conflicting
-/// therefore resets to zero every cycle, forever, and a multi-store delta
-/// re-enqueues under the wrong tenant.
+/// (platform/sync/src/conflict.rs:167) and carries the local tenant_id. That
+/// winner identity used to be discarded: apply_resolution re-enqueued through
+/// Store::enqueue_offline, which persists action and payload only and builds a
+/// fresh row (retry_count 0, tenant "default", a second uuid) - so a conflict
+/// that kept conflicting reset to zero every cycle, forever, and a multi-store
+/// delta re-enqueued under the wrong tenant. `apply_resolution` now calls
+/// Store::enqueue_offline_preserving_item, which writes the winner's identity
+/// verbatim. This test was the pin that failed when the winner was picked; it
+/// now asserts the corrected behaviour.
 #[test]
-fn crdt_merge_reenqueue_discards_retry_count_and_tenant() {
+fn crdt_merge_reenqueue_preserves_retry_count_and_tenant() {
     let store_db = migrations::fresh_db();
     let store = setup_store(&store_db);
     let row = store
@@ -374,16 +376,30 @@ fn crdt_merge_reenqueue_discards_retry_count_and_tenant() {
     let requeued = &requeued[0];
 
     assert_eq!(
-        requeued.retry_count, 0,
-        "UNDECIDED: the computed max never reaches the database - queue.rs:331 persists action and payload only. This is the missing ceiling, pinned not endorsed"
+        requeued.retry_count, 4,
+        "the computed max reaches the database: apply_resolution preserves the winner's identity"
     );
     assert_eq!(
-        requeued.tenant_id, "default",
-        "UNDECIDED: a store-a delta re-enqueues under tenant default - same missing persistence, same line"
+        requeued.tenant_id, "store-a",
+        "a store-a delta re-enqueues under store-a, not the default tenant"
+    );
+    // The id must be the one the RESOLVER minted inside apply_resolution, not a
+    // fresh uuid from the enqueue helper. Re-resolving with the same inputs
+    // yields the same merged payload; the only unstable part is the minted id,
+    // so assert the requeued row is a *merge winner* by re-deriving it and
+    // comparing everything but that id.
+    let rederived = crate::conflict::resolve_conflict(&local, &remote).winner;
+    assert_eq!(
+        requeued.payload, rederived.payload,
+        "the persisted row is the merged winner (same CRDT envelope)"
+    );
+    assert_eq!(
+        requeued.origin_terminal_id, rederived.origin_terminal_id,
+        "the winner's originating terminal is preserved, not re-stamped"
     );
     assert_ne!(
-        requeued.id, winner.id,
-        "UNDECIDED: a second fresh uuid replaces the id the resolver built"
+        requeued.id, row.id,
+        "the requeued row is a NEW identity (the resolver's), not the consumed local row's"
     );
 }
 
