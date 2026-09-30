@@ -10,7 +10,7 @@ kasir.mu is a Point-of-Sale platform designed for **retail, restaurants, cafés,
 
 Unlike traditional monolithic POS applications, kasir.mu is built around a modular architecture where business capabilities are implemented as independent modules. Organizations can deploy only the features they need while developers can extend the platform without modifying the core.
 
-> **Two front doors.** This file is the technical README — architecture, commands, and every figure shown with the command that re-derives it. For the product-level pitch and tier pricing, see [`README-2.md`](./README-2.md); for the tier matrix both defer to, see [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md).
+> **Two front doors.** This file is the technical README — architecture, commands, and every figure shown with the command that re-derives it. For the product-level pitch and tier pricing, see [`README.md`](./README.md); for the tier matrix both defer to, see [`docs/guides/user/subscription-tiers.md`](./docs/guides/user/subscription-tiers.md).
 
 ---
 
