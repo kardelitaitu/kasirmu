@@ -801,16 +801,17 @@ Exit criteria:
 
 **Goal:** Enforce the modular boundaries mechanically.
 
-> **Status 2026-10-03:** **largely delivered; one named gap.** Executable tickets:
-> `docs/architecture/phase4-implementation-tickets.md` (P4.1–P4.6). Done: P4.3 (`raw()` deleted),
-> P4.4 (cross-vertical denial tests), P4.5 (`namespace-governance` gate flipped to `--strict`),
-> P4.2 (`ReportingFacade` trait defined and routed), P4.6 (completion criteria on
-> `docs/architecture/module-namespace-firewall.md`). **P4.1 is partial**: the manifest
-> `capabilities` half and the `Grants::from_capabilities` derivation + boot-boundary proof landed,
-> but production repositories still hardcode their `Grants` and the kernel does not yet reject a
-> grant naming an undeclared dependency. Two gates shipped early in Phase 3 — the core-size ratchet
-> and the handler-classification gate. The remaining extraction (lifting the ownership map into core
-> to move the BOM deduction) is Phase 4 follow-on.
+> **Status 2026-10-03: COMPLETE.** Executable tickets:
+> `docs/architecture/phase4-implementation-tickets.md` (P4.1–P4.6), all six DONE. The `ReportingFacade`
+> trait is defined and routed (P4.2); the `NamespacedStore::raw()` hatch is deleted (P4.3); the
+> cross-vertical denial tests exist at every wrapped module boundary plus the boot boundary (P4.4);
+> the `namespace-governance` gate runs `--strict` (P4.5); completion criteria are stated on
+> `docs/architecture/module-namespace-firewall.md` (P4.6); and strict enforcement is complete (P4.1): each
+> wrapped repository derives its grants from its embedded `manifest.json`, and the kernel rejects a grant
+> with no declared dependency at boot. Two gates shipped early in Phase 3 — the core-size ratchet and the
+> handler-classification gate. The remaining extraction (lifting the ownership map into core to move the
+> cross-vertical BOM deduction in `crates/kasirmu-core/src/db/sales_lifecycle.rs`) is the next unit of
+> work, tracked in §14.
 
 - [x] Enable strict `NamespacedStore` enforcement. *(2026-10-03: runtime rejection + `raw()` removal are in (P4.3/P4.4), and every wrapped repository now derives its grants from its embedded manifest — P4.1 commit `130dc212a` reversed the hardcoding; see `docs/architecture/module-namespace-firewall.md` §7.)*
 - [x] Reject unauthorized cross-namespace table access. *(2026-10-03: `check_statement` + `NamespaceError::Foreign`, no-grant foreign read refused; P4.4 denial tests.)*
@@ -930,20 +931,18 @@ The modular scaffolding effort is complete when:
 
 ## 14. Immediate Next Actions
 
-The actions this section listed when Phases 0–3 began (run the handler census, write the seam-taxonomy
-ADR, add the soft governance rules, draft `NamespacedStore`, prepare the Phase 1 tickets) are all
-delivered — see §15. The next concrete action is:
+Phases 0–4 are delivered (see §15). The only structural item the enforcement work could not
+close is a *core extraction*:
 
-1. **Execute the Phase 4 implementation tickets** (`docs/architecture/phase4-implementation-tickets.md`,
-   written 2026-10-03 — P4.1–P4.6), covering:
-   - a `ReportingFacade` trait so reporting reads go through one named surface
-     (`docs/architecture/reporting-facade-inventory.md` §7 sketches the four methods);
-   - strict `NamespacedStore` rejection of ungranted access;
-   - removing the `NamespacedStore::raw()` compatibility hatch;
-   - lifting the table-ownership map into `kasirmu-core` so the cross-vertical BOM deduction in
-     `crates/kasirmu-core/src/db/sales_lifecycle.rs` can move;
-   - per-vertical `capabilities` declarations in each `modules/*/manifest.json`.
+1. **Lift the table-ownership map into `kasirmu-core` so the cross-vertical BOM deduction can move.**
+   `crates/kasirmu-core/src/db/sales_lifecycle.rs` deducts stock and consumes recipe ingredients, but
+   it runs in core, so no module boundary governs it. The move needs `owner_of`/`TABLE_OWNERS`
+   (`crates/kasirmu-core/src/db/ownership.rs`, already the generated single source) to be usable from
+   the reconciliation path, then the deduction routed behind the `inventory` module seam. This is the
+   remaining half of the plan’s  10 “Move owned domain types” item, marked PARTIAL in Phase 3.
 
+Everything else the plan listed (the handler census, the seam-taxonomy ADR, the soft governance
+rules, `NamespacedStore`, the Phase 1–4 tickets) is delivered.
 ---
 
 ## 15. Final Status
@@ -961,8 +960,9 @@ The modular scaffolding plan is aligned with the current codebase, and its deliv
 - **Phase 3 — Vertical Extraction: DONE.** Seven modules wrapped on `NamespacedStore`, loyalty's
   gift-card read a declared grant, the dead reporting surface retired, and the `core-size-ratchet` gate
   (ceiling 36590) — `docs/architecture/phase3-implementation-tickets.md`.
-- **Phase 4 — Strict Namespace Firewall: OPEN.** Needs its own ticket document; see the status note
-  under its heading.
+- **Phase 4 — Strict Namespace Firewall: DONE.** The `ReportingFacade` trait, `raw()` removal,
+  cross-vertical denial tests, `--strict` gate, firewall completion doc, and manifest-derived repository
+  grants with a boot-time undeclared-grant rejection — `docs/architecture/phase4-implementation-tickets.md`.
 
 Standing invariants (unchanged):
 
