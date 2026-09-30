@@ -15,11 +15,13 @@ once at startup and never polled (now reported by lock_or_report, which
 REFUSES a poisoned guard rather than recovering it).
 Still true: every Redis error degrades to miss/noop, the fail-safe direction;
 no secrets in keys; the listener exits cleanly on its shutdown signal.
-next: create_cache logs nothing when the feature is simply not compiled, so a
-startup cache_healthy=false cannot be told apart from a dead server; the
-pub/sub listener breaks permanently on its first non-timeout error with no
-reconnect, and the returned Sender cannot tell its owner it died; neither is
-reachable today — nothing calls start_inventory_pubsub or
+next: FIXED 2026-10-04 (COR-37): create_cache now emits a distinguishable
+tracing::debug! ("cache-redis feature is not compiled; using noop cache") in
+the no-feature arm, so a startup cache_healthy=false can be told apart from a
+dead server (the dead-server arm already logs its own error= warning).
+Still open: the pub/sub listener breaks permanently on its first non-timeout
+error with no reconnect, and the returned Sender cannot tell its owner it
+died; neither is reachable today — nothing calls start_inventory_pubsub or
 publish_inventory_change.
 perf: single mutex-guarded connection — one dead or slow connection serialises
 every caller; reconnect and backoff need a real server to test.
@@ -525,6 +527,19 @@ pub fn create_cache(redis_url: &str, ttl_seconds: u64) -> Arc<dyn Cache> {
             Ok(cache) => return Arc::new(cache),
             Err(e) => tracing::warn!(error = %e, "Redis unavailable, using noop cache"),
         }
+    }
+    // Distinguish "this build has no Redis cache compiled in" from
+    // "a Redis server was configured but is unreachable". The two arms
+    // both return NoopCache, so without this line a startup report of
+    // `cache_healthy = false` is ambiguous.
+    #[cfg(not(feature = "cache-redis"))]
+    {
+        let _ = (redis_url, ttl_seconds);
+        tracing::debug!("cache-redis feature is not compiled; using noop cache");
+    }
+    #[cfg(feature = "cache-redis")]
+    {
+        let _ = (redis_url, ttl_seconds);
     }
     Arc::new(NoopCache)
 }

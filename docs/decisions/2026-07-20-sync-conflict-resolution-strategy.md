@@ -557,3 +557,11 @@ Both stamp lines now record this and read `next: none`.
 - **Decrypted-GET documentation** — the tradeoff is documented at `crates/kasirmu-api/src/routes/settings.rs:204` (`# API-2 security note (decrypted SMTP password)`), naming both guards (admin-key gate with constant-time compare; `OZ_ADMIN_KEY` mandatory behind `OZ_PRODUCTION=1` via `validate_production_secrets`) and the redaction path to take if either is ever relaxed.
 
 The `auth.rs` findings line now records the correction and `next:` reads `none`.
+
+## `create_cache` now says why it returned a noop cache (COR-37, fixed 2026-10-04)
+
+`crates/kasirmu-core/src/cache.rs` `create_cache` (`:521`) returns `NoopCache` on two very different conditions: the `cache-redis` feature is not compiled into this build, or a Redis server was configured but the connect failed. The second arm logged `tracing::warn!(error = %e, "Redis unavailable, using noop cache")`; the first logged nothing. An operator reading `cache_healthy = false` at startup therefore could not tell "this build has no Redis cache at all" from "a Redis server is configured but dead".
+
+The no-feature arm now emits `tracing::debug!("cache-redis feature is not compiled; using noop cache")`. The feature arm keeps its existing `error = %e` warning and gains a `let _ = (redis_url, ttl_seconds);` so its parameters stay used under both `cfg`s.
+
+Pinned by `create_cache_without_the_feature_is_distinguishable_from_a_dead_server` in `crates/kasirmu-core/src/cache_create_tests.rs` (a source-level guard: a log line cannot be observed behaviourally). The remaining cache observations (pub/sub listener does not reconnect; the `Sender` cannot report its own death) stay recorded — neither is reachable, since nothing calls `start_inventory_pubsub` or `publish_inventory_change`.
