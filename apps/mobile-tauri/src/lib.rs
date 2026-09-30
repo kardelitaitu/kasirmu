@@ -246,6 +246,13 @@ pub fn run() {
                 // ── Module system lifecycle (shared startup) ──────────────
                 platform_startup::init_module_system(&state.kernel, &state.db_path)?;
 
+                // ── Exchange-rate auto-sync daemon (started for the first time) ─
+                // Landed 2026-09-29 — see the same block in the desktop shell
+                // (`apps/desktop-tauri/src/lib.rs`) for why it is inert until
+                // `rate_sync.enabled` is on, and `init_rate_sync_at` for why it
+                // opens its own WAL connection.
+                platform_startup::init_rate_sync_at(&state.db_path);
+
                 // ── Manage state BEFORE spawning background daemons ───────
                 // Daemons access AppState via try_state(), which only works
                 // after the state is managed. Managing first avoids the

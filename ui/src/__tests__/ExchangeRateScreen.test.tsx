@@ -14,6 +14,10 @@ const mockListExchangeRatesScoped = vi.fn();
 const mockListCurrenciesScoped = vi.fn();
 const mockCreateExchangeRateScoped = vi.fn();
 const mockDeleteExchangeRateScoped = vi.fn();
+// The auto-sync switch reads/writes rate_sync.enabled through the generic
+// scoped settings commands (ui/src/api/settings.ts).
+const mockGetSettingScoped = vi.fn();
+const mockSetSettingScoped = vi.fn();
 
 // CUR-06: the screen must route through the session-scoped commands when a
 // workspace session is active, so multi-store deployments never read or
@@ -36,6 +40,11 @@ vi.mock('@/api/currency', () => ({
   deleteExchangeRateScoped: (...args: unknown[]) => mockDeleteExchangeRateScoped(...args),
   formatExchangeRate: (rate: { rate_millionths: number }) =>
     (rate.rate_millionths / 1_000_000).toString(),
+}));
+
+vi.mock('@/api/settings', () => ({
+  getSettingScoped: (...args: unknown[]) => mockGetSettingScoped(...args),
+  setSettingScoped: (...args: unknown[]) => mockSetSettingScoped(...args),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────
@@ -366,5 +375,86 @@ describe('ExchangeRateScreen — scoped session', () => {
     await waitFor(() => {
       expect(mockDeleteExchangeRateScoped).toHaveBeenCalledWith('test-token', 'rate-1');
     });
+  });
+});
+
+// ── Auto-sync toggle: the rate_sync.enabled round trip ───────────────────
+// The daemon started shipping 2026-09-29 and re-reads this key every cycle,
+// so the switch is the whole control surface: what it reads must match what
+// it writes, and a failed write must not leave a switch claiming ON.
+describe('ExchangeRateScreen — auto-sync toggle', () => {
+  beforeEach(() => {
+    mockListExchangeRatesScoped.mockReset();
+    mockListCurrenciesScoped.mockReset();
+    mockGetSettingScoped.mockReset();
+    mockSetSettingScoped.mockReset();
+    mockGetSettingScoped.mockResolvedValue(null);
+    mockSetSettingScoped.mockResolvedValue(undefined);
+    workspaceMock.sessionToken = 'test-token';
+  });
+
+  it('reads rate_sync.enabled through the scoped command and reflects it on the switch', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('1');
+
+    renderScreen();
+
+    await waitFor(() => {
+      const sw = screen.getByRole('switch', { name: /auto-update rates/i }) as HTMLInputElement;
+      expect(sw.checked).toBe(true);
+    });
+    expect(mockGetSettingScoped).toHaveBeenCalledWith('test-token', 'rate_sync.enabled');
+  });
+
+  it('renders off when the key has never been written (backend default "0")', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue(null);
+
+    renderScreen();
+
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    expect(sw.checked).toBe(false);
+  });
+
+  it('persists a flip as "1" and confirms with a toast', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('0');
+
+    renderScreen();
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    await waitFor(() => expect(sw).toBeEnabled());
+
+    const user = userEvent.setup();
+    await user.click(sw);
+
+    await waitFor(() => {
+      expect(mockSetSettingScoped).toHaveBeenCalledWith('test-token', 'rate_sync.enabled', '1');
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Rate auto-sync turned on')).toBeTruthy();
+    });
+    expect(sw.checked).toBe(true);
+  });
+
+  it('reverts the switch and toasts when the write fails', async () => {
+    mockListExchangeRatesScoped.mockResolvedValue([]);
+    mockListCurrenciesScoped.mockResolvedValue([]);
+    mockGetSettingScoped.mockResolvedValue('0');
+    mockSetSettingScoped.mockRejectedValue(new Error('denied'));
+
+    renderScreen();
+    const sw = (await screen.findByRole('switch', { name: /auto-update rates/i })) as HTMLInputElement;
+    await waitFor(() => expect(sw).toBeEnabled());
+
+    const user = userEvent.setup();
+    await user.click(sw);
+
+    await waitFor(() => {
+      expect(screen.getByText('Could not save the auto-sync setting')).toBeTruthy();
+    });
+    expect(sw.checked).toBe(false);
   });
 });

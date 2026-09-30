@@ -526,10 +526,48 @@ pub fn init_pending_sale_reaper(db_path: &std::path::Path) {
 /// from the public Frankfurter API and stores them in the database.
 /// Returns the daemon handle so callers can inspect status or shut it
 /// down.
+///
+/// The shells do not call this directly — they call [`init_rate_sync_at`],
+/// which opens the connection this signature requires. Kept public because
+/// the daemon handle it returns is the only way to observe or stop an
+/// already-running instance.
 pub async fn init_rate_sync(db: rate_sync::DbConnection) -> rate_sync::RateSyncDaemon {
     let daemon = rate_sync::RateSyncDaemon::new();
     daemon.start(db).await;
     daemon
+}
+
+/// Spawn the exchange-rate auto-sync daemon on its own database connection.
+///
+/// This is the wiring both Tauri shells call from their `setup` closure
+/// (desktop `apps/desktop-tauri/src/lib.rs`, tablet
+/// `apps/mobile-tauri/src/lib.rs`). Two reasons it opens its own connection
+/// instead of borrowing `AppState.db`:
+///
+/// 1. **Type:** `rate_sync::DbConnection` is a `std::sync::Mutex` connection
+///    because its ticks run inside `spawn_blocking`, while the shells' shared
+///    `AppState.db` is a `tokio::sync::Mutex` (blocking on it from
+///    `spawn_blocking` would be a lock-ordering hazard, not just slow).
+/// 2. **Pattern:** it is the same shape as [`init_pending_sale_reaper`] — a
+///    background daemon on a dedicated WAL connection, so neither the main
+///    connection nor the daemon blocks the other.
+///
+/// Uses [`spawn_once`], not [`spawn_daemon`]: the future's job is to START the
+/// daemon's own task, so a clean return is success. A panic is still reported
+/// by the watchdog. If the database cannot be opened, the daemon is skipped
+/// with an error log — a missing rate feed must never stop a POS from booting.
+pub fn init_rate_sync_at(db_path: &std::path::Path) {
+    let path = db_path.to_owned();
+    spawn_once("rate-sync", async move {
+        let conn = match open_handler_connection(&path) {
+            Ok(conn) => conn,
+            Err(e) => {
+                tracing::error!(?e, "rate sync: failed to open DB — daemon not started");
+                return;
+            }
+        };
+        init_rate_sync(conn).await;
+    });
 }
 
 #[cfg(test)]

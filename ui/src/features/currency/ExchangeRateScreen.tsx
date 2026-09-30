@@ -11,6 +11,7 @@ import {
   type CreateExchangeRateArgs,
 } from '@/api/currency';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { getSettingScoped, setSettingScoped } from '@/api/settings';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
@@ -43,6 +44,9 @@ const EMPTY_FORM: FormData = {
   effectiveDate: todayStr(),
 };
 
+/** Settings key read/written by the auto-sync toggle (platform/core keys.rs). */
+const RATE_SYNC_ENABLED_KEY = 'rate_sync.enabled';
+
 /** Exchange rate management screen — create and delete currency exchange rates for multi-currency support. */
 export default function ExchangeRateScreen() {
   const { l10n } = useLocalization();
@@ -62,6 +66,17 @@ export default function ExchangeRateScreen() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExchangeRateDto | null>(null);
+
+  // ── Auto-sync toggle (rate_sync.enabled) ───────────────────────────
+  // The daemon behind this switch started shipping 2026-09-29 and re-reads
+  // the key every cycle, so flipping it takes effect within one cycle (≤ 5
+  // minutes while off) without a restart. Default off = the backend default,
+  // so an untouched install never makes a network call. A failed READ is not
+  // an error state for this screen (unset key, legacy no-session mode): it
+  // shows off, which is the truth either way; a failed WRITE toasts.
+  const [autoSync, setAutoSync] = useState(false);
+  const [autoSyncLoading, setAutoSyncLoading] = useState(true);
+  const [autoSyncSaving, setAutoSyncSaving] = useState(false);
 
   // LOAD-07: request-generation guard — a slow response from an earlier
   // load/unmount must never overwrite newer state.
@@ -90,6 +105,44 @@ export default function ExchangeRateScreen() {
   }, [l10n, sessionToken]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadAutoSync = useCallback(async () => {
+    try {
+      const raw = await getSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY);
+      setAutoSync(raw === '1');
+    } catch {
+      // Unset key (never written) or no session token: the backend default
+      // for this key is "0", which is also what we just rendered.
+    } finally {
+      setAutoSyncLoading(false);
+    }
+  }, [sessionToken]);
+
+  useEffect(() => { loadAutoSync(); }, [loadAutoSync]);
+
+  const toggleAutoSync = useCallback(
+    async (next: boolean) => {
+      setAutoSyncSaving(true);
+      try {
+        await setSettingScoped(sessionToken || null, RATE_SYNC_ENABLED_KEY, next ? '1' : '0');
+        setAutoSync(next);
+        addToast({
+          message: requiredLocalized(
+            l10n,
+            next ? 'currency-autosync-enabled' : 'currency-autosync-disabled',
+          ),
+          type: 'success',
+        });
+      } catch {
+        // Nothing was written, so the switch must go back — an optimistic
+        // toggle that stays flipped lies about the daemon's actual state.
+        addToast({ message: requiredLocalized(l10n, 'currency-autosync-error'), type: 'error' });
+      } finally {
+        setAutoSyncSaving(false);
+      }
+    },
+    [sessionToken, l10n, addToast],
+  );
 
   const openCreate = useCallback(() => {
     setForm(EMPTY_FORM);
@@ -172,6 +225,37 @@ export default function ExchangeRateScreen() {
           <Button onClick={openCreate}>Add</Button>
         </Localized>
       </div>
+
+      {/* Auto-sync switch — writes rate_sync.enabled; see loadAutoSync above. */}
+      <Card shadow="sm">
+        <div className="exchange-rate-autosync">
+          <div className="exchange-rate-autosync-text">
+            <span className="exchange-rate-autosync-label" id="er-autosync-label">
+              <Localized id="currency-autosync-title">
+                <span>Auto-update rates</span>
+              </Localized>
+            </span>
+            <p className="exchange-rate-autosync-hint">
+              <Localized id="currency-autosync-hint">
+                <span>Fetches exchange rates on a schedule and stores them with their effective date.</span>
+              </Localized>
+            </p>
+          </div>
+          <label className="exchange-rate-switch" htmlFor="er-autosync">
+            <input
+              id="er-autosync"
+              type="checkbox"
+              role="switch"
+              checked={autoSync}
+              aria-checked={autoSync}
+              aria-labelledby="er-autosync-label"
+              disabled={autoSyncLoading || autoSyncSaving}
+              onChange={(e) => toggleAutoSync(e.target.checked)}
+            />
+            <span className="exchange-rate-switch-slider" aria-hidden="true" />
+          </label>
+        </div>
+      </Card>
 
       {loading ? (
         <div className="exchange-rate-loading-skeleton" aria-hidden="true">

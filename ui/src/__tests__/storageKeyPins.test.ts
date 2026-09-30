@@ -107,6 +107,11 @@ const EXPECTED_KEYS: Record<string, string> = {
   'workspace-last-used': 'features/workspaces/WorkspaceHome.tsx',
   'workspace-pins': 'features/workspaces/WorkspaceHome.tsx',
 
+  // Settings keys that happen to end in _KEY. rate_sync.enabled is stored through
+  // get_setting, NOT localStorage, but KEY_DECL matches any const name ending in _KEY,
+  // so it is pinned here deliberately rather than renaming an idiomatic constant.
+  'rate_sync.enabled': 'features/currency/ExchangeRateScreen.tsx',
+
   // Auth
   'oz-last-login': 'features/auth/StaffLoginScreen.tsx',
 

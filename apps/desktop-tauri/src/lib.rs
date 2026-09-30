@@ -266,6 +266,17 @@ pub fn run() {
             // ── Module system lifecycle (shared startup) ──────────────
             platform_startup::init_module_system(&state.kernel, &state.db_path)?;
 
+            // ── Exchange-rate auto-sync daemon (started for the first time) ─
+            // Landed 2026-09-29: `init_rate_sync` had zero callers in every
+            // shell, so the daemon existed, was audited, and never ran. It is
+            // inert until `rate_sync.enabled` is on (default "0", so no
+            // network call on an untouched install), re-reads that setting and
+            // `rate_sync.interval` every cycle, and ticks before sleeping —
+            // details in `platform/startup/src/rate_sync.rs`. Opening its own
+            // WAL connection rather than sharing `AppState.db`: see
+            // `platform_startup::init_rate_sync_at`.
+            platform_startup::init_rate_sync_at(&state.db_path);
+
             // ── settings_updated → Tauri event bridge (ADR #22 Phase 0e) ─
             // The frontend SettingsContext subscribes to `settings_updated`
             // and triggers a debounced scoped refetch. Without this the

@@ -31,4 +31,9 @@ currency-save-error = Gagal menyimpan nilai tukar
 currency-delete-error = Gagal menghapus nilai tukar
 currency-table-label = Nilai tukar
 
-# ── KDS (remaining) ──
+# ── Auto-sync ──
+currency-autosync-title = Perbarui nilai tukar otomatis
+currency-autosync-hint = Mengambil nilai tukar secara berkala dan menyimpannya beserta tanggal berlakunya. Nilai tukar manual tetap tersimpan.
+currency-autosync-enabled = Sinkronisasi nilai tukar otomatis diaktifkan
+currency-autosync-disabled = Sinkronisasi nilai tukar otomatis dinonaktifkan
+currency-autosync-error = Pengaturan sinkronisasi otomatis tidak dapat disimpan
