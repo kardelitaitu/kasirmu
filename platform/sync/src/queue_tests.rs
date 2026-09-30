@@ -1289,6 +1289,41 @@ fn apply_remote_tolerates_duplicate_ids_in_a_flattened_extra_array() {
     assert_eq!(matching, 1, "the movement id is stored once");
 }
 
+/// A flattened stock.adjusted envelope repeats deltas across local/remote/
+/// extra when a merged row re-merges with itself. adjust_stock is NOT
+/// idempotent, so applying the repeats a second time double-counts them.
+#[test]
+fn apply_remote_does_not_double_count_repeated_stock_adjustments() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    // Baseline seed quantity, then the winner of merging +10 with -3.
+    let base = inventory_qty(&store, "COFFEE");
+    let win = serde_json::json!({"sku": "COFFEE", "delta": 10});
+    let lose = serde_json::json!({"sku": "COFFEE", "delta": -3});
+    // Re-merge of that winner with itself: local/remote are the two facts,
+    // extra repeats both.
+    let merged = serde_json::json!({
+        "local": win,
+        "remote": lose,
+        "extra": [win, lose],
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue.apply_remote(&store, &remote).unwrap();
+
+    // The CRDT fact set is {+10, -3} exactly once: net +7.
+    assert_eq!(
+        inventory_qty(&store, "COFFEE"),
+        base + 7,
+        "repeated deltas in extra must not be applied twice"
+    );
+}
+
 #[test]
 fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue

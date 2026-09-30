@@ -398,3 +398,16 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **Scope.** Still the latent conflict path (no in-repo server emits the conflict tag), but the idempotence is correct for ANY replay of a movement row, not only the CRDT one.
 
 > Movement replay made idempotent 2026-10-04.
+
+---
+
+## A self-merge is idempotent (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it corrects the semantics the two earlier flattens established.*
+
+- **The defect the flatten exposed.** Making `extra` reach the appliers revealed that a merge of a row with ITSELF (X ∪ X, the converged state two replicas present) listed every delta twice — `local`/`remote` plus two `extra` repeats. The appliers are not all idempotent: `adjust_stock` appends a fresh mutation by design, so applying the repeats double-counted. A `{+10, -3}` winner self-merged and applied landed **+14** instead of **+7**.
+- **The repair.** `resolve_stock_crdt` collapses byte-identical leaf deltas after flattening, keeping first occurrence so the local/remote ordering stays stable. Two identical deltas ARE the same fact here: they only ever arise from repeating one input, while two independent adjustments arrive on the distinct `local`/`remote` sides and stay distinct (a `stock.adjusted` delta carries no id, so content is the only identity it has — the reason `DeltaMutation` exists, still unadopted). The applier side was hardened too: the four stock arms in `platform/sync/src/queue.rs` now share `appliers::envelope_deltas`, one walk that yields the envelope's DEDUPLICATED leaf deltas, so a hand-built or legacy envelope cannot double-apply either.
+- **The pins.** `re_merging_a_merged_envelope_stays_one_level_deep_and_idempotent` replaces the old depth-one pin and asserts a self-merge yields `{local: +10, remote: -3}` with NO `extra`. `re_merging_distinct_envelopes_keeps_every_delta` proves the collapse does not eat genuinely different deltas: merging `{+1}`, `{+2}`, `{+3}` still applies all three. `apply_remote_does_not_double_count_repeated_stock_adjustments` (`platform/sync/src/queue_tests.rs`) FAILED before the repair with `left: 64` against `right: 57`.
+- **Scope.** Still the latent conflict path (no in-repo server emits the conflict tag). This is the FOURTH defect in the CRDT merge path, each uncovered by repairing the one before it: the winner's identity, the nesting, the dropped extras, and now the double-count.
+
+> Self-merge made idempotent 2026-10-04.

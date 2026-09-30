@@ -441,6 +441,50 @@ pub(super) fn sale_completed_here_in_tx(
 /// A payload whose identity field is absent or unreadable yields `None` rather
 /// than an error: the arm itself is the authority on malformed payloads and
 /// reports them with its own message, so this function must not shadow that.
+/// The ordered, DEDUPLICATED leaf deltas a stock envelope carries.
+///
+/// The four stock arms in `crate::queue` (stock.adjusted and stock.movement,
+/// in both the atomic and legacy dispatchers) must apply the SAME set of
+/// facts, so the walk lives here once rather than four times.
+///
+/// A plain (non-envelope) payload yields itself. A `crdt_delta` envelope
+/// yields `local`, `remote`, then each entry of its `extra` array (the
+/// surplus a flattened re-merge carries). Exact duplicates are collapsed,
+/// keeping first occurrence: a re-merge of a row with itself repeats every
+/// delta, and the appliers are not all idempotent — `adjust_stock` appends a
+/// fresh mutation, so applying the repeats would double-count. Two
+/// independent adjustments arrive on the distinct local/remote sides and stay
+/// distinct (a `stock.adjusted` delta carries no id, so content is its only
+/// identity).
+///
+/// `Value::Null` sides pass through untouched — the arm's own deserialiser
+/// owns that error message, and this walk must not shadow it.
+pub(super) fn envelope_deltas(payload: &Value) -> Vec<Value> {
+    let is_envelope = payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta");
+    let mut out: Vec<Value> = Vec::new();
+    if !is_envelope {
+        out.push(payload.clone());
+        return out;
+    }
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut push = |side: &Value, out: &mut Vec<Value>| {
+        if side.is_null() || seen.insert(side.to_string()) {
+            out.push(side.clone());
+        }
+    };
+    for key in ["local", "remote"] {
+        if let Some(side) = payload.get(key) {
+            push(side, &mut out);
+        }
+    }
+    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
+        for extra in extras {
+            push(extra, &mut out);
+        }
+    }
+    out
+}
+
 pub(super) fn remote_effect_key(action: &str, payload: &str) -> Option<String> {
     let value: Value = serde_json::from_str(payload).ok()?;
     // The CRDT merge envelope carries two sub-effects in one item — see the

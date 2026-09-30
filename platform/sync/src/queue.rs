@@ -40,8 +40,8 @@ use appliers::{
     FinalizeSalePayload, PaymentPayload, RefundPayload, SalePayload, SettingsUpdatePayload,
     StockAdjustmentPayload, StockMovementPayload, VoidSalePayload, apply_refund_with_sale_in_tx,
     apply_stock_adjustment_delta_in_tx, apply_void_sale_in_tx, credit_refund_effect_without_sale,
-    insert_payment_in_tx, payment_already_applied, refund_already_applied, remote_effect_key,
-    remote_sync_admits, sale_completed_here_in_tx,
+    envelope_deltas, insert_payment_in_tx, payment_already_applied, refund_already_applied,
+    remote_effect_key, remote_sync_admits, sale_completed_here_in_tx,
 };
 
 /// Wraps the offline queue database operations with sync-specific helpers.
@@ -388,18 +388,8 @@ impl SyncQueue {
                     apply_stock_adjustment_delta_in_tx(tx, &sub)?;
                     Ok(())
                 };
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
-                    apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
-                    // A flattened re-merge carries its surplus deltas here; apply
-                    // every one, or a delta silently disappears (depth guard).
-                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
-                        for extra in extras {
-                            apply_one(extra.clone())?;
-                        }
-                    }
-                } else {
-                    apply_one(payload)?;
+                for delta in envelope_deltas(&payload) {
+                    apply_one(delta)?;
                 }
             }
             "product.created" => {
@@ -459,17 +449,8 @@ impl SyncQueue {
                         &m.created_at,
                     )
                 };
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    apply_one(payload.get("local").unwrap_or(&Value::Null))?;
-                    apply_one(payload.get("remote").unwrap_or(&Value::Null))?;
-                    // Apply the surplus deltas of a flattened re-merge (depth guard).
-                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
-                        for extra in extras {
-                            apply_one(extra)?;
-                        }
-                    }
-                } else {
-                    apply_one(&payload)?;
+                for delta in envelope_deltas(&payload) {
+                    apply_one(&delta)?;
                 }
             }
             // SYNC-10: a settings change made on another terminal — write the
@@ -617,17 +598,8 @@ impl SyncQueue {
                     tx.commit()?;
                     Ok(())
                 };
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    apply_one(payload.get("local").cloned().unwrap_or(Value::Null))?;
-                    apply_one(payload.get("remote").cloned().unwrap_or(Value::Null))?;
-                    // Surplus deltas of a flattened re-merge (depth guard).
-                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
-                        for extra in extras {
-                            apply_one(extra.clone())?;
-                        }
-                    }
-                } else {
-                    apply_one(payload)?;
+                for delta in envelope_deltas(&payload) {
+                    apply_one(delta)?;
                 }
                 Ok(())
             }
@@ -691,17 +663,8 @@ impl SyncQueue {
                         &m.created_at,
                     )
                 };
-                if payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                    apply_one(payload.get("local").unwrap_or(&Value::Null))?;
-                    apply_one(payload.get("remote").unwrap_or(&Value::Null))?;
-                    // Surplus deltas of a flattened re-merge (depth guard).
-                    if let Some(extras) = payload.get("extra").and_then(|e| e.as_array()) {
-                        for extra in extras {
-                            apply_one(extra)?;
-                        }
-                    }
-                } else {
-                    apply_one(&payload)?;
+                for delta in envelope_deltas(&payload) {
+                    apply_one(&delta)?;
                 }
                 Ok(())
             }

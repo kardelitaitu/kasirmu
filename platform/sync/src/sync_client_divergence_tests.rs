@@ -413,12 +413,15 @@ fn crdt_merge_reenqueue_preserves_retry_count_and_tenant() {
 /// failure - not a guard - was the only thing stopping a conflict loop. It was
 /// silent.
 ///
-/// The resolver now FLATTENS instead of nesting: every leaf delta on both sides
-/// becomes one of the envelope's own sides, so the result is always exactly one
-/// level deep and every delta still decodes as a StockAdjustmentPayload. This
-/// test pins that a re-merge over an already-merged row stays depth one.
+/// The resolver now FLATTENS instead of nesting, and a self-merge is
+/// IDEMPOTENT: merging a row with itself yields that row's facts once, never
+/// twice. Two identical deltas are the same fact here - they only ever arise
+/// from repeating one input, since two independent adjustments arrive on the
+/// distinct local/remote sides. Applying the repeats would double-count
+/// (adjust_stock is not idempotent by design). This pins both: the result is
+/// exactly one level deep, and a self-merge does not multiply its deltas.
 #[test]
-fn re_merging_a_merged_envelope_stays_one_level_deep() {
+fn re_merging_a_merged_envelope_stays_one_level_deep_and_idempotent() {
     let depth_one = crate::conflict::resolve_stock_crdt(
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":10}"#),
         &OfflineQueueItem::new("stock.adjusted", r#"{"sku":"COFFEE","delta":-3}"#),
@@ -428,47 +431,43 @@ fn re_merging_a_merged_envelope_stays_one_level_deep() {
     // Depth one: the merge arm can read both sides.
     let v1: Value = serde_json::from_str(&depth_one.payload).unwrap();
     assert_eq!(v1["merge_type"], "crdt_delta");
-    let side: StockAdjustmentPayload = serde_json::from_value(v1["local"].clone()).unwrap();
-    assert_eq!(side.delta, 10);
+    let as_delta = |v: &Value| -> StockAdjustmentPayload {
+        serde_json::from_value(v.clone()).expect("every carried side is a leaf stock delta")
+    };
+    assert_eq!(as_delta(&v1["local"]).delta, 10);
+    assert_eq!(as_delta(&v1["remote"]).delta, -3);
+    assert!(
+        v1.get("extra").is_none(),
+        "an ordinary merge needs no extras"
+    );
 
-    // Depth two: the merged row conflicts again. It must NOT nest.
+    // Depth two: the merged row conflicts again with ITSELF. It must NOT nest,
+    // and it must NOT double its own facts.
     let depth_two = crate::conflict::resolve_stock_crdt(&depth_one, &depth_one)
         .winner
         .payload;
     let v2: Value = serde_json::from_str(&depth_two).unwrap();
     assert_eq!(v2["merge_type"], "crdt_delta", "still an envelope");
-
-    // Every side decodes as a delta - the failure mode that used to be the only
-    // thing stopping the loop is gone, because there is no inner envelope.
-    let as_delta = |v: &Value| -> StockAdjustmentPayload {
-        serde_json::from_value(v.clone()).expect("every carried side is a leaf stock delta")
-    };
     assert_eq!(as_delta(&v2["local"]).delta, 10);
     assert_eq!(as_delta(&v2["remote"]).delta, -3);
     assert!(
         v2["local"].get("merge_type").is_none(),
         "a side is a leaf delta, never a nested envelope"
     );
-
-    // Both depth-one halves came from the SAME merged row, so flattening
-    // produces four deltas: local/remote plus an extra array carrying the
-    // duplicate pair. Nothing is dropped and nothing nests.
-    let extras = v2["extra"]
-        .as_array()
-        .expect("the surplus deltas are carried in extra");
-    assert_eq!(extras.len(), 2, "two further deltas survive the flatten");
-    assert_eq!(as_delta(&extras[0]).delta, 10);
-    assert_eq!(as_delta(&extras[1]).delta, -3);
+    assert!(
+        v2.get("extra").is_none(),
+        "a self-merge is idempotent: the two facts are not repeated as extras"
+    );
 }
 
-/// A THIRD merge must not drop the `extra` deltas the second one produced.
+/// A merge of two DIFFERENT envelopes must still carry every distinct fact.
 ///
-/// The first flatten carries surplus deltas in an `extra` array. If the
-/// flattener only reads `local`/`remote`, a later merge of that envelope
-/// silently discards every extra delta - the exact data loss the flatten was
-/// written to prevent. This pins that the `extra` array is consumed too.
+/// The idempotence above must not collapse genuinely different deltas. Merging
+/// {+1} with {+2} yields both; merging that winner with {+3} yields all three,
+/// with the surplus riding in `extra` because the envelope keeps only two
+/// top-level sides.
 #[test]
-fn re_merging_a_flattened_envelope_keeps_its_extra_deltas() {
+fn re_merging_distinct_envelopes_keeps_every_delta() {
     let merged = |a: &str, b: &str| {
         crate::conflict::resolve_stock_crdt(
             &OfflineQueueItem::new("stock.adjusted", a),
@@ -477,25 +476,20 @@ fn re_merging_a_flattened_envelope_keeps_its_extra_deltas() {
         .winner
     };
 
-    // Merge twice so the winner carries a two-entry `extra` array.
     let depth_one = merged(r#"{"sku":"SKU","delta":1}"#, r#"{"sku":"SKU","delta":2}"#);
-    let depth_two = merged(&depth_one.payload, &depth_one.payload);
+    // Merge that winner with a THIRD, distinct delta.
+    let depth_two = merged(&depth_one.payload, r#"{"sku":"SKU","delta":3}"#);
     let v2: Value = serde_json::from_str(&depth_two.payload).unwrap();
-    assert_eq!(v2["extra"].as_array().unwrap().len(), 2);
-
-    // Merge a THIRD time. Every leaf that entered must still be present.
-    let depth_three = merged(&depth_two.payload, &depth_two.payload);
-    let v3: Value = serde_json::from_str(&depth_three.payload).unwrap();
 
     let mut deltas: Vec<i64> = Vec::new();
     for key in ["local", "remote"] {
         deltas.push(
-            serde_json::from_value::<StockAdjustmentPayload>(v3[key].clone())
+            serde_json::from_value::<StockAdjustmentPayload>(v2[key].clone())
                 .unwrap()
                 .delta,
         );
     }
-    for extra in v3["extra"].as_array().into_iter().flatten() {
+    for extra in v2["extra"].as_array().into_iter().flatten() {
         deltas.push(
             serde_json::from_value::<StockAdjustmentPayload>(extra.clone())
                 .unwrap()
@@ -505,8 +499,8 @@ fn re_merging_a_flattened_envelope_keeps_its_extra_deltas() {
     deltas.sort_unstable();
     assert_eq!(
         deltas,
-        vec![1, 1, 1, 1, 2, 2, 2, 2],
-        "all four leaves x two sides survive the third flatten - nothing dropped"
+        vec![1, 2, 3],
+        "every distinct delta survives; the surplus rides in extra"
     );
 }
 

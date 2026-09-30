@@ -238,6 +238,21 @@ pub fn resolve_stock_crdt(local: &OfflineQueueItem, remote: &OfflineQueueItem) -
     let (remote_deltas, remote_flattened) = flatten_stock_deltas(&remote.payload);
     deltas.extend(remote_deltas);
 
+    // Merging a row with ITSELF must be idempotent: X ∪ X = X, not X twice.
+    // The flatten above carries a re-merge's surplus deltas in `extra`, so a
+    // self-merge (which is what a converged pair of replicas presents) would
+    // otherwise list every delta twice. Two IDENTICAL deltas are the same CRDT
+    // fact here — they arise only from repeating one input, never from two
+    // independent adjustments, which arrive on the distinct local/remote sides
+    // and stay distinct (a stock.adjusted delta carries no id, so content is
+    // the only identity it has). Applying the repeats would double-count:
+    // adjust_stock is not idempotent by design, so a +10/-3 self-merge landed
+    // +14 instead of +7. Collapse exact duplicates, keeping first occurrence so
+    // the local/remote ordering stays stable. A NULL side passes through — the
+    // applier owns that error.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    deltas.retain(|delta| delta.is_null() || seen.insert(delta.to_string()));
+
     // The envelope shape is fixed by its four consumers in `queue.rs`: they read
     // `local` and `remote`. Keep those two keys for the first two deltas and
     // carry any remaining ones in `extra`, so an already-flattened re-merge
