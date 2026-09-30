@@ -533,9 +533,23 @@ Pinned by `push_client_is_bounded_by_a_timeout` (`platform/sync/src/image_push_t
 
 Pinned by `sync_conflict_commands_use_a_bounded_client` (`apps/mobile-tauri/src/commands/sync_tests.rs`): it asserts both commands route through `bounded_conflict_client()`, that the builder sets connect and total timeouts, and that no bare `reqwest::Client::new().get(` / `.post(` request builder survives.
 
-The desktop twin (`apps/desktop-tauri/src/commands/sync.rs`) carries the same pattern at `:440`/`:488` and is left to the lane that currently owns that file.
+The desktop twin (`apps/desktop-tauri/src/commands/sync.rs`) carried the same bare-client pattern at `:440`/`:488`; it is now fixed too — see the section below.
 
 > COR-31 residual fixed 2026-10-04; the tablet conflict commands are bounded at 10s connect / 30s total.
+
+## The desktop conflict commands are bounded too, closing COR-31's last known sweep site (fixed 2026-10-04)
+
+`list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped` in `apps/desktop-tauri/src/commands/sync.rs` built their requests with a bare `reqwest::Client::new()` — no timeout at all. They are the same user-initiated UI shape as the tablet pair above (the operator taps the conflict queue, then resolves a row), so an unbounded hang pins the command forever and the spinner never clears. The 2026-10-04 sweep had named all four commands (`apps/desktop-tauri/src/commands/sync.rs:440`/`:488` and `apps/mobile-tauri/src/commands/sync.rs:590`/`:639`); the tablet half was bounded in `1704147fc` and this commit closes the desktop half.
+
+**Fix:** the same `fn bounded_conflict_client()` shape (`reqwest::Client::builder()` with `connect_timeout(10s)` + `timeout(30s)`, the builder-failure arm logged at `error`, matching the tablet, `rate_sync.rs` and the payment drivers). Both commands now route through it.
+
+Pinned by `sync_conflict_commands_use_a_bounded_client` (`apps/desktop-tauri/src/commands/sync_test_pins.rs`), a source-level pin over `include_str!("sync.rs")`: it asserts the helper exists with both timeouts, that no bare `reqwest::Client::new().get(` / `.post(` request builder survives, and that `bounded_conflict_client()` appears at least three times (the definition plus both call sites).
+
+The same commit corrects the file's 11 stale references to a `sync_tests.rs` sibling that does not exist. Commit `9b14d9d0b` moved those tests to `crates/kasirmu-bridge/src/sync_tests.rs`, so every doc note and `#[allow(dead_code)]` justification now names that real path; a second pin, `wave_f_adapters_point_at_the_real_test_file`, asserts the bridge path is named, the phantom `sibling sync_tests.rs` phrase is gone, and no `apps/desktop-tauri/src/commands/sync_tests.rs` file exists.
+
+With the desktop pair bounded, the `crates/kasirmu-core/src/export/cloud_destination.rs` export marker that named these four commands records them all as closed.
+
+> COR-31 closed 2026-10-04; the desktop conflict commands are bounded at 10s connect / 30s total.
 
 ## The KDS order-level transition machine already exists (marker correction, 2026-10-04)
 
