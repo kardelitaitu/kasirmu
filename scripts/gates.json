@@ -821,6 +821,14 @@
       "runners": { "check.sh": ["namespace governance", "namespace governance self-test"] },
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
       "_note": "Added 2026-09-30 (Round 4 of the modular-scaffolding plan, Immediate Next Action 3). ADR-62 named the module seams; docs/architecture/module-namespace-governance.md names the rules and this enforces the mechanical half of them SOFTLY. Rule 1 (no new cross-vertical raw SQL outside the reporting facade) fails only on a NEW edge -- the two edges that exist are frozen in scripts/namespace-governance-baseline.json: modules/reporting/src/repository.rs reads sales directly (known facade-bypass debt, plan 9.5) and modules/loyalty/src/repository.rs reads gift_cards while loyalty declares only [crm] (found by this inventory, not surfaced by the plan). Rule 2 (no new unclassified handler) fails a type absent from scripts/handler-classification.json, populated from the Phase 0 census (docs/architecture/handler-census-phase0.md) with the ADR-62 D4 vocabulary. Rule 3 (undeclared dependency) is informational, not blocking, because real edges exist today. Style is deliberately soft, not strict: every module shares one SQLite connection, so a namespace boundary is a convention rather than a mechanically expressible property, and strict enforcement is deferred to Phase 4. The checker reads table names OUT of Rust string literals (a mask-strings-first scanner finds nothing, which is how the first draft reported 0 of 2 known edges); it carries --self-test, and the pair is listed under checker-selftest-companions via verify-selftests-wired.py."
+    },
+    {
+      "id": "ownership-map-parity",
+      "label": "Ownership map parity (single source)",
+      "status": "required",
+      "runners": { "check.sh": ["ownership map parity", "ownership map generate check"] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" },
+      "_note": "Added 2026-10-02 (Phase 2 of the modular-scaffolding plan, resolving the NamespacedStore draft section 7). The table->module ownership map had TWO hand-maintained copies (docs/architecture/module-namespace-governance.md section 3 prose and TABLE_OWNERS in scripts/verify-namespace-governance.py); Phase 2 needs a third copy in Rust so the runtime NamespacedStore check can consult the same map, and a third hand-maintained list is exactly what drifts. So the map now has ONE source, modules/ownership.json: scripts/generate-ownership-map.mjs generates crates/kasirmu-core/src/db/ownership.rs from it (--check fails on drift) and verify-namespace-governance.py --check-ownership fails when its TABLE_OWNERS disagrees. Three consumers, one source, pinned by a Rust unit test (crates/kasirmu-core/src/db/ownership_tests.rs) and a Python self-test (mutation fixtures for duplicate-table and empty-map). Local-only runner today; adding a dev-ci.yml step needs no code change."
     }
   ]
 }

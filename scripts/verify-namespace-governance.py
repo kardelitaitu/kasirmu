@@ -152,6 +152,37 @@ TABLE_TO_MODULE: dict[str, str] = {
     table: module for module, tables in TABLE_OWNERS.items() for table in tables
 }
 
+# -- Single source of truth (plan §7) --------------------------------------
+# The ownership map lives in modules/ownership.json and is generated into the
+# Rust const (crates/kasirmu-core/src/db/ownership.rs) by
+# scripts/generate-ownership-map.mjs. TABLE_OWNERS above must equal it: run
+# --check-ownership to fail on drift, or --emit-ownership to rewrite this file.
+OWNERSHIP_JSON = "modules/ownership.json"
+
+
+def load_ownership(root: Path) -> dict[str, tuple[str, ...]]:
+    """Read modules/ownership.json into the TABLE_OWNERS shape."""
+    path = root / OWNERSHIP_JSON
+    data = json.loads(path.read_text(encoding="utf-8"))
+    owners = data.get("owners")
+    if not isinstance(owners, dict) or not owners:
+        raise ValueError(f"{OWNERSHIP_JSON}: 'owners' must be a non-empty object")
+    out: dict[str, tuple[str, ...]] = {}
+    seen: dict[str, str] = {}
+    for module, tables in owners.items():
+        if not isinstance(tables, list):
+            raise ValueError(f"{OWNERSHIP_JSON}: '{module}' must map to an array")
+        for table in tables:
+            if table in seen:
+                raise ValueError(
+                    f"{OWNERSHIP_JSON}: table '{table}' claimed by both "
+                    f"'{seen[table]}' and '{module}'"
+                )
+            seen[table] = module
+        out[module] = tuple(tables)
+    return out
+
+
 # module directory name -> module id. modules/sales holds the sales module.
 MODULE_SOURCE_ROOT = "modules"
 # Roots walked for impl EventHandler<...> (Rule 2): the module crates plus the
@@ -1278,6 +1309,8 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true", help="Run the built-in classifier tests and exit.")
     parser.add_argument("--census", action="store_true", help="Report stale/retired registry rows and unclassified impls (report-only; never fails).")
     parser.add_argument("--emit-census", action="store_true", help="Print the handler census as a Markdown table (report-only; never fails).")
+    parser.add_argument("--check-ownership", action="store_true", help="Fail when TABLE_OWNERS drifts from modules/ownership.json (the plan 7 single source).")
+    parser.add_argument("--emit-ownership", action="store_true", help="Rewrite TABLE_OWNERS in this file from modules/ownership.json.")
     parser.add_argument("--emit-registry", action="store_true", help="Regenerate scripts/handler-classification.json from the Rust handler_type declarations.")
     parser.add_argument("--check", action="store_true", help="Fail when the committed registry drifts from the Rust handler_type declarations.")
     args = parser.parse_args()
@@ -1286,6 +1319,10 @@ def main() -> int:
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "namespace-governance-baseline.json").resolve()
     classification_path = (args.classification_file or root / "scripts" / "handler-classification.json").resolve()
+    if args.check_ownership:
+        return check_ownership(root)
+    if args.emit_ownership:
+        return emit_ownership(root, Path(__file__).resolve())
     if args.emit_registry:
         return emit_registry(root, classification_path)
     if args.check:
@@ -1342,6 +1379,64 @@ def main() -> int:
     if args.report_only:
         return 0
     return 1 if blocking or stale else 0
+
+
+def render_table_owners(owners: dict[str, tuple[str, ...]]) -> str:
+    """Render the TABLE_OWNERS literal exactly as this file spells it."""
+    lines = ["TABLE_OWNERS: dict[str, tuple[str, ...]] = {"]
+    for module, tables in owners.items():
+        inner = ", ".join(f'"{table}"' for table in tables)
+        if tables:
+            lines.append(f'    "{module}": ({inner},)')
+        else:
+            lines.append(f'    "{module}": (),')
+    lines.append("}")
+    return "\n".join(lines)
+
+
+def check_ownership(root: Path) -> int:
+    """Fail when TABLE_OWNERS (this file) and modules/ownership.json disagree."""
+    source = load_ownership(root)
+    if source != TABLE_OWNERS:
+        source_tables = {t for tables in source.values() for t in tables}
+        local_tables = {t for tables in TABLE_OWNERS.values() for t in tables}
+        for module in sorted(set(source) | set(TABLE_OWNERS)):
+            a = source.get(module)
+            b = TABLE_OWNERS.get(module)
+            if a != b:
+                print(
+                    f"[drift] {module}: ownership.json says {a}, "
+                    f"verify-namespace-governance.py TABLE_OWNERS says {b}"
+                )
+        for table in sorted(source_tables - local_tables):
+            print(f"[drift] {OWNERSHIP_JSON} owns '{table}' but the checker does not")
+        for table in sorted(local_tables - source_tables):
+            print(f"[drift] the checker owns '{table}' but {OWNERSHIP_JSON} does not")
+        print("ownership map drift: TABLE_OWNERS must match modules/ownership.json")
+        return 1
+    print(
+        f"ok: TABLE_OWNERS matches {OWNERSHIP_JSON} "
+        f"({len(source)} module(s), {sum(len(v) for v in source.values())} table(s))"
+    )
+    return 0
+
+
+def emit_ownership(root: Path, script_path: Path) -> int:
+    """Rewrite the TABLE_OWNERS literal in this file from the JSON source."""
+    source = load_ownership(root)
+    text = script_path.read_text(encoding="utf-8")
+    rendered = render_table_owners(source)
+    match = re.search(
+        r"TABLE_OWNERS: dict\[str, tuple\[str, \.\.\.\]\] = \{.*?\n\}",
+        text,
+        re.DOTALL,
+    )
+    if not match:
+        print("could not locate the TABLE_OWNERS literal to rewrite", file=sys.stderr)
+        return 1
+    script_path.write_text(text[: match.start()] + rendered + text[match.end() :], encoding="utf-8")
+    print(f"rewrote TABLE_OWNERS in {script_path} from {OWNERSHIP_JSON}")
+    return 0
 
 
 def self_test() -> int:
@@ -1674,6 +1769,35 @@ def self_test() -> int:
         findings = module_sql_findings(tree, scope)
         check("T3: an unowned table stays a note even with a marker",
               [f["rule"] for f in findings], ["unowned-table"])
+
+    # Ownership-map single-source parity (plan \u00a77).
+    with tempfile.TemporaryDirectory() as tmp:
+        tr = Path(tmp)
+        (tr / "modules").mkdir()
+        (tr / "modules" / "ownership.json").write_text(
+            json.dumps({"owners": {"sales": ["sales", "sale_lines"]}}), encoding="utf-8"
+        )
+        check("load_ownership reads the source", load_ownership(tr),
+              {"sales": ("sales", "sale_lines")})
+        (tr / "modules" / "ownership.json").write_text(
+            json.dumps({"owners": {"sales": ["sales"], "b": ["sales"]}}), encoding="utf-8"
+        )
+        try:
+            load_ownership(tr)
+            failures.append("load_ownership should reject a table claimed twice")
+        except ValueError:
+            pass
+        (tr / "modules" / "ownership.json").write_text(
+            json.dumps({"owners": {}}), encoding="utf-8"
+        )
+        try:
+            load_ownership(tr)
+            failures.append("load_ownership should reject an empty owners map")
+        except ValueError:
+            pass
+    check("render_table_owners round-trips an empty module",
+          render_table_owners({"reporting": ()}).splitlines()[-2].strip(),
+          '"reporting": (),')
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)

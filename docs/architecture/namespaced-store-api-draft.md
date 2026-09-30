@@ -237,6 +237,14 @@ Either way a **parity test** must fail when the Rust map and the checker disagre
 **Do not** hand-maintain a third list. §3 above is a *draft*; its entries are copied from the governance doc
 only so the shape reads concretely.
 
+**RESOLVED 2026-10-02 (Phase 2 kickoff): option 1, and it has landed.** `modules/ownership.json` now exists
+and is the single source. `scripts/generate-ownership-map.mjs` generates `crates/kasirmu-core/src/db/ownership.rs`
+from it (`--check` fails on drift; the Rust unit tests are `crates/kasirmu-core/src/db/ownership_tests.rs`),
+and `scripts/verify-namespace-governance.py --check-ownership` fails when the checker's `TABLE_OWNERS` disagrees
+with the JSON. Both are wired as the `ownership-map-parity` gate (`scripts/gates.json`) and run in
+`scripts/check.sh`. There is no build.rs: the generated file is checked in, matching the
+`docs/records/README.md` precedent. The Rust copy is what §4's runtime check will consult.
+
 ---
 
 ## 8. Alternatives considered
@@ -252,8 +260,8 @@ only so the shape reads concretely.
 
 ## 9. Open questions for review
 
-1. **Map source of truth (§7).** A new shared ownership data file + codegen, or generate-from-checker? This
-   decides where the first Phase 2 PR points.
+1. ~~**Map source of truth (§7).**~~ **RESOLVED 2026-10-02**: `modules/ownership.json` + checked-in
+   generator (option 1). The remaining Phase 2 PRs (2.1 onward) wrap modules against `NamespacedStore`.
 2. **`raw()` escape hatch.** Keep it for the whole of Phase 2 (per-module migration needs it) or gate it
    behind a `#[cfg(debug_assertions)]` from the start? Suggested: keep it, but make every call emit a
    structured warning naming the module and the tables so the Phase 3 burn-down can be measured.

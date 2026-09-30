@@ -396,6 +396,17 @@ step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-tes
 step "namespace governance" "python3 scripts/verify-namespace-governance.py" python3 scripts/verify-namespace-governance.py
 step "namespace governance self-test" "python3 scripts/verify-namespace-governance.py --self-test" python3 scripts/verify-namespace-governance.py --self-test
 
+# ── Ownership map parity — one source, three consumers (Phase 2) ───────────
+# The table->module map had two hand-maintained copies (governance doc §3 prose
+# and TABLE_OWNERS in verify-namespace-governance.py). Phase 2 needs a Rust copy
+# so the runtime NamespacedStore check reads the same map; a third hand-edited
+# list is what drifts. modules/ownership.json is now the ONE source:
+#   • scripts/generate-ownership-map.mjs -> crates/kasirmu-core/src/db/ownership.rs
+#   • verify-namespace-governance.py TABLE_OWNERS (--check-ownership)
+# --check on the generator (and --check-ownership on the checker) fail on drift.
+step "ownership map generate check" "node scripts/generate-ownership-map.mjs --check" node scripts/generate-ownership-map.mjs --check
+step "ownership map parity" "python3 scripts/verify-namespace-governance.py --check-ownership" python3 scripts/verify-namespace-governance.py --check-ownership
+
 # ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
 # This is the runner that deny.toml's own header used to say did not exist.
 # Three deliberate absences, each load-bearing:

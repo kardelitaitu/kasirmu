@@ -121,8 +121,19 @@ schema. Derived from the tree, not from any plan.
 | purchasing | `purchase_orders`, `purchase_order_lines` |
 | reporting | *(owns no tables — it reads through the facade)* |
 
+**Single source of truth (Phase 2, 2026-10-02).** This table had two hand-maintained copies (this
+prose and the checker's `TABLE_OWNERS`); Phase 2's runtime `NamespacedStore` check needs a third copy
+in Rust, so the map was reduced to ONE source: `modules/ownership.json`. It is consumed by
+
+- `scripts/generate-ownership-map.mjs` → `crates/kasirmu-core/src/db/ownership.rs`
+  (`cargo test -p kasirmu-core --lib ownership`), checked by `--check`;
+- `scripts/verify-namespace-governance.py` `TABLE_OWNERS`, checked by `--check-ownership`.
+
+Do not hand-edit either generated copy; change `modules/ownership.json` and re-run the generator. The
+table below is prose *about* that file and must be updated with it.
+
 The table names here are the schema's own (`crates/kasirmu-core/migrations/20260813_init.sql`), not
-guesses: the checker's `TABLE_OWNERS` map is the executable copy and the two must agree. The four
+guesses. The four
 stub verticals (kitchen, promotions, purchasing, and the giftcard/terminal sub-tables) own their
 schema tables even though no production module code queries them yet — a stub that grows SQL later
 must not look like a foreign read.
