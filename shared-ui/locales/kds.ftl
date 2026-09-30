@@ -122,7 +122,7 @@ kds-offline-dismiss-aria = Dismiss offline banner
 kds-order-up-tts = Order
 kds-ready-tts = up
 
-# ── 3f: Add items button + product picker (TODO 3f) ──
+# ── 3f: Add items button + product picker ──
 kds-add-items-btn = Add Items
 kds-add-items-btn-aria = Add items to order
 kds-picker-title = Add Items to Order
