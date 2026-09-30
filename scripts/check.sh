@@ -415,6 +415,17 @@ step "namespace governance self-test" "python3 scripts/verify-namespace-governan
 step "ownership map generate check" "node scripts/generate-ownership-map.mjs --check" node scripts/generate-ownership-map.mjs --check
 step "ownership map parity" "python3 scripts/verify-namespace-governance.py --check-ownership" python3 scripts/verify-namespace-governance.py --check-ownership
 
+# ── Capability parity — manifests declare exactly what they may touch (Phase 4)
+# A module manifest's `capabilities` set is now mechanical: `read:<id>` and
+# `write:<id>` for its own namespace when it owns tables (modules/ownership.json),
+# plus `read:<dep>` for every entry in its `dependencies`. Before this gate the
+# field was free text, so an undeclared cross-namespace grant was indistinguishable
+# from a declared one. verify-namespace-governance.py --check-capabilities derives
+# the expected set and fails on any drift; --emit-capabilities rewrites the
+# manifests. This is the manifest half of the strict enforcement Phase 4 targets
+# (the runtime NamespacedStore check is the other half).
+step "capability parity" "python3 scripts/verify-namespace-governance.py --check-capabilities" python3 scripts/verify-namespace-governance.py --check-capabilities
+
 # ── Core size ratchet — the extraction has a number (Phase 3) ──────────────
 # The plan's boundary rule is that crates/kasirmu-core must not grow as modules
 # move out. Without a measured ceiling that rule is reversible by accident: new

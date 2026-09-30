@@ -21,6 +21,7 @@ const ALLOWED_FIELDS: &[&str] = &[
     "author",
     "dependencies",
     "permissions",
+    "capabilities",
     "database_namespace",
 ];
 

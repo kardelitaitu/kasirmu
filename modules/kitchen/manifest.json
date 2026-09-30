@@ -4,11 +4,20 @@
   "version": "0.1.0",
   "description": "Restaurant kitchen operations: order firing, KDS ticket queue and bump, course/table routing, and prep SLA tracking. Stub: lifecycle only, domain logic not yet migrated.",
   "author": "kasir.mu contributors",
-  "dependencies": ["sales", "terminal"],
+  "dependencies": [
+    "sales",
+    "terminal"
+  ],
   "permissions": [
     "kitchen:view",
     "kitchen:bump",
     "kitchen:route",
     "kitchen:manage"
+  ],
+  "capabilities": [
+    "read:kitchen",
+    "read:sales",
+    "read:terminal",
+    "write:kitchen"
   ]
 }

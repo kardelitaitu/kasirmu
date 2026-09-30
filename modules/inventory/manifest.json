@@ -8,5 +8,9 @@
     "inventory:view",
     "inventory:edit",
     "inventory:adjust"
+  ],
+  "capabilities": [
+    "read:inventory",
+    "write:inventory"
   ]
 }

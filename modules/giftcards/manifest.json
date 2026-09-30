@@ -4,11 +4,18 @@
   "version": "0.1.0",
   "description": "Gift card issuance, balance tracking, redemption, and transaction history. Stub: lifecycle only, domain logic not yet migrated out of modules/loyalty.",
   "author": "kasir.mu contributors",
-  "dependencies": ["sales"],
+  "dependencies": [
+    "sales"
+  ],
   "permissions": [
     "giftcards:view",
     "giftcards:issue",
     "giftcards:redeem",
     "giftcards:manage"
+  ],
+  "capabilities": [
+    "read:giftcards",
+    "read:sales",
+    "write:giftcards"
   ]
 }

@@ -3,11 +3,20 @@
   "name": "Loyalty",
   "version": "1.0.0",
   "description": "Customer loyalty program: tier-based earning multipliers, point earn/redeem, member management.",
-  "dependencies": ["crm", "giftcards"],
+  "dependencies": [
+    "crm",
+    "giftcards"
+  ],
   "permissions": [
     "loyalty:view",
     "loyalty:earn",
     "loyalty:redeem",
     "loyalty:manage"
+  ],
+  "capabilities": [
+    "read:crm",
+    "read:giftcards",
+    "read:loyalty",
+    "write:loyalty"
   ]
 }

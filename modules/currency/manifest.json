@@ -7,5 +7,9 @@
   "permissions": [
     "currency:view",
     "currency:edit"
+  ],
+  "capabilities": [
+    "read:currency",
+    "write:currency"
   ]
 }

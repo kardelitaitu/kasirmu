@@ -31,7 +31,7 @@ with a declared dependency; 0 undeclared-dependency notes; 0 stale grants; 0 uno
 
 | Plan §10 Phase 4 item | Ticket |
 |---|---|
-| Enable strict `NamespacedStore` enforcement | P4.1 — make the wrap strict at boot |
+| Enable strict `NamespacedStore` enforcement | P4.1 — make the wrap strict at boot (manifest half DONE) |
 | Reject unauthorized cross-namespace table access | P4.1 + P4.4 — strict `check_statement` and denial tests |
 | Require reporting queries to go through `ReportingFacade` | P4.2 — define and route the trait |
 | Remove legacy shared-connection escape hatches | P4.3 — delete `raw()` |
@@ -49,6 +49,19 @@ reporting facade (P4.2), then the tests (P4.4), gate flip (P4.5), and documentat
 ---
 
 ## 2. P4.1 — Strict `NamespacedStore` enforcement
+
+**Status: PARTIAL 2026-10-03 — the manifest half is done, the runtime half remains.**
+Every `modules/*/manifest.json` now declares its `capabilities` set, derived mechanically from
+`modules/ownership.json` + the manifest `dependencies` (`read:<id>` + `write:<id>` when the module owns
+tables, plus `read:<dep>` per dependency — 36 capabilities across 14 manifests), and a new required gate
+`capability-parity` (`scripts/gates.json`; step "capability parity" in `scripts/check.sh`) fails when a
+manifest drifts. `scripts/verify-namespace-governance.py` gained `--check-capabilities` / `--emit-capabilities`
+with the derivation in `derive_capabilities()`; `crates/kasirmu-core/tests/manifest_schema_test.rs`
+`ALLOWED_FIELDS` now lists `capabilities` (the list had not been updated when the Phase 2 schema added the
+property, so the test failed on the newly-populated manifests — fixed in the same commit). Ticket items 2
+and 3 below (route the grant set from the manifest at wrap time; reject a `NamespacedStore` grant naming an
+undeclared module) are **not yet done**: each module still hardcodes `Grants::none()` / `Grants::read(...)`
+in its repository constructor, with no manifest access at `NamespacedStore::new` time.
 
 **Problem (verified).** The `NamespacedStore` boundary is advisory today: every module builds its store
 with `Grants::none()` (or, for loyalty, one read grant), and `check_statement` refuses a foreign table —

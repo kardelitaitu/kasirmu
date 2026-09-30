@@ -1311,6 +1311,8 @@ def main() -> int:
     parser.add_argument("--emit-census", action="store_true", help="Print the handler census as a Markdown table (report-only; never fails).")
     parser.add_argument("--check-ownership", action="store_true", help="Fail when TABLE_OWNERS drifts from modules/ownership.json (the plan 7 single source).")
     parser.add_argument("--emit-ownership", action="store_true", help="Rewrite TABLE_OWNERS in this file from modules/ownership.json.")
+    parser.add_argument("--check-capabilities", action="store_true", help="Fail when a module manifest capabilities set drifts from the ownership map + dependencies (Phase 4 P4.1).")
+    parser.add_argument("--emit-capabilities", action="store_true", help="Rewrite every module manifest capabilities set from the ownership map + dependencies.")
     parser.add_argument("--emit-registry", action="store_true", help="Regenerate scripts/handler-classification.json from the Rust handler_type declarations.")
     parser.add_argument("--check", action="store_true", help="Fail when the committed registry drifts from the Rust handler_type declarations.")
     args = parser.parse_args()
@@ -1321,6 +1323,10 @@ def main() -> int:
     classification_path = (args.classification_file or root / "scripts" / "handler-classification.json").resolve()
     if args.check_ownership:
         return check_ownership(root)
+    if args.check_capabilities:
+        return check_capabilities(root)
+    if args.emit_capabilities:
+        return emit_capabilities(root)
     if args.emit_ownership:
         return emit_ownership(root, Path(__file__).resolve())
     if args.emit_registry:
@@ -1420,6 +1426,78 @@ def check_ownership(root: Path) -> int:
     )
     return 0
 
+
+MODULES_DIR = "modules"
+
+
+def derive_capabilities(root: Path) -> dict[str, list[str]]:
+    """Derive each module's expected `capabilities` set from ownership + deps.
+
+    The contract (Phase 4 P4.1) is deliberately mechanical so it can be a gate:
+
+      * a module that owns tables declares `read:<id>` and `write:<id>` for its
+        own namespace;
+      * each declared dependency contributes `read:<dep>`.
+
+    The manifest `capabilities` field must equal this set exactly, so an
+    undeclared grant (a read of a module not in `dependencies`) is a drift
+    finding rather than a silent convention.
+    """
+    owners = load_ownership(root)
+    expected: dict[str, list[str]] = {}
+    for module in sorted(owners):
+        manifest_path = root / MODULES_DIR / module / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(f"{module}: owns tables but has no manifest.json")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        caps: set[str] = set()
+        if owners[module]:
+            caps.add(f"read:{module}")
+            caps.add(f"write:{module}")
+        for dep in manifest.get("dependencies", []) or []:
+            caps.add(f"read:{dep}")
+        expected[module] = sorted(caps)
+    return expected
+
+
+def check_capabilities(root: Path) -> int:
+    """Fail when a module's manifest `capabilities` disagree with the derivation."""
+    expected = derive_capabilities(root)
+    drift = 0
+    for module in sorted(expected):
+        manifest_path = root / MODULES_DIR / module / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        actual = sorted(manifest.get("capabilities", []) or [])
+        if actual != expected[module]:
+            drift += 1
+            missing = sorted(set(expected[module]) - set(actual))
+            extra = sorted(set(actual) - set(expected[module]))
+            print(
+                f"[drift] {module}: capabilities {actual} != expected {expected[module]} "
+                f"(missing {missing}, extra {extra})"
+            )
+    if drift:
+        print("capability drift: run --emit-capabilities to rewrite the manifests")
+        return 1
+    total = sum(len(v) for v in expected.values())
+    print(f"ok: {len(expected)} module manifest(s) declare exactly {total} derived capability(ies)")
+    return 0
+
+
+def emit_capabilities(root: Path) -> int:
+    """Rewrite each module manifest's `capabilities` from the derivation."""
+    expected = derive_capabilities(root)
+    for module in sorted(expected):
+        manifest_path = root / MODULES_DIR / module / "manifest.json"
+        text = manifest_path.read_text(encoding="utf-8")
+        manifest = json.loads(text)
+        manifest["capabilities"] = expected[module]
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+    total = sum(len(v) for v in expected.values())
+    print(f"wrote capabilities for {len(expected)} module manifest(s) ({total} capability(ies))")
+    return 0
 
 def emit_ownership(root: Path, script_path: Path) -> int:
     """Rewrite the TABLE_OWNERS literal in this file from the JSON source."""
