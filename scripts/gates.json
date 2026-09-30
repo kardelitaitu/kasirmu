@@ -1414,6 +1414,27 @@
       }
     },
     {
+      "id": "client-type-drift",
+      "label": "Browser SDK types vs published OpenAPI",
+      "status": "required",
+      "_note": "Added 2026-09-30. ui/src/api/client/types.ts opens with a header saying every type in it is derived from the OpenAPI 3.1 specification. Nothing derived them and nothing graded them. A manual census on 2026-09-30 found 5 of the 15 interfaces present on both sides had drifted: CategoryDto carried created_at (the row has no timestamp, and the REQUIRED icon was missing instead), TokenResponse was missing token_id, SyncStatusResponse invented conflict_count and total_items (neither exists on the wire), CreateTokenRequest could not express the ADR sync-auth-hardening client-credentials path, ProductDetail lacked image_hash and images, and SaleStatus lacked pending. The worst was not a stale field but a wrong SHAPE: create_token_handler answers a token envelope and the client typed the envelope as the details, so every Authorization header built from it would have carried a stringified object. Repaired in the commit before this one, and this checker then found a SIXTH the census had missed -- HealthResponse was omitting rls_posture and portable_derivation_uses_master_key, both always sent -- because the census extractor mis-parsed the same file. Required rather than advisory so 0 findings is a baseline a flip can be measured from. Only names present on BOTH sides are compared: the document describes two servers while types.ts describes the one the browser talks to, so a two-way set comparison would be a permanent red page, and the one-sided names are reported as context instead. Exits 2 rather than 0 when an input cannot be parsed, so a checker that could not run never reads as one that found nothing.",
+      "_parser_note": "The extractors read a Rust json! literal out of a .rs file, which is not JSON. Three inputs in these two files break a naive reader, and each was found by running the checker against the live tree rather than by reasoning about it: line comments between schema entries (one contains a JSON example, whose braces a scanner counts as structure, which is how PushOutcome lost its own name), a Rust expression embedded as a value (apps/cloud-server/src/openapi/cloud.rs carries env! with CARGO_PKG_VERSION as an example), and a description string containing escaped quotes. Comments are blanked before scanning rather than removed, so every offset and line number survives; a macro invocation is skipped as one token, the way a string is. The self-test covers the scanner cases and the classify cases and touches no files, so it cannot rot when the tree is renamed.",
+      "runners": {
+        "check.sh": [
+          "client type drift",
+          "client type drift self-test"
+        ]
+      },
+      "ci": {
+        "workflow": "dev-ci.yml",
+        "job": "static-gates",
+        "steps": [
+          "Client type drift",
+          "Client type drift self-test"
+        ]
+      }
+    },
+    {
       "id": "namespace-governance",
       "label": "Module namespace governance (soft)",
       "status": "required",

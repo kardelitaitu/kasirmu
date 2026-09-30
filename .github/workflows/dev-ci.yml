@@ -1067,6 +1067,20 @@ jobs:
       # whose rules can rot while every grade still looks authoritative.
       - name: Debt marker checker self-test
         run: python3 scripts/verify-debt-markers.py --self-test
+      # The browser SDK types claim in their own header to be derived from the
+      # published OpenAPI document. Nothing derived them, so five of the fifteen
+      # interfaces present on both sides had drifted -- one of them a token
+      # response typed as the envelope that carries it, which no compiler and no
+      # prose audit can see. Only names on BOTH sides are compared: the document
+      # describes two servers and types.ts describes the one the browser talks
+      # to, so comparing the populations would be a permanent red page.
+      # Required, not advisory, and green from day one because the repair landed
+      # in the commit before this one. A gate introduced against a red page gets
+      # muted, which is how check-api-surface.py sat unwired for three weeks.
+      - name: Client type drift
+        run: python3 scripts/check-client-type-drift.py
+      - name: Client type drift self-test
+        run: python3 scripts/check-client-type-drift.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the

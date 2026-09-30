@@ -402,6 +402,21 @@ fi
 step "debt markers" "python3 scripts/verify-debt-markers.py" python3 scripts/verify-debt-markers.py
 step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-test" python3 scripts/verify-debt-markers.py --self-test
 
+# ── Client type drift — the browser SDK types vs the published OpenAPI ──
+# ui/src/api/client/types.ts claims in its own header to be derived from the spec.
+# Nothing derived them and nothing graded them, so five of the fifteen interfaces
+# that exist on both sides had drifted -- including a token response typed as the
+# ENVELOPE that carries it, which is invisible to the compiler and to any prose
+# audit. Only names present on BOTH sides are compared: the document describes two
+# servers while types.ts describes the one the browser talks to, so a two-way set
+# comparison would be a permanent red page.
+# Shipped required with 0 findings because the repair landed in the commit before
+# this one. It exits 2 rather than 0 when an input cannot be parsed, so a checker
+# that could not run never reads as a checker that found nothing.
+# Gate: scripts/gates.json -> "client-type-drift".
+step "client type drift" "python3 scripts/check-client-type-drift.py" python3 scripts/check-client-type-drift.py
+step "client type drift self-test" "python3 scripts/check-client-type-drift.py --self-test" python3 scripts/check-client-type-drift.py --self-test
+
 # ── Namespace governance — soft rules for module seams (Round 4) ────────
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share

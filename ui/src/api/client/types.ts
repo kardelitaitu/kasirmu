@@ -29,6 +29,22 @@ export interface HealthResponse {
   db_latency_us: number;
   sync_queue_depth: number;
   last_sync_at: string | null;
+  /**
+   * Whether tenant isolation (PostgreSQL row-level security) is actually in force
+   * on the connection the server uses. One of the db::RlsPosture verdict ids,
+   * plus `not_applicable` on SQLite and `unknown` when the catalog was
+   * unreadable. A report only: policies being present is not the same claim as
+   * their being effective.
+   */
+  rls_posture: string;
+  /**
+   * Which at-rest key derivation THIS process selected: true when the
+   * credential families derive through the master key, false for the legacy
+   * static path. A selection report only -- it carries no key material, and
+   * false means this process is not using a master key, NOT that no such
+   * variable was set.
+   */
+  portable_derivation_uses_master_key: boolean;
 }
 
 // ── Auth / Tokens ─────────────────────────────────────────────────
