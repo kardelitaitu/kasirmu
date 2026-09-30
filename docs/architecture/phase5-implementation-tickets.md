@@ -1,6 +1,6 @@
 # Phase 5 Implementation Tickets — Core Extraction and the Inventory Seam
 
-**Status:** open. Written 2026-10-03. Successor to
+**Status:** complete 2026-10-03 — P5.1–P5.5 all DONE. Successor to
 `docs/architecture/phase4-implementation-tickets.md`.
 
 ## Why this phase exists
