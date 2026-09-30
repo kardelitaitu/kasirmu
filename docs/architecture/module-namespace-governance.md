@@ -169,6 +169,9 @@ The plan's Phase 4 replaces this soft posture:
 - require reporting to use the sanctioned facade (closes the first §4 row);
 - make `NamespacedStore` (Phase 2) the only route to another vertical's data.
 
+The Phase 2 work that reaches that state is broken down in
+`docs/architecture/phase2-implementation-tickets.md`; the map those tickets build on is `modules/ownership.json`.
+
 When those land, the allowlist and the baseline in §4 must both empty. Until then, this document and
 `scripts/namespace-governance-baseline.json` are the frozen record of what is tolerated, and
 `scripts/verify-namespace-governance.py` fails the moment a new violation appears.
@@ -182,3 +185,5 @@ When those land, the allowlist and the baseline in §4 must both empty. Until th
 - `todo-modular-scaffolding.md` §9.2 (phased enforcement), §9.5 (reporting facade), §14 (actions)
 - `platform/kernel/src/manifest.rs` (the declaration Rule 3 reads)
 - `scripts/verify-namespace-governance.py` (the checker)
+- `docs/architecture/phase2-implementation-tickets.md` (the Phase 2 tickets these rules feed)
+- `modules/ownership.json` (the single source of the §3 table map)

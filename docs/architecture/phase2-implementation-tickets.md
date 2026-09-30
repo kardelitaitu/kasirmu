@@ -1,0 +1,209 @@
+# Phase 2 Implementation Tickets — Module Context and Registry Hardening
+
+**Status:** Draft for execution (2026-10-02) — tickets only, no code changed by this document
+**Scope:** Phase 2 of the modular scaffolding plan (`todo-modular-scaffolding.md` §7 "Phase 2 — Module
+Context and Registry Hardening"), plus the Phase 2 half of `docs/architecture/namespaced-store-api-draft.md`.
+
+**Predecessors:**
+- `docs/architecture/module-namespace-governance.md` — Phase 1 rules, the table-ownership map, and the
+  single-source note added in Phase 2 kickoff.
+- `docs/architecture/namespaced-store-api-draft.md` — the `NamespacedStore` shape (§3), the validation
+  reuse plan (§4), the per-module migration order (§5), and the reporting-exception construction (§6).
+- `docs/architecture/phase1-implementation-tickets.md` — the sibling ticket set; T1–T5 are all DONE.
+- `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` — the seam vocabulary and the D5 read exception.
+
+**Grounding rule (learned in Phase 0):** every ticket names a repository fact verified at the time of
+writing. The plan's prose is *not* treated as evidence.
+
+**Already landed before these tickets (Phase 2 kickoff, commit `f46e213c2`):**
+- `modules/ownership.json` is the single source of truth for the table→module map (14 modules, 30 tables).
+- `crates/kasirmu-core/src/db/ownership.rs` is GENERATED from it and carries
+  `pub const TABLE_OWNERS: &[(&str, &[&str])]` and `pub fn owner_of(table: &str) -> Option<&'static str>`
+  (fail-closed: `None` for an unmapped table).
+- The `ownership-map-parity` gate (`scripts/gates.json`) makes the checker and the Rust copy agree by
+  construction: `node scripts/generate-ownership-map.mjs --check` and
+  `python scripts/verify-namespace-governance.py --check-ownership`.
+
+---
+
+## 1. How these tickets map to the plan
+
+| Plan §7 Phase 2 task | Ticket |
+|---|---|
+| Introduce `ModuleContext`; expose event bus, capability registry, settings store, namespaced store factory, reporting facade handle, logger, clock, transaction coordinator | P2 — the context and its capability registry |
+| Migrate module initialization to use `ModuleContext` | P3 — migrate `init_module_system` onto the context |
+| Keep legacy shared-connection access behind compatibility adapters | P1 — the `NamespacedStore` view (the adapter) |
+| Add tests proving modules cannot acquire ungranted capabilities | P2 (unit) + P4 (integration) |
+| Make module registration fail fast when required capabilities are missing | P2 (`register` validates) + P3 (boot fails) |
+| Document the boot sequence | P5 — boot-sequence doc |
+
+Keeping the plan's own order: the store view (P1) is the adapter the later tasks reuse; the context (P2)
+holds the capability registry; P3 moves the existing registration onto it; P4 proves the gate can fail;
+P5 documents the result.
+
+---
+
+## 2. P1 — `NamespacedStore` view (the compatibility adapter)
+
+**Problem (verified).** Every production module function takes the shared connection directly
+(`modules/inventory/src/service.rs:19` `get_product(conn: &Connection, ...)`,
+`modules/crm/src/service.rs:25` `create_customer(conn: &mut Connection, ...)`). Nothing stops a module
+calling `conn.prepare("SELECT ... FROM sales")`: the Phase 1 checker governs what raw SQL *may say* in a
+file, not what a runtime path *does* when the SQL is assembled from data.
+
+**What already exists (verified).** The ownership map landed in Phase 2 kickoff:
+`crates/kasirmu-core/src/db/ownership.rs` `owner_of()`. The reusable SQL scanner lives in
+`crates/kasirmu-plugin/src/db.rs` (`strip_sql_comments` :344, `ensure_no_quoted_identifiers` :282,
+`extract_table_references` :404). `Store<'a>` is the borrowed view this mirrors
+(`crates/kasirmu-core/src/db/mod.rs`).
+
+**Ticket P1 — add the borrowed, runtime-checked view.**
+
+1. Add `crates/kasirmu-core/src/db/namespaced.rs` (to be created) implementing the draft's §3 surface: `NamespacedStore<'a>`
+   wrapping `Store<'a>`, `ModuleId`, `Grants { read: Vec<ModuleId> }`, hand out `own()` and
+   `read(module) -> Result<Namespace, NamespaceError>`, and `Namespace::{query, execute, raw}`.
+2. Resolve each table against `ownership::owner_of`; a table owned by the module or in `grants.read` passes,
+   anything else is `NamespaceError::Foreign`, and an unmapped table is `NamespaceError::UnknownTable`
+   (fail-closed). Reuse the `kasirmu-plugin` scanner (C3: no second parser, no new dependency).
+3. No `write(module)`, no connection pool, no async (draft §3.1). `raw()` stays for the migration window but
+   every call emits a structured warning naming module + tables (draft open question 2).
+4. The check is a pure function over `(owner, grants, sql)` so it unit-tests without a database.
+
+**Files:** `crates/kasirmu-core/src/db/namespaced.rs` (to be created); `crates/kasirmu-core/src/db/mod.rs`
+(`pub mod namespaced;`); `crates/kasirmu-core/src/db/namespaced_tests.rs` (to be created).
+
+**Acceptance criteria:**
+- Unit tests (no DB) prove: own-table passes; granted foreign read passes; ungranted foreign read is
+  `Foreign`; unknown table is `UnknownTable`; a comment-hidden or quoted foreign table is still caught.
+- `raw()` naming a foreign table returns `Err(Foreign)`; naming an own table returns the SQL unchanged.
+- The file is rustfmt-clean and the crate tests pass (`cargo test -p kasirmu-core --lib namespaced`).
+
+**Depends on:** the ownership map (landed). **Blocks:** P3, P4.
+
+**Status: NOT STARTED.** Planned home for the store view is a new `crates/kasirmu-core/src/db/namespaced.rs`;
+note that `kasirmu-core` does not depend on `kasirmu-plugin`, so the scanner the draft §4 points at must be
+either reimplemented in core (mirroring `crates/kasirmu-plugin/src/db.rs`) or the dependency graph must be
+un-inverted deliberately — decide this in the P1 review before writing the scanner.
+
+---
+
+## 3. P2 — `ModuleContext` and the capability registry
+
+**Problem (verified).** No `ModuleContext`, no `CapabilityRegistry`, no capability concept exists anywhere in
+the tree (grep of `platform/`, `crates/`, `foundation/` finds none in Rust; the only `capabilit` hits are the
+Tauri permission framework in `apps/desktop-tauri/tests/capability_parity.rs`, a different thing). The
+`Module` trait (`foundation/src/contracts.rs:27`) has `id`/`dependencies`/`on_load`/`on_start`/`on_stop`
+and no way to reach a platform service. Manifests carry `dependencies` and `permissions` but neither gates
+code (`modules/inventory/manifest.json`).
+
+**Ticket P2 — a narrow, typed context plus a capability registry.**
+
+1. Add `ModuleContext` (proposed home: a new `platform/kernel/src/context.rs`, since the kernel owns module boot)
+   exposing the plan's list: the event-bus handle, the capability registry, the settings store, a namespaced
+   store factory, the reporting facade handle, a logger, a clock, and the transaction coordinator.
+2. Add `CapabilityRegistry`: a module declares required capabilities (from its manifest `permissions` plus a
+   new `capabilities` list in the vocabulary `docs/architecture/namespaced-store-api-draft.md` needs:
+   `read:<module>`, `subscribe:<event>`, `use:reporting_facade`, ...), and `register` **fails fast** when a
+   required capability is not explicitly granted.
+3. Keep the context **narrow**: no service-locator bag. Each accessor returns a typed handle, and granting is
+   the only way to obtain a foreign one.
+4. `Module` gains a hook to receive the context (e.g. `fn on_context(&mut self, ctx: &ModuleContext)`);
+   default no-op so existing impls compile.
+
+**Files:** `platform/kernel/src/context.rs` (to be created), `platform/kernel/src/lib.rs`,
+`foundation/src/contracts.rs` (`Module` hook + `Capability` type), `platform/kernel/src/manifest.rs`.
+
+**Acceptance criteria:**
+- A unit test proves a module that requests an ungranted capability fails registration with a named error.
+- A unit test proves a granted capability is handed back as the typed handle, not a generic bag.
+- `cargo test -p platform-kernel` is green and existing module registration still compiles.
+- The manifest schema `docs/specs/module-manifest.schema.json` gains the `capabilities` field, with a
+  parity/gate check that a declared capability in code appears in the manifest (or is explicitly empty).
+
+**Depends on:** P1 (the store factory hands out `NamespacedStore`). **Blocks:** P3.
+
+---
+
+## 4. P3 — Migrate `init_module_system` onto the context
+
+**Problem (verified).** `platform/startup/src/lib.rs` `init_module_system` (:86) registers 14 modules with
+`k.register(Box::new(...))` (:101–:122) and subscribes 11 handlers with `bus.subscribe` (:134–:193) using
+the raw bus and connection directly. Nothing forces a module to have been granted a capability before it
+subscribes to another vertical's event.
+
+**Ticket P3 — register through the context, deterministically.**
+
+1. Build a `ModuleContext` in `init_module_system`, hand it to each module, and route the `bus.subscribe`
+   calls through the capability registry so subscribing to a foreign topic requires the matching grant.
+2. Keep legacy access working: a module with no declared capabilities still starts (the plan's "legacy access
+   still works during migration"), but the boot logs a deprecation warning naming the module.
+3. Make registration order deterministic and document the topological sort already in `load_all`
+   (dependencies at `foundation/src/contracts.rs:41`).
+
+**Files:** `platform/startup/src/lib.rs`, `platform/startup/src/event_handlers.rs` (subscription sites).
+
+**Acceptance criteria:**
+- `cargo check --workspace --all-targets` clean; the 14 modules still register and the 11 subscriptions
+  still fire.
+- The `--census` checker still reports 12 classified types, 0 stale (the T1 census is the regression guard
+  for moved lines).
+- A module with a missing *required* capability fails boot (covered by the P2 unit test) while a module with
+  none declared still boots with a warning.
+
+**Depends on:** P2. **Blocks:** P4.
+
+---
+
+## 5. P4 — Integration test: no ungranted capability
+
+**Problem.** The plan's exit criterion is "Modules cannot acquire ungranted capabilities" and "Module
+startup behavior is deterministic". A unit test on the registry (P2) does not prove the *boot path* refuses.
+
+**Ticket P4 — a boot-path integration test.**
+
+1. Add an integration test that boots the module system with a fixture module requesting an ungranted
+   capability and asserts boot fails with the named capability error.
+2. Add a second test that boots the real module set and asserts deterministic order and a clean start.
+3. Assert at least one module reads through the `NamespacedStore` factory (P1) and that a foreign read
+   without a grant returns `NamespaceError::Foreign` at the boundary.
+
+**Files:** a new integration test under `platform/startup/tests/` (to be created), or the kernel's test module.
+
+**Acceptance criteria:**
+- Deliberately removing a grant from a fixture module makes the boot test fail, naming module + capability;
+  restoring it passes.
+- The real boot test passes twice in a row with identical ordering output.
+
+**Depends on:** P3.
+
+---
+
+## 6. P5 — Document the boot sequence
+
+**Ticket P5 — one page describing how a module starts.**
+
+1. Add `docs/architecture/module-boot-sequence.md` (to be created): registration → dependency sort → capability check →
+   `on_load` → `on_start`, naming the real functions and line anchors.
+2. State the compatibility window explicitly (legacy `&Connection` access is allowed but logs a warning
+   until Phase 4 removes `raw()`).
+3. Link it from `docs/architecture/module-namespace-governance.md` and the plan's Phase 2 exit criteria.
+
+**Files:** `docs/architecture/module-boot-sequence.md` (to be created); inbound links from the governance doc.
+
+**Acceptance criteria:**
+- The docs-auditor dead-ref check (`.agents/skills/docs-auditor/scripts/check-dead-refs.py`) is clean on
+  the new page (to be created at `docs/architecture/module-boot-sequence.md`) once P5 lands.
+- Every function named in the page exists at the named location on the commit that lands it.
+
+**Depends on:** P3 (the code it documents).
+
+---
+
+## 7. Sequencing
+
+```
+P1 (store view)  →  P2 (context + registry)  →  P3 (migrate boot)  →  P4 (boot test)  →  P5 (doc)
+```
+
+P1 is independently reviewable and revertible and unblocks the runtime check the whole phase exists for. P5
+trails the code so the doc describes what actually shipped, not the plan's aspiration.
