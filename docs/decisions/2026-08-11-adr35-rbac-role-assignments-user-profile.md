@@ -293,4 +293,33 @@ display read is `None` *and* `user_profile_has_unreadable_seal` is true) and
 explicitly empty column is *not* reported as corruption). Both verified RED with the accessor
 logic removed and GREEN with it.
 
+
+## Amendment (2026-10-04): a malformed required permission cannot be satisfied by its own wildcard
+
+**Problem.** The resolver `has_permission` (`platform/core/src/rbac.rs`) derives a domain
+wildcard from the *required* permission by splitting it on the first `:` and appending `:*`.
+It did that without checking the required string was well formed, so a malformed required
+carried a wildcard of its own: `"sales:*:extra"` splits to domain `sales`, derives `sales:*`,
+and a granted `sales:*` then satisfies it. The wildcard inside `required` is the thing being
+*asked for*, not a grant — deriving a grant from it lets a caller's own input widen the check.
+
+**Why now.** Required values are compile-time catalog constants (the `permissions` module), and
+the untrusted API path only ever validates operator-supplied *grants* against the registry, so
+the defect was unreachable in production. The module header recorded it as an observation to
+close before a future or mistaken caller relied on the resolver's tolerance of malformed input.
+This amendment closes it as defence in depth, not as a live-bug fix.
+
+**Decision.** Derive the domain wildcard only when the required string is well formed — a
+non-empty domain, and no `*` in either the domain or the action segment. The guard suppresses
+**only** the derived-wildcard clause: an exact identity still matches (asking for precisely a
+grant you hold is not widening), the global `*` still grants everything, and the intended
+well-formed domain-wildcard path (`sales:*` granting `sales:void`) is unchanged.
+
+**Verification.** Pins in `platform/core/src/rbac_tests.rs`:
+`a_malformed_required_is_never_satisfied_by_a_wildcard_derived_from_it` (`"sales:*:extra"`, a
+required that is itself a wildcard, and an empty domain are all denied by the wildcard clause)
+and `a_well_formed_required_still_matches_its_domain_wildcard` (the intended path plus the
+global wildcard). Verified RED with the guard reverted (panicked at `rbac_tests.rs:527`) and
+GREEN with it.
+
 > last audited 29-09-26 by docs-auditor
