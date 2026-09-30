@@ -219,7 +219,112 @@ describe('StockShortfallDialog', () => {
     });
   });
 
+
+  // ── The allocation sum must equal the REQUESTED qty, not the deficit ──
+
+  // plan_resolution_deductions (crates/kasirmu-core/src/sale_deduction.rs:210-218)
+  // refuses any sum other than line.qty, and the resolution branch REPLACES
+  // the primary deduction rather than adding to it, so the whole line has to
+  // be accounted for. Before the fix the dialog allocated only the deficit,
+  // which made every retry of a shortfall whose primary location held ANY
+  // stock fail with a Validation error the dialog then hid behind a generic
+  // message.
+
+  it('allocates the requested qty in simple mode, not the deficit', async () => {
+    mockCompleteSaleWithResolvedShortfalls.mockResolvedValueOnce({
+      saleId: 'sale-1',
+      total: null,
+      lineCount: 1,
+    });
+
+    await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+    await userEvent.click(screen.getByText('Confirm & Continue'));
+
+    await waitFor(() => {
+      expect(mockCompleteSaleWithResolvedShortfalls).toHaveBeenCalledTimes(1);
+    });
+
+    const args = mockCompleteSaleWithResolvedShortfalls.mock.calls[0]![1] as {
+      resolutions: Array<{ allocations: Array<{ qty: number }> }>;
+    };
+    // requestedQty=20 while the deficit is only 17.
+    expect(args.resolutions[0]!.allocations.reduce((s, a) => s + a.qty, 0)).toBe(20);
+  });
+
   // ── No alternatives ──────────────────────────────────────────────
+
+
+  // The per-row cap is Math.min(qtyAvailable, deficit), so both rows can be
+  // filled and the sum can overshoot the line. The backend refuses such a sum
+  // outright, so the dialog trims it back to what the line requires.
+  it('trims an over-allocated split so the sum equals the requested qty', async () => {
+    mockCompleteSaleWithResolvedShortfalls.mockResolvedValueOnce({
+      saleId: 'sale-1',
+      total: null,
+      lineCount: 1,
+    });
+
+    await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+    await userEvent.click(screen.getByText('Split across locations'));
+
+    const inputs = screen.getAllByRole('spinbutton');
+    await userEvent.clear(inputs[0]!);
+    await userEvent.type(inputs[0]!, '17');
+    await userEvent.clear(inputs[1]!);
+    await userEvent.type(inputs[1]!, '10');
+
+    await waitFor(() => {
+      expect(inputs[1]!).toHaveValue(10);
+    });
+
+    await userEvent.click(screen.getByText('Confirm & Continue'));
+
+    await waitFor(() => {
+      expect(mockCompleteSaleWithResolvedShortfalls).toHaveBeenCalledTimes(1);
+    });
+
+    const args = mockCompleteSaleWithResolvedShortfalls.mock.calls[0]![1] as {
+      resolutions: Array<{ allocations: Array<{ qty: number }> }>;
+    };
+    expect(args.resolutions[0]!.allocations.reduce((s, a) => s + a.qty, 0)).toBe(20);
+  });
+
+  // Every SKU carries its own resolution, so a well-formed SKU must not hide
+  // a wrong sum on another.
+  it('sums every SKU of a mixed batch against its own requested qty', async () => {
+    mockCompleteSaleWithResolvedShortfalls.mockResolvedValueOnce({
+      saleId: 'sale-1',
+      total: null,
+      lineCount: 2,
+    });
+
+    await renderWithFluent(
+      <StockShortfallDialog
+        {...defaultProps}
+        shortfallResult={partialStockResult({
+          shortfalls: [
+            shortfall({ sku: 'SKU-001' }),
+            shortfall({ sku: 'SKU-002', requestedQty: 6, primaryQtyAvailable: 1, deficit: 5 }),
+          ],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByText('Confirm & Continue'));
+
+    await waitFor(() => {
+      expect(mockCompleteSaleWithResolvedShortfalls).toHaveBeenCalledTimes(1);
+    });
+
+    const args = mockCompleteSaleWithResolvedShortfalls.mock.calls[0]![1] as {
+      resolutions: Array<{ sku: string; allocations: Array<{ qty: number }> }>;
+    };
+    const sums = Object.fromEntries(
+      args.resolutions.map((r) => [r.sku, r.allocations.reduce((s, a) => s + a.qty, 0)]),
+    );
+    expect(sums['SKU-001']).toBe(20);
+    expect(sums['SKU-002']).toBe(6);
+  });
 
   it('shows no-alternatives message when alternatives list is empty', async () => {
     await renderWithFluent(
@@ -376,7 +481,12 @@ describe('StockShortfallDialog', () => {
     const resolution = argsPayload.resolutions[0]!;
     expect(resolution.sku).toBe('SKU-001');
 
-    // Should have 2 allocations: 10 from alt-1 + 7 auto-filled from primary (deficit=17)
+    // Should have 2 allocations: 10 from alt-1 + 10 auto-filled from primary.
+    // The sum must be the REQUESTED qty (20), not the deficit (17):
+    // plan_resolution_deductions compares the sum against line.qty
+    // (crates/kasirmu-core/src/db/sales_lifecycle.rs:246-249) and the
+    // resolution branch REPLACES the primary deduction, so the allocation
+    // total has to cover the whole line.
     expect(resolution.allocations).toHaveLength(2);
     const altAlloc = resolution.allocations.find(
       (a) => a.locationId === 'alt-1',
@@ -385,7 +495,10 @@ describe('StockShortfallDialog', () => {
       (a) => a.locationId === 'main-store',
     );
     expect(altAlloc?.qty).toBe(10);
-    expect(primaryAlloc?.qty).toBe(7);
+    expect(primaryAlloc?.qty).toBe(10);
+    expect(
+      resolution.allocations.reduce((s, a) => s + a.qty, 0),
+    ).toBe(20);
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 

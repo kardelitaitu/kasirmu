@@ -199,9 +199,27 @@ export default function StockShortfallDialog({
     try {
       // Build resolved shortfalls
       const resolvedShortfalls: ResolvedShortfall[] = resolutions.map((r) => {
-        // Find the original shortfall to get deficit
         const orig = shortfallResult.shortfalls.find((s) => s.sku === r.sku);
-        const deficit = orig?.deficit ?? 0;
+        // The retry must account for the WHOLE line, not just the deficit.
+        // The first attempt rolled its whole transaction back
+        // (crates/kasirmu-core/src/db/sales_checkout.rs:406-420), so the
+        // stock the primary location COULD have covered was never deducted
+        // either. And the resolution branch REPLACES the primary deduction
+        // rather than supplementing it: in
+        // crates/kasirmu-core/src/db/sales_lifecycle.rs the `-line.qty` at
+        // primary lives in the `else if needs_stock` arm at :271-281, which a
+        // line carrying a resolution never reaches, and the
+        // `deduction_locations` audit JSON at :327-345 records exactly the
+        // resolution allocations for such a line.
+        //
+        // So plan_resolution_deductions is handed `line.qty`
+        // (sales_lifecycle.rs:246-249) and refuses any other sum with
+        // CoreError::Validation (sale_deduction.rs:210-218). Allocating the
+        // deficit instead -- which is what this used to do -- made every
+        // retry of a shortfall whose primary location held ANY stock fail,
+        // and the dialog replaced the backend message with a generic catch-all,
+        // so the cashier got no idea why.
+        const requested = orig?.requestedQty ?? 0;
 
         // If in simple mode (single location), create single allocation
         const primaryLocId = orig?.primaryLocationId ?? '';
@@ -210,12 +228,12 @@ export default function StockShortfallDialog({
           const locId = r.selectedLocationId ?? primaryLocId;
           return {
             sku: r.sku,
-            allocations: [{ locationId: locId, qty: deficit }],
+            allocations: [{ locationId: locId, qty: requested }],
           };
         }
 
         // In split mode: build allocations from the state
-        const allocs: LocationAllocation[] = [];
+        let allocs: LocationAllocation[] = [];
         let allocTotal = 0;
 
         // Add resolved alternative allocations
@@ -228,8 +246,22 @@ export default function StockShortfallDialog({
           }
         }
 
-        // Auto-fill remaining deficit from primary if allocations don't sum up
-        const remaining = deficit - allocTotal;
+        // The per-location cap in the split rows is Math.min(qtyAvailable,
+        // deficit) -- a PER-ROW limit, so several rows can each reach it and
+        // the total can overshoot. Trim in row order to the total the backend
+        // requires, rather than submitting a sum it will refuse.
+        if (allocTotal > requested) {
+          let over = allocTotal - requested;
+          for (let i = allocs.length - 1; i >= 0 && over > 0; i--) {
+            const trim = Math.min(over, allocs[i]!.qty);
+            allocs[i]!.qty -= trim;
+            over -= trim;
+          }
+          allocs = allocs.filter((a) => a.qty > 0);
+        }
+
+        // Auto-fill the rest from primary so the sum is exactly `requested`.
+        const remaining = requested - allocTotal;
         if (remaining > 0) {
           allocs.push({ locationId: primaryLocId, qty: remaining });
         }
