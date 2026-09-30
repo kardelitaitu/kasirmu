@@ -252,8 +252,11 @@ $env:KASIRMU_MASTER_KEY                  # at-rest master key (64 hex); OZ_MASTE
 `<type>(<area>): <description>` — subject enforced by `.githooks/commit-msg` (bodies
 free-form; `Merge …`/`Revert …`/`fixup!`/`squash!`/empty pass through; hook needs
 `core.hooksPath`). Types: `feat` `fix` `docs` `chore` `test` `refactor` `style`
-`perf` `ci` `audit`. Area: domain/crate/component, lowercase. Description:
-imperative, present tense ("add gift card tender").
+`perf` `ci` `audit` `build`. Area: domain/crate/component, lowercase. Description:
+imperative, present tense ("add gift card tender"). `build` covers build-system and
+dependency-packaging changes (Docker stages, cache priming) and joined 2026-10-01,
+when `c5fee807` landed with it and could not be amended; the list in
+`.githooks/commit-msg` is the enforced copy and the two must stay identical.
 
 ### 7.3 Cadence & push rule — and the shared-index protocol
 - **Commit after each logical task once verified locally.**
