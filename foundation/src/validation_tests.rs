@@ -6,6 +6,7 @@
 //!   `#[cfg(test)] #[path = "validation_tests.rs"] mod tests;`
 
 use super::*;
+use crate::constants::MAX_SKU_LENGTH;
 
 // ── validate_not_empty ───────────────────────────────────────
 
@@ -560,4 +561,76 @@ fn string_length_rejects_empty() {
 #[test]
 fn string_length_trims_before_check() {
     assert!(validate_string_length("name", "  Coffee  ", 2, 50).is_ok());
+}
+
+// ── Byte-vs-char length counting (COR-36, fixed 2026-10-04) ─────
+
+// The min/max/ bounded/SKU validators used to compare `str::len()` (BYTES)
+// while telling the caller the limit was in CHARACTERS. For multi-byte
+// UTF-8 (e.g. CJK, accents) the message lied and a display-name cap
+// admitted fewer characters than promised. They now count `chars()`.
+
+#[test]
+fn max_length_counts_characters_not_bytes() {
+    // 20 CJK chars, each 3 bytes in UTF-8 (60 bytes). A 20-character cap
+    // must accept this; the old byte count would have rejected it.
+    let twenty_cjk = "\u{4e2d}".repeat(20);
+    assert_eq!(
+        twenty_cjk.len(),
+        60,
+        "fixture sanity: 20 CJK chars = 60 bytes"
+    );
+    assert_eq!(twenty_cjk.chars().count(), 20);
+    assert!(
+        validate_max_length("name", &twenty_cjk, 20).is_ok(),
+        "a 20-character cap must admit 20 multi-byte characters",
+    );
+    let err = validate_max_length("name", &twenty_cjk, 19).unwrap_err();
+    assert!(
+        err.message.contains("(got 20)"),
+        "the message must report the character count, not the byte count: {}",
+        err.message
+    );
+}
+
+#[test]
+fn min_length_counts_characters_not_bytes() {
+    let ten_cjk = "\u{4e2d}".repeat(10);
+    assert_eq!(ten_cjk.len(), 30, "fixture sanity: 10 CJK chars = 30 bytes");
+    assert!(
+        validate_min_length("name", &ten_cjk, 10).is_ok(),
+        "10 multi-byte characters satisfy a 10-character minimum",
+    );
+    let err = validate_min_length("name", &ten_cjk, 11).unwrap_err();
+    assert!(
+        err.message.contains("(got 10)"),
+        "the message must report 10 characters, not 30 bytes: {}",
+        err.message
+    );
+}
+
+#[test]
+fn non_empty_bounded_counts_characters_not_bytes() {
+    let fifteen_cjk = "\u{4e2d}".repeat(15);
+    assert_eq!(fifteen_cjk.len(), 45);
+    assert!(validate_non_empty_bounded("name", &fifteen_cjk, 2, 50).is_ok());
+    let err = validate_non_empty_bounded("name", &fifteen_cjk, 2, 10).unwrap_err();
+    assert!(
+        err.message.contains("(got 15)"),
+        "bounded validator reports characters: {}",
+        err.message
+    );
+}
+
+#[test]
+fn validate_sku_counts_characters_not_bytes() {
+    // ASCII-only by rule, so bytes == chars here; this pins that the
+    // reported count is still a character count after the change.
+    let err = validate_sku("sku", &"A".repeat(MAX_SKU_LENGTH + 1)).unwrap_err();
+    assert!(
+        err.message
+            .contains(&format!("(got {})", MAX_SKU_LENGTH + 1)),
+        "sku length is reported in characters: {}",
+        err.message
+    );
 }

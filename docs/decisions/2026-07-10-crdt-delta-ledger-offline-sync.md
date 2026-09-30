@@ -251,3 +251,17 @@ Two of the four primitives are live, two are latent:
 The `next:` notes in `lamport.rs`, `clock_store.rs`, `delta_mutation.rs`, `mod.rs` and `version_vector.rs` now read `next: none` with the disposition above. `version_vector_tests.rs` pins that all four orderings the detector matches on are reachable, so a future change cannot silently make the detector's flag-for-review arm dead code.
 
 <!-- Audit stamp: 2026-10-04 · CRDT primitive adoption status recorded. -->
+
+---
+
+## The length validators count characters, not bytes (COR-36, fixed 2026-10-04)
+
+`foundation::validation`'s `validate_min_length`, `validate_max_length`, `validate_non_empty_bounded` and `validate_sku` measured input with `str::len()` — the UTF-8 **byte** length — while every error message said `characters`. For multi-byte input the two disagreed: a 20-character cap rejected 20 CJK characters (60 bytes) and reported `got 60`, and a 10-character minimum accepted a 5-character input. Display-name fields were the intended audience, exactly the place where CJK and accented text is normal.
+
+All four now measure `chars().count()`. The ASCII-only SKU path is unaffected in behaviour, but its reported count is now honest too.
+
+Four pins in `foundation/src/validation_tests.rs` hold the contract: `max_length_counts_characters_not_bytes` (20 CJK chars pass a 20-character cap and the message says `got 20`), `min_length_counts_characters_not_bytes`, `non_empty_bounded_counts_characters_not_bytes`, and `validate_sku_counts_characters_not_bytes`.
+
+Reachability: only `validate_min_length` has production callers today, and all four of them pass a staff PIN (min 4, ASCII digits), so no live data was mis-validated — the defect was latent in the shared API. The fix is still the right one for the intended display-name use.
+
+<!-- Audit stamp: 2026-10-04 · COR-36 byte-vs-char length counting fixed. -->

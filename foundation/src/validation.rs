@@ -3,7 +3,8 @@
 last audited 25-07-26 by RSA-Agent (foundation slice C: validation deep read)
 crate: foundation | status: SAFE | lint: CLEAN
 findings: clean, fail-closed throughout; regexes LazyLock-compiled; INFO note: min/max-length validators count BYTES not chars (.len()) so multi-byte UTF-8 names hit limits early (a 50-char cap admits ~16 CJK chars) — consider chars().count() for display-name fields; production 1-441 read, 442-1000 inline tests (COR-33 pattern)
-next: byte-vs-char length decision | perf: single Regex compile
+next: none | perf: single Regex compile
+COR-36 FIXED 2026-10-04: validate_min_length / validate_max_length / validate_non_empty_bounded / validate_sku counted BYTES (`str::len()`) while the error message said "characters", so multi-byte UTF-8 names (CJK, accents) hit the cap early and the reported count was the byte count. All four now use `chars().count()`. (The old header also claimed the inline tests were still at 442-1000 — COR-33 already extracted them to validation_tests.rs.)
 */
 //!
 //! These functions provide consistent, reusable validation for common
@@ -94,7 +95,10 @@ pub fn validate_min_length(
     value: &str,
     min: usize,
 ) -> Result<(), ValidationError> {
-    let len = value.trim().len();
+    // COR-36: count CHARACTERS, not bytes. `str::len()` would report the
+    // UTF-8 byte length while the message promises characters, so a
+    // multi-byte display name (CJK, accented) hit the cap far too early.
+    let len = value.trim().chars().count();
     if len < min {
         Err(ValidationError {
             field,
@@ -119,7 +123,8 @@ pub fn validate_max_length(
     value: &str,
     max: usize,
 ) -> Result<(), ValidationError> {
-    let len = value.trim().len();
+    // COR-36: character count, not byte count.
+    let len = value.trim().chars().count();
     if len > max {
         Err(ValidationError {
             field,
@@ -266,7 +271,8 @@ pub fn validate_non_empty_bounded(
             message: format!("{field} must not be empty"),
         });
     }
-    let len = trimmed.len();
+    // COR-36: character count, not byte count.
+    let len = trimmed.chars().count();
     if len < min {
         return Err(ValidationError {
             field,
@@ -301,8 +307,9 @@ pub fn validate_sku(field: &'static str, value: &str) -> Result<(), ValidationEr
     let trimmed = value.trim();
     validate_not_empty(field, trimmed)?;
     validate_ascii_alphanumeric(field, trimmed)?;
-    // Use trimmed length for consistency with the other checks
-    let len = trimmed.len();
+    // COR-36: character count, not byte count (ASCII-only here, so this
+    // is equivalent today, but it keeps the reported count honest).
+    let len = trimmed.chars().count();
     if len > crate::constants::MAX_SKU_LENGTH {
         return Err(ValidationError {
             field,
