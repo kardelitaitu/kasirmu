@@ -2,13 +2,17 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B1: migrations)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: forward-only contract documented; registry<->filesystem parity test pins completeness; test fresh_db snapshots via backup API with justified unwraps (test-harness scope); note: "// SAFETY:" comments here annotate safe code — recurring mislabel pattern (COR-6, with PAY-10)
-next: reword COR-6 comments | perf: N/A
+next: none | perf: N/A
+COR-6 FIXED 2026-10-04 — the six `// SAFETY:` comments in the snapshot/parity test
+helpers annotate `.unwrap()` on safe calls (in-memory SQLite opens, a Mutex
+lock, a backup copy), not unsafe blocks, so they are now `// `.unwrap()`
+reason:` comments; `grep SAFETY` in this file finds only real unsafe.
 */
 //! Migration definitions for kasir.mu.
 //!
 //! Migrations are `.sql` files under `crates/kasirmu-core/migrations/`. They are
 //! embedded at compile time via [`include_str!`] and run in the
-//! compile-time array order of [`ALL`](crate::migrations::ALL) on first startup by the generic
+//! compile-time array order of `ALL` (crate::migrations::ALL) on first startup by the generic
 //! runner in `platform-core`. The array order is canonical — not
 //! lexicographic filename order — and the registry↔filesystem parity test
 //! `migration_registry_matches_filesystem` ensures every `.sql` file has
@@ -584,18 +588,18 @@ pub fn fresh_db() -> rusqlite::Connection {
             })
         }
 
-        let conn = rusqlite::Connection::open_in_memory().unwrap(); // SAFETY: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
-        conn.execute_batch(cached_sql()).unwrap(); // SAFETY: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
+        let conn = rusqlite::Connection::open_in_memory().unwrap(); // `.unwrap()` reason: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
+        conn.execute_batch(cached_sql()).unwrap(); // `.unwrap()` reason: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
         Mutex::new(conn)
     });
 
-    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // SAFETY: in-memory test DB open cannot fail (fresh_db # Panics)
+    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // `.unwrap()` reason: in-memory test DB open cannot fail (fresh_db # Panics)
     {
-        let snapshot = SNAPSHOT.lock().unwrap(); // SAFETY: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
-        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // SAFETY: both connections are valid in-memory SQLite handles; Backup::new cannot fail
+        let snapshot = SNAPSHOT.lock().unwrap(); // `.unwrap()` reason: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
+        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // `.unwrap()` reason: both connections are valid in-memory SQLite handles; Backup::new cannot fail
         backup
             .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .unwrap(); // SAFETY: page copy between two in-memory DBs cannot fail at runtime
+            .unwrap(); // `.unwrap()` reason: page copy between two in-memory DBs cannot fail at runtime
     } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
 
     // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible

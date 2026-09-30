@@ -1,8 +1,8 @@
 /*
 last audited 25-07-26 by RSA-Agent
 crate: kasirmu-payment | status: SAFE | lint: CLEAN
-findings: one-shot decline/timeout via Mutex sound; PAY-10: two "// SAFETY:" comments annotate safe lock unwraps — mislabeled, hurts unsafe-code grep hygiene
-next: reword PAY-10 comments | perf: atomics + short mutex scopes
+findings: one-shot decline/timeout via Mutex sound; PAY-10 FIXED 2026-10-04 — the two "// SAFETY:" comments that annotated safe lock unwraps are now plain comments ("Lock poison is the intended failure signal in a test double."), so `grep SAFETY` finds only real unsafe blocks
+next: none | perf: atomics + short mutex scopes
 */
 //! Programmable mock for the [`PaymentProcessor`] trait.
 //!
@@ -137,7 +137,7 @@ impl MockPaymentProcessor {
     }
 
     fn check_decline(&self) -> Result<(), PaymentError> {
-        // SAFETY: mock driver — lock poison is the intended failure signal in a test double.
+        // Lock poison is the intended failure signal in a test double.
         let mut decline = self.decline_next.lock().unwrap();
         if *decline {
             *decline = false; // one-shot
@@ -147,7 +147,7 @@ impl MockPaymentProcessor {
     }
 
     fn check_timeout(&self) -> Result<(), PaymentError> {
-        // SAFETY: mock driver — lock poison is the intended failure signal in a test double.
+        // Lock poison is the intended failure signal in a test double.
         let mut timeout = self.simulate_timeout.lock().unwrap();
         if *timeout {
             *timeout = false;

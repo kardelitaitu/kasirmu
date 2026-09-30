@@ -2,7 +2,7 @@
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice A)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
 findings: safe-drop type sound; new() generates v7 correctly; COR-1 FIXED (date unknown, DSH-Agent) — id field doc updated to UUID v7
-next: fix field doc | perf: N/A
+next: none | perf: N/A
 */
 //! Cash Payout (Safe Drop) domain type.
 //!
