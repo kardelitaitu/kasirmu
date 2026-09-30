@@ -537,7 +537,7 @@ This document defines the phased delivery plan for kasir.mu. Each phase has a cl
 - [x] Language selector in Settings (dropdown in SettingsPage, 2 locales: en/id)
 - [ ] RTL layout support — planned (no `ui/src/styles/rtl.css` scaffolded yet); future Arabic/Hebrew locales.
 - [x] All number, date, and currency formats respect `Intl.NumberFormat` with currency style (dashboard/report screens)
-- [ ] Full i18n migration: all existing pages use `Localized` instead of hardcoded strings. The original 200+ TSX audit (P15-2) landed and the 0.0.24 i18n audit closed SettingsPage; `EmailReportSettings.tsx` still renders hardcoded English (verified 2026-08-08), violating the AGENTS.md i18n rule. Tracked for cleanup.
+- [ ] Full i18n migration: all existing pages use `Localized` instead of hardcoded strings. The original 200+ TSX audit (P15-2) landed and the 0.0.24 i18n audit closed SettingsPage. `EmailReportSettings.tsx`'s three hardcoded placeholder attributes (`smtp.example.com`, `reports@mystore.com`, `UTC`) were localized 2026-10-03 (`c70b4026b`), so that file no longer violates the AGENTS.md i18n rule; the remaining hardcoded placeholders are technical-format hints in `GeneralSection.tsx`, `SyncSection.tsx`, `FeatureToggleScreen.tsx`, `LocalApiSection.tsx` and `EdcTerminalsCard.tsx` (each verified still literal 2026-10-03). Tracked for cleanup.
 
 ### Acceptance Criteria
 - [x] Dashboard loads and renders with real SQLite data
