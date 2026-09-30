@@ -3,6 +3,8 @@ import { requiredLocalized, LoadingStatus } from '@/components';
 import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';
+import { FALLBACK_STORE_TZ, storeOffsetMs } from '@/features/analytics/analytics-data';
+import { getPrimaryLocationScoped } from '@/api/locations';
 import './KdsCompletedView.css';
 
 /** Time-bucket labels and their day-range condition. Exported so tests use the real
@@ -31,12 +33,30 @@ export function bucketForOffset(offset: number): string | null {
 }
 
 /** Day offset from today for the order's completion time (served_at or received_at). */
-export function dayOffset(ts: string): number {
-  const now = new Date();
-  const d = new Date(ts);
-  // Normalise to date-only (midnight) so "today" = same calendar day.
-  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const orderDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+/**
+ * Day offset of an order's completion time, counted on the STORE's calendar.
+ *
+ * "Today" on a kitchen display has to mean the day the kitchen is on. Reading
+ * both timestamps in the DEVICE zone made the bucket depend on wherever the
+ * terminal happens to sit, and measured on 2026-09-30 that is a real
+ * misfiling: at 2026-09-04T17:00Z an order completed at 16:00Z is YESTERDAY in
+ * a store at Asia/Jakarta (+07, so 2026-09-05 there) while any host at UTC or
+ * further west filed it under Today. The completed board is how a shift lead
+ * reconciles the day's tickets, so a one-day error is not cosmetic.
+ *
+ * storeOffsetMs() parses fixed +-HH:MM offsets and returns 0 for anything else
+ * -- including 'UTC', which is the correct value for it. FALLBACK_STORE_TZ
+ * (UTC) applies until the location profile loads, or forever if the fetch
+ * fails, so the result never depends on the host zone.
+ */
+export function dayOffset(ts: string, storeTz?: string | null): number {
+  const offset = storeOffsetMs(storeTz ?? FALLBACK_STORE_TZ);
+  // Shift the instant into the store's zone, then read the calendar on UTC --
+  // the same two-step analytics-data's isoToday() uses.
+  const now = new Date(Date.now() + offset);
+  const d = new Date(Date.parse(ts) + offset);
+  const nowDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const orderDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   return Math.max(0, Math.floor((nowDay - orderDay) / 86_400_000));
 }
 
@@ -71,6 +91,17 @@ export function KdsCompletedView({
   const { l10n } = useLocalization();
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
+  // The bucket columns are the STORE's days, not the terminal's -- see
+  // dayOffset(). Read the same way AnalyticsScreen and DashboardScreen do.
+  const [storeTz, setStoreTz] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sessionToken) return;
+    let alive = true;
+    getPrimaryLocationScoped(sessionToken)
+      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
+      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
+    return () => { alive = false; };
+  }, [sessionToken]);
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
@@ -116,17 +147,20 @@ export function KdsCompletedView({
     return orders;
   }, [orders, completedFilter]);
 
-  // Bucket the orders by completion time.
+  // Bucket the orders by completion time, on the store's calendar. storeTz is
+  // a dependency, not a read-once: the zone arrives after the orders do, so
+  // without it the buckets would be computed once on the UTC fallback and
+  // never recomputed when the profile lands.
   const bucketed = useMemo(() => {
     const map = new Map<string, KdsOrder[]>();
     for (const b of BUCKETS) map.set(b.key, []);
     for (const o of filteredOrders) {
       const ref = o.served_at || o.received_at;
-      const key = bucketForOffset(dayOffset(ref));
+      const key = bucketForOffset(dayOffset(ref, storeTz));
       if (key) map.get(key)!.push(o);
     }
     return map;
-  }, [filteredOrders]);
+  }, [filteredOrders, storeTz]);
 
   const toggleBucket = useCallback((key: string) => {
     setCollapsedBuckets((prev) => {

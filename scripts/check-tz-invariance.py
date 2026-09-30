@@ -78,6 +78,17 @@ TESTS = [
     # behind it. The new cases assert by value against a store zone the test
     # controls, so they only pass if the anchor is the store and not the host.
     "src/__tests__/ExchangeRateScreen.test.tsx",
+    # Added 2026-09-30 with the KDS completed-board repair. The third route a
+    # screen reaches the calendar by: not a window it queries and not a field
+    # it pre-fills, but a BUCKET it files each ticket into (today / yesterday /
+    # this week / older), computed from a day difference. The file existed for
+    # years and tested only bucketForOffset -- a pure number-to-string map that
+    # is handed its input, so no test could ever see the input being computed
+    # in the host zone. The new cases pin "now" with fake timers, so the zone
+    # dependence lives in the CODE rather than in the clock: these pass
+    # identically in every zone and registering them is regression safety,
+    # not the means of catching that defect.
+    "src/__tests__/KdsCompletedViewBucketForOffset.test.ts",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
