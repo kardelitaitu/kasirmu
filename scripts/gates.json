@@ -246,6 +246,14 @@
       "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
     },
     {
+      "id": "skill-drift-tests",
+      "label": "Skill drift guard self-tests",
+      "status": "required",
+      "runners": { "check.sh": ["skill-drift-guard-tests"] },
+      "_note": "The 32 bats tests that prove the skill-drift guard still detects what it claims to detect. They ran in ci.yml#skill-drift-tests until that workflow was retired to attic/ci.yml.bak, which left the guard as the only thing enforcing the guard. Restored as a dev-ci.yml#static-gates step that installs bats by apt. check.sh runs them only when bats is on PATH and WARN-SKIPS otherwise, so a Windows or bare dev machine does not go red over a missing test runner. Not the same gate as skill-drift: that one runs the detector, this one runs the tests of the detector.",
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates" }
+    },
+    {
       "id": "panic-inventory",
       "label": "Panic inventory",
       "status": "required",

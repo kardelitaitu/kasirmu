@@ -132,6 +132,7 @@ the other direction: the retired `ci.yml` job `rust-clippy` has a live successor
 | Docker build smoke | — | Required | `check.sh` (docker build) |
 | Migration smoke | — | Required | `check.sh` (migration) |
 | Skill drift guard | `static-gates` | Required | `check.sh` (skill-drift) |
+| Skill drift guard self-tests | `static-gates` | Required | `check.sh` (skill-drift-guard-tests) |
 | Panic inventory | `static-gates` | Required | `check.sh` (panic-inventory) |
 | Debt markers | `static-gates` | Required | `check.sh` (debt markers) — every `TODO <id>` must resolve to a plan definition that is not already ticked done. Added 2026-09-30 with the 12-finding repair (gates.json `debt-markers`). A marker whose work shipped is a dead pointer; a marker whose id resolves nowhere is a citation to a document nobody can open |
 | Debt marker checker self-test | `static-gates` | Required | `check.sh` (debt markers self-test) — eight planted cases, including the one this checker was written for: a definition already ticked done must NOT retire a marker aimed at it. Same principle as the PG row: a checker whose own rules can rot is decoration |
@@ -271,24 +272,25 @@ Comprehensive pre-push gate mirroring CI. Runs:
 6. `cargo nextest run --workspace`
 7. Migration smoke
 8. Skill drift guard
-9. Panic inventory
-10. IPC registration parity
-11. IPC invoke token parity
-12. `npm ci` + UI lint/typecheck/test
-13. i18n lint
-14. FTL dedupe
-15. Feature registry parity
-16. Topology contract parity
-17. Plugin-guide parity
-18. Windows config drift
-19. Release toolchain self-tests
-20. Healthcheck script test
-21. CI docs drift
-22. Optional: Docker build (`--docker-dry-run`)
-23. `cargo deny check` — supply-chain advisories, **advisory**: prints PASS / SKIP / WARN and never fails the matrix (added `dd95374f7`; Rust only, no workflow, not in pre-push)
-24. Records index freshness — `node scripts/generate-records-index.mjs --check` (added 2026-09-23 by the documentation audit; its CI twin runs in `ci-docs-drift`, where the companion dead-ref step is CI-only advisory because `step()` exits on first failure)
-25. ADR status drift — `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py` (added 2026-09-24, audit open item 2; check.sh-only, no workflow — the same local-only shape as the auditor self-tests gate)
-26. Website route links — `python3 .agents/skills/docs-auditor/scripts/check-site-links.py` (added 2026-09-24, audit open item 4; check.sh-only, no workflow — local-only like items 24's local leg and 25)
+9. Skill drift guard self-tests (bats; warn-skips when bats is absent)
+10. Panic inventory
+11. IPC registration parity
+12. IPC invoke token parity
+13. `npm ci` + UI lint/typecheck/test
+14. i18n lint
+15. FTL dedupe
+16. Feature registry parity
+17. Topology contract parity
+18. Plugin-guide parity
+19. Windows config drift
+20. Release toolchain self-tests
+21. Healthcheck script test
+22. CI docs drift
+23. Optional: Docker build (`--docker-dry-run`)
+24. `cargo deny check` — supply-chain advisories, **advisory**: prints PASS / SKIP / WARN and never fails the matrix (added `dd95374f7`; Rust only, no workflow, not in pre-push)
+25. Records index freshness — `node scripts/generate-records-index.mjs --check` (added 2026-09-23 by the documentation audit; its CI twin runs in `ci-docs-drift`, where the companion dead-ref step is CI-only advisory because `step()` exits on first failure)
+26. ADR status drift — `python3 .agents/skills/docs-auditor/scripts/check-adr-status.py` (added 2026-09-24, audit open item 2; check.sh-only, no workflow — the same local-only shape as the auditor self-tests gate)
+27. Website route links — `python3 .agents/skills/docs-auditor/scripts/check-site-links.py` (added 2026-09-24, audit open item 4; check.sh-only, no workflow — local-only like items 24's local leg and 25)
 
 ### `scripts/check-ui.mjs` (Node, cross-platform)
 

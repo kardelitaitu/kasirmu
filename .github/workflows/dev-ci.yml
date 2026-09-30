@@ -990,6 +990,14 @@ jobs:
         run: python3 scripts/verify-windows-config.py
       - name: Skill drift guard
         run: bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
+      # The 32 bats tests that prove the guard above still detects what it claims
+      # to detect. They ran in ci.yml#skill-drift-tests until that workflow was
+      # retired, so for a while the only thing enforcing this guard was the guard.
+      - name: Skill drift guard self-tests
+        run: |
+          sudo apt-get install -y bats
+          bash .agents/skills/skill-drift-guard/scripts/run-tests.sh
+
       - name: Unified healthcheck script test
         run: sh apps/unified/test-healthcheck.sh
       # Orphaned until 2026-09-26 (review 12.2): the script existed, worked and passed,

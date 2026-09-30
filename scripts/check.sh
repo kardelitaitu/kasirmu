@@ -347,6 +347,14 @@ rm -f var/kasir.db var/kasir.db-wal var/kasir.db-shm
 # ── Skill drift guard (blocking in CI too: dev-ci.yml#static-gates) -------
 if command -v bash &>/dev/null; then
     step "skill-drift-guard" "bash .agents/skills/skill-drift-guard/scripts/detect.sh --report" bash .agents/skills/skill-drift-guard/scripts/detect.sh --report
+    # The 32 bats tests behind that guard. Skipped with a warning, not failed,
+    # when bats is absent -- the same bargain every other optional dependency
+    # here makes. They cost ~3 minutes, so check.sh runs them and CI does too.
+    if command -v bats &>/dev/null; then
+        step "skill-drift-guard-tests" "bash .agents/skills/skill-drift-guard/scripts/run-tests.sh" bash .agents/skills/skill-drift-guard/scripts/run-tests.sh
+    else
+        echo -e "${YELLOW}⚠ skill-drift-guard-tests skipped (bats not found)${NC}"
+    fi
 else
     echo -e "${YELLOW}⚠ skill-drift-guard skipped (bash not found)${NC}"
 fi
