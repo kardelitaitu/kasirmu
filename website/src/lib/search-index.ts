@@ -69,6 +69,7 @@ export const DOC_KEYWORDS: Record<string, string> = {
   workspaces: 'workspace workspaces layout screen retail restaurant service kitchen back office modes',
   // reference
   licensing: 'license licensing plan plans tier expiry expired grace period trial billing free forever upgrade',
+  'first-day': 'go live opening day first day checklist launch cash drawer float staff handover offline drill test print',
   settings: 'settings branding receipts receipt currency tax taxes locale local data backup restore',
   'api-read-tiers': 'jwt permissions read tier scoped token insufficient scope audit dashboard api get',
   'docs-authoring': 'docs documentation style guide callouts tables code charts authoring writing',

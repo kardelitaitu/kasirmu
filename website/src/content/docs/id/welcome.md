@@ -72,6 +72,10 @@ kasir yang siap dihitung dalam sekitar 15 menit.
    butuhkan — [Ruang Kerja](../workspaces/) mencakup POS Ritel, POS
    Restoran, Layar Dapur, dan Gudang — bahkan tanpa internet.
 
+Akan buka hari ini? Daftar periksa [Hari Pertama Beroperasi](../first-day/)
+mencakup verifikasi perangkat, pembukaan shift, dan penyerahan konter
+kepada staf.
+
 ## Instal ulang atau terkunci?
 
 Register baru, disk direset, atau aplikasi meminta **kode pemulihan**? Itu

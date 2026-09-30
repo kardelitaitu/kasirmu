@@ -71,6 +71,9 @@ working counter in about 15 minutes.
    [Workspaces](../workspaces/) covers Retail POS, Restaurant POS, Kitchen
    Display, and Warehouse — even without internet.
 
+Going live today? The [First Day Live](../first-day/) checklist covers
+hardware verification, an opening shift, and handing the counter to staff.
+
 ## Reinstalling or locked out?
 
 New register, wiped disk, or the app says your license needs a **recovery
