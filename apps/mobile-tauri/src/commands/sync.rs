@@ -544,6 +544,28 @@ pub struct SyncConflictDto {
 /// original (which reads the global connection), this reads the scoped
 /// connection so the tenant whose session opened the command is the tenant
 /// whose cloud is asked.
+/// COR-31: a bounded client for the conflict list/resolve commands.
+///
+/// Both commands used a bare `reqwest::Client::new()`, which has no timeout
+/// at all. They are user-initiated UI calls — the operator taps the conflict
+/// queue, then resolves a row — so an unbounded hang pins the command
+/// forever and the spinner never clears. 10s connect / 30s total matches the
+/// convention for the other bounded non-bulk JSON calls (`sync_client`,
+/// `whatsapp`, the payment drivers).
+fn bounded_conflict_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!(
+                error = %e,
+                "could not build bounded HTTP client for sync conflicts; falling back to an unbounded client"
+            );
+            reqwest::Client::new()
+        })
+}
+
 async fn sync_server_credentials(
     state: &State<'_, AppState>,
     session_token: &str,
@@ -587,7 +609,7 @@ pub async fn list_sync_conflicts_scoped(
         return Ok(Vec::new());
     };
 
-    let mut request = reqwest::Client::new().get(format!("{base}/api/sync/conflicts"));
+    let mut request = bounded_conflict_client().get(format!("{base}/api/sync/conflicts"));
     if let Some(status) = &args.status {
         request = request.query(&[("status", status)]);
     }
@@ -636,7 +658,7 @@ pub async fn resolve_sync_conflict_scoped(
         return Ok(false);
     };
 
-    let mut request = reqwest::Client::new()
+    let mut request = bounded_conflict_client()
         .post(format!("{base}/api/sync/conflicts/{}/resolve", args.id))
         .json(&serde_json::json!({ "resolution": args.resolution }));
     if let Some(key) = key {

@@ -524,3 +524,15 @@ This is the last known COR-31 site, and it is worse in a daemon than in a reques
 Pinned by `push_client_is_bounded_by_a_timeout` (`platform/sync/src/image_push_tests.rs`): reqwest's `Client` does not expose its configured timeouts, so the coupling — "the constructor builds through `Client::builder()` with a connect and a total timeout, and no bare `client: reqwest::Client::new()` remains" — is asserted over the source with `include_str!`, the same technique `apps/cloud-server/src/sync_api_tests.rs` uses for source contracts. The test harness's own struct literal now builds through `super::bounded_http_client()` too, so the tests exercise the real shape.
 
 > COR-31 residual fixed 2026-10-04; the image-push daemon's client is bounded at 10s connect / 30s total.
+
+## The tablet's conflict commands use a bounded client too (COR-31 residual, fixed 2026-10-04)
+
+`list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped` in `apps/mobile-tauri/src/commands/sync.rs` built their requests with a bare `reqwest::Client::new()` — no timeout at all. Unlike the image-push daemon, these are user-initiated UI calls: the operator taps the conflict queue, and then resolves a row. An unbounded hang pins the command forever and the spinner never clears.
+
+**Fix:** a `fn bounded_conflict_client()` builds through `reqwest::Client::builder()` with `connect_timeout(10s)` and `timeout(30s)`, the same budget as the other bounded non-bulk JSON calls. The unreachable builder-failure arm keeps an unbounded client but logs at `error`, matching `rate_sync.rs` and the payment drivers.
+
+Pinned by `sync_conflict_commands_use_a_bounded_client` (`apps/mobile-tauri/src/commands/sync_tests.rs`): it asserts both commands route through `bounded_conflict_client()`, that the builder sets connect and total timeouts, and that no bare `reqwest::Client::new().get(` / `.post(` request builder survives.
+
+The desktop twin (`apps/desktop-tauri/src/commands/sync.rs`) carries the same pattern at `:440`/`:488` and is left to the lane that currently owns that file.
+
+> COR-31 residual fixed 2026-10-04; the tablet conflict commands are bounded at 10s connect / 30s total.

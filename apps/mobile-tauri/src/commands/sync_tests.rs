@@ -896,3 +896,38 @@ async fn sync_pull_applies_the_snapshot_to_the_store_not_the_global_db() {
         );
     }
 }
+
+// ── COR-31: the conflict commands' HTTP client must be bounded ──────
+
+/// `list_sync_conflicts_scoped` and `resolve_sync_conflict_scoped` built
+/// their requests with a bare `reqwest::Client::new()`, which has NO
+/// timeout. These are user-initiated UI calls (the operator taps the
+/// conflict queue and then resolves a row), so an unbounded hang pins the
+/// command forever and the spinner never clears.
+///
+/// Why an `include_str!` assertion and not a behavioural one: reqwest's
+/// `Client` does not expose its configured timeouts, so a bounded client
+/// and an unbounded one are indistinguishable at runtime. The coupling is
+/// "both conflict commands go through a `Client::builder()` that sets a
+/// timeout", which is a property of the source.
+#[test]
+fn sync_conflict_commands_use_a_bounded_client() {
+    let src = include_str!("sync.rs");
+    assert!(
+        src.contains("bounded_conflict_client()"),
+        "both conflict commands must build their client through the bounded helper",
+    );
+    assert!(
+        src.contains(".connect_timeout(") && src.contains(".timeout("),
+        "the conflict client must bound both the connect phase and the total request",
+    );
+    // The bounded helper keeps a `reqwest::Client::new()` FALLBACK for the
+    // (unreachable in practice) builder failure, matching rate_sync.rs and
+    // the payment drivers; what must not come back is a bare `Client::new()`
+    // used directly as the request builder.
+    assert!(
+        !src.contains("reqwest::Client::new().get(")
+            && !src.contains("reqwest::Client::new()\n        .post("),
+        "a bare Client::new() request builder has no timeout; the conflict commands must not reintroduce it",
+    );
+}
