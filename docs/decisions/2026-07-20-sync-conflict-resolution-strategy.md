@@ -644,3 +644,13 @@ Two pins in `platform/sync/src/queue_tests.rs` now hold this boundary:
 No production code changed. The two writers remain in different transactions by design;
 the floor stays because reaching it requires violating the topology invariant the pins
 above now enforce.
+
+## An unreadable queue depth is unknown, not zero (both daemons, 2026-10-04)
+
+The queue-depth count is what a terminal polls to decide whether its offline backlog is draining, and it must not answer `0` for two different situations: a genuinely empty queue, and a read that failed. `0` is the one value that tells a client everything has synced and it can stop retrying, so a dropped table, an exhausted pool, a poisoned lock or a panicked worker reported as `0` turns a broken daemon into a permanently satisfied client.
+
+The cloud server models the third state first: `SyncStatusResponse::pending_count` and `HealthResponse::sync_queue_depth` publish `-1` for 'could not be read' (`3e245e8e0`, `594b4a9d6`), with `SyncStore::PENDING_COUNT_UNKNOWN` naming the sentinel and each failure point logged distinctly.
+
+The PG daemon's own count collapsed both cases: `pg_daemon.rs` read `store.pending_offline_count().unwrap_or(0)` and `.await.unwrap_or(0)`, folding a `CoreError` and a `spawn_blocking` panic into `0`. It now reports `PENDING_COUNT_UNKNOWN` (`-1`) for either failure, logs which point fired, and leaves `0` to mean only a real empty count. The two sentinels agree by value and by name.
+
+Pinned by `pending_count_unknown_sentinel_is_distinct_from_zero` and `pending_offline_count_errors_when_the_table_is_missing` (`platform/sync/src/pg_daemon_tests.rs`) — the latter proves the failure arm is reachable rather than decorative. The DTO rule is carried on `PgDaemonStatus.pending_count` and the UI's `PgDaemonStatusDto.pendingCount`.
