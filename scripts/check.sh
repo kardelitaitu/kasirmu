@@ -374,6 +374,15 @@ else
     echo -e "${YELLOW}⚠ panic-inventory skipped (python3 not found)${NC}"
 fi
 
+# ── Debt-marker gate — every TODO id must resolve to a plan definition ──
+# A marker whose work shipped is a dead pointer; a marker whose id resolves
+# nowhere is a citation to a document nobody can open. Both are invisible to
+# the compiler, the tests, and the docs-dead-refs checker (it grades
+# packages and paths, not debt ids). Shipped required with 0 findings, so the
+# step has a green baseline from day one.
+step "debt markers" "python3 scripts/verify-debt-markers.py" python3 scripts/verify-debt-markers.py
+step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-test" python3 scripts/verify-debt-markers.py --self-test
+
 # ── Supply chain: cargo-deny (deny.toml) — ADVISORY, never fails the run ──
 # This is the runner that deny.toml's own header used to say did not exist.
 # Three deliberate absences, each load-bearing:

@@ -999,6 +999,21 @@ jobs:
       # checklist exists to remove.
       - name: PG receipt checker self-test
         run: python3 scripts/verify-pg-tests-ran.py --self-test
+      # A `TODO 2a` in a comment is graded by nothing: not the compiler, not the
+      # test suite, and not check-dead-refs.py, which checks packages and paths
+      # rather than debt ids. So two failures accumulated unobserved -- a marker
+      # whose work already shipped, and a marker whose id no plan ever defines.
+      # The first corpus run found 12 and 10 of them; they were repaired in the
+      # same change, which is the only reason this step is required from day one
+      # instead of advisory.
+      - name: Debt markers
+        run: python3 scripts/verify-debt-markers.py
+      # The self-test is its own step, not folded into the run above, because
+      # verify-selftests-wired.py and verify-selftest-sweep.py are what keep the
+      # pairing honest. A checker whose self-test nobody invokes is a checker
+      # whose rules can rot while every grade still looks authoritative.
+      - name: Debt marker checker self-test
+        run: python3 scripts/verify-debt-markers.py --self-test
       # R36-11: release.yml was renamed to .bak with an empty commit message and
       # nothing noticed that tagging had stopped producing installers. A workflow
       # that never runs cannot report its own breakage, so this validates the

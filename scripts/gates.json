@@ -793,6 +793,18 @@
         "clippy workspace", "no-raw-params (ADR #7 Phase 4)",
         "skill-drift-guard"
       ] }
+    },
+    {
+      "id": "debt-markers",
+      "label": "Debt markers resolve to a plan",
+      "status": "required",
+      "_note": "Added 2026-09-30. No checker graded debt-marker ids before this one. A `TODO 2a` in a comment is invisible to the compiler, to the test suite, and to check-dead-refs.py (which grades packages and paths, not debt ids), so the repo accumulated two distinct failures with no gate to catch either: a marker whose work already shipped is a dead pointer, and a marker whose id resolves to no plan is a citation to a document nobody can open. The first run found 12 of the second and 9+1 of the first. Repaired in the same change (the 9 shipped KDS 3e/3f pointers and the plan's own dangling 3e retired; the two live TODO 4e sites given a real definition in docs/plans/_active/todo.md) so the step has a green baseline from day one, the same rule the api-surface gate wrote for itself. Ships required, not advisory: 0 findings is a baseline a flip can be measured from, whereas advisory_at would have been a permanent exemption. The self-test is a separate step because verify-selftests-wired.py and verify-selftest-sweep.py are what keep that pairing true -- a checker whose self-test nobody runs is a checker whose rules can rot unseen.",
+      "runners": { "check.sh": [
+        "debt markers", "debt markers self-test"
+      ] },
+      "ci": { "workflow": "dev-ci.yml", "job": "static-gates", "steps": [
+        "Debt markers", "Debt marker checker self-test"
+      ] }
     }
   ]
 }
