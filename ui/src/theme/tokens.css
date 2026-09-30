@@ -473,6 +473,8 @@
   --color-bg-primary:      #ffffff;
   --color-bg-secondary:    #e8e9ec;
   --color-bg-subtle:       rgba(0, 0, 0, 0.02);
+  --receipt-paper-scrim:    #e8e9ec;
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.08);
 
   /* ── Text ─────────────────────────────────────────────────── */
   --color-fg:              #1a1d23;
@@ -617,6 +619,8 @@
   --color-bg-primary:      #1c1f27;
   --color-bg-secondary:    #262a34;
   --color-bg-subtle:       rgba(255, 255, 255, 0.03);
+  --receipt-paper-scrim:    #0f1218;
+  --receipt-paper-shadow:   0 4px 16px rgba(0, 0, 0, 0.35);
 
   /* ── Text ─────────────────────────────────────────────────── */
   --color-fg:              #e8eaef;
