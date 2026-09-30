@@ -934,12 +934,14 @@ The modular scaffolding effort is complete when:
 Phases 0–4 are delivered (see §15). The only structural item the enforcement work could not
 close is a *core extraction*:
 
-1. **Lift the table-ownership map into `kasirmu-core` so the cross-vertical BOM deduction can move.**
+1. **Route the cross-vertical sale settlement behind the module seams.**
    `crates/kasirmu-core/src/db/sales_lifecycle.rs` deducts stock and consumes recipe ingredients, but
-   it runs in core, so no module boundary governs it. The move needs `owner_of`/`TABLE_OWNERS`
-   (`crates/kasirmu-core/src/db/ownership.rs`, already the generated single source) to be usable from
-   the reconciliation path, then the deduction routed behind the `inventory` module seam. This is the
-   remaining half of the plan’s  10 “Move owned domain types” item, marked PARTIAL in Phase 3.
+   it runs in core, so no module boundary governs those statements. The ownership map is *already* in
+   core (`crates/kasirmu-core/src/db/ownership.rs`, the generated single source), so the work is not a
+   “lift” — it is routing the stock mutation behind the `inventory` seam and the customer accrual
+   behind the `crm` seam, with the foreign writes declared and checked. This is the remaining half of
+   the plan’s §10 “Move owned domain types” item, marked PARTIAL in Phase 3. Scoped as Phase 5:
+   `docs/architecture/phase5-implementation-tickets.md`.
 
 Everything else the plan listed (the handler census, the seam-taxonomy ADR, the soft governance
 rules, `NamespacedStore`, the Phase 1–4 tickets) is delivered.
@@ -967,7 +969,7 @@ The modular scaffolding plan is aligned with the current codebase, and its deliv
 Standing invariants (unchanged):
 
 - Checkout remains synchronous.
-- Namespace enforcement is phased, not yet strict.
+- Namespace enforcement is **strict** as of Phase 4 (P4.5): `scripts/check.sh` runs `verify-namespace-governance.py --strict`, and the kernel rejects an undeclared namespace grant at boot (P4.1).
 - `InventoryStockHandler` is retained as a classified test-only type (the Phase 0 census corrected the
   earlier "active" claim).
 - Lua remains the plugin runtime; WASM is explicitly deferred.

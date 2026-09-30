@@ -1,5 +1,9 @@
 # Phase 4 Implementation Tickets — Strict Namespace Firewall
 
+> **Successor:** the one structural item this phase left open — routing the cross-vertical
+> sale settlement in `crates/kasirmu-core/src/db/sales_lifecycle.rs` behind the module seams — is
+> scoped in `docs/architecture/phase5-implementation-tickets.md` (Phase 5).
+
 **Status:** Draft for execution (2026-10-03) — tickets only, no code changed by this document
 **Scope:** Plan §10 "Phase 4 — Strict Namespace Firewall" (`todo-modular-scaffolding.md:800-824`) and the
 governance gates it leaves open (§11.2), which ask that the module boundaries stop being a convention
