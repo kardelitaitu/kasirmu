@@ -143,6 +143,7 @@ async fn push_retry_after_auth_refresh(
             read_config_and_pending(&conn)
         })
         .await
+        .unwrap_or(Ok((None, Vec::new())))
         .unwrap_or((None, Vec::new()))
     };
     let Some(retry_cfg) = retry_cfg else {
@@ -264,12 +265,18 @@ pub(super) async fn run_tick(
     let db_clone = db.clone();
     let (config, pending, read_error) = match tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
-        let (cfg, pending) = read_config_and_pending(&conn);
-        (cfg, pending)
+        read_config_and_pending(&conn)
     })
     .await
     {
-        Ok((cfg, pending)) => (cfg, pending, None),
+        Ok(Ok((cfg, pending))) => (cfg, pending, None),
+        // The queue read failed inside the blocking closure. This is NOT an
+        // empty queue: report the read as the cycle's error so the operator
+        // sees a failed read instead of a clean, idle-looking tick.
+        Ok(Err(msg)) => {
+            tracing::error!(error = %msg, "sync daemon read phase failed");
+            (None, Vec::new(), Some(msg))
+        }
         Err(join_err) => {
             let msg = format!("sync config read panicked: {join_err}");
             tracing::error!(error = %msg, "sync daemon read phase failed");

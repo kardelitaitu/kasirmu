@@ -600,6 +600,7 @@ async fn daemon_surfaces_plan_required_without_retry_or_quarantine() {
         }
     })
     .await
+    .unwrap()
     .unwrap();
     assert_eq!(
         pending.len(),
@@ -656,7 +657,7 @@ fn read_config_and_pending_orders_critical_before_an_earlier_low_item() {
         .enqueue_offline_priority("catalog", r#"{}"#, SyncPriority::Normal)
         .unwrap();
 
-    let (_config, pending) = read_config_and_pending(&conn);
+    let (_config, pending) = read_config_and_pending(&conn).unwrap();
 
     let order: Vec<&str> = pending.iter().map(|i| i.action.as_str()).collect();
     assert_eq!(
@@ -689,8 +690,8 @@ fn equal_priority_items_are_ordered_deterministically_by_id() {
     )
     .unwrap();
 
-    let first = read_config_and_pending(&conn).1;
-    let second = read_config_and_pending(&conn).1;
+    let first = read_config_and_pending(&conn).unwrap().1;
+    let second = read_config_and_pending(&conn).unwrap().1;
     let ids = |v: &[kasirmu_core::offline::OfflineQueueItem]| {
         v.iter().map(|i| i.id.clone()).collect::<Vec<_>>()
     };
@@ -733,6 +734,7 @@ fn same_priority_items_keep_their_arrival_order() {
     }
 
     let order: Vec<String> = read_config_and_pending(&conn)
+        .unwrap()
         .1
         .iter()
         .map(|i| i.action.clone())
@@ -746,11 +748,34 @@ fn read_config_and_pending_returns_pending_count() {
     let store = Store::new(&conn);
     store.enqueue_offline("test", r#"{}"#).unwrap();
 
-    let (config, pending) = read_config_and_pending(&conn);
+    let (config, pending) = read_config_and_pending(&conn).unwrap();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].action, "test");
     // Config is None because sync is not enabled in fresh DB.
     assert!(config.is_none());
+}
+
+/// A queue that cannot be read must NOT look like an empty queue.
+///
+/// An empty `pending` is indistinguishable from a healthy idle terminal: the
+/// daemon pushes nothing, reports `pushed = 0`, and (before this fix) left
+/// `last_error` clean — so an operator sees a draining backlog that has in
+/// fact stopped. `read_config_and_pending` now propagates the read error so it
+/// reaches the cycle's `read_error` instead of being flattened to `[]`. RED
+/// before the fix: `list_pending_offline().unwrap_or_default()` returned
+/// `Ok((None, vec![]))` here and the test could not even observe the failure.
+#[test]
+fn read_config_and_pending_errors_when_the_offline_queue_cannot_be_read() {
+    let conn = kasirmu_core::migrations::fresh_db();
+    // Drop the table the read needs, so the query fails for a reason other
+    // than 'no rows' (the healthy empty case).
+    conn.execute("DROP TABLE offline_queue", []).unwrap();
+
+    let result = read_config_and_pending(&conn);
+    assert!(
+        result.is_err(),
+        "an unreadable queue must surface as an error, not as an empty push list"
+    );
 }
 
 /// The HTTP daemon's `pending_count` must distinguish "the queue is empty"

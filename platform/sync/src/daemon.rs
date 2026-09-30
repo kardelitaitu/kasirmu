@@ -292,23 +292,37 @@ pub struct SyncDaemon {
 /// connection. Extracted from [`SyncDaemon::run_tick`] so the read phase
 /// is independently testable.
 ///
-/// Returns `(config, pending)` where `config` is `None` if sync is not
-/// configured or disabled.
+/// Returns `Ok((config, pending))` where `config` is `None` if sync is not
+/// configured or disabled, and `Err(msg)` when the offline queue could not be
+/// read at all. The queue read is NOT collapsed into an empty vector: an empty
+/// push list is indistinguishable from a healthy idle terminal, so a failed
+/// read reported as `[]` would tell the operator the backlog drained when it
+/// was in fact unreadable. The error propagates to the daemon's `read_error`,
+/// which surfaces on `last_error` rather than looking like a clean cycle.
+///
+/// (`SyncConfig::from_settings` still treats an unreadable setting as
+/// "unconfigured": sync not being configured is a legitimate steady state, and
+/// the config read is not a data path the way the queue is.)
 pub(crate) fn read_config_and_pending(
     conn: &rusqlite::Connection,
-) -> (
-    Option<SyncConfig>,
-    Vec<kasirmu_core::offline::OfflineQueueItem>,
-) {
+) -> Result<
+    (
+        Option<SyncConfig>,
+        Vec<kasirmu_core::offline::OfflineQueueItem>,
+    ),
+    String,
+> {
     let store = Store::new(conn);
     let config = SyncConfig::from_settings(&store).ok().flatten();
-    let mut pending = store.list_pending_offline().unwrap_or_default();
+    let mut pending = store.list_pending_offline().map_err(|e| {
+        format!("could not read the offline queue; refusing to report an empty push list: {e}")
+    })?;
     // C49: the ONE ordering rule, shared by every push path. `list_pending_offline`
     // orders by `created_at ASC` alone, so without this a Critical item queued
     // behind a bulk one waits a full cycle and the priority column means nothing.
     // Applied at the READ point so the same vector is pushed and applied by index.
     order_for_push(&mut pending);
-    (config, pending)
+    Ok((config, pending))
 }
 
 /// ADR sync-auth-hardening P1: request a fresh token and persist it as the
