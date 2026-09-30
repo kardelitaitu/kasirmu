@@ -504,6 +504,10 @@
   white-space: pre-wrap;
 }
 
+.resto-receipt-footer-text--placeholder {
+  opacity: 0.65;
+}
+
 /* Printable Dimension HUD */
 
 .resto-preview-hud {

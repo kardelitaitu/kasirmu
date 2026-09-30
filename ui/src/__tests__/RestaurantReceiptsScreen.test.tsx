@@ -42,6 +42,45 @@ vi.mock('@/api/settings', async (importOriginal) => {
   };
 });
 
+vi.mock('@/api/receipt-format', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/receipt-format')>();
+  return {
+    ...actual,
+    getReceiptFormatScoped: vi.fn().mockResolvedValue({
+      layout: {
+        paperWidthMm: 80,
+        marginTopMm: 5,
+        marginBottomMm: 8,
+        marginLeftMm: 3,
+        marginRightMm: 3,
+        showLogo: null,
+        printCopies: null,
+        showTableNumber: false,
+        footerNote: '',
+      },
+      content: {
+        showTax: true,
+        showCurrency: false,
+        headerText: '',
+        footerText: '',
+        taxNumber: '',
+        legalEntity: '',
+        cashierName: '',
+        terminalId: '',
+        itemDiscounts: true,
+        paymentDetails: true,
+        barcodeType: '',
+        dateFormat: '',
+        timeFormat: '',
+        decimalSeparator: 'dot',
+        requiredFields: [],
+      },
+    }),
+    setReceiptLayoutScoped: vi.fn().mockResolvedValue({}),
+  };
+});
+
+
 vi.mock('@/api/hardware', async () => {
   const actual = await vi.importActual<typeof import('@/api/hardware')>('@/api/hardware');
   return {
@@ -602,5 +641,60 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
     expect(within(statusEl).getByText(TEST_PRINT_CODES.ERR_TIMEOUT)).toBeInTheDocument();
     expect(within(statusEl).getByText(/Printer communication timed out/i)).toBeInTheDocument();
   });
+
+  it('remains clean when scoped receipt format resolves with non-default values', async () => {
+    const { getReceiptFormatScoped } = await import('@/api/receipt-format');
+    vi.mocked(getReceiptFormatScoped).mockResolvedValueOnce({
+      layout: {
+        paperWidthMm: 58,
+        marginTopMm: 12,
+        marginBottomMm: 14,
+        marginLeftMm: 5,
+        marginRightMm: 5,
+        showLogo: true,
+        printCopies: 1,
+        showTableNumber: true,
+        footerNote: 'Custom scoped footer',
+      },
+      content: {
+        showTax: true,
+        showCurrency: true,
+        headerText: '',
+        footerText: '',
+        taxNumber: '',
+        legalEntity: '',
+        cashierName: '',
+        terminalId: '',
+        itemDiscounts: true,
+        paymentDetails: true,
+        barcodeType: '',
+        dateFormat: '',
+        timeFormat: '',
+        decimalSeparator: 'dot',
+        requiredFields: [],
+      },
+    });
+
+    await renderScreen({ tablesEnabled: true });
+    await waitFor(() => {
+      expect(screen.getByText(/All changes saved/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Unsaved changes/i)).toBeNull();
+      const saveBtn = screen.getByRole('button', { name: /Save/i });
+      expect(saveBtn).toBeDisabled();
+    });
+  });
+
+  it('normalizes pasted SVG snippets to data URLs in logo text input', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i) as HTMLInputElement;
+    await user.clear(logoInput);
+    await user.type(logoInput, '<svg><circle/></svg>');
+
+    expect(logoInput.value).toContain('data:image/svg+xml;utf8,');
+    expect(screen.getByText(/Logo Position/i)).toBeInTheDocument();
+  });
 });
+
 

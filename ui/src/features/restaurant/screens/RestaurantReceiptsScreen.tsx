@@ -90,6 +90,14 @@ interface ReceiptFormValues {
   kitchenDevicePath: string;
 }
 
+function normalizeLogoInput(val: string): string {
+  const trimmed = val.trim();
+  if (trimmed.startsWith('<svg') || (trimmed.startsWith('<?xml') && trimmed.includes('<svg'))) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(trimmed)}`;
+  }
+  return trimmed;
+}
+
 export default function RestaurantReceiptsScreen({
   terminalId: propTerminalId,
   onSaved,
@@ -173,6 +181,7 @@ export default function RestaurantReceiptsScreen({
   // Initialize receipt settings from workspace context and stored preferences
   useEffect(() => {
     if (receiptInitializedRef.current) return;
+    if (settingsCtx?.loading) return;
 
     // 1. Initial base settings from context
     const initialPaperWidth = settings.receipt.paperWidth === 'narrow' ? 'narrow' : 'standard';
@@ -382,7 +391,7 @@ export default function RestaurantReceiptsScreen({
           // Fall back gracefully
         });
     }
-  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile]);
+  }, [settings.receipt, settings.store.logo, settings.store.name, settings.store.address, sessionToken, hw.profile, settingsCtx?.loading]);
 
   // Overlay the SCOPED receipt format (the same layer the Settings → Business
   // Defaults card owns) on top of the legacy base above, and remember the
@@ -408,17 +417,88 @@ export default function RestaurantReceiptsScreen({
         if (cancelled) return;
         const l = eff.layout;
         if (l.paperWidthMm !== null && l.paperWidthMm !== undefined) {
-          setPaperWidth(l.paperWidthMm <= 58 ? 'narrow' : 'standard');
+          const pw = l.paperWidthMm <= 58 ? 'narrow' : 'standard';
+          setPaperWidth((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.paperWidth) {
+              originalsRef.current.paperWidth = pw;
+              return pw;
+            }
+            return cur;
+          });
         }
-        if (l.marginTopMm !== null && l.marginTopMm !== undefined) setMarginTop(Math.max(3, l.marginTopMm));
-        if (l.marginBottomMm !== null && l.marginBottomMm !== undefined) setMarginBottom(Math.max(3, l.marginBottomMm));
-        if (l.marginLeftMm !== null && l.marginLeftMm !== undefined) setMarginLeft(Math.max(3, l.marginLeftMm));
-        if (l.marginRightMm !== null && l.marginRightMm !== undefined) setMarginRight(Math.max(3, l.marginRightMm));
-        if (l.showTableNumber !== null && l.showTableNumber !== undefined) setShowTableNumber(l.showTableNumber);
-        if (l.footerNote !== null && l.footerNote !== undefined) setFooter(l.footerNote);
+        if (l.marginTopMm !== null && l.marginTopMm !== undefined) {
+          const v = Math.max(3, l.marginTopMm);
+          setMarginTop((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.marginTop) {
+              originalsRef.current.marginTop = v;
+              return v;
+            }
+            return cur;
+          });
+        }
+        if (l.marginBottomMm !== null && l.marginBottomMm !== undefined) {
+          const v = Math.max(3, l.marginBottomMm);
+          setMarginBottom((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.marginBottom) {
+              originalsRef.current.marginBottom = v;
+              return v;
+            }
+            return cur;
+          });
+        }
+        if (l.marginLeftMm !== null && l.marginLeftMm !== undefined) {
+          const v = Math.max(3, l.marginLeftMm);
+          setMarginLeft((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.marginLeft) {
+              originalsRef.current.marginLeft = v;
+              return v;
+            }
+            return cur;
+          });
+        }
+        if (l.marginRightMm !== null && l.marginRightMm !== undefined) {
+          const v = Math.max(3, l.marginRightMm);
+          setMarginRight((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.marginRight) {
+              originalsRef.current.marginRight = v;
+              return v;
+            }
+            return cur;
+          });
+        }
+        if (l.showTableNumber !== null && l.showTableNumber !== undefined) {
+          setShowTableNumber((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.showTableNumber) {
+              originalsRef.current.showTableNumber = l.showTableNumber;
+              return l.showTableNumber;
+            }
+            return cur;
+          });
+        }
+        if (l.footerNote !== null && l.footerNote !== undefined) {
+          setFooter((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.footer) {
+              originalsRef.current.footer = l.footerNote;
+              return l.footerNote;
+            }
+            return cur;
+          });
+        }
         if (eff.content) {
-          setShowTax(eff.content.showTax);
-          setShowCurrency(eff.content.showCurrency);
+          setShowTax((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.showTax) {
+              originalsRef.current.showTax = eff.content.showTax;
+              return eff.content.showTax;
+            }
+            return cur;
+          });
+          setShowCurrency((cur) => {
+            if (originalsRef.current && cur === originalsRef.current.showCurrency) {
+              originalsRef.current.showCurrency = eff.content.showCurrency;
+              return eff.content.showCurrency;
+            }
+            return cur;
+          });
         }
         setDirtyVersion((v) => v + 1);
       } catch {
@@ -616,6 +696,14 @@ export default function RestaurantReceiptsScreen({
       return;
     }
 
+    if (dirty) {
+      addToast({
+        title: 'Unsaved Changes',
+        message: 'Test print uses last saved settings. Save changes to apply your draft layout.',
+        type: 'warning',
+      });
+    }
+
     setTestingPrint(true);
     setTestPrintResult(null);
     const start = Date.now();
@@ -702,6 +790,7 @@ export default function RestaurantReceiptsScreen({
     showTableNumber,
     showItemNotes,
     addToast,
+    dirty,
   ]);
 
   // ── Save handler ────────────────────────────────────────────
@@ -1238,10 +1327,10 @@ export default function RestaurantReceiptsScreen({
                   {showFooter && (
                     <>
                       <div className="resto-receipt-divider" />
-                      <div className="resto-receipt-footer-text">
+                      <div className={`resto-receipt-footer-text ${!footer.trim() ? 'resto-receipt-footer-text--placeholder' : ''}`}>
                         {footer.trim()
                           ? footer
-                          : l10n.getString('restaurant-footer-placeholder') || 'Terima kasih atas kunjungan Anda!'}
+                          : l10n.getString('restaurant-footer-placeholder') || 'Thank you for dining with us!'}
                       </div>
                     </>
                   )}
@@ -1812,10 +1901,20 @@ export default function RestaurantReceiptsScreen({
                         type="text"
                         className="resto-text-input"
                         placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
-                        value={businessLogo.startsWith('data:') ? 'Custom uploaded image' : businessLogo}
+                        value={
+                          businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')
+                            ? 'Custom uploaded image'
+                            : businessLogo
+                        }
+                        onFocus={(e) => {
+                          if (businessLogo.startsWith('data:') && !businessLogo.startsWith('data:image/svg+xml;utf8,')) {
+                            e.target.select();
+                          }
+                        }}
                         onChange={(e) => {
-                          if (!e.target.value.startsWith('Custom uploaded')) {
-                            setBusinessLogo(e.target.value);
+                          const val = e.target.value;
+                          if (val === '' || !val.startsWith('Custom uploaded')) {
+                            setBusinessLogo(normalizeLogoInput(val));
                           }
                         }}
                       />
