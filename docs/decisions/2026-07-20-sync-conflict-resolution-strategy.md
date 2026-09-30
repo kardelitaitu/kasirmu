@@ -438,3 +438,22 @@ Routing the four stock arms through `appliers::envelope_deltas` (the self-merge 
 - Pins: `apply_remote_skips_a_null_side_in_a_merge_envelope` (a real local delta alongside a null remote applies once), `apply_remote_treats_both_null_sides_as_a_no_op` (`Null/Null` succeeds as a no-op), `apply_remote_still_rejects_a_bare_null_payload` (a non-envelope null still fails).
 
 > Null-side disposition pinned 2026-10-04.
+
+---
+
+## A permanent apply failure quarantines on its first attempt (appended 2026-10-04)
+
+*Appended 2026-10-04. Closes the `next:` item recorded at `platform/sync/src/queue.rs`.*
+
+A pull item that fails to apply used to burn a flat three-attempt budget before it was dead-lettered, whatever the error. That is right for a failure that can clear on its own, but wrong for one decided by the input: a malformed payload, a missing referenced row, or an id/field clash produces the identical error every time, so the two extra attempts only hold the durable pull anchor back for two more cycles.
+
+`CoreError::is_permanent()` (`crates/kasirmu-core/src/error.rs`) now names the three input-decided kinds — `Validation`, `NotFound` and `Conflict`. The failure site in `SyncQueue::apply_remote_atomic_full` records `max_attempts = 1` for those and `3` otherwise:
+
+- PERMANENT (`max_attempts = 1`): a malformed payload, a missing referenced row, a uniqueness/identity clash. Quarantined on the first failure; the anchor may advance at once.
+- TRANSIENT (`max_attempts = 3`): database failures, platform errors, unexpected internal failures (including a payload that fails deserialization), money overflow, and stock contention. Also every permission, subscription and licence condition — a role grant, a renewal or an operator action can clear those, so they must not be quarantined on sight.
+
+The check is a whitelist of the three permanent kinds, so a newly added `CoreError` variant stays retryable by default and cannot silently start quarantining a new class of item. An operator can still requeue any quarantined item with `Store::requeue_remote_failure`, which deletes the quarantine row and rewinds the pull anchor for a re-pull (safe because the `sync_applied_items` receipt ledger skips every already-applied item).
+
+Pins: `apply_remote_atomic_failure_rolls_back_mutation_and_receipt` (missing sku quarantines on the first failure), `apply_remote_atomic_transient_failure_burns_the_retry_budget` (malformed payload keeps the three-attempt budget), `apply_pulled_page_dead_letters_then_advances` (permanent failure advances the anchor immediately), `apply_pulled_page_retains_anchor_on_retryable_failure` and `engine_retains_anchor_until_remote_item_is_dead_lettered` and `daemon_retains_anchor_until_remote_item_is_dead_lettered` (transient failures retain the anchor while retryable).
+
+> Permanent-vs-transient apply-failure classification pinned 2026-10-04.

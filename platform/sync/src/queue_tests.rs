@@ -483,10 +483,38 @@ fn apply_remote_atomic_failure_rolls_back_mutation_and_receipt() {
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert_eq!(inventory_qty(&store, "COFFEE"), 50);
     assert!(!store.is_remote_item_applied(&remote.id).unwrap());
-    assert!(!store.is_remote_failure_dead_lettered(&remote.id).unwrap());
+    // A missing referenced product is a PERMANENT failure: the identical
+    // bytes can never succeed, so the item is quarantined on its FIRST
+    // failure rather than burning the three-attempt budget
+    // (CoreError::is_permanent). A later replay is skipped without
+    // mutating state or advancing a receipt.
+    assert!(store.is_remote_failure_dead_lettered(&remote.id).unwrap());
+    assert!(!queue.apply_remote_atomic(&store, &remote).unwrap());
+}
 
-    // The third failed attempt quarantines the poison item. A later
-    // replay is skipped without mutating state or advancing a receipt.
+/// A malformed payload is [CoreError::Internal] - a TRANSIENT failure, since
+/// the same bytes may become reproducible after a client/version change - so
+/// it keeps the three-attempt budget and only then quarantines.
+#[test]
+fn apply_remote_atomic_transient_failure_burns_the_retry_budget() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+    let remote = OfflineQueueItem {
+        id: "remote-sale-malformed".into(),
+        action: "complete_sale".into(),
+        payload: "{not json".into(),
+        ..OfflineQueueItem::new("complete_sale", "{}")
+    };
+
+    assert!(queue.apply_remote_atomic(&store, &remote).is_err());
+    assert!(
+        !store.is_remote_failure_dead_lettered(&remote.id).unwrap(),
+        "a transient failure must stay retryable after one attempt"
+    );
+
+    // The third failed attempt quarantines it.
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert!(queue.apply_remote_atomic(&store, &remote).is_err());
     assert!(store.is_remote_failure_dead_lettered(&remote.id).unwrap());

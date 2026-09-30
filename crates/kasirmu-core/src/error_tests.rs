@@ -230,3 +230,61 @@ fn from_currency_error_db_to_core_db() {
     let msg = core_err.to_string();
     assert!(msg.contains("database error"));
 }
+
+#[test]
+fn is_permanent_classifies_poison_inputs_as_permanent() {
+    // A malformed payload, a missing referenced row and an id/field
+    // conflict are decided by the bytes and the current state, so
+    // replaying them changes nothing.
+    assert!(
+        CoreError::Validation {
+            field: "sku",
+            message: "blank".into(),
+        }
+        .is_permanent()
+    );
+    assert!(
+        CoreError::NotFound {
+            entity: "product",
+            id: "GONE".into(),
+        }
+        .is_permanent()
+    );
+    assert!(
+        CoreError::Conflict {
+            entity: "product",
+            field: "sku",
+        }
+        .is_permanent()
+    );
+    // A currency mismatch is input-decided too, but is not one of the three
+    // kinds the queue classifies; it keeps its budget (no behaviour change).
+    assert!(!CoreError::CurrencyMismatch("IDR".into(), "USD".into()).is_permanent());
+    // A permission denial can be cleared by a role grant, so it keeps its budget.
+    assert!(!CoreError::PermissionDenied("role".into()).is_permanent());
+}
+
+#[test]
+fn is_permanent_keeps_infrastructure_and_contention_transient() {
+    // Infrastructure failures and stock contention can clear on a later
+    // attempt, so they must keep their retry budget.
+    assert!(!CoreError::Db(rusqlite::Error::QueryReturnedNoRows).is_permanent());
+    assert!(
+        !CoreError::MoneyOverflow {
+            left: 1,
+            right: 2,
+            currency: "IDR".into(),
+        }
+        .is_permanent()
+    );
+    assert!(!CoreError::Internal("transient".into()).is_permanent());
+    assert!(
+        !CoreError::InsufficientStockAtLocation {
+            sku: "COFFEE".into(),
+            location_id: crate::inventory::LocationId("loc-1".into()),
+            requested_delta: -10,
+            available_qty: 3,
+        }
+        .is_permanent()
+    );
+}

@@ -49,6 +49,15 @@ fn remote_poison_sale(id: &str) -> OfflineQueueItem {
     item
 }
 
+/// A payload the sale arm cannot deserialize: [CoreError::Internal], which is
+/// TRANSIENT, so it keeps the three-attempt retry budget.
+fn remote_transient_sale(id: &str) -> OfflineQueueItem {
+    let mut item = OfflineQueueItem::new("complete_sale", "{not json");
+    item.id = id.into();
+    item.created_at = "2026-01-01T00:00:00.000Z".into();
+    item
+}
+
 #[test]
 fn snapshot_recovery_imports_before_resetting_anchor() {
     let conn = migrations::fresh_db();
@@ -190,7 +199,9 @@ fn apply_pulled_page_replay_is_idempotent() {
 fn apply_pulled_page_retains_anchor_on_retryable_failure() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
-    let page = vec![remote_poison_sale("pg-poison-1")];
+    // A malformed payload is Internal (transient), so the item stays
+    // retryable after one attempt and the anchor is retained.
+    let page = vec![remote_transient_sale("pg-poison-1")];
 
     let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
     assert!(
@@ -208,16 +219,14 @@ fn apply_pulled_page_retains_anchor_on_retryable_failure() {
 fn apply_pulled_page_dead_letters_then_advances() {
     let conn = migrations::fresh_db();
     let store = Store::new(&conn);
+    // A missing referenced product is a PERMANENT failure, so the item is
+    // quarantined on its first failure and the anchor advances at once.
     let page = vec![remote_poison_sale("pg-poison-2")];
 
-    // Attempts 1-2 retain the anchor; the 3rd dead-letters the item and
-    // allows the page anchor to advance.
-    assert!(apply_pulled_page(&store, &page, None, &noop_settings_sink()).is_none());
-    assert!(apply_pulled_page(&store, &page, None, &noop_settings_sink()).is_none());
     let new_since = apply_pulled_page(&store, &page, None, &noop_settings_sink());
     assert!(
         new_since.is_some(),
-        "dead-lettered item may advance the anchor"
+        "a permanent failure may advance the anchor on the first attempt"
     );
     assert!(
         store

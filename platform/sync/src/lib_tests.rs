@@ -416,10 +416,9 @@ async fn spawn_poison_engine_server() -> String {
         })
     }
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
-        );
+        // A malformed payload is CoreError::Internal (TRANSIENT), so the
+        // engine keeps retrying it rather than quarantining on sight.
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         item.id = "remote-engine-poison-1".into();
         item.created_at = "2026-01-03T00:00:00.000Z".into();
         Json(PullResponse {
@@ -442,10 +441,10 @@ async fn spawn_poison_engine_server() -> String {
 }
 
 /// Engine-level dead-letter test (parity with the daemon's
-/// `daemon_retains_anchor_until_remote_item_is_dead_lettered`): a poison
-/// remote item must retain the durable anchor while it is retryable,
-/// then allow the anchor to advance after the third failed attempt
-/// dead-letters it.
+/// `daemon_retains_anchor_until_remote_item_is_dead_lettered`): a
+/// TRANSIENTLY failing remote item (a malformed payload -> Internal) must
+/// retain the durable anchor while it is retryable, then allow the anchor
+/// to advance after the third failed attempt dead-letters it.
 #[tokio::test]
 async fn engine_retains_anchor_until_remote_item_is_dead_lettered() {
     use kasirmu_core::db::Store;

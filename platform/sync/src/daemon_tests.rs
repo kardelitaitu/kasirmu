@@ -856,10 +856,9 @@ async fn spawn_poison_remote_mock_sync_server() -> String {
     let port = listener.local_addr().unwrap().port();
 
     async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
-        let mut item = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING","qty":1}]}"#,
-        );
+        // A malformed payload is CoreError::Internal (TRANSIENT): the item
+        // stays retryable until the three-attempt budget is spent.
+        let mut item = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         item.id = "remote-poison-1".into();
         item.created_at = "2026-01-03T00:00:00.000Z".into();
         Json(PullResponse {
@@ -1092,10 +1091,9 @@ async fn spawn_poison_remote_mock_server_with_two_items() -> String {
         );
         dead.id = "remote-poison-dead".into();
         dead.created_at = "2026-01-03T00:00:00.000Z".into();
-        let mut retry = kasirmu_core::offline::OfflineQueueItem::new(
-            "complete_sale",
-            r#"{"line_items":[{"sku":"MISSING-RETRY","qty":1}]}"#,
-        );
+        // The retry item must fail TRANSIENTLY, or it would be
+        // quarantined on its first failure like the dead one below.
+        let mut retry = kasirmu_core::offline::OfflineQueueItem::new("complete_sale", "{not json");
         retry.id = "remote-poison-retry".into();
         retry.created_at = "2026-01-03T00:00:01.000Z".into();
         Json(PullResponse {
