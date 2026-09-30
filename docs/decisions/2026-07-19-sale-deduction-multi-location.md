@@ -592,3 +592,37 @@ The ADR is "complete" (can move from Proposed → Accepted) when:
 
 > last audited 29-09-26 by docs-auditor
 
+
+---
+
+## COR-19 closed: stock transfers and stock counts write the canonical ledger (2026-10-04)
+
+The stock-transfer module's audit footer carried a MEDIUM finding (COR-19, from the
+2026-07 B4 deep read) saying `send_transfer` / `receive_transfer` / `cancel_transfer`
+read and wrote the LEGACY single-PK `inventory` table while sales pre-checked and
+deducted the canonical `stock_summary` per ADR-18/19 — so a transfer move was
+invisible to sale-time availability and the retail grid, and its `next:` line still
+instructed a reader to "route transfers (and stock_counts) through stock_summary".
+
+**That work has landed; the footer was stale.** All three lifecycle methods route
+their delta through the single canonical per-location writer
+`Store::adjust_stock_at_location_with_reason` (defined at
+`crates/kasirmu-core/src/db/products_stock_adjust/adjust.rs:190`) — send at
+`crates/kasirmu-core/src/db/stock_transfers.rs:545`, receive at `:682`, cancel at
+`:808` — and `crates/kasirmu-core/src/db/stock_counts.rs` does the same at `:628`
+and `:643`. That writer pre-checks `stock_summary` at the location, appends the
+`stock_movements` delta row, upserts the per-location row, and recomputes the
+legacy aggregate as the SUM over all locations. A repo sweep for direct
+`UPDATE`/`INSERT`/`DELETE ... inventory` in `stock_transfers.rs` returns zero. The
+legacy table is read only through
+`bridge_legacy_inventory_into_stock_summary_in_tx`
+(`products_stock_adjust/adjust.rs:403`), which materialises a legacy-only non-zero
+aggregate once at the canonical default location and is inert when per-location rows
+already exist — the §3.4 interim bridge this module's findings described.
+
+**New pin:** `send_transfer_writes_canonical_stock_summary_and_movement`
+(`crates/kasirmu-core/src/db/stock_transfers_tests.rs`) asserts that a draft is
+inert, that send leaves `stock_summary` at the source location at 40 (from a legacy
+seed of 50), and that a `stock_movements` row with `delta = -10` and
+`reason = 'stock_transfer_out'` exists. The footer now records COR-19 FIXED and
+`next: none`.

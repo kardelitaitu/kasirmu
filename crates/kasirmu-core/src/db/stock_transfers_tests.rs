@@ -818,3 +818,66 @@ fn an_empty_transfer_cannot_be_claimed_as_received() {
         "an empty transfer must never be receivable",
     );
 }
+
+/// COR-19: the send path must route through the canonical per-location
+/// writer (ADR-19 §3.1), not the legacy single-PK `inventory` table. The
+/// observable proof is a `stock_summary` row at the SOURCE location plus a
+/// `stock_movements` delta row — the two things the product-grid reader and
+/// sale-time availability read. The module's `next:` claimed transfers still
+/// wrote the legacy table only; this pin holds the corrected behaviour in
+/// place so the claim cannot silently regress.
+#[test]
+fn send_transfer_writes_canonical_stock_summary_and_movement() {
+    let conn = fresh();
+    seed_user(&conn, "user-1");
+    seed_product(&conn, "SKU-001", "Widget");
+    seed_inventory(&conn, "SKU-001", 50);
+
+    let product_id: String = conn
+        .query_row("SELECT id FROM products WHERE sku = 'SKU-001'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let source_loc = crate::inventory::CANONICAL_DEFAULT_LOCATION_UUID;
+
+    let lines = vec![make_line("SKU-001", "Widget", 10)];
+    let t = store(&conn)
+        .create_transfer(None, None, None, None, "", "user-1", &lines)
+        .unwrap();
+    // Draft creation must not move stock yet.
+    let before: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(qty), 0) FROM stock_summary WHERE item_id = ?1",
+            params![product_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(before, 0, "draft creation is inert");
+
+    store(&conn).send_transfer(&t.id).unwrap();
+
+    let canonical: i64 = conn
+        .query_row(
+            "SELECT qty FROM stock_summary WHERE item_id = ?1 AND location_id = ?2",
+            params![product_id, source_loc],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        canonical, 40,
+        "send must decrement the canonical per-location stock_summary, not only the legacy aggregate"
+    );
+
+    let movement: (i64, String) = conn
+        .query_row(
+            "SELECT delta, reason FROM stock_movements WHERE item_id = ?1 ORDER BY created_at DESC LIMIT 1",
+            params![product_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        movement.0, -10,
+        "the movement delta must be the negated line qty"
+    );
+    assert_eq!(movement.1, "stock_transfer_out");
+}
