@@ -707,6 +707,16 @@ impl TestBridge {
         token
     }
 
+    /// Pin the current terminal id the context resolves hardware settings for.
+    ///
+    /// Hardware-settings tests need a deterministic id: the real commands read
+    /// `ctx.terminal_id`, which starts `None` and then resolves to "unknown".
+    #[must_use]
+    pub fn with_terminal_id(mut self, terminal_id: impl Into<String>) -> Self {
+        self.terminal_id = Arc::new(Mutex::new(Some(terminal_id.into())));
+        self
+    }
+
     /// Install a UI event sink (Wave D kds/hardware emit-path tests).
     #[must_use]
     #[allow(dead_code)] // retained TestBridge builder - harness API, not dead

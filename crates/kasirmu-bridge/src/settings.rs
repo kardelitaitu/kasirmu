@@ -266,10 +266,19 @@ pub async fn list_credit_sales_scoped(
 
 /// Get hardware settings for the current terminal from the DB.
 ///
-/// Read order:
-/// 1. DB (hardware_profiles table) - canonical store (TODO 4e)
-/// 2. JSON file (`terminal_profiles/<id>.json`) - fallback
-/// 3. Old SQLite settings - legacy fallback
+/// Read order (per TODO 4e, resolved 2026-10-04 — the DB row is authoritative):
+/// 1. DB (hardware_profiles table) - canonical store.
+/// 2. JSON file (`terminal_profiles/<id>.json`) - **one-time seed only**: read
+///    ONLY when no `hardware_profiles` row exists for this terminal id, and the
+///    row it seeds then wins on every later read.
+/// 3. Old SQLite settings - legacy seed, reached only under the same
+///    no-row condition as (2).
+///
+/// Once a terminal has a DB row, steps (2) and (3) are unreachable for it, so a
+/// process that can write the profile directory can no longer change the
+/// resolved profile behind the database's back. If the row is present but its
+/// JSON is unreadable, this returns defaults rather than the file, so the row
+/// stays authoritative in that case too.
 ///
 /// Returns defaults only when none of the above have saved values.
 pub async fn get_hardware_settings(
@@ -283,7 +292,13 @@ pub async fn get_hardware_settings(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    // 1. Try DB first (canonical store).
+    // 1. Try DB first — the row is authoritative (TODO 4e, resolved 2026-10-04).
+    //
+    // A present row ends the read, whether or not its JSON parses: returning
+    // defaults on a parse failure keeps the row authoritative instead of
+    // silently resurrecting a JSON or legacy value the row was meant to
+    // supersede. The previous code returned here only on a successful parse and
+    // fell through to the file otherwise.
     {
         let conn = ctx.db.lock().await;
         let profile_json: Option<String> = conn
@@ -294,19 +309,25 @@ pub async fn get_hardware_settings(
             )
             .ok();
         if let Some(json) = profile_json {
-            if let Ok(profile) = serde_json::from_str::<TerminalProfile>(&json) {
-                return Ok(HardwareSettingsDto::from(profile));
-            }
-            tracing::warn!(
-                terminal_id = %terminal_id,
-                "failed to parse hardware profile JSON from DB — falling back to file"
-            );
+            return match serde_json::from_str::<TerminalProfile>(&json) {
+                Ok(profile) => Ok(HardwareSettingsDto::from(profile)),
+                Err(e) => {
+                    tracing::warn!(
+                        terminal_id = %terminal_id,
+                        error = %e,
+                        "hardware profile row exists but its JSON is unreadable — using defaults, \
+                         not the JSON file (the row is authoritative; TODO 4e resolved 2026-10-04)"
+                    );
+                    Ok(HardwareSettingsDto::from(TerminalProfile::default()))
+                }
+            };
         }
     } // conn dropped
 
     let path = TerminalProfile::profile_path(base_dir, &terminal_id);
 
-    // 2. Try JSON file as fallback.
+    // 2. No row yet: seed one from the JSON file, once. From the next read on,
+    //    step (1) short-circuits before reaching here.
     if let Some(profile) = TerminalProfile::load(&path)? {
         // Sync the JSON profile into the DB for future fast reads.
         let json = serde_json::to_string(&profile)

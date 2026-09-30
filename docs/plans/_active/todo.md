@@ -673,7 +673,7 @@ For each trigger:
 
 ### 4e — Make the `hardware_profiles` row the canonical hardware-settings store
 
-**Status:** Open (2026-09-30, adopted from an untracked plan)
+**Status:** DONE (2026-10-04) — the `hardware_profiles` row is now authoritative; the JSON file and the legacy settings store seed a missing row exactly once, and the precedence is pinned by tests in `crates/kasirmu-bridge/src/settings_tests.rs`. (Was: Open (2026-09-30, adopted from an untracked plan).)
 
 **Why:** Both hardware-settings readers document a three-step read order and mark the
 first step as not yet authoritative: `apps/desktop-tauri/src/commands/settings.rs:142`
@@ -693,12 +693,20 @@ This heading is the definition both citations now resolve to.
 **File:** `apps/desktop-tauri/src/commands/settings.rs`,
 `crates/kasirmu-bridge/src/settings.rs`
 
-- [ ] Make the `hardware_profiles` row authoritative: once a row exists for the
-      terminal id, neither the JSON file nor the legacy store is consulted.
-- [ ] Decide what happens when a terminal has no row — seed one from the JSON file
-      once, then stop reading that file — and write that decision down here.
-- [ ] Pin the precedence order with a test, so a fallback added below the database
-      read cannot silently take priority later.
+- [x] Make the `hardware_profiles` row authoritative: once a row exists for the
+      terminal id, neither the JSON file nor the legacy store is consulted. A present
+      row now ends the read even when its JSON is unreadable — the reader returns
+      defaults rather than resurrecting a superseded file value.
+- [x] Decide what happens when a terminal has no row — seed one from the JSON file
+      once, then stop reading that file. **Decision (2026-10-04):** with no row, the
+      reader tries the JSON file (seeding the row from it) and then the legacy SQLite
+      keys; whichever succeeds writes the row, and every later read short-circuits at
+      the row. The legacy branch also persists a row when nothing at all is stored,
+      so a terminal id is pinned to one row from its first read on.
+- [x] Pin the precedence order with a test, so a fallback added below the database
+      read cannot silently take priority later. Five behavioral tests drive the real
+      `get_hardware_settings` over a `TestBridge` (db-row-wins, json-seed-once,
+      legacy-seed, unreadable-row, no-source).
 
 ---
 

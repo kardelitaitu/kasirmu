@@ -2151,3 +2151,200 @@ async fn scoped_settings_writer_denies_a_settings_edit_holder_out_of_scope() {
         other => panic!("expected a scope denial, got {other:?}"),
     }
 }
+
+// ── Hardware-settings precedence (TODO 4e) ─────────────────────
+//
+// The ticket's three boxes: make the `hardware_profiles` row authoritative; decide
+// the no-row case (seed once from the JSON file, then stop reading it); and pin the
+// precedence with a test so a fallback added below the DB read cannot silently win.
+// These tests drive the real `get_hardware_settings` over a `TestBridge`, with a
+// unique temp base dir per case so the profile file is a real file on disk.
+
+/// A unique base directory for one hardware-settings test, and the terminal id it
+/// is keyed by. The directory is left for the OS temp cleaner, matching
+/// `inventory_tests::unique_store_dir` (this crate's fence forbids manifest edits,
+/// so `tempfile` is avoided here on the same reasoning).
+fn hw_base_dir() -> std::path::PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "kasirmu-bridge-hw-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
+/// A profile with an unmistakable printer device path, so a value read back can be
+/// attributed to exactly one source.
+fn hw_profile(device_path: &str) -> TerminalProfile {
+    TerminalProfile {
+        printer_device_path: device_path.to_string(),
+        ..Default::default()
+    }
+}
+
+/// Write a profile JSON file directly to the path `get_hardware_settings` reads.
+fn write_profile_file(base_dir: &std::path::Path, terminal_id: &str, profile: &TerminalProfile) {
+    let path = TerminalProfile::profile_path(base_dir, terminal_id);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_string(profile).unwrap()).unwrap();
+}
+
+/// Seed a `hardware_profiles` row directly, bypassing the reader under test.
+async fn seed_hw_row(
+    ctx: &crate::ctx::BridgeCtx<'_>,
+    terminal_id: &str,
+    profile: &TerminalProfile,
+) {
+    let json = serde_json::to_string(profile).unwrap();
+    let conn = ctx.db.lock().await;
+    conn.execute(
+        "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
+         VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        rusqlite::params![terminal_id, json, profile.schema_version],
+    )
+    .unwrap();
+}
+
+/// TODO 4e box 1: once a row exists, the JSON file is never consulted.
+#[tokio::test]
+async fn hw_db_row_wins_over_json_file() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-db-wins");
+    let ctx = tb.ctx();
+
+    seed_hw_row(&ctx, "t-db-wins", &hw_profile("/db/row/wins")).await;
+    write_profile_file(&base, "t-db-wins", &hw_profile("/file/should/lose"));
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path, "/db/row/wins",
+        "the DB row is authoritative; the JSON file must not shadow it",
+    );
+}
+
+/// TODO 4e box 2: with no row, the JSON file seeds the row once; every later read
+/// then takes the row, so a later file edit cannot change the resolved profile.
+#[tokio::test]
+async fn hw_json_seeds_a_missing_row_once() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-seed-once");
+    let ctx = tb.ctx();
+
+    write_profile_file(&base, "t-seed-once", &hw_profile("/from/file/seed"));
+
+    let first = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(first.printer_device_path, "/from/file/seed");
+
+    // The read must have persisted the seeded row.
+    let row_path: Option<String> = {
+        let conn = ctx.db.lock().await;
+        conn.query_row(
+            "SELECT profile_json FROM hardware_profiles WHERE terminal_id = ?1",
+            rusqlite::params!["t-seed-once"],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    assert!(row_path.is_some(), "the JSON seed must create the DB row");
+
+    // Now edit the file behind the DB's back; the row must still win.
+    write_profile_file(&base, "t-seed-once", &hw_profile("/file/changed/behind/db"));
+    let second = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        second.printer_device_path, "/from/file/seed",
+        "after the seed row exists, the file is no longer read",
+    );
+}
+
+/// TODO 4e box 2, legacy branch: with no row and no file, the old SQLite settings
+/// seed the row, and the row then wins over a later file.
+#[tokio::test]
+async fn hw_legacy_settings_seed_a_missing_row() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-legacy-seed");
+    let ctx = tb.ctx();
+
+    {
+        let conn = ctx.db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('printer.device_path', '/from/legacy')",
+            [],
+        )
+        .unwrap();
+    }
+
+    let first = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(first.printer_device_path, "/from/legacy");
+
+    write_profile_file(&base, "t-legacy-seed", &hw_profile("/file/after-legacy"));
+    let second = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        second.printer_device_path, "/from/legacy",
+        "the legacy-seeded row is canonical; a later file edit must not win",
+    );
+}
+
+/// TODO 4e: a present but unreadable row does NOT fall back to the file — the row
+/// stays authoritative, and the caller gets defaults instead of a superseded file.
+#[tokio::test]
+async fn hw_unreadable_row_does_not_fall_back_to_file() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-bad-row");
+    let ctx = tb.ctx();
+
+    {
+        let conn = ctx.db.lock().await;
+        conn.execute(
+            "INSERT OR REPLACE INTO hardware_profiles (terminal_id, profile_json, schema_version, updated_at)
+             VALUES ('t-bad-row', 'not json', 1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+            [],
+        )
+        .unwrap();
+    }
+    write_profile_file(&base, "t-bad-row", &hw_profile("/file/must/not/appear"));
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path,
+        TerminalProfile::default().printer_device_path,
+        "an unreadable row yields defaults, never the JSON file it superseded",
+    );
+}
+
+/// TODO 4e box 2 (the "no source at all" corner): when neither the DB, the file
+/// nor the legacy keys carry anything, the reader still seeds a row — the legacy
+/// branch composes the defaults and persists them — so the terminal is pinned to
+/// one row from the first read on rather than re-deriving every time. The value
+/// it returns is the type's defaults.
+#[tokio::test]
+async fn hw_no_source_returns_defaults_and_pins_a_row() {
+    let base = hw_base_dir();
+    let tb = crate::testing::TestBridge::new().with_terminal_id("t-nothing");
+    let ctx = tb.ctx();
+
+    let got = get_hardware_settings(&ctx, &base).await.unwrap();
+    assert_eq!(
+        got.printer_device_path,
+        TerminalProfile::default().printer_device_path
+    );
+
+    let row_exists: bool = {
+        let conn = ctx.db.lock().await;
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM hardware_profiles WHERE terminal_id = 't-nothing')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
+    };
+    assert!(
+        row_exists,
+        "the legacy branch seeds a row even from defaults, so the id is pinned \
+         to one row from the first read on",
+    );
+}
