@@ -553,6 +553,55 @@ fn list_inventory_transactions_empty() {
     assert!(txns.is_empty());
 }
 
+/// An unknown stored `type` must FAIL the read, not be relabelled.
+///
+/// `InventoryTransactionType::from_stored_str` documents that an unknown value
+/// returns `None` "so a future migration adding a new type fails LOUDLY rather
+/// than silently truncating audit history". The read mappers used to contradict
+/// that: `.unwrap_or(ManualAdjustment)` relabelled a future-migration row as a
+/// manager override, so an audit report would show the wrong type for a real
+/// event. The mappers now surface `ParseError` instead, honouring the contract.
+#[test]
+fn an_unknown_transaction_type_fails_the_read_instead_of_relabelling_it() {
+    let conn = fresh();
+    let s = store(&conn);
+    // The shipped table has a CHECK constraint limiting `type` to the current
+    // variants, so the only way to seed a value a FUTURE migration might add is
+    // to rebuild the table without it — precisely the scenario the enum's
+    // 'fails LOUDLY' contract is written for.
+    conn.execute_batch(
+        "DROP TABLE inventory_transactions; \
+         CREATE TABLE inventory_transactions ( \
+             id TEXT PRIMARY KEY, \
+             type TEXT NOT NULL, \
+             location_id TEXT NOT NULL, \
+             staff_id TEXT NOT NULL, \
+             transfer_id TEXT, \
+             purchase_order_id TEXT, \
+             notes TEXT NOT NULL DEFAULT '', \
+             created_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00.000Z', \
+             inventory_shift_id TEXT \
+         );",
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO inventory_transactions (id, type, location_id, staff_id, notes) \
+         VALUES ('tx-future', 'layaway-hold', 'loc-x', 'staff-x', '')",
+        [],
+    )
+    .unwrap();
+
+    // Both the list mapper and the single-row mapper must fail loudly.
+    assert!(
+        s.list_inventory_transactions().is_err(),
+        "an unknown type must not be coerced to a known variant in the list"
+    );
+    assert!(
+        s.get_inventory_transaction("tx-future").is_err(),
+        "an unknown type must not be coerced to a known variant when fetched"
+    );
+}
+
 #[test]
 fn list_inventory_transactions_for_shift_filters_by_staff_location_and_time() {
     let conn = fresh();

@@ -2,7 +2,7 @@
 /*
 last audited (date unknown) by DSH-Agent
 crate: kasirmu-core (inventory) | status: SAFE | lint: CLEAN
-findings: COR-11 FIXED (date unknown) — deactivate_inventory_location + shift-start guard queries now propagate DB errors (?) instead of unwrap_or(0), so a read error fails closed instead of satisfying the zero-stock/zero-transfer constraint. COR-13 INFO: read mappers coerce unknown stored enum values via from_stored_str().unwrap_or(ManualAdjustment) at 3 sites — misclassification risk for reports; positives: create_inventory_transaction writes header+lines+adjustments in ONE tx via the canonical adjust_stock_at_location_with_reason; set_stock_threshold distinguishes NoRows from real DB errors
+findings: COR-11 FIXED (date unknown) — deactivate_inventory_location + shift-start guard queries now propagate DB errors (?) instead of unwrap_or(0), so a read error fails closed instead of satisfying the zero-stock/zero-transfer constraint. COR-13 FIXED 2026-10-04 — the 3 read mappers (list_inventory_transactions :577, get_inventory_transaction :611, and the staff/location/shift-window list at :782) previously coerced an unknown stored `type` via from_stored_str().unwrap_or(ManualAdjustment), relabelling a future-migration row as a manager override; they now surface inventory_transaction::ParseError, honouring the enum's documented 'fails LOUDLY' contract; positives: create_inventory_transaction writes header+lines+adjustments in ONE tx via the canonical adjust_stock_at_location_with_reason; set_stock_threshold distinguishes NoRows from real DB errors
 next: none | perf: N/A
 */
 
@@ -583,9 +583,13 @@ impl Store<'_> {
             let type_str: String = row.get(1)?;
             let ttype =
                 crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(
-                        crate::inventory_transaction::InventoryTransactionType::ManualAdjustment,
-                    );
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
             Ok(InventoryTransaction {
                 id: crate::inventory_transaction::InventoryTransactionId::from(
                     row.get::<_, String>(0)?,
@@ -619,7 +623,13 @@ impl Store<'_> {
             |row| {
                 let type_str: String = row.get(1)?;
                 let ttype = crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(crate::inventory_transaction::InventoryTransactionType::ManualAdjustment);
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
                 Ok(InventoryTransaction {
                     id: crate::inventory_transaction::InventoryTransactionId::from(row.get::<_, String>(0)?),
                     transaction_type: ttype,
@@ -783,9 +793,13 @@ impl Store<'_> {
             let type_str: String = row.get(1)?;
             let ttype =
                 crate::inventory_transaction::InventoryTransactionType::from_stored_str(&type_str)
-                    .unwrap_or(
-                        crate::inventory_transaction::InventoryTransactionType::ManualAdjustment,
-                    );
+                    .ok_or_else(|| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            1,
+                            rusqlite::types::Type::Text,
+                            Box::new(crate::inventory_transaction::ParseError(type_str.clone())),
+                        )
+                    })?;
             Ok(InventoryTransaction {
                 id: crate::inventory_transaction::InventoryTransactionId::from(
                     row.get::<_, String>(0)?,

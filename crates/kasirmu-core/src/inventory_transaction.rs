@@ -122,6 +122,18 @@ impl InventoryTransactionType {
     }
 }
 
+/// Error surfaced when a stored `inventory_transactions.type` TEXT value is not
+/// a known enum variant.
+///
+/// [`InventoryTransactionType::from_stored_str`] documents that an unknown value
+/// returns `None` so a future migration adding a type fails LOUDLY rather than
+/// silently truncating audit history. The repository read mappers enforce that
+/// by surfacing this error, instead of coercing the row to some other variant —
+/// which would relabel an unknown audit row as, say, a manual adjustment.
+#[derive(Debug, thiserror::Error)]
+#[error("unknown inventory transaction type: {0}")]
+pub struct ParseError(pub String);
+
 /// Inventory transaction audit session header (ADR-18 §9a).
 ///
 /// Groups one or more [`InventoryTransactionLine`]s under a single staff-traceable
