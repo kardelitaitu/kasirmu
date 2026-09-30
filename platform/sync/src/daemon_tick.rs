@@ -45,6 +45,43 @@ async fn persist_stamped_counter(db: &DbConnection, transport: &SyncTransport) {
     .await;
 }
 
+/// Read this terminal's stamping seed: its configured id (when present) and
+/// the persisted logical clock, parsed (`0` when absent or corrupt).
+///
+/// Both push sites use this to decide whether to stamp: a terminal without an
+/// identity does not stamp, and its counter is meaningless. Reading the pair
+/// together keeps the two sites from drifting apart.
+async fn read_stamping_seed(db: &DbConnection) -> (Option<String>, u64) {
+    let db_clone = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        let terminal = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
+            .ok()
+            .flatten();
+        let counter = kasirmu_core::Store::new(&conn)
+            .get_setting(crate::crdt::CLOCK_KEY)
+            .ok()
+            .flatten()
+            .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
+            .unwrap_or(0);
+        (terminal, counter)
+    })
+    .await
+    .unwrap_or((None, 0))
+}
+
+/// Turn vector stamping on for `transport` when this terminal has an identity.
+///
+/// Seeding from the persisted clock is what stops a restart from rewinding the
+/// counter, and a rewound counter makes the server classify every push as
+/// stale — detection then quietly stops for this terminal.
+async fn with_stamping_seed(db: &DbConnection, transport: SyncTransport) -> SyncTransport {
+    let (terminal, counter) = read_stamping_seed(db).await;
+    match terminal {
+        Some(terminal_id) => transport.with_vector_stamping(&terminal_id, counter),
+        None => transport,
+    }
+}
 /// ADR sync-auth-hardening P1/P4: refresh the persisted API key and retry
 /// the push batch exactly once after an `AuthExpired` rejection. Returns
 /// (pushed, error) where `error` is set when the entire retry path fails
@@ -84,31 +121,7 @@ async fn push_retry_after_auth_refresh(
             Some("push rejected (401) and refreshed key is not usable".into()),
         );
     };
-    // Enable conflict-detection stamping when this terminal has an identity.
-    // The counter is seeded from the persisted clock and written back after
-    // the push, so a restart resumes where it left off instead of rewinding.
-    let seeded = {
-        let db_clone = db.clone();
-        tokio::task::spawn_blocking(move || {
-            let conn = db_clone.blocking_lock();
-            let terminal = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-                .ok()
-                .flatten();
-            let counter = kasirmu_core::Store::new(&conn)
-                .get_setting(crate::crdt::CLOCK_KEY)
-                .ok()
-                .flatten()
-                .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
-                .unwrap_or(0);
-            (terminal, counter)
-        })
-        .await
-        .unwrap_or((None, 0))
-    };
-    let transport = match seeded.0 {
-        Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
-        None => transport,
-    };
+    let transport = with_stamping_seed(db, transport).await;
 
     match transport.push_items(&pending).await {
         Ok(results) => {
@@ -253,34 +266,7 @@ pub(super) async fn run_tick(
                 }
             };
             if let Some(transport) = transport {
-                // Enable conflict-detection stamping when this terminal has an
-                // identity. The counter is seeded from the persisted clock and
-                // written back after the push: a counter that rewinds on
-                // restart makes the server classify every push as stale, and
-                // detection would quietly stop for this terminal.
-                let seeded = {
-                    let db_clone = db.clone();
-                    tokio::task::spawn_blocking(move || {
-                        let conn = db_clone.blocking_lock();
-                        let terminal =
-                            kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-                                .ok()
-                                .flatten();
-                        let counter = kasirmu_core::Store::new(&conn)
-                            .get_setting(crate::crdt::CLOCK_KEY)
-                            .ok()
-                            .flatten()
-                            .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
-                            .unwrap_or(0);
-                        (terminal, counter)
-                    })
-                    .await
-                    .unwrap_or((None, 0))
-                };
-                let transport = match seeded.0 {
-                    Some(terminal_id) => transport.with_vector_stamping(&terminal_id, seeded.1),
-                    None => transport,
-                };
+                let transport = with_stamping_seed(db, transport).await;
 
                 match transport.push_items(&pending).await {
                     Ok(results) => {
