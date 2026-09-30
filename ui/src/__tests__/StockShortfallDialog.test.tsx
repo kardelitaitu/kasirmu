@@ -195,8 +195,12 @@ describe('StockShortfallDialog', () => {
     const inputs = screen.getAllByRole('spinbutton');
     expect(inputs).toHaveLength(2);
 
-    // Max = min(alt.qtyAvailable, deficit) — deficit=17, loc-1=50, loc-2=10
-    expect(inputs[0]!).toHaveAttribute('max', '17');
+    // Max = min(alt.qtyAvailable, requestedQty) -- requestedQty=20, loc-1=50,
+    // loc-2=10. The cap was the deficit (17) and each row could reach it, so
+    // two rows together over-allocated a 20-unit line and the submit was
+    // refused by plan_resolution_deductions (crates/kasirmu-core/src/
+    // sale_deduction.rs:210-218).
+    expect(inputs[0]!).toHaveAttribute('max', '20');
     expect(inputs[1]!).toHaveAttribute('max', '10');
 
     expect(screen.getByText('Warehouse A')).toBeInTheDocument();
@@ -209,13 +213,14 @@ describe('StockShortfallDialog', () => {
 
     const inputs = screen.getAllByRole('spinbutton');
 
-    // Type a value above the max — the handler clamps to 17
+    // Type a value above the max — the handler clamps to the cap, which is now
+    // the requested qty (20) rather than the deficit (17).
     await userEvent.clear(inputs[0]!);
     await userEvent.type(inputs[0]!, '99');
 
     await waitFor(() => {
-      // handleSplitQtyChange clamps Math.min(99, 17) => 17
-      expect(inputs[0]!).toHaveValue(17);
+      // handleSplitQtyChange clamps Math.min(99, 20) => 20
+      expect(inputs[0]!).toHaveValue(20);
     });
   });
 
@@ -250,6 +255,69 @@ describe('StockShortfallDialog', () => {
     // requestedQty=20 while the deficit is only 17.
     expect(args.resolutions[0]!.allocations.reduce((s, a) => s + a.qty, 0)).toBe(20);
   });
+
+  // ── What the cashier SEES must be the quantity that will be allocated ──
+
+  // Round 19 fixed the submit path but left three display sites still speaking
+  // in deficit: the split pre-fill, the radio handler, and the per-row cap. They
+  // were corrected downstream by the submit-time trim, so nothing was broken —
+  // but the cashier was shown a deficit-relative number for a quantity the
+  // backend defines as the whole line, which is the same confusion that caused
+  // the failure. plan_resolution_deductions
+  // (crates/kasirmu-core/src/sale_deduction.rs:210-218) is the authority.
+
+  it('seeds the split pre-fill with the requested qty, not the deficit', async () => {
+    await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+    await userEvent.click(screen.getByText('Split across locations'));
+
+    const inputs = screen.getAllByRole('spinbutton');
+    // requestedQty=20, deficit=17. The pre-fill used to leave the 3-unit gap
+    // to the submit-time auto-fill, so the row opened wrong.
+    expect(inputs[0]!).toHaveValue(20);
+  });
+
+  it('seeds the CHOSEN location on entering split mode, capped to what it holds', async () => {
+    await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+    const radios = screen.getAllByRole('radio');
+
+    await userEvent.click(radios[1]!);
+    await userEvent.click(screen.getByText('Split across locations'));
+
+    const inputs = screen.getAllByRole('spinbutton');
+    // Radio[1] is Warehouse B. Choosing it and then splitting is an
+    // instruction about WHERE, so the seed must land on B -- not on the
+    // first alternative, which would move stock the cashier aimed
+    // elsewhere. The value is capped to what B actually holds (10), never
+    // the deficit (17) the row could not accept and never 0.
+    expect(inputs[1]!).toHaveValue(10);
+    expect(inputs[0]!).toHaveValue(0);
+  });
+
+  // A seed capped below the line is fine ONLY because the submit path tops the
+  // rest up from primary. Without that, picking a small location would submit
+  // 10 units for a 20-unit line and be refused.
+  it('still submits the whole line when the seeded location cannot hold it', async () => {
+    mockCompleteSaleWithResolvedShortfalls.mockResolvedValueOnce({
+      saleId: 'sale-1',
+      total: null,
+      lineCount: 1,
+    });
+
+    await renderWithFluent(<StockShortfallDialog {...defaultProps} />);
+    await userEvent.click(screen.getAllByRole('radio')[1]!);
+    await userEvent.click(screen.getByText('Split across locations'));
+    await userEvent.click(screen.getByText('Confirm & Continue'));
+
+    await waitFor(() => {
+      expect(mockCompleteSaleWithResolvedShortfalls).toHaveBeenCalledTimes(1);
+    });
+
+    const args = mockCompleteSaleWithResolvedShortfalls.mock.calls[0]![1] as {
+      resolutions: Array<{ allocations: Array<{ qty: number }> }>;
+    };
+    expect(args.resolutions[0]!.allocations.reduce((s, a) => s + a.qty, 0)).toBe(20);
+  });
+
 
   // ── No alternatives ──────────────────────────────────────────────
 

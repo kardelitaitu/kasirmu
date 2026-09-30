@@ -117,15 +117,22 @@ export default function StockShortfallDialog({
   const [resolutions, setResolutions] = useState<ShortfallResolutionState[]>(
     () => shortfallResult.shortfalls.map((s) => {
       const defaultAlt = s.alternatives.length > 0 ? s.alternatives[0]!.locationId : null;
-      const alloc: Record<string, number> = {};
-      // Pre-fill split: if there's an alternative, default the whole deficit there
-      if (defaultAlt) {
-        alloc[defaultAlt] = s.deficit;
-      }
       return {
         sku: s.sku,
         selectedLocationId: defaultAlt,
-        allocations: alloc,
+        // Deliberately EMPTY, not seeded. `allocations` is the SPLIT-mode
+        // grid, and the only route into split mode is toggleSplitMode, which
+        // seeds the grid from selectedLocationId (capped to what that
+        // location holds). A pre-fill here was therefore never read --
+        // toggleSplitMode overwrote it before the split rows could render.
+        // The mutation that fed it `s.deficit` instead of `s.requestedQty`
+        // passed the entire suite, which is how that was established.
+        //
+        // One writer per field. When this, handleLocationSelect and
+        // toggleSplitMode all wrote `allocations`, only the last write before
+        // a render was ever observed, and the quantity question had three
+        // homes instead of one.
+        allocations: {},
         allowNegative: false,
       };
     })
@@ -145,24 +152,64 @@ export default function StockShortfallDialog({
 
   const toggleSplitMode = useCallback(
     (sku: string) => {
+      const enteringSplit = !splitMode[sku];
       setSplitMode((prev) => {
         const next = { ...prev, [sku]: !prev[sku] };
         return next;
       });
-      // Reset allocations when toggling
+
+      // Entering split mode must SEED the grid, not blank it. This used to
+      // reset allocations to {}, so every user who opened the split view saw
+      // 0 in every row and had to work out by hand how many units each
+      // location contributes -- with the submit-time auto-fill silently
+      // covering any row they left blank, so a half-filled grid still submitted
+      // a valid sum and the cashier had no way to see where the rest came
+      // from. It also made the state initialiser's pre-fill dead: the only
+      // route into a split allocation was typing it from zero.
+      //
+      // The seed respects the same per-row cap the input enforces, so the
+      // number shown is always one the cashier could have typed themselves.
+      const orig = shortfallResult.shortfalls.find((s) => s.sku === sku);
+      // Seed into the location the user had already chosen, not blindly the
+      // first one: picking Warehouse B in simple mode and then splitting is
+      // an instruction about WHERE, and discarding it to seed Warehouse A
+      // would move stock the cashier deliberately aimed elsewhere.
+      const chosen = resolutions.find((r) => r.sku === sku)?.selectedLocationId;
+      const seedAlt =
+        orig?.alternatives.find((a) => a.locationId === chosen) ?? orig?.alternatives[0];
+      const seed: Record<string, number> = {};
+      if (enteringSplit && seedAlt && orig) {
+        seed[seedAlt.locationId] = Math.min(
+          seedAlt.qtyAvailable,
+          orig.requestedQty
+        );
+      }
       updateResolution(sku, {
         selectedLocationId: null,
-        allocations: {},
+        allocations: seed,
       });
     },
-    [updateResolution]
+    [splitMode, updateResolution, resolutions, shortfallResult.shortfalls]
   );
 
+  // Picking a location in simple mode records WHERE, and nothing else: the
+  // confirm handler in simple mode ignores `allocations` entirely and emits
+  // `{ locationId: locId, qty: requested }` from selectedLocationId, and
+  // entering split mode seeds the grid from selectedLocationId. So this wrote
+  // `allocations: { [locationId]: qty }` because it used to, and the map was
+  // never read before something overwrote it.
+  //
+  // The `qty` parameter died with it: mutants that fed this the deficit instead
+  // of the requested qty both passed the whole suite, which is how this was
+  // found. A radio click is visible in the UI only as a checked box, and a
+  // checked box cannot distinguish the two quantities. Drop the parameter and
+  // the write together rather than leave a third copy of the same quantity
+  // question in the file.
   const handleLocationSelect = useCallback(
-    (sku: string, locationId: string, deficit: number) => {
+    (sku: string, locationId: string) => {
       updateResolution(sku, {
         selectedLocationId: locationId,
-        allocations: { [locationId]: deficit },
+        allocations: {},
       });
     },
     [updateResolution]
@@ -247,9 +294,9 @@ export default function StockShortfallDialog({
         }
 
         // The per-location cap in the split rows is Math.min(qtyAvailable,
-        // deficit) -- a PER-ROW limit, so several rows can each reach it and
-        // the total can overshoot. Trim in row order to the total the backend
-        // requires, rather than submitting a sum it will refuse.
+        // requestedQty) -- a PER-ROW limit, so several rows can each reach it
+        // and the total can overshoot. Trim in row order to the total the
+        // backend requires, rather than submitting a sum it will refuse.
         if (allocTotal > requested) {
           let over = allocTotal - requested;
           for (let i = allocs.length - 1; i >= 0 && over > 0; i--) {
@@ -406,7 +453,7 @@ export default function StockShortfallDialog({
                               name={`alt-${shortfall.sku}`}
                               checked={resolution?.selectedLocationId === alt.locationId}
                               onChange={() =>
-                                handleLocationSelect(shortfall.sku, alt.locationId, shortfall.deficit)
+                                handleLocationSelect(shortfall.sku, alt.locationId)
                               }
                             />
                             <span className="shortfall-alt-name">{alt.locationName}</span>
@@ -444,12 +491,12 @@ export default function StockShortfallDialog({
                                         shortfall.sku,
                                         alt.locationId,
                                         e.target.value === '' ? 0 : v,
-                                        Math.min(alt.qtyAvailable, shortfall.deficit)
+                                        Math.min(alt.qtyAvailable, shortfall.requestedQty)
                                       );
                                     }
                                   }}
                                   min={0}
-                                  max={Math.min(alt.qtyAvailable, shortfall.deficit)}
+                                  max={Math.min(alt.qtyAvailable, shortfall.requestedQty)}
                                   aria-label={`${alt.locationName} qty`}
                                 />
                               </Localized>
