@@ -3,7 +3,15 @@
 last audited 25-07-26 by RSA-Agent (modules-sales slice A: repository deep read)
 crate: modules-sales | status: SAFE | lint: CLEAN
 findings: MSL-1 FIXED — get_sale now fails closed on an unrecognized stored status (SalesError::validation; the previous unwrap_or(Pending) turned a corrupted status into an editable pending sale): a corrupted status string becomes an editable pending sale that can be transitioned and re-processed; contrast foundation's fail-closed from_stored_str (returns None). Proposed: return SalesError::validation on unrecognized status (use foundation SaleStatus::from_stored_str). Also note the write/read asymmetry: status stored via serde_json to_string then trim_quotes, read via re-quote — works but obscures intent. Otherwise clean: all SQL parameterized, currency parse fails closed, legacy-row column defaults documented, update_sale_status bumps version, lines ordered by position, tx-scoped inserts
-next: fix MSL-1 in the fix-order phase | perf: prepared statements per call
+next: none | perf: prepared statements per call
+MSL-1 is CLOSED: get_sale fails closed on an unrecognised stored status via
+SaleStatus::from_stored_str(&status_str).ok_or_else(..) at repository.rs:83, verified
+2026-10-04. The residual row.get(..).unwrap_or(..) calls on the money and
+discount columns (:96 subtotal_minor, :102 tax_total_minor, :122
+discount_percent, :133 tip_minor, :134 service_charge_minor) are legacy-row
+column defaults for rows written before those columns existed, not the
+MSL-1 class: a status is a closed enum so an unknown value is corruption,
+whereas 0 is a real answer for a pre-column row.
 */
 
 use crate::error::SalesError;
