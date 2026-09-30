@@ -1,9 +1,10 @@
 # Owner Decisions - D1 to D14
 
 **Date:** 2026-09-24 (rulings); **status surface reconciled against the tree 2026-09-30.** **Version:** 0.0.40.
-**Status: 13 of the 14 decisions are settled — 9 implemented and verified in the tree (D1, D2, D3, D4,
-D5, D7, D8, D9, D11), and 4 answered by ruling (D10, D12, D13, D14). ONE is genuinely open: D6 (LAN
-KDS), which is what blocks C29.**
+**Status: all 14 decisions are settled, and NOTHING IS OPEN — 9 implemented and verified in the tree (D1, D2,
+D3, D4, D5, D7, D8, D9, D11), and 5 answered by ruling (D10, D12, D13, D14, and D6 on 2026-09-30, whose
+recommendation was REVERSED). D6 was the last genuine owner ask; answering it unblocked C29, the final
+unchecked item on the checklist.**
 
 **Why this paragraph was rewritten, because the drift ran in BOTH directions and that is the finding.**
 The previous version read *"D1-D11 are ruled — none is open … D12, D13 and D14 … ARE open — they are
@@ -26,7 +27,7 @@ Companion to manager-codebase-review.md and manager-codebase-review-checklist.md
 | D3 | Architecture rule vs tier order | Close the currency edge + a named rule for the 7 type shims now; move the types into foundation later | S now, L later | ✅ **SETTLED 2026-09-30 — implemented, PAST the recommendation.** ADR-61 closed **all eight** edges; the baseline is `{"entries": []}` and the checker reports 0 findings — **the 2026-11-07 deadline has nothing left to expire.** |
 | D4 | qris-core licence | Make it **proprietary** (publish = false, clarify entry, fix README) | XS | ✅ **SETTLED 2026-09-30 — implemented.** `publish = false` (`ae68e8dde`, workspace-inherited by qris-core) and the README already states Proprietary / not published. |
 | D5 | In-app restore | **Safe-mode restore on boot**, gated and integrity-checked; keep the CLI; do not auto-restore | M | ✅ **SETTLED 2026-09-30 — implemented, both shells.** The bridge writes `<db>.restore-request.json`; `recovery.rs` consumes it **before the DB opens** (desktop `:89`, mobile `:94`). Option D was not shipped. |
-| D6 | LAN KDS | **Retire kasirmu-lan** from the shipped path; keep the in-app KDS board | S (workspace exclude) | ⬜ **OPEN — the only genuine owner ask left, and it is what blocks C29.** With a correction: the crate **is** wired (desktop spawns `LanEventForwarder` at boot), so "no client" is true about *clients* only — the listener runs on every install today. |
+| D6 | LAN KDS | ~~Retire kasirmu-lan from the shipped path~~ **REVERSED — keep it, and label it honestly** | S (doc only) | ✅ **ANSWERED 2026-09-30 — option B REVERSED; the surface is KEPT under D13's class rule.** The recommendation rested on "no client in either shell", which is true about *clients* and silent about the *server*: desktop spawns `LanEventForwarder` **unconditionally at boot** (`lib.rs:948-979`) and subscribes three handlers, so the crate is neither redundant nor inert — it is *unwired-but-implemented*, the KEEP half of D13's rule. Its proposed mechanism was broken too (the crate inherits `workspace = true`, so a workspace `exclude` fails). C29 unblocked and ticked. |
 | D7 | Plugin trust | **Signed/checksummed manifest + operator grant + gated hot-reload**, and delete the dead capability flags | M | ✅ **SETTLED 2026-09-30 — implemented.** `signature.rs` (RSA PKCS#1 v1.5 / SHA-256), `grants.rs` (operator grant store), and `manager.rs:215` **refuses the load** on verification failure. |
 | D8 | Deployment shape | **Fix the unified routing** and widen the drift checker; unified is what production runs | S | ✅ **SETTLED 2026-09-30 — implemented.** `check-unified-routes.mjs` exits **0** (7 prefixes), and the blind spot is closed: it now reads `routeConstants` from every non-test `.go`. The "gate is red on main right now" line was stale. |
 | D11 | `allow_negative_stock` vs the missing CHECK | **Keep the feature and enforce conditionally (A)** - an unconditional `qty >= 0` silently re-enables the guard the flag exists to opt out of, and ADR #17 plus the UI depend on it | M (migration + a `TRIGGER_MAP` PG port) | ✅ **SETTLED 2026-09-30 — implemented, BOTH backends.** SQLite `20261012_stock_summary_qty_nonnegative.sql` + the PG `stock_summary_qty_nonnegative_fn()` triggers, conditional on `allow_negative_stock` exactly as option A specified. |
@@ -165,6 +166,20 @@ Worse, the forwarder starts **unconditionally** at boot on every desktop install
 **What would change the answer:** whether a tablet KDS client is genuinely planned, and whether a real multi-tablet restaurant deployment exists.
 
 **Recommendation: B.** Retire the crate from the shipped path with a one-line workspace exclude so the removal is reversible, keep the in-app KDS board (it works today and is the only KDS that has ever had a client), and record the offline-kitchen scenario as an explicit non-goal rather than an unfinished feature.
+
+**ANSWERED 2026-09-30 — the recommendation is REVERSED. The surface is KEPT, not retired: `kasirmu-lan` is ruled a KEEP-and-label surface under D13's class rule, and C29 unblocks on that ruling.**
+
+**Why it is reversed — this corrects the deciding facts rather than changing a mind.** Option B rested on *"LAN KDS has no client in either shell."* That sentence is true about **clients** and silent about the **server**, and the server is running. Measured on the tree: `apps/desktop-tauri/src/lib.rs:948-979` constructs `LanEventForwarder`, calls `platform_startup::spawn_daemon("LAN event forwarder", forwarder.run())` **unconditionally at boot**, and subscribes three event-bus handlers (`sale.completed`, `order.course_fired`, `kds.sync`). So the crate is neither inert nor redundant: nothing else in the tree performs LAN event transport, and this one executes on every desktop install.
+
+**D13's class rule decides it, and D13 is the later ruling.** *"redundant-and-inert is DELETED; unwired-but-implemented is KEPT and labelled honestly."* `kasirmu-lan` is **unwired-but-implemented** — the KEEP half of that rule by definition. D13's own list of KEEP surfaces does not name it, but D13 was answering a different question (the *inert* surfaces); the class rule it established covers this one.
+
+**The asymmetry is what actually settles it.** Keeping costs one doc line and is fully reversible. Retiring destroys 4,115 lines of hardened, audited work — the Noise_XXpsk3 transport, the DC-1 constant-time PSK compare, the DC-2 bounded replay buffers, the device-keyed replay validated against a real tablet — plus the boot wiring, the three handler subscriptions and the live test harness. A decision reversible on one side and destructive on the other belongs on **product** grounds, not on a cleanup list.
+
+**A second, independent defect in the recommendation: its mechanism does not work.** Option B proposed "a one-line workspace exclude so the removal is reversible". `crates/kasirmu-lan/Cargo.toml:3-11` inherits `version`, `edition`, `rust-version`, `license`, `publish` and `[lints]` as `workspace = true`, so excluding the crate while leaving the directory in place fails with an inheriting-from-workspace-root error. This is the same defect already proven for `kasirmu-media` in a scratch workspace and recorded on C29 — the remedy is not a one-liner, and the "reversible" half was never available as described.
+
+**What this ruling does NOT decide.** It does not declare LAN KDS a shipped feature. Nothing consumes it, the PSK has no production writer and no UI, and the discovery payload ships an empty device list — those facts stand. **Retiring remains legitimate if the product direction is dropped**, but that call must be made on product grounds ("we are not doing LAN KDS"), not because an audit list labelled the surface inert. If it is made, the removal is the multi-site job C29 prices, not a workspace exclude.
+
+**Consequence:** C29 is unblocked and ticked, and the crate doc now carries the honest wiring status so the next reader is not misled the way this ledger was.
 
 ---
 

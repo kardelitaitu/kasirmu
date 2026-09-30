@@ -11,6 +11,35 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 //! transports; it has no dependency on Tauri, windowing or any GUI
 //! crate, so a headless binary can drive it directly.
 //!
+//! # Wiring status: implemented, and reached by a test harness rather than a product client
+//!
+//! **Who starts it.** The desktop shell starts it on **every launch**,
+//! unconditionally: `apps/desktop-tauri/src/lib.rs:948-979` constructs
+//! [`LanEventForwarder`], calls
+//! `platform_startup::spawn_daemon("LAN event forwarder", forwarder.run())`, and
+//! subscribes three event-bus handlers (`sale.completed`, `order.course_fired`,
+//! `kds.sync`). The bind address comes from `lan_server.bind` and defaults to
+//! loopback; `0.0.0.0` is refused unless a non-empty `lan_server.psk` is also
+//! set. So the listener is live on every install, confined to `127.0.0.1`
+//! unless an operator configures otherwise.
+//!
+//! **Who consumes it.** Nothing shipped. No client in either shell dials this
+//! server: `apps/mobile-tauri` carries no `kasirmu-lan` dependency, and the
+//! desktop's own in-app KDS board is fed over ordinary IPC from the local
+//! database, not over LAN. The only peer that ever connects is the test harness
+//! in `apps/desktop-tauri/src/commands/kds_lan_live_tests.rs`.
+//!
+//! **Why it is kept anyway.** Ruled 2026-09-30 (decision **D6**, reversing its
+//! original "retire" recommendation): this crate is *unwired-but-implemented*,
+//! not redundant-and-inert, so it falls on the KEEP side of the project's own
+//! class rule. Retiring it would destroy a hardened, audited transport
+//! (Noise_XXpsk3, constant-time PSK compare, bounded device-keyed replay) to
+//! remove a loopback socket. **Retiring it remains legitimate as a product
+//! decision** if LAN KDS is dropped as a direction — but that is a product
+//! call, not a cleanup one, and it is a multi-site removal rather than the
+//! one-line workspace `exclude` D6 originally proposed (this manifest inherits
+//! `workspace = true`, so an `exclude` fails).
+//!
 //! Entry points: [`LanEventForwarder`] (construct with a bind address +
 //! optional PSK, then `handle()` for a cloneable [`LanForwarderHandle`]
 //! and `run()` to spawn the accept loop). Event-bus bridges are
