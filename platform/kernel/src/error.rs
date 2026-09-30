@@ -64,6 +64,24 @@ pub enum KernelError {
         source: anyhow::Error,
     },
 
+    /// A module declared a capability that is not granted to it.
+    #[error("module '{module}' is missing required capability: {missing}")]
+    MissingCapability {
+        /// The module id.
+        module: &'static str,
+        /// Comma-separated list of the ungranted capabilities.
+        missing: String,
+    },
+
+    /// A capability string is malformed.
+    #[error("invalid capability '{capability}': {message}")]
+    InvalidCapability {
+        /// The offending capability string.
+        capability: String,
+        /// Why it is invalid.
+        message: String,
+    },
+
     /// No modules are registered.
     #[error("no modules registered")]
     NoModulesRegistered,

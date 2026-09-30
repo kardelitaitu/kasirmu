@@ -34,11 +34,15 @@ next: none | perf: N/A
 
 #![deny(unsafe_code)]
 
+pub mod capability;
+pub mod context;
 pub mod error;
 pub mod event_bus;
 pub mod kernel;
 pub mod manifest;
 
+pub use capability::{Capability, CapabilityRegistry, ModuleCapabilities};
+pub use context::KernelContext;
 pub use error::KernelError;
 pub use event_bus::EventBus;
 pub use kernel::{Kernel, ModuleStatus};

@@ -53,6 +53,16 @@
       "uniqueItems": true,
       "default": []
     },
+    "capabilities": {
+      "type": "array",
+      "description": "Capabilities this module requires (namespace:action, e.g. 'read:inventory'). The kernel fails boot when a required capability was not explicitly granted (Phase 2).",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_-]*$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
     "database_namespace": {
       "type": "string",
       "description": "Optional database namespace prefix (e.g. 'plugin_<id>_'). Restricted to prefixed tables.",

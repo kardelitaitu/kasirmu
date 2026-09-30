@@ -67,6 +67,7 @@ fn to_json_pretty_roundtrip() {
         author: "Author".into(),
         dependencies: vec!["core".into()],
         permissions: vec!["test:read".into()],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
 
@@ -90,6 +91,7 @@ fn validate_valid_manifest() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_ok());
@@ -105,6 +107,7 @@ fn validate_empty_id() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -120,6 +123,7 @@ fn validate_empty_name() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -135,6 +139,7 @@ fn validate_invalid_version() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -150,6 +155,7 @@ fn validate_empty_version() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -165,6 +171,7 @@ fn validate_version_too_many_parts() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -190,6 +197,7 @@ fn debug_output() {
         author: "author".into(),
         dependencies: vec!["core".into()],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     let debug = format!("{manifest:?}");
@@ -208,6 +216,7 @@ fn validate_version_non_numeric_part() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -223,6 +232,7 @@ fn validate_version_pre_release_rejected() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -238,6 +248,7 @@ fn validate_id_must_be_kebab_case() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     let err = manifest.validate().unwrap_err();
@@ -258,6 +269,7 @@ fn validate_id_with_underscore_rejected() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -273,6 +285,7 @@ fn validate_duplicate_dependencies_rejected() {
         author: String::new(),
         dependencies: vec!["a".into(), "a".into()],
         permissions: vec![],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -288,6 +301,7 @@ fn validate_duplicate_permissions_rejected() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec!["sales:void".into(), "sales:void".into()],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -303,6 +317,7 @@ fn validate_permission_must_have_domain_action() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec!["invalidformat".into()],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     let err = manifest.validate().unwrap_err();
@@ -323,6 +338,7 @@ fn validate_permission_empty_domain_rejected() {
         author: String::new(),
         dependencies: vec![],
         permissions: vec![":action".into()],
+        capabilities: vec![],
         database_namespace: String::new(),
     };
     assert!(manifest.validate().is_err());
@@ -379,6 +395,7 @@ fn clone_equality() {
         author: "author".into(),
         dependencies: vec!["a".into()],
         permissions: vec!["p:q".into()],
+        capabilities: vec![],
         database_namespace: "plugin_test_".into(),
     };
     let cloned = manifest.clone();

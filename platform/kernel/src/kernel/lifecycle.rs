@@ -8,6 +8,8 @@ next: none | perf: N/A
 
 use super::dependency::collect_dependencies;
 use super::types::ModuleStatus;
+use crate::capability::{Capability, CapabilityRegistry, ModuleCapabilities};
+use crate::context::KernelContext;
 use crate::error::KernelError;
 use crate::event_bus::EventBus;
 use foundation::contracts::{Module, Service};
@@ -37,6 +39,8 @@ pub struct Kernel {
     started_service_ids: Vec<&'static str>,
     /// In-process event bus for module-to-module communication.
     event_bus: EventBus,
+    /// Declared and granted capabilities per module (Phase 2).
+    capabilities: CapabilityRegistry,
 }
 
 impl Kernel {
@@ -50,6 +54,7 @@ impl Kernel {
             started: false,
             started_service_ids: Vec::new(),
             event_bus: EventBus::new(),
+            capabilities: CapabilityRegistry::new(),
         }
     }
 
@@ -108,6 +113,66 @@ impl Kernel {
         }
 
         self.register(module)
+    }
+
+    // ── Capabilities (Phase 2) ──
+
+    /// Declare the capabilities a module requires and the capabilities it is
+    /// granted. Replaces any previous declaration for that module.
+    ///
+    /// This is deliberately explicit: requirement and grant are two separate
+    /// sets, and boot fails when a requirement is not covered by a grant (see
+    /// [`verify_capabilities`](Self::verify_capabilities)). A module that
+    /// declares nothing is unaffected.
+    pub fn declare_capabilities(&mut self, module: &'static str, declared: ModuleCapabilities) {
+        debug!(
+            module,
+            required = declared.required().len(),
+            granted = declared.granted().len(),
+            "declaring module capabilities"
+        );
+        self.capabilities.register(module, declared);
+    }
+
+    /// The kernel's capability registry.
+    #[must_use]
+    pub fn capabilities(&self) -> &CapabilityRegistry {
+        &self.capabilities
+    }
+
+    /// A per-module context over the capability registry.
+    #[must_use]
+    pub fn context_for(&self, module: &'static str) -> KernelContext<'_> {
+        KernelContext::new(module, &self.capabilities)
+    }
+
+    /// Declare, from a manifest capability list, each entry as both required
+    /// and granted. A manifest that lists a capability is asserting the module
+    /// may use it.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::InvalidCapability`] for a malformed string.
+    pub fn declare_from_manifest(
+        &mut self,
+        module: &'static str,
+        manifest_capabilities: &[String],
+    ) -> Result<(), KernelError> {
+        let mut declared = ModuleCapabilities::none();
+        for raw in manifest_capabilities {
+            let cap = Capability::parse(raw)?;
+            declared = declared.require(cap.clone()).grant(cap);
+        }
+        self.declare_capabilities(module, declared);
+        Ok(())
+    }
+
+    /// Verify that every declared capability is granted.
+    ///
+    /// # Errors
+    /// Returns [`KernelError::MissingCapability`] naming the first module
+    /// (in id order) with an ungranted requirement.
+    pub fn verify_capabilities(&self) -> Result<(), KernelError> {
+        self.capabilities.verify_all()
     }
 
     /// Register a service with the kernel.
@@ -174,6 +239,11 @@ impl Kernel {
         let order = self.resolve_dependencies()?;
         info!("loading {} modules in dependency order", order.len());
 
+        // Phase 2: fail fast before any on_load runs if a module requires a
+        // capability it was not granted. Checking before the loop means a
+        // half-loaded system never exists.
+        self.verify_capabilities()?;
+
         for &id in &order {
             // Skip modules that already loaded successfully — this makes
             // load_all idempotent across retries after a partial failure
@@ -202,6 +272,13 @@ impl Kernel {
                 operation: "load",
                 source: e,
             })?;
+            // Phase 2: hand the module its (capability-scoped) context. The
+            // borrow is released before the status update because the status
+            // map and modules map are disjoint fields, but Rust's borrow
+            // checker sees one &mut self — so build the context, call, then
+            // drop the module borrow.
+            let ctx = KernelContext::new(id, &self.capabilities);
+            module.on_context(&ctx);
             self.statuses.insert(id, ModuleStatus::Loaded);
         }
 
@@ -612,3 +689,7 @@ impl Default for Kernel {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "capability_lifecycle_tests.rs"]
+mod capability_lifecycle_tests;

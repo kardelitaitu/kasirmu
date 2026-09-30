@@ -20,6 +20,29 @@ pub type ModuleId = &'static str;
 /// [`.context()`](anyhow::Context) and downcast when needed.
 pub type ModuleResult<T = ()> = Result<T, anyhow::Error>;
 
+/// What the kernel hands a module when it is loaded (Phase 2, plan §7).
+///
+/// Deliberately narrow: the trait is defined here, at the bottom of the
+/// dependency graph, so `platform-kernel` can implement it without
+/// `foundation` depending on the kernel. It is a `dyn`-compatible trait, not a
+/// service-locator bag: each accessor returns a typed handle, and a module only
+/// obtains a foreign handle through a capability it was granted.
+///
+/// The final surface (event bus, settings store, namespaced-store factory,
+/// reporting facade, logger, clock, transaction coordinator) lands as the
+/// Phase 2 verticals migrate; this trait carries the capability registry now,
+/// because that is the part boot must fail fast on.
+pub trait ModuleContext {
+    /// Whether this module was granted `capability`.
+    ///
+    /// The module compares against the `namespace:action` strings it declared
+    /// in its manifest `capabilities` list.
+    fn has_capability(&self, capability: &str) -> bool;
+
+    /// The capabilities this module was granted, for diagnostics.
+    fn granted_capabilities(&self) -> Vec<String>;
+}
+
 /// A deployable feature module.
 ///
 /// Each module in kasir.mu implements this trait to participate in the
@@ -58,6 +81,11 @@ pub trait Module: Debug + Send + Sync {
     fn on_stop(&mut self) -> ModuleResult {
         Ok(())
     }
+
+    /// Receive the platform context after the kernel loads the module
+    /// (Phase 2, plan §7). Default no-op so existing modules compile
+    /// unchanged; a module that needs a platform service overrides it.
+    fn on_context(&mut self, _ctx: &dyn ModuleContext) {}
 }
 
 /// A service that can be started and stopped.

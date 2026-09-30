@@ -89,7 +89,7 @@ pub use constants::{
     MAX_SKU_LENGTH, PIN_MIN_LENGTH,
 };
 pub use contact::{Email, Phone};
-pub use contracts::{EventHandler, HandlerType, Module, Service};
+pub use contracts::{EventHandler, HandlerType, Module, ModuleContext, Service};
 pub use customer::Customer;
 pub use enums::{InvalidTransition, PaymentMethod, SaleStatus};
 pub use errors::{ConflictError, NotFoundError, ValidationError};

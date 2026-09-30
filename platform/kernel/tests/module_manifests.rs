@@ -11,6 +11,7 @@
 //! duplicate permission and nothing would notice, because nothing in the
 //! running app calls `ModuleManifest::load_from_file` today.
 
+use platform_kernel::Capability;
 use platform_kernel::ModuleManifest;
 
 /// Repository `modules/` directory, resolved from this crate's location.
@@ -168,5 +169,71 @@ fn dependency_graph_is_acyclic() {
          {} of {} modules could not be ordered",
         manifests.len() - removed,
         manifests.len()
+    );
+}
+
+#[test]
+fn every_declared_capability_parses() {
+    // Phase 2 (P2): a manifest `capabilities` entry is what the kernel turns
+    // into a required+granted capability at boot. If one is malformed, boot
+    // would fail at runtime with `KernelError::InvalidCapability`; catching it
+    // here means a bad manifest edit fails in CI instead.
+    for (name, path) in manifest_paths() {
+        let manifest = ModuleManifest::load_from_file(&path).expect("valid manifest");
+        for cap in &manifest.capabilities {
+            assert!(
+                Capability::parse(cap).is_ok(),
+                "modules/{name}/manifest.json declares malformed capability '{cap}'"
+            );
+        }
+    }
+}
+
+/// The JSON Schema's `properties` keys must match the manifest struct's
+/// serde field names, so the schema and the code cannot drift. This is the
+/// parity half of the P2 acceptance criterion: `capabilities` is in the
+/// schema AND the Rust struct, and no schema property lacks a field (or vice
+/// versa).
+#[test]
+fn schema_properties_match_the_manifest_struct() {
+    let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("docs")
+        .join("specs")
+        .join("module-manifest.schema.json");
+    let raw = std::fs::read_to_string(&schema_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", schema_path.display()));
+    let schema: serde_json::Value = serde_json::from_str(&raw).expect("schema is valid JSON");
+    let props = schema["properties"]
+        .as_object()
+        .expect("schema has a properties object");
+
+    // The exact serde field names of `ModuleManifest`.
+    let struct_fields = [
+        "id",
+        "name",
+        "version",
+        "description",
+        "author",
+        "dependencies",
+        "permissions",
+        "capabilities",
+        "database_namespace",
+    ];
+
+    let schema_keys: std::collections::BTreeSet<&str> = props.keys().map(String::as_str).collect();
+    let expected: std::collections::BTreeSet<&str> = struct_fields.iter().copied().collect();
+    assert_eq!(
+        schema_keys, expected,
+        "docs/specs/module-manifest.schema.json properties drifted from the ModuleManifest struct fields"
+    );
+
+    // `capabilities` must be declared as an array of namespace:action strings.
+    let caps = props.get("capabilities").expect("capabilities in schema");
+    assert_eq!(caps["type"], "array", "capabilities must be an array");
+    assert_eq!(
+        caps["items"]["type"], "string",
+        "capabilities items must be strings"
     );
 }

@@ -46,6 +46,12 @@ pub struct ModuleManifest {
     /// Permission strings required by this module (e.g. `["sales:void"]`).
     #[serde(default)]
     pub permissions: Vec<String>,
+    /// Capabilities required by this module (e.g. `["read:inventory"]`).
+    ///
+    /// Phase 2 vocabulary — see `platform/kernel/src/capability.rs`. A module
+    /// must be explicitly granted each one or boot fails.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 
     /// Optional database namespace prefix (e.g. `"plugin_<id>_"`).
     #[serde(default)]
@@ -184,6 +190,25 @@ impl ModuleManifest {
                         message: format!(
                             "invalid permission '{perm}': domain and action must be non-empty"
                         ),
+                    });
+                }
+            }
+        }
+
+        // ── capabilities must be unique and well-formed ───────────
+        {
+            let mut seen = std::collections::HashSet::new();
+            for cap in &self.capabilities {
+                if !seen.insert(cap) {
+                    return Err(KernelError::ManifestParseError {
+                        module: self.id.clone(),
+                        message: format!("duplicate capability '{cap}' in manifest"),
+                    });
+                }
+                if let Err(e) = crate::capability::Capability::parse(cap) {
+                    return Err(KernelError::ManifestParseError {
+                        module: self.id.clone(),
+                        message: format!("invalid capability '{cap}': {e}"),
                     });
                 }
             }
