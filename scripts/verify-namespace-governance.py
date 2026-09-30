@@ -1240,7 +1240,19 @@ def load_classifications(path: Path) -> set[str]:
     return names
 
 
-def scan(root: Path, baseline_path: Path, classification_path: Path):
+def promote_strict(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Phase 4 P4.5: strict makes an undeclared dependency a verdict, not a note.
+
+    By default an undeclared cross-vertical dependency (Rule 3) is informational
+    (Phase 1 softness). Strict promotes each such note to a `verdict` so it flows
+    through apply_baseline and blocks unless it carries a reasoned baseline entry.
+    """
+    for finding in findings:
+        if finding["rule"] == "undeclared-dependency" and finding["severity"] == "note":
+            finding["severity"] = "verdict"
+    return findings
+
+def scan(root: Path, baseline_path: Path, classification_path: Path, strict: bool = False):
     baseline = load_baseline(baseline_path, root)
     classifications = load_classifications(classification_path)
     scope = new_scope()
@@ -1250,6 +1262,8 @@ def scan(root: Path, baseline_path: Path, classification_path: Path):
         + handler_findings(root, classifications, scope)
         + dependency_findings(root, scope)
     )
+    if strict:
+        findings = promote_strict(findings)
     if scope["module_files"] == 0:
         raise ValueError(
             f"no production module source found under {root / MODULE_SOURCE_ROOT}: "
@@ -1302,6 +1316,7 @@ def main() -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description="Verify soft namespace-governance rules.")
     parser.add_argument("--report-only", action="store_true", help="Report findings but never fail. The printed line says NOT JUDGING.")
+    parser.add_argument("--strict", action="store_true", help="Phase 4 P4.5: an undeclared dependency blocks instead of being informational.")
     parser.add_argument("--json", action="store_true", help="Emit stable JSON instead of human-readable output.")
     parser.add_argument("--root", type=Path, help="Repository root (defaults to the script's repository root).")
     parser.add_argument("--baseline-file", type=Path, help="Baseline JSON path (defaults to <root>/scripts/namespace-governance-baseline.json).")
@@ -1367,7 +1382,7 @@ def main() -> int:
                 print(f"  [unclassified] {f['path']}:{f['line']} -> {f['target']}")
         return 0
     try:
-        tracked, blocking, stale, notes, scope, classification_count = scan(root, baseline_path, classification_path)
+        tracked, blocking, stale, notes, scope, classification_count = scan(root, baseline_path, classification_path, strict=args.strict)
     except (ValueError, OSError) as exc:
         return fail(str(exc))
     if args.json:
@@ -1848,6 +1863,18 @@ def self_test() -> int:
         check("T3: an unowned table stays a note even with a marker",
               [f["rule"] for f in findings], ["unowned-table"])
 
+    # Phase 4 P4.5: strict promotes an undeclared dependency from note to verdict.
+    soft = [make_finding("undeclared-dependency", "modules/x/src/repository.rs",
+                         "sales (owned by sales, not in dependencies)", 7, "note")]
+    promoted = promote_strict([dict(f) for f in soft])
+    check("strict: an undeclared dependency becomes a verdict",
+          [f["severity"] for f in promoted], ["verdict"])
+    check("strict: promotion does not touch a cross-vertical note",
+          [f["severity"] for f in promote_strict(
+              [make_finding("cross-vertical-sql", "p", "t", 1, "note")])],
+          ["note"])
+    check("soft: an undeclared dependency stays a note without strict",
+          [f["severity"] for f in soft], ["note"])
     # Ownership-map single-source parity (plan \u00a77).
     with tempfile.TemporaryDirectory() as tmp:
         tr = Path(tmp)

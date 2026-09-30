@@ -1,8 +1,9 @@
-# Module Namespace Governance (Phase 1 — Soft Governance)
+# Module Namespace Governance (Phase 1 — now strict)
 
-**Status:** Adopted (2026-09-30) — soft governance only; no build fails on existing access
+**Status:** Adopted 2026-09-30; made **strict** 2026-10-03 (Phase 4 P4.5) — an undeclared cross-vertical
+dependency now fails the gate; the one remaining edge is baselined and grant-marked
 **Scope:** Phase 1 of the modular scaffolding plan (`todo-modular-scaffolding.md` §9.2), following ADR-62
-**Enforcement:** `scripts/verify-namespace-governance.py` (gates.json id `namespace-governance`)
+**Enforcement:** `scripts/verify-namespace-governance.py --strict` (gates.json id `namespace-governance`)
 
 ---
 
@@ -93,9 +94,10 @@ cross-vertical edge introduced in code without the matching manifest declaration
 invisible to `every_module_manifest_is_registered` and to any future ordering check.
 
 **How it is checked:** the checker compares declared `dependencies` against the cross-vertical tables
-a module actually names, and prints a **report line** for each edge that has no matching declaration.
-Because the current tree has such edges (see §4), this is reported, not failed — making it a hard
-failure is a Phase 4 change, gated on the §4 items being closed. **This is a review rule today.**
+a module actually names. Phase 4 P4.5 flipped the gate to `--strict` (step "namespace governance" in
+`scripts/check.sh`), so an undeclared dependency is now **blocking**, not informational. Strictness is
+safe because the population was clean at flip time (0 undeclared edges); the one remaining cross-vertical
+edge carries a baseline entry and a grant marker (§4).
 
 #### Capability gating at boot (Phase 2 P3)
 
@@ -114,9 +116,14 @@ unsubscribes it. `platform/startup/src/lib.rs` routes every boot subscription th
 `startup` wiring owner; its four topics live in one const (`STARTUP_WIRING_CAPABILITIES`) rather than
 scattered across call sites.
 
-**What this does not yet do:** no vertical manifest declares capabilities today, so the gate currently
-exercises the legacy branch and logs. The mechanism is live and tested; populating the manifests is the
-remaining migration.
+**Manifests now declare capabilities.** Phase 4 P4.1 populated every `modules/<id>/manifest.json`
+`capabilities` array from the ownership map plus declared dependencies (`read:<id>` + `write:<id>` when
+the module owns tables, plus `read:<dep>` per dependency — 36 capabilities across 14 manifests). The
+`capability-parity` gate (`scripts/gates.json`; `verify-namespace-governance.py --check-capabilities`)
+fails on any drift, and `--emit-capabilities` rewrites the manifests. The **runtime** half — routing the
+`NamespacedStore` grant set from the manifest at wrap time, and rejecting a grant naming an undeclared
+module — remains open (recorded as PARTIAL in `docs/architecture/phase4-implementation-tickets.md`); each
+module still constructs its store with an explicit `Grants` value.
 
 ---
 
@@ -187,20 +194,25 @@ capability. Its baseline entry and T3 marker went with it. See
 
 ---
 
-## 5. What Phase 4 will change
+## 5. What Phase 4 changes
 
-The plan's Phase 4 replaces this soft posture:
+The plan's Phase 4 replaces the soft posture. Delivered so far:
 
-- reject unauthorised cross-namespace table access;
-- require reporting to use the sanctioned facade (already satisfied: the sole bypass edge was retired in Phase 3 P3.1);
-- make `NamespacedStore` (Phase 2) the only route to another vertical's data.
+- **P4.3** deleted `NamespacedStore::raw()`, so there is no unchecked-SQL hatch;
+- **P4.1 (manifest half)** populated every manifest `capabilities` array and added the `capability-parity`
+  gate; the runtime grant routing remains open;
+- **P4.4** proved the manifest capability set is the boot-path boundary
+  (`platform/startup/tests/boot_capability.rs`);
+- **P4.5** flipped this gate to `--strict`, so an undeclared dependency blocks;
+- reporting already uses the sanctioned facade (the sole bypass edge retired in Phase 3 P3.1).
 
-The Phase 2 work that reaches that state is broken down in
-`docs/architecture/phase2-implementation-tickets.md`; the map those tickets build on is `modules/ownership.json`.
+Still open: **P4.1 runtime half** (route `Grants` from the manifest at wrap time), **P4.2**
+(`trait ReportingFacade`), and **P4.6** (the completion page). The breakdown is in
+`docs/architecture/phase4-implementation-tickets.md`; the map is `modules/ownership.json`.
 
-When those land, the allowlist and the baseline in §4 must both empty. Until then, this document and
+When P4.6 lands, the allowlist and the baseline in §4 both empty. Until then, this document and
 `scripts/namespace-governance-baseline.json` are the frozen record of what is tolerated, and
-`scripts/verify-namespace-governance.py` fails the moment a new violation appears.
+`scripts/verify-namespace-governance.py --strict` fails the moment a new violation appears.
 
 ---
 

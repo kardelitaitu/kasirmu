@@ -395,13 +395,15 @@ step "debt markers self-test" "python3 scripts/verify-debt-markers.py --self-tes
 # ADR-62 named the seams; docs/architecture/module-namespace-governance.md names
 # the RULES and freezes today's debt as data. Deliberately SOFT: all modules share
 # one SQLite connection, so a namespace violation is not yet mechanically
-# expressible, and a strict gate now would fail on legitimate existing edges. This
-# reports Rule 1 (no new cross-vertical raw SQL) and Rule 2 (no new unclassified
-# handler) and fails only on a NEW finding; the two known cross-vertical edges are
-# baselined in scripts/namespace-governance-baseline.json. Rule 3 (undeclared
-# dependency) is informational. A gate whose parsers silently break checks
+# expressible, and a strict gate now would fail on legitimate existing edges. This reports Rule 1 (cross-vertical
+# raw SQL) and Rule 2 (unclassified handler) and fails on a NEW finding; the one
+# remaining cross-vertical edge is baselined and carries a grant marker in
+# scripts/namespace-governance-baseline.json. Phase 4 P4.5 flipped this step to
+# --strict, so an undeclared dependency (Rule 3) now blocks too -- the population
+# is clean (0 undeclared edges at flip time), so strict means "stay clean", not
+# "fail on the existing tree". A gate whose parsers silently break checks
 # nothing, so the self-test runs beside it (verify-selftests-wired.py).
-step "namespace governance" "python3 scripts/verify-namespace-governance.py" python3 scripts/verify-namespace-governance.py
+step "namespace governance" "python3 scripts/verify-namespace-governance.py --strict" python3 scripts/verify-namespace-governance.py --strict
 step "namespace governance self-test" "python3 scripts/verify-namespace-governance.py --self-test" python3 scripts/verify-namespace-governance.py --self-test
 
 # ── Ownership map parity — one source, three consumers (Phase 2) ───────────

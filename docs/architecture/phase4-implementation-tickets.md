@@ -35,7 +35,7 @@ with a declared dependency; 0 undeclared-dependency notes; 0 stale grants; 0 uno
 | Reject unauthorized cross-namespace table access | P4.1 + P4.4 — strict `check_statement` and denial tests |
 | Require reporting queries to go through `ReportingFacade` | P4.2 — define and route the trait |
 | Remove legacy shared-connection escape hatches | P4.3 — delete `raw()` |
-| Add CI gate that fails on new namespace violations | P4.5 — flip `namespace-governance` from soft to strict |
+| Add CI gate that fails on new namespace violations | P4.5 — flip `namespace-governance` from soft to strict (DONE) |
 | Add CI gate that ratchets `kasirmu-core` size downward | **DONE** (Phase 3 P3.4, gate `core-size-ratchet`) |
 | Add CI gate that requires handler classification metadata | **DONE** (gate `namespace-governance` Rule 2) |
 | Add tests for cross-vertical access denial | P4.4 |
@@ -216,6 +216,19 @@ and the failure names the table and the owner.
 ---
 
 ## 6. P4.5 — Flip the namespace gate from soft to strict
+
+**Status: DONE 2026-10-03.** `scripts/verify-namespace-governance.py` gained a `--strict` flag; the
+promotion is a named `promote_strict(findings)` helper that turns each `undeclared-dependency` note
+(Rule 3) into a `verdict` so it flows through `apply_baseline` and blocks unless baselined. The
+`namespace-governance` gate step now runs `--strict` (`scripts/check.sh`), the gate `_note` records the
+flip, and `docs/architecture/module-namespace-governance.md` §Rule 3 / §5 were updated (they had said
+"review rule today" and "no vertical manifest declares capabilities today", both now false).
+Mutation-proven: adding `let _ = conn.prepare("SELECT id FROM loyalty_accounts")` to
+`modules/settings/src/repository.rs` (deps `[]`) makes soft report 1 blocking + 1 informational while
+`--strict` reports 2 blocking + 0 informational; reverting restores byte-identical output. `--self-test`
+now also covers the promotion (3 new checks); strict reports 0 blockers on the real tree
+(1 frozen edge, 0 undeclared edges). `verify-runner-commands`, `verify-runner-claims`,
+`verify-ci-docs-drift`, `verify-selftests-wired` all green.
 
 **Problem (verified).** `scripts/verify-namespace-governance.py` Rule 1 fails only on a *new* edge
 (`--json` `new_blocking`), and Rule 3 (undeclared dependency) is informational. That is deliberate Phase 1
