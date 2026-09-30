@@ -257,7 +257,14 @@ impl PgSyncDaemon {
                 let store = Store::new(&conn);
 
                 let enabled = Settings::is_pg_sync_enabled(&conn).unwrap_or(false);
-                let pending = store.list_pending_offline().unwrap_or_default();
+                // A queue read that failed must NOT collapse into an empty push
+                // list: `pending.is_empty()` gates the whole push phase below, so
+                // a failed read would skip the push and report a clean cycle while
+                // the durable backlog kept growing — indistinguishable from a
+                // healthy idle terminal. Propagate so it reaches `read_error`.
+                let pending = store.list_pending_offline().map_err(|e| {
+                    format!("could not read the offline queue; refusing to report an empty push list: {e}")
+                })?;
                 // SYNC-01 parity: the durable pull anchor (since + composite
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced
@@ -357,11 +364,18 @@ impl PgSyncDaemon {
                     None
                 };
 
-                (pg_config, pending, pull_since, pull_cursor)
+                Ok::<_, String>((pg_config, pending, pull_since, pull_cursor))
             })
             .await
             {
-                Ok((cfg, pending, since, cursor)) => (cfg, pending, since, cursor, None),
+                Ok(Ok((cfg, pending, since, cursor))) => (cfg, pending, since, cursor, None),
+                // The queue read failed inside the blocking closure. Report it as
+                // the cycle's read error so `last_error` shows a failed read rather
+                // than a clean, idle-looking tick.
+                Ok(Err(msg)) => {
+                    tracing::error!(error = %msg, "pg sync daemon read phase failed");
+                    (None, Vec::new(), None, None, Some(msg))
+                }
                 Err(join_err) => {
                     let msg = format!("pg sync config read panicked: {join_err}");
                     tracing::error!(error = %msg, "pg sync daemon read phase failed");

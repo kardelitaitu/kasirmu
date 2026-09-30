@@ -654,6 +654,46 @@ fn pending_offline_count_errors_when_the_table_is_missing() {
     );
 }
 
+/// A tick whose queue read fails must report the failure, not a clean cycle.
+///
+/// The PG daemon gated its whole push phase on `!pending.is_empty()` and read
+/// the queue with `list_pending_offline().unwrap_or_default()`, so a dropped
+/// `offline_queue` flattened to an empty push list: the tick skipped the push,
+/// left `last_error` `None`, and told the operator everything was fine while
+/// the backlog only grew. The failure now reaches `read_error` → `last_error`.
+#[tokio::test]
+async fn tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle() {
+    let db = setup_db();
+    // Drop the table the read needs, AFTER the schema is built. `fresh_db`
+    // runs migrations, so this is a runtime failure, not a bad fixture.
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            conn.execute_batch("DROP TABLE offline_queue;").unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    assert!(
+        status.last_sync_at.is_some(),
+        "the daemon must still have completed a tick"
+    );
+    assert!(
+        status.last_error.is_some(),
+        "an unreadable queue must surface on last_error, not read as a clean cycle"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
 // ── Graceful shutdown ──────────────────────────────────────────
 
 #[tokio::test]
