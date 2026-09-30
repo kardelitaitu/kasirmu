@@ -72,7 +72,7 @@ fn set_secret_never_discards_a_failed_delete() {
 }
 
 /// The slice of `source` from `start` up to (not including) `end`.
-fn source_between(source: &str, start: &str, end: &str) -> &str {
+fn source_between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
     let from = source
         .find(start)
         .unwrap_or_else(|| panic!("'{}' not found in linux.rs", start));
