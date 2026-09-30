@@ -92,8 +92,17 @@ test.describe('First-run provisioning', () => {
     await expect(page.getByText(/Step 1 of 3/i)).toBeVisible();
 
     // The first step is the current one, exposed to AT as a position.
-    const steps = page.getByRole('listitem').filter({ hasText: 'Account' });
-    await expect(steps).toHaveAttribute('aria-current', 'step');
+    //
+    // Scoped to the RAIL, not to every listitem on screen: the submit-gate
+    // explainer is a second list whose items are the unmet requirements, and one
+    // of them reads 'Link an account, or pick "Offline only"' - so a screen-wide
+    // getByRole('listitem') filter matched both lists and the assertion could not
+    // tell which element it was reading aria-current from. The rail is the one
+    // list carrying this testid.
+    const rail = page.getByTestId('provisioning-step-rail');
+    const steps = rail.getByRole('listitem');
+    await expect(steps).toHaveCount(3);
+    await expect(steps.filter({ hasText: 'Account' })).toHaveAttribute('aria-current', 'step');
 
     // Completing a step advances the count and marks it done.
     await page.getByTestId('provision-mode-local').click();

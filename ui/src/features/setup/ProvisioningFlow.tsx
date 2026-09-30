@@ -582,7 +582,7 @@ export default function ProvisioningFlow({ onProvisioned }: ProvisioningFlowProp
               which the three dots alone would. Completed steps carry a check,
               so the state is not conveyed by fill colour only. */}
           <nav className="provisioning-steps" aria-label={l10n.getString('setup-provision-step-progress', { current: '1', total: String(stepDone.length) })}>
-            <ol className="provisioning-step-list">
+            <ol className="provisioning-step-list" data-testid="provisioning-step-rail">
               {STEPS.map((step, i) => {
                 const done = stepDone[i];
                 const isCurrent = currentStep === i;

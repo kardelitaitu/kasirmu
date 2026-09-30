@@ -241,6 +241,34 @@ export default function TabletAppShell() {
     setCurrentRoute(route);
   }, [userRole, userPermissions]);
 
+  // ── Hash-based routing, mirroring AppShell.tsx:350-395 ────────────────
+  //
+  // MEASURED DEFECT (fixed 2026-09-30). The provisioning flow's "Set up with a
+  // phone instead" button does `window.location.hash = '#/mobile-setup'`. On the
+  // DESKTOP shell that worked, because AppShell listens for hashchange and maps
+  // #/route onto the page registry. The TABLET shell had no such listener: it
+  // kept currentRoute at 'pos' and re-rendered the same provisioning form, so
+  // the button was a dead end for exactly the device it was written for — the
+  // merchant pressed it and nothing happened, forever.
+  //
+  // The e2e that pins it is mobile-setup-wizard.spec.ts ('unprovisioned tablet
+  // shell can navigate directly to mobile-setup wizard'). It had been failing
+  // since 43689705f introduced the button; the suite is not run on this
+  // project's normal gate, so it went unnoticed.
+  //
+  // The hash is read on mount as well as on change so a #/mobile-setup
+  // deep link / reload works, not only a live click.
+  useEffect(() => {
+    const syncFromHash = () => {
+      const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+      if (!raw) return;
+      if (getPage(raw)) setCurrentRoute(raw);
+    };
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+  }, []);
+
   // ── Session lock: the shell owns the lock screen; screens only ask for it ──
   // Same `app:lock` contract as AppShell.tsx (the restaurant sidebar's "Lock
   // Terminal" and DevToolbar fire it). With no listener here a tablet lock

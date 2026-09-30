@@ -23,6 +23,14 @@ const PAIRING_URL = /https:\/\/kasir\.mu\/pair\?code=/;
 test.describe('Device pairing URL', () => {
   test('the provisioning flow prints the real URL, not the Fluent pattern', async ({ page }) => {
     await page.goto('/index.mobile.html?unprovisioned=1');
+    // The tablet now opens on the EMAIL leg (the route a merchant with one
+    // terminal can actually use — QR needs a second phone already signed in, and
+    // the cost of that was disclosed at the tab). So the QR is one click away,
+    // not the first thing on screen. The click is what keeps this asserting the
+    // URL rather than something else: without it the wait below fails loudly,
+    // and the tempting shortcut — loosening the selector to whatever is on screen
+    // — would turn it green while testing a different subject entirely.
+    await page.getByRole('tab', { name: /QR Pairing/i }).click();
     await page.waitForSelector('[data-testid="pairing-qr-wrapper"]', { timeout: 20_000 });
 
     const note = page.locator('.provisioning-note').first();
