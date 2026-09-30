@@ -372,3 +372,16 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **Still latent.** No server in this repository emits the conflict tag, so this guard hardens a path that is not live yet (same activation caveat as the rest of this ADR). A typed replacement for the envelope exists but is unadopted: `platform/sync/src/crdt/delta_mutation.rs` (`DeltaMutation`), whose migration remains separate work.
 
 > Depth guard added 2026-10-04.
+
+---
+
+## The flatten now consumes its own surplus deltas (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it corrects one claim in it and records a follow-on repair.*
+
+- **The claim above that "no delta is dropped" was only true for the second merge.** The first flatten parks surplus deltas in the envelope's `extra` array, but `flatten_stock_deltas` (`platform/sync/src/conflict.rs:159`) read only the `local`/`remote`/`local_extra`/`remote_extra` keys — never `extra` itself. A THIRD merge over an envelope that carried an `extra` array therefore silently discarded every surplus delta: the exact data loss the flatten existed to prevent, moved one merge later. The pre-fix third merge of a two-delta winner yielded `[1, 1, 2, 2]` instead of the `[1, 1, 1, 1, 2, 2, 2, 2]` its inputs demanded.
+- **The repair.** `flatten_stock_deltas` now reads `local` then `remote` (keeping the first two deltas stable for the four `queue.rs` consumers), then each entry of the `extra` array in order, then the legacy `local_extra`/`remote_extra` keys. The earlier doc's claim that an envelope yields "`local_extra`/`remote_extra` when present" was also wrong about this module's own producer — the producer writes `extra` (an array); the two legacy keys are tolerated, not emitted.
+- **The pin.** `re_merging_a_flattened_envelope_keeps_its_extra_deltas` (`platform/sync/src/sync_client_divergence_tests.rs`) merges twice to build an `extra`-bearing envelope, merges a third time, and asserts all four leaves survive on both sides. It FAILED before the repair with `left: [1, 1, 2, 2]` against `right: [1, 1, 1, 1, 2, 2, 2, 2]`.
+- **Scope.** Still the same latent path: no in-repo server emits the conflict tag. Both the envelope and its flatten remain the legacy shape; the typed `DeltaMutation` migration (`platform/sync/src/crdt/delta_mutation.rs`) is unchanged separate work.
+
+> Surplus deltas preserved 2026-10-04.

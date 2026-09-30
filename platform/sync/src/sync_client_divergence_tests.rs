@@ -461,6 +461,55 @@ fn re_merging_a_merged_envelope_stays_one_level_deep() {
     assert_eq!(as_delta(&extras[1]).delta, -3);
 }
 
+/// A THIRD merge must not drop the `extra` deltas the second one produced.
+///
+/// The first flatten carries surplus deltas in an `extra` array. If the
+/// flattener only reads `local`/`remote`, a later merge of that envelope
+/// silently discards every extra delta - the exact data loss the flatten was
+/// written to prevent. This pins that the `extra` array is consumed too.
+#[test]
+fn re_merging_a_flattened_envelope_keeps_its_extra_deltas() {
+    let merged = |a: &str, b: &str| {
+        crate::conflict::resolve_stock_crdt(
+            &OfflineQueueItem::new("stock.adjusted", a),
+            &OfflineQueueItem::new("stock.adjusted", b),
+        )
+        .winner
+    };
+
+    // Merge twice so the winner carries a two-entry `extra` array.
+    let depth_one = merged(r#"{"sku":"SKU","delta":1}"#, r#"{"sku":"SKU","delta":2}"#);
+    let depth_two = merged(&depth_one.payload, &depth_one.payload);
+    let v2: Value = serde_json::from_str(&depth_two.payload).unwrap();
+    assert_eq!(v2["extra"].as_array().unwrap().len(), 2);
+
+    // Merge a THIRD time. Every leaf that entered must still be present.
+    let depth_three = merged(&depth_two.payload, &depth_two.payload);
+    let v3: Value = serde_json::from_str(&depth_three.payload).unwrap();
+
+    let mut deltas: Vec<i64> = Vec::new();
+    for key in ["local", "remote"] {
+        deltas.push(
+            serde_json::from_value::<StockAdjustmentPayload>(v3[key].clone())
+                .unwrap()
+                .delta,
+        );
+    }
+    for extra in v3["extra"].as_array().into_iter().flatten() {
+        deltas.push(
+            serde_json::from_value::<StockAdjustmentPayload>(extra.clone())
+                .unwrap()
+                .delta,
+        );
+    }
+    deltas.sort_unstable();
+    assert_eq!(
+        deltas,
+        vec![1, 1, 1, 1, 2, 2, 2, 2],
+        "all four leaves x two sides survive the third flatten - nothing dropped"
+    );
+}
+
 /// Row 5 - the duplicate-id Rejected, the one row with a live producer.
 ///
 /// This is NOT a conflict input: a real clash today arrives as

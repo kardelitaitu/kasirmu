@@ -149,9 +149,10 @@ pub fn resolve_sale_lww(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 /// A plain delta (or any value that is not a `crdt_delta` envelope) yields a
 /// one-element list containing itself. An envelope yields its `local` followed
 /// by its `remote`, and — so a re-merge of an already-flattened envelope never
-/// drops a delta — also `local_extra` / `remote_extra` when present. The
-/// returned flag says whether a flattening actually happened, which is what the
-/// caller logs.
+/// drops a delta — everything in its `extra` array (the shape this module's own
+/// `resolve_stock_crdt` writes for surplus deltas) plus any legacy
+/// `local_extra` / `remote_extra` keys. The returned flag says whether a
+/// flattening actually happened, which is what the caller logs.
 ///
 /// Recursion is bounded: the envelope form this function produces is exactly
 /// one level deep, so a decoded envelope contributes leaf deltas, never another
@@ -168,18 +169,37 @@ fn flatten_stock_deltas(payload: &str) -> (Vec<Value>, bool) {
     }
 
     let mut deltas = Vec::with_capacity(4);
-    for key in ["local", "remote", "local_extra", "remote_extra"] {
+    // Ordered so the first two deltas stay the envelope's `local` and `remote`
+    // (stable for the four `queue.rs` consumers); the REST — the surplus a prior
+    // flatten parked in `extra`, plus the legacy `local_extra`/`remote_extra`
+    // keys — follow, so a re-merge of an already-flattened envelope loses none.
+    let push_side = |side: &Value, deltas: &mut Vec<Value>| {
+        // A side that is itself still an envelope (should not happen once this
+        // guard is in place, but old rows exist) is flattened here too, so the
+        // result is always leaf deltas.
+        if side.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
+            let nested = serde_json::to_string(side).unwrap_or_default();
+            let (mut inner, _) = flatten_stock_deltas(&nested);
+            deltas.append(&mut inner);
+        } else {
+            deltas.push(side.clone());
+        }
+    };
+    for key in ["local", "remote"] {
         if let Some(side) = value.get(key) {
-            // A side that is itself still an envelope (should not happen once
-            // this guard is in place, but old rows exist) is flattened here too,
-            // so the result is always leaf deltas.
-            if side.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta") {
-                let nested = serde_json::to_string(side).unwrap_or_default();
-                let (mut inner, _) = flatten_stock_deltas(&nested);
-                deltas.append(&mut inner);
-            } else {
-                deltas.push(side.clone());
-            }
+            push_side(side, &mut deltas);
+        }
+    }
+    // The surplus deltas a prior flatten carried, in their original order.
+    if let Some(extras) = value.get("extra").and_then(|e| e.as_array()) {
+        for extra in extras {
+            push_side(extra, &mut deltas);
+        }
+    }
+    // Legacy keys, kept for rows written before `extra` existed.
+    for key in ["local_extra", "remote_extra"] {
+        if let Some(side) = value.get(key) {
+            push_side(side, &mut deltas);
         }
     }
     (deltas, true)
