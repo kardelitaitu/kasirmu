@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useWorkspaceScope, type WorkspaceScope } from '@/contexts/WorkspaceContext';
 import {
   usePosHeldCarts,
@@ -20,8 +20,10 @@ vi.mock('@/api/sales', async (importOriginal) => {
 /**
  * `list_open_bills_scoped` is Restaurant POS only — the bridge refuses every
  * other vertical (`is_restaurant_pos_workspace`), so a call from anywhere else
- * spends a round-trip to collect a `permissionDenied` that the hook's catch
- * turns into a "Failed to load open bills" toast.
+ * spends a round-trip to collect a `permissionDenied`. The JS-side guard
+ * (`isRestaurantPos`) should catch this before the IPC call, but may race
+ * during session initialisation. In both cases `permissionDenied` is silently
+ * swallowed — it is not user-actionable — same as `invalidSession`.
  *
  * Why the null-scope case matters: the session token is minted from
  * `activeInstance ?? <the store's admin instance>`, so a screen with no active
@@ -110,4 +112,24 @@ describe('usePosHeldCarts — open-bills workspace gate', () => {
 
     expect(listOpenBillsScoped).not.toHaveBeenCalled();
   });
+
+  it('silently swallows a permissionDenied rejection from the backend (no toast)', async () => {
+    // Guards race: isRestaurantPos was true in the closure but the backend
+    // session had a different type_key — the PermissionDenied error must not
+    // surface as a toast because it is not user-actionable.
+    setScope({ storeId: 's', instanceId: 'i', typeKey: 'restaurant-pos' });
+    vi.mocked(listOpenBillsScoped).mockRejectedValueOnce({
+      kind: 'permissionDenied',
+      message: "workspace 'admin' may not list open bills; only 'restaurant-pos' may",
+    });
+
+    await act(async () => {
+      renderHook(() => usePosHeldCarts(params()));
+      // flush the rejected promise
+      await Promise.resolve();
+    });
+
+    expect(addToast).not.toHaveBeenCalled();
+  });
 });
+

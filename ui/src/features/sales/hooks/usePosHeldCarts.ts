@@ -91,7 +91,13 @@ export function usePosHeldCarts({
       .then(setOpenBills)
       .catch((err: unknown) => {
         const kind = (err as { kind?: string } | null)?.kind;
-        if (kind === 'invalidSession') return;
+        // `invalidSession` — token expired; the session refresh handler will
+        // recover and re-trigger loadOpenBills automatically.
+        // `permissionDenied` — the session's type_key is not restaurant-pos;
+        // the isRestaurantPos guard above should have caught this, but may
+        // race during session initialisation. Either way it is not
+        // user-actionable, so swallow it silently.
+        if (kind === 'invalidSession' || kind === 'permissionDenied') return;
         addToast({ message: 'Failed to load open bills', type: 'error' });
       });
   }, [addToast, sessionToken, isRestaurantPos]);
