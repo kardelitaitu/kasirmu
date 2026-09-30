@@ -900,4 +900,43 @@ generalised from one example is the defect §Q3 exists to prevent.
 substantive verticals keep the kernel honest, and no fiscal module is built for a market that has
 not asked for one.
 
+## A receipt's footer that cannot be read is not a receipt without a footer (appended 2026-10-04)
+
+§2.3's table records the receipt format as **BUILT** — legal-entity content plus terminal
+layout, resolved through `receipt_formats` and `db/receipt_formats.rs`. The resolution
+chain that reads it (`kasirmu_bridge::hardware::read_receipt_config_for_scope`) has three
+layers for the footer alone: the entity's `footer_text`, the scoped `layout.footer_note`,
+and last the legacy `settings` key `receipt.footer`.
+
+**That last read was fail-blind.** It was written
+`Settings::get_receipt_footer(conn).ok().filter(|f| !f.is_empty())`, so a genuine read
+failure — `SQLITE_BUSY`, a corrupt or locked `settings` table — collapsed to `None`. `None`
+is also the value an operator sees when they have configured **no** footer, so a failure and
+an absence produced the same receipt: the configured footer missing, the print succeeding,
+and nothing logged. The tablet's copy of the body carried it too
+(`apps/mobile-tauri/src/commands/hardware.rs`, inline in `print_sales_receipt_scoped`).
+
+**It contradicted the function's own stated rule**, a few lines above it: "A core error here
+is a real corruption/lookup failure, so it propagates rather than silently downgrading an
+operator's configured paper width." `get_store_name`, `get_store_address` and
+`get_store_tax_id` in the same function all use `?`. The footer was the one read that did not.
+
+**The fix** (commit `1fc5aab6d`) hoists the legacy read above the precedence chain so `?`
+can propagate — a closure cannot carry `?` out to the function — while an empty value still
+maps to `None` so the chain keeps treating "no footer configured" as absence. Absence and
+failure become distinct answers, the same rule the weight-scale list was brought under.
+
+**This is the third site of one family, and the first two are recorded elsewhere.** The
+weight-scale list (`ac93cff77`, ADR-49) dropped any device whose lookup returned `None`; the
+sync daemons' queue depth, stamping seed and pull anchor (ADR-20 family) each turned an
+unreadable value into a default. The pattern is the same in all of them: a value that could
+not be read is reported as the value that means "nothing configured".
+
+**One sibling remains unfixed and is named here rather than left to be rediscovered.**
+`crates/kasirmu-core/src/db/receipt_formats.rs` inside `effective_receipt_format` still has
+`get_receipt_footer(self.conn).unwrap_or_default()` (`:414`), `get_receipt_show_tax` with
+`.unwrap_or(true)` (`:416`) and `get_receipt_show_currency` with `.unwrap_or(false)` (`:418`)
+in its legacy branch. Those are the same shape on the same chain, one layer down; they were
+not changed in this commit and are recorded so the next pass does not have to re-derive that
+they exist.
 > last audited 29-09-26 by docs-auditor
