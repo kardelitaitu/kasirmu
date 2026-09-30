@@ -30,8 +30,8 @@ status of each (what is live today vs. wired-but-not-started).
 
 | Host | What it serves | Evidence |
 |---|---|---|
-| **Cloud server** (`oz-cloud-server`, the unified deployment) | The full surface: `kasirmu-api` router + sync + webhooks + docs + metrics | `apps/cloud-server/src/main.rs` `build_router()` merges `kasirmu_api::router(...)` with `sync_router`, `webhooks_router`, `docs_router` |
-| **Desktop app** (`oz-pos-app`) | The `kasirmu-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `apps/desktop-tauri/src/local_api.rs` (embeds `kasirmu_api::router()`; never `serve()`, which binds 0.0.0.0) |
+| **Cloud server** (`kasirmu-cloud`, the unified deployment) | The full surface: `kasirmu-api` router + sync + webhooks + docs + metrics | `apps/cloud-server/src/main.rs` `build_router()` merges `kasirmu_api::router(...)` with `sync_router`, `webhooks_router`, `docs_router` |
+| **Desktop app** (`kasirmu-app`) | The `kasirmu-api` router **only**, bound to `127.0.0.1` (default port 3099), **off by default** — enable in Settings → Local API. Tokens are minted in that panel; the server signs with a per-install secret generated on first enable | `apps/desktop-tauri/src/local_api.rs` (embeds `kasirmu_api::router()`; never `serve()`, which binds 0.0.0.0) |
 | **Tablet app** | Nothing yet — no `local_api` module | grep `local_api` → only `apps/desktop-tauri` |
 
 Production cloud origin: `https://license.ozpos.my.id` (the Northflank
@@ -75,7 +75,7 @@ deployment, by design:
 
 ```bash
 # SQLite-backed dev server, admin key unset => token minting is OPEN (dev mode)
-cargo run -p oz-cloud-server
+cargo run -p kasirmu-cloud --bin kasirmu-cloud
 # env knobs: OZ_API_PORT (default 3099), OZ_DB_PATH (default var/kasir.db),
 #            OZ_ADMIN_KEY, OZ_API_SECRET, OZ_CORS_ORIGINS, OZ_PRODUCTION
 ```
