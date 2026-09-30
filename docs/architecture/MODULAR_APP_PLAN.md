@@ -4,6 +4,13 @@
 # Modular Application Master Plan: Feature-Based Configuration & Execution Roadmap
 
 <!-- Finding 2026-09-30 · docs-auditor · the body below is left VERBATIM, as this file's own superseded marker requires, and the one live breakage is recorded here instead. A new rule in `.agents/skills/docs-auditor/scripts/check-dead-refs.py` derives the package set from the workspace `Cargo.toml` files and grades every `cargo -p <name>` in the live docs against it. It reports exactly one finding here, at :213: `cargo build --release --package oz-cloud-server`. The 2026-09-29 rebrand renamed that package to `kasirmu-cloud`, so the command fails at argument parsing and never reaches a compile. VERIFIED: `cargo build --package kasirmu-cloud --bin kasirmu-cloud --release` succeeds and writes `target/release/kasirmu-cloud`, and `ops/docker/Dockerfile.server:179` builds that same package, so only the prose went stale. The `oz-pos-cloud:test` image tag at :218 is NOT stale -- `ops/docker/Dockerfile.server:8` still documents that exact tag. This is the same judgement the 2026-09-29 stamp applied to the stale version lock: a completed `[x]` phase item in a superseded plan is a delivery record, and rewriting it edits history instead of fixing anything a reader would run. A reader who wants the working command has it here. · superseded-package: oz-cloud-server · current-package: kasirmu-cloud -->
+> **Module-structure pointers (2026-10-02).** This is the historical master plan; the module architecture it
+> targets now exists. For the current state, read in this order: the handler population
+> (`docs/architecture/handler-census-phase0.md`), the seam taxonomy (`docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md`),
+> the namespace rules and table-ownership map (`docs/architecture/module-namespace-governance.md`), and the
+> Phase 2 store design (`docs/architecture/namespaced-store-api-draft.md`). The event-bus diagram in §3 carries
+> two stale nodes (annotated in place).
+
 **Status:** Active Planning Document  
 **Target Architecture:** Admin-Configurable Feature & Module Engine (`oz-pos`)  
 **Version:** 4.0 (Granular Step-by-Step Breakdown + Docker Cloud Server)  
@@ -75,6 +82,10 @@ graph TD
       LocalBus -->|Guaranteed <50ms LAN Delivery| D2
       LocalBus -->|Subscribed: InventoryStockHandler| Deduct[Recipe / BOM Ingredient Deduction]
       LocalBus -->|Subscribed: SaleCompletedReporter| Analytics[Real-Time Analytical Heatmaps]
+      %% CORRECTION (2026-10-02): both nodes above are stale. InventoryStockHandler is DEAD/test-only
+      %% (never subscribed in production); the BOM deduction runs on the sale path. SaleCompletedReporter
+      %% was removed under MSL-11. Current handler set: docs/architecture/handler-census-phase0.md.
+      %% Module boundaries/rules: docs/architecture/module-namespace-governance.md.
     end
 ```
 
