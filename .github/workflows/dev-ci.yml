@@ -512,7 +512,7 @@ jobs:
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@42e8ba4bfe8b7a1a46f8dd9b9a4f2d1ab5d6f0e5 # cargo-llvm-cov
+        uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # v2 (cargo-llvm-cov)
       # Postgres is declared as a service above because kasirmu-cloud and
       # platform/sync carry PG-gated cases that connect when OZ_TEST_PG_URL
       # is set; without it those tests still PASS (they return early) but
