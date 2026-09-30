@@ -3,7 +3,7 @@
 last audited 31-08-26 by RSA-Agent (user-role campaign, Section A)
 crate: platform-core | status: SAFE | lint: CLEAN
 findings: exemplary — 3-level wildcard resolver (global/domain/exact) is fail-closed: malformed granted JSON => deny-all via unwrap_or_default, malformed granted strings match exactly only; zero unsafe/unwrap/expect, single documented assert in Role::new; permission catalog constants well-formed domain:action with legacy composites (products:crud, categories:manage) delegated to the permission registry (Section C); retired cashier/kitchen roles absent from taxonomy (doc prose only); evidence: 67 unit + 4 doctests green
-next: observation only — a malformed REQUIRED string could match a granted "<req>:*" domain wildcard; unreachable today because required values come from the compile-time catalog, Section D verifies IPC callers use the constants | perf: linear scan over small grant lists — fine
+next: the 2026-08-26 observation is CLOSED 2026-10-04: has_permission no longer derives a domain wildcard from a malformed REQUIRED string (a required that IS a wildcard, carries one in its action, or has an empty domain), so a caller's own input can never widen its check; exact identity and the global "*" still match, and the intended well-formed domain-wildcard path is unchanged. Required values remain compile-time catalog constants, so the guard is defence in depth for a future/mistaken caller. Pinned by a_malformed_required_is_never_satisfied_by_a_wildcard_derived_from_it and a_well_formed_required_still_matches_its_domain_wildcard. | perf: linear scan over small grant lists — fine
 */
 //!
 //! Provides the [`Role`] and [`Permission`] types, the [`permissions`]
@@ -258,7 +258,21 @@ impl fmt::Display for Permission {
 #[must_use]
 pub fn has_permission(granted: &[String], required: &str) -> bool {
     let (domain, _action) = required.split_once(':').unwrap_or((required, ""));
-    let wildcard_domain = format!("{domain}:*");
+    // A REQUIRED string that itself carries a wildcard (or that is not a
+    // well-formed `<domain>:<action>`) must NEVER be satisfied by a
+    // domain wildcard derived from the SAME malformed string: the wildcard
+    // in `required` is not a grant, it is the thing being asked for, and
+    // matching it against a grant would let the caller's own input widen
+    // the check. Only the global `*` and an exact grant may match such a
+    // string. Required values are compile-time catalog constants today, so
+    // this can only ever fire on a future/mistaken caller -- which is
+    // exactly the caller the note in this file's header warned about.
+    let well_formed = !domain.is_empty() && !domain.contains('*') && !_action.contains('*');
+    let wildcard_domain = if well_formed {
+        format!("{domain}:*")
+    } else {
+        String::new()
+    };
 
     granted
         .iter()
