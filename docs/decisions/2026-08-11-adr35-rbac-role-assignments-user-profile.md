@@ -257,4 +257,40 @@ audit, masking, residency (sync/export exclusion), and migration round-trips
 registry/gate work replaces the per-command `require_permission_for_user` call
 sites from rounds 172–174, whose tests stay green as the migration contract.
 
+
+## Amendment (2026-10-04): a seal that no longer opens is reported, not read as empty (COR-24)
+
+**Problem.** D6 encrypts `national_id` and `monthly_take_home_minor` at rest, and the
+display read deliberately fails closed: it renders nothing rather than ciphertext when a
+seal cannot be opened. But the display read (`decrypt_sensitive`, `db/profile.rs`) collapsed
+three genuinely different column states into one `None` — *absent*, *empty*, and
+*present-but-undecryptable*. After a key rotation or a storage fault, the profile simply
+looked incomplete, nothing was logged, and an operator had no way to tell a corrupt seal
+from a blank field. The write path was never at risk (it re-derives the states from the
+stored bytes and preserves an unreadable cipher verbatim), so the data was recoverable —
+it was the *signal* that was missing.
+
+**Decision.** Keep the display read fail-closed, and add the two signals it lacked:
+
+1. `decrypt_sensitive` logs a `tracing::warn!` when a stored seal fails to decrypt (still
+   returning `None`, never ciphertext). This mirrors the licence-key path,
+   `kasirmu-bridge/src/license.rs:206`, which already warns before falling back.
+2. `Store::user_profile_has_unreadable_seal(user_id)` answers the empty-vs-unreadable
+   question from the stored bytes, using the same `StoredCipher` classification the write
+   path relies on. It is a query an operator surface *may* use; it never gates a read.
+
+**Why not surface the distinction in the value itself.** `ProfileView::national_id` is `None`
+for exactly one documented reason per permission path; overloading it with a corruption
+state would make the field's absence ambiguous in the direction that matters least (a
+withheld field vs a broken seal are different problems). Reporting the seal separately keeps
+the fail-closed display contract intact and puts the diagnostic where a monitoring or repair
+surface can look for it.
+
+**Verification.** Pins in `db/profile_tests.rs`:
+`an_unreadable_seal_is_reported_as_corruption_not_as_an_empty_field` (corrupt seal ⇒ the
+display read is `None` *and* `user_profile_has_unreadable_seal` is true) and
+`an_empty_or_readable_profile_reports_no_unreadable_seal` (healthy profile ⇒ false, and an
+explicitly empty column is *not* reported as corruption). Both verified RED with the accessor
+logic removed and GREEN with it.
+
 > last audited 29-09-26 by docs-auditor
