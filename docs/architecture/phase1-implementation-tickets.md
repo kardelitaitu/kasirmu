@@ -77,6 +77,17 @@ were in this masker; a 'simplification' here would silently zero the findings.
 
 **Depends on:** nothing (uses the existing registry). **Blocks:** T2 in spirit.
 
+**Status: DONE 2026-10-02** (`scripts/verify-namespace-governance.py`). `--census` and `--emit-census`
+ship report-only (always exit 0); a self-test proves a doctored site yields exactly one stale row. Clean-tree
+`--census`: 12 registry rows, 0 stale, 0 retired, 0 unclassified. Two pre-existing masker bugs surfaced and
+were fixed (a backslash-newline line continuation inside a string dropped its newline, shifting every later
+line by one in `crates/kasirmu-lan/src/lib.rs`; Rust raw strings were not handled, blanking every impl in
+`crates/kasirmu-lan/src/kds_sync.rs`). Fixing them raised the counted population from 14 to 15
+`impl EventHandler` sites — `KdsSyncHandler` at `crates/kasirmu-lan/src/kds_sync.rs:245` had been silently
+missed. Acceptance #3 difference is intentional: the emitted table uses the ticket's six columns
+(Handler, Category, Subscribed topic(s), Site, Note, Status), while `handler-census-phase0.md` §3 carries
+Registrant/Class/Live instead of Site/Status; this mode adds the tree-resolution verdict the hand table lacked.
+
 ---
 
 ## 3. T2 — Handler metadata (`handler_type` on the handler)

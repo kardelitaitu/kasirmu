@@ -50,6 +50,28 @@ HOW IT DECIDES
           design (governance doc §2, Rule 3): two such edges exist, and making
           this a hard failure is a Phase 4 change gated on closing them.
 
+  --census / --emit-census
+          Re-derive the Phase 0 handler census from the repository instead of
+          trusting the registry's ``site`` pointers. Rule 2 checks the OTHER
+          direction only: it finds a new impl and asks the registry to name it.
+          Nothing checks that a registry row still points at a real impl, so a
+          handler renamed, moved, or deleted leaves a stale ``site`` with no
+          signal. ``--census`` joins the two sets and reports:
+            * ``stale-handler-row`` -- the row's ``site`` file is missing, its
+              line is past end-of-file, or that line is not
+              ``impl EventHandler<...> for <the row's type>`` (renamed/moved);
+            * ``retired-handler-row`` -- the row's type is found in NO
+              production file at all (deleted, or the pointer is the only trace);
+            * ``unclassified-handler`` -- Rule 2's finding, folded into the same
+              report so the census is one view of the handler population.
+          ``--emit-census`` prints the population as a Markdown table (Handler,
+          Category, Subscribed topic(s), Site, Note, Status) so the census doc's
+          table can be regenerated rather than hand-edited; its Site/Status
+          columns are the tree-resolution verdict the hand table lacked, which
+          replaces that table's Registrant/Class/Live columns. Neither mode
+          changes the verdict: they are report-only, always exit 0, and the
+          default run is unchanged.
+
 USAGE
 =====
 
@@ -60,6 +82,8 @@ USAGE
     python3 scripts/verify-namespace-governance.py --baseline-file <path>
     python3 scripts/verify-namespace-governance.py --classification-file <path>
     python3 scripts/verify-namespace-governance.py --self-test
+    python3 scripts/verify-namespace-governance.py --census
+    python3 scripts/verify-namespace-governance.py --emit-census
 
 EXIT CODES -- and why 0 alone is not a verdict
 =============================================
@@ -143,6 +167,13 @@ EVENT_HANDLER_RE = re.compile(
 )
 
 
+# A registry ``site`` is "<repo-relative path>:<line>". The line is allowed to
+# drift by a few lines in a renamed/moved file without being called stale, but
+# the CENSUS is about whether the pointer resolves at all, so the comparison is
+# exact: a row is stale when its named line is not the impl it claims.
+SITE_RE = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+)$")
+
+
 def configure_streams() -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -194,7 +225,13 @@ def mask_comments_and_strings(text: str) -> str:
             continue
         if in_string:
             if char == "\\" and i + 1 < len(text):
-                out.extend("  ")
+                # An escape pair. If the escaped character is a newline (a Rust
+                # string line-continuation, "abc\<newline>def"), emit a real
+                # newline for it: dropping it would shift every later line number
+                # by one, and the Rule 1 scanner reports line numbers. Two spaces
+                # elsewhere keeps offsets intact.
+                out.append("\n" if text[i + 1] == "\n" else " ")
+                out.append(" ")
                 i += 2
                 continue
             if char == in_string:
@@ -222,6 +259,32 @@ def mask_comments_and_strings(text: str) -> str:
                 i += 3
                 continue
             out.append(" ")
+            i += 1
+        elif char == "r" and nxt in ('"', "#"):
+            # A raw string: r"..." or r#"..."# (or r##"..."##). The masker
+            # must consume it whole: without this branch the quotes INSIDE a
+            # raw literal (r#"{"type":"kds."#) are read as ordinary string
+            # delimiters, which closes and reopens the string an even or odd
+            # number of times and can leave a later real impl blanked -- the
+            # kds_sync.rs false-stale that motivated this branch.
+            hashes = 0
+            j = i + 1
+            while j < len(text) and text[j] == "#":
+                hashes += 1
+                j += 1
+            if j < len(text) and text[j] == '"':
+                terminator = '"' + "#" * hashes
+                out.append(" ")
+                k = j + 1
+                while k < len(text) and not text.startswith(terminator, k):
+                    out.append("\n" if text[k] == "\n" else " ")
+                    k += 1
+                if k < len(text):
+                    out.extend(" " * len(terminator))
+                    k += len(terminator)
+                i = k
+                continue
+            out.append(char)
             i += 1
         elif char in ('"', "`"):
             in_string = char
@@ -474,6 +537,126 @@ def handler_findings(root: Path, classifications: set[str], scope: dict[str, int
     return findings
 
 
+def load_classification_entries(path: Path) -> list[dict[str, Any]]:
+    """The registry rows, validated: name, site, category, topic, note.
+
+    ``load_classifications`` keeps only the names Rule 2 needs. The census needs
+    the whole row -- above all ``site`` -- so this validates and returns the
+    entries themselves. A row missing a non-empty ``site`` is malformed input:
+    without it the census cannot tell a live pointer from a dead one.
+    """
+    data = load_json(path, "handler classification registry")
+    handlers = data.get("handlers") if isinstance(data, dict) else None
+    if not isinstance(handlers, list):
+        raise ValueError("handler classification registry must contain a 'handlers' list")
+    entries: list[dict[str, Any]] = []
+    for entry in handlers:
+        if not isinstance(entry, dict):
+            raise ValueError("handler classification entries must be objects")
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("handler classification entry missing non-empty 'name'")
+        site = entry.get("site")
+        if not isinstance(site, str) or not site.strip():
+            raise ValueError(f"handler classification entry '{name}' missing non-empty 'site'")
+        entries.append(entry)
+    return entries
+
+
+def production_handler_impls(root: Path) -> dict[str, list[tuple[str, int]]]:
+    """type name -> [(repo-relative path, 1-based line)] for every production impl.
+
+    The same population and the same scanner as ``handler_findings``, but keyed
+    by type so the census can ask "does this registry row still resolve?" in the
+    other direction. Uses the SAME ``mask_comments_and_strings`` +
+    ``EVENT_HANDLER_RE`` pair Rule 2 uses, so the two directions can never
+    disagree about what an impl is.
+    """
+    found: dict[str, list[tuple[str, int]]] = {}
+    for top in HANDLER_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            continue
+        for path in production_sources(base):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read handler source: {path}: {exc}") from exc
+            code = mask_comments_and_strings(raw)
+            rel = relative_path(path, root)
+            for match in EVENT_HANDLER_RE.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                found.setdefault(match.group(1), []).append((rel, line))
+    return found
+
+
+def census_rows(root: Path, entries: list[dict[str, Any]], scope: dict[str, int]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Join the registry rows against the impls actually present.
+
+    Returns (stale, retired, unclassified):
+      stale        -- a row whose ``site`` no longer names its own impl;
+      retired      -- a row whose type is found in no production file;
+      unclassified -- an impl with no registry row (Rule 2, same shape).
+    """
+    stale: list[dict[str, Any]] = []
+    retired: list[dict[str, Any]] = []
+    impls = production_handler_impls(root)
+    registered_names = {str(e["name"]) for e in entries}
+    for entry in entries:
+        name = str(entry["name"])
+        site = str(entry["site"])
+        match = SITE_RE.match(site)
+        if match is None:
+            scope["stale_handler_rows"] += 1
+            stale.append(make_finding(
+                "stale-handler-row", site, f"{name} (site is not <path>:<line>)", None, "note"
+            ))
+            continue
+        rel = match.group("path")
+        want_line = int(match.group("line"))
+        # A type found in no production file is retired regardless of the site:
+        # the site cannot name an impl that does not exist anywhere.
+        if not impls.get(name):
+            scope["retired_handler_rows"] += 1
+            retired.append(make_finding(
+                "retired-handler-row", rel, f"{name} (type found in no production file)", want_line, "note"
+            ))
+            continue
+        target_path = root / rel
+        if not target_path.is_file():
+            scope["stale_handler_rows"] += 1
+            stale.append(make_finding(
+                "stale-handler-row", rel, f"{name} (file not found)", want_line, "note"
+            ))
+            continue
+        try:
+            code = mask_comments_and_strings(target_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ValueError(f"cannot read handler source: {target_path}: {exc}") from exc
+        if want_line < 1 or want_line > code.count("\n") + 1:
+            scope["stale_handler_rows"] += 1
+            stale.append(make_finding(
+                "stale-handler-row", rel, f"{name} (line {want_line} past end of file)", want_line, "note"
+            ))
+            continue
+        line_text = code.split("\n")[want_line - 1]
+        on_site = [m.group(1) for m in EVENT_HANDLER_RE.finditer(line_text)]
+        if name not in on_site:
+            moved = impls[name][0]
+            scope["stale_handler_rows"] += 1
+            stale.append(make_finding(
+                "stale-handler-row", rel,
+                f"{name} (line {want_line} is not its impl) (now at {moved[0]}:{moved[1]})",
+                want_line, "note"
+            ))
+    unclassified = [
+        make_finding("unclassified-handler", rel, name, line, "note")
+        for name, sites in sorted(impls.items())
+        if name not in registered_names
+        for rel, line in sites[:1]
+    ]
+    return stale, retired, unclassified
+
 def dependency_findings(root: Path, scope: dict[str, int]) -> list[dict[str, Any]]:
     """Cross-vertical edges whose owning module is not declared (Rule 3)."""
     findings: list[dict[str, Any]] = []
@@ -524,6 +707,8 @@ RULE_REMEDIATION = {
     "unclassified-handler": "Add the handler type to scripts/handler-classification.json with one of the ADR-62 D4 categories.",
     "undeclared-dependency": "Declare the owning module in modules/<id>/manifest.json dependencies.",
     "unowned-table": "Add the table to TABLE_OWNERS in this checker if a module owns it.",
+    "stale-handler-row": "Update the registry row's 'site' to where the impl now lives, or remove the row if the handler was deleted.",
+    "retired-handler-row": "Confirm the handler was deleted, then remove its registry row (or re-point it if it was renamed).",
 }
 
 
@@ -676,6 +861,8 @@ def new_scope() -> dict[str, Any]:
         "undeclared_edges": 0,
         "modules_with_undeclared_edges": 0,
         "unowned_tables": 0,
+        "stale_handler_rows": 0,
+        "retired_handler_rows": 0,
         "_baseline": [],
     }
 
@@ -716,6 +903,44 @@ def scan(root: Path, baseline_path: Path, classification_path: Path):
     return tracked, blocking, stale, notes, scope, len(classifications)
 
 
+def emit_census(root: Path, entries: list[dict[str, Any]]) -> int:
+    """Print the handler census as a Markdown table.
+
+    Columns follow the Phase 1 ticket shape (Handler, Category, Subscribed
+    topic(s), Site, Note, Status). That is a superset of the hand-written
+    ``docs/architecture/handler-census-phase0.md`` §3 columns: the registry Site
+    is the impl pointer and Status adds the tree-resolution verdict the hand
+    census could not compute. A difference in the Registrant/Live columns is
+    therefore expected, since this mode does not carry them.
+    """
+    impls = production_handler_impls(root)
+    print("| Handler (source) | Category | Subscribed topic(s) | Site | Note | Status |")
+    print("|---|---|---|---|---|---|")
+    for entry in entries:
+        name = str(entry["name"])
+        site = str(entry["site"])
+        live = impls.get(name, [])
+        match = SITE_RE.match(site)
+        resolves = False
+        if match is not None:
+            target = root / match.group("path")
+            want = int(match.group("line"))
+            if target.is_file():
+                code = mask_comments_and_strings(target.read_text(encoding="utf-8"))
+                lines = code.split("\n")
+                if 1 <= want <= len(lines):
+                    resolves = name in [m.group(1) for m in EVENT_HANDLER_RE.finditer(lines[want - 1])]
+        if not live:
+            status = "RETIRED (type in no production file)"
+        elif resolves:
+            status = "resolves"
+        else:
+            status = f"STALE (now {live[0][0]}:{live[0][1]})"
+        topic = str(entry.get("topic", "")) or "--"
+        note = str(entry.get("note", ""))
+        print(f"| `{name}` (`{site}`) | {entry.get('category', '')} | {topic} | `{site}` | {note} | {status} |")
+    return 0
+
 def main() -> int:
     configure_streams()
     parser = argparse.ArgumentParser(description="Verify soft namespace-governance rules.")
@@ -725,12 +950,47 @@ def main() -> int:
     parser.add_argument("--baseline-file", type=Path, help="Baseline JSON path (defaults to <root>/scripts/namespace-governance-baseline.json).")
     parser.add_argument("--classification-file", type=Path, help="Classification registry path (defaults to <root>/scripts/handler-classification.json).")
     parser.add_argument("--self-test", action="store_true", help="Run the built-in classifier tests and exit.")
+    parser.add_argument("--census", action="store_true", help="Report stale/retired registry rows and unclassified impls (report-only; never fails).")
+    parser.add_argument("--emit-census", action="store_true", help="Print the handler census as a Markdown table (report-only; never fails).")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "namespace-governance-baseline.json").resolve()
     classification_path = (args.classification_file or root / "scripts" / "handler-classification.json").resolve()
+    if args.emit_census:
+        try:
+            entries = load_classification_entries(classification_path)
+        except (ValueError, OSError) as exc:
+            return fail(str(exc))
+        return emit_census(root, entries)
+    if args.census:
+        try:
+            entries = load_classification_entries(classification_path)
+        except (ValueError, OSError) as exc:
+            return fail(str(exc))
+        scope = new_scope()
+        if not (root / MODULE_SOURCE_ROOT).is_dir():
+            return fail(f"no production module source found under {root / MODULE_SOURCE_ROOT}: nothing was graded.")
+        stale, retired, unclassified = census_rows(root, entries, scope)
+        print(
+            f"verify-namespace-governance --census: {len(entries)} registry row(s), "
+            f"{len(stale)} stale, {len(retired)} retired, {len(unclassified)} unclassified "
+            f"[population: {len(production_handler_impls(root))} impl type(s) found; REPORT-ONLY, never fails]."
+        )
+        if stale:
+            print("\nStale registry rows (site no longer names the impl):")
+            for f in stale:
+                print(f"  [stale] {f['path']}:{f['line']} -> {f['target']}")
+        if retired:
+            print("\nRetired registry rows (type in no production file):")
+            for f in retired:
+                print(f"  [retired] {f['path']}:{f['line']} -> {f['target']}")
+        if unclassified:
+            print("\nUnclassified impls (no registry row):")
+            for f in unclassified:
+                print(f"  [unclassified] {f['path']}:{f['line']} -> {f['target']}")
+        return 0
     try:
         tracked, blocking, stale, notes, scope, classification_count = scan(root, baseline_path, classification_path)
     except (ValueError, OSError) as exc:
@@ -836,6 +1096,14 @@ def self_test() -> int:
           is_production_source(Path("modules/x/src/repository.rs")), True)
     check("module_id_for reads the first component under modules/",
           module_id_for(Path("/r/modules/loyalty/src/repository.rs"), Path("/r")), "loyalty")
+    check("mask preserves a newline in a backslash-newline continuation",
+          len(mask_comments_and_strings('let s = "a\\\nb";').split("\n")), 2)
+    check("mask keeps a raw string's impl line honest",
+          EVENT_HANDLER_RE.findall(
+              mask_comments_and_strings('let j = r#"{"k":"v"}"#;\nimpl EventHandler<X> for Y {}')),
+          ["Y"])
+    check("census site parses <path>:<line>",
+          SITE_RE.match("modules/x/src/handlers.rs:220").group("line"), "220")
 
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:
@@ -854,6 +1122,56 @@ def self_test() -> int:
         ]}), encoding="utf-8")
         check("load_baseline accepts a well-formed entry",
               len(load_baseline(good, Path(tmp))), 1)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp)
+        src = tree / "modules" / "inventory" / "src"
+        src.mkdir(parents=True)
+        handler = src / "handlers.rs"
+        handler.write_text(
+            "impl EventHandler<SaleCompleted> for InventoryStockHandler {}\n",
+            encoding="utf-8",
+        )
+        scope = new_scope()
+
+        def row(name: str, site: str) -> dict:
+            return {"name": name, "site": site, "category": "internal_helper", "topic": ""}
+
+        exact = [row("InventoryStockHandler", "modules/inventory/src/handlers.rs:1")]
+        stale, retired, unclassified = census_rows(tree, exact, scope)
+        check("census: an exact site resolves on all three axes",
+              [len(stale), len(retired), len(unclassified)], [0, 0, 0])
+
+        # A registered type whose impl is nowhere in the tree is retired, not stale.
+        gone_type = [row("SaleCompletedReporter", "modules/inventory/src/handlers.rs:1")]
+        stale, retired, unclassified = census_rows(tree, gone_type, scope)
+        check("census: a type in no production file is retired, not stale",
+              [len(stale), [f["rule"] for f in retired]], [0, ["retired-handler-row"]])
+
+        # Exactly one doctored site (right file, wrong line) -> exactly one stale row.
+        doctored = [
+            row("InventoryStockHandler", "modules/inventory/src/handlers.rs:1"),
+            row("InventoryStockHandler", "modules/inventory/src/handlers.rs:9"),
+        ]
+        stale, retired, unclassified = census_rows(tree, doctored, scope)
+        check("census: one doctored site yields exactly one stale row", len(stale), 1)
+        check("census: the stale row names the drifted type",
+              stale[0]["target"].split(" ")[0], "InventoryStockHandler")
+
+        # An impl with no registry row at all is unclassified.
+        handler.write_text(
+            "impl EventHandler<SaleCompleted> for InventoryStockHandler {}\n"
+            "impl EventHandler<StockAdjusted> for OrphanHandler {}\n",
+            encoding="utf-8",
+        )
+        orphan = [row("InventoryStockHandler", "modules/inventory/src/handlers.rs:1")]
+        stale, retired, unclassified = census_rows(tree, orphan, scope)
+        check("census: an impl with no registry row is unclassified",
+              [f["target"] for f in unclassified], ["OrphanHandler"])
+
+        missing = [row("InventoryStockHandler", "modules/inventory/src/gone.rs:1")]
+        stale, retired, unclassified = census_rows(tree, missing, scope)
+        check("census: a missing site file is stale", len(stale), 1)
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)
