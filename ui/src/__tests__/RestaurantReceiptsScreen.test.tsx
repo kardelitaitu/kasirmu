@@ -65,6 +65,8 @@ vi.mock('@/api/receipt-format', async (importOriginal) => {
         decimalSeparator: 'dot',
         requiredFields: [],
       },
+      contentSource: 'workspace',
+      layoutSource: 'workspace',
     }),
     setReceiptLayoutScoped: vi.fn().mockResolvedValue({}),
   };
@@ -653,6 +655,8 @@ describe('RestaurantReceiptsScreen — Test Print Codes & Results', () => {
         decimalSeparator: 'dot',
         requiredFields: [],
       },
+      contentSource: 'workspace',
+      layoutSource: 'workspace',
     });
 
     await renderScreen({ tablesEnabled: true });
