@@ -103,6 +103,7 @@ implementation-status walkthrough.
 | 59 | [Regional Topology and Modular Delivery — market scope on the Legal Entity, residency on the Organization, and the built-vs-module seam](./2026-09-21-adr59-regional-topology-and-modular-delivery.md) | Proposed (2026-09-21) — region field, admin route and audit trail shipped; topology and modules not |
 | 60 | [Orientation & Adaptive Layout Strategy — the hybrid ladder (shell media queries, container queries, a declared escape hatch, and a walker gate)](./2026-09-21-adr60-orientation-and-adaptive-layout-strategy.md) | Implemented (2026-09-21) — all four tiers landed and gated; 7 sheets migrated |
 | 61 | [Architecture Boundary Rule Tiers — a named rule for re-export-only edges and a governed expiry](./2026-09-28-adr61-architecture-boundary-rule-tiers.md) | Implemented (2026-09-28) — the core-type-shim rule, the quarter-renewal invariant, the baseline re-tier, the currency edge closure and all seven type-shim edges closed and the baseline emptied to 0 tracked findings |
+| 62 | [Module Seam Taxonomy — command contributors, projection subscribers, and the reporting-facade exception](./2026-09-30-adr62-module-seam-taxonomy.md) | Accepted (2026-09-30) — the taxonomy is written and grounded in the Phase 0 handler census; the check that enforces it (a handler_type classification gate) is not built |
 
 ## Research notes
 
