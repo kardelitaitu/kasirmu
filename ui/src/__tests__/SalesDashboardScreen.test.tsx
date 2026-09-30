@@ -60,6 +60,11 @@ beforeEach(() => {
     if (cmd === 'get_category_breakdown' || cmd === 'get_category_breakdown_scoped') return Promise.resolve([]);
     if (cmd === 'get_hourly_heatmap' || cmd === 'get_hourly_heatmap_scoped') return Promise.resolve([]);
     if (cmd === 'get_daily_revenue' || cmd === 'get_daily_revenue_scoped') return Promise.resolve([]);
+    // REP-03: the three canvas report widgets read the primary store to anchor
+    // their window to the store's calendar rather than UTC's. Without this
+    // handler the hook's lookup is recorded as unhandled and the assertion above
+    // is exercising the error path.
+    if (cmd === 'get_primary_location_scoped') return Promise.resolve({ id: 'store-a', name: 'Store A', timezone: 'UTC' });
     // Recorded, then still rejected: the component must see exactly what it saw
     // before, so this only turns a silent gap into a failing test.
     recordUnmatchedInvoke(cmd);

@@ -2,10 +2,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import HourlyHeatmapWidget from '@/features/sales/widgets/HourlyHeatmapWidget';
+import {
+  assertCaseDiscriminates,
+  discriminatingStoreZone,
+  expectedStoreDay,
+} from './test-utils/storeZoneCase';
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
 const mockGetHourlyHeatmap = vi.fn();
+const mockGetPrimaryLocationScoped = vi.fn();
+
+// REP-03: the widget anchors its window to the STORE's calendar — the backend
+// shifts each cell's day-of-week and hour by the store offset, so a range that
+// is not the store's drops the busiest cells. Mockable or the fallback is UTC.
+vi.mock('@/api/locations', () => ({
+  getPrimaryLocationScoped: (...args: unknown[]) => mockGetPrimaryLocationScoped(...args),
+}));
 vi.mock('@/api/reports', () => ({
   getHourlyHeatmap: (...args: unknown[]) => mockGetHourlyHeatmap(...args),
 }));
@@ -62,6 +75,16 @@ vi.mock('@/components/Skeleton', () => ({
 describe('HourlyHeatmapWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // REP-03: clearAllMocks() drops the implementation too, so the store
+    // lookup has to be re-armed every test or the hook reads `.then` off
+    // undefined. 'UTC' is the schema's own column default, which is also what
+    // the hook falls back to, so these tests keep their previous behaviour and
+    // only the store-anchoring case below overrides it.
+    mockGetPrimaryLocationScoped.mockResolvedValue({
+      id: 'store-a',
+      name: 'Store A',
+      timezone: 'UTC',
+    });
   });
 
   it('shows skeleton while loading', () => {
@@ -118,5 +141,47 @@ describe('HourlyHeatmapWidget', () => {
     await waitFor(() => {
       expect(screen.getByText('Busiest Hours')).toBeInTheDocument();
     });
+  });
+
+  // ── REP-03: the window is the STORE's, not UTC's ────────────────
+  // The backend buckets every row by the store's offset (REP-03, pinned by
+  // daily_revenue_buckets_by_store_timezone at
+  // crates/kasirmu-core/src/db/reports_tests.rs:2473), so a range ending on the
+  // UTC day asks for a window that STOPS SHORT of the store's current trading day
+  // whenever the store has already crossed midnight. Measured at 2026-09-04T21:30Z:
+  // a +07:00 store is on 09-05 while a UTC-anchored end date still says 09-04.
+  //
+  // Expected values come from test-utils/storeZoneCase (plain UTC arithmetic),
+  // NOT from isoToday/isoDaysAgo, so the assertion does not restate the code
+  // under test. The zone is discriminating by construction: a hardcoded +14:00
+  // would be vacuous for ten hours of every day, which is the "passes at some
+  // hours, fails at others" property a regression guard must never have.
+  // scripts/check-tz-invariance.py replays this file under five host zones.
+  it(`the last 8 days, the store's calendar days`, async () => {
+    mockGetHourlyHeatmap.mockResolvedValue([]);
+    const zone = discriminatingStoreZone();
+    assertCaseDiscriminates(zone);
+    mockGetPrimaryLocationScoped.mockResolvedValue({
+      id: 'store-a',
+      name: 'Store A',
+      timezone: zone.offset,
+    });
+
+    render(<HourlyHeatmapWidget />);
+    await waitFor(() => {
+      expect(mockGetHourlyHeatmap).toHaveBeenCalled();
+    });
+
+    // The zone arrives AFTER the first render, so the window is refetched once
+    // it lands; assert on the LAST call, not the first.
+    await waitFor(() => {
+      const calls = mockGetHourlyHeatmap.mock.calls;
+      const args = calls[calls.length - 1] as string[];
+      expect(args[0]).toBe(expectedStoreDay(zone, 7));
+      expect(args[1]).toBe(expectedStoreDay(zone, 0));
+    });
+    // The store must actually have been consulted, or storeTz stayed null and
+    // both values are the UTC fallback — which is a different day on purpose.
+    expect(mockGetPrimaryLocationScoped).toHaveBeenCalled();
   });
 });

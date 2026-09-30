@@ -9,6 +9,8 @@ import CanvasLineChart from '@/components/charts/CanvasLineChart';
 import type { LineChartPoint } from '@/components/charts/CanvasLineChart';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { minorUnitExponent } from '@/types/domain';
+import { isoToday, isoDaysAgo } from '@/features/analytics/analytics-data';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 
 /** Exponent-driven currency formatting for widget KPIs (shared by the canvas widgets). */
 function fmtWidgetMoney(minor: number, currency: string): string {
@@ -35,17 +37,28 @@ const { sessionToken: rawToken } = useWorkspace();
   const [data, setData] = useState<LineChartPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // REP-03: read once, use everywhere — a per-widget copy of the fetch is what
+  // let the window drift out of the store's calendar in the first place.
+  const storeTz = useStoreTimezone();
+  // The store zone lands AFTER the first fetch, so the window is refetched once
+  // it arrives. Without this the second load blanks the tile to a skeleton and the
+  // user watches the chart they were already reading disappear — the same reason
+  // DashboardScreen keeps `hasLoaded` separate from `loading` (DashboardScreen.tsx:169,
+  // :427) and shows a 'Refreshing…' line instead of the full-screen spinner.
+  const [hasLoaded, setHasLoaded] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 13); // 14-day window
+      // REP-03: the window is the STORE's last 14 days, not the UTC days.
+      // The backend buckets each row by the store's offset
+      // (DATE(s1.created_at, tz_modifier)), so a UTC-anchored end date silently
+      // drops the store's current trading day for every store that has already
+      // crossed midnight. See useStoreTimezone for the measurement.
       const rows = await getDailyRevenue(
-        start.toISOString().slice(0, 10),
-        end.toISOString().slice(0, 10),
+        isoDaysAgo(13, storeTz), // 14-day window, inclusive
+        isoToday(storeTz),
         sessionToken,
       );
       // Convert to chart points — show MM/DD labels
@@ -59,8 +72,9 @@ const { sessionToken: rawToken } = useWorkspace();
       setError(l10nErrorMessage(e, l10n, 'app-error-generic'));
     } finally {
       setLoading(false);
+      setHasLoaded(true);
     }
-  }, [sessionToken, l10n]);
+  }, [sessionToken, l10n, storeTz]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -69,7 +83,7 @@ const { sessionToken: rawToken } = useWorkspace();
     [data],
   );
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="reporting-widget" aria-hidden="true">
         <div className="reporting-widget-header">

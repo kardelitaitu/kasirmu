@@ -89,6 +89,19 @@ TESTS = [
     # identically in every zone and registering them is regression safety,
     # not the means of catching that defect.
     "src/__tests__/KdsCompletedViewBucketForOffset.test.ts",
+    # Added 2026-09-30 with the report-widget window repair. The fourth route,
+    # and the one the three existing date-range cases could not see: these tests
+    # asserted only that the arguments were strings matching
+    # /^\d{4}-\d{2}-\d{2}$/ -- a shape no date can fail. A UTC-anchored window
+    # passes that on every host, which is exactly why the tiles could ask for the
+    # UTC days while the backend bucketed by the store's offset and it read as
+    # fine. The new cases assert BY VALUE against test-utils/storeZoneCase, whose
+    # offset is chosen so the store's calendar day provably differs from UTC at the
+    # moment the test runs. These files are registered rather than the widgets'
+    # because a component test is the only place the window is observable.
+    "src/__tests__/RevenueLineChartWidget.test.tsx",
+    "src/__tests__/HourlyHeatmapWidget.test.tsx",
+    "src/__tests__/CategoryPieChartWidget.test.tsx",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
