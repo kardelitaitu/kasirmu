@@ -94,15 +94,15 @@ Classification uses the plan's Phase 0 taxonomy: *command contributor | projecti
 | Handler (source) | Module / crate | Subscribed topic(s) | Registrant | Class | Live? |
 |---|---|---|---|---|---|
 | `SaleSyncEnqueuer` (platform/startup/src/event_handlers.rs:44) | startup | `sale.completed` | init_module_system:134 | projection subscriber (sync outbox) | **LIVE** |
-| `InventorySyncEnqueuer` (:143, :182) | startup | `product.created`, `stock.adjusted` | init_module_system:161,:173 | projection subscriber (sync outbox) | **LIVE** |
-| `AuditLogHandler` (:236, :306, :352) | startup | `sale.completed`, `stock.adjusted`, `product.created` | init_module_system:149,:155,:167 | projection subscriber (audit log) | **LIVE** |
-| `LoyaltyEarnHandler` (:415) | startup | `sale.completed` | init_module_system:187 | command contributor | **LIVE** |
-| `SettingsUpdatedHandler` (:482) | startup | `settings.updated` | init_module_system:193 | projection subscriber (ADR #22 relay) | **LIVE** |
+| `InventorySyncEnqueuer` (:147, :190) | startup | `product.created`, `stock.adjusted` | init_module_system:161,:173 | projection subscriber (sync outbox) | **LIVE** |
+| `AuditLogHandler` (:248, :322, :372) | startup | `sale.completed`, `stock.adjusted`, `product.created` | init_module_system:149,:155,:167 | projection subscriber (audit log) | **LIVE** |
+| `LoyaltyEarnHandler` (:439) | startup | `sale.completed` | init_module_system:187 | command contributor | **LIVE** |
+| `SettingsUpdatedHandler` (:510) | startup | `settings.updated` | init_module_system:193 | projection subscriber (ADR #22 relay) | **LIVE** |
 | `OrderConfirmationHandler` (crates/kasirmu-notification/src/handlers.rs:80) | notification | `sale.completed` | init_module_system:211 (feature-gated) | command contributor (external side-effect) | **LIVE (feature-gated)** |
-| `PaymentReceiptHandler` (:241) | notification | `sale.completed` | init_module_system:229 (feature + env gated) | command contributor | **LIVE (conditionally)** |
-| `StockLowAlertHandler` (:166) | notification | `stock.adjusted` | init_module_system:252 (feature + env gated) | command contributor | **LIVE (conditionally)** |
+| `PaymentReceiptHandler` (:249) | notification | `sale.completed` | init_module_system:229 (feature + env gated) | command contributor | **LIVE (conditionally)** |
+| `StockLowAlertHandler` (:170) | notification | `stock.adjusted` | init_module_system:252 (feature + env gated) | command contributor | **LIVE (conditionally)** |
 | `SaleCompletedHandler` (crates/kasirmu-lan/src/lib.rs:978) | lan | `sale.completed` | apps/desktop-tauri/src/lib.rs:978 | plugin bridge (LAN fan-out) | **LIVE (desktop)** |
-| `CourseFiredHandler` (:994) | lan | `order.course_fired` | apps/desktop-tauri/src/lib.rs:982 | plugin bridge | **LIVE (desktop)** |
+| `CourseFiredHandler` (:998) | lan | `order.course_fired` | apps/desktop-tauri/src/lib.rs:982 | plugin bridge | **LIVE (desktop)** |
 | `KdsSyncHandler` (crates/kasirmu-lan/src/kds_sync.rs:245) | lan | `kds.sync` | apps/desktop-tauri/src/lib.rs:989 | plugin bridge | **LIVE (desktop)** |
 | `InventoryStockHandler` (modules/inventory/src/handlers.rs:220) | inventory | *(none)* | **none** | orphan / duplicate | **DEAD (test-only)** |
 | `SaleCompletedReporter` | reporting | *(none)* | **removed** | — | **REMOVED (MSL-11)** |

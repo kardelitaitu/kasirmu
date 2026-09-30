@@ -37,7 +37,7 @@ next: none | perf: N/A
 
 use std::sync::Arc;
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::events::{SaleCompleted, StockAdjusted};
 use tracing::{error, info, warn};
 
@@ -78,6 +78,10 @@ impl OrderConfirmationHandler {
 }
 
 impl EventHandler<SaleCompleted> for OrderConfirmationHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let to = if let Some(ref phone) = self.store_phone {
             phone.clone()
@@ -164,6 +168,10 @@ impl StockLowAlertHandler {
 }
 
 impl EventHandler<StockAdjusted> for StockLowAlertHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         if event.new_qty > self.threshold {
             return Ok(()); // stock is above threshold, no alert needed
@@ -239,6 +247,10 @@ impl PaymentReceiptHandler {
 }
 
 impl EventHandler<SaleCompleted> for PaymentReceiptHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let client = Arc::clone(&self.client);
         let to = self.recipient_phone.clone();

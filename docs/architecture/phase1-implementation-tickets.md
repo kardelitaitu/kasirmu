@@ -135,6 +135,20 @@ smallest step that reaches 'declared on the type' without a proc-macro crate.
 
 **Depends on:** T1 (the emit path). **Blocks:** §11.3 (the required-classification gate).
 
+**Status: DONE 2026-10-02.** `foundation::contracts::HandlerType` mirrors the ADR-62 D4 six and
+`EventHandler` provides `fn handler_type(&self) -> HandlerType` (default `InternalHelper`). It is a
+`&self` method, not an associated const: the trait is used as `Box<dyn EventHandler<E>>` in
+`platform/kernel/src/event_bus.rs`, and a const made it not dyn-compatible (E0038) — the first attempt
+failed `cargo check` for exactly that reason. All 12 registered types override it (15 impl blocks,
+since `InventorySyncEnqueuer` and `AuditLogHandler` each have several); `InventoryStockHandler` keeps
+`InternalHelper` and carries an in-code comment saying it is deliberately not a seam. The checker gained
+`--emit-registry` and `--check`: the registry's `category` is now generated from the Rust while
+topic/site/note/order are kept from the committed file, so `--check` compares bytes and a hand-flip of one
+`handler_type` fails with `[drift] SaleSyncEnqueuer: registry says 'projection_subscriber', Rust
+handler_type says 'command_contributor'`. The registry matched on the first run; adding the method shifted
+7 impl lines, which the T1 census caught as 7 stale rows before they were re-pointed — the two tickets
+validating each other. `scripts/handler-classification.json` is byte-identical after regeneration.
+
 ---
 ## 4. T3 — Lint rules (make Rule 1 bearable, keep it honest)
 

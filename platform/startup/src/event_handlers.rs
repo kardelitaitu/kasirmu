@@ -12,7 +12,7 @@ next: none | perf: handlers hold the shared DB mutex briefly
 
 use std::sync::{Arc, Mutex};
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::audit::AuditEntry;
 use kasirmu_core::db::Store;
 use kasirmu_core::events::{ProductCreated, SaleCompleted, SettingsUpdated, StockAdjusted};
@@ -42,6 +42,10 @@ impl SaleSyncEnqueuer {
 }
 
 impl EventHandler<SaleCompleted> for SaleSyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let conn = self
             .db
@@ -141,6 +145,10 @@ impl InventorySyncEnqueuer {
 }
 
 impl EventHandler<ProductCreated> for InventorySyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &ProductCreated) -> ModuleResult {
         let conn = self
             .db
@@ -180,6 +188,10 @@ impl EventHandler<ProductCreated> for InventorySyncEnqueuer {
 }
 
 impl EventHandler<StockAdjusted> for InventorySyncEnqueuer {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         let conn = self
             .db
@@ -234,6 +246,10 @@ impl AuditLogHandler {
 }
 
 impl EventHandler<SaleCompleted> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let conn = self
             .db
@@ -304,6 +320,10 @@ impl EventHandler<SaleCompleted> for AuditLogHandler {
 }
 
 impl EventHandler<StockAdjusted> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &StockAdjusted) -> ModuleResult {
         let conn = self
             .db
@@ -350,6 +370,10 @@ impl EventHandler<StockAdjusted> for AuditLogHandler {
 }
 
 impl EventHandler<ProductCreated> for AuditLogHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &ProductCreated) -> ModuleResult {
         let conn = self
             .db
@@ -413,6 +437,10 @@ impl LoyaltyEarnHandler {
 }
 
 impl EventHandler<SaleCompleted> for LoyaltyEarnHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::CommandContributor
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let Some(ref customer_id) = event.customer_id else {
             info!(
@@ -480,6 +508,10 @@ impl SettingsUpdatedHandler {
 }
 
 impl EventHandler<SettingsUpdated> for SettingsUpdatedHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::ProjectionSubscriber
+    }
+
     fn handle(&self, event: &SettingsUpdated) -> ModuleResult {
         let changed_keys = event.changed_keys.clone();
         let terminal_id = event.terminal_id.clone();

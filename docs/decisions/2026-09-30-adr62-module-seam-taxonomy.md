@@ -34,7 +34,7 @@ the checkout path: `Store::complete_sale_with_resolved_shortfalls`
 **3. Two kinds of interaction are already conflated on the checkout path.** `finalize_sale`
 (`crates/kasirmu-core/src/db/sales_lifecycle.rs:86`) and `finalize_sale_in_tx` (`:110`) award
 loyalty points INSIDE the sale transaction (`apply_customer_stats_on_completion`, `:100`/`:124`);
-`LoyaltyEarnHandler` (`platform/startup/src/event_handlers.rs:415`) subscribes to the SAME fact on the
+`LoyaltyEarnHandler` (`platform/startup/src/event_handlers.rs:439`) subscribes to the SAME fact on the
 bus. Both exist. Which one is authoritative is exactly the question the taxonomy answers.
 
 **4. Reporting already reads across verticals and already duplicates a facade.** The sanctioned

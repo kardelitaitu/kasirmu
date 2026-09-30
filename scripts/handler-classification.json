@@ -21,28 +21,28 @@
       "name": "InventorySyncEnqueuer",
       "category": "projection_subscriber",
       "topic": "product.created, stock.adjusted",
-      "site": "platform/startup/src/event_handlers.rs:143",
+      "site": "platform/startup/src/event_handlers.rs:147",
       "note": "One struct, two subscriptions."
     },
     {
       "name": "AuditLogHandler",
       "category": "projection_subscriber",
       "topic": "sale.completed, stock.adjusted, product.created",
-      "site": "platform/startup/src/event_handlers.rs:236",
+      "site": "platform/startup/src/event_handlers.rs:248",
       "note": "One struct, three subscriptions."
     },
     {
       "name": "LoyaltyEarnHandler",
       "category": "command_contributor",
       "topic": "sale.completed",
-      "site": "platform/startup/src/event_handlers.rs:415",
+      "site": "platform/startup/src/event_handlers.rs:439",
       "note": "In-transaction loyalty award also lives at sales_lifecycle.rs apply_customer_stats_on_completion."
     },
     {
       "name": "SettingsUpdatedHandler",
       "category": "projection_subscriber",
       "topic": "settings.updated",
-      "site": "platform/startup/src/event_handlers.rs:482",
+      "site": "platform/startup/src/event_handlers.rs:510",
       "note": "ADR #22 relay."
     },
     {
@@ -56,14 +56,14 @@
       "name": "PaymentReceiptHandler",
       "category": "command_contributor",
       "topic": "sale.completed",
-      "site": "crates/kasirmu-notification/src/handlers.rs:241",
+      "site": "crates/kasirmu-notification/src/handlers.rs:249",
       "note": "Feature-gated; only when WHATSAPP_RECEIPT_PHONE is set."
     },
     {
       "name": "StockLowAlertHandler",
       "category": "command_contributor",
       "topic": "stock.adjusted",
-      "site": "crates/kasirmu-notification/src/handlers.rs:166",
+      "site": "crates/kasirmu-notification/src/handlers.rs:170",
       "note": "Feature-gated; only when WHATSAPP_MANAGER_PHONE is set."
     },
     {
@@ -77,7 +77,7 @@
       "name": "CourseFiredHandler",
       "category": "plugin_bridge",
       "topic": "order.course_fired",
-      "site": "crates/kasirmu-lan/src/lib.rs:994",
+      "site": "crates/kasirmu-lan/src/lib.rs:998",
       "note": "LAN fan-out."
     },
     {

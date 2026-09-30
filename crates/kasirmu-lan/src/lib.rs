@@ -125,7 +125,7 @@ next: deprecate legacy-psk-v1 once all KDS clients speak noise-psk-v1 | perf: N/
 use std::collections::VecDeque;
 use std::sync::Arc;
 
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use kasirmu_core::events::{CourseFired, SaleCompleted};
 use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -976,6 +976,10 @@ pub struct SaleCompletedHandler {
 }
 
 impl EventHandler<SaleCompleted> for SaleCompletedHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::PluginBridge
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let json = serde_json::to_string(event)
             .map_err(|e| anyhow::anyhow!("serialising SaleCompleted: {e}"))?;
@@ -992,6 +996,10 @@ pub struct CourseFiredHandler {
 }
 
 impl EventHandler<CourseFired> for CourseFiredHandler {
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::PluginBridge
+    }
+
     fn handle(&self, event: &CourseFired) -> ModuleResult {
         let json = serde_json::to_string(event)
             .map_err(|e| anyhow::anyhow!("serialising CourseFired: {e}"))?;

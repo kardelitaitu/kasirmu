@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::InventoryError;
 use crate::models::ProductType;
-use foundation::contracts::{EventHandler, ModuleResult};
+use foundation::contracts::{EventHandler, HandlerType, ModuleResult};
 use foundation::events::SaleCompleted;
 use rusqlite::Connection;
 use tracing::{error, info};
@@ -218,6 +218,13 @@ impl InventoryStockHandler {
 }
 
 impl EventHandler<SaleCompleted> for InventoryStockHandler {
+    // DEAD / test-only (see scripts/handler-classification.json): this handler is
+    // constructed nowhere in production, so it deliberately stays internal_helper
+    // rather than claiming a seam category it does not exercise.
+    fn handler_type(&self) -> HandlerType {
+        HandlerType::InternalHelper
+    }
+
     fn handle(&self, event: &SaleCompleted) -> ModuleResult {
         let mut conn = self
             .db

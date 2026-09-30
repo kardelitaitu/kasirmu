@@ -72,6 +72,17 @@ HOW IT DECIDES
           changes the verdict: they are report-only, always exit 0, and the
           default run is unchanged.
 
+  --emit-registry / --check
+          The classification REGISTRY is generated from the Rust. Each handler
+          type declares its category with an overridden
+          `fn handler_type(&self) -> HandlerType` (the EventHandler trait provides a
+          default of `InternalHelper`); `--emit-registry` rewrites
+          `scripts/handler-classification.json` with a `category` taken from the Rust
+          while keeping each row's census narrative (topic/site/note) and order,
+          and `--check` fails, naming the type and both categories, when the
+          committed file has drifted. The registry stops being hand-maintained;
+          the JSON stays a reviewable artifact.
+
 USAGE
 =====
 
@@ -84,6 +95,8 @@ USAGE
     python3 scripts/verify-namespace-governance.py --self-test
     python3 scripts/verify-namespace-governance.py --census
     python3 scripts/verify-namespace-governance.py --emit-census
+    python3 scripts/verify-namespace-governance.py --emit-registry
+    python3 scripts/verify-namespace-governance.py --check
 
 EXIT CODES -- and why 0 alone is not a verdict
 =============================================
@@ -172,6 +185,49 @@ EVENT_HANDLER_RE = re.compile(
 # the CENSUS is about whether the pointer resolves at all, so the comparison is
 # exact: a row is stale when its named line is not the impl it claims.
 SITE_RE = re.compile(r"^(?P<path>[^:]+):(?P<line>\d+)$")
+
+# The Rust spelling of a handler's declared seam type, inside the handler_type
+# method the EventHandler trait provides (T2). Captures the variant name; the
+# snake_case registry category is looked up in RUST_HANDLER_TYPE_TO_CATEGORY.
+HANDLER_TYPE_RE = re.compile(
+    r"fn\s+handler_type\s*\(\s*&self\s*\)\s*->\s*HandlerType\s*\{\s*"
+    r"HandlerType::([A-Za-z_][A-Za-z0-9_]*)\s*\}"
+)
+
+# Rust variant -> registry category string. This mirrors foundation::HandlerType
+# and the ADR-62 D4 vocabulary the JSON registry already uses; a mismatch is a
+# generator failure, not a silent rename.
+RUST_HANDLER_TYPE_TO_CATEGORY = {
+    "CommandContributor": "command_contributor",
+    "ProjectionSubscriber": "projection_subscriber",
+    "QueryFacade": "query_facade",
+    "Lifecycle": "lifecycle",
+    "PluginBridge": "plugin_bridge",
+    "InternalHelper": "internal_helper",
+}
+
+# The registry's stable prose. The handlers array is generated from the Rust
+# handler_type methods; these two fields are the file's contract and are kept
+# here so the emitted JSON is byte-stable.
+REGISTRY_SCHEMA_VERSION = 1
+REGISTRY_DESCRIPTION = (
+    "Handler classification registry for the soft namespace-governance rule "
+    "(docs/architecture/module-namespace-governance.md, Rule 2). Every EventHandler "
+    "impl a production file declares must appear here with one of the ADR-62 D4 "
+    "categories. The populating classification is the Phase 0 census "
+    "(docs/architecture/handler-census-phase0.md §3); scripts/verify-namespace-governance.py "
+    "fails when a NEW impl type is absent, and deliberately does not re-grade existing rows. "
+    "The handlers array is GENERATED from each type's EventHandler::handler_type method "
+    "(Phase 1 ticket T2): regenerate with --emit-registry, verify with --check."
+)
+REGISTRY_CATEGORIES = {
+    "command_contributor": "Runs synchronously in the sale transaction and may reject it (ADR-62 D1/D2).",
+    "projection_subscriber": "Runs after commit, derives a projection, may not reject the sale (ADR-62 D1/D3).",
+    "query_facade": "Serves reads through a sanctioned facade (ADR-62 D4/D5).",
+    "lifecycle": "Module load/start/stop hook; not a seam (ADR-62 D6).",
+    "plugin_bridge": "Bridges an event to an external surface, e.g. the LAN fan-out (ADR-62 D6).",
+    "internal_helper": "Support code with no seam contract (ADR-62 D6).",
+}
 
 
 def configure_streams() -> None:
@@ -535,6 +591,171 @@ def handler_findings(root: Path, classifications: set[str], scope: dict[str, int
                 line = code.count("\n", 0, match.start()) + 1
                 findings.append(make_finding("unclassified-handler", relative_path(path, root), type_name, line, "verdict"))
     return findings
+
+
+def declared_handler_types(root: Path) -> dict[str, tuple[str, str, int, str]]:
+    """type name -> (category, repo-relative path, line, raw variant) from the Rust.
+
+    Walks the SAME production population as the census, and for each
+    `impl EventHandler<...> for T` looks inside the block for the overridden
+    `handler_type` method (T2). A type that declares no override is reported as
+    the trait default, `internal_helper` -- but a *registered* type is expected
+    to override, and the registry check turns a missing override into drift.
+
+    The first impl block that carries the override wins; a later impl of the
+    same type with a DIFFERENT category is a contradiction and raises.
+    """
+    declared: dict[str, tuple[str, str, int, str]] = {}
+    for top in HANDLER_ROOTS:
+        base = root / top
+        if not base.is_dir():
+            continue
+        for path in production_sources(base):
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"cannot read handler source: {path}: {exc}") from exc
+            code = mask_comments_and_strings(raw)
+            rel = relative_path(path, root)
+            for match in EVENT_HANDLER_RE.finditer(code):
+                type_name = match.group(1)
+                # The impl block runs from the match to the matching close brace;
+                # scan that slice for the handler_type override.
+                depth = 0
+                i = match.end()
+                started = False
+                while i < len(code):
+                    ch = code[i]
+                    if ch == "{":
+                        depth += 1
+                        started = True
+                    elif ch == "}":
+                        depth -= 1
+                        if started and depth == 0:
+                            break
+                    i += 1
+                block = code[match.start():i + 1]
+                override = HANDLER_TYPE_RE.search(block)
+                if override is None:
+                    continue
+                variant = override.group(1)
+                category = RUST_HANDLER_TYPE_TO_CATEGORY.get(variant)
+                if category is None:
+                    raise ValueError(
+                        f"handler {type_name} declares unknown HandlerType::{variant}"
+                    )
+                line = code.count("\n", 0, match.start()) + 1
+                prior = declared.get(type_name)
+                if prior is not None and prior[0] != category:
+                    raise ValueError(
+                        f"handler {type_name} declares conflicting categories "
+                        f"{prior[0]} ({prior[1]}:{prior[2]}) and {category} ({rel}:{line})"
+                    )
+                declared.setdefault(type_name, (category, rel, line, variant))
+    return declared
+
+
+def build_registry(root: Path, committed: list[dict[str, Any]], committed_meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Assemble the full registry dict: Rust categories, committed metadata.
+
+    `category` comes from the Rust `handler_type` method; `topic`, `site`,
+    `note` and the row ORDER are census narrative the Rust does not carry, so
+    they are kept from the committed registry, matched by name. A registered type
+    the Rust no longer declares is a failure (the registry must shrink with the
+    code); a declared type with no committed row cannot be generated (run the
+    census to classify a new handler first).
+
+    `schema_version`, `description` and `categories` are also taken from the
+    committed file when present, so a category flip regenerates EXACTLY the one
+    field that changed -- the `--check` byte comparison stays honest about what
+    is generated and what is prose.
+    """
+    declared = declared_handler_types(root)
+    by_name = {str(e["name"]): e for e in committed}
+    missing_in_rust = [name for name in by_name if name not in declared]
+    if missing_in_rust:
+        raise ValueError(
+            "registry rows with no Rust handler_type: " + ", ".join(sorted(missing_in_rust))
+        )
+    handlers: list[dict[str, Any]] = []
+    for entry in committed:
+        name = str(entry["name"])
+        if name not in declared:
+            continue
+        category, _rel, _line, _variant = declared[name]
+        handlers.append({
+            "name": name,
+            "category": category,
+            "topic": str(entry.get("topic", "")),
+            "site": str(entry.get("site", "")),
+            "note": str(entry.get("note", "")),
+        })
+    meta = committed_meta or {}
+    return {
+        "schema_version": meta.get("schema_version", REGISTRY_SCHEMA_VERSION),
+        "description": meta.get("description", REGISTRY_DESCRIPTION),
+        "categories": meta.get("categories", REGISTRY_CATEGORIES),
+        "handlers": handlers,
+    }
+
+
+def render_registry(registry: dict[str, Any]) -> str:
+    """The exact on-disk JSON text, so `--check` can compare bytes."""
+    return json.dumps(registry, indent=2, ensure_ascii=False) + "\n"
+
+
+def emit_registry(root: Path, registry_path: Path) -> int:
+    """Write the generated registry to disk (`--emit-registry`)."""
+    try:
+        committed = load_classification_entries(registry_path)
+        meta = load_json(registry_path, "handler classification registry")
+    except (ValueError, OSError) as exc:
+        return fail(str(exc))
+    try:
+        registry = build_registry(root, committed, meta if isinstance(meta, dict) else None)
+    except ValueError as exc:
+        return fail(str(exc))
+    registry_path.write_text(render_registry(registry), encoding="utf-8", newline="\n")
+    print(f"verify-namespace-governance --emit-registry: wrote {len(registry['handlers'])} row(s) to {relative_path(registry_path, root)}")
+    return 0
+
+
+def check_registry(root: Path, registry_path: Path) -> int:
+    """Fail when the committed registry drifts from the Rust (`--check`).
+
+    Names the drifted type and the two categories so the fix is a one-line edit
+    (regenerate) -- a gate that says only "differs" sends the reader hunting.
+    """
+    try:
+        committed = load_classification_entries(registry_path)
+        meta = load_json(registry_path, "handler classification registry")
+    except (ValueError, OSError) as exc:
+        return fail(str(exc))
+    try:
+        registry = build_registry(root, committed, meta if isinstance(meta, dict) else None)
+    except ValueError as exc:
+        return fail(str(exc))
+    want = render_registry(registry)
+    try:
+        got = registry_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return fail(f"cannot read registry: {exc}")
+    if got == want:
+        print(f"verify-namespace-governance --check: registry matches the Rust handler_type declarations ({len(registry['handlers'])} row(s)).")
+        return 0
+    committed_by_name = {str(e["name"]): str(e.get("category", "")) for e in committed}
+    want_by_name = {str(e["name"]): str(e["category"]) for e in registry["handlers"]}
+    printed = 0
+    for name in sorted(set(committed_by_name) | set(want_by_name)):
+        old = committed_by_name.get(name, "<absent>")
+        new = want_by_name.get(name, "<absent>")
+        if old != new:
+            print(f"  [drift] {name}: registry says '{old}', Rust handler_type says '{new}'", file=sys.stderr)
+            printed += 1
+    if printed == 0:
+        print("  (every category matches; the file differs only in whitespace, prose or row order)", file=sys.stderr)
+    print("verify-namespace-governance --check: registry DRIFTED from the Rust handler_type declarations.", file=sys.stderr)
+    return 1
 
 
 def load_classification_entries(path: Path) -> list[dict[str, Any]]:
@@ -952,12 +1173,18 @@ def main() -> int:
     parser.add_argument("--self-test", action="store_true", help="Run the built-in classifier tests and exit.")
     parser.add_argument("--census", action="store_true", help="Report stale/retired registry rows and unclassified impls (report-only; never fails).")
     parser.add_argument("--emit-census", action="store_true", help="Print the handler census as a Markdown table (report-only; never fails).")
+    parser.add_argument("--emit-registry", action="store_true", help="Regenerate scripts/handler-classification.json from the Rust handler_type declarations.")
+    parser.add_argument("--check", action="store_true", help="Fail when the committed registry drifts from the Rust handler_type declarations.")
     args = parser.parse_args()
     if args.self_test:
         return self_test()
     root = (args.root or Path(__file__).resolve().parent.parent).resolve()
     baseline_path = (args.baseline_file or root / "scripts" / "namespace-governance-baseline.json").resolve()
     classification_path = (args.classification_file or root / "scripts" / "handler-classification.json").resolve()
+    if args.emit_registry:
+        return emit_registry(root, classification_path)
+    if args.check:
+        return check_registry(root, classification_path)
     if args.emit_census:
         try:
             entries = load_classification_entries(classification_path)
@@ -1172,6 +1399,91 @@ def self_test() -> int:
         missing = [row("InventoryStockHandler", "modules/inventory/src/gone.rs:1")]
         stale, retired, unclassified = census_rows(tree, missing, scope)
         check("census: a missing site file is stale", len(stale), 1)
+
+    # T2: the registry generator reads the Rust handler_type method.
+    check("HANDLER_TYPE_RE reads the declared variant",
+          HANDLER_TYPE_RE.search(
+              "fn handler_type(&self) -> HandlerType { HandlerType::PluginBridge }").group(1),
+          "PluginBridge")
+    check("every Rust variant maps to a registry category",
+          sorted(RUST_HANDLER_TYPE_TO_CATEGORY), sorted({
+              "CommandContributor", "ProjectionSubscriber", "QueryFacade",
+              "Lifecycle", "PluginBridge", "InternalHelper"}))
+    check("the default trait method is internal_helper",
+          RUST_HANDLER_TYPE_TO_CATEGORY["InternalHelper"], "internal_helper")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp)
+        src = tree / "modules" / "inventory" / "src"
+        src.mkdir(parents=True)
+        (src / "handlers.rs").write_text(
+            "impl EventHandler<SaleCompleted> for Foo {\n"
+            "    fn handler_type(&self) -> HandlerType { HandlerType::PluginBridge }\n"
+            "\n"
+            "    fn handle(&self, _: &SaleCompleted) -> ModuleResult { Ok(()) }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        declared = declared_handler_types(tree)
+        check("declared_handler_types reads the override",
+              declared.get("Foo", ())[0], "plugin_bridge")
+        # A type with no override is absent from the declaration map -- the
+        # generator must not invent a category for it.
+        (src / "other.rs").write_text(
+            "impl EventHandler<StockAdjusted> for Bar {\n"
+            "    fn handle(&self, _: &StockAdjusted) -> ModuleResult { Ok(()) }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        declared = declared_handler_types(tree)
+        check("a type without an override is not declared",
+              "Bar" in declared, False)
+        # Conflicting categories across two impls of the same type is an error.
+        (src / "conflict.rs").write_text(
+            "impl EventHandler<ProductCreated> for Foo {\n"
+            "    fn handler_type(&self) -> HandlerType { HandlerType::Lifecycle }\n"
+            "\n"
+            "    fn handle(&self, _: &ProductCreated) -> ModuleResult { Ok(()) }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        try:
+            declared_handler_types(tree)
+            failures.append("declared_handler_types accepted conflicting categories")
+        except ValueError:
+            pass
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp)
+        src = tree / "modules" / "inventory" / "src"
+        src.mkdir(parents=True)
+        (src / "handlers.rs").write_text(
+            "impl EventHandler<SaleCompleted> for Foo {\n"
+            "    fn handler_type(&self) -> HandlerType { HandlerType::PluginBridge }\n"
+            "\n"
+            "    fn handle(&self, _: &SaleCompleted) -> ModuleResult { Ok(()) }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        committed = [{
+            "name": "Foo", "category": "internal_helper", "topic": "sale.completed",
+            "site": "modules/inventory/src/handlers.rs:1", "note": "fixture",
+        }]
+        registry = build_registry(tree, committed)
+        check("build_registry takes the category from the Rust",
+              registry["handlers"][0]["category"], "plugin_bridge")
+        check("build_registry keeps the committed site and note",
+              [registry["handlers"][0]["site"], registry["handlers"][0]["note"]],
+              ["modules/inventory/src/handlers.rs:1", "fixture"])
+        # A registry row whose type the Rust no longer declares is an error.
+        try:
+            build_registry(tree, committed + [{
+                "name": "Gone", "category": "lifecycle", "topic": "",
+                "site": "modules/inventory/src/handlers.rs:1", "note": "",
+            }])
+            failures.append("build_registry accepted a row with no Rust declaration")
+        except ValueError:
+            pass
 
     if failures:
         print("verify-namespace-governance: self-test FAILED", file=sys.stderr)
