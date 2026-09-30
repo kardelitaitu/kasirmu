@@ -548,3 +548,12 @@ It is pinned by nine tests in `crates/kasirmu-core/src/db/kds_tests.rs`: `update
 Both stamp lines now record this and read `next: none`.
 
 > KDS order-level transition marker corrected 2026-10-04; the state machine and its nine pins were already in place.
+
+## The API-2 marker on `auth.rs` was stale (marker correction, 2026-10-04)
+
+`crates/kasirmu-api/src/auth.rs:6` advertised `next: API-2 INFO — constant-time admin-key compare, decrypted-GET documentation`. Both halves had already landed:
+
+- **Constant-time admin-key compare** — `admin_key_authorised` (`crates/kasirmu-api/src/routes/tokens.rs:101`) compares HMAC-SHA256 digests under a fixed domain-separation key with a subtle-backed `verify_slice`, so the comparison cannot be recovered byte-by-byte from timing. Pinned by four unit tests in `crates/kasirmu-api/src/routes/tokens_tests.rs` (exact match, wrong/prefix/suffix probes, dev-open, missing header). The `tokens.rs` stamp already says `API-2 FIXED 25-07-26`.
+- **Decrypted-GET documentation** — the tradeoff is documented at `crates/kasirmu-api/src/routes/settings.rs:204` (`# API-2 security note (decrypted SMTP password)`), naming both guards (admin-key gate with constant-time compare; `OZ_ADMIN_KEY` mandatory behind `OZ_PRODUCTION=1` via `validate_production_secrets`) and the redaction path to take if either is ever relaxed.
+
+The `auth.rs` findings line now records the correction and `next:` reads `none`.
