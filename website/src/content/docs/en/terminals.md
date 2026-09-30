@@ -51,15 +51,15 @@ their spot needs.
 
 ## Device binding
 
-Bind a terminal to a store and a workspace instance so the device boots
+Bind a terminal to a location and a workspace instance so the device boots
 straight into that screen instead of the picker — a kitchen screen that is
-always the Kitchen Display, a counter that is always the Store POS. Clearing
+always the Kitchen Display, a counter that is always the Retail POS. Clearing
 the binding returns the device to the workspace picker.
 
 ## Terminal status
 
-The multi-store dashboard tracks **active**, **online**, and **total**
-terminals and shows terminal status per store, so you can see at a glance
+The multi-location dashboard tracks **active**, **online**, and **total**
+terminals and shows terminal status per location, so you can see at a glance
 which devices are up and working. Devices report in when they reconnect, and
 a terminal that has been offline shows up here before it causes a surprise
 at the counter.

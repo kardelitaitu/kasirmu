@@ -39,7 +39,7 @@ and speaks both English and Bahasa Indonesia out of the box.
 - **Decide with data** — a daily sales dashboard, sales reports, menu
   engineering, and analytics.
 - **Grow** — loyalty, gift cards, promotions, self-service kiosks, and
-  multi-store topology.
+  multi-location topology.
 
 ## Hardware & devices
 
@@ -77,6 +77,17 @@ see:
 Not sure? The [Quickstart](../quickstart/) path works for every shape —
 it provisions one of the above, adds a test product, and rings a test sale
 regardless of which you picked.
+
+### Just evaluating?
+
+Downloading to kick the tyres, with no real counter to put it on yet — that
+is the [Quickstart](../quickstart/) path, and it commits nothing: the free
+plan starts on first launch with no account, no card, and no setup you
+cannot clear later. Pick **Offline only** in the wizard, add two test
+products, ring one test sale, and you have seen the whole loop — sales,
+receipt, and shift counting all work as they would for real. When you are
+ready, [Activation](../activation/) and cloud sync turn it into a live
+register.
 
 ## Where to start
 
@@ -116,3 +127,7 @@ management. Every key rotation also emails you a notice, at most once per
 
 Stuck? The [support page](../../support/) reaches the team, and the rest of
 these docs cover activation, payments, sync, and more.
+
+---
+
+Keep reading · **Next:** [Quickstart](../quickstart/) — the 15-minute path to a working counter.

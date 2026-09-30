@@ -65,4 +65,6 @@ koneksi kembali. Sekali dengan Anda di depan layar itu berlimat lipat
 nilainya dibanding esei-dokumentasi — [Mode Offline](../offline-mode/)
 menjelaskan apa yang ditampilkan antrean.
 
+Lanjut membaca · **Sebelumnya:** [Ruang Kerja](../workspaces/)
+
 > last audited 30-09-26 by docs-auditor

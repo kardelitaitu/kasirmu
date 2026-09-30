@@ -14,7 +14,7 @@ Locations, registers, warehouses, and hardware are arranged in a visual diagram 
 the **Visual Location & Workspace Topology Builder**. Nodes are dragged from the
 palette (or added with the number keys) and wired together on a canvas with
 zoom, pan, minimap, auto-layout, snap-to-grid, and undo/redo. Ready-made
-**Retail** and **Resto & KDS** presets scaffold a full store in one click, and
+**Retail** and **Resto & KDS** presets scaffold a full location in one click, and
 a **Test Order Simulation** sends test tickets through the layout so you can
 watch the flow before going live.
 

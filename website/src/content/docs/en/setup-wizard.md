@@ -64,4 +64,8 @@ category and a couple of products, then a test sale —
 [Your First Sale](../first-sale/) picks up exactly there, and is part of the
 [Quickstart](../quickstart/) route.
 
+---
+
+Keep reading · **Previous:** [Installation](../installation/) · **Next:** [License Activation](../activation/)
+
 > last audited 30-09-26 by docs-auditor

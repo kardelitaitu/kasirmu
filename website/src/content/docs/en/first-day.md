@@ -69,4 +69,8 @@ Doing this once with you at the keyboard is worth five paragraphs of
 documentation later — [Offline Mode](../offline-mode/) explains what the
 queue shows.
 
+---
+
+Keep reading · **Previous:** [Workspaces](../workspaces/)
+
 > last audited 30-09-26 by docs-auditor

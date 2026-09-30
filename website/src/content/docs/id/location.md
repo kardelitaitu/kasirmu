@@ -15,7 +15,7 @@ Lokasi, register, gudang, dan perangkat keras disusun dalam diagram visual —
 ditambah dengan tombol angka) dan dihubungkan dengan kabel di kanvas yang
 mendukung zoom, pan, minimap, tata letak otomatis, snap ke grid, serta
 undo/redo. Preset siap pakai **Ritel** dan **Resto & KDS** membuat kerangka
-toko lengkap dalam satu klik, dan **Uji Simulasi Pesanan** mengirim tiket uji
+lokasi lengkap dalam satu klik, dan **Uji Simulasi Pesanan** mengirim tiket uji
 melalui tata letak sehingga Anda dapat melihat alurnya sebelum diluncurkan.
 
 ## Node dan koneksi

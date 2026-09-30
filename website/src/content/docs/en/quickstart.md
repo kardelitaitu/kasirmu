@@ -50,4 +50,8 @@ screen-by-screen version.
 - **Add staff and shifts** — so the day's takings reconcile:
   [Shifts & Reconciliation](../shifts/) and [User Roles](../user-roles/).
 
+---
+
+Keep reading · **Previous:** [Welcome](../welcome/) · **Next:** [Installation](../installation/)
+
 > last audited 30-09-26 by docs-auditor

@@ -54,3 +54,7 @@ sebelumnya dapat dipasang ulang secara manual dari halaman rilis.
 
 [Transaksi pertama Anda](../first-sale/), atau lihat [aktivasi](../activation/)
 saat siap membuka lebih banyak lokasi, pembayaran QRIS, dan sinkron cloud.
+
+---
+
+Lanjut membaca · **Sebelumnya:** [Mulai Cepat](../quickstart/) · **Berikutnya:** [Wizard Pengaturan](../setup-wizard/)

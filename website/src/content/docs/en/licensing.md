@@ -15,7 +15,7 @@ sync, and scripting — is shown on the [pricing page](../../pricing/).
 | Capability      | Free | Plus | Pro | Premium | Enterprise |
 | --------------- | ---- | ---- | --- | ------- | ---------- |
 | Locations          | 1    | 1    | 2   | 5       | Unlimited |
-| Registers / store | 1  | 2    | 5   | Unlimited | Unlimited |
+| Registers / location | 1  | 2    | 5   | Unlimited | Unlimited |
 | Warehouses      | No   | No   | No  | Unlimited | Unlimited |
 | Staff users     | 1    | 5    | 20  | 50      | Unlimited |
 | Sales history   | 3 months | 1 year | 5 years | Unlimited | Unlimited |
@@ -27,7 +27,7 @@ Yearly plans = 2 months free (pay 10 months, get 12).
 
 ## The Free plan
 
-The Free plan is **free forever** — one store, one register, and 3 months of
+The Free plan is **free forever** — one location, one register, and 3 months of
 sales history. No license key is needed to start: the Free
 plan begins at first launch, and you can upgrade at any point without
 reinstalling. After 3 months of history, older transactions are hidden behind

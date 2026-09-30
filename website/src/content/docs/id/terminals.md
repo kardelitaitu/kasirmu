@@ -51,22 +51,22 @@ masing berperilaku sesuai kebutuhan lokasinya.
 
 ## Binding perangkat
 
-Ikat terminal ke toko dan instance ruang kerja agar perangkat langsung membuka
+Ikat terminal ke lokasi dan instance ruang kerja agar perangkat langsung membuka
 layar itu alih-alih pemilih — layar dapur yang selalu Tampilan Dapur, kasir
-yang selalu POS Toko. Menghapus binding mengembalikan perangkat ke pemilih
+yang selalu POS Ritel. Menghapus binding mengembalikan perangkat ke pemilih
 ruang kerja.
 
 ## Status terminal
 
-Dasbor multi-toko melacak terminal **aktif**, **daring**, dan **total** serta
-menampilkan status terminal per toko, sehingga Anda dapat melihat sekilas
+Dasbor multi-lokasi melacak terminal **aktif**, **daring**, dan **total** serta
+menampilkan status terminal per lokasi, sehingga Anda dapat melihat sekilas
 perangkat mana yang aktif dan bekerja. Perangkat melapor saat terhubung
 kembali, dan terminal yang lama offline terlihat di sini sebelum menyebabkan
 kejutan di kasir.
 
 ## Terminal dalam topologi
 
-Terminal muncul di editor topologi bersama toko dan gudang, dan tata letak
+Terminal muncul di editor topologi bersama lokasi dan gudang, dan tata letak
 tersinkron ke setiap perangkat saat terhubung kembali. Lihat
 [Lokasi & Topologi](../location/) dan [Ruang Kerja](../workspaces/).
 

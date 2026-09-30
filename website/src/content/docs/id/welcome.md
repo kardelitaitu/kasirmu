@@ -80,6 +80,17 @@ Tidak yakin? Jalur [Mulai Cepat](../quickstart/) berlaku untuk semua bentuk
 — jalur ini memprovisi salah satu di atas, menambah produk uji, dan menghitung
 transaksi uji terlepas dari pilihan Anda.
 
+### Hanya mencoba-coba?
+
+Mengunduh untuk mencoba, tanpa konter sungguhan untuk dipakai — itulah jalur
+[Mulai Cepat](../quickstart/), dan jalur ini tidak mengikat apa pun: paket
+gratis dimulai saat peluncuran tanpa akun, tanpa kartu, dan tanpa pengaturan
+yang tidak bisa Anda bersihkan nanti. Pilih **Offline saja** di wizard,
+tambahkan dua produk uji, hitung satu transaksi uji, dan Anda sudah melihat
+seluruh putarannya — penjualan, struk, dan penghitungan shift semuanya
+berjalan seperti sungguhan. Saat siap, [Aktivasi](../activation/) dan
+sinkron cloud mengubahnya menjadi register yang hidup.
+
 ## Mulai dari sini
 
 Terburu-buru? [Mulai Cepat](../quickstart/) membawa Anda dari unduhan ke
@@ -120,3 +131,7 @@ sekali per 24 jam. Lihat [Instal ulang atau pemulihan lisensi](../activation/#in
 
 Buntu? Halaman [dukungan](../../support/) menghubungkan Anda ke tim, dan
 dokumentasi lainnya mencakup aktivasi, pembayaran, sinkron, dan lainnya.
+
+---
+
+Lanjut membaca · **Berikutnya:** [Mulai Cepat](../quickstart/) — jalur 15 menit menuju konter siap pakai.

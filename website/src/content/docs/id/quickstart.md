@@ -50,4 +50,6 @@ yang akan diulang staf Anda sepanjang hari. Lihat
 - **Tambah staf dan shift** — agar pemasukan harian dapat direkonsiliasi:
   [Shift & Rekonsiliasi](../shifts/) dan [Peran Pengguna](../user-roles/).
 
+Lanjut membaca · **Sebelumnya:** [Selamat Datang](../welcome/) · **Berikutnya:** [Instalasi](../installation/)
+
 > last audited 30-09-26 by docs-auditor

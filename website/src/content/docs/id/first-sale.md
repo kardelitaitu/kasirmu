@@ -8,7 +8,7 @@ updated: "2026-08-16"
 
 ## Siapkan ruang kerja
 
-Buat ruang kerja untuk register: **POS Toko** untuk ritel (kisi produk,
+Buat ruang kerja untuk register: **POS Ritel** untuk ritel (kisi produk,
 barcode, stok) atau **POS Restoran** untuk layanan meja (kategori menu,
 meja). Ruang kerja yang Anda buat menentukan tampilan layar kasir. Lihat
 [Ruang Kerja](../workspaces/).
@@ -28,6 +28,27 @@ kasir di bagian atas kisi kasir.
 Harga disimpan sebagai satuan minor bilangan bulat yang tepat, sehingga
 tidak pernah ada kejutan pembulatan. Lihat [Inventaris & Gudang](../inventory/)
 untuk alur kerja katalog lengkap.
+
+### Menambahkan banyak produk
+
+Produk dan item menu ditambahkan **satu per satu** — belum ada impor massal
+atau CSV hari ini. Untuk menu puluhan item, pakai pola ini agar tidak
+mengetik ulang:
+
+- **Kategori lebih dulu.** Tambahkan semua tab kategori (Minuman, Makanan,
+  Lauk, …) di awal; sebuah produk perlu tempat, dan kasir melihatnya di
+  bagian atas kisi kasir.
+- **Gunakan varian untuk item yang beda harga.** Nama sama, ukuran atau
+  porsi berbeda — mis. es kopi Small/Medium/Large — tampung dalam satu produk
+  dengan varian, bukan tiga produk yang nyaris duplikat.
+- **Masukkan barcode saat menambah.** Memindai adalah cara tercepat meraih
+  penjualan nanti, dan mengetik kode saat menambah lebih murah daripada
+  melewatkannya di konter. Tambahkan barcode saat membuka satu garis SKU baru.
+- **Tambahkan dari aplikasi register.** Tambahkan dari aplikasi Register
+  saat toko sepi; perubahannya muncul di setiap register setelah sinkron.
+
+Ini beberapa menit input di awal, dan itu input yang sama yang membangun
+seluruh katalog (varian, bundel, stok).
 
 ## Layar kasir
 
@@ -66,3 +87,7 @@ kembali online. Tidak ada yang hilang dan tidak ada yang menghambat kasir.
 
 Lihat [Pembayaran & QRIS](../payments/) untuk mendalami metode pembayaran,
 atau [Shift & Rekonsiliasi](../shifts/) untuk menutup hari dengan rapi.
+
+---
+
+Lanjut membaca · **Sebelumnya:** [Aktivasi Lisensi](../activation/) · **Berikutnya:** [Ruang Kerja](../workspaces/)

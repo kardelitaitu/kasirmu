@@ -53,3 +53,7 @@ reinstalled manually from the releases page.
 
 [Ring up your first sale](../first-sale/), or see [activation](../activation/)
 when you're ready to unlock more locations, QRIS payments, and cloud sync.
+
+---
+
+Keep reading · **Previous:** [Quickstart](../quickstart/) · **Next:** [Setup Wizard](../setup-wizard/)

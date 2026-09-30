@@ -8,7 +8,7 @@ updated: "2026-08-16"
 
 ## Set up a workspace
 
-Create a workspace for the register: **Store POS** for retail (product grid,
+Create a workspace for the register: **Retail POS** for retail (product grid,
 barcodes, stock) or **Restaurant POS** for table service (menu categories,
 tables). The workspace you create decides what the checkout screen looks
 like. See [Workspaces](../workspaces/).
@@ -28,6 +28,27 @@ top of the checkout grid.
 Prices are stored as exact integer minor units, so there are never
 floating-point rounding surprises. See [Inventory & Warehouses](../inventory/)
 for the full catalog workflow.
+
+### Adding many products
+
+Products and menu items are added **one at a time** — there is no bulk or
+CSV import today. For a menu of dozens of items, work this pattern to
+avoid re-typing:
+
+- **Categories first.** Add all your category tabs (Drinks, Food, Sides, …)
+  up front; a product needs one to live in, and the cashier sees them at the
+top of the grid.
+- **Use variants for price-varied items.** Same name, different size or
+  portion — e.g. iced coffee Small/Medium/Large — belongs in one product
+  with variants, not three near-duplicate products.
+- **Enter the barcode as you add.** Scanning is the fastest way to ring a
+  sale later, and typing a code at add-time is cheaper than missing it at
+  the counter. Add barcodes as you unbox stock for a fresh line of SKUs.
+- **Keep adders in the store app.** Add from the Register app while the day
+  is quiet; changes appear on every register after sync.
+
+It is a few minutes of up-front typing, but it is the same input the rest
+of the catalog (variants, bundles, stock) builds on.
 
 ## The checkout screen
 
@@ -66,3 +87,7 @@ online. Nothing is lost and nothing blocks the counter.
 
 See [Payments & QRIS](../payments/) for the payment methods in depth, or
 [Shifts & Reconciliation](../shifts/) to close out the day cleanly.
+
+---
+
+Keep reading · **Previous:** [License Activation](../activation/) · **Next:** [Workspaces](../workspaces/)

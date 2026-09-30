@@ -60,4 +60,6 @@ kategori dan beberapa produk, lalu transaksi uji —
 [Transaksi Pertama Anda](../first-sale/) melanjutkan persis di titik itu,
 dan menjadi bagian dari rute [Mulai Cepat](../quickstart/).
 
+Lanjut membaca · **Sebelumnya:** [Instalasi](../installation/) · **Berikutnya:** [Aktivasi Lisensi](../activation/)
+
 > last audited 30-09-26 by docs-auditor
