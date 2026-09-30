@@ -266,7 +266,7 @@ pub async fn list_credit_sales_scoped(
 
 /// Get hardware settings for the current terminal from the DB.
 ///
-/// Read order (per TODO 4e, resolved 2026-10-04 — the DB row is authoritative):
+/// Read order (the `hardware_profiles` DB row is the authoritative store):
 /// 1. DB (hardware_profiles table) - canonical store.
 /// 2. JSON file (`terminal_profiles/<id>.json`) - **one-time seed only**: read
 ///    ONLY when no `hardware_profiles` row exists for this terminal id, and the
@@ -292,7 +292,7 @@ pub async fn get_hardware_settings(
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
 
-    // 1. Try DB first — the row is authoritative (TODO 4e, resolved 2026-10-04).
+    // 1. Try DB first — the row is the authoritative store.
     //
     // A present row ends the read, whether or not its JSON parses: returning
     // defaults on a parse failure keeps the row authoritative instead of
@@ -316,7 +316,7 @@ pub async fn get_hardware_settings(
                         terminal_id = %terminal_id,
                         error = %e,
                         "hardware profile row exists but its JSON is unreadable — using defaults, \
-                         not the JSON file (the row is authoritative; TODO 4e resolved 2026-10-04)"
+                         not the JSON file (the row is authoritative)"
                     );
                     Ok(HardwareSettingsDto::from(TerminalProfile::default()))
                 }

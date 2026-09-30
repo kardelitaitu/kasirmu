@@ -138,7 +138,7 @@ fn app_data_dir(state: &AppState) -> Result<std::path::PathBuf, AppError> {
 #[tauri::command]
 /// Get hardware settings for the current terminal from the DB.
 ///
-/// Read order (per TODO 4e, resolved 2026-10-04 — the DB row is authoritative):
+/// Read order (the `hardware_profiles` DB row is the authoritative store):
 /// 1. DB (`hardware_profiles` table) — canonical store.
 /// 2. JSON file (`terminal_profiles/<id>.json`) — one-time seed, read only when
 ///    no row exists; the row it writes then wins on every later read.
