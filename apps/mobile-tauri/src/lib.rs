@@ -881,7 +881,12 @@ pub fn run() {
                 commands::tax::get_tax_rate_dependency_counts_scoped,
                 commands::tax::list_category_tax_rates_scoped,
                 commands::tax::set_category_tax_rates_scoped,
-                // TODO(L-1): these unscoped terminal commands are spoofable
+                // L-1 RESOLVED (2026-10-04): the legacy unscoped terminal commands
+                // are no longer registered in any client — both shells register only
+                // the session-scoped *_scoped variants (see desktop-tauri/src/lib.rs
+                // and the sorted block below). Only set_device_binding_scoped remains
+                // here, and it is scoped; the L-1 finding in
+                // docs/archived/tauri-security-audit.md:162 is satisfied.
                 commands::terminals::set_device_binding_scoped,
                 commands::workspaces::list_workspaces,
                 commands::workspaces::list_workspace_screens,

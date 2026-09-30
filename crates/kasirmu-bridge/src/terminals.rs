@@ -440,44 +440,6 @@ fn build_device_binding_dto(
 
 // ── Write Commands ───────────────────────────────────────────────────
 
-/// Register a new terminal.
-///
-/// **Deprecated for multi-store (ADR #7):** Use `register_terminal_scoped`.
-pub async fn register_terminal(
-    ctx: &BridgeCtx<'_>,
-    user_id: String,
-    args: RegisterTerminalArgs,
-) -> Result<RegisterTerminalResult, BridgeError> {
-    validate_not_empty("name", &args.name).map_err(|e| BridgeError::Invalid(e.to_string()))?;
-    validate_not_empty("device_id", &args.device_id)
-        .map_err(|e| BridgeError::Invalid(e.to_string()))?;
-
-    let mut terminal = Terminal::new(args.name, args.device_id);
-    if let Some(secret) = args.terminal_secret {
-        terminal = terminal.with_secret(secret);
-    }
-    if let Some(meta) = args.metadata {
-        terminal = terminal.with_metadata(meta);
-    }
-
-    let db = ctx.lock_global().await;
-    let store = Store::new(&db);
-    ctx.require_permission_for_user(
-        &store,
-        &user_id,
-        kasirmu_core::permissions::TERMINALS_REGISTER,
-    )?;
-    store.create_terminal(&terminal)?;
-    drop(db);
-
-    // Multi-terminal: multiple terminals may be registered to the same store_id.
-    // Each terminal gets a unique `id` (UUID) and is identified by its `device_id`
-    // (hostname). At startup, AppState looks up the terminal by device_id to set
-    // the session's `terminal_id`. Binding to a store is a separate step.
-    tracing::info!(id = %terminal.id, name = %terminal.name, "terminal registered");
-    Ok(RegisterTerminalResult { id: terminal.id })
-}
-
 /// Register a terminal in the store resolved from a session token. ADR #7.
 pub async fn register_terminal_scoped(
     ctx: &BridgeCtx<'_>,
