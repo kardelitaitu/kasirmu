@@ -8,34 +8,51 @@ next: fix MSL-1 in the fix-order phase | perf: prepared statements per call
 
 use crate::error::SalesError;
 use foundation::{Currency, Money, SaleStatus};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespacedStore};
 use rusqlite::{Connection, Transaction, params};
 
 use crate::models::{Sale, SaleLine};
 
+/// The sales module's own namespace id, as the ownership map names it.
+const OWNER: ModuleId = ModuleId("sales");
+
 /// Database access repository for sales data.
+///
+/// Phase 3 P3.2: reaches the database through a [`NamespacedStore`] scoped to the
+/// `sales` namespace rather than a bare `&Connection`, so every statement is
+/// checked against `modules/ownership.json` before it runs. `sales` owns both
+/// `sales` and `sale_lines`, so the store carries `Grants::none()`.
 pub struct SalesRepository<'a> {
-    conn: &'a Connection,
+    ns: NamespacedStore<'a>,
 }
 
 impl<'a> SalesRepository<'a> {
     /// Create a new `SalesRepository` borrowing a SQLite connection.
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self {
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+        }
     }
 
     /// Retrieve a sale by ID including its line items.
     pub fn get_sale(&self, id: &str) -> Result<Option<Sale>, SalesError> {
-        let mut stmt = self.conn.prepare(
+        let rows = self.ns.own().query_try(
             "SELECT id, status, total_minor, line_count, currency, payment_method, tendered_minor, user_id, created_at, updated_at, discount_percent, discount_label, subtotal_minor, tax_total_minor, customer_id, version, base_currency, base_total_minor, tender_rate_millionths, tip_minor, service_charge_minor
              FROM sales WHERE id = ?1",
+            rusqlite::params![id],
+            Self::map_sale_row,
         )?;
-
-        let mut rows = stmt.query(params![id])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
+        let Some(mut sale) = rows.into_iter().next() else {
+            return Ok(None);
         };
+        sale.lines = self.load_lines(id, sale.currency)?;
+        Ok(Some(sale))
+    }
 
+    /// Map a `sales` row into a [`Sale`]; line items are loaded separately
+    /// ([`load_lines`](Self::load_lines)) because they need the sale's currency.
+    fn map_sale_row(row: &rusqlite::Row<'_>) -> Result<Sale, SalesError> {
         let currency_str: String = row.get(4)?;
         let currency: Currency = currency_str.parse().map_err(|_| {
             SalesError::validation("currency", format!("invalid currency code: {currency_str}"))
@@ -71,48 +88,7 @@ impl<'a> SalesRepository<'a> {
             currency,
         };
 
-        let mut line_stmt = self.conn.prepare(
-            "SELECT id, sale_id, sku, qty, unit_minor, line_minor, line_position, tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json
-             FROM sale_lines WHERE sale_id = ?1 ORDER BY line_position ASC",
-        )?;
-
-        let line_rows = line_stmt.query_map(params![id], |r| {
-            let unit_minor: i64 = r.get(4)?;
-            let line_minor: i64 = r.get(5)?;
-            let tax_amount_minor: i64 = r.get(7).unwrap_or(0);
-
-            Ok(SaleLine {
-                id: r.get(0)?,
-                sale_id: r.get(1)?,
-                sku: r.get(2)?,
-                qty: r.get(3)?,
-                unit_price: Money {
-                    minor_units: unit_minor,
-                    currency,
-                },
-                line_total: Money {
-                    minor_units: line_minor,
-                    currency,
-                },
-                line_position: r.get(6)?,
-                tax_amount: Money {
-                    minor_units: tax_amount_minor,
-                    currency,
-                },
-                tax_rate_id: r.get(8)?,
-                tax_breakdown_json: r.get(9)?,
-                serial_number: r.get(10)?,
-                course: r.get(11)?,
-                modifiers_json: r.get(12)?,
-            })
-        })?;
-
-        let mut lines = Vec::new();
-        for line_res in line_rows {
-            lines.push(line_res?);
-        }
-
-        Ok(Some(Sale {
+        Ok(Sale {
             id: row.get(0)?,
             status,
             total,
@@ -123,7 +99,9 @@ impl<'a> SalesRepository<'a> {
             user_id: row.get(7)?,
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
-            lines,
+            // Line items are loaded by get_sale (they need the sale's currency);
+            // the mapper stands alone so it can run inside query_try.
+            lines: Vec::new(),
             discount_percent: row.get(10).unwrap_or(0),
             discount_label: row.get(11)?,
             subtotal,
@@ -138,7 +116,46 @@ impl<'a> SalesRepository<'a> {
             tip_minor: row.get(19).unwrap_or(0),
             service_charge_minor: row.get(20).unwrap_or(0),
             version: row.get(15).unwrap_or(1),
-        }))
+        })
+    }
+
+    /// Load a sale's line items, in position order.
+    fn load_lines(&self, id: &str, currency: Currency) -> Result<Vec<SaleLine>, SalesError> {
+        self.ns.own().query_try(
+            "SELECT id, sale_id, sku, qty, unit_minor, line_minor, line_position, tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json
+             FROM sale_lines WHERE sale_id = ?1 ORDER BY line_position ASC",
+            rusqlite::params![id],
+            |r| {
+                let unit_minor: i64 = r.get(4)?;
+                let line_minor: i64 = r.get(5)?;
+                let tax_amount_minor: i64 = r.get(7).unwrap_or(0);
+
+                Ok(SaleLine {
+                    id: r.get(0)?,
+                    sale_id: r.get(1)?,
+                    sku: r.get(2)?,
+                    qty: r.get(3)?,
+                    unit_price: Money {
+                        minor_units: unit_minor,
+                        currency,
+                    },
+                    line_total: Money {
+                        minor_units: line_minor,
+                        currency,
+                    },
+                    line_position: r.get(6)?,
+                    tax_amount: Money {
+                        minor_units: tax_amount_minor,
+                        currency,
+                    },
+                    tax_rate_id: r.get(8)?,
+                    tax_breakdown_json: r.get(9)?,
+                    serial_number: r.get(10)?,
+                    course: r.get(11)?,
+                    modifiers_json: r.get(12)?,
+                })
+            },
+        )
     }
 
     /// Insert a new sale and its line items inside a transaction.
@@ -146,7 +163,11 @@ impl<'a> SalesRepository<'a> {
         let status_str = serde_json::to_string(&sale.status)?
             .trim_matches('"')
             .to_string();
-        tx.execute(
+        // A transaction is a property of the connection, so a store built over
+        // the passed `tx` writes inside the caller's transaction while still
+        // running the namespace check.
+        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::none());
+        ns.own().execute(
             "INSERT INTO sales (id, status, total_minor, line_count, currency, payment_method, tendered_minor, user_id, created_at, updated_at, discount_percent, discount_label, subtotal_minor, tax_total_minor, customer_id, version, base_currency, base_total_minor, tender_rate_millionths, tip_minor, service_charge_minor)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
@@ -175,7 +196,7 @@ impl<'a> SalesRepository<'a> {
         )?;
 
         for line in &sale.lines {
-            tx.execute(
+            ns.own().execute(
                 "INSERT INTO sale_lines (id, sale_id, sku, qty, unit_minor, line_minor, line_position, tax_minor, tax_rate_id, tax_breakdown_json, serial_number, course, modifiers_json, currency)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 params![
@@ -206,7 +227,7 @@ impl<'a> SalesRepository<'a> {
         let status_str = serde_json::to_string(&status)?
             .trim_matches('"')
             .to_string();
-        self.conn.execute(
+        self.ns.own().execute(
             "UPDATE sales SET status = ?1, updated_at = ?2, version = version + 1 WHERE id = ?3",
             params![status_str, now, id],
         )?;

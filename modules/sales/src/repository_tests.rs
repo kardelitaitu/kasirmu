@@ -189,3 +189,33 @@ fn update_sale_status_missing_id_is_noop() {
     let result = repo.update_sale_status("missing", SaleStatus::Voided);
     assert!(result.is_ok());
 }
+
+// ── P3.2/P3.5: the repository is namespace-checked ──────────────────────
+
+/// The wrap must not have widened the module's reach: its own tables pass the
+/// ownership check, a foreign table through the same handle is refused.
+#[test]
+fn the_repository_is_scoped_to_its_own_namespace() {
+    use kasirmu_core::db::Store;
+    use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespaceError, NamespacedStore};
+
+    let conn = fresh();
+    let ns = NamespacedStore::new(Store::new(&conn), ModuleId("sales"), Grants::none());
+
+    for table in ["sales", "sale_lines"] {
+        ns.own()
+            .query_try::<i64, _, _, SalesError>(&format!("SELECT 1 FROM {table}"), [], |row| {
+                Ok(row.get(0)?)
+            })
+            .unwrap_or_else(|e| panic!("sales must read its own {table}: {e:?}"));
+    }
+
+    let err = ns
+        .own()
+        .query_try::<i64, _, _, SalesError>("SELECT 1 FROM customers", [], |row| Ok(row.get(0)?))
+        .unwrap_err();
+    assert!(
+        matches!(err, SalesError::Namespace(NamespaceError::Foreign { ref table, .. }) if table == "customers"),
+        "expected Foreign on customers, got {err:?}"
+    );
+}
