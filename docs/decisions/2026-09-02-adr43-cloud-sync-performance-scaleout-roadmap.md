@@ -258,3 +258,17 @@ While designed for horizontal scaling, several items in Tiers 2–4 should **not
 
 > last audited 29-09-26 by docs-auditor
 
+
+---
+
+## Where D4/D5/D7 stand now (appended 2026-10-04)
+
+Three module `next:` markers claimed that D4/D5/D7 work was still pending. Measuring the tree, all three had landed:
+
+- **D4 — Redis/Valkey backend.** `apps/cloud-server/src/redis_backend.rs` is wired with an in-process fallback on a Redis error: `apps/cloud-server/src/sync_api.rs:584` tries the cross-instance snapshot cache first and falls through to the in-process single-flight path on `Ok(None)` or `Err(_)`, and `apps/cloud-server/src/rate_limit.rs:183` holds `Option<RedisBackend>` with the same fallback. The `next: integration with in-process fallback on Redis error` note was already satisfied.
+- **D5/D7 — transactional outbox.** The email report sender is a producer: `apps/cloud-server/src/email.rs:168` enqueues into the outbox (ADR #43 D7), and `apps/cloud-server/src/main.rs:330-331` starts the drainer. A PG variant exists as well — `enqueue_pg` (`apps/cloud-server/src/outbox.rs:98`) and `start_drainer_pg` (`apps/cloud-server/src/outbox.rs:373`) alongside the SQLite `enqueue_sqlite`/`start_drainer_sqlite`.
+- **Conflict surface.** `apps/cloud-server/src/conflict_resolution.rs` keeps its decision pure, but the persistence and HTTP endpoints its `next:` note asked for are live: the `sync_conflicts` rows plus `GET /api/sync/conflicts` and `POST /api/sync/conflicts/{id}/resolve` (`apps/cloud-server/src/sync_api.rs:198-200`, handlers at `:772` and `:815`), with the store surface in `apps/cloud-server/src/sync_store/conflicts.rs`.
+
+Pins: `list_conflicts_route_is_registered_and_empty_by_default` and `resolve_conflict_route_reports_404_for_an_unknown_id` (both in `apps/cloud-server/src/sync_api_tests.rs`) keep the HTTP half of the conflict surface from silently disappearing. The three module headers now read `next: none`.
+
+> D4/D5/D7 status re-measured 2026-10-04.

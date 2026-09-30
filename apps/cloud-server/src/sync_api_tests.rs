@@ -2711,3 +2711,50 @@ fn every_duplicate_id_producer_calls_the_shared_constant() {
         "the classifier must not re-type the prefix either"
     );
 }
+
+// ── Conflict review routes (ADR #43 conflict surface) ─────────────────────
+
+/// `GET /api/sync/conflicts` is registered and tenant-scoped: an empty
+/// tenant yields a well-formed list with count 0. This is the HTTP half of
+/// the conflict surface pinning that the persistence + endpoint pair the
+/// `conflict_resolution.rs` `next:` note used to ask for is actually wired.
+#[tokio::test]
+async fn list_conflicts_route_is_registered_and_empty_by_default() {
+    let app = test_router();
+    let req = authed(
+        axum::http::Method::GET,
+        "/api/sync/conflicts",
+        Some("tenant-a"),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["count"], 0, "a fresh tenant has no flagged conflicts");
+    assert!(
+        json["conflicts"]
+            .as_array()
+            .expect("conflicts is an array")
+            .is_empty(),
+        "the list must be present and empty, not absent"
+    );
+}
+
+/// `POST /api/sync/conflicts/:id/resolve` reports 404 for an id that does
+/// not exist rather than 500 or a silent success. The route must be
+/// registered for the resolve half of the surface to be reachable at all.
+#[tokio::test]
+async fn resolve_conflict_route_reports_404_for_an_unknown_id() {
+    let app = test_router();
+    let req = authed_post(
+        "/api/sync/conflicts/does-not-exist/resolve",
+        r#"{"resolution":"keep-local"}"#,
+        Some("tenant-a"),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "an unknown conflict id is a 404, not a server error"
+    );
+}

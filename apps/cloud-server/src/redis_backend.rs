@@ -2,7 +2,10 @@
 last audited 2026-09-02 by Architecture Team
 crate: cloud-server | status: PROPOSED | lint: CLEAN
 findings: D4 — Redis/Valkey cross-instance snapshot cache + shared rate limiter
-next: integration with in-process fallback on Redis error
+next: none
+DONE 2026-10-04: both consumers handle a Redis error by falling back to
+in-process - sync_api.rs:584 (snapshot cache, Err -> in-process path) and
+the rate limiter (rate_limit.rs:183 holds Option<RedisBackend>).
 */
 
 //! Optional Redis backend for the cloud sync server (ADR #43 D4).

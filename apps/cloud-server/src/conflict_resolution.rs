@@ -10,7 +10,10 @@ UPDATE plus the `uq_gift_card_redeem_sale` unique index, and an automatic
 merge would defeat both, so a divergent money movement is always a row for
 human review. `tie_break` is total and symmetric so every replica picks the
 same last-writer-wins winner.
-next: persistence + HTTP endpoints | perf: O(terminals + payload fields)
+next: none | perf: O(terminals + payload fields)
+DONE 2026-10-04: the decision is persisted (sync_conflicts) and served over
+HTTP - GET /api/sync/conflicts and POST /api/sync/conflicts/{id}/resolve
+(sync_api.rs:198-200); the store methods live in sync_store/conflicts.rs.
 */
 //!
 //! This module is pure: it takes vectors and payloads and returns a

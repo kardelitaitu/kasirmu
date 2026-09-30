@@ -2,7 +2,10 @@
 last audited 2026-09-02 by Architecture Team
 crate: cloud-server | status: PROPOSED | lint: CLEAN
 findings: D7 — transactional outbox for async email/webhook delivery
-next: wire email report sender as producer; add PG variant
+next: none
+DONE 2026-10-04: the email report sender enqueues into the outbox
+(email.rs:168, ADR #43 D7) and a PG variant exists (enqueue_pg at
+outbox.rs:98, start_drainer_pg at outbox.rs:373).
 */
 
 //! Transactional outbox for async delivery (ADR #43 D7).
