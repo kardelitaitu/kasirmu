@@ -856,6 +856,17 @@ fn apply_pulled_page(
         // be overwritten with our now-stale value. The re-read and the write
         // below share the same `blocking_lock()` hold, so no rewind can
         // interleave between them.
+        // Fail-SAFE, not fail-blind: if this re-read fails, `durable` becomes
+        // `(None, None)`, which will NOT match the captured `(prev_since,
+        // prev_cursor)` (unless both were already `None`, i.e. first sync), so
+        // `rewound` is true and we take the conservative branch below — retain
+        // the anchor and do not advance. The worst case is a spurious 'rewind
+        // detected' that leaves the old anchor in place, which only costs a
+        // re-pull; it can never overwrite a live anchor with a stale one.
+        // (The one exception is the genuine first-sync `(None, None)`, where
+        // there is nothing to clobber.) Contrast the anchor READ at the top of
+        // the tick, which must error — there a silent default would force a
+        // full-history replay instead of refusing one.
         let durable = store.get_sync_pull_state().unwrap_or_default();
         let rewound =
             durable.since.as_deref() != prev_since || durable.cursor.as_deref() != prev_cursor;

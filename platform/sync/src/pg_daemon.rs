@@ -496,6 +496,14 @@ impl PgSyncDaemon {
                             // be overwritten with our now-stale value. Both
                             // the read and the (skipped) write hold the same
                             // `blocking_lock()`, so nothing can interleave.
+                            // Fail-SAFE, not fail-blind: a failed re-read yields
+                            // `(None, None)`, which will not match the captured
+                            // `(prev_since, prev_cursor)` (unless both were already
+                            // `None`, the first-sync case), so `rewound` is true and
+                            // we retain the anchor without advancing. The worst case
+                            // is a spurious 'rewind detected'; it can never overwrite
+                            // a live anchor with a stale one. Contrast the anchor READ
+                            // at the top of the tick, which must error.
                             let durable = store
                                 .get_sync_pull_state()
                                 .unwrap_or_default();
