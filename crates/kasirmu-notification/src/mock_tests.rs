@@ -107,3 +107,34 @@ async fn mock_multiple_templates() {
     assert_eq!(msgs[0].template_name, "order_confirmed");
     assert_eq!(msgs[1].template_name, "payment_receipt");
 }
+
+/// The panic-inventory gate (scripts/scan-unwrap-panic.py, ADR #33) treats a
+/// `// INVARIANT:` comment as documentation for a mocked lock unwrap. An earlier
+/// reword dropped that marker word and silently reddened the gate; this pin keeps
+/// the accepted marker on every CODE lock unwrap in this mock.
+#[test]
+fn mock_lock_unwraps_carry_the_panic_inventory_marker() {
+    let src = include_str!("mock.rs");
+    // Only CODE lines matter: the module header prose mentions both tokens.
+    let lines: Vec<&str> = src.lines().collect();
+    let marker = "// INVARIANT: lock poison is the intended failure signal in a test double.";
+    let mut checked = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        let code = line.trim_start();
+        if code.starts_with("//") || !line.contains(".lock().unwrap()") {
+            continue;
+        }
+        checked += 1;
+        let same = line.contains(marker);
+        let above = i > 0 && lines[i - 1].trim() == marker;
+        assert!(
+            same || above,
+            "lock unwrap at mock.rs:{} lacks the accepted // INVARIANT: marker (ADR #33)",
+            i + 1
+        );
+    }
+    assert!(
+        checked > 0,
+        "the mock should still contain lock unwraps to document"
+    );
+}

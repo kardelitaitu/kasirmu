@@ -215,3 +215,24 @@ tracked baseline JSON to chart inventory history over time.
 
 > last audited 29-09-26 by docs-auditor
 
+
+> **Repair (2026-10-04): the marker word is load-bearing, and a prior reword
+> silently dropped it.** `scripts/scan-unwrap-panic.py` accepts a documented
+> invariant when the comment matches `INVARIANT_COMMENT_RE`
+> (`(INVARIANT|SAFETY|cannot fail|must not fail|impossible)`, scanner line 144).
+> The PAY-10 hygiene pass (which removed `// SAFETY:` from safe `.lock().unwrap()`
+> calls so `grep SAFETY` finds only real `unsafe`) reworded the
+> kasirmu-payment mock's comments to plain prose — *"Lock poison is the intended
+> failure signal in a test double."* — which matches NONE of those tokens, so the
+> scanner began reporting them as recoverable and `dev-ci.yml#static-gates` went
+> red. `crates/kasirmu-core/src/migrations.rs` had the same problem independently:
+> its comments read `// .unwrap() reason: ...`, also unmatched. Both files now use
+> `// INVARIANT: <text>`, which keeps the panic-inventory marker AND keeps `grep
+> SAFETY` clean — the two goals the PAY-10 pass thought were in conflict are not.
+> Two source-level pins (`mock_lock_unwraps_carry_the_panic_inventory_marker` in
+> `crates/kasirmu-notification/src/mock_tests.rs` and
+> `crates/kasirmu-payment/src/drivers/mock_tests.rs`) assert every code
+> `.lock().unwrap()` in those mocks carries the accepted marker on the same or
+> immediately preceding line, so a future reword cannot drop it again without a
+> test failure. Re-measured 2026-10-04: `python scripts/scan-unwrap-panic.py`
+> exits 0.

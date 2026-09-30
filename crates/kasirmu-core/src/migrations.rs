@@ -588,18 +588,18 @@ pub fn fresh_db() -> rusqlite::Connection {
             })
         }
 
-        let conn = rusqlite::Connection::open_in_memory().unwrap(); // `.unwrap()` reason: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
-        conn.execute_batch(cached_sql()).unwrap(); // `.unwrap()` reason: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
+        let conn = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail; failure is a harness programming error (see fresh_db # Panics)
+        conn.execute_batch(cached_sql()).unwrap(); // INVARIANT: SQL is compile-time embedded from `ALL`; syntax errors fail the test suite, not a live process
         Mutex::new(conn)
     });
 
-    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // `.unwrap()` reason: in-memory test DB open cannot fail (fresh_db # Panics)
+    let mut fresh = rusqlite::Connection::open_in_memory().unwrap(); // INVARIANT: in-memory test DB open cannot fail (fresh_db # Panics)
     {
-        let snapshot = SNAPSHOT.lock().unwrap(); // `.unwrap()` reason: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
-        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // `.unwrap()` reason: both connections are valid in-memory SQLite handles; Backup::new cannot fail
+        let snapshot = SNAPSHOT.lock().unwrap(); // INVARIANT: lock is only poisoned if the snapshot init closure panicked, which is a test harness bug
+        let backup = rusqlite::backup::Backup::new(&snapshot, &mut fresh).unwrap(); // INVARIANT: both connections are valid in-memory SQLite handles; Backup::new cannot fail
         backup
             .run_to_completion(100, std::time::Duration::from_millis(0), None)
-            .unwrap(); // `.unwrap()` reason: page copy between two in-memory DBs cannot fail at runtime
+            .unwrap(); // INVARIANT: page copy between two in-memory DBs cannot fail at runtime
     } // drop Backup (releases &mut fresh borrow), then drop MutexGuard
 
     // Mirror the per-connection PRAGMAs `run` applies. WAL is impossible
