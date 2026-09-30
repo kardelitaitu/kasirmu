@@ -518,8 +518,14 @@ jobs:
         run: |
           mkdir -p ui/dist ui/dist-mobile ui/dist-desktop
           touch ui/dist/index.html ui/dist-mobile/index.html ui/dist-desktop/index.html
+      # `tool` is stated explicitly: pinned by SHA, the action cannot infer the
+      # tool from the ref, and a trailing comment is not reliably parsed --
+      # left implicit it warns "no tool specified", installs nothing, and the
+      # next step dies with "error: no such command: `llvm-cov`".
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@fa23953489c080190314742a9b907f8e97c6767c # cargo-llvm-cov
+        with:
+          tool: cargo-llvm-cov
       # Postgres is declared as a service above because kasirmu-cloud and
       # platform/sync carry PG-gated cases that connect when OZ_TEST_PG_URL
       # is set; without it those tests still PASS (they return early) but
