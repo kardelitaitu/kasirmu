@@ -5,7 +5,7 @@ import { requiredLocalized } from '@/components';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { Localized, useLocalization } from '@fluent/react';
 import { buildCustomReport, type CustomReportRequest, type CustomReportResponse } from '@/api/reports';
-import { getPrimaryLocationScoped } from '@/api/locations';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import { buildCsv, downloadCsv } from './csv';
 import { Card } from '@/components/Card';
@@ -79,18 +79,13 @@ const { sessionToken: rawToken } = useWorkspace();
   const [dataset, setDataset] = useState<DatasetKey>('sales');
   // REP-03/R36-06: anchor the default window to the PRIMARY STORE's calendar
   // day; FALLBACK_STORE_TZ (UTC) until the profile loads or if the fetch fails.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
+  // REP-03: one shared read of the primary store's zone rather than this file's
+  // own copy of the fetch -- seven call sites had one each, and a copy is free to
+  // drift. See hooks/useStoreTimezone.ts.
+  const storeTz = useStoreTimezone();
   const rangeTouched = useRef(false);
   const [startDate, setStartDate] = useState(isoDaysAgo(30));
   const [endDate, setEndDate] = useState(isoToday());
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
-      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
-    return () => { alive = false; };
-  }, [sessionToken]);
   useEffect(() => {
     if (!storeTz || rangeTouched.current) return;
     setStartDate(isoDaysAgo(30, storeTz));

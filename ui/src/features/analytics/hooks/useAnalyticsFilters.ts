@@ -19,7 +19,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { getPrimaryLocationScoped } from '@/api/locations';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '../analytics-data';
 import {
   ZOOM_MAX,
@@ -91,22 +91,12 @@ export function useAnalyticsFilters({
   // as the store sees it. Until the profile loads (or if the fetch fails)
   // the anchor is FALLBACK_STORE_TZ in analytics-data (UTC, the schema's own
   // column default), never the host zone — see the comment there.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
+  // This hook receives the token as an argument and has no reason to read the
+  // context again, so it hands it to useStoreTimezone explicitly — that is what
+  // keeps AnalyticsScreen and the report screens on ONE shared request when both
+  // are mounted, instead of one per copy of the fetch.
+  const storeTz = useStoreTimezone(sessionToken);
   const customTouched = useRef(false);
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => {
-        if (alive) setStoreTz(p?.timezone ?? null);
-      })
-      .catch(() => {
-        /* storeTz stays null, so isoToday/isoDaysAgo use FALLBACK_STORE_TZ */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [sessionToken]);
   useEffect(() => {
     // Re-seed the untouched custom defaults once the store day is known.
     if (!storeTz || customTouched.current) return;

@@ -32,7 +32,7 @@ import {
   type TopProductRow, type LowStockAlert, type CategoryBreakdownRow,
   type HourlyHeatmapRow,
 } from '@/api/reports';
-import { getPrimaryLocationScoped } from '@/api/locations';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import { isoDaysAgo, isoToday } from '@/features/analytics/analytics-data';
 import './DashboardScreen.css';
 
@@ -144,20 +144,14 @@ function DashboardScreenContent() {
   // day, not the device's. Until the profile loads (or if the fetch fails) the
   // anchor is FALLBACK_STORE_TZ (UTC, the schema's column default) — see the
   // comment on that constant in features/analytics/analytics-data.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
+  // The read itself is shared: this file used to keep its own copy of the
+  // fetch, and seven call sites had one each.
+  const storeTz = useStoreTimezone();
   const rangeTouched = useRef(false);
   const [fromDraft, setFromDraft] = useState(isoDaysAgo(29));
   const [toDraft, setToDraft] = useState(isoToday());
   const [from, setFrom] = useState(isoDaysAgo(29));
   const [to, setTo] = useState(isoToday());
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
-      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
-    return () => { alive = false; };
-  }, [sessionToken]);
   useEffect(() => {
     // Re-seed the untouched defaults once the store's day is actually known.
     if (!storeTz || rangeTouched.current) return;

@@ -20,7 +20,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { parseMinorUnits } from '@/types/domain';
 import { isoToday } from '@/features/analytics/analytics-data';
-import { getPrimaryLocationScoped } from '@/api/locations';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import './ExchangeRateScreen.css';
 
 // The default effective date used to be today's date read off the DEVICE
@@ -161,20 +161,11 @@ export default function ExchangeRateScreen() {
   );
 
   // ADR #48 Decision 3: the effective date is a business date in the store's
-  // IANA zone. The zone is read the same way AnalyticsScreen and
-  // reports/DashboardScreen read it — getPrimaryLocationScoped — so all three
-  // screens anchor to one value instead of each inventing its own default.
-  // Until it loads (or if the fetch fails) the anchor is FALLBACK_STORE_TZ
-  // (UTC, the schema's column default), never the device zone.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
-      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
-    return () => { alive = false; };
-  }, [sessionToken]);
+  // IANA zone. AnalyticsScreen and reports/DashboardScreen anchor to the same
+  // value, so all three screens share one read instead of each inventing its own
+  // default. Until it loads (or if the fetch fails) the anchor is
+  // FALLBACK_STORE_TZ (UTC, the schema's column default), never the device zone.
+  const storeTz = useStoreTimezone();
 
   const openCreate = useCallback(() => {
     setForm(emptyForm(storeTz));

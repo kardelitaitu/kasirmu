@@ -4,7 +4,7 @@ import { Localized, useLocalization } from '@fluent/react';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { listKdsOrdersScoped, type KdsOrder } from '@/api/kds';
 import { FALLBACK_STORE_TZ, storeOffsetMs } from '@/features/analytics/analytics-data';
-import { getPrimaryLocationScoped } from '@/api/locations';
+import { useStoreTimezone } from '@/hooks/useStoreTimezone';
 import './KdsCompletedView.css';
 
 /** Time-bucket labels and their day-range condition. Exported so tests use the real
@@ -92,16 +92,8 @@ export function KdsCompletedView({
   const { sessionToken: rawToken } = useWorkspace();
   const sessionToken = rawToken || '';
   // The bucket columns are the STORE's days, not the terminal's -- see
-  // dayOffset(). Read the same way AnalyticsScreen and DashboardScreen do.
-  const [storeTz, setStoreTz] = useState<string | null>(null);
-  useEffect(() => {
-    if (!sessionToken) return;
-    let alive = true;
-    getPrimaryLocationScoped(sessionToken)
-      .then((p) => { if (alive) setStoreTz(p?.timezone ?? null); })
-      .catch(() => { /* storeTz stays null -> the UTC fallback applies */ });
-    return () => { alive = false; };
-  }, [sessionToken]);
+  // dayOffset(). The read is shared with AnalyticsScreen and DashboardScreen.
+  const storeTz = useStoreTimezone();
   const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchFailed, setFetchFailed] = useState(false);
