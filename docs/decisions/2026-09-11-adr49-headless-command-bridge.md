@@ -188,4 +188,57 @@ takes one. “ctx first” is a default, not a mandate; the burden sits on *remo
 3. **The findings this decision preserved are not fixed.** They are registered, not
    remediated.
 
+## Amendment 2026-10-04 — absence and failure are different answers
+
+A bridge body that reads a hardware registry is where this decision's error boundary stops
+being academic. `kasirmu_bridge::scale::list_scale_devices_scoped` is the first such body to
+carry the rule explicitly, and the distinction is worth recording because the two neighbouring
+bodies in the same module resolve it in *opposite* directions on purpose.
+
+**The defect (fixed at `ac93cff77`).** The body walked `registry.scale_ids()` and paired each id
+with `if let Some(scale) = registry.scale(&id).await`, pushing only the ones that resolved. A
+lookup that came back `None` therefore **removed a device from the answer** — a device list
+shorter than the registry actually holds, returned as `Ok`, with no error and no log. Nothing in
+the result distinguished "this register has two scales" from "this register has two scales and
+one of them was silently dropped". An operator sees a scale missing from the hardware view and
+has nothing to act on.
+
+**Why that is not the same as the sibling `None`.** `read_scale_weight_scoped` (same module)
+maps a missing scale to `Ok(None)` deliberately: *no scale bound to this register* is a defined
+state that the UI renders as "no weight". One `None` is a fact about the register; the other was
+a fact about the read that had been laundered into a fact about the register. The amendment's
+rule: **`None` may mean "absent" or it may mean "the lookup failed"; these must be different
+types or the failure will eventually be read as an absence.**
+
+**The fix is a registry accessor, not a retry loop.** `kasirmu-hal` gained
+`DriverRegistry::scales() -> Vec<(String, Option<Arc<dyn WeightScale>>)>`, which takes *one*
+read guard and returns every id together with its driver. The list can no longer be shortened by
+a second lookup racing a concurrent change, because there is no second lookup. The `Option` is
+always `Some` today — the map has no removal path — and is kept so the snapshot stays
+self-describing for a caller that must not assume it. The command still guards the arm and
+returns a loud `BridgeError::Internal` naming the id, rather than continuing with a shorter list.
+
+**Test-support is a feature, not a `#[cfg(test)]` gate.** The pins need to bind a scale, and the
+production writer (`register_scale`) was deleted 2026-09-27 as dead code. A `#[cfg(test)]` gate
+cannot serve a downstream crate: cargo compiles `kasirmu-hal` **without** `cfg(test)` when it is a
+dependency of `kasirmu-bridge`'s own test build. The capability is therefore a `test-support`
+feature that the consuming `[dev-dependencies]` turns on, which leaves every release build
+byte-identical. This is the pattern for any future fixture helper a sibling crate needs.
+
+**The pins, and what they honestly cover.** Four tests: a registered scale is reported with its
+identity; an unconfigured register reports an empty list rather than an error; the listed count
+always accounts for every id the registry reports; and `scales()` pairs each id with its driver.
+The third was verified RED-then-GREEN against the fix. Stated plainly: **no test can drive the
+`None` arm through the public registry**, because no code path ever removes a scale — the arm is a
+guard, not a reachable state. The count invariant and the `scales()` pairing pin the *contract*
+that made the omission impossible, which is the part a regression would break.
+
+**Still open, and now recorded as the tablet twin's debt.**
+`apps/mobile-tauri/src/commands/scale.rs:66-73` carries the identical `if let Some(..)` swallow and
+does **not** route through the bridge yet (that is this ADR's own §What was NOT done, item 1 — the
+tablet is still a second copy of every body). The desktop shell
+(`apps/desktop-tauri/src/commands/scale.rs:19-39`) delegates to the bridge and inherits the fix.
+A future pass closing the tablet migration should fix the twin by delegating, not by re-patching
+the copy.
+
 > last audited 29-09-26 by docs-auditor
