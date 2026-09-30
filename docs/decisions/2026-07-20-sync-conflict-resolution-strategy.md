@@ -658,3 +658,15 @@ Pinned by `pending_count_unknown_sentinel_is_distinct_from_zero` and `pending_of
 The HTTP `SyncDaemon` had the identical collapse in `daemon_tick.rs`'s `update_daemon_status`, which the first pass missed because it read the sibling file; it now reports the same sentinel and logs which failure point fired (`0443db182`). Because two daemons sharing a value by convention will eventually drift, the sentinel moved to one definition in `daemon.rs` beside `DaemonStatus`, re-exported from `pg_daemon.rs` so both `daemon::PENDING_COUNT_UNKNOWN` and `pg_daemon::PENDING_COUNT_UNKNOWN` name the same item.
 
 Pinned for the HTTP daemon by `daemon_pending_count_unknown_sentinel_is_shared_and_distinct_from_zero` (asserts the re-export is the same value) and `daemon_pending_offline_count_errors_when_the_table_is_missing` (`platform/sync/src/daemon_tests.rs`).
+
+## A clock that cannot be read must not seed stamping from zero (2026-10-04)
+
+Conflict detection on the push lane depends on a per-terminal Lamport counter, and `SyncTransport::with_vector_stamping` documents the one rule that makes it work: `initial_counter` "must come from the persisted clock, not from zero" (`transport.rs:354-360`). A counter that rewinds on restart makes every subsequent push look older than what the server has already recorded, so the push is classified `Stale` and detection quietly stops for that terminal.
+
+The daemon's `read_stamping_seed` broke that rule. It read the persisted counter as `.ok().flatten().and_then(|raw| parse_counter(&raw).ok()).unwrap_or(0)`, which folds two different failures — a `get_setting` read error and a parse failure — into the same `0` that a clock never written produces. `with_stamping_seed` then called `with_vector_stamping(&terminal_id, 0)`: stamping switched ON, with a rewound counter.
+
+This also contradicted the crate's own documented behaviour. `parse_counter` states that a value which does not parse is an error rather than a `0` (`platform/sync/src/crdt/clock_store.rs:69-73`), and `SettingsClockStore::load_counter` propagates both the read error and corruption (`clock_store.rs:56`). The daemon was the one caller that did not.
+
+`read_stamping_seed` now separates three cases: a terminal with no configured identity yields no stamping, unchanged; a clock never written yields `0`, which `ClockStore::load_counter` documents as correct; and a clock present but unreadable or corrupt returns `None` so the caller pushes WITHOUT vector stamps for that cycle. Unstamped is a defined state — the server treats such an item as coming from a peer that predates vector support and skips detection for it (`transport.rs:292-295`) — whereas a rewound counter mis-classifies pushes as stale. Both failures log at error level, and the persisted value is left untouched, so stamping resumes correctly once the store is healthy.
+
+Three pins in `platform/sync/src/daemon_tests.rs`: `read_stamping_seed_refuses_to_reuse_zero_when_the_clock_is_corrupt` (a corrupt row yields no seed), `read_stamping_seed_seeds_zero_only_when_the_clock_was_never_written` (the absent row still seeds `0`), and `read_stamping_seed_is_none_without_a_terminal_identity`.
