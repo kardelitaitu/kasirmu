@@ -28,7 +28,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSwipe } from '@/hooks/useSwipe';
 import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
-import { settleRead } from '@/utils/settle-read';
+import { settleRead, type SettledRead } from '@/utils/settle-read';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
@@ -215,6 +215,15 @@ export default function SalesHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
+  // `[]` answers two questions here: 'this store has no other cashiers' and
+  // 'we could not ask'. The second is an EXPECTED outcome, not an exceptional
+  // one: list_staff_scoped requires permissions::STAFF_READ
+  // (crates/kasirmu-bridge/src/staff.rs:349), so a cashier-role session that may
+  // legitimately read sales history is refused this list. A silent `[]` leaves the
+  // Cashier filter offering only 'All Cashiers' -- a roster claim -- and degrades
+  // every cashier name in the table AND in the CSV export (cashierName falls back
+  // to userId.slice(0, 8)) to a truncated id, with nothing on screen to say so.
+  const [staffUnknown, setStaffUnknown] = useState(false);
   const [detail, setDetail] = useState<SaleDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -294,25 +303,29 @@ export default function SalesHistoryScreen() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [response, staffList] = await Promise.all([
-        // ADR #7, matching the listStaffScoped call immediately below -- which already had the
-        // conditional. Reading the ambient list here meant the cashier's own sales history could
-        // come from a different store than the staff list rendered beside it.
-        // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
-        // page window — see the constant for why an offset would break the
-        // filters above. The unscoped `listSales` fallback declares no bounds
-        // of its own (`history.rs:61`), so it is left exactly as it was; it
-        // is the no-session path.
-        sessionToken
-          ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
-          : listSales(),
-        sessionToken
-          ? listStaffScoped(sessionToken).catch(() => [] as StaffMemberDto[])
-          : Promise.resolve([] as StaffMemberDto[]),
-      ]);
-      setSales(response.sales);
-      setSalesHistoryCapped(response.salesHistoryCapped);
-      setStaff(staffList);
+      // The staff list is settled separately from the sales list on purpose.
+      // `Promise.all` would let one refused read discard the other arm, and the
+      // outer catch below stands the WHOLE screen down -- reporting a missing
+      // roster by hiding sales that loaded perfectly well.
+      //
+      // ADR #7, matching the listStaffScoped call immediately below -- which already had the
+      // conditional. Reading the ambient list here meant the cashier's own sales history could
+      // come from a different store than the staff list rendered beside it.
+      // R3: bounded. `SALES_FETCH_LIMIT` is a count ceiling rather than a
+      // page window — see the constant for why an offset would break the
+      // filters above. The unscoped `listSales` fallback declares no bounds
+      // of its own (`history.rs:61`), so it is left exactly as it was; it
+      // is the no-session path.
+      const response = await (sessionToken
+        ? listSalesScoped(sessionToken, SALES_FETCH_LIMIT)
+        : listSales());
+      const staffRead = await (sessionToken
+        ? settleRead('staff', listStaffScoped(sessionToken))
+        : Promise.resolve({ ok: true, value: [] } as const satisfies SettledRead<StaffMemberDto[]>));
+    setSales(response.sales);
+    setSalesHistoryCapped(response.salesHistoryCapped);
+    setStaff(staffRead.ok ? staffRead.value : []);
+    setStaffUnknown(!staffRead.ok);
     } catch {
       // LOAD-02: an initial load failure must not look like an empty
       // database — surface the error and offer Retry instead.
@@ -683,11 +696,17 @@ export default function SalesHistoryScreen() {
   }, [closeRefund, detail, loadRefunds, load, invalidateCache]);
 
   // ── Cashier display helper ─────────────────────────────────────
+  // The em dash is reserved for the one claim we can actually make: the sale
+  // records no cashier. When the roster did not load, `staff` is empty, and the
+  // `userId.slice(0, 8)` fallback would then print a truncated id for EVERY
+  // row -- a different name that looks like a real one, and it reaches the CSV
+  // export too. The dash is a visible gap instead.
   const cashierName = useCallback((userId: string | null): string => {
     if (!userId) return '—';
     const s = staff.find((m) => m.id === userId);
-    return s ? s.display_name : userId.slice(0, 8);
-  }, [staff]);
+    if (s) return s.display_name;
+    return staffUnknown ? '—' : userId.slice(0, 8);
+  }, [staff, staffUnknown]);
 
   const [csvExporting, setCsvExporting] = useState(false);
 
@@ -954,6 +973,10 @@ export default function SalesHistoryScreen() {
             <Localized id="sales-history-cashier-all">
               <option value=""><span>All Cashiers</span></option>
             </Localized>
+            {/* No `staffUnknown` guard here, and deliberately: the map is already
+                empty when the read failed, so a guard would be a dead condition. The
+                alert below the filters is the load-bearing part -- an option list of
+                only 'All Cashiers' is the claim being made wrong. */}
             {staff.map((m) => (
               <option key={m.id} value={m.id}>{m.display_name}</option>
             ))}
@@ -962,6 +985,25 @@ export default function SalesHistoryScreen() {
         </div>
       </div>
       </Localized>
+
+      {/* ── The roster read that did not answer ────────────── */}
+      {/* The Cashier filter and every cashier name on this screen are built from
+           one list. A failed read emptied it silently, so the filter offered only
+           'All Cashiers' -- a claim about the store's roster rather than about
+           this screen's knowledge -- and the table fell back to truncated ids.
+           list_staff_scoped requires STAFF_READ (crates/kasirmu-bridge/src/staff.rs:349),
+           so a refused read is an expected outcome for a session that may still
+           read sales history; it is not a malfunction to be papered over. */}
+      {staffUnknown && (
+        <div className="sales-history-staff-unknown" role="alert">
+          <Localized id="sales-history-staff-unknown">
+            <span>Cashier names could not be loaded</span>
+          </Localized>
+          <Button variant="secondary" size="sm" onClick={() => { void load(); }}>
+            <Localized id="retry"><span>Retry</span></Localized>
+          </Button>
+        </div>
+      )}
 
       {/* ── Table ───────────────────────────────────────────────── */}
       {loading ? (

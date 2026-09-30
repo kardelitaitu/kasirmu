@@ -490,6 +490,12 @@ refund-history-unknown = Refunds for this sale could not be loaded
 # is named -- a blank cost cell would read as a cheaper line.
 margin-history-unknown = Cost and margin for this sale could not be loaded
 
+# The CASHIER roster could not be READ. This is not a malfunction:
+# list_staff_scoped requires STAFF_READ, so a session that may still read sales
+# history can be refused this one list. Without this key the Cashier filter reads
+# as 'All Cashiers' and every name in the table falls back to a truncated id.
+sales-history-staff-unknown = Cashier names could not be loaded
+
 # The CSV export finished, but the per-line margin read failed for N of the sales
 # in it, so those rows carry blank cost and margin cells. The count is the
 # number of SALES whose margins are missing, not the number of lines. No .count

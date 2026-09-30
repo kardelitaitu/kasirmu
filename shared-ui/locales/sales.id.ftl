@@ -455,6 +455,9 @@ margin-history-unknown = Biaya dan margin untuk penjualan ini tidak dapat dimuat
 # without them. The number is SALES, not lines; see the note on the en key for
 # why there is no .count attribute.
 sales-history-export-margins-unknown = Biaya dan margin tidak dapat dibaca untuk { $count } penjualan; baris tersebut diekspor tanpa kolom itu
+# en: Cashier names could not be loaded; the Cashier filter is therefore empty and
+# the table shows a dash where a name would be. See the note on the en key.
+sales-history-staff-unknown = Nama kasir tidak dapat dimuat
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia

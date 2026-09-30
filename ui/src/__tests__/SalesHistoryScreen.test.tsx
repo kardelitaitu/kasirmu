@@ -788,4 +788,74 @@ describe('SalesHistoryScreen', () => {
     createUrl.mockRestore();
     clickSpy.mockRestore();
   });
+
+  // MUTATION 1: drop the dash. `staffUnknown` is set on every settled read, so the
+  //   flag is the only thing separating 'the roster is empty' from 'we could not
+  //   ask'. Expected: BOTH new cases fail -- the dash disappears, the roster recovers.
+  // MUTATION 2: keep the flag but delete the ALERT. Restores the original
+  //   `[]`-on-failure shape minus the naming: truncated ids return to the table and
+  //   the filter reads as a single-cashier store with nothing on screen to say so.
+  //   Expected: the first new case fails, because nothing announces the gap.
+  // MUTATION 3: the alert without the dash. Proves the DASH is load-bearing, not
+  //   just the alert -- the same question the refund and margin blocks answered here.
+  //   Expected: the first new case fails on `user-1` being back on screen.
+
+  // ── The roster read that did not answer ─────────────────────
+  //
+  // listStaffScoped(sessionToken).catch(() => []) reported a FAILED read as
+  // 'this store has no other cashiers'. That is a claim about the WORLD, and one
+  // list feeds three of them on this screen: the Cashier filter, every name in the
+  // table, and the cashier column of the CSV export. A refused read is an EXPECTED
+  // outcome, not a malfunction -- list_staff_scoped requires permissions::STAFF_READ
+  // (crates/kasirmu-bridge/src/staff.rs:349), so a session allowed to read sales
+  // history can still be refused the roster.
+
+  it('says the roster is unknown instead of claiming a single-cashier store', async () => {
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockListStaff.mockRejectedValue(new Error('permission denied'));
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    // Anchor on the ARRIVING alert, never on an absence: while `loading` is true
+    // neither the alert nor the names are on screen, so a poll for their absence
+    // would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cashier names could not be loaded',
+      );
+    });
+    // The name column must NOT be a truncated id: 'user-1'.slice(0, 8) is a
+    // different string that looks like a real name, and it reaches the export too.
+    expect(screen.queryByText('user-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+    // The sales themselves are unaffected -- only the roster read was unanswered.
+    expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+  });
+
+  it('names the cashiers again once a retry answers', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockListStaff.mockRejectedValueOnce(new Error('permission denied'));
+    mockListStaff.mockResolvedValue(sampleStaff);
+    const { container } = renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cashier names could not be loaded',
+      );
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      // Alice is on screen TWICE once the roster answers -- in the filter option
+      // and in the table cell -- so anchor on the CELL, which is the claim under
+      // test, rather than a bare getByText that throws on the second match.
+      const cells = container.querySelectorAll('.sales-history-cell-cashier');
+      expect(cells.length).toBeGreaterThan(0);
+      expect(cells[0]!.textContent).toBe('Alice');
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The filter is populated again, not merely the table.
+    expect(screen.getByRole('option', { name: 'Bob' })).toBeInTheDocument();
+  });
 });
