@@ -146,7 +146,7 @@ export function OpenBillsPanel({
                 <div key={ob.id} className="pos-held-item">
                   <div className="pos-held-item-info">
                     <span className="pos-held-item-label">
-                      {ob.customer_name || ob.label}
+                      {ob.label || ob.customer_name}
                     </span>
                     <span className="pos-held-item-meta">
                       {ob.item_count} item{ob.item_count !== 1 ? 's' : ''} &middot; {formatMoney({ minor_units: ob.total_minor, currency: ob.currency })} &middot; {new Date(ob.created_at).toLocaleString()}
@@ -156,7 +156,7 @@ export function OpenBillsPanel({
                     type="button"
                     className="pos-held-item-resume"
                     onClick={() => handleResumeOpenBill(ob.id)}
-                    aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.customer_name || ob.label}`}
+                    aria-label={`${l10n.getString('pos-open-bills-resume')} ${ob.label || ob.customer_name}`}
                   >
                     {l10n.getString('pos-open-bills-resume')}
                   </button>

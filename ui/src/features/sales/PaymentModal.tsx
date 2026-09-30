@@ -921,6 +921,8 @@ retryCurrencyLoad,
     try {
       // ── Open Bill: save cart without payment ──────────────
       if (method === 'open_bill') {
+        const trimmedName = customerName.trim();
+        const trimmedTable = (tableNumber ?? '').trim();
         const cartData = JSON.stringify({
           lines: lineItems.map((l) => ({
             sku: l.sku,
@@ -931,19 +933,24 @@ retryCurrencyLoad,
             // checkout push, so the assignment must survive the hold.
             ...(l.courseId ? { courseId: l.courseId } : {}),
             ...(l.coursingStatus ? { coursingStatus: l.coursingStatus } : {}),
+            ...(l.modifiers && l.modifiers.length > 0 ? { modifiers: l.modifiers } : {}),
           })),
           discountPercent,
           discountLabel,
-          tableNumber,
+          ...(trimmedTable ? { tableNumber: trimmedTable } : {}),
         });
+        const label = trimmedName
+          ? (trimmedTable ? `${trimmedName} (${trimmedTable})` : trimmedName)
+          : (trimmedTable ? `Table ${trimmedTable}` : `Open Bill #${Date.now()}`);
+
         await holdCartScoped(sessionToken!, {
-          label: customerName.trim() || `Open Bill #${Date.now()}`,
+          label,
           cart_data: cartData,
           item_count: lineItems.length,
           total_minor: total.minor_units,
           currency: total.currency,
           bill_type: 'open_bill',
-          customer_name: customerName.trim(),
+          customer_name: trimmedName || (trimmedTable ? `Table ${trimmedTable}` : ''),
         });
         setDone(true);
         return;

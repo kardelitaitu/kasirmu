@@ -488,6 +488,7 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
     setAppliedPromotions,
     setLines,
     setDiscount,
+    tableNumber,
     setTableNumber,
   });
 
@@ -540,9 +541,10 @@ export default function PosScreen({ onNavigate }: PosScreenProps) {
       loadOpenBills();
     }
     resetCart();
+    setTableNumber('');
     // Also clear the customer-facing pole display.
     customerDisplayPaymentComplete();
-  }, [resetCart, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
+  }, [resetCart, setTableNumber, customerDisplayPaymentComplete, activeOpenBillId, loadOpenBills, addToast, sessionToken, deductionLocationIdRef, setActiveOpenBillId, setCartId, setDeductionLocationName, setDeductionOverridden]);
 
   // ── Lock: save cart state to localStorage, then logout ───────────
 
