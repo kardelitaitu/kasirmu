@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } f
 import { Localized, useLocalization } from '@fluent/react';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
 import { useOptionalSettings } from '@/contexts/SettingsContext';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -150,6 +151,7 @@ export default function RestaurantReceiptsScreen({
   const [kitchenDevicePath, setKitchenDevicePath] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [testingPrint, setTestingPrint] = useState(false);
   const [testPrintResult, setTestPrintResult] = useState<TestPrintResult | null>(null);
   const [dirtyVersion, setDirtyVersion] = useState(0);
@@ -899,6 +901,32 @@ export default function RestaurantReceiptsScreen({
     onSaved,
   ]);
 
+  // ── Back navigation guard ────────────────────────────────────
+  // If there are unsaved changes, intercept back/Escape and show the
+  // three-button confirmation dialog instead of navigating immediately.
+  const handleRequestBack = useCallback(() => {
+    if (dirty) {
+      setShowUnsavedDialog(true);
+    } else {
+      onBack?.();
+    }
+  }, [dirty, onBack]);
+
+  // Trap Escape key so it routes through the same guard.
+  useEffect(() => {
+    if (!onBack) return; // only active when a back destination exists
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // Don't intercept if a modal/dropdown is already open and handling it.
+      if ((e.target as HTMLElement)?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRequestBack();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onBack, handleRequestBack]);
+
   // ── Accurate Calculations for Thermal Preview ───────────────
   // These values are computed by the pure `receiptLogic` module (unit-tested);
   // the JSX below reads the same names as before the extraction.
@@ -938,7 +966,7 @@ export default function RestaurantReceiptsScreen({
             <button
               type="button"
               className="restaurant-settings-back-btn"
-              onClick={onBack}
+              onClick={handleRequestBack}
               aria-label={l10n.getString('back') || 'Back'}
               data-testid="restaurant-receipts-back-btn"
             >
@@ -2123,6 +2151,54 @@ export default function RestaurantReceiptsScreen({
         </main>
       </div>
       </div>
+
+      {/* Unsaved-changes guard dialog — shown when back/Escape is triggered with a dirty form */}
+      <ConfirmDialog
+        open={showUnsavedDialog}
+        onCancel={() => setShowUnsavedDialog(false)}
+        onConfirm={() => {
+          setShowUnsavedDialog(false);
+          onBack?.();
+        }}
+        title={l10n.getString('restaurant-unsaved-dialog-title') || 'Unsaved Changes'}
+        message={l10n.getString('restaurant-unsaved-dialog-message') || 'You have unsaved changes. Save before leaving, or discard them.'}
+        variant="warning"
+        footer={
+          <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={() => setShowUnsavedDialog(false)}
+              data-testid="unsaved-dialog-cancel"
+            >
+              <Localized id="cancel"><span>Cancel</span></Localized>
+            </Button>
+            <Button
+              variant="danger"
+              size="md"
+              onClick={() => {
+                setShowUnsavedDialog(false);
+                onBack?.();
+              }}
+              data-testid="unsaved-dialog-discard"
+            >
+              <Localized id="restaurant-unsaved-discard"><span>Discard</span></Localized>
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              loading={saving}
+              onClick={async () => {
+                await handleSave();
+                setShowUnsavedDialog(false);
+              }}
+              data-testid="unsaved-dialog-save"
+            >
+              <Localized id="save"><span>Save</span></Localized>
+            </Button>
+          </div>
+        }
+      />
     </div>
   );
 }

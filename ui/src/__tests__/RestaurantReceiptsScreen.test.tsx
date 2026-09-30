@@ -325,6 +325,51 @@ describe('RestaurantReceiptsScreen — back nav & save', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it('shows unsaved-changes dialog when back is clicked with dirty form', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    // Make the form dirty
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'WARUNG BARU');
+
+    await user.click(screen.getByTestId('restaurant-receipts-back-btn'));
+    // Dialog should appear; onBack not yet called
+    expect(screen.getByTestId('unsaved-dialog-discard')).toBeInTheDocument();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('calls onBack when Discard is clicked in the unsaved dialog', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'DISCARD TEST');
+
+    await user.click(screen.getByTestId('restaurant-receipts-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-discard'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes dialog and stays when Cancel is clicked in the unsaved dialog', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    await renderScreen({ onBack });
+
+    const title = screen.getByLabelText(/Receipt Title/i);
+    await user.clear(title);
+    await user.type(title, 'CANCEL TEST');
+
+    await user.click(screen.getByTestId('restaurant-receipts-back-btn'));
+    await user.click(screen.getByTestId('unsaved-dialog-cancel'));
+    expect(onBack).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('unsaved-dialog-discard')).toBeNull();
+  });
+
   it('saves a dirty change when Save is clicked and calls onSaved', async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
