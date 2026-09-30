@@ -241,4 +241,45 @@ tablet is still a second copy of every body). The desktop shell
 A future pass closing the tablet migration should fix the twin by delegating, not by re-patching
 the copy.
 
+## Amendment 2026-10-04 (b) — the tablet twin is delegated, not re-patched
+
+The amendment above closed with the tablet twin at
+`apps/mobile-tauri/src/commands/scale.rs` carrying the same silent-omission swallow. It has
+now been fixed the way that note said it should be — by delegating, not by re-patching the copy
+(`18fbdff99`).
+
+**The blocker in the file's own header was stale.** `scale.rs` claimed the bodies stayed
+tablet-native because the bridge's scoped twins "take a `BridgeCtx` the tablet `AppState` cannot
+yet build". That stopped being true when `AppState::bridge_ctx()` landed
+(`apps/mobile-tauri/src/state.rs:473`), and the ctx already carries `registry`
+(`:499`). Every other tablet command had been delegating for some time — `analytics.rs:28`,
+`audit.rs:123` and the rest — so the scale module was the last holdout carrying a comment that
+described a world that no longer existed. **A stale "cannot yet" is a standing instruction to
+copy, and copies drift.** The header now says what is true.
+
+**The copy had already drifted into the defect.** The native `list_scale_devices_scoped` was
+`scale_ids()` plus `if let Some(scale) = state.registry.scale(&id).await` — the identical
+silent-omission shape the bridge had before `ac93cff77`. So this was not a tidy-up: the tablet
+still shipped the bug the bridge had just shed, and only delegating could carry the fix across.
+
+**One body had to be added rather than moved.** The tablet exposes an *unscoped*
+`read_scale_weight` door; the bridge only had the scoped twin. The unscoped body now lives in
+`kasirmu_bridge::scale::read_scale_weight` with a doc noting it performs no scope resolution, so
+the scoped form is preferred wherever a token exists. This is the ADR's own §`currency_info`
+precedent in reverse: a body that genuinely wants no context should not be invented in the shell
+when the headless crate can own it and both shells can share it.
+
+**The pin that guards against a returning copy, and the trap it walked into.** The tablet now
+asserts its own source carries no `scale_ids()` walk and no `registry.scale(` lookup. The first
+version scanned the whole file and **failed on the correct module** — the new module doc names
+`scale_ids()` while explaining what was removed. That is the failure mode to watch for in any
+source-text pin: it matched the prose, not the code, and a pin that fails on a correct file gets
+deleted by the next reader. The pin now starts at the first `use` and inspects only code, and it
+panics with an explanatory message if that anchor disappears. Re-verified RED-then-GREEN by
+reintroducing the registry walk.
+
+**Still open (the tablet migration itself).** This closes the *scale* leg, not §What was NOT
+done item 1: the tablet is still a second copy of most other bodies. The count is now one
+module smaller, and `apps/mobile-tauri/src/commands/scale.rs` no longer contributes to the
+divergence the ipc-parity gate watches.
 > last audited 29-09-26 by docs-auditor
