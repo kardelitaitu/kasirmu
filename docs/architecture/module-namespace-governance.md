@@ -207,4 +207,5 @@ When those land, the allowlist and the baseline in §4 must both empty. Until th
 - `platform/kernel/src/manifest.rs` (the declaration Rule 3 reads)
 - `scripts/verify-namespace-governance.py` (the checker)
 - `docs/architecture/phase2-implementation-tickets.md` (the Phase 2 tickets these rules feed)
+- `docs/architecture/module-boot-sequence.md` (how a module is registered, gated, loaded, and started)
 - `modules/ownership.json` (the single source of the §3 table map)

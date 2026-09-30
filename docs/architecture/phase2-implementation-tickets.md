@@ -211,6 +211,8 @@ startup behavior is deterministic". A unit test on the registry (P2) does not pr
 
 **Depends on:** P3 (the code it documents).
 
+**Status: DONE 2026-10-03.** `docs/architecture/module-boot-sequence.md` (created) walks the real boot path — registration, the wiring owner's capability declaration, the topological dependency sort, the fail-fast capability check, `on_load` + `on_context`, `on_start`/`on_stop`, and the gated subscriptions — naming the actual functions and line anchors (`init_module_system` at `platform/startup/src/lib.rs:109`; `Kernel::load_all` at `platform/kernel/src/kernel/lifecycle.rs:234`; `verify_capabilities` at `:245`; `subscribe_gated` at `:696`). It states the compatibility window explicitly (undeclared capabilities log; `NamespacedStore::raw` is the escape hatch removed in Phase 4) and links from `docs/architecture/module-namespace-governance.md`. The dead-ref check is clean on the new page, and all 23 named `file:line` function anchors were verified to point at the named code on this commit.
+
 ---
 
 ## 7. Sequencing
