@@ -4325,17 +4325,10 @@ dependencies = [
 name = "modules-reporting"
 version = "0.0.40"
 dependencies = [
- "anyhow",
- "chrono",
  "foundation",
- "kasirmu-core",
  "platform-kernel",
- "rusqlite",
- "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tracing",
- "uuid",
 ]
 
 [[package]]
