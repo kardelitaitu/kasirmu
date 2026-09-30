@@ -22,6 +22,29 @@ use kasirmu_core::offline::OfflineQueueItem;
 /// `settings_sink` is invoked after the pull phase applies a remote
 /// `settings.update` (SYNC-10) so the change is reactive in this
 /// terminal's UI even though it was made elsewhere.
+/// Persist the transport's current stamped counter, when stamping is on.
+///
+/// Best-effort (a failed write costs one restart's worth of detection,
+/// never the pushed data), and called after EVERY push attempt — success
+/// or failure. `SyncTransport::push_items` burns one counter per queued item
+/// BEFORE the HTTP call, so on a rejected push the in-memory counter has
+/// already moved past the persisted one; writing it back only on success
+/// would let the surviving counter range be re-emitted, and a restart would
+/// resume from a value the server has already seen (detection then silently
+/// stops for this terminal).
+async fn persist_stamped_counter(db: &DbConnection, transport: &SyncTransport) {
+    let Some(counter) = transport.last_stamped_counter() else {
+        return;
+    };
+    let db_clone = db.clone();
+    let value = counter.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        let conn = db_clone.blocking_lock();
+        kasirmu_core::Store::new(&conn).set_setting(crate::crdt::CLOCK_KEY, &value)
+    })
+    .await;
+}
+
 /// ADR sync-auth-hardening P1/P4: refresh the persisted API key and retry
 /// the push batch exactly once after an `AuthExpired` rejection. Returns
 /// (pushed, error) where `error` is set when the entire retry path fails
@@ -90,21 +113,16 @@ async fn push_retry_after_auth_refresh(
     match transport.push_items(&pending).await {
         Ok(results) => {
             let pushed = results.len();
-            if let Some(counter) = transport.last_stamped_counter() {
-                let db_clone = db.clone();
-                let value = counter.to_string();
-                // Persisting is best-effort: a failed write costs one restart's
-                // worth of detection, never the pushed data.
-                let _ = tokio::task::spawn_blocking(move || {
-                    let conn = db_clone.blocking_lock();
-                    kasirmu_core::Store::new(&conn).set_setting(crate::crdt::CLOCK_KEY, &value)
-                })
-                .await;
-            }
+            persist_stamped_counter(db, &transport).await;
             let apply_err = apply_push_results(db, pending, results).await;
             (pushed, apply_err)
         }
-        Err(retry_err) => (0, Some(retry_err.to_string())),
+        Err(retry_err) => {
+            // Even a rejected push burnt one counter per queued item, so the
+            // persisted clock must still advance or the range can be re-emitted.
+            persist_stamped_counter(db, &transport).await;
+            (0, Some(retry_err.to_string()))
+        }
     }
 }
 
@@ -267,18 +285,7 @@ pub(super) async fn run_tick(
                 match transport.push_items(&pending).await {
                     Ok(results) => {
                         pushed = results.len();
-                        if let Some(counter) = transport.last_stamped_counter() {
-                            let db_clone = db.clone();
-                            let value = counter.to_string();
-                            // Best-effort: a failed write costs one restart's
-                            // worth of detection, never the pushed data.
-                            let _ = tokio::task::spawn_blocking(move || {
-                                let conn = db_clone.blocking_lock();
-                                kasirmu_core::Store::new(&conn)
-                                    .set_setting(crate::crdt::CLOCK_KEY, &value)
-                            })
-                            .await;
-                        }
+                        persist_stamped_counter(db, &transport).await;
                         // Phase 3: Apply push results to DB (blocking).
                         // SYNC-02: carry the FULL local items (not just ids)
                         // so a conflict is resolved by the shared ADR #21
@@ -290,6 +297,10 @@ pub(super) async fn run_tick(
                     }
                     Err(e) => {
                         pushed = 0;
+                        // Even a rejected push burnt one counter per queued
+                        // item; persist the advanced clock so the range cannot
+                        // be re-emitted (see `persist_stamped_counter`).
+                        persist_stamped_counter(db, &transport).await;
                         // ADR #11: If the server migrated, update the local
                         // URL so the next cycle connects to the new server.
                         if let SyncError::ServerMigrated { new_url } = &e {

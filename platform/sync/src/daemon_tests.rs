@@ -70,6 +70,39 @@ async fn wait_for_stopped(daemon: &SyncDaemon) {
     wait_for_daemon(daemon, "stopped", |s| !s.running).await;
 }
 
+/// Spawn a mock sync server whose push endpoint always answers 500.
+///
+/// Used to pin the outbound logical-clock contract: a push that FAILS must
+/// still advance the PERSISTED counter, because \`SyncTransport::push_items\`
+/// burns one counter per queued item before the HTTP call is even made.
+/// Leaving the persisted value behind lets the next cycle (or a restart)
+/// re-emit a counter range the server may already have recorded.
+async fn spawn_rejecting_mock_sync_server() -> String {
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    async fn handle_push() -> impl IntoResponse {
+        (StatusCode::INTERNAL_SERVER_ERROR, "boom")
+    }
+    async fn handle_pull(Json(_req): Json<serde_json::Value>) -> Json<PullResponse> {
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    format!("http://localhost:{port}")
+}
+
 /// Spawn a minimal mock sync server on port 0 and return its URL.
 /// Handles POST /api/sync/push (returns all accepted) and
 /// POST /api/sync/pull (returns empty items list).
@@ -2012,5 +2045,67 @@ async fn presence_of_a_sender_is_not_ownership() {
     assert!(
         status.read().await.running,
         "the slot holds a sender, but not this run's -- the flag must stand"
+    );
+}
+
+/// A push that FAILS must still persist the advanced logical clock.
+///
+/// \`SyncTransport::push_items\` burns one counter per queued item BEFORE the
+/// HTTP call, so by the time the server answers 500 the in-memory counter has
+/// already moved past whatever the previous cycle persisted. If the tick only
+/// writes the clock back on success, the persisted value rewinds relative to
+/// the counters that were actually emitted — the surviving counter range can
+/// then be re-emitted, and a restart starts from a value the server has seen.
+///
+/// RED TODAY, and that is the finding: the persisted clock stays at the seed.
+#[tokio::test]
+async fn run_tick_persists_the_clock_even_when_the_push_fails() {
+    let server_url = spawn_rejecting_mock_sync_server().await;
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        Settings::set_sync_terminal_id(&conn, "term-clock").unwrap();
+        // Seed the persisted clock at 40 so the assertion is not 0-vs-0.
+        store.set_setting(crate::crdt::CLOCK_KEY, "40").unwrap();
+        store
+            .enqueue_offline("stock.adjusted", r#"{"sku":"X","delta":1}"#)
+            .unwrap();
+        store
+            .enqueue_offline("stock.adjusted", r#"{"sku":"X","delta":1}"#)
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let persisted = tokio::task::spawn_blocking({
+        let db = db.clone();
+        move || {
+            let conn = db.blocking_lock();
+            Store::new(&conn)
+                .get_setting(crate::crdt::CLOCK_KEY)
+                .unwrap()
+        }
+    })
+    .await
+    .unwrap();
+
+    let persisted: u64 = persisted
+        .as_deref()
+        .and_then(|raw| crate::crdt::parse_counter(raw).ok())
+        .unwrap_or(0);
+
+    assert!(
+        persisted > 40,
+        "a FAILED push still burnt 2 counters (one per queued item), so the \
+persisted clock must advance past the seed; got {persisted}"
     );
 }

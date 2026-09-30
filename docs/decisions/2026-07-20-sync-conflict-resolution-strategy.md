@@ -457,3 +457,23 @@ The check is a whitelist of the three permanent kinds, so a newly added `CoreErr
 Pins: `apply_remote_atomic_failure_rolls_back_mutation_and_receipt` (missing sku quarantines on the first failure), `apply_remote_atomic_transient_failure_burns_the_retry_budget` (malformed payload keeps the three-attempt budget), `apply_pulled_page_dead_letters_then_advances` (permanent failure advances the anchor immediately), `apply_pulled_page_retains_anchor_on_retryable_failure` and `engine_retains_anchor_until_remote_item_is_dead_lettered` and `daemon_retains_anchor_until_remote_item_is_dead_lettered` (transient failures retain the anchor while retryable).
 
 > Permanent-vs-transient apply-failure classification pinned 2026-10-04.
+
+---
+
+## A failed push still advances the persisted logical clock (appended 2026-10-04)
+
+*Appended 2026-10-04. Closes the `next:` item recorded at `platform/sync/src/crdt/push_stamp.rs`.*
+
+Outbound pushes are stamped with `_terminal` and `_vector: {terminal: counter}` so the cloud's conflict detectors can order this terminal's mutations against its peers. The counter must never rewind: the server compares counters per terminal, so a counter that goes backwards makes every later push look older than what is already stored — the push is classified `Stale` and detection quietly stops for this terminal.
+
+`SyncTransport::push_items` burns one counter per queued item BEFORE the HTTP call is made (the atomic is advanced in the stamping loop). The daemon used to write the counter back only in the `Ok(results)` arm of both push sites, so a rejected push — a 500, a 403 `plan_required`, a 401 that the retry path also fails — discarded the advanced counters while the persisted value stayed at the previous cycle's mark. The next tick (or a restart) then resumed from a counter range the server may already have recorded.
+
+`daemon_tick::persist_stamped_counter(db, transport)` now writes the current stamped counter back after EVERY push attempt, success or failure, and both push sites (the `run_tick` push phase and `push_retry_after_auth_refresh`) plus the `run_tick` error arm call it:
+
+- Success: unchanged behaviour, verified after the push instead of before the response parse.
+- Failure: the advanced counter is persisted so the surviving range cannot be re-emitted; the error is still surfaced to daemon status exactly as before, and no queued item's state changes (a terminal rejection like `plan_required` still leaves items `pending`).
+- No stamping (no terminal identity): `last_stamped_counter()` is `None`, so nothing is written — correct, because no counter was ever emitted.
+
+Pin: `run_tick_persists_the_clock_even_when_the_push_fails` (a 500 push server; the persisted `sync.clock.counter` must exceed its seed of 40 after a tick that queued two items).
+
+> Outbound clock persistence on failure pinned 2026-10-04.
