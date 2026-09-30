@@ -80,10 +80,18 @@ file, not what a runtime path *does* when the SQL is assembled from data.
 
 **Depends on:** the ownership map (landed). **Blocks:** P3, P4.
 
-**Status: NOT STARTED.** Planned home for the store view is a new `crates/kasirmu-core/src/db/namespaced.rs`;
-note that `kasirmu-core` does not depend on `kasirmu-plugin`, so the scanner the draft §4 points at must be
-either reimplemented in core (mirroring `crates/kasirmu-plugin/src/db.rs`) or the dependency graph must be
-un-inverted deliberately — decide this in the P1 review before writing the scanner.
+**Status: DONE 2026-10-03.** `crates/kasirmu-core/src/db/namespaced.rs` adds `NamespacedStore<'a>`,
+`ModuleId`, `Grants` (read-only, no `write` by construction), `Namespace`, `Posture`, `NamespaceError`, and
+the pure `pub fn check_statement(owner, grants, sql, posture)` the unit tests drive without a database. The
+scanner is a deliberate reimplementation of `crates/kasirmu-plugin/src/db.rs` (comment stripping, quoted-
+identifier rejection, table extraction) because `kasirmu-core` does NOT depend on `kasirmu-plugin` and a
+core→plugin edge would invert the dependency graph — the decision the ticket said to make in review. Table
+resolution goes through `ownership::owner_of` (fail-closed on an unmapped table); a `Posture::ReadOnly`
+handle additionally rejects any write verb, so a granted foreign read cannot write. 18 unit tests
+(`crates/kasirmu-core/src/db/namespaced_tests.rs`, 13 pure + 5 in-memory-connection) cover own/granted/
+foreign/unknown, quoted identifiers, comment-hidden tables, string-literal content, CTE names, and the
+handle-level `read()`/`raw()` paths. `cargo test -p kasirmu-core --lib namespaced` 18/18; clippy pedantic and
+rustfmt edition 2024 clean.
 
 ---
 

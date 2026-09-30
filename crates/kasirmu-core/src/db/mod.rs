@@ -103,6 +103,8 @@ pub mod locations;
 pub mod media;
 /// Memo lifecycle repository — create/publish/stop, revisions, recipients.
 pub mod memos;
+/// A module-scoped, runtime-checked view over the shared connection (plan §7 Phase 2).
+pub mod namespaced;
 /// The generated table-ownership map (plan §7 single source).
 pub mod ownership;
 /// Accounts Payable (Hutang) repository — create/settle/age supplier debts.
