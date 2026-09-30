@@ -33,7 +33,41 @@ cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 declare -a PAIRS_FILES=()
 trap '[ "${#PAIRS_FILES[@]}" -gt 0 ] && rm -f "${PAIRS_FILES[@]}" 2>/dev/null; true' EXIT
 
-REPORT="skill-drift-report.md"
+# DRIFT_ROOT is the tree every corpus walker reads, defaulting to the repo root the
+# `cd` above just established. It exists because the bats suite had no other way to
+# present a fixture: three of its nine files APPENDED a fabricated audit footer to a
+# TRACKED file and restored it in teardown, so an interrupted run -- a killed shell, a
+# CI timeout, a closed laptop -- left "> last audited 30-02-26 by docs-auditor" sitting
+# in CONTRIBUTING.md. In a repository whose whole convention is that that footer is
+# evidence of a real audit, a test suite is the last thing allowed to invent one. Two
+# of the three files did it in the same shared root document, so two concurrent runs
+# also restored each other's bytes.
+#
+# Pointing the corpus at a scratch tree makes a fixture a fixture again: nothing
+# outside DRIFT_ROOT is read and nothing inside it is ever restored, so there is no
+# window in which the repo holds a lie. Every walker below goes through this one
+# variable, so a new check that forgets it fails its own test rather than quietly
+# reading the real tree.
+#
+# Refused if it is not a directory: a typo must not silently fall back to the repo and
+# let a test assert against the tree it meant to replace.
+DRIFT_ROOT="."
+if [ -n "${DRIFT_ROOT_OVERRIDE:-}" ]; then
+  if [ ! -d "${DRIFT_ROOT_OVERRIDE}" ]; then
+    echo "detect.sh: DRIFT_ROOT_OVERRIDE is not a directory: ${DRIFT_ROOT_OVERRIDE}" >&2
+    exit 1
+  fi
+  DRIFT_ROOT="${DRIFT_ROOT_OVERRIDE%/}"
+fi
+
+# The report path is anchored to DRIFT_ROOT, which is "." in production and the
+# scratch tree under test. It used to be a bare relative name, which meant two
+# concurrent runs wrote the SAME file: a second run's report replaced the first's
+# mid-flight, and the teardown that deletes it could remove a file another run was
+# still writing. The report is gitignored, so this was never a tracked-file leak --
+# it was a shared-mutable-path leak, which is what made concurrent bats runs report
+# each other's failures.
+REPORT="$DRIFT_ROOT/skill-drift-report.md"
 ONLY_CHECK=""
 AUTO_PATCH=false
 WRITE_REPORT=false
@@ -196,9 +230,18 @@ md_footer_files() {
   # result set (diff clean). The -path form is deliberately anchored at the root;
   # `-name target` would also prune a nested `crates/*/target`, which is a
   # different (wider) rule than the one this function replaced.
-  find . \
-    \( -path './.git' -o -path './.agents/skills' -o -path './node_modules' \
-       -o -path './target' -o -path './dist' \) -prune -o \
+  # The -path values are built from $DRIFT_ROOT rather than written as './x' literals,
+  # because this walker is one of the three the bats suite needs to redirect. A literal
+  # './node_modules' only means the repo's own node_modules when DRIFT_ROOT is the repo;
+  # under a scratch root those prune names would point at siblings that are not there,
+  # and the walk would descend into whatever the scratch tree happened to contain.
+  # Pruning by NAME alongside the anchored paths keeps both readings correct: the
+  # anchored set is root-relative, the name set catches a vendored tree at any depth.
+  find "$DRIFT_ROOT" \
+    \( -path "$DRIFT_ROOT/.git" -o -path "$DRIFT_ROOT/.agents/skills" \
+       -o -path "$DRIFT_ROOT/node_modules" -o -path "$DRIFT_ROOT/target" \
+       -o -path "$DRIFT_ROOT/dist" \) -prune -o \
+    \( -name .git -o -name node_modules -o -name target -o -name dist \) -prune -o \
     -name '*.md' -exec grep -lE "$FOOTER_RE" {} + 2>/dev/null
 }
 
@@ -394,7 +437,7 @@ if should_run paths; then
           print NR "\t" tok
         }
       }' "$skill" 2>/dev/null)
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
 fi
 
 # ---------------------------------------------------------------------------
@@ -454,7 +497,7 @@ if should_run api; then
     while read -r line; do
       FINDINGS[api]+="${skill}: ${line} (verify signature in foundation/src/money.rs, re-exported by kasirmu-core/src/money.rs)"$'\n'
     done < <(awk '/^```/{f=!f; next} f && /Money::(from_major|checked_add|zero|new)/{print NR": "$0}' "$skill" 2>/dev/null)
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
 fi
 
 # ---------------------------------------------------------------------------
@@ -475,7 +518,7 @@ if should_run versions; then
           FINDINGS[versions]+="${skill}: quoted version ${ver} not in Cargo.toml"$'\n'
         fi
       done < <(grep -hoE '"[0-9]+\.[0-9]+(\.[0-9]+)?"' "$skill" 2>/dev/null | sort -u)
-    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+    done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
 fi
 
@@ -560,7 +603,7 @@ if should_run fluent; then
         fi
       done < <(grep -hoE 'id="[^"]+"' "$skill" 2>/dev/null | sort -u | \
         sed 's/id="//;s/"$//')
-    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+    done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
   # else: no front-end yet, silently skip
 fi
@@ -594,7 +637,7 @@ except Exception:
     if [ "${age:-9999}" -gt 30 ]; then
       FINDINGS[audit-date]+="${skill}: last audited ${last} (${age} days ago)"$'\n'
     fi
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
 fi
 
 # ---------------------------------------------------------------------------
@@ -615,7 +658,7 @@ if should_run audit-format; then
   while read -r skill; do
     [ -z "$skill" ] && continue
     audit_footer_check_in_file audit-format "$skill" "$pairs_file"
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   batch_validate_audit_dates audit-format "$pairs_file"
   rm -f "$pairs_file"
 fi
@@ -719,7 +762,7 @@ if should_run version-lock; then
         done < <(strip_skill_comments "$skill" \
           | grep -inE 'version (is )?locked|locked at|version[[:space:]]*=|as of 0\.0\.|workspace version' 2>/dev/null \
           | grep -oE '0\.0\.[0-9]+' | sort -u)
-      done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+      done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
     fi
   fi
 fi
@@ -766,7 +809,7 @@ if should_run crate-prefix; then
     done < <(strip_skill_comments "$skill" 2>/dev/null \
       | grep -oE "(^|[^a-zA-Z0-9_])${STALE_CRATE_PREFIX}[-_][a-z0-9]+" \
       | grep -oE "${STALE_CRATE_PREFIX}[-_][a-z0-9]+" | sort -u)
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
 fi
 
 # ---------------------------------------------------------------------------
@@ -793,7 +836,7 @@ if should_run ci-jobs; then
         | grep -oiE "dev-ci[^j]{0,60}jobs" 2>/dev/null \
         | grep -oiE "(\*\*[a-z]+\*\*|[0-9]+\+?)[[:space:]]+jobs" \
         | sed -E 's/[[:space:]]+[jJ][oO][bB][sS]$//' | sort -u)
-    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+    done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
 fi
 
@@ -834,7 +877,7 @@ if should_run workflow-claims; then
           if (index($0, "*.yml.bak") && index(l, "attic") == 0 && bak == 0)
             print "claims dormant workflows are *.yml.bak at the workflows root, but none are there (see .github/workflows/attic/)"
         }')
-    done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+    done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
   fi
 fi
 
@@ -875,7 +918,7 @@ if should_run git-policy; then
         if (l ~ /^git[ \t]+stash/) print NR": forbidden \`git stash\`"
         if (l ~ /^git[ \t]+stage/) print NR": forbidden \`git stage\`"
       }')
-  done < <(find .agents/skills -name SKILL.md 2>/dev/null)
+  done < <(find "$DRIFT_ROOT/.agents/skills" -name SKILL.md 2>/dev/null)
 fi
 
 # ---------------------------------------------------------------------------
@@ -919,8 +962,9 @@ if should_run rs-audit-stamp; then
     [ -z "$hit" ] && continue
     loc="${hit%%:*}"; rest="${hit#*:}"; line="${rest%%:*}"
     FINDINGS[rs-audit-stamp]+="${loc}:${line}: unsubstituted audit-stamp placeholder — \`DD-MM-YY\` was never replaced (use a real date, or \`(date unknown)\`)"$'\n'
-  done < <(find . \
-             \( -name .git -o -name target -o -name node_modules -o -name dist \) -prune -o \
+  done < <(find "$DRIFT_ROOT" \
+             \( -path "$DRIFT_ROOT/.git" -o -name .git -o -name target \
+                -o -name node_modules -o -name dist \) -prune -o \
              -name '*.rs' -exec grep -nHE 'DD-MM-YY' {} + 2>/dev/null)
 fi
 

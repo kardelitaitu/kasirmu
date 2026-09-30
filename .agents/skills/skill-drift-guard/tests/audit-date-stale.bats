@@ -24,8 +24,11 @@
 setup() {
   PROJECT_ROOT="$(cd "$(dirname "${BATS_TEST_FILENAME}")/../../../.." && pwd)"
   cd "$PROJECT_ROOT"
-  cp "$PROJECT_ROOT/.agents/skills/hal-drivers/SKILL.md" \
-     "$BATS_TEST_TMPDIR/hal-drivers-SKILL.md.bak"
+  # Scratch tree, for the reason recorded in shape-violation.bats. The fixture has
+  # to keep the path segment this test asserts on (hal-drivers), because Check 8
+  # reports the skill directory it found, and the assertion below is that the
+  # message names it. The scratch path is longer but ends in the same segment.
+  #
   # Today's date is 08-07-26 (per the project metadata). 35 days before
   # that is 03-06-26 — comfortably above the 30-day stale threshold.
   # The 5-day margin is intentional: if the 30-day threshold is ever
@@ -34,14 +37,16 @@ setup() {
   # The choice of 03-06-26 is stable across the test's lifetime — it
   # stays >30 days stale regardless of when this runs (today, next week,
   # next year), so the test is not date-sensitive.
-  printf '\n> last audited 03-06-26 by stale-auditor\n' \
-    >> "$PROJECT_ROOT/.agents/skills/hal-drivers/SKILL.md"
+  SCRATCH="$BATS_TEST_TMPDIR/tree"
+  mkdir -p "$SCRATCH/.agents/skills/hal-drivers"
+  printf '# fixture\n\n> last audited 03-06-26 by stale-auditor\n' \
+    > "$SCRATCH/.agents/skills/hal-drivers/SKILL.md"
+  export DRIFT_ROOT_OVERRIDE="$SCRATCH"
 }
 
 teardown() {
-  cp "$BATS_TEST_TMPDIR/hal-drivers-SKILL.md.bak" \
-     "$PROJECT_ROOT/.agents/skills/hal-drivers/SKILL.md"
-  rm -f "$PROJECT_ROOT/skill-drift-report.md"
+  # Nothing to restore; see teardown() in shape-violation.bats.
+  unset DRIFT_ROOT_OVERRIDE
 }
 
 @test "audit-date-stale: 35-day-old footer fires Check 8 with stale-day message" {

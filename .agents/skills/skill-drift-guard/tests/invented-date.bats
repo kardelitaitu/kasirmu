@@ -3,7 +3,7 @@
 # Test: invented-date.bats
 #
 # Injects an invented date ("30-02-26" — a real-shape but invalid-calendar
-# date) into CONTRIBUTING.md, asserts that detect.sh:
+# date) into a SCRATCH tree, asserts that detect.sh:
 #   - exits non-zero (the inject is a manual fix required)
 #   - reports the failure under the `doc-audit` FINDINGS key
 #   - quotes the date substring "30-02-26" in the message
@@ -18,14 +18,20 @@
 setup() {
   PROJECT_ROOT="$(cd "$(dirname "${BATS_TEST_FILENAME}")/../../../.." && pwd)"
   cd "$PROJECT_ROOT"
-  cp "$PROJECT_ROOT/CONTRIBUTING.md" "$BATS_TEST_TMPDIR/CONTRIBUTING.md.bak"
-  printf '\n> last audited 30-02-26 by docs-auditor\n' \
-    >> "$PROJECT_ROOT/CONTRIBUTING.md"
+  # Scratch tree, for the reason recorded in shape-violation.bats: this test used
+  # to append a DELIBERATELY IMPOSSIBLE date (30 February) to the real
+  # CONTRIBUTING.md and restore it afterwards, so an interrupted run left the
+  # repo carrying an audit stamp that no audit ever produced.
+  SCRATCH="$BATS_TEST_TMPDIR/tree"
+  mkdir -p "$SCRATCH"
+  printf '# fixture\n\n> last audited 30-02-26 by docs-auditor\n' \
+    > "$SCRATCH/CONTRIBUTING.md"
+  export DRIFT_ROOT_OVERRIDE="$SCRATCH"
 }
 
 teardown() {
-  cp "$BATS_TEST_TMPDIR/CONTRIBUTING.md.bak" "$PROJECT_ROOT/CONTRIBUTING.md"
-  rm -f "$PROJECT_ROOT/skill-drift-report.md"
+  # Nothing to restore; see teardown() in shape-violation.bats.
+  unset DRIFT_ROOT_OVERRIDE
 }
 
 @test "invented-date: 30-02-26 fires Check 10 with value-failure message" {
