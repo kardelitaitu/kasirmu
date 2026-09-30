@@ -2,7 +2,7 @@
 title: Instalasi
 description: Pasang kasir.mu di Windows, macOS, atau Linux.
 category: gettingStarted
-order: 2
+order: 3
 updated: "2026-09-23"
 ---
 
@@ -37,9 +37,10 @@ menu Mulai.
 
 ## Peluncuran pertama
 
-Wizard pengaturan menanyakan nama usaha dan mata uang bawaan Anda — keduanya
-dapat diubah kapan saja di pengaturan. Paket gratis dimulai pada peluncuran
-pertama; Anda dapat naik paket kapan saja dari Pengaturan → Lisensi.
+Wizard pengaturan menanyakan akun (atau pengaturan tanpa akun), jenis toko,
+dan login owner — lihat [Wizard Pengaturan](../setup-wizard/). Paket gratis
+dimulai pada peluncuran pertama; Anda dapat naik paket kapan saja dari
+Pengaturan → Lisensi.
 
 ## Pembaruan
 

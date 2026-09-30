@@ -59,9 +59,13 @@ mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
 
 ## Mulai dari sini
 
+Terburu-buru? [Mulai Cepat](../quickstart/) membawa Anda dari unduhan ke
+kasir yang siap dihitung dalam sekitar 15 menit.
+
 1. [Pasang kasir.mu](../installation/) di Windows — paket gratis dimulai saat
    peluncuran pertama, tanpa perlu akun. Platform lain segera hadir.
-2. Selesaikan wizard pengaturan — nama usaha dan mata uang bawaan.
+2. Jalankan [Wizard Pengaturan](../setup-wizard/) — akun (atau offline
+   saja), jenis toko, login owner.
 3. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak
    lokasi, pembayaran QRIS, dan sinkron cloud.
 4. [Transaksi pertama Anda](../first-sale/) dari ruang kerja yang Anda

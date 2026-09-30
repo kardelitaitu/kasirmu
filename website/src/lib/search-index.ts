@@ -51,10 +51,12 @@ export const INITIAL_RESULTS = 8;
  */
 export const DOC_KEYWORDS: Record<string, string> = {
   // gettingStarted
+  quickstart: 'quickstart quick start walkthrough setup wizard getting started fast fast start first run',
   welcome: 'getting started overview introduction architecture what is',
   installation: 'install install desktop windows linux macos build setup download',
   'first-sale': 'pos checkout sale cash card barcode print receipt ring up',
   activation: 'activate license key register machine offline token devices',
+  'setup-wizard': 'setup wizard provisioning provision first run offline only owner pin shop type retail restaurant idr',
   'user-roles': 'roles permissions staff cashier manager admin supervisor access presets accounts',
   // guides
   'offline-mode': 'offline local first no internet connectivity queue sync later',

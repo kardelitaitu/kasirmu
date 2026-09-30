@@ -2,7 +2,7 @@
 title: Ruang Kerja
 description: Pilih fungsi setiap layar — kasir ritel, layanan restoran, dapur, atau back office.
 category: gettingStarted
-order: 5
+order: 7
 updated: "2026-09-19"
 ---
 

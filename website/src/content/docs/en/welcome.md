@@ -58,9 +58,13 @@ See [Licensing & Plans](../licensing/).
 
 ## Where to start
 
+In a hurry? [Quickstart](../quickstart/) takes you from download to a
+working counter in about 15 minutes.
+
 1. [Install kasir.mu](../installation/) on Windows — the free plan starts on
    first launch, no account required. Other platforms are coming soon.
-2. Complete the setup wizard — business name and default currency.
+2. Run the [Setup Wizard](../setup-wizard/) — account (or offline only),
+   shop type, owner login.
 3. [Activate a license key](../activation/) when you're ready to unlock more
    locations, QRIS payments, and cloud sync.
 4. [Ring up your first sale](../first-sale/) from the workspace you need —

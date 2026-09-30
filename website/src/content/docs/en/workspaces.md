@@ -2,7 +2,7 @@
 title: Workspaces
 description: Choose what each screen does — retail checkout, restaurant service, kitchen, or back office.
 category: gettingStarted
-order: 5
+order: 7
 updated: "2026-09-19"
 ---
 

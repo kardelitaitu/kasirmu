@@ -2,7 +2,7 @@
 title: Installation
 description: Install kasir.mu on Windows, macOS, or Linux.
 category: gettingStarted
-order: 2
+order: 3
 updated: "2026-09-23"
 ---
 
@@ -37,9 +37,9 @@ the Start menu.
 
 ## First launch
 
-The setup wizard asks for your business name and default currency — both can
-be changed later in settings. The free plan starts on first launch; you can
-upgrade any time from Settings → License.
+The setup wizard asks for an account (or offline-only setup), the shop type,
+and an owner login — see [Setup Wizard](../setup-wizard/). The free plan
+starts on first launch; you can upgrade any time from Settings → License.
 
 ## Updates
 
