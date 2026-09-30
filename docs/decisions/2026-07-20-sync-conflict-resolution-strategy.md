@@ -680,3 +680,9 @@ An empty push list is indistinguishable from a healthy idle terminal. `run_tick`
 `read_config_and_pending` now returns `Result<_, String>` and propagates the queue-read error, which reaches `run_tick`'s `read_error` and surfaces on `last_error` (and so drives the daemon's backoff). The `SyncConfig::from_settings` read is deliberately left collapsing to `Ok(None)`: sync not being configured is a legitimate steady state and an unreadable setting maps to 'unconfigured' — that read is not the data path the queue is.
 
 Pinned by `read_config_and_pending_errors_when_the_offline_queue_cannot_be_read` (`platform/sync/src/daemon_tests.rs`), which drops `offline_queue` and demands `Err`; before the fix the function could only return `Ok((None, vec![]))`, so the failure was unobservable.
+
+## The PG daemon had the same empty-queue collapse (2026-10-04)
+
+The fix above for the HTTP daemon's queue read had a twin. The PG daemon (`platform/sync/src/pg_daemon.rs`) read its offline queue with the identical `store.list_pending_offline().unwrap_or_default()`, and gated its push phase on the identical `!pending.is_empty()`. Its `read_error` was only ever set from a `spawn_blocking` join error, so a failed queue read produced no error at all: `pushed = 0`, `last_error` clean.
+
+The read now propagates its error out of the blocking closure; `run_tick` maps it to `read_error`, which surfaces on `last_error` and drives backoff — the same path the HTTP daemon uses. Pinned by `tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle` (`platform/sync/src/pg_daemon_tests.rs`), which drops `offline_queue`, ticks, and demands `last_error.is_some()`; it was verified RED against the old `unwrap_or_default()` and GREEN with the fix.
