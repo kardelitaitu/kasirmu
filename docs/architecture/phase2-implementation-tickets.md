@@ -10,6 +10,7 @@ Context and Registry Hardening"), plus the Phase 2 half of `docs/architecture/na
 - `docs/architecture/namespaced-store-api-draft.md` — the `NamespacedStore` shape (§3), the validation
   reuse plan (§4), the per-module migration order (§5), and the reporting-exception construction (§6).
 - `docs/architecture/phase1-implementation-tickets.md` — the sibling ticket set; T1–T5 are all DONE.
+- `docs/architecture/phase3-implementation-tickets.md` — the successor ticket set this phase feeds (P3.1–P3.5).
 - `docs/decisions/2026-09-30-adr62-module-seam-taxonomy.md` — the seam vocabulary and the D5 read exception.
 
 **Grounding rule (learned in Phase 0):** every ticket names a repository fact verified at the time of

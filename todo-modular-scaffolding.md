@@ -763,6 +763,8 @@ Exit criteria:
 
 ### Phase 3 — Vertical Extraction
 
+> Executable tickets: `docs/architecture/phase3-implementation-tickets.md` (P3.1–P3.5).
+
 **Goal:** Move business logic out of `kasirmu-core` into owned modules.
 
 Suggested extraction order:
