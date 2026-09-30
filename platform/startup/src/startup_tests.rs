@@ -630,3 +630,121 @@ fn report_sales_projection_stays_removed() {
          this pin with a note explaining what reads the table."
     );
 }
+
+// ── Phase 2 P3: subscriptions are capability-gated ───────────────────────
+
+/// The wiring owner's declared capabilities must cover exactly the topics
+/// the boot path subscribes to. A capability list that drifts from the
+/// subscription sites (a topic added without its `subscribe:` grant) would
+/// make `init_module_system` fail; this pins the list itself.
+#[test]
+fn startup_wiring_capabilities_cover_every_subscribed_topic() {
+    let mut caps: Vec<&str> = STARTUP_WIRING_CAPABILITIES.to_vec();
+    caps.sort_unstable();
+    assert_eq!(
+        caps,
+        vec![
+            "subscribe:product.created",
+            "subscribe:sale.completed",
+            "subscribe:settings.updated",
+            "subscribe:stock.adjusted",
+        ],
+        "the wiring owner's capability list must name every topic subscribed at boot"
+    );
+}
+
+/// A module that declares a capability set but is not granted a topic's
+/// `subscribe:` capability must have its subscription REFUSED — this is the
+/// boot-path half of the plan's "modules cannot acquire ungranted
+/// capabilities" exit criterion. (The P2 unit test covers the registry; this
+/// proves the gate is what the wiring actually calls.)
+#[test]
+fn an_ungranted_subscription_is_refused_by_the_kernel() {
+    use platform_kernel::{Capability, Kernel, ModuleCapabilities};
+
+    let kernel = AsyncMutex::new(Kernel::new());
+    let (_dir, db_path) = create_temp_db();
+    let handler = open_handler_connection(&db_path).unwrap();
+
+    let mut k = kernel.blocking_lock();
+    // Declare a module that requires nothing and is granted only a
+    // DIFFERENT capability; subscribing to sale.completed must fail.
+    let mut declared = ModuleCapabilities::none();
+    let read_inventory = Capability::parse("read:inventory").unwrap();
+    declared = declared
+        .require(read_inventory.clone())
+        .grant(read_inventory);
+    k.declare_capabilities("probe", declared);
+
+    let result = k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+        "probe",
+        "sale.completed",
+        "subscribe:sale.completed",
+        Box::new(crate::event_handlers::SaleSyncEnqueuer::new(handler)),
+    );
+
+    match result {
+        Err(platform_kernel::KernelError::MissingCapability { module, missing }) => {
+            assert_eq!(module, "probe");
+            assert_eq!(missing, "subscribe:sale.completed");
+        }
+        other => panic!("expected MissingCapability, got {other:?}"),
+    }
+    assert!(
+        !k.event_bus().has_handlers("sale.completed"),
+        "a refused subscription must not register a handler"
+    );
+}
+
+/// The positive half: once the grant is present, the same subscription
+/// succeeds and the handler is registered.
+#[test]
+fn a_granted_subscription_is_accepted() {
+    use platform_kernel::{Capability, Kernel, ModuleCapabilities};
+
+    let kernel = AsyncMutex::new(Kernel::new());
+    let (_dir, db_path) = create_temp_db();
+    let handler = open_handler_connection(&db_path).unwrap();
+
+    let mut k = kernel.blocking_lock();
+    let mut declared = ModuleCapabilities::none();
+    let sub = Capability::parse("subscribe:sale.completed").unwrap();
+    declared = declared.require(sub.clone()).grant(sub);
+    k.declare_capabilities("probe", declared);
+
+    k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+        "probe",
+        "sale.completed",
+        "subscribe:sale.completed",
+        Box::new(crate::event_handlers::SaleSyncEnqueuer::new(handler)),
+    )
+    .expect("granted subscription must be accepted");
+
+    assert!(
+        k.event_bus().has_handlers("sale.completed"),
+        "an accepted subscription must register a handler"
+    );
+}
+
+/// The legacy path: a module that declares NO capabilities is still allowed
+/// to subscribe (the plan's "legacy access still works during migration"),
+/// but the boot log names it. This asserts the permissive half without a
+/// log-capture dependency.
+#[test]
+fn a_module_with_no_declared_capabilities_may_still_subscribe() {
+    use platform_kernel::Kernel;
+
+    let kernel = AsyncMutex::new(Kernel::new());
+    let (_dir, db_path) = create_temp_db();
+    let handler = open_handler_connection(&db_path).unwrap();
+
+    let k = kernel.blocking_lock();
+    k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+        "legacy-module",
+        "sale.completed",
+        "subscribe:sale.completed",
+        Box::new(crate::event_handlers::SaleSyncEnqueuer::new(handler)),
+    )
+    .expect("a module with no capability declaration must be allowed (legacy path)");
+    assert!(k.event_bus().has_handlers("sale.completed"));
+}

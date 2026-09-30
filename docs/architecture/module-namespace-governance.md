@@ -97,6 +97,27 @@ a module actually names, and prints a **report line** for each edge that has no 
 Because the current tree has such edges (see §4), this is reported, not failed — making it a hard
 failure is a Phase 4 change, gated on the §4 items being closed. **This is a review rule today.**
 
+#### Capability gating at boot (Phase 2 P3)
+
+The declaration side of Rule 3 has a runtime half. A module's `capabilities` list
+(`modules/<id>/manifest.json`) uses the plan's vocabulary (`todo-modular-scaffolding.md` §11.4):
+`read:<module>`, `write:<module>`, `subscribe:<event>`, `use:reporting_facade`,
+`use:lua_hook:<name>`. The kernel parses each entry as `<namespace>:<action>` and, at boot,
+`load_all` **fails fast** with `KernelError::MissingCapability` when a required capability was not
+granted (`platform/kernel/src/kernel/lifecycle.rs`).
+
+Event subscriptions are gated the same way: `Kernel::subscribe_gated(module, topic, capability, handler)`
+refuses a subscription when the module declares a capability set without holding the topic's
+`subscribe:<event>` grant, allows it with a deprecation warning when the module declares nothing (the
+legacy path during migration), and registers the handler under **module ownership** so stopping the module
+unsubscribes it. `platform/startup/src/lib.rs` routes every boot subscription through this gate under the
+`startup` wiring owner; its four topics live in one const (`STARTUP_WIRING_CAPABILITIES`) rather than
+scattered across call sites.
+
+**What this does not yet do:** no vertical manifest declares capabilities today, so the gate currently
+exercises the legacy branch and logs. The mechanism is live and tested; populating the manifests is the
+remaining migration.
+
 ---
 
 ## 3. Table ownership map

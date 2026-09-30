@@ -162,6 +162,8 @@ subscribes to another vertical's event.
 
 **Depends on:** P2. **Blocks:** P4.
 
+**Status: DONE 2026-10-03.** `init_module_system` (`platform/startup/src/lib.rs`) now declares the wiring owner's capabilities before `load_all` and routes all 11 subscription sites (8 unconditional + 3 whatsapp-feature-gated) through `Kernel::subscribe_gated`, a new kernel method that refuses a subscription when the module declares a capability set without holding the topic's `subscribe:<event>` grant (`KernelError::MissingCapability`), allows it with a deprecation warning when the module declares nothing (the legacy path), and registers with module ownership so stopping the module unsubscribes it. `STARTUP_WIRING_CAPABILITIES` (a public const) names the four topics once (`subscribe:sale.completed`, `subscribe:product.created`, `subscribe:stock.adjusted`, `subscribe:settings.updated`); each is required and granted, so the wiring cannot listen on an undeclared topic. Registration order was already deterministic and now carries an explicit comment tying it to `load_all`'s topological sort. Tests in `startup_tests.rs`: the capability list covers every subscribed topic, an ungranted subscription is refused (and registers no handler), a granted one is accepted, and a module with no declaration still subscribes. `cargo test -p platform-startup` 104 pass; `--census` still reports 12 rows / 0 stale; workspace check, clippy `-D warnings`, and the `whatsapp-notifications` feature build are all clean.
+
 ---
 
 ## 5. P4 — Integration test: no ungranted capability

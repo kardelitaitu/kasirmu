@@ -71,6 +71,29 @@ fn open_handler_connection(
     Ok(Arc::new(Mutex::new(conn)))
 }
 
+/// The capability owner for the event-handler wiring that lives in this
+/// crate rather than in a vertical module.
+///
+/// The handlers in `event_handlers.rs` are startup-owned plumbing (sync
+/// outbox, audit log, loyalty award, settings relay), not part of any single
+/// vertical's lifecycle. Phase 2 P3 routes their subscriptions through the
+/// kernel's capability gate under this identity, so "which foreign topics may
+/// this wiring listen on?" is declared in one place instead of being implicit
+/// in the call sites.
+const STARTUP_WIRING_OWNER: &str = "startup";
+
+/// The topics the startup wiring is permitted to subscribe to.
+///
+/// Each entry is a `subscribe:<event>` capability from the plan's vocabulary
+/// (`todo-modular-scaffolding.md` §11.4). A handler for a topic not listed
+/// here is refused by `Kernel::subscribe_gated` before it can be registered.
+pub const STARTUP_WIRING_CAPABILITIES: &[&str] = &[
+    "subscribe:sale.completed",
+    "subscribe:product.created",
+    "subscribe:stock.adjusted",
+    "subscribe:settings.updated",
+];
+
 /// Initialise the caching layer.
 ///
 /// Attempts a Redis connection using `redis_url` and `ttl_seconds`.
@@ -120,6 +143,25 @@ pub fn init_module_system(
         k.register(Box::new(modules_promotions::PromotionsModule::new()))?;
         k.register(Box::new(modules_giftcards::GiftCardsModule::new()))?;
         k.register(Box::new(modules_kitchen::KitchenModule::new()))?;
+
+        // ── Phase 2 P3: declare the wiring owner's capabilities ──────────
+        //
+        // The event handlers below are startup plumbing, not a vertical
+        // module, so they declare under a dedicated owner id. Each topic the
+        // wiring subscribes to is asserted as both required and granted; a
+        // subscription to a topic not in the list is refused by
+        // `Kernel::subscribe_gated` before the handler is registered, and a
+        // malformed entry fails boot at parse time.
+        {
+            use platform_kernel::ModuleCapabilities;
+            let mut declared = ModuleCapabilities::none();
+            for raw in STARTUP_WIRING_CAPABILITIES {
+                let cap = platform_kernel::Capability::parse(raw)?;
+                declared = declared.require(cap.clone()).grant(cap);
+            }
+            k.declare_capabilities(STARTUP_WIRING_OWNER, declared);
+        }
+
         k.load_all()?;
         k.start_all()?;
         drop(k);
@@ -127,16 +169,18 @@ pub fn init_module_system(
         // Open a second connection for event handlers (WAL allows concurrent readers).
         let handler_conn = open_handler_connection(db_path)?;
 
-        // Wire event handlers on the bus.
+        // Wire event handlers on the bus, gated on the wiring owner's
+        // declared capabilities (Phase 2 P3).
         let k = kernel.blocking_lock();
-        let bus = k.event_bus();
 
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::SaleSyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
+        )?;
         // CRM-06: the CrmHistoryHandler subscription was REMOVED. Its
         // projection (customers.total_spent_minor) moved into the
         // completion transaction itself (Store::finalize_sale →
@@ -146,36 +190,46 @@ pub fn init_module_system(
         // and no currency validation (foreign-currency sales were
         // added raw); leaving it subscribed alongside the transactional
         // hook would double-count every sale.
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::ProductCreated>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::ProductCreated>(
+            STARTUP_WIRING_OWNER,
             "product.created",
+            "subscribe:product.created",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::ProductCreated>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::ProductCreated>(
+            STARTUP_WIRING_OWNER,
             "product.created",
+            "subscribe:product.created",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+            STARTUP_WIRING_OWNER,
             "stock.adjusted",
+            "subscribe:stock.adjusted",
             Box::new(crate::event_handlers::AuditLogHandler::new(
                 handler_conn.clone(),
             )),
-        );
-        bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+        )?;
+        k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+            STARTUP_WIRING_OWNER,
             "stock.adjusted",
+            "subscribe:stock.adjusted",
             Box::new(crate::event_handlers::InventorySyncEnqueuer::new(
                 handler_conn.clone(),
             )),
-        );
+        )?;
         // MSL-11: the `report_sales` projection handler was REMOVED. It wrote
         // every completed sale into a table with no reader anywhere in the tree
         // (no Rust, UI, or export path) while paying a lazy `CREATE TABLE` per
@@ -184,16 +238,20 @@ pub fn init_module_system(
         // computed directly from `sales`/`refunds` by
         // `kasirmu_core::db::reports` (currency-grouped, store-offset aware,
         // refund-aware).
-        bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+        k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+            STARTUP_WIRING_OWNER,
             "sale.completed",
+            "subscribe:sale.completed",
             Box::new(crate::event_handlers::LoyaltyEarnHandler::new(handler_conn)),
-        );
+        )?;
 
         // ── ADR #22 Phase 0e: SettingsUpdated handler (non-blocking) ──
-        bus.subscribe::<kasirmu_core::events::SettingsUpdated>(
+        k.subscribe_gated::<kasirmu_core::events::SettingsUpdated>(
+            STARTUP_WIRING_OWNER,
             "settings.updated",
+            "subscribe:settings.updated",
             Box::new(crate::event_handlers::SettingsUpdatedHandler::new()),
-        );
+        )?;
 
         // ── WhatsApp notification handlers (opt-in via feature flag + env vars) ─
         #[cfg(feature = "whatsapp-notifications")]
@@ -205,15 +263,17 @@ pub fn init_module_system(
                     let client: std::sync::Arc<dyn NotificationClient> =
                         std::sync::Arc::new(whatsapp);
 
-                    bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+                    k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+                        STARTUP_WIRING_OWNER,
                         "sale.completed",
+                        "subscribe:sale.completed",
                         Box::new(
                             kasirmu_notification::handlers::OrderConfirmationHandler::new(
                                 client.clone(),
                                 std::env::var("WHATSAPP_STORE_PHONE").ok(),
                             ),
                         ),
-                    );
+                    )?;
                     // NOT-B: register the receipt handler ONLY when a recipient
                     // is configured. It used to default to a hard-coded
                     // "+15550000000", so an install that enabled the feature
@@ -223,15 +283,17 @@ pub fn init_module_system(
                     // its store phone is absent.
                     match std::env::var("WHATSAPP_RECEIPT_PHONE") {
                         Ok(phone) if !phone.trim().is_empty() => {
-                            bus.subscribe::<kasirmu_core::events::SaleCompleted>(
+                            k.subscribe_gated::<kasirmu_core::events::SaleCompleted>(
+                                STARTUP_WIRING_OWNER,
                                 "sale.completed",
+                                "subscribe:sale.completed",
                                 Box::new(
                                     kasirmu_notification::handlers::PaymentReceiptHandler::new(
                                         client.clone(),
                                         phone,
                                     ),
                                 ),
-                            );
+                            )?;
                         }
                         _ => tracing::warn!(
                             "WHATSAPP_RECEIPT_PHONE not set — payment-receipt handler skipped"
@@ -246,14 +308,16 @@ pub fn init_module_system(
                     // handler, rather than a message to a placeholder.
                     match std::env::var("WHATSAPP_MANAGER_PHONE") {
                         Ok(phone) if !phone.trim().is_empty() => {
-                            bus.subscribe::<kasirmu_core::events::StockAdjusted>(
+                            k.subscribe_gated::<kasirmu_core::events::StockAdjusted>(
+                                STARTUP_WIRING_OWNER,
                                 "stock.adjusted",
+                                "subscribe:stock.adjusted",
                                 Box::new(
                                     kasirmu_notification::handlers::StockLowAlertHandler::new(
                                         client, threshold, phone,
                                     ),
                                 ),
-                            );
+                            )?;
                         }
                         _ => tracing::warn!(
                             "WHATSAPP_MANAGER_PHONE not set — low-stock alert handler skipped"

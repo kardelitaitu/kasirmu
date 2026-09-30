@@ -671,6 +671,64 @@ impl Kernel {
         &self.event_bus
     }
 
+    /// Subscribe a module's event handler, gated on a capability.
+    ///
+    /// The module must have been *granted* `capability` (a
+    /// `namespace:action` string, e.g. `read:sales`). Two cases are
+    /// deliberately distinct:
+    ///
+    /// * The module declares **no** capabilities at all — the legacy,
+    ///   pre-Phase-2 shape. Subscription is allowed, but a deprecation
+    ///   warning names the module so the migration is observable rather
+    ///   than silent. This is the plan's "legacy access still works
+    ///   during migration".
+    /// * The module declares some capability set and does not hold this
+    ///   one — the subscription is **refused** with
+    ///   [`KernelError::MissingCapability`]. A module cannot listen on
+    ///   another vertical's event without holding the grant.
+    ///
+    /// The handler is registered with module ownership, so stopping the
+    /// module unsubscribes it (see [`EventBus::subscribe_for_module`]).
+    ///
+    /// # Errors
+    /// Returns [`KernelError::MissingCapability`] when the module declares
+    /// capabilities but has not been granted this one.
+    pub fn subscribe_gated<E>(
+        &self,
+        module: &'static str,
+        topic: &'static str,
+        capability: &str,
+        handler: Box<dyn foundation::contracts::EventHandler<E>>,
+    ) -> Result<(), KernelError>
+    where
+        E: foundation::contracts::DomainEvent + 'static,
+    {
+        match self.capabilities.get(module) {
+            // Legacy module: no capability declaration at all. Allowed with a
+            // warning so the gap shows up in boot logs instead of going
+            // unnoticed until the manifest is hardened.
+            None => {
+                tracing::warn!(
+                    module,
+                    topic,
+                    "module subscribes without declaring capabilities; \
+                     legacy access is allowed during migration but should be \
+                     declared in the module manifest"
+                );
+            }
+            Some(caps) => {
+                if !caps.granted().iter().any(|c| c.as_str() == capability) {
+                    return Err(KernelError::MissingCapability {
+                        module,
+                        missing: capability.to_string(),
+                    });
+                }
+            }
+        }
+        self.event_bus.subscribe_for_module(module, topic, handler);
+        Ok(())
+    }
+
     // ── State queries ─────────────────────────────────────────────
 
     /// Whether `load_all` has been called.
