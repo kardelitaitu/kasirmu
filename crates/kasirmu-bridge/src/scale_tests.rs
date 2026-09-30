@@ -46,6 +46,28 @@ fn scale_device_info_empty_fields() {
     assert_eq!(json["device_path"], "");
 }
 
+// ── read_scale_weight (unscoped) ────────────────────────────────────
+
+#[tokio::test]
+async fn an_unscoped_read_with_no_scale_is_none_not_an_error() {
+    // The tablet shell exposes this door, so the body lives here rather than
+    // being copied into the shell. No scale bound is a defined state.
+    let bridge = crate::testing::TestBridge::new();
+    let ctx = bridge.ctx();
+    let reading = read_scale_weight(&ctx).await.unwrap();
+    assert!(reading.is_none());
+}
+
+#[tokio::test]
+async fn an_unscoped_read_does_not_need_a_session() {
+    // Deliberately unlike its scoped twin: this body is the tablet's
+    // unscoped door and performs no resolution at all, so an empty session
+    // store must not turn into an InvalidSession error.
+    let bridge = crate::testing::TestBridge::new();
+    let ctx = bridge.ctx();
+    assert!(read_scale_weight(&ctx).await.is_ok());
+}
+
 // ── list_scale_devices_scoped ───────────────────────────────────────
 
 use kasirmu_hal::drivers::mock::MockWeightScale;

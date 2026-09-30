@@ -30,6 +30,29 @@ pub struct ScaleDeviceInfo {
     pub device_path: String,
 }
 
+/// Read scale weight, unscoped.
+///
+/// The tablet shell exposes an unscoped door alongside the scoped one; this
+/// is that body, kept next to its scoped twin so both shells share one
+/// implementation. Prefer the scoped form wherever a session token exists —
+/// this one performs no scope resolution and therefore carries no permission
+/// check.
+///
+/// # Errors
+///
+/// Propagates scale [`kasirmu_hal::HalError`]s; a register with no scale
+/// yields `Ok(None)` by design.
+pub async fn read_scale_weight(ctx: &BridgeCtx<'_>) -> Result<Option<WeightReading>, BridgeError> {
+    let scale = ctx.registry.scale("default").await;
+    match scale {
+        Some(s) => {
+            let reading = s.read_weight()?;
+            Ok(Some(reading))
+        }
+        None => Ok(None),
+    }
+}
+
 /// Read scale weight (scoped).
 ///
 /// # Errors
