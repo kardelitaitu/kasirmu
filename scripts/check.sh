@@ -359,6 +359,17 @@ else
     echo -e "${YELLOW}⚠ skill-drift-guard skipped (bash not found)${NC}"
 fi
 
+# ── Font-claims gate ─────────────────────────────────────────────────────
+# check-font-claims.mjs executes the font lane's published claims instead of
+# trusting their prose: it re-runs each claim's command and compares against
+# the expectation stated HERE. It had NO caller at all until now -- the only
+# job that ever ran it was retired to .github/workflows/attic/ci.yml.bak --
+# which is the failure its own header names: "A documented check nobody
+# executes becomes a description of a past run." 17 s locally. Node is a hard
+# requirement of this repo, so unlike the bats step above there is no skip
+# branch: a missing node is a broken checkout, not an optional dependency.
+step "font-claims" "node scripts/check-font-claims.mjs" node scripts/check-font-claims.mjs
+
 # ── Panic-inventory gate (RUST-07 / ADR #33) — fail-closed ────────────────
 # Audits production unwrap()/expect() calls (excludes tests, benches, and
 # cfg(test)-gated helpers). Panics are only acceptable for documented

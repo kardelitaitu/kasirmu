@@ -998,6 +998,16 @@ jobs:
           sudo apt-get install -y bats
           bash .agents/skills/skill-drift-guard/scripts/run-tests.sh
 
+      # check-font-claims.mjs re-runs the font lane’s published claims and
+      # compares each against the expectation stated in the script. It had NO
+      # caller at all — the only job that ever ran it was retired to
+      # attic/ci.yml.bak — which is the failure its own header names: a
+      # documented check nobody executes becomes a description of a past run.
+      # Placed here rather than after the expensive steps because it is free:
+      # 17 s, and no build output is needed for the claims that are current.
+      - name: Font claims
+        run: node scripts/check-font-claims.mjs
+
       - name: Unified healthcheck script test
         run: sh apps/unified/test-healthcheck.sh
       # Orphaned until 2026-09-26 (review 12.2): the script existed, worked and passed,
