@@ -88,6 +88,9 @@ const EXPECTED_KEYS: Record<string, string> = {
   'resto_rcpt_logo_pos': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
   // Whether per-item order notes print on the receipt (c761e0fc0).
   'resto_rcpt_show_item_notes': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  // Receipt amount formatting toggles (2cab71f40): thousands separator and decimals.
+  'resto_rcpt_thousands_sep': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
+  'resto_rcpt_show_decimals': 'features/restaurant/screens/RestaurantReceiptsScreen.tsx',
 
   // Analytics
   'card': 'features/analytics/analytics-cache.ts',
