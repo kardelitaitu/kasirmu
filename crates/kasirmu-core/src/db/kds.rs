@@ -13,8 +13,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B final: kds deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: clean — both format!-SQL sites interpolate only match-derived internal timestamp columns (verified injection-safe, closes B5-part-6 flag); line-item transitions enforced by an explicit allowed() state machine (order-level updates lack the same machine — INFO, frontend-driven fixed set); pairing tokens stored hashed; prep_time clamped >=0; fanout normalized via kds_order_targets (no duplicate tickets); stale devices auto-deactivated with logging
-next: consider order-level transition validation | perf: queue filter in Rust post-query, fine at KDS scale
+findings: clean — both format!-SQL sites interpolate only match-derived internal timestamp columns (verified injection-safe, closes B5-part-6 flag); transitions enforced by explicit state machines at BOTH levels — line items AND orders (the original INFO 'order-level updates lack the same machine' is STALE, corrected 2026-10-04: `update_kds_status` (crates/kasirmu-core/src/db/kds_orders.rs:389) is forward-only `pending → preparing → ready → served` plus `cancelled` from any active state, rejects regressions with Validation, treats `served`/`cancelled` as terminal, makes a same-state replay a no-op that preserves started_at, and is a compare-and-set (C18) so a competing transition cannot be overwritten); pairing tokens stored hashed; prep_time clamped >=0; fanout normalized via kds_order_targets (no duplicate tickets); stale devices auto-deactivated with logging
+next: none | perf: queue filter in Rust post-query, fine at KDS scale
 */
 
 use crate::db::Store;

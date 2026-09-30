@@ -536,3 +536,15 @@ Pinned by `sync_conflict_commands_use_a_bounded_client` (`apps/mobile-tauri/src/
 The desktop twin (`apps/desktop-tauri/src/commands/sync.rs`) carries the same pattern at `:440`/`:488` and is left to the lane that currently owns that file.
 
 > COR-31 residual fixed 2026-10-04; the tablet conflict commands are bounded at 10s connect / 30s total.
+
+## The KDS order-level transition machine already exists (marker correction, 2026-10-04)
+
+The `crates/kasirmu-core/src/db/kds.rs` stamp carried `next: consider order-level transition validation` and an INFO in its findings that "order-level updates lack the same machine". Both were stale:
+
+`update_kds_status` (`crates/kasirmu-core/src/db/kds_orders.rs:389`) is already a full state machine — forward-only `pending → preparing → ready → served`, `cancelled` accepted from any active state, a regression (e.g. a stale offline replay) rejected with `CoreError::Validation`, `served`/`cancelled` terminal, and a same-state replay a true no-op that preserves `started_at` (so a re-fired auto-ack cannot restart the prep timer). It is additionally a **compare-and-set** (`cdc14968a`, C18), so a competing transition landing between the pre-read and the write cannot be silently overwritten.
+
+It is pinned by nine tests in `crates/kasirmu-core/src/db/kds_tests.rs`: `update_kds_status_sets_timestamps`, `update_kds_status_rejects_regression` (`:236`), `update_kds_status_race_cannot_overwrite_a_competing_transition` (`:274`), `update_kds_status_served_is_terminal` (`:374`), `update_kds_status_cancelled_is_terminal` (`:398`), `update_kds_status_computes_prep_time_on_served` (`:416`), `update_kds_status_invalid` (`:490`), `update_kds_status_nonexistent_order_fails` (`:1000`), and `update_kds_status_same_state_replay_preserves_started_at` (`:3127`).
+
+Both stamp lines now record this and read `next: none`.
+
+> KDS order-level transition marker corrected 2026-10-04; the state machine and its nine pins were already in place.
