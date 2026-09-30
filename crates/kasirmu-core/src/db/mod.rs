@@ -75,6 +75,7 @@ pub mod downgrade;
 pub mod gift_cards;
 /// Inventory management CRUD (locations, shifts, thresholds, transaction logs).
 pub mod inventory;
+pub mod inventory_seam;
 /// Kitchen Display System order CRUD.
 pub mod kds;
 /// KDS routing rules CRUD — per-restaurant explicit station assignments.
@@ -88,6 +89,9 @@ pub mod stripe;
 pub use offline::RemoteSyncFailure;
 /// EDC terminal configuration CRUD — PLANNED (stubs).
 pub mod edc_terminals;
+/// The `ReportingFacade` trait — the sanctioned cross-vertical read path
+/// (Phase 4 P4.2, ADR-62 D5).
+pub mod facade;
 /// Indonesian e-Faktur compliance repository (DJP Coretax / PER-11/PJ/2025).
 pub mod faktur_pajak;
 /// Fiscalization and statutory numbering — legal-entity schemes and the
@@ -148,9 +152,6 @@ pub mod refunds;
 /// Regional-configuration reads — the effective locale / timezone / currency
 /// for a location, resolved across the §H scopes.
 pub mod regional;
-/// The `ReportingFacade` trait — the sanctioned cross-vertical read path
-/// (Phase 4 P4.2, ADR-62 D5).
-pub mod facade;
 /// Report generation queries.
 pub mod reports;
 /// Role authoring — update / delete for custom roles (ADR #47 ruling 4).

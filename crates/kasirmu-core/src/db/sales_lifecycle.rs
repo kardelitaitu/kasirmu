@@ -200,16 +200,11 @@ impl Store<'_> {
         .unwrap_or_else(|_| crate::location_resolver::get_default_location_id());
 
         for line in &sale.lines {
-            // Check product info to determine if this line tracks inventory
-            let product_info: Option<(String, String)> = match tx.query_row(
-                "SELECT id, product_type FROM products WHERE sku = ?1",
-                rusqlite::params![line.sku],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            ) {
-                Ok(val) => Some(val),
-                Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                Err(e) => return Err(CoreError::Db(e)),
-            };
+            // Check product info to determine if this line tracks inventory.
+            // Phase 5 P5.2: the `products` read lives in `db::inventory_seam`.
+            let product_info =
+                crate::db::inventory_seam::product_info_by_sku_in_tx(&tx, &line.sku)?
+                    .map(|info| (info.product_id, info.product_type));
 
             // Same contract as the checkout path: this verdict decides whether
             // the line is deducted at all, and the fallback (Retail) tracks
@@ -253,42 +248,23 @@ impl Store<'_> {
                     line.qty,
                     resolution,
                     |location| {
-                        let product_id: String = tx
-                            .query_row(
-                                "SELECT id FROM products WHERE sku = ?1",
-                                rusqlite::params![line.sku],
-                                |row| row.get(0),
-                            )
-                            .map_err(|_| CoreError::NotFound {
-                                entity: "product",
-                                id: line.sku.clone(),
-                            })?;
-                        tx.query_row(
-                            "SELECT COALESCE(qty, 0) FROM stock_summary \
-                             WHERE item_id = ?1 AND location_id = ?2",
-                            rusqlite::params![product_id, location.as_str()],
-                            |row| row.get(0),
+                        let product_id =
+                            crate::db::inventory_seam::require_product_id_by_sku_in_tx(
+                                &tx, &line.sku,
+                            )?;
+                        crate::db::inventory_seam::location_qty_in_tx(
+                            &tx,
+                            &product_id,
+                            location.as_str(),
                         )
-                        .optional()
-                        .map(|v| v.unwrap_or(0))
-                        .map_err(CoreError::from)
                     },
-                    |location| {
-                        let allow_neg = if let Some(ws_id) = workspace_instance_id {
-                            tx.query_row(
-                                "SELECT COALESCE(allow_negative_stock, 0) \
-                                 FROM workspace_inventory_locations \
-                                 WHERE instance_id = ?1 AND location_id = ?2",
-                                rusqlite::params![ws_id, location.as_str()],
-                                |row| row.get::<_, i64>(0),
-                            )
-                            .optional()
-                            .map(|v| v.unwrap_or(0) == 1)
-                            .map_err(CoreError::from)?
-                        } else {
-                            false
-                        };
-                        Ok(allow_neg)
+                    |location| match workspace_instance_id {
+                        Some(ws_id) => crate::db::inventory_seam::allow_negative_at_in_tx(
+                            &tx,
+                            ws_id,
+                            location.as_str(),
+                        ),
+                        None => Ok(false),
                     },
                 )?;
                 deductions.extend(planned);
@@ -307,17 +283,15 @@ impl Store<'_> {
                 // BOM ingredients for non-resolution lines
                 if has_recipe {
                     for ingredient in recipe {
-                        let ing_info: Option<(String, String)> = match tx.query_row(
-                            "SELECT sku, product_type FROM products WHERE id = ?1",
-                            rusqlite::params![ingredient.ingredient_product_id],
-                            |row| Ok((row.get(0)?, row.get(1)?)),
-                        ) {
-                            Ok(val) => Some(val),
-                            Err(rusqlite::Error::QueryReturnedNoRows) => None,
-                            Err(e) => return Err(CoreError::Db(e)),
-                        };
+                        // Phase 5 P5.2: the `products` read lives in `db::inventory_seam`.
+                        let ing_info = crate::db::inventory_seam::ingredient_info_by_id_in_tx(
+                            &tx,
+                            &ingredient.ingredient_product_id,
+                        )?;
 
-                        if let Some((ing_sku, ing_ptype_str)) = ing_info {
+                        if let Some(info) = ing_info {
+                            let ing_sku = info.product_id;
+                            let ing_ptype_str = info.product_type;
                             // Same contract as the sale-line parse above: an
                             // unmapped ingredient type deducts stock a Service
                             // ingredient does not keep.

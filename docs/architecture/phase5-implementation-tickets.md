@@ -58,7 +58,7 @@ coverage. **Acceptance:** deleting a declared table from the list makes the test
 
 > **Finding surfaced by P5.1:** the declaration has to name `customers` (owned by crm) to pass, but `modules/sales/manifest.json` declares only `dependencies: ["inventory"]`. `MODULE_DEPENDENCIES` currently mirrors what the code *needs* (`[inventory, crm]`) rather than the manifest, so the gap is visible in one place. P5.3 closes it by routing the accrual through the crm seam and declaring the dependency.
 
-### P5.2 — Extract stock settlement behind an inventory seam — **PARTIAL 2026-10-03**
+### P5.2 — Extract stock settlement behind an inventory seam — **DONE 2026-10-03**
 
 Replace the inline `products` / `stock_summary` / `workspace_inventory_locations` reads and the
 `adjust_stock_batch` call inside `complete_sale_with_resolved_shortfalls` with one inventory-owned
@@ -72,10 +72,22 @@ unowned table.
 > **Progress 2026-10-03:** the resolution branch's *decision logic* (allocation-sum validation,
 > non-positive skip, insufficient-stock refusal) moved out of the 500-line inline block into
 > `plan_resolution_deductions` in `crates/kasirmu-core/src/sale_deduction.rs`, taking the DB reads as
-> two closures. It is now unit-testable without a connection (5 new tests). The foreign reads
-> themselves still sit at the call site, so the full "behind the inventory seam" move (P5.2 proper)
-> and the mutation test on the seam are still open. Core ceiling raised 36673 → 36694 deliberately
-> for the extraction.
+> two closures. It is now unit-testable without a connection (5 new tests). Core ceiling raised
+> 36673 → 36694 deliberately for the extraction.
+>
+> **Landed (P5.2 proper):** the five foreign READS are gone from `sales_lifecycle.rs` and now live in
+> a core-owned seam, `crates/kasirmu-core/src/db/inventory_seam.rs` (declared `pub mod inventory_seam;`
+> in `db/mod.rs`). Like the P5.3 crm seam, it is core-owned because core cannot depend on
+> modules-inventory without inverting the layering. Five tx-scoped functions, behaviour-preserving
+> byte-for-byte: `product_info_by_sku_in_tx`, `ingredient_info_by_id_in_tx`,
+> `require_product_id_by_sku_in_tx`, `location_qty_in_tx` (COALESCE→0), and
+> `allow_negative_at_in_tx` (missing override → false). `sales_lifecycle.rs` calls them by name; a
+> source scan confirms `FROM products` / `FROM stock_summary` / `FROM workspace_inventory_locations`
+> no longer appear there. **Acceptance reached:** the foreign statements are gone, the behaviour
+> tests pass unchanged (12 lifecycle tests), and two mutation tests in `sales_lifecycle_tests.rs`
+> (`the_inventory_reads_stay_behind_the_seam`, `the_inventory_seam_owns_the_read_sql`) fail if the
+> reads are re-inlined or the seam is emptied. The inventory *write* side (`adjust_stock_batch`) was
+> already behind `products_stock_adjust`, so no write moved. 9 seam tests in `inventory_seam_tests.rs`.
 
 ### P5.3 — Route the loyalty/customer accrual through the crm seam — **DONE 2026-10-03**
 

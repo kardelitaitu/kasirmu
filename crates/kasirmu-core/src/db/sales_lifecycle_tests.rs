@@ -613,3 +613,47 @@ fn the_foreign_write_declaration_is_not_empty() {
         "P5.4 assigned payments to sales; a re-home must update this declaration"
     );
 }
+
+// ── Phase 5 P5.2: the inventory reads live behind the seam ─────────────
+
+/// The sale-lifecycle path runs in core, below the module layer, so the
+/// namespace firewall's runtime check never sees these statements. P5.2 moved
+/// the `products` / `stock_summary` / `workspace_inventory_locations` READS
+/// out of this file and into `db::inventory_seam`; this is the mutation that
+/// keeps them there.
+///
+/// A regression is silent (the reads still work), so the guard is a source
+/// scan: if any of the five foreign read statements reappears inline in
+/// `sales_lifecycle.rs`, this fails and names the seam that should own it.
+#[test]
+fn the_inventory_reads_stay_behind_the_seam() {
+    const SOURCE: &str = include_str!("sales_lifecycle.rs");
+    for forbidden in [
+        "FROM products",
+        "FROM stock_summary",
+        "FROM workspace_inventory_locations",
+    ] {
+        assert!(
+            !SOURCE.contains(forbidden),
+            "sales_lifecycle.rs reads `{forbidden}` inline again; the P5.2 seam (db::inventory_seam) owns that read"
+        );
+    }
+}
+
+/// The mutation above is only meaningful if the seam actually holds the SQL.
+/// A move that deleted the reads without re-homing them would pass the scan
+/// and break settlement; this pins the other half.
+#[test]
+fn the_inventory_seam_owns_the_read_sql() {
+    const SEAM: &str = include_str!("inventory_seam.rs");
+    for owned in [
+        "FROM products",
+        "FROM stock_summary",
+        "FROM workspace_inventory_locations",
+    ] {
+        assert!(
+            SEAM.contains(owned),
+            "db::inventory_seam no longer holds `{owned}`; either it moved again or the P5.2 extraction was reverted"
+        );
+    }
+}
