@@ -329,7 +329,7 @@ fn test_scan_all_tenants_sqlite() {
         );
     }
 
-    let violations = scan_all_tenants_quota_sqlite(&conn);
+    let violations = scan_all_tenants_quota_sqlite(&conn).expect("the scan runs");
     assert_eq!(violations.len(), 1);
     assert_eq!(violations[0].tenant_id, tenant_bad);
     assert_eq!(violations[0].dimension, QuotaDimensionKind::Products);
@@ -528,6 +528,59 @@ fn test_locations_axis_is_structurally_inert() {
         cloud_side_count <= smallest_cap,
         "the cloud-side count ({cloud_side_count}) can never exceed the smallest cap \
          ({smallest_cap}), so the axis never fires"
+    );
+}
+
+/// A scan that could not RUN must not look like a scan that found nothing.
+///
+/// **This is the failure mode with no observable symptom.** The detector's whole
+/// output is "a list of tenants over their cap". An empty list means a healthy
+/// deployment, so when the enumeration stopped running -- a dropped table, a locked
+/// database, a corrupted page -- the operator received the exact same silence as on
+/// every ordinary day. No violation is fabricated (the module's own invariant: flag
+/// and notify, never auto-terminate), but the ABSENCE of a flag is also not
+/// reported, and a quota detector that has stopped watching is indistinguishable
+/// from one that found nothing.
+///
+/// The pair with `test_scan_all_tenants_sqlite` is the rule: a scan that RAN returns
+/// its violations, a scan that FAILED returns Err. Both callers here used to be
+/// unable to tell them apart -- `enumerate_active_tenants_sqlite` dropped a failed
+/// `prepare`/`query_map` silently, and the cycle wrapped the whole thing in
+/// `.unwrap_or_default()`.
+#[test]
+fn a_broken_schema_makes_the_scan_fail_rather_than_report_nothing() {
+    let conn = setup_test_db();
+    seed_product(&conn, "tenant-quota-over", "p1", "OVER-1");
+    // The enumeration RUNS and sees the seeded tenant, so "this deployment has
+    // no tenants" is not available as an explanation later.
+    assert!(
+        enumerate_active_tenants_sqlite(&conn)
+            .expect("the enumeration runs against a live schema")
+            .iter()
+            .any(|t| t == "tenant-quota-over"),
+        "precondition: the seeded tenant is actually enumerated"
+    );
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_ok(),
+        "precondition: the scan runs against a live schema"
+    );
+
+    // Now break one of the tables the enumeration reads. `prepare` fails on a
+    // missing table, which is the same class of failure as a corrupt page or a
+    // schema that was never migrated.
+    conn.execute("DROP TABLE tenant_plans", [])
+        .expect("drop tenant_plans");
+
+    assert!(
+        scan_all_tenants_quota_sqlite(&conn).is_err(),
+        "a scan that could not run must report the failure. Returning an empty list
+        here is indistinguishable from a healthy deployment, so a tenant over its
+        cap stops being flagged and nothing anywhere says the detector is blind"
+    );
+    assert!(
+        enumerate_active_tenants_sqlite(&conn).is_err(),
+        "the enumeration is where the read fails, and it must say so rather than
+        returning the 'default'-only list it would otherwise produce"
     );
 }
 

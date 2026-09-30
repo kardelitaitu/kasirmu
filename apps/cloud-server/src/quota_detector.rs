@@ -231,19 +231,26 @@ pub fn check_tenant_quota_sqlite(
 }
 
 /// Enumerate distinct active tenants on SQLite.
-pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<String> {
+///
+/// Returns an `Err` when the enumeration itself could not run. The alternative --
+/// returning an empty list -- is indistinguishable from a deployment with exactly
+/// one tenant and no rows anywhere, so a broken scan would silently stop flagging
+/// EVERY tenant, and a quota detector that reports nothing is indistinguishable from
+/// one that found nothing.
+pub fn enumerate_active_tenants_sqlite(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<String>, rusqlite::Error> {
     let mut tenants = Vec::new();
     let query = "SELECT DISTINCT tenant_id FROM tenant_plans \
                  UNION SELECT DISTINCT tenant_id FROM products \
                  UNION SELECT DISTINCT tenant_id FROM users \
                  UNION SELECT DISTINCT tenant_id FROM locations";
-    if let Ok(mut stmt) = conn.prepare(query)
-        && let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0))
-    {
-        for row in rows.flatten() {
-            if !row.trim().is_empty() {
-                tenants.push(row);
-            }
+    let mut stmt = conn.prepare(query)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    for row in rows {
+        let tenant_id = row?;
+        if !tenant_id.trim().is_empty() {
+            tenants.push(tenant_id);
         }
     }
     if !tenants.iter().any(|t| t == "default") {
@@ -251,17 +258,23 @@ pub fn enumerate_active_tenants_sqlite(conn: &rusqlite::Connection) -> Vec<Strin
     }
     tenants.sort();
     tenants.dedup();
-    tenants
+    Ok(tenants)
 }
 
 /// Scan all active tenants on SQLite and return all quota violations.
-pub fn scan_all_tenants_quota_sqlite(conn: &rusqlite::Connection) -> Vec<TenantQuotaViolation> {
-    let tenants = enumerate_active_tenants_sqlite(conn);
+///
+/// Returns an `Err` when the scan could not be completed. See
+/// [`enumerate_active_tenants_sqlite`] for why an empty list is not an acceptable
+/// answer to a failed scan.
+pub fn scan_all_tenants_quota_sqlite(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<TenantQuotaViolation>, rusqlite::Error> {
+    let tenants = enumerate_active_tenants_sqlite(conn)?;
     let mut all_violations = Vec::new();
     for tenant_id in &tenants {
         all_violations.extend(check_tenant_quota_sqlite(conn, tenant_id));
     }
-    all_violations
+    Ok(all_violations)
 }
 
 // ── PostgreSQL Queries ───────────────────────────────────────────────
@@ -579,12 +592,22 @@ pub async fn run_quota_scan_cycle_sqlite(
     state: &QuotaAlertState,
 ) {
     let db = db.clone();
-    let violations = tokio::task::spawn_blocking(move || {
+    let violations = match tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
         scan_all_tenants_quota_sqlite(&conn)
     })
     .await
-    .unwrap_or_default();
+    {
+        Ok(Ok(v)) => v,
+        Ok(Err(e)) => {
+            error!(error = %e, "quota_detector (sqlite): scan cycle failed");
+            return;
+        }
+        Err(e) => {
+            error!(error = %e, "quota_detector (sqlite): scan task failed to run");
+            return;
+        }
+    };
 
     let now = Instant::now();
     for v in &violations {
