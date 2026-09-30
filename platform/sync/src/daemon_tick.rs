@@ -46,28 +46,62 @@ async fn persist_stamped_counter(db: &DbConnection, transport: &SyncTransport) {
 }
 
 /// Read this terminal's stamping seed: its configured id (when present) and
-/// the persisted logical clock, parsed (`0` when absent or corrupt).
+/// the persisted logical clock.
 ///
 /// Both push sites use this to decide whether to stamp: a terminal without an
 /// identity does not stamp, and its counter is meaningless. Reading the pair
 /// together keeps the two sites from drifting apart.
-async fn read_stamping_seed(db: &DbConnection) -> (Option<String>, u64) {
+///
+/// Returns `None` when stamping cannot be seeded SAFELY — either no terminal id,
+/// or the clock row exists but could not be read or parsed. The second case is
+/// not the same as an absent clock: `parse_counter` documents at length that a
+/// value which does not parse is an error rather than a `0`, because a fresh
+/// counter orders this terminal's next push in the past, the server classifies
+/// it `Stale`, and detection silently stops for this terminal — the exact
+/// outcome the caller's own doc warns about. `SettingsClockStore::load_counter`
+/// already returns `Err` here; this is the daemon's half of that one rule.
+pub(crate) async fn read_stamping_seed(db: &DbConnection) -> Option<(String, u64)> {
     let db_clone = db.clone();
-    tokio::task::spawn_blocking(move || {
+    let read = tokio::task::spawn_blocking(move || {
         let conn = db_clone.blocking_lock();
-        let terminal = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
-            .ok()
-            .flatten();
-        let counter = kasirmu_core::Store::new(&conn)
-            .get_setting(crate::crdt::CLOCK_KEY)
+        // `Ok(None)` = a normal 'no stamping' (no terminal identity). `Err` = the
+        // clock exists but cannot be read safely. The caller degrades both to
+        // unstamped, but only the second is an error worth logging.
+        let Some(terminal) = kasirmu_core::settings::Settings::get_sync_terminal_id(&conn)
             .ok()
             .flatten()
-            .and_then(|raw| crate::crdt::parse_counter(&raw).ok())
-            .unwrap_or(0);
-        (terminal, counter)
+        else {
+            return Ok(None);
+        };
+        // Absent clock -> `0` is correct and documented (`ClockStore::load_counter`
+        // says '0 if never written'). A present-but-unreadable or present-but-corrupt
+        // clock must NOT collapse to `0`; it propagates as an error so the caller
+        // degrades to unstamped instead of emitting a rewound counter.
+        let counter = match kasirmu_core::Store::new(&conn).get_setting(crate::crdt::CLOCK_KEY) {
+            Ok(Some(raw)) => crate::crdt::parse_counter(&raw).map_err(|e| e.to_string())?,
+            Ok(None) => 0,
+            Err(e) => return Err(e.to_string()),
+        };
+        Ok(Some((terminal, counter)))
     })
-    .await
-    .unwrap_or((None, 0))
+    .await;
+    match read {
+        Ok(Ok(seed)) => seed,
+        Ok(Err(e)) => {
+            tracing::error!(
+                error = %e,
+                "sync: the persisted clock could not be read or parsed; pushing WITHOUT vector stamps this cycle rather than rewinding the counter, which would make the server classify every push as stale"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "sync: the clock read panicked; pushing WITHOUT vector stamps this cycle"
+            );
+            None
+        }
+    }
 }
 
 /// Turn vector stamping on for `transport` when this terminal has an identity.
@@ -76,9 +110,12 @@ async fn read_stamping_seed(db: &DbConnection) -> (Option<String>, u64) {
 /// counter, and a rewound counter makes the server classify every push as
 /// stale — detection then quietly stops for this terminal.
 async fn with_stamping_seed(db: &DbConnection, transport: SyncTransport) -> SyncTransport {
-    let (terminal, counter) = read_stamping_seed(db).await;
-    match terminal {
-        Some(terminal_id) => transport.with_vector_stamping(&terminal_id, counter),
+    match read_stamping_seed(db).await {
+        Some((terminal_id, counter)) => transport.with_vector_stamping(&terminal_id, counter),
+        // No terminal identity, or a clock that could not be read safely: leave the
+        // transport unstamped. The server treats an unstamped item as coming from a
+        // peer that predates vector support and skips detection for it — a defined
+        // degradation — whereas a rewound counter would mis-classify pushes as stale.
         None => transport,
     }
 }

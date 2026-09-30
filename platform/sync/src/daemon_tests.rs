@@ -2136,3 +2136,77 @@ async fn run_tick_persists_the_clock_even_when_the_push_fails() {
 persisted clock must advance past the seed; got {persisted}"
     );
 }
+
+/// A clock row that cannot be read or parsed must NOT seed stamping with `0`.
+///
+/// `parse_counter` (and `SettingsClockStore::load_counter`, which uses it) treat
+/// 'present but unparseable' as an ERROR, not as a fresh clock. The daemon must
+/// agree: seeding a rewound `0` orders this terminal's next push in the past, the
+/// server classifies it `Stale`, and conflict detection silently stops for the
+/// terminal. The only safe degradation is to push WITHOUT vector stamps this
+/// cycle — a defined state the server handles (transport.rs:292-295) — which is
+/// what `read_stamping_seed` returning `None` means. RED before the fix: the old
+/// `.ok().flatten().and_then(parse.ok()).unwrap_or(0)` returned `Some((.., 0))`
+/// here and the daemon stamped with a rewound counter.
+#[tokio::test]
+async fn read_stamping_seed_refuses_to_reuse_zero_when_the_clock_is_corrupt() {
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        let store = Store::new(&conn);
+        Settings::set_sync_terminal_id(&conn, "term-corrupt").unwrap();
+        // A value `parse_counter` documents as corrupt (clock_store_tests.rs:39
+        // asserts it errors): not an integer, no leading-zero/padding excuse.
+        store
+            .set_setting(crate::crdt::CLOCK_KEY, "not-a-number")
+            .unwrap();
+    })
+    .await
+    .unwrap();
+
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert!(
+        seed.is_none(),
+        "a corrupt clock must not resolve to a stamping seed; got {seed:?}"
+    );
+}
+
+/// The absent-clock case is the ONE that legitimately seeds `0`.
+///
+/// `ClockStore::load_counter` documents '0 if never written', so a terminal that
+/// has simply never ticked stamps from zero. This pins that the fix did not
+/// over-correct: only 'present but unreadable/corrupt' degrades to unstamped.
+#[tokio::test]
+async fn read_stamping_seed_seeds_zero_only_when_the_clock_was_never_written() {
+    let db = setup_db();
+
+    let db_setup = db.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        Settings::set_sync_terminal_id(&conn, "term-fresh").unwrap();
+        // No CLOCK_KEY write at all.
+    })
+    .await
+    .unwrap();
+
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert_eq!(
+        seed,
+        Some(("term-fresh".to_string(), 0)),
+        "an unwritten clock is a documented zero, not a failure"
+    );
+}
+
+/// A terminal with no identity never stamps — distinct from a clock failure.
+#[tokio::test]
+async fn read_stamping_seed_is_none_without_a_terminal_identity() {
+    let db = setup_db();
+    // Terminal id unset; even a perfectly good clock cannot be attributed.
+    let seed = super::daemon_tick::read_stamping_seed(&db).await;
+    assert!(
+        seed.is_none(),
+        "no terminal id means no stamping; got {seed:?}"
+    );
+}
