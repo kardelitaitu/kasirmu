@@ -388,16 +388,18 @@ export function EdcTerminalsCard({
             <label htmlFor="edc-name" className="settings-label">
               <Localized id="settings-edc-field-name">Terminal Name</Localized>
             </label>
-            <input
-              id="edc-name"
-              type="text"
-              className="settings-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. BCA Counter 1"
-              required
-              maxLength={120}
-            />
+            <Localized id="settings-edc-name-placeholder" attrs={{ placeholder: true }}>
+              <input
+                id="edc-name"
+                type="text"
+                className="settings-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. BCA Counter 1"
+                required
+                maxLength={120}
+              />
+            </Localized>
           </div>
 
           <div className="settings-field">
@@ -433,48 +435,61 @@ export function EdcTerminalsCard({
             <label htmlFor="edc-address" className="settings-label">
               <Localized id="settings-edc-field-address">Device Address / Port</Localized>
             </label>
-            <input
-              id="edc-address"
-              type="text"
-              className="settings-input"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder={
+            <Localized
+              id={
                 connectionType === 'wired'
-                  ? 'COM3, /dev/ttyUSB0, or loopback'
-                  : '192.168.1.188:9000, MAC, or loopback'
+                  ? 'settings-edc-address-wired-placeholder'
+                  : 'settings-edc-address-wireless-placeholder'
               }
-              required
-              maxLength={255}
-            />
+              attrs={{ placeholder: true }}
+            >
+              <input
+                id="edc-address"
+                type="text"
+                className="settings-input"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder={
+                  connectionType === 'wired'
+                    ? 'COM3, /dev/ttyUSB0, or loopback'
+                    : '192.168.1.188:9000, MAC, or loopback'
+                }
+                required
+                maxLength={255}
+              />
+            </Localized>
           </div>
 
           <div className="settings-field">
             <label htmlFor="edc-vendor" className="settings-label">
               <Localized id="settings-edc-field-vendor">Hardware Vendor</Localized>
             </label>
-            <input
-              id="edc-vendor"
-              type="text"
-              className="settings-input"
-              value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
-              placeholder="e.g. ingenico, verifone, pax, loopback"
-            />
+            <Localized id="settings-edc-vendor-placeholder" attrs={{ placeholder: true }}>
+              <input
+                id="edc-vendor"
+                type="text"
+                className="settings-input"
+                value={vendor}
+                onChange={(e) => setVendor(e.target.value)}
+                placeholder="e.g. ingenico, verifone, pax, loopback"
+              />
+            </Localized>
           </div>
 
           <div className="settings-field">
             <label htmlFor="edc-model" className="settings-label">
               <Localized id="settings-edc-field-model">Terminal Model</Localized>
             </label>
-            <input
-              id="edc-model"
-              type="text"
-              className="settings-input"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g. iPP320, A920"
-            />
+            <Localized id="settings-edc-model-placeholder" attrs={{ placeholder: true }}>
+              <input
+                id="edc-model"
+                type="text"
+                className="settings-input"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="e.g. iPP320, A920"
+              />
+            </Localized>
           </div>
 
           <div className="settings-field settings-field--horizontal">
