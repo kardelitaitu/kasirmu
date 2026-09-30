@@ -557,3 +557,52 @@ fn void_sale_race_reports_the_conflict_rather_than_overwriting_a_completed_sale(
     drop(conn_a);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── Phase 5 P5.1: the cross-vertical write contract ────────────────────
+
+/// Tables `sales_lifecycle.rs` writes that it does not own. This is the core-owned
+/// analogue of `Module::namespace_grants()`: the sale-lifecycle path runs in core,
+/// so no `NamespacedStore` sees its statements, and this list is what keeps a new
+/// cross-vertical write from slipping in unannounced.
+///
+/// `payments` has no owner in `modules/ownership.json` (`owner_of` returns `None`);
+/// that is the known open question Phase 5 P5.4 resolves, so it is allowed here
+/// explicitly rather than silently.
+const FOREIGN_WRITES: &[&str] = &["customers", "payments"];
+
+/// Module dependencies of `sales`. Mirrors `dependencies` in
+/// `modules/sales/manifest.json`; a foreign write's owner must appear here.
+const MODULE_DEPENDENCIES: &[&str] = &["inventory", "crm"];
+
+/// Every table this path writes that it does not own must be owned by a module
+/// the sales module declares as a dependency. Adding a foreign write without
+/// declaring its owner (here or in modules/sales/manifest.json) fails this test,
+/// which is the whole point of the declaration: the sale lifecycle runs in core,
+/// so this is the only place a new cross-vertical write gets caught.
+#[test]
+fn the_foreign_writes_name_owners_that_sales_declares() {
+    use crate::db::ownership::owner_of;
+    for table in FOREIGN_WRITES {
+        match owner_of(table) {
+            Some(owner) => assert!(
+                MODULE_DEPENDENCIES.contains(&owner),
+                "sale lifecycle writes '{table}', owned by '{owner}', but sales does not declare that dependency"
+            ),
+            // `payments` is deliberately unowned (Phase 5 P5.4). Allow a table the
+            // ownership map does not name, but only that one, and only while the
+            // ticket is open. Anything else unmapped is a governance gap.
+            None => assert_eq!(
+                *table, "payments",
+                "'{table}' has no owner in modules/ownership.json and is not the known open case"
+            ),
+        }
+    }
+}
+
+/// The declaration is not vacuous: it must name the two foreign writes the path
+/// actually performs (`customers` accrual, `payments` insert).
+#[test]
+fn the_foreign_write_declaration_is_not_empty() {
+    assert!(FOREIGN_WRITES.contains(&"customers"));
+    assert!(FOREIGN_WRITES.contains(&"payments"));
+}

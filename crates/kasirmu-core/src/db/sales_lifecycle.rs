@@ -15,6 +15,9 @@ use crate::AuditEntry;
 use crate::SaleStatus;
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 
+// Cross-vertical write contract for this core-owned path: Phase 5 P5.1, checked by
+// `the_foreign_writes_name_owners_that_sales_declares` in `sales_lifecycle_tests.rs`.
+
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///
 /// Deliberately NON-FATAL: a captured payment must never be rolled back

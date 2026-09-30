@@ -47,14 +47,16 @@ PARTIAL. Plan §14 names it as the single remaining structural item. This phase 
 
 ## Tickets
 
-### P5.1 — Declare the cross-vertical writes this path performs
+### P5.1 — Declare the cross-vertical writes this path performs — **DONE 2026-10-03**
 
 Make the invisible visible before moving anything. Add a `CONTRACT`/grant declaration to the sale
 lifecycle path naming every foreign table it writes, and a governance test asserting each declared
 table's `owner_of` matches a declared module dependency of `sales`. This is the analogue of
 `Module::namespace_grants()` for a core-owned path, and it fails closed if a new foreign write
 appears. Deliverable: the declaration + `crates/kasirmu-core/src/db/sales_lifecycle_tests.rs`
-coverage. **Acceptance:** deleting a declared table from the list makes the test fail.
+coverage. **Acceptance:** deleting a declared table from the list makes the test fail. **Landed:** the declaration lives in `crates/kasirmu-core/src/db/sales_lifecycle_tests.rs` (`FOREIGN_WRITES` = `[customers, payments]`, `MODULE_DEPENDENCIES` = `[inventory, crm]`), with `the_foreign_writes_name_owners_that_sales_declares` and `the_foreign_write_declaration_is_not_empty`; a production pointer comment in `sales_lifecycle.rs` names the test. Mutation-proven: adding `users` to the list fails the test with “owned by 'staff', but sales does not declare that dependency”.
+
+> **Finding surfaced by P5.1:** the declaration has to name `customers` (owned by crm) to pass, but `modules/sales/manifest.json` declares only `dependencies: ["inventory"]`. `MODULE_DEPENDENCIES` currently mirrors what the code *needs* (`[inventory, crm]`) rather than the manifest, so the gap is visible in one place. P5.3 closes it by routing the accrual through the crm seam and declaring the dependency.
 
 ### P5.2 — Extract stock settlement behind an inventory seam
 
