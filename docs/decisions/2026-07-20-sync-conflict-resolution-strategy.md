@@ -423,3 +423,18 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **The proptests still hold.** `crdt_merge_preserves_two_distinct_deltas_rather_than_deduplicating` passes unchanged: the content-collapse only ever joins byte-identical deltas, which arise from repeating one input, never from two independent adjustments.
 
 > Dedupe edges pinned 2026-10-04.
+
+---
+
+## A null side in an envelope is skipped, not applied (appended 2026-10-04)
+
+*Appended 2026-10-04. Continues the "degenerate inputs" section above.*
+
+`resolve_stock_crdt` can legitimately emit an envelope with a `Null` side: two unparseable inputs merge to `Null/Null`, and one unparseable input with one good one merges to `{local: <fact>, remote: Null}` (both shapes are already produced and pinned in `platform/sync/src/conflict_tests.rs`).
+
+Routing the four stock arms through `appliers::envelope_deltas` (the self-merge fix, e7f45118b) passed those nulls straight to the arm's deserialiser, which then aborted the WHOLE apply: `invalid stock payload: invalid type: null, expected struct StockAdjustmentPayload`. A side that carries no fact must be skipped.
+
+- `envelope_deltas` now drops a `Null` SIDE. It still emits a NON-envelope payload verbatim, so a bare top-level `null` item is still rejected visibly by the arm's deserialiser — only a null *side in a merge* is treated as "no fact".
+- Pins: `apply_remote_skips_a_null_side_in_a_merge_envelope` (a real local delta alongside a null remote applies once), `apply_remote_treats_both_null_sides_as_a_no_op` (`Null/Null` succeeds as a no-op), `apply_remote_still_rejects_a_bare_null_payload` (a non-envelope null still fails).
+
+> Null-side disposition pinned 2026-10-04.

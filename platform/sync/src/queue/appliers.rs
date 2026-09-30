@@ -457,8 +457,12 @@ pub(super) fn sale_completed_here_in_tx(
 /// distinct (a `stock.adjusted` delta carries no id, so content is its only
 /// identity).
 ///
-/// `Value::Null` sides pass through untouched — the arm's own deserialiser
-/// owns that error message, and this walk must not shadow it.
+/// A `Value::Null` SIDE (in a `crdt_delta` envelope) is skipped: a null side
+/// is "this replica had no fact to offer" (both inputs unparseable, or one
+/// side unparseable), which is normal in a merge and must not abort the
+/// apply. A non-envelope payload is emitted verbatim, so a top-level null
+/// still reaches the arm's deserialiser and is reported as the malformed
+/// item it is.
 pub(super) fn envelope_deltas(payload: &Value) -> Vec<Value> {
     let is_envelope = payload.get("merge_type").and_then(|m| m.as_str()) == Some("crdt_delta");
     let mut out: Vec<Value> = Vec::new();
@@ -468,7 +472,12 @@ pub(super) fn envelope_deltas(payload: &Value) -> Vec<Value> {
     }
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut push = |side: &Value, out: &mut Vec<Value>| {
-        if side.is_null() || seen.insert(side.to_string()) {
+        // A null side carries nothing to apply; skipping it keeps a null from
+        // aborting the whole envelope (the arm's deserialiser would reject it).
+        if side.is_null() {
+            return;
+        }
+        if seen.insert(side.to_string()) {
             out.push(side.clone());
         }
     };

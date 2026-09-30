@@ -1383,6 +1383,77 @@ fn apply_remote_consumes_a_merge_of_two_identical_payloads() {
     assert_eq!(inventory_qty(&store, "COFFEE"), base + 5);
 }
 
+/// A merge envelope can legitimately carry a null side (both inputs
+/// unparseable -> Null/Null, or one side unparseable -> local/Null). A null
+/// delta is "no fact", so the appliers must SKIP it rather than try to
+/// deserialise it and abort the whole apply.
+#[test]
+fn apply_remote_skips_a_null_side_in_a_merge_envelope() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    // local is a real adjustment, remote is null (the other replica had
+    // nothing parseable to offer).
+    let merged = serde_json::json!({
+        "local": { "sku": "COFFEE", "delta": 4 },
+        "remote": serde_json::Value::Null,
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue
+        .apply_remote(&store, &remote)
+        .expect("a null side must be skipped, not abort the apply");
+
+    assert_eq!(inventory_qty(&store, "COFFEE"), base + 4);
+}
+
+/// Both sides null is a valid merge of two unparseable inputs: there is no
+/// fact to apply, so the apply SUCCEEDS as a no-op (the resolver's own
+/// Null/Null shape - conflict_tests.rs).
+#[test]
+fn apply_remote_treats_both_null_sides_as_a_no_op() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let base = inventory_qty(&store, "COFFEE");
+    let merged = serde_json::json!({
+        "local": serde_json::Value::Null,
+        "remote": serde_json::Value::Null,
+        "merge_type": "crdt_delta"
+    })
+    .to_string();
+    let remote = OfflineQueueItem::new("stock.adjusted", &merged);
+
+    queue
+        .apply_remote(&store, &remote)
+        .expect("a merge with no fact to apply must still succeed");
+    assert_eq!(inventory_qty(&store, "COFFEE"), base);
+}
+
+/// A NON-envelope payload that is null is still a malformed item and must be
+/// reported, not silently swallowed - the null-skip only applies to a null
+/// SIDE inside an envelope.
+#[test]
+fn apply_remote_still_rejects_a_bare_null_payload() {
+    let store_conn = migrations::fresh_db();
+    let store = setup_store(&store_conn);
+    seed_product_and_inventory(&store);
+    let queue = SyncQueue::new();
+
+    let remote = OfflineQueueItem::new("stock.adjusted", "null");
+    assert!(
+        queue.apply_remote(&store, &remote).is_err(),
+        "a bare null stock payload is malformed and must fail visibly"
+    );
+}
+
 #[test]
 fn crdt_merge_end_to_end_resolve_to_apply() {
     // Full SYNC-05 path: resolve_conflict → apply_resolution (enqueue
