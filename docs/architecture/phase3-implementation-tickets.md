@@ -42,6 +42,16 @@ genuine cross-vertical edge (P3.3), then the structural gate that keeps the ratc
 
 ## 2. P3.1 — Retire the reporting module's facade-bypass edge
 
+**Status: DONE 2026-10-03.** The redundant domain surface (`repository.rs`, `service.rs`, `models.rs`,
+`error.rs` and their tests) was deleted — it had zero non-test callers and the live facade
+`kasirmu_core::db::reports` already ships the capability. `modules/reporting/src/lib.rs` was rewritten to
+the module shell that remains, the `modules/reporting/src/repository.rs` entry was removed from
+`scripts/namespace-governance-baseline.json`, and the live docs
+(`docs/architecture/reporting-facade-inventory.md` §3/§6,
+`docs/architecture/module-namespace-governance.md` §4/§5) record the retirement. `--json` now reports
+**1** frozen cross-vertical edge (loyalty) and `stale == 0`; `cargo test -p modules-reporting` 11 pass;
+`cargo check --workspace --all-targets` clean.
+
 **Problem (verified).** `modules/reporting/src/repository.rs:34` `generate_daily_report` reads `sales` with
 its own SQL instead of the sanctioned facade `kasirmu_core::db::reports`. It is the **only** production
 cross-vertical SQL in a module repository (`docs/architecture/reporting-facade-inventory.md` §3, §6): the

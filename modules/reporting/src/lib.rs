@@ -1,11 +1,11 @@
 /*
 last audited 25-07-26 by RSA-Agent (modules-reporting slice A: lib re-verify)
 crate: modules-reporting | status: SAFE | lint: CLEAN
-findings: clean Module registration layer; unwraps test-only; previous 19-07 stamp replaced per campaign convention
+findings: clean Module registration layer; the redundant read-only domain surface (ReportingService / ReportingRepository / DailyReport / ReportingError) was retired 2026-10-03 under Phase 3 P3.1 — it had zero non-test callers and duplicated the live kasirmu_core::db::reports facade, and its one cross-vertical query was the last reporting facade-bypass edge
 next: none | perf: N/A
 */
 
-//! Reporting Module — generates and exports sales, inventory, and financial reports.
+//! Reporting Module — the reporting vertical's module shell.
 //!
 //! ## Current state
 //!
@@ -20,33 +20,31 @@ next: none | perf: N/A
 //! `kasirmu_core::db::reports`, which groups by currency, honours the store's
 //! UTC offset, and joins refunds so a refund-only day still produces a row.
 //!
-//! What remains here is the read-only surface: the report DTOs and
-//! [`ReportingRepository`], a thin query layer over the live tables.
+//! # What was here before (retired 2026-10-03, Phase 3 P3.1)
 //!
-//! # Wiring status: the shell is registered, the domain surface is redundant
+//! A read-only domain surface — `ReportingService`, `ReportingRepository`,
+//! `DailyReport` and `ReportingError` — used to live here. It had **zero
+//! non-test callers**, and the capability it implemented was already shipped by
+//! `kasirmu_core::db::reports`, the live aggregate surface used by
+//! `kasirmu-bridge` and both shells. Worse, its one query
+//! (`generate_daily_report` reading `sales` directly) was the **last
+//! reporting facade-bypass edge** in the tree: it bypassed the sanctioned
+//! facade with its own SQL and carried a frozen baseline entry plus a T3 grant
+//! marker for the privilege of doing so.
 //!
-//! [`ReportingModule`] is registered with the kernel at startup
-//! (`platform/startup/src/lib.rs:107`) and its lifecycle hooks run — but they
-//! only log, so the registration proves the vertical is wired, not that its
-//! domain code is used.
+//! The Phase 1 inventory (`docs/architecture/reporting-facade-inventory.md`)
+//! recorded the disposition: route through the facade, then delete the method,
+//! the marker and the baseline entry together. Because the method had no
+//! callers, the migration is the deletion. The frozen cross-vertical edge count
+//! drops from 2 to 1 (the loyalty gift-card read remains).
 //!
-//! **The domain surface below is unwired and redundant, and that is recorded
-//! rather than fixed.** [`ReportingService`], [`ReportingRepository`] and
-//! [`DailyReport`] have **zero non-test callers**, and the capability they
-//! implement is already shipped by `kasirmu_core::db::reports`, which is the
-//! live aggregate surface used by `kasirmu-bridge` and both shells. The
-//! duplication was narrowed on 2026-09-30 (checklist C29) when
-//! `kasirmu-reporting::daily_summary` — a third implementation of the same
-//! daily-summary job — was deleted from the sibling crate.
+//! # What remains
 //!
-//! It is **not** deleted here because this module shell is a registered
-//! vertical, and this repo deliberately keeps stub verticals (`purchasing`,
-//! `promotions`, `giftcards`, `kitchen`) that own a manifest, an id and
-//! dependency edges with no domain logic yet. Removing it means unregistering
-//! the module and editing the parity test that pins the registration block
-//! against the `modules/*/manifest.json` set — a convention change, not a
-//! cleanup. **If the vertical is ever dropped, this file's domain modules go
-//! with it**; until then the honest label is this paragraph.
+//! The module **shell** stays: it is a registered vertical, and this repo
+//! deliberately keeps stub verticals (`purchasing`, `promotions`,
+//! `giftcards`, `kitchen`) that own a manifest, an id and dependency edges
+//! with no domain logic yet. The lifecycle hooks only log, so the registration
+//! proves the vertical is wired, not that it owns code.
 //!
 //! ## Module manifest
 //!
@@ -54,17 +52,12 @@ next: none | perf: N/A
 
 #![deny(unsafe_code)]
 
-pub mod error;
-pub mod handlers;
-pub mod models;
-pub mod repository;
-pub mod service;
-
-pub use error::ReportingError;
-
-pub use models::DailyReport;
-pub use repository::ReportingRepository;
-pub use service::ReportingService;
+/// Whether the reporting vertical has any domain code left.
+///
+/// This is a documentation anchor, not a behaviour switch: the value is
+/// `false` and exists so the retired-surface decision is testable rather than
+/// living only in prose. It is replaced if the vertical is ever dropped.
+pub const HAS_DOMAIN_SURFACE: bool = false;
 
 use std::fmt::Debug;
 
@@ -75,7 +68,8 @@ use tracing::info;
 ///
 /// Implements the [`Module`] trait to participate in the kernel
 /// lifecycle. It owns no event handlers: the `report_sales` projection was
-/// removed with MSL-11 because nothing read it (see the module docs).
+/// removed with MSL-11 because nothing read it, and the read-only repository
+/// surface was retired under Phase 3 P3.1 because it duplicated the facade.
 #[derive(Debug)]
 pub struct ReportingModule;
 
@@ -109,17 +103,15 @@ impl Module for ReportingModule {
     }
 
     fn on_start(&mut self) -> ModuleResult {
-        info!("reporting module: on_start — ready for reporting");
+        info!("reporting module: on_start — ready");
         Ok(())
     }
 
     fn on_stop(&mut self) -> ModuleResult {
-        info!("reporting module: on_stop — cleaning up");
+        info!("reporting module: on_stop — shutting down");
         Ok(())
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]

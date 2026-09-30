@@ -93,22 +93,20 @@ itself. §9.5's mention of payments is aspirational and should not be read as a 
 
 ## 3. Facade vs module-repository duplication
 
-The only production cross-vertical SQL in a **module** repository is
-`modules/reporting/src/repository.rs:34` (`generate_daily_report` reading `sales`). It duplicates the
-facade's `daily_revenue` in the narrow, single-day sense: same table, same `status = 'completed'`
-filter, but summed to one row instead of grouped by currency and without refund netting or the
-store-UTC bucket. It is:
+**Status: retired 2026-10-03 (Phase 3 P3.1).** The only production cross-vertical SQL in a **module**
+repository used to be `modules/reporting/src/repository.rs:34` (`generate_daily_report` reading
+`sales`). It duplicated the facade's `daily_revenue` in the narrow, single-day sense: same table, same
+`status = 'completed'` filter, but summed to one row instead of grouped by currency and without refund
+netting or the store-UTC bucket. It was baselined in `scripts/namespace-governance-baseline.json` and
+carried the T3 grant marker `// namespace: cross-vertical read sales granted (…)`.
 
-- baselined in `scripts/namespace-governance-baseline.json`, and
-- carries the T3 grant marker
-  `// namespace: cross-vertical read sales granted (read-only daily sales aggregate; reporting owns no sales data and Phase 4 moves this behind a store read API)`.
-
-`modules/reporting/src/` otherwise names no foreign table (`lib.rs`, `handlers.rs`, `models.rs`,
-`service.rs` contain no SQL). The module's domain surface (`ReportingRepository`, `ReportingService`,
-`DailyReport`) has **zero non-test callers** and is documented in `modules/reporting/src/lib.rs:33-49`
-as redundant rather than deleted, because the module shell is a registered vertical
-(`platform/startup/src/lib.rs:107`) and removing it would change the module-registration parity
-convention.
+Because the whole domain surface (`ReportingRepository`, `ReportingService`, `DailyReport`,
+`ReportingError`) had **zero non-test callers**, the migration the ticket prescribed was the deletion:
+the method, its T3 marker, the repository/service/models/error modules and their tests were removed, and
+the baseline entry with them. The frozen cross-vertical edge count is now **1** (the loyalty
+gift-card read, §6). `modules/reporting/src/` names no foreign table at all, and the module shell
+(`ReportingModule`, `platform/startup/src/lib.rs`) stays — it is a registered vertical, and removing it
+would change the module-registration parity convention.
 
 ## 4. The write question (T5 item 2) — DECISION
 
@@ -164,14 +162,13 @@ SQL\" is a checklist rather than an aspiration:
 
 | Site | Table (owner) | Status | Disposition |
 |---|---|---|---|
-| `modules/reporting/src/repository.rs:34` `generate_daily_report` | sales (sales) | baselined + T3 marker | Migrate onto `reports::revenue::daily_revenue`; delete the method, the marker and the baseline entry together. |
+| `modules/reporting/src/repository.rs:34` `generate_daily_report` | sales (sales) | **RETIRED 2026-10-03 (P3.1)** | Migrated onto nothing: it had zero callers, so the method, its T3 marker and the baseline entry were deleted together (the facade's `daily_revenue` already ships the capability). |
 
-**The bypass set has exactly one member.** No other file under `modules/reporting/src/` names a
-foreign table, so there is no second migration to sequence. The reporting module's remaining domain
-code (`ReportingService`, `ReportingRepository`, `DailyReport`) has zero non-test callers and is
-already labelled redundant in-module; when the NamespacedStore migration lands, the whole
-repository/service pair is the natural deletion candidate, which the module doc
-(`modules/reporting/src/lib.rs:42-49`) already anticipates.
+**The bypass set is now empty.** No file under `modules/reporting/src/` names a foreign table, so there
+is nothing left to sequence. The reporting module's redundant domain code (`ReportingService`,
+`ReportingRepository`, `DailyReport`, `ReportingError`) was deleted with it; the module shell remains
+registered and is the only thing left under `modules/reporting/src/` besides `handlers.rs` (handler-free)
+and `lib_tests.rs`.
 
 ### 6.1 Tables the facade touches that the ownership map does not yet cover
 
@@ -203,6 +200,6 @@ but the map's silence is a real gap the T5 inventory surfaces for the Phase 2 st
 
 - `crates/kasirmu-core/src/db/reports.rs` and `crates/kasirmu-core/src/db/reports/` — the facade.
 - `crates/kasirmu-bridge/src/reports.rs` — the live scoped consumer surface (~37 functions).
-- `modules/reporting/src/repository.rs` — the one bypass edge.
+- `modules/reporting/src/lib.rs` — the module shell that remains after P3.1 retired the bypass edge.
 - [docs/architecture/namespaced-store-api-draft.md](namespaced-store-api-draft.md) §5 row 2.4 — the migration this stages.
 - [todo-modular-scaffolding.md](../../todo-modular-scaffolding.md) §9.5 — the plan paragraph being reconciled.

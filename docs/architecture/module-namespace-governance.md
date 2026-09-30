@@ -171,14 +171,19 @@ module code. Each is either allowlisted (deliberate, with a reason) or baselined
 
 | Site | Reads | Owner module | Verdict |
 |---|---|---|---|
-| `modules/reporting/src/repository.rs:34` | `sales` | sales | **Baselined debt + grant marker.** Reporting is the sanctioned cross-vertical reader (ADR-62 D5), but this site (`generate_daily_report`) bypasses the facade with its own SQL. Carries the T3 marker `// namespace: cross-vertical read sales granted (…)`. Plan §9.5 target: route through `kasirmu_core::db::reports`, after which the marker is deleted. `modules/reporting/src/lib.rs:33-40` already records this surface as zero non-test callers. |
 | `modules/loyalty/src/repository.rs:59` | `gift_cards` | giftcards | **Baselined debt + grant marker.** `get_gift_card_by_number` reads a table owned by the `giftcards` module, but loyalty declares only `deps: ["crm"]`. Carries the T3 marker. Not surfaced by the plan; found by this inventory. |
 | `modules/inventory/src/handlers.rs` (72, 89, 127, 155, 161, 180, 187, 195) | `products`, `product_recipes`, `inventory`, `stock_summary` | inventory | **Not a violation** — all four tables are inventory's own. The file's cross-file concern (it is a dead test-only handler) is the census's, not this rule's. |
 
-**Genuine cross-vertical edges: 2** (reporting→sales, loyalty→gift_cards). Both are baselined
-**and** carry a T3 grant marker; neither is new, so the gate is green today and a *new* one fails. The
-baseline is now only a bookkeeping record of the edges that still need their Phase 4 replacement —
-permission itself comes from the marker, so the baseline can shrink to zero without weakening the gate.
+**Genuine cross-vertical edges: 1** (loyalty→gift_cards). It is baselined **and** carries a T3 grant
+marker; it is not new, so the gate is green today and a *new* one fails. The baseline is now only a
+bookkeeping record of the edges that still need their Phase 4 replacement — permission itself comes from
+the marker, so the baseline can shrink to zero without weakening the gate.
+
+**Retired 2026-10-03 (Phase 3 P3.1):** the second edge (reporting→sales,
+`modules/reporting/src/repository.rs:34` `generate_daily_report`) was deleted, not rerouted — its whole
+domain surface had zero non-test callers and the facade `kasirmu_core::db::reports` already ships the
+capability. Its baseline entry and T3 marker went with it. See
+`docs/architecture/reporting-facade-inventory.md` §3, §6.
 
 ---
 
@@ -187,7 +192,7 @@ permission itself comes from the marker, so the baseline can shrink to zero with
 The plan's Phase 4 replaces this soft posture:
 
 - reject unauthorised cross-namespace table access;
-- require reporting to use the sanctioned facade (closes the first §4 row);
+- require reporting to use the sanctioned facade (already satisfied: the sole bypass edge was retired in Phase 3 P3.1);
 - make `NamespacedStore` (Phase 2) the only route to another vertical's data.
 
 The Phase 2 work that reaches that state is broken down in

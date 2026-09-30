@@ -4,12 +4,6 @@
   "entries": [
     {
       "rule": "cross-vertical-sql",
-      "path": "modules/reporting/src/repository.rs",
-      "target": "sales (owned by sales)",
-      "reason": "ReportingRepository::generate_daily_report reads sales directly instead of the sanctioned facade kasirmu_core::db::reports. Known facade-bypass debt (plan §9.5); the reporting module declares dependencies [inventory, sales], so the edge is declared but not routed. Fix: read through the facade."
-    },
-    {
-      "rule": "cross-vertical-sql",
       "path": "modules/loyalty/src/repository.rs",
       "target": "gift_cards (owned by giftcards)",
       "reason": "LoyaltyRepository::get_gift_card_by_number reads the gift_cards table owned by the giftcards module, while modules/loyalty/manifest.json declares only dependencies [crm]. Found by the Round 4 inventory; not surfaced by the modular-scaffolding plan. Fix: call the giftcards module or declare the dependency."
