@@ -477,3 +477,22 @@ Outbound pushes are stamped with `_terminal` and `_vector: {terminal: counter}` 
 Pin: `run_tick_persists_the_clock_even_when_the_push_fails` (a 500 push server; the persisted `sync.clock.counter` must exceed its seed of 40 after a tick that queued two items).
 
 > Outbound clock persistence on failure pinned 2026-10-04.
+
+---
+
+## The engine is embedder-only; the shipped shells use the daemon (appended 2026-10-04)
+
+*Appended 2026-10-04. Records an entitlement/reachability finding about `SyncEngine::run_sync_cycle`.*
+
+`SyncEngine::run_sync_cycle` (`platform/sync/src/lib.rs`) is a public API with no caller in the shipped application. Both dependents of `platform-sync` reach past it:
+
+- `apps/desktop-tauri` drives `platform_sync::daemon::SyncDaemon` / `platform_sync::pg_daemon::PgSyncDaemon` (plus `SettingsChangedSink`, `PgDaemonStatus`, `image_push`).
+- `apps/cloud-server` consumes only the transport and CRDT types (`PushOutcome`, `PushRequest`/`PushResponse`, `CausalOrder`, `VersionVector`, `stamp_payload`).
+
+Every real caller of `run_sync_cycle` is a test (`platform/sync/tests/integration_test.rs`, `platform/sync/src/lib_tests.rs`); the only other hits are doc comments.
+
+**Why this matters:** the engine's push phase only stamps if the caller seeded `with_vector_stamping` — and the shipped shells never call the engine at all, so no production push can reach the server unstamped this way. The production push path is the daemon, which stamps every push and persists the counter through `daemon_tick::persist_stamped_counter`.
+
+`run_sync_cycle`'s doc comment now states this contract explicitly (embedder-only; a caller MUST seed `crate::crdt::CLOCK_KEY` + the terminal id and persist `last_stamped_counter` after every cycle), and two pins record the reachable states: `sync_engine_without_stamping_seed_reports_no_counter` (a fresh engine stamps nothing) and `sync_engine_with_stamping_seed_reports_a_counter` (the seed is the highest counter; `with_vector_stamping("term-embed", 40)` reports `Some(40)`).
+
+> Engine reachability + embedder stamping contract recorded 2026-10-04.

@@ -199,6 +199,42 @@ fn sync_engine_new_with_api_key() {
     assert_eq!(engine.config.api_key, Some("sk-key".into()));
 }
 
+// ── Embedder stamping contract (doc + debug_assert on run_sync_cycle) ──
+
+/// An engine built without a stamping seed reports NO counter. This is the
+/// state run_sync_cycle's `debug_assert!` fires on: an embedder that calls
+/// the cycle without seeding would push `_vector`-less payloads, and the
+/// server would skip conflict detection for this terminal.
+#[test]
+fn sync_engine_without_stamping_seed_reports_no_counter() {
+    let engine = SyncEngine::new(SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    });
+    assert_eq!(
+        engine.last_stamped_counter(),
+        None,
+        "a fresh engine stamps nothing until with_vector_stamping is called"
+    );
+}
+
+/// Seeding the engine stamps it: the counter is now Some, so the
+/// run_sync_cycle `debug_assert!` is satisfied and the push will carry a
+/// `_vector`.
+#[test]
+fn sync_engine_with_stamping_seed_reports_a_counter() {
+    let engine = SyncEngine::new(SyncConfig {
+        server_url: "http://localhost:3099".into(),
+        api_key: None,
+    })
+    .with_vector_stamping("term-embed", 40);
+    assert_eq!(
+        engine.last_stamped_counter(),
+        Some(40),
+        "the seed value is the highest counter stamped so far"
+    );
+}
+
 // ── SyncResult ───────────────────────────────────────────────
 
 #[test]

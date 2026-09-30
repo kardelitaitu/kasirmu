@@ -573,6 +573,24 @@ impl SyncEngine {
     /// mutation twice.
     ///
     /// Returns a [`ReplicationResult`] with counts of pushed/pulled items.
+    ///
+    /// # Embedder API — the shipped shells use the daemon, not this
+    ///
+    /// This engine has NO caller in the shipped application. Both dependents of
+    /// this crate reach past it: `apps/desktop-tauri` drives
+    /// [`crate::daemon::SyncDaemon`] / [`crate::pg_daemon::PgSyncDaemon`], and
+    /// `apps/cloud-server` consumes only the transport and CRDT types. The
+    /// production push path is the daemon, which stamps every push and persists
+    /// the counter through `daemon_tick::persist_stamped_counter`.
+    ///
+    /// An embedder that DOES call this must stamp first. Without a
+    /// [`SyncTransport::with_vector_stamping`] seed the push carries no
+    /// `_vector`, the server cannot order it against the terminal's other
+    /// mutations, and conflict detection is silently skipped for this terminal
+    /// — exactly the failure mode described on [`SyncEngine::with_vector_stamping`].
+    /// Read [`crate::crdt::CLOCK_KEY`] and the configured terminal id, call
+    /// [`SyncEngine::with_vector_stamping`], and persist
+    /// [`SyncEngine::last_stamped_counter`] after every cycle.
     pub async fn run_sync_cycle(&self, store: &Store<'_>) -> SyncResult<ReplicationResult> {
         // Pre-sync health check — skip the full cycle if the server is unreachable.
         match self.transport.health_check().await {
