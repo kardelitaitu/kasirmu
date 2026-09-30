@@ -118,7 +118,9 @@ impl Store<'_> {
             by_zone.entry(zone).or_default().push(line);
         }
 
-        // Look up the table name assigned to this sale (TODO 1b).
+        // Look up the table name assigned to this sale, so each zoned ticket can show
+        // "Table 4" instead of a bare ticket id. A sale with no table bound keeps None
+        // rather than failing the fanout.
         let table_number: Option<String> = {
             let mut stmt = self
                 .conn
@@ -145,7 +147,7 @@ impl Store<'_> {
         // created so far, so the kitchen never sees a partial set.
         let tx = self.conn.unchecked_transaction()?;
         for (zone, lines) in by_zone {
-            // Build structured line items with course + modifier data (TODO 2a).
+            // Build structured line items with course + modifier data.
             let structured_items: Vec<CreateKdsLineItemInput> = lines
                 .iter()
                 .map(|l| {
@@ -250,7 +252,7 @@ impl Store<'_> {
         }
     }
 
-    // ── KDS line items (TODO 2a) ────────────────────────────────────
+    // ── KDS line items ──────────────────────────────────────────────
 
     /// Create KDS line items for an order.
     pub fn create_kds_line_items(

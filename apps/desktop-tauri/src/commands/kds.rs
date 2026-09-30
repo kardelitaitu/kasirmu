@@ -327,7 +327,7 @@ pub async fn print_kds_chit_scoped(
         .map_err(Into::into)
 }
 
-// ── KDS line items (TODO 2a) ────────────────────────────
+// ── KDS line items ─────────────────────────────────────
 
 /// Get all line items for a KDS order (scoped - ADR #7).
 ///

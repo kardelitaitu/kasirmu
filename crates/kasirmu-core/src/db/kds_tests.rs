@@ -3555,12 +3555,12 @@ fn void_pending_sale_cancels_kds_tickets_in_ghost_window() {
     );
 }
 
-/// TODO 1b: the fanout stamps each kitchen ticket with the dining table
+/// The fanout stamps each kitchen ticket with the dining table
 /// currently bound to the sale (`tables.active_sale_id`), so the KDS
-/// board can show "Table 4" instead of a bare ticket id. No test pinned
-/// this: a regression that drops the lookup would silently strip the
-/// table name from every zoned ticket. Pins both halves — the stamp
-/// lands when a table is assigned, and stays None when none is.
+/// board can show "Table 4" instead of a bare ticket id. A regression
+/// that drops the lookup would silently strip the table name from every
+/// zoned ticket, so this pins both halves — the stamp lands when a table
+/// is assigned, and stays None when none is.
 #[test]
 fn kds_fanout_stamps_table_number_from_assigned_table() {
     let conn = fresh();
