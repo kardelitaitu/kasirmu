@@ -4,6 +4,13 @@
 //! straight to the HAL driver registry ([`BridgeCtx::registry`](crate::ctx::BridgeCtx::registry)); a register
 //! with no scale yields `None` rather than an error, exactly as the shell
 //! command bodies did.
+//!
+//! Absence and failure are kept apart on purpose. `None` means the register
+//! has no scale bound; it is a defined state a UI can render as "no scale".
+//! A read that fails, or an id in the snapshot that no longer resolves to a
+//! driver, is an error and is surfaced as one — the scale snapshot and the
+//! lookup are taken under one write guard precisely so a concurrent
+//! unregister cannot turn a present device into a silent omission.
 
 use serde::Serialize;
 
@@ -48,26 +55,38 @@ pub async fn read_scale_weight_scoped(
 
 /// List scale devices (scoped).
 ///
+/// Takes the snapshot and the driver lookup from one registry call, so an id
+/// in the snapshot always resolves to the driver it named. A concurrent
+/// unregister cannot leave an id whose driver is already gone.
+///
 /// # Errors
 ///
-/// Returns [`BridgeError::InvalidSession`] for an unknown token.
+/// Returns [`BridgeError::InvalidSession`] for an unknown token, and
+/// [`BridgeError::Internal`] if the snapshot names an id the registry can no
+/// longer resolve. That branch is unreachable through the single-call
+/// registry accessor but is kept as a loud guard: omitting the device would
+/// report a shorter list than the truth, and a device that is present is
+/// exactly what an operator must not have hidden from them.
 pub async fn list_scale_devices_scoped(
     ctx: &BridgeCtx<'_>,
     session_token: &str,
 ) -> Result<Vec<ScaleDeviceInfo>, BridgeError> {
     // ungated-ok: per-REGISTER hardware read, not store data
     ctx.resolve_scope(session_token)?;
-    let ids = ctx.registry.scale_ids().await;
-    let mut devices = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(scale) = ctx.registry.scale(&id).await {
-            let info = scale.device_info();
-            devices.push(ScaleDeviceInfo {
-                vendor_id: info.vendor,
-                product_id: info.model,
-                device_path: info.serial,
-            });
-        }
+    let scales = ctx.registry.scales().await;
+    let mut devices = Vec::with_capacity(scales.len());
+    for (id, scale) in scales {
+        let Some(scale) = scale else {
+            return Err(BridgeError::Internal(format!(
+                "scale \"{id}\" is listed by the registry but no longer resolves to a driver; refusing to report a shorter device list than the truth"
+            )));
+        };
+        let info = scale.device_info();
+        devices.push(ScaleDeviceInfo {
+            vendor_id: info.vendor,
+            product_id: info.model,
+            device_path: info.serial,
+        });
     }
     Ok(devices)
 }

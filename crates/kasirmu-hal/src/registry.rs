@@ -139,6 +139,43 @@ impl DriverRegistry {
         sorted_keys(&*self.scales.read().await)
     }
 
+    /// Register a weight scale under `id`. Test-only.
+    ///
+    /// The production writer was removed on 2026-09-27 (zero callers
+    /// tree-wide) so the scales map is readable-only outside this crate's
+    /// tests; the `cfg(test)` gate keeps that true for the shipped binary
+    /// while letting the bridge's `list_scale_devices_scoped` and the
+    /// registry's own ordering pins construct a fixture. Registration
+    /// semantics match the other `register_*` helpers: an existing id is
+    /// overwritten.
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn register_scale(&self, id: &str, driver: Arc<dyn WeightScale>) {
+        self.scales.write().await.insert(id.to_owned(), driver);
+    }
+
+    /// Snapshot of every registered scale as `(id, driver)`, taken under one
+    /// guard.
+    ///
+    /// Exists so a caller that needs the ids *and* the drivers does not
+    /// have to look each one up again: between `scale_ids()` and a later
+    /// `scale(id)` an intervening `register_*`/removal can leave an id whose
+    /// driver is gone, and a caller that treats a missing driver as "skip"
+    /// then reports a list that is quieter than the registry's contents.
+    /// The `Option` is always `Some` today (the map holds `Arc`s and nothing
+    /// removes a scale); it is kept because the snapshot type should be able
+    /// to describe the map it was taken from without repeating the lookup.
+    pub async fn scales(&self) -> Vec<(String, Option<Arc<dyn WeightScale>>)> {
+        let mut entries: Vec<(String, Option<Arc<dyn WeightScale>>)> = self
+            .scales
+            .read()
+            .await
+            .iter()
+            .map(|(id, driver)| (id.clone(), Some(driver.clone())))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        entries
+    }
+
     /// Register an EDC card-payment terminal under `id`. Overwrites any
     /// previous entry with the same id.
     pub async fn register_terminal(&self, id: &str, driver: Arc<dyn EdcTerminal>) {

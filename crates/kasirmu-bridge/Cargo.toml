@@ -47,3 +47,11 @@ webp = { workspace = true }
 # command bodies serialize JSON at runtime. It used to live in [dev-dependencies]
 tempfile = { workspace = true }
 # for the relocated Wave-A tests, which still resolve it from [dependencies].
+
+# The bridge's own tests (scale_tests.rs) bind a weight scale to exercise
+# `list_scale_devices_scoped`. `kasirmu-hal` is a NORMAL dependency above, so
+# its `#[cfg(test)]` items are not compiled into this crate's test build;
+# `test-support` is the feature that ships the fixture helper for exactly
+# that case, and turning it on here does not affect any release build.
+[dev-dependencies]
+kasirmu-hal = { workspace = true, features = ["test-support"] }
