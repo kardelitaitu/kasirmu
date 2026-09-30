@@ -336,6 +336,10 @@
   outline-offset: -1px;
 }
 
+.resto-receipt-printable-area > *:last-child {
+  margin-bottom: 0;
+}
+
 .resto-receipt-center {
   text-align: center;
 }
@@ -501,11 +505,7 @@
 }
 
 .resto-receipt-cut-edge {
-  height: 6px;
-  background: linear-gradient(135deg, transparent 4px, #ffffff 4px) 0 0,
-              linear-gradient(-135deg, transparent 4px, #ffffff 4px) 0 0;
-  background-size: 8px 6px;
-  margin-top: 2px;
+  display: none;
 }
 
 /* Printable Dimension HUD */

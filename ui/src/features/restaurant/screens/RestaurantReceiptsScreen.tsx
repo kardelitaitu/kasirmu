@@ -181,10 +181,10 @@ export default function RestaurantReceiptsScreen({
     const initialShowTableNumber = settings.receipt.showTableNumber;
     const initialTaxRoundingMode = ((settings.receipt.taxRoundingMode as 'half_up' | 'truncate') ?? 'half_up');
     const initialFooter = settings.receipt.footer ?? '';
-    const initialMarginTop = settings.receipt.marginTop > 0 ? settings.receipt.marginTop : 5;
-    const initialMarginBottom = settings.receipt.marginBottom > 0 ? settings.receipt.marginBottom : 8;
-    const initialMarginLeft = settings.receipt.marginLeft > 0 ? settings.receipt.marginLeft : 3;
-    const initialMarginRight = settings.receipt.marginRight > 0 ? settings.receipt.marginRight : 3;
+    const initialMarginTop = Math.max(3, settings.receipt.marginTop || 5);
+    const initialMarginBottom = Math.max(3, settings.receipt.marginBottom || 8);
+    const initialMarginLeft = Math.max(3, settings.receipt.marginLeft || 3);
+    const initialMarginRight = Math.max(3, settings.receipt.marginRight || 3);
     let initialBusinessLogo = settings.store.logo ?? '';
     let initialTitle = (settings.store.name ? settings.store.name.toUpperCase() : 'KASIR.MU RESTAURANT').slice(0, MAX_HEADER_TITLE_LENGTH);
     let initialLine1 = (settings.store.address ?? '').slice(0, MAX_HEADER_LINE_LENGTH);
@@ -410,10 +410,10 @@ export default function RestaurantReceiptsScreen({
         if (l.paperWidthMm !== null && l.paperWidthMm !== undefined) {
           setPaperWidth(l.paperWidthMm <= 58 ? 'narrow' : 'standard');
         }
-        if (l.marginTopMm !== null && l.marginTopMm !== undefined) setMarginTop(l.marginTopMm);
-        if (l.marginBottomMm !== null && l.marginBottomMm !== undefined) setMarginBottom(l.marginBottomMm);
-        if (l.marginLeftMm !== null && l.marginLeftMm !== undefined) setMarginLeft(l.marginLeftMm);
-        if (l.marginRightMm !== null && l.marginRightMm !== undefined) setMarginRight(l.marginRightMm);
+        if (l.marginTopMm !== null && l.marginTopMm !== undefined) setMarginTop(Math.max(3, l.marginTopMm));
+        if (l.marginBottomMm !== null && l.marginBottomMm !== undefined) setMarginBottom(Math.max(3, l.marginBottomMm));
+        if (l.marginLeftMm !== null && l.marginLeftMm !== undefined) setMarginLeft(Math.max(3, l.marginLeftMm));
+        if (l.marginRightMm !== null && l.marginRightMm !== undefined) setMarginRight(Math.max(3, l.marginRightMm));
         if (l.showTableNumber !== null && l.showTableNumber !== undefined) setShowTableNumber(l.showTableNumber);
         if (l.footerNote !== null && l.footerNote !== undefined) setFooter(l.footerNote);
         if (eff.content) {
@@ -1253,8 +1253,6 @@ export default function RestaurantReceiptsScreen({
                     </div>
                   )}
                 </div>
-
-                <div className="resto-receipt-cut-edge" aria-hidden="true" />
               </div>
             </div>
 
@@ -1409,95 +1407,95 @@ export default function RestaurantReceiptsScreen({
                   </div>
                 </div>
 
-                {/* Paper Margins (0-30mm top/bottom, 0-15mm left/right) */}
+                {/* Paper Margins (3-30mm top/bottom, 3-15mm left/right) */}
                 <div>
                   <div className="resto-toggle-title">
                     <Localized id="restaurant-margins-heading">Paper Margins (mm)</Localized>
                   </div>
                   <div className="resto-margins-grid">
-                    {/* Margin Top (0-30 mm) */}
+                    {/* Margin Top (3-30 mm) */}
                     <div className="resto-margin-card">
                       <div className="resto-margin-header">
                         <label htmlFor="resto-margin-top" className="resto-margin-label">
                           <Localized id="restaurant-margin-top">Top</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 30 mm</span>
+                        <span className="resto-margin-range">3 – 30 mm</span>
                       </div>
                       <div className="resto-margin-input-wrap">
                         <input
                           id="resto-margin-top"
                           type="number"
                           className="resto-margin-input"
-                          min={0}
+                          min={3}
                           max={30}
                           value={marginTop}
-                          onChange={(e) => setMarginTop(clamp(Number(e.target.value), 0, 30))}
+                          onChange={(e) => setMarginTop(clamp(Number(e.target.value), 3, 30))}
                         />
                         <span className="resto-margin-unit">mm</span>
                       </div>
                     </div>
 
-                    {/* Margin Bottom (0-30 mm) */}
+                    {/* Margin Bottom (3-30 mm) */}
                     <div className="resto-margin-card">
                       <div className="resto-margin-header">
                         <label htmlFor="resto-margin-bottom" className="resto-margin-label">
                           <Localized id="restaurant-margin-bottom">Bottom</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 30 mm</span>
+                        <span className="resto-margin-range">3 – 30 mm</span>
                       </div>
                       <div className="resto-margin-input-wrap">
                         <input
                           id="resto-margin-bottom"
                           type="number"
                           className="resto-margin-input"
-                          min={0}
+                          min={3}
                           max={30}
                           value={marginBottom}
-                          onChange={(e) => setMarginBottom(clamp(Number(e.target.value), 0, 30))}
+                          onChange={(e) => setMarginBottom(clamp(Number(e.target.value), 3, 30))}
                         />
                         <span className="resto-margin-unit">mm</span>
                       </div>
                     </div>
 
-                    {/* Margin Left (0-15 mm) */}
+                    {/* Margin Left (3-15 mm) */}
                     <div className="resto-margin-card">
                       <div className="resto-margin-header">
                         <label htmlFor="resto-margin-left" className="resto-margin-label">
                           <Localized id="restaurant-margin-left">Left</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 15 mm</span>
+                        <span className="resto-margin-range">3 – 15 mm</span>
                       </div>
                       <div className="resto-margin-input-wrap">
                         <input
                           id="resto-margin-left"
                           type="number"
                           className="resto-margin-input"
-                          min={0}
+                          min={3}
                           max={15}
                           value={marginLeft}
-                          onChange={(e) => setMarginLeft(clamp(Number(e.target.value), 0, 15))}
+                          onChange={(e) => setMarginLeft(clamp(Number(e.target.value), 3, 15))}
                         />
                         <span className="resto-margin-unit">mm</span>
                       </div>
                     </div>
 
-                    {/* Margin Right (0-15 mm) */}
+                    {/* Margin Right (3-15 mm) */}
                     <div className="resto-margin-card">
                       <div className="resto-margin-header">
                         <label htmlFor="resto-margin-right" className="resto-margin-label">
                           <Localized id="restaurant-margin-right">Right</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 15 mm</span>
+                        <span className="resto-margin-range">3 – 15 mm</span>
                       </div>
                       <div className="resto-margin-input-wrap">
                         <input
                           id="resto-margin-right"
                           type="number"
                           className="resto-margin-input"
-                          min={0}
+                          min={3}
                           max={15}
                           value={marginRight}
-                          onChange={(e) => setMarginRight(clamp(Number(e.target.value), 0, 15))}
+                          onChange={(e) => setMarginRight(clamp(Number(e.target.value), 3, 15))}
                         />
                         <span className="resto-margin-unit">mm</span>
                       </div>

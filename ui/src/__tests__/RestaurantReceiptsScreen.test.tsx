@@ -82,21 +82,33 @@ describe('RestaurantReceiptsScreen — margins & geometry', () => {
     await user.clear(top);
     await user.type(top, '150');
     expect(Number(top.value)).toBeLessThanOrEqual(30);
+    await user.clear(top);
+    await user.type(top, '0');
+    expect(Number(top.value)).toBeGreaterThanOrEqual(3);
 
     const bottom = screen.getByLabelText(/Bottom/i) as HTMLInputElement;
     await user.clear(bottom);
     await user.type(bottom, '999');
     expect(Number(bottom.value)).toBeLessThanOrEqual(30);
+    await user.clear(bottom);
+    await user.type(bottom, '1');
+    expect(Number(bottom.value)).toBeGreaterThanOrEqual(3);
 
     const left = screen.getByLabelText(/Left/i) as HTMLInputElement;
     await user.clear(left);
     await user.type(left, '50');
     expect(Number(left.value)).toBeLessThanOrEqual(15);
+    await user.clear(left);
+    await user.type(left, '0');
+    expect(Number(left.value)).toBeGreaterThanOrEqual(3);
 
     const right = screen.getByLabelText(/Right/i) as HTMLInputElement;
     await user.clear(right);
     await user.type(right, '50');
     expect(Number(right.value)).toBeLessThanOrEqual(15);
+    await user.clear(right);
+    await user.type(right, '2');
+    expect(Number(right.value)).toBeGreaterThanOrEqual(3);
   });
 
   it('switches paper width to narrow and updates the roll/area HUD', async () => {
