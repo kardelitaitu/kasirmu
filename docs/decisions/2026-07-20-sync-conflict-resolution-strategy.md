@@ -341,3 +341,20 @@ pub fn resolve_conflict(local: &OfflineQueueItem, remote: &OfflineQueueItem) -> 
 - **Activation state unchanged.** No server in this repository emits the conflict tag (`apps/cloud-server/src/sync_store.rs`, `platform/sync/src/pg_transport.rs` construct only `Accepted`/`Rejected`), so this repair is still latent-path work. The sibling parity gaps recorded above — the `pg_daemon` duplicate-id arm and the `SyncEngine` public-API fallthrough — are **not** addressed here.
 
 > Re-enqueue bound closed 2026-10-04.
+
+---
+
+## Both parity gaps are closed (appended 2026-10-04)
+
+*Appended 2026-10-04. Nothing above this line is changed by this section; it records that the two bullets describing the PostgreSQL-daemon and SyncEngine duplicate-id gaps are now historical, and names the tests that pin the closure.*
+
+- **The tree has four appliers and all four share the rule.** The predicate lives once, at `crates/kasirmu-core/src/sync_client/types.rs:63` (`is_duplicate_id_rejection`, `reason.starts_with(DUPLICATE_ID_REJECTION_PREFIX)` where the prefix is `"duplicate id:"` at `:59`). The call sites are:
+  - consumer 1 — `crates/kasirmu-core/src/sync_client.rs:101` (immediate `apply_sync_outcomes`);
+  - the SQLite daemon — `platform/sync/src/daemon.rs:408` (`apply_push_results`);
+  - **the PostgreSQL daemon — `platform/sync/src/pg_daemon.rs:760` (`apply_push_outcomes`)**;
+  - **the embedder — `platform/sync/src/lib.rs:239` (`SyncEngine::apply_push_outcomes`)**.
+- **The PostgreSQL arm was added and is pinned, not merely read.** The C48 sweep added it and `platform/sync/src/pg_daemon_tests.rs` pins it with `pg_apply_push_outcomes_duplicate_id_replay_marks_synced` (duplicate-id replay -> `synced`) and its negative twin `pg_apply_push_outcomes_genuine_rejection_marks_failed`. The arm was extracted out of `run_once`'s `spawn_blocking` closure into a testable free function precisely so it could be pinned without a live PostgreSQL, which answers the "would need a PostgreSQL connection" objection recorded above.
+- **The SyncEngine arm is pinned too.** `platform/sync/src/lib_tests.rs:1627` exercises the prefix through `SyncEngine::apply_push_outcomes`. The embedder-side semantics decision the bullet above called open was taken: a duplicate-id replay marks **synced** on that path as well.
+- **The divergence suite's doc no longer calls it a gap.** `platform/sync/src/sync_client_divergence_tests.rs` row 5 documents the four appliers and is renamed `duplicate_id_rejection_is_synced_on_all_four_appliers`; its remaining `UNDECIDED` messages concern the CRDT merge path and the depth-two envelope, not the duplicate-id arm.
+
+> Parity gaps closed 2026-10-04.

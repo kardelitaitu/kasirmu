@@ -445,27 +445,25 @@ fn nested_crdt_envelope_fails_to_deserialize_at_depth_two() {
 /// Row 5 - the duplicate-id Rejected, the one row with a live producer.
 ///
 /// This is NOT a conflict input: a real clash today arrives as
-/// Rejected { reason: "duplicate id: ..." }. Consumer 1 and the SQLite daemon
-/// (platform/sync/src/daemon.rs:208) share is_duplicate_id_rejection and both
-/// route it to synced. The PostgreSQL daemon (platform/sync/src/pg_daemon.rs:323)
-/// has no duplicate-id arm and routes the same reason to mark_offline_failed.
-/// That is a KNOWN PARITY GAP, not a fix, and it stays a code-reading claim: the
-/// arm is inline in run_once's spawn_blocking closure behind a real PgTransport,
-/// so pinning it would need a live PostgreSQL connection. It is recorded in
-/// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
-/// and Ownership" (appended in 1c6949975), which names it as the only divergence
-/// in the dossier with a plausible non-foreign trigger.
+/// Rejected { reason: "duplicate id: ..." }. ALL FOUR appliers now share
+/// is_duplicate_id_rejection and route it to synced:
+///   * consumer 1, sync_client::apply_sync_outcomes (crates/kasirmu-core/src/sync_client.rs:101)
+///   * the SQLite daemon, daemon::apply_push_results (platform/sync/src/daemon.rs:408)
+///   * the PostgreSQL daemon, pg_daemon::apply_push_outcomes (platform/sync/src/pg_daemon.rs:760)
+///   * the embedder, lib.rs::apply_push_outcomes (platform/sync/src/lib.rs:239)
 ///
-/// A SECOND such consumer was found 09-16-26 and appended to that same ADR
-/// section: platform/sync/src/lib.rs:561, the SyncEngine run_sync_cycle push
-/// loop, has no duplicate-id arm either — SyncQueue::mark_failed
-/// (platform/sync/src/queue.rs:268) is a bare delegate to
-/// store.mark_offline_failed, so the prefix is never consulted on that path and
-/// the row lands Failed rather than Synced. It has no in-repo production caller
-/// (lib_tests.rs and tests/integration_test.rs only), so its blast radius is an
-/// embedder rather than a shipped path.
+/// The two gaps this note USED to record as open are now closed, and each is
+/// pinned by a test rather than by reading:
+///   * the PostgreSQL daemon's arm was added by C48 and is pinned by
+///     pg_daemon_tests::pg_apply_push_outcomes_duplicate_id_replay_marks_synced
+///     (and its negative twin ..._genuine_rejection_marks_failed);
+///   * the SyncEngine arm was added in the same sweep and is pinned here plus
+///     in lib_tests.rs:1627.
+/// docs/decisions/2026-07-20-sync-conflict-resolution-strategy.md, "Activation
+/// and Ownership" and its "Second parity gap" appendix, still describe both as
+/// open; that text is now historical (a reader should trust the arms above).
 #[test]
-fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
+fn duplicate_id_rejection_is_synced_on_all_four_appliers() {
     let store_db = migrations::fresh_db();
     let store = setup_store(&store_db);
     let local = enqueue_local(&store, &CASES[0]);
@@ -490,7 +488,7 @@ fn duplicate_id_rejection_is_synced_here_and_recorded_as_a_parity_gap_there() {
     );
     assert_eq!(
         result.failed, 0,
-        "UNDECIDED: and not to the terminal failed state - pg_daemon.rs:323 does the opposite, see the ADR section named above"
+        "and not to the terminal failed state - all four appliers now share the predicate (pg_daemon.rs:760, lib.rs:239, daemon.rs:408)"
     );
     let row = store
         .list_all_offline()
