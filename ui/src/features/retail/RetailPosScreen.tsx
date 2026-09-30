@@ -974,8 +974,25 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [discountRpInput, setDiscountRpInput] = useState('');
 
   const handleApplyDiscount = useCallback(() => {
-    const pct = Math.min(100, parseFloat(discountInput));
-    if (Number.isNaN(pct) || pct <= 0) return;
+    // Whole percentage only -- reject fractional input instead of silently
+    // truncating it. This is the same guard the main POS screen applies at
+    // features/sales/hooks/usePosCartActions.ts:206-207; the retail screen was
+    // the copy that drifted, and `parseFloat` + `Math.min(100, ...)` accepted
+    // what the canonical handler refuses.
+    //
+    // It matters because usePosState computes
+    // `Math.floor(subtotal.minor_units * (100 - discountPercent) / 100)`
+    // (usePosState.ts:228-236): a fractional percent silently truncates the
+    // DISCOUNTED TOTAL, so 33.7% charges a different amount than the cashier
+    // typed and the receipt shows a percent the total does not match. The
+    // `Math.min(100, ...)` also silently clamped an over-100 entry to a free
+    // sale instead of refusing it.
+    //
+    // The modal input is type="number" with min/max (RetailModals.tsx:494-502)
+    // but those are advisory -- they do not stop a fractional value being
+    // typed or pasted -- so the check has to live here.
+    const pct = Number(discountInput);
+    if (!Number.isInteger(pct) || pct < 1 || pct > 100) return;
     setDiscount(pct, '');
     setShowDiscount(false);
     setDiscountInput('');
