@@ -406,7 +406,7 @@ describe('i18n translation completeness', () => {
   });
 });
 
-// ── Two-way key parity gate ──────────────────────────────────
+// ── en → id key parity, on the three bundles this file imports ────────
 //
 // Every Fluent message key present in the English source bundle must
 // ALSO exist in the Indonesian (.id.ftl) bundle. A key missing from
@@ -416,12 +416,30 @@ describe('i18n translation completeness', () => {
 // that the existing byte-identical check above cannot catch (a file
 // can differ from English yet still omit keys).
 //
-// This test parses the raw FTL content of every domain bundle the
-// production loader (i18n/index.ts) joins, extracts the message keys,
-// and asserts en ↔ id parity. It is the permanent regression guard
-// against a developer adding a key to the en .ftl and forgetting the
-// id sibling.
-describe('i18n two-way key parity (en ↔ id)', () => {
+// SCOPE, stated exactly, because the old name of this block was wrong.
+// It was called "i18n two-way key parity (en ↔ id)" and delivered one
+// direction over three of the twenty-seven bundles the production
+// loader (i18n/index.ts) joins. A test whose name promises more than
+// it checks is worse than no test: the name is what a reader trusts.
+//
+//   * DIRECTION — en → id only. The reverse is NOT unowned, contrary to
+//     what this comment used to imply: scripts/verify-bundle-parity.py
+//     checks each locale separately and reports "missing in en .ftl
+//     only" at getString, <Localized id> and i18nKey sites alike. It is
+//     the authoritative whole-tree check in BOTH directions, and
+//     scripts/verify-ftl-orphans.py:341 records that a test here
+//     claiming otherwise was tried and is false.
+//   * SCOPE — shared, sales and multi-location, because those are the
+//     three bundles this test file imports. Extending it to all
+//     twenty-seven would duplicate the loader's import list here and
+//     drift from it; the gate above already covers the whole tree.
+//
+// Asserting the reverse direction in THIS block would also be wrong,
+// not merely redundant: the Indonesian bundle carries 56 keys with no
+// English home, and they are unreferenced leftovers, not defects. A
+// symmetric key-set test would fail on them forever and be muted, which
+// is how the direction that does matter stops being read.
+describe('i18n key parity, en → id, on the three imported bundles', () => {
   /**
    * Extract top-level Fluent message keys from raw FTL text.
    * Matches lines like `my-key = value` or `my-key = { $count }`,
@@ -442,7 +460,7 @@ describe('i18n two-way key parity (en ↔ id)', () => {
   const enKeys = extractKeys(enBundle);
   const idKeys = extractKeys(idBundle);
 
-  it('every English key exists in the Indonesian bundle', () => {
+  it('every English key in these three bundles exists in the Indonesian bundle', () => {
     const missing = [...enKeys].filter((k) => !idKeys.has(k));
     expect(
       missing,
