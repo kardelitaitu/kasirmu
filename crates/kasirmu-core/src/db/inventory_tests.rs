@@ -766,6 +766,77 @@ fn set_workspace_locations_replaces_existing_bindings() {
     assert!(!retrieved[1].allow_negative_stock);
 }
 
+/// COR-32: a rebind must invalidate the 30s location cache.
+///
+/// `resolve_primary_location` caches the resolved location for 30 seconds.
+/// The write path `set_workspace_inventory_locations` replaces the bindings
+/// in one transaction, so a cached entry from before the write is stale the
+/// moment the transaction commits. If the mutation does not clear the cache,
+/// the next sale keeps deducting from the OLD location for up to 30s after
+/// the operator rebound the workspace.
+///
+/// This pins the fix: the mutator must invalidate the cache so the very next
+/// resolve sees the new binding.
+#[test]
+fn set_workspace_inventory_locations_invalidates_the_location_cache() {
+    use crate::location_resolver::{invalidate_location_cache, resolve_primary_location};
+
+    // Start from a clean cache so a leftover entry from another test cannot
+    // mask the defect (the cache is process-global).
+    invalidate_location_cache();
+
+    let conn = fresh();
+    let s = store(&conn);
+    conn.execute(
+        "INSERT OR IGNORE INTO workspace_types (key, name) VALUES ('store-pos', 'Store POS')",
+        [],
+    )
+    .unwrap();
+    // No bound_location_id: a store-pos workspace resolves through the
+    // workspace_inventory_locations rows, and a bound id would trip the
+    // split-brain guard once bindings exist.
+    conn.execute(
+        "INSERT INTO workspace_instances (id, type_key, location_id, name) \
+         VALUES ('ws-inv', 'store-pos', 'default', 'Invalidate')",
+        [],
+    )
+    .unwrap();
+
+    let loc_a = s.create_inventory_location("Loc A", "store", "").unwrap();
+    let loc_b = s
+        .create_inventory_location("Loc B", "warehouse", "")
+        .unwrap();
+
+    let bind = |loc: &str| {
+        vec![WorkspaceInventoryLocation {
+            id: String::new(),
+            instance_id: "ws-inv".into(),
+            location_id: loc.to_owned(),
+            is_primary: true,
+            allow_negative_stock: false,
+            sort_order: 0,
+        }]
+    };
+
+    // Bind A, then resolve: this populates the 30s cache with A.
+    s.set_workspace_inventory_locations("ws-inv", &bind(&loc_a))
+        .unwrap();
+    let resolved = resolve_primary_location(&conn, "ws-inv", None).unwrap();
+    assert_eq!(resolved.as_str(), loc_a);
+
+    // Rebind to B. The write path must drop the cached A.
+    s.set_workspace_inventory_locations("ws-inv", &bind(&loc_b))
+        .unwrap();
+    let resolved_after = resolve_primary_location(&conn, "ws-inv", None).unwrap();
+    assert_eq!(
+        resolved_after.as_str(),
+        loc_b,
+        "a rebind must invalidate the location cache, not serve the stale binding"
+    );
+
+    invalidate_location_cache();
+}
+
 #[test]
 fn update_inventory_location_invalid_type_errors() {
     let conn = fresh();

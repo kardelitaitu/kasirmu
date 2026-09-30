@@ -496,3 +496,17 @@ Every real caller of `run_sync_cycle` is a test (`platform/sync/tests/integratio
 `run_sync_cycle`'s doc comment now states this contract explicitly (embedder-only; a caller MUST seed `crate::crdt::CLOCK_KEY` + the terminal id and persist `last_stamped_counter` after every cycle), and two pins record the reachable states: `sync_engine_without_stamping_seed_reports_no_counter` (a fresh engine stamps nothing) and `sync_engine_with_stamping_seed_reports_a_counter` (the seed is the highest counter; `with_vector_stamping("term-embed", 40)` reports `Some(40)`).
 
 > Engine reachability + embedder stamping contract recorded 2026-10-04.
+
+---
+
+## COR-32: a workspace rebind now invalidates the 30s location cache (fixed 2026-10-04)
+
+`resolve_primary_location` (`crates/kasirmu-core/src/location_resolver.rs`) caches the resolved primary location in a process-global `LOCATION_CACHE` keyed by workspace instance id, with a 30-second TTL (`CACHE_TTL_SECS`). The cache exists so a per-cart-open SELECT does not run on every sale.
+
+The marker `COR-32` (LOW-MED) recorded that no production mutation path cleared the cache: `invalidate_location_cache` had callers only on session switch (`crates/kasirmu-bridge/src/auth.rs`) and behind an explicit IPC command (`invalidate_location_cache_scoped`) that the rebind path never invoked. So an operator who rebound a workspace's inventory locations (`Store::set_workspace_inventory_locations`, `crates/kasirmu-core/src/db/inventory.rs`) could keep deducting stock from the OLD location for up to 30 seconds after the change.
+
+**Fix:** the mutator now calls `crate::location_resolver::invalidate_location_cache()` immediately after `tx.commit()` succeeds, so the next `resolve_primary_location` re-reads the bindings the transaction just replaced. The call is after the commit on purpose — a rolled-back write must not drop a still-correct cache entry.
+
+Pinned red-first by `set_workspace_inventory_locations_invalidates_the_location_cache` (`crates/kasirmu-core/src/db/inventory_tests.rs`): bind A, resolve (populating the cache), rebind to B, resolve again — the post-fix resolve returns B, and the pre-fix run returned the stale A.
+
+> COR-32 fixed 2026-10-04; the binding mutator invalidates the location cache.

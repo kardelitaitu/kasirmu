@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice C2: location_resolver deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: strict ADR-19 priority tree with split-brain detection in both paths; COR-32 LOW-MED: the 30s TTL LOCATION_CACHE has NO production invalidation caller (invalidate_location_cache is test-only) — a workspace rebind can keep deducting from the OLD location for up to 30s; chain resolver stock read .unwrap_or(0) is fail-closed for display (excludes empty locations); multi_count .unwrap_or(0) degrades to canonical default on DB error (COR-25 family); poisoned-mutex silent miss degrades safely to a DB read
-next: call invalidate_location_cache() from binding mutators (COR-32) | perf: cache avoids per-cart-open SELECT
+findings: strict ADR-19 priority tree with split-brain detection in both paths; COR-32 LOW-MED FIXED 2026-10-04: the 30s TTL LOCATION_CACHE is now invalidated by the binding mutator (Store::set_workspace_inventory_locations calls invalidate_location_cache() after tx.commit, so a workspace rebind is visible on the very next resolve); the pre-fix callers only cleared on session switch (crates/kasirmu-bridge/src/auth.rs) or via an explicit IPC that the rebind path never invoked; chain resolver stock read .unwrap_or(0) is fail-closed for display (excludes empty locations); multi_count .unwrap_or(0) degrades to canonical default on DB error (COR-25 family); poisoned-mutex silent miss degrades safely to a DB read
+next: none | perf: cache avoids per-cart-open SELECT; the mutator clears it so a rebind costs one extra SELECT, which is the correct trade
 */
 //!
 //! When a POS workspace needs to deduct stock on sale, it must know *which

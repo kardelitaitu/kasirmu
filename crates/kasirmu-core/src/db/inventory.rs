@@ -343,6 +343,8 @@ impl Store<'_> {
         }
 
         tx.commit()?;
+        // COR-32: drop the cached binding so the next resolve re-reads it.
+        crate::location_resolver::invalidate_location_cache();
         Ok(())
     }
 
