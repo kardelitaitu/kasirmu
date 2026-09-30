@@ -233,6 +233,16 @@ export default function SalesHistoryScreen() {
   const { sessionToken } = useWorkspace();
   // ── Per-line cost / margin (HPP) for the open sale detail ──
   const [lineMargins, setLineMargins] = useState<SaleLineMarginDto[]>([]);
+  // The same three-way split `refundsUnknown` makes above, and the same reason it
+  // matters more here. `[]` answers 'this sale has no line costs' and 'we could
+  // not ask', and the Cost / Margin / Margin % columns are gated on the LENGTH
+  // of this list, so a failed read removes three columns of a manager's
+  // profitability read without a word. Nothing downstream treats a missing
+  // margin as zero -- the report layer prefers the per-line snapshot and falls
+  // back to the product's CURRENT cost, and then to 0
+  // (crates/kasirmu-reporting/src/margin.rs:93, `COALESCE(sl.cost_minor, p.cost_minor, 0)`),
+  // so a genuinely-unknown cost is itself a number that reads as a real one.
+  const [marginsUnknown, setMarginsUnknown] = useState(false);
   // ── e-Faktur state (DJP Coretax) ───────────────────────────────────
   const [showStampModal, setShowStampModal] = useState(false);
   const [stampNsfp, setStampNsfp] = useState('');
@@ -442,14 +452,12 @@ export default function SalesHistoryScreen() {
       setRefundsUnknown(!refundData.ok);
       setRefunds(refundData.ok ? refundData.value : []);
       // Margin is a live report (costs can change) — always refresh.
-      try {
-        const margins = sessionToken
-          ? await getSaleLineMarginsScoped(sessionToken, id)
-          : [];
-        setLineMargins(margins);
-      } catch {
-        setLineMargins([]);
-      }
+      const marginData = await settleRead(
+        'sale_line_margins',
+        sessionToken ? getSaleLineMarginsScoped(sessionToken, id) : Promise.resolve([]),
+      );
+      setMarginsUnknown(!marginData.ok);
+      setLineMargins(marginData.ok ? marginData.value : []);
       return;
     }
 
@@ -457,16 +465,20 @@ export default function SalesHistoryScreen() {
     setRefunds([]);
     setRefundsUnknown(false);
     setLineMargins([]);
+    setMarginsUnknown(false);
     try {
-      const [sale, refundData, margins] = await Promise.all([
+      const [sale, refundData, marginData] = await Promise.all([
         // Three calls, three different scoping treatments in one expression: this one was
         // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
         // Now all three resolve from the session when one exists.
         sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
         settleRead('refunds', listRefundsScoped(sessionToken!, id)),
-        sessionToken
-          ? getSaleLineMarginsScoped(sessionToken, id).catch(() => [] as SaleLineMarginDto[])
-          : Promise.resolve([] as SaleLineMarginDto[]),
+        settleRead(
+          'sale_line_margins',
+          sessionToken
+            ? getSaleLineMarginsScoped(sessionToken, id)
+            : Promise.resolve([] as SaleLineMarginDto[]),
+        ),
       ]);
       // Cache the result for future re-opens (null-safe: getSale can return null)
       if (sale) {
@@ -475,7 +487,8 @@ export default function SalesHistoryScreen() {
       setDetail(sale);
       setRefundsUnknown(!refundData.ok);
       setRefunds(refundData.ok ? refundData.value : []);
-      setLineMargins(margins);
+      setMarginsUnknown(!marginData.ok);
+      setLineMargins(marginData.ok ? marginData.value : []);
     } catch {
       // IPC unavailable.
     } finally {
@@ -646,6 +659,20 @@ export default function SalesHistoryScreen() {
     // fetched against whatever session was active when the screen mounted.
   }, [sessionToken]);
 
+  // The margin read's own retry, deliberately NOT openDetail: the sale itself is
+  // cached and unchanged, and re-opening it would also clear the refund state
+  // the operator may still be reading next to this alert.
+  const loadMargins = useCallback(async (saleId: string) => {
+    const data = await settleRead(
+      'sale_line_margins',
+      sessionToken
+        ? getSaleLineMarginsScoped(sessionToken, saleId)
+        : Promise.resolve([] as SaleLineMarginDto[]),
+    );
+    setMarginsUnknown(!data.ok);
+    setLineMargins(data.ok ? data.value : []);
+  }, [sessionToken]);
+
   const handleRefunded = useCallback(() => {
     closeRefund();
     if (detail) {
@@ -686,16 +713,38 @@ export default function SalesHistoryScreen() {
       ];
       // Export ALL filtered results, not just current page — one CSV row per
       // sale line, with per-line cost (HPP) and margin from the report layer.
+      //
+      // A sale whose margin read FAILED is exported with its per-line cells
+      // blank, the same shape as a sale with no line data -- and the file that
+      // leaves the machine then reads as though those costs were zero. So the
+      // operator is told, by count, once for the whole file: the summary rows are
+      // still worth having and the gap is still visible on the way out.
       const withLines = await Promise.all(
         filteredSales.map(async (s) => {
-          const margins = sessionToken
-            ? await getSaleLineMarginsScoped(sessionToken, s.id).catch(() => [] as SaleLineMarginDto[])
-            : [];
-          return { sale: s, margins };
+          const marginData = await settleRead(
+            'sale_line_margins',
+            sessionToken
+              ? getSaleLineMarginsScoped(sessionToken, s.id)
+              : Promise.resolve([] as SaleLineMarginDto[]),
+          );
+          return { sale: s, marginData };
         }),
       );
+      const unanswered = withLines.filter((w) => !w.marginData.ok);
+      if (unanswered.length > 0) {
+        addToast({
+          message: requiredLocalized(l10n, 'sales-history-export-margins-unknown', {
+            count: String(unanswered.length),
+          }),
+          type: 'warning',
+        });
+      }
+      // The count names SALES whose margins are missing, not lines: one sale can
+      // carry many lines, and the operator needs to know how much of the file to
+      // distrust before it leaves the machine.
       const rows: string[][] = [];
-      for (const { sale: s, margins } of withLines) {
+      for (const { sale: s, marginData } of withLines) {
+        const margins = marginData.ok ? marginData.value : [];
         const context = [
           s.id,
           new Date(s.createdAt).toLocaleString(),
@@ -706,7 +755,8 @@ export default function SalesHistoryScreen() {
           cashierName(s.userId),
         ];
         if (margins.length === 0) {
-          // Margins unavailable (e.g. IPC down) — emit the summary row alone.
+          // No per-line data: either the sale genuinely has none, or the read did
+          // not answer (warned above). Either way the summary row stands alone.
           rows.push([...context, '', '', '', '', '', '', '']);
           continue;
         }
@@ -736,7 +786,7 @@ export default function SalesHistoryScreen() {
     } finally {
       setCsvExporting(false);
     }
-  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting]);
+  }, [filteredSales, cashierName, l10n, sessionToken, csvExporting, addToast]);
 
   // ── Focus trap refs ───────────────────────────────
   const voidPanelRef = useRef<HTMLDivElement>(null);
@@ -1525,6 +1575,12 @@ export default function SalesHistoryScreen() {
                       <Localized id="sales-history-line-qty"><th><span>Qty</span></th></Localized>
                       <Localized id="sales-history-line-unit-price"><th><span>Unit Price</span></th></Localized>
                       <Localized id="sales-history-line-total"><th><span>Total</span></th></Localized>
+                      {/* No `!marginsUnknown` guard on the two column gates, and
+                          deliberately: a failed read already clears `lineMargins`, so
+                          `lineMargins.length > 0` is false on its own. Mutations that
+                          added the flag to either gate passed every test, so it was a dead
+                          condition. The load-bearing gate is the alert below, which is
+                          what makes the absence visible. */}
                       {lineMargins.length > 0 && (
                         <>
                           <Localized id="sales-history-line-cost"><th><span>Cost</span></th></Localized>
@@ -1563,6 +1619,27 @@ export default function SalesHistoryScreen() {
 </tbody>
                 </table>
                 </Localized>
+
+                {/* ── Margin read did not answer ──────────────── */}
+                {marginsUnknown && (
+                  /* The Cost / Margin / Margin % columns are gated on the LENGTH
+                     of this read, so a failed read removed three columns of a
+                     manager's profitability read and said nothing about it. The
+                     columns stay hidden -- a dash in a cost column is not a
+                     cheaper line -- and this is the only place the gap is named. */
+                  <div className="sales-history-margins-unknown" role="alert">
+                    <Localized id="margin-history-unknown">
+                      <span>Cost and margin for this sale could not be loaded</span>
+                    </Localized>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => detail && loadMargins(detail.id)}
+                    >
+                      <Localized id="retry"><span>Retry</span></Localized>
+                    </Button>
+                  </div>
+                )}
 
                 {/* ── Refund read did not answer ──────────────── */}
                 {refundsUnknown && (

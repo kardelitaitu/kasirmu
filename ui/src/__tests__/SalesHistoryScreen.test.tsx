@@ -707,4 +707,85 @@ describe('SalesHistoryScreen', () => {
     expect(screen.queryByText('Refunded')).not.toBeInTheDocument();
     expect(screen.queryByText('Previous Refunds')).not.toBeInTheDocument();
   });
+
+  // ── A margin read that did not answer ────────────────────────────────
+  //
+  // getSaleLineMarginsScoped(...).catch(() => []) reported a FAILED read as
+  // 'this sale has no line costs'. The Cost / Margin / Margin % columns are gated
+  // on the LENGTH of that list, so a failed read deleted three columns of a
+  // manager's profitability read in silence. The gap is not a formatting detail
+  // either: query_sale_lines_with_margin prefers the per-line cost snapshot and
+  // falls back to the product's CURRENT cost and then to 0
+  // (crates/kasirmu-reporting/src/margin.rs:93), so a genuinely unknown cost is
+  // itself a number that reads as a real one.
+
+  const oneMargin = [{
+    sale_line_id: 'line-1', sku: 'SKU-001', name: 'Widget', qty: 2,
+    unit_price_minor: 25000, line_total_minor: 50000,
+    unit_cost_minor: 15000, margin_minor: 20000, margin_percent: 40,
+  }];
+
+  it('does not hide the margin columns silently when the margin read failed', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockRejectedValue(new Error('invoke failed'));
+    await openFirstSaleDetail();
+
+    // Anchor on the ARRIVING alert, never on the absence of the columns: before
+    // the detail opens the table has no columns either, so a poll for their
+    // absence would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cost and margin for this sale could not be loaded',
+      );
+    });
+    // The columns stay gone -- a dash in a cost column would read as a cheaper
+    // line -- but the absence is now named rather than implied.
+    expect(screen.queryByText('Cost')).not.toBeInTheDocument();
+    expect(screen.queryByText('Margin %')).not.toBeInTheDocument();
+    // And only the margin read was unanswered: the detail itself is intact.
+    expect(screen.getByText('SKU-001')).toBeInTheDocument();
+  });
+
+  it('shows the margin columns again once a retry answers', async () => {
+    mockListRefunds.mockResolvedValue([]);
+    mockGetSaleLineMargins.mockRejectedValueOnce(new Error('invoke failed'));
+    const user = await openFirstSaleDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Cost and margin for this sale could not be loaded',
+      );
+    });
+
+    mockGetSaleLineMargins.mockResolvedValue(oneMargin);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Cost')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Rp 15.000')).toBeInTheDocument();
+  });
+
+  it('warns that an export dropped the cost and margin for the sales it could not read', async () => {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleLineMargins.mockRejectedValue(new Error('invoke failed'));
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fake');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => expect(screen.getByText('Export CSV')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    // The file still lands -- the summary rows are worth having -- and the gap in
+    // it is named, because a blank cost cell in a CSV reads as a cost of zero.
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByText(/Cost and margin could not be read for 1 sale/)).toBeInTheDocument();
+    });
+    createUrl.mockRestore();
+    clickSpy.mockRestore();
+  });
 });

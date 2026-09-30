@@ -634,6 +634,28 @@
   flex-shrink: 0;
 }
 
+/* The margin alert is the same shape as the refund one on purpose: both say a
+   READ did not answer, both keep the bad value out of the table, and both offer
+   the one action that can change the answer. A second, near-identical block
+   would drift from it on the first token fix. */
+.sales-history-margins-unknown {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-dim);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: var(--text-sm);
+}
+
+.sales-history-margins-unknown > button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .sales-history-refunds h3 {
   font-size: var(--text-sm);
   font-weight: 600;

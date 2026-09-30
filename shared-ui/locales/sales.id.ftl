@@ -449,6 +449,12 @@ refund-status-refunded = Dikembalikan
 # en: Refunds for this sale could not be loaded. "bisa" is the conditional form the
 # bundle uses for a capability that did not come through (see app-error-offline).
 refund-history-unknown = Pengembalian untuk penjualan ini tidak dapat dimuat
+# en: Cost and margin for this sale could not be loaded.
+margin-history-unknown = Biaya dan margin untuk penjualan ini tidak dapat dimuat
+# en: Cost and margin could not be read for N sales; those rows are exported
+# without them. The number is SALES, not lines; see the note on the en key for
+# why there is no .count attribute.
+sales-history-export-margins-unknown = Biaya dan margin tidak dapat dibaca untuk { $count } penjualan; baris tersebut diekspor tanpa kolom itu
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia
