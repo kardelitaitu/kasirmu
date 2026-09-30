@@ -304,6 +304,54 @@ fn a_preference_naming_an_absent_scanner_changes_nothing() {
     assert_eq!(ordered(&got), ["a", "b"]);
 }
 
+/// The `.ok()` call the legacy footer read must NOT carry. The check runs
+/// against code with `//` comments stripped, so the fix's own prose that
+/// names `.ok()` cannot trip it.
+const OK_PROBE: &str = ".ok()";
+
+// -- a failed legacy footer read must propagate (mirrors the bridge pin) --
+
+/// The tablet's `print_sales_receipt_scoped` builds the receipt config inline,
+/// so this is a SOURCE-TEXT pin: the body is unreachable without a full
+/// `AppState`. It asserts the legacy footer read is not wrapped in `.ok()`,
+/// which would turn a locked or corrupt `settings` table into `None` -- the
+/// same value an operator sees when they configured no footer at all, so the
+/// receipt would print without it and nothing would say so.
+///
+/// The scan starts at the first `use` so it inspects CODE, never the module
+/// doc: the doc legitimately describes the swallow while explaining the fix,
+/// and a pin that fails on a correct file gets deleted by the next reader.
+/// (Round-145 lesson.)
+#[test]
+fn the_tablet_propagates_a_failed_legacy_footer_read() {
+    const SOURCE: &str = include_str!("hardware.rs");
+    let code = match SOURCE.find("use tauri::") {
+        Some(at) => &SOURCE[at..],
+        None => {
+            panic!("hardware.rs no longer starts its imports with `use tauri::`; revisit this pin")
+        }
+    };
+    // Strip `//` comment lines before asserting: the module doc and the fix's
+    // own comment legitimately SPELL `.ok()` while explaining what was removed,
+    // and a pin that trips on prose fails on a correct file (round-145 lesson).
+    let code_only: String = code
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !code_only.contains(OK_PROBE),
+        "the tablet must not wrap the legacy footer read in `.ok()`; that turns a locked or corrupt settings table into `None`, which reads as \"no footer\" and prints without it"
+    );
+    assert!(
+        code_only.contains("?;"),
+        "the tablet footer read must propagate its error with `?`"
+    );
+    assert!(
+        code.contains("legacy_footer"),
+        "the tablet footer chain must resolve the legacy read through a binding so `?` can propagate"
+    );
+}
 #[test]
 fn both_shells_order_scanners_the_same_way() {
     // The desktop and tablet each carry a copy of this helper, so a device

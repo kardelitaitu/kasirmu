@@ -344,6 +344,23 @@ fn read_receipt_config_for_scope(
         ));
     // Footer precedence: entity footer text, else the scoped layout note, else
     // the legacy footer — the same order the resolver documents.
+    //
+    // The legacy read propagates its error rather than swallowing it with
+    // `.ok()`. It is the LAST resort: reaching it means the entity and layout
+    // layers carried no footer, so the legacy key is the only thing standing
+    // between the operator's configured footer and a blank one. A failed read
+    // here (SQLITE_BUSY, a corrupt or locked settings table) used to become
+    // `None`, which is indistinguishable from "no footer configured" — the
+    // receipt printed without the footer the operator set, and nothing logged
+    // it. This is the same reason every other settings read in this function
+    // uses `?`: a core error is a real failure, not an absence.
+    // Read BEFORE the chain so the error can be propagated with `?`; a
+    // closure cannot carry `?` out to the function. Empty means "no footer"
+    // and is mapped to `None` so the chain treats it as absent.
+    let legacy_footer = {
+        let raw = Settings::get_receipt_footer(conn)?;
+        if raw.is_empty() { None } else { Some(raw) }
+    };
     let footer = effective
         .content
         .as_ref()
@@ -356,11 +373,7 @@ fn read_receipt_config_for_scope(
                 .clone()
                 .filter(|f| !f.is_empty())
         })
-        .or_else(|| {
-            Settings::get_receipt_footer(conn)
-                .ok()
-                .filter(|f| !f.is_empty())
-        });
+        .or_else(|| legacy_footer.clone());
     let config = receipt::ReceiptConfig {
         paper_width,
         show_currency,

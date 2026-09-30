@@ -302,6 +302,54 @@ fn serial_mode_offers_only_port_backed_scanners() {
     assert_eq!(got, ids_of(&["scanner:serial:COM7", "scanner:bt:COM9"]));
 }
 
+// -- receipt config: a failed legacy footer read must not read as "no footer" --
+
+/// `read_receipt_config_for_scope` resolves the footer from three layers, the
+/// legacy `settings` key last. That read used to be wrapped in `.ok()`, so a
+/// real failure (a locked or corrupt `settings` table) became `None` -- the
+/// same value an operator sees when they configured no footer at all. The
+/// receipt then printed with the configured footer missing and nothing said so.
+///
+/// The pin makes `settings` PRESENT but unreadable (its `value` column is a
+/// BLOB, so every `row.get::<_, String>(0)` fails), then asserts the config
+/// builder REFUSES rather than returning a footer-less config. Every other
+/// settings read in the same function already propagates, which is why `?`
+/// here is consistency rather than a new policy.
+#[test]
+fn a_failed_legacy_footer_read_refuses_instead_of_printing_without_a_footer() {
+    // A provisioned store db: the resolver reads `locations` and the scoped
+    // `receipt_formats` rows before it ever reaches the legacy key, so an
+    // empty in-memory db would fail earlier for the wrong reason.
+    let bridge = TestBridge::new();
+    let store = bridge.db_manager().open_store("default").unwrap();
+    let guard = store.lock().expect("store db lock");
+    platform_core::settings::Settings::set(&guard, "receipt.footer", "Thank you")
+        .expect("seeding the legacy footer");
+
+    let _ = read_receipt_config_for_scope(&guard, None)
+        .expect("a readable settings table must resolve a config");
+
+    // Rebuild `settings` with the value stored as a BLOB. Every read in this
+    // path does `row.get::<_, String>(0)`, which fails on a blob, so the
+    // settings layer is PRESENT but unreadable -- exactly the locked/corrupt
+    // case the swallow used to absorb. Rows the resolver only probes with
+    // `is_ok_and(..)` still answer falsy, so control reaches the footer chain.
+    guard
+        .execute_batch(
+            "DROP TABLE settings; \
+         CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                     updated_at TEXT NOT NULL DEFAULT ''); \
+         INSERT INTO settings (key, value) VALUES ('receipt.footer', x'80');",
+        )
+        .expect("rebuilding settings with an unreadable value");
+
+    let err = read_receipt_config_for_scope(&guard, None).unwrap_err();
+    assert!(
+        matches!(err, BridgeError::Core { .. }),
+        "a failed footer read must surface as a Core error, not a config whose footer silently vanished; got {err:?}"
+    );
+}
+
 #[test]
 fn auto_and_unset_modes_offer_everything() {
     // A profile predating the mode field reads as "", which must behave

@@ -291,6 +291,19 @@ pub async fn print_sales_receipt_scoped(
                 Settings::get_receipt_show_tax(&conn)?,
                 Settings::get_receipt_show_currency(&conn)?,
             ));
+        // The legacy footer read propagates rather than swallowing with
+        // `.ok()`. It is the LAST resort: reaching it means the entity and
+        // layout layers carried no footer, so this key is all that stands
+        // between the operator's configured footer and a blank one. A failed
+        // read (SQLITE_BUSY, a corrupt or locked settings table) used to
+        // become `None` — indistinguishable from "no footer configured" — and
+        // the receipt printed without the footer the operator set. Every
+        // other settings read in this block uses `?` for the same reason.
+        // Read before the chain so `?` can reach the function.
+        let legacy_footer = {
+            let raw = Settings::get_receipt_footer(&conn)?;
+            if raw.is_empty() { None } else { Some(raw) }
+        };
         let footer = effective
             .content
             .as_ref()
@@ -303,11 +316,7 @@ pub async fn print_sales_receipt_scoped(
                     .clone()
                     .filter(|f| !f.is_empty())
             })
-            .or_else(|| {
-                Settings::get_receipt_footer(&conn)
-                    .ok()
-                    .filter(|f| !f.is_empty())
-            });
+            .or_else(|| legacy_footer.clone());
         let cfg = receipt::ReceiptConfig {
             paper_width,
             show_currency,
