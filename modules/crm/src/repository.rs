@@ -9,50 +9,59 @@ next: none | perf: N/A
 use crate::error::CrmError;
 use crate::models::Customer;
 use foundation::{Email, Phone};
-use rusqlite::{Connection, Transaction, params};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespacedStore};
+use rusqlite::{Connection, Transaction};
+
+/// The crm module's own namespace id, as the ownership map names it.
+const OWNER: ModuleId = ModuleId("crm");
 
 /// Database repository for customer records.
+///
+/// Phase 3 P3.2: reads and writes go through a [`NamespacedStore`] scoped to the
+/// `crm` namespace rather than a bare `&Connection`, so every statement is
+/// checked against `modules/ownership.json` before it runs. `crm` owns
+/// `customers`, so the store carries `Grants::none()`.
 pub struct CrmRepository<'a> {
-    conn: &'a Connection,
+    ns: NamespacedStore<'a>,
 }
 
 impl<'a> CrmRepository<'a> {
-    /// Create a new `CrmRepository`.
+    /// Create a new `CrmRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self {
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+        }
     }
 
     /// Retrieve a customer by ID.
     pub fn get_customer(&self, id: &str) -> Result<Option<Customer>, CrmError> {
-        let mut stmt = self.conn.prepare(
+        let rows = self.ns.own().query(
             "SELECT id, name, email, phone, loyalty_points, total_spent_minor, currency, notes, created_at, updated_at
              FROM customers WHERE id = ?1",
+            rusqlite::params![id],
+            |row| {
+                let email_str: Option<String> = row.get(2)?;
+                let email = email_str.and_then(|e| Email::new(e).ok());
+
+                let phone_str: Option<String> = row.get(3)?;
+                let phone = phone_str.and_then(|p| Phone::new(p).ok());
+
+                Ok(Customer {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    email,
+                    phone,
+                    loyalty_points: row.get(4)?,
+                    total_spent_minor: row.get(5)?,
+                    currency: row.get(6)?,
+                    notes: row.get(7)?,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
+                })
+            },
         )?;
-
-        let mut rows = stmt.query(params![id])?;
-        let row = match rows.next()? {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let email_str: Option<String> = row.get(2)?;
-        let email = email_str.and_then(|e| Email::new(e).ok());
-
-        let phone_str: Option<String> = row.get(3)?;
-        let phone = phone_str.and_then(|p| Phone::new(p).ok());
-
-        Ok(Some(Customer {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            email,
-            phone,
-            loyalty_points: row.get(4)?,
-            total_spent_minor: row.get(5)?,
-            currency: row.get(6)?,
-            notes: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
-        }))
+        Ok(rows.into_iter().next())
     }
 
     /// Insert a customer inside a transaction.
@@ -62,10 +71,15 @@ impl<'a> CrmRepository<'a> {
         customer: &Customer,
     ) -> Result<(), CrmError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        tx.execute(
+        // The transaction is a property of the connection, not this handle: a
+        // store over the same transaction writes inside it. We build the store
+        // from the passed `tx` so the statement is namespace-checked in exactly
+        // the same way as `get_customer`.
+        let ns = NamespacedStore::new(Store::new(tx), OWNER, Grants::none());
+        ns.own().execute(
             "INSERT INTO customers (id, name, email, phone, loyalty_points, total_spent_minor, currency, notes, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
+            rusqlite::params![
                 customer.id,
                 customer.name,
                 customer.email.as_ref().map(|e| e.as_str()),
