@@ -125,9 +125,9 @@ cargo tauri build
 
 Expected output location:
 ```
-target/release/oz-pos-app                          # Portable binary
-target/release/bundle/deb/oz-pos_0.0.X_amd64.deb   # Debian/Ubuntu installer
-target/release/bundle/appimage/oz-pos_0.0.X_amd64.AppImage  # Portable AppImage
+target/release/kasirmu-app                          # Portable binary
+target/release/bundle/deb/*.deb                   # Debian/Ubuntu installer
+target/release/bundle/appimage/*.AppImage           # Portable AppImage
 ```
 
 ### Option B — Build Portable Binary Only
@@ -140,10 +140,10 @@ npm run build
 cd ..
 
 # Step 2: Build Rust binary
-cargo build --release -p oz-pos-app
+cargo build --release -p kasirmu-app
 
 # Binary at:
-# target/release/oz-pos-app
+# target/release/kasirmu-app
 ```
 
 ### Option C — Quick Dev Launch
@@ -161,7 +161,7 @@ cargo tauri dev
 
 | Step | Action | Expected Result |
 |------|--------|----------------|
-| 1.1 | Run `./oz-pos-app` (or launch installed .deb) | Splash screen appears within **5 seconds** |
+| 1.1 | Run `./kasirmu-app` (or launch installed .deb) | Splash screen appears within **5 seconds** |
 | 1.2 | Wait for full load | Main window appears (1280×800 default). Login screen visible. |
 | 1.3 | Check window chrome | Title bar shows **kasir.mu**. Window is centered. |
 | 1.4 | Check taskbar/dock | Icon renders correctly in GNOME/KDE launcher. |
@@ -172,7 +172,7 @@ cargo tauri dev
 **Common failures:**
 - **`error while loading shared libraries: libwebkit2gtk-4.1.so.0`** — Missing WebKitGTK runtime. Install `libwebkit2gtk-4.1-dev`.
 - **`GLib-GIO-ERROR **: No GSettings schema for 'org.gnome.shell.overrides'`** — Missing GNOME schemas. Install `glib-networking` and `gsettings-desktop-schemas`.
-- **`Segmentation fault (core dumped)`** — Often GPU/driver related. Try `WEBKIT_DISABLE_COMPOSITING_MODE=1 ./oz-pos-app`.
+- **`Segmentation fault (core dumped)`** — Often GPU/driver related. Try `WEBKIT_DISABLE_COMPOSITING_MODE=1 ./kasirmu-app`.
 - **`Cannot open display`** — Running over SSH without X forwarding. Use `export DISPLAY=:0` or a physical terminal.
 - **`Failed to load module "appmenu-gtk-module"`** — Cosmetic. Install `appmenu-gtk2-module appmenu-gtk3-module` or ignore.
 
@@ -269,14 +269,14 @@ cargo tauri dev
 
 | Metric | Acceptable | Target | Measurement |
 |--------|-----------|--------|-------------|
-| Cold start (first launch after boot) | < 10 s | < 5 s | `time ./oz-pos-app` or stopwatch to login screen |
+| Cold start (first launch after boot) | < 10 s | < 5 s | `time ./kasirmu-app` or stopwatch to login screen |
 | Warm start (subsequent launch) | < 5 s | < 3 s | Stopwatch |
 | Product grid load (500 products) | < 2 s | < 500 ms | DevTools → Network tab |
 | Search response (type-ahead) | < 500 ms | < 100 ms | Perceived latency |
 | Cart total recalculation | < 100 ms | < 16 ms (60 fps) | Console time |
 | Sale completion (click Pay to done) | < 2 s | < 500 ms | Stopwatch |
-| Memory usage (idle) | < 200 MB | < 120 MB | `ps -o rss,cmd -C oz-pos-app` |
-| Memory usage (with 50-item cart) | < 350 MB | < 200 MB | `ps -o rss,cmd -C oz-pos-app` |
+| Memory usage (idle) | < 200 MB | < 120 MB | `ps -o rss,cmd -C kasirmu-app` |
+| Memory usage (with 50-item cart) | < 350 MB | < 200 MB | `ps -o rss,cmd -C kasirmu-app` |
 
 ### Measuring Performance
 
@@ -284,7 +284,7 @@ cargo tauri dev
 
 ```bash
 # Memory usage (RSS in KB — divide by 1024 for MB)
-ps -o rss:1 --sort=-rss -C oz-pos-app | awk '{print $1/1024 " MB"}'
+ps -o rss:1 --sort=-rss -C kasirmu-app | awk '{print $1/1024 " MB"}'
 ```
 
 **Using `htop`:**
@@ -292,7 +292,7 @@ ps -o rss:1 --sort=-rss -C oz-pos-app | awk '{print $1/1024 " MB"}'
 ```bash
 # Interactive process viewer
 sudo apt install htop
-htop -p $(pgrep -d',' -f oz-pos-app)
+htop -p $(pgrep -d',' -f kasirmu-app)
 ```
 
 **Using Tauri DevTools:**
@@ -314,10 +314,10 @@ Tauri logs output to `stderr` by default. Capture it on launch:
 
 ```bash
 # Redirect stderr to a file
-./oz-pos-app 2> launch-log.txt
+./kasirmu-app 2> launch-log.txt
 
 # Or run in background with logging
-./oz-pos-app > /dev/null 2> oz-pos-$(date +%Y%m%d).log &
+./kasirmu-app > /dev/null 2> kasirmu-app-$(date +%Y%m%d).log &
 
 # Check for errors
 grep -iE "error|panic|fail|segfault" launch-log.txt
@@ -329,7 +329,7 @@ If the app is launched via a systemd service, use `journalctl`:
 
 ```bash
 # Recent logs from kasir.mu service
-journalctl --user -u oz-pos --since "5 minutes ago" --no-pager
+journalctl --user -u kasirmu-app --since "5 minutes ago" --no-pager
 ```
 
 > Note: The `.deb` package from `cargo tauri build` does **not** install a
@@ -346,7 +346,7 @@ For verbose logging with `RUST_LOG`:
 RUST_LOG=debug cargo tauri dev 2>&1 | tee launch-log.txt
 
 # Release build (only info/warn/error)
-RUST_LOG=info ./oz-pos-app 2> launch-log.txt
+RUST_LOG=info ./kasirmu-app 2> launch-log.txt
 ```
 
 ### Crash Reports
@@ -355,14 +355,14 @@ If the app crashes:
 
 ```bash
 # Check dmesg for segfault or OOM killer messages
-dmesg | grep -iE "oz-pos|segfault|oom"
+dmesg | grep -iE "kasirmu-app|segfault|oom"
 
 # Check systemd journal
-journalctl -xe | grep -i "oz-pos"
+journalctl -xe | grep -i "kasirmu-app"
 
 # Check coredumpctl (if systemd-coredump is enabled)
 coredumpctl list
-coredumpctl info oz-pos-app  # Most recent crash
+coredumpctl info kasirmu-app  # Most recent crash
 ```
 
 ---
@@ -374,7 +374,7 @@ coredumpctl info oz-pos-app  # Most recent crash
 | WebKitGTK missing | `error while loading shared libraries: libwebkit2gtk-4.1.so.0` | Install `libwebkit2gtk-4.1-dev` | External |
 | NVIDIA GPU rendering | White screen or graphical corruption on proprietary drivers | `export WEBKIT_DISABLE_COMPOSITING_MODE=1` before launch | Investigate |
 | Wayland clipboard | Copy/paste not working in Wayland session | Set `GDK_BACKEND=x11` or wait for Tauri v2 Wayland fix | External |
-| AppImage FUSE error | `FUSE: mount failed: Operation not permitted` | Extract AppImage: `./oz-pos.AppImage --appimage-extract && ./squashfs-root/AppRun` | External |
+| AppImage FUSE error | `FUSE: mount failed: Operation not permitted` | Extract AppImage: `./kasirmu.app-*.AppImage --appimage-extract && ./squashfs-root/AppRun` | External |
 | GNOME shell integration | Dark theme not followed | Tauri uses its own theme — set manually in Settings | By Design |
 | Snap confinement | Can't access files outside sandbox | Install via `.deb` instead of AppImage | External |
 | **libssl version mismatch** | `error while loading shared libraries: libssl.so.3` | Install `libssl3` or symlink: `ln -s /usr/lib/x86_64-linux-gnu/libssl.so.1.1 /usr/lib/libssl.so.3` | External |
