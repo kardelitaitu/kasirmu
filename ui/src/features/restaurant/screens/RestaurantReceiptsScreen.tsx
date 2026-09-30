@@ -12,6 +12,7 @@ import { FEATURES, useFeatures } from '@/hooks/useFeatures';
 import { setReceiptSettingsScoped, setUserPreferencesScoped, getUserPreferencesScoped } from '@/api/settings';
 import { printSalesReceipt } from '@/api/sales';
 import SettingsSelect from '@/features/settings/SettingsSelect';
+import { tierSatisfies } from '@/utils/tierLevel';
 import {
   clamp,
   rollWidthMm as paperRollWidth,
@@ -106,6 +107,9 @@ export default function RestaurantReceiptsScreen({
 
   const tablesEnabled = propTablesEnabled !== undefined ? propTablesEnabled : isEnabled(FEATURES.TABLE_MANAGEMENT);
   const isFreeTier = !caps || caps.tier === 'free';
+  const hasKdsFeature = caps
+    ? (caps.maxKdsScreens === null || caps.maxKdsScreens > 0 || tierSatisfies(caps.tier, 'pro'))
+    : true;
   const staffDisplayName = session?.display_name || 'Budi S.';
 
   // ── Receipt format draft state ──────────────────────────────
@@ -1213,178 +1217,180 @@ export default function RestaurantReceiptsScreen({
         {/* ── Right Column: Configuration Controls ──────────── */}
         <main className="restaurant-settings-column">
           <div className="restaurant-settings-grid">
-            {/* ── Configuration Column 1: Header, Content, Footer ─ */}
+            {/* ── Configuration Column 1: Paper, Content, Footer ── */}
             <div className="restaurant-settings-grid-col">
-              {/* ── Card 1: Header & Branding ───────────────────── */}
+              {/* ── Card 1: Paper & Layout ────────────────────────── */}
               <Card
                 shadow="sm"
                 header={
                   <div className="restaurant-settings-card-header">
                     <div>
                       <h2 className="settings-section-title">
-                        <Localized id="restaurant-header-branding-heading">Header &amp; Branding</Localized>
+                        <Localized id="restaurant-paper-layout-heading">Paper &amp; Layout</Localized>
                       </h2>
                       <p>
-                        <Localized id="restaurant-header-branding-sub">Logo and store header text</Localized>
+                        <Localized id="restaurant-paper-layout-sub">Paper width, font scale, and margins</Localized>
                       </p>
                     </div>
                   </div>
                 }
               >
-                {/* Business Logo Section */}
-                <div className="resto-logo-section">
-                  <div className="resto-toggle-title">
-                    <Localized id="restaurant-logo-heading">Business Logo</Localized>
+                {/* Paper Width Segmented Control */}
+                <div style={{ marginBottom: 'var(--space-3)' }}>
+                  <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
+                    <Localized id="workspace-pos-paper-width">Paper Width</Localized>
                   </div>
-                  <div className="resto-toggle-desc">
-                    <Localized id="restaurant-logo-desc">
-                      Upload a square PNG or SVG logo for the receipt header
-                    </Localized>
+                  <div className="resto-segmented-group" role="group" aria-label={l10n.getString('workspace-pos-paper-width') || 'Paper Width'}>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${paperWidth === 'narrow' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setPaperWidth('narrow')}
+                    >
+                      <Localized id="restaurant-preview-paper-width-narrow">58 mm (Compact)</Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${paperWidth === 'standard' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setPaperWidth('standard')}
+                    >
+                      <Localized id="restaurant-preview-paper-width-standard">80 mm (Standard)</Localized>
+                    </button>
                   </div>
-                  <div className="resto-logo-row">
-                    <div className="resto-logo-thumb-box">
-                      {businessLogo ? (
-                        <img src={businessLogo} alt="Logo preview" className="resto-logo-thumb" />
-                      ) : (
-                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>No logo</span>
-                      )}
-                    </div>
-                    <div className="resto-logo-actions">
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        accept=".svg,.png,.jpg,.jpeg,.webp"
-                        style={{ display: 'none' }}
-                        onChange={handleLogoFileChange}
-                      />
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="resto-logo-upload-btn"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          <Localized id="restaurant-logo-upload-btn">Choose Logo</Localized>
-                        </Button>
-                        {businessLogo && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="resto-logo-remove-btn"
-                            onClick={() => setBusinessLogo('')}
-                          >
-                            <Localized id="restaurant-logo-remove-btn">Remove Logo</Localized>
-                          </Button>
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
-                        value={businessLogo.startsWith('data:') ? 'Custom uploaded image' : businessLogo}
-                        onChange={(e) => {
-                          if (!e.target.value.startsWith('Custom uploaded')) {
-                            setBusinessLogo(e.target.value);
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {businessLogo && (
-                    <div style={{ marginTop: 'var(--space-2)' }}>
-                      <div className="resto-toggle-desc" style={{ marginBottom: '4px', fontWeight: 500 }}>
-                        <Localized id="restaurant-logo-position-heading">Logo Position</Localized>
-                      </div>
-                      <div className="resto-segmented-group" role="group" aria-label="Logo Position">
-                        <button
-                          type="button"
-                          className={`resto-segmented-btn ${logoPosition === 'top' ? 'resto-segmented-btn--active' : ''}`}
-                          onClick={() => setLogoPosition('top')}
-                        >
-                          <Localized id="restaurant-logo-pos-top">Top</Localized>
-                        </button>
-                        <button
-                          type="button"
-                          className={`resto-segmented-btn ${logoPosition === 'left' ? 'resto-segmented-btn--active' : ''}`}
-                          onClick={() => setLogoPosition('left')}
-                        >
-                          <Localized id="restaurant-logo-pos-left">Left</Localized>
-                        </button>
-                        <button
-                          type="button"
-                          className={`resto-segmented-btn ${logoPosition === 'right' ? 'resto-segmented-btn--active' : ''}`}
-                          onClick={() => setLogoPosition('right')}
-                        >
-                          <Localized id="restaurant-logo-pos-right">Right</Localized>
-                        </button>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Header Configuration (Title, Line 1, Line 2) */}
-                <div>
-                  <div className="resto-toggle-title" style={{ marginBottom: 'var(--space-2)' }}>
-                    <Localized id="restaurant-header-config-heading">Receipt Header Details</Localized>
+                {/* Font Size Segmented Control (Very Small, Small, Medium, Large) */}
+                <div style={{ marginBottom: 'var(--space-3)' }}>
+                  <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
+                    <Localized id="restaurant-rcpt-font-size-heading">Font Size</Localized>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
-                        <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
-                          <Localized id="restaurant-header-title-label">Receipt Title</Localized>
+                  <div
+                    className="resto-segmented-group resto-segmented-group--4"
+                    role="group"
+                    aria-label={l10n.getString('restaurant-rcpt-font-size-heading') || 'Font Size'}
+                  >
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${fontSize === 'very_small' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setFontSize('very_small')}
+                    >
+                      <Localized id="restaurant-rcpt-font-size-very-small">Very Small</Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${fontSize === 'small' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setFontSize('small')}
+                    >
+                      <Localized id="restaurant-rcpt-font-size-small">Small</Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${fontSize === 'medium' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setFontSize('medium')}
+                    >
+                      <Localized id="restaurant-rcpt-font-size-medium">Medium</Localized>
+                    </button>
+                    <button
+                      type="button"
+                      className={`resto-segmented-btn ${fontSize === 'large' ? 'resto-segmented-btn--active' : ''}`}
+                      onClick={() => setFontSize('large')}
+                    >
+                      <Localized id="restaurant-rcpt-font-size-large">Large</Localized>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Paper Margins (0-30mm top/bottom, 0-15mm left/right) */}
+                <div>
+                  <div className="resto-toggle-title">
+                    <Localized id="restaurant-margins-heading">Paper Margins (mm)</Localized>
+                  </div>
+                  <div className="resto-margins-grid">
+                    {/* Margin Top (0-30 mm) */}
+                    <div className="resto-margin-card">
+                      <div className="resto-margin-header">
+                        <label htmlFor="resto-margin-top" className="resto-margin-label">
+                          <Localized id="restaurant-margin-top">Top</Localized>
                         </label>
-                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
-                          {headerTitle.length}/{MAX_HEADER_TITLE_LENGTH}
-                        </span>
+                        <span className="resto-margin-range">0 – 30 mm</span>
                       </div>
-                      <input
-                        id="resto-header-title"
-                        type="text"
-                        maxLength={MAX_HEADER_TITLE_LENGTH}
-                        className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
-                        value={headerTitle}
-                        onChange={(e) => setHeaderTitle(e.target.value.slice(0, MAX_HEADER_TITLE_LENGTH))}
-                      />
+                      <div className="resto-margin-input-wrap">
+                        <input
+                          id="resto-margin-top"
+                          type="number"
+                          className="resto-margin-input"
+                          min={0}
+                          max={30}
+                          value={marginTop}
+                          onChange={(e) => setMarginTop(clamp(Number(e.target.value), 0, 30))}
+                        />
+                        <span className="resto-margin-unit">mm</span>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
-                        <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
-                          <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
+
+                    {/* Margin Bottom (0-30 mm) */}
+                    <div className="resto-margin-card">
+                      <div className="resto-margin-header">
+                        <label htmlFor="resto-margin-bottom" className="resto-margin-label">
+                          <Localized id="restaurant-margin-bottom">Bottom</Localized>
                         </label>
-                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
-                          {headerLine1.length}/{MAX_HEADER_LINE_LENGTH}
-                        </span>
+                        <span className="resto-margin-range">0 – 30 mm</span>
                       </div>
-                      <input
-                        id="resto-header-line1"
-                        type="text"
-                        maxLength={MAX_HEADER_LINE_LENGTH}
-                        className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
-                        value={headerLine1}
-                        onChange={(e) => setHeaderLine1(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
-                      />
+                      <div className="resto-margin-input-wrap">
+                        <input
+                          id="resto-margin-bottom"
+                          type="number"
+                          className="resto-margin-input"
+                          min={0}
+                          max={30}
+                          value={marginBottom}
+                          onChange={(e) => setMarginBottom(clamp(Number(e.target.value), 0, 30))}
+                        />
+                        <span className="resto-margin-unit">mm</span>
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
-                        <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
-                          <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
+
+                    {/* Margin Left (0-15 mm) */}
+                    <div className="resto-margin-card">
+                      <div className="resto-margin-header">
+                        <label htmlFor="resto-margin-left" className="resto-margin-label">
+                          <Localized id="restaurant-margin-left">Left</Localized>
                         </label>
-                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
-                          {headerLine2.length}/{MAX_HEADER_LINE_LENGTH}
-                        </span>
+                        <span className="resto-margin-range">0 – 15 mm</span>
                       </div>
-                      <input
-                        id="resto-header-line2"
-                        type="text"
-                        maxLength={MAX_HEADER_LINE_LENGTH}
-                        className="resto-text-input"
-                        placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
-                        value={headerLine2}
-                        onChange={(e) => setHeaderLine2(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
-                      />
+                      <div className="resto-margin-input-wrap">
+                        <input
+                          id="resto-margin-left"
+                          type="number"
+                          className="resto-margin-input"
+                          min={0}
+                          max={15}
+                          value={marginLeft}
+                          onChange={(e) => setMarginLeft(clamp(Number(e.target.value), 0, 15))}
+                        />
+                        <span className="resto-margin-unit">mm</span>
+                      </div>
+                    </div>
+
+                    {/* Margin Right (0-15 mm) */}
+                    <div className="resto-margin-card">
+                      <div className="resto-margin-header">
+                        <label htmlFor="resto-margin-right" className="resto-margin-label">
+                          <Localized id="restaurant-margin-right">Right</Localized>
+                        </label>
+                        <span className="resto-margin-range">0 – 15 mm</span>
+                      </div>
+                      <div className="resto-margin-input-wrap">
+                        <input
+                          id="resto-margin-right"
+                          type="number"
+                          className="resto-margin-input"
+                          min={0}
+                          max={15}
+                          value={marginRight}
+                          onChange={(e) => setMarginRight(clamp(Number(e.target.value), 0, 15))}
+                        />
+                        <span className="resto-margin-unit">mm</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1630,180 +1636,178 @@ export default function RestaurantReceiptsScreen({
               </Card>
             </div>
 
-            {/* ── Configuration Column 2: Paper, Tax, Printers ──── */}
+            {/* ── Configuration Column 2: Header, Tax, Printers ─── */}
             <div className="restaurant-settings-grid-col">
-              {/* ── Card 4: Paper & Layout ────────────────────────── */}
+              {/* ── Card 4: Header & Branding ───────────────────── */}
               <Card
                 shadow="sm"
                 header={
                   <div className="restaurant-settings-card-header">
                     <div>
                       <h2 className="settings-section-title">
-                        <Localized id="restaurant-paper-layout-heading">Paper &amp; Layout</Localized>
+                        <Localized id="restaurant-header-branding-heading">Header &amp; Branding</Localized>
                       </h2>
                       <p>
-                        <Localized id="restaurant-paper-layout-sub">Paper width, font scale, and margins</Localized>
+                        <Localized id="restaurant-header-branding-sub">Logo and store header text</Localized>
                       </p>
                     </div>
                   </div>
                 }
               >
-                {/* Paper Width Segmented Control */}
-                <div style={{ marginBottom: 'var(--space-3)' }}>
-                  <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
-                    <Localized id="workspace-pos-paper-width">Paper Width</Localized>
-                  </div>
-                  <div className="resto-segmented-group" role="group" aria-label={l10n.getString('workspace-pos-paper-width') || 'Paper Width'}>
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${paperWidth === 'narrow' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setPaperWidth('narrow')}
-                    >
-                      <Localized id="restaurant-preview-paper-width-narrow">58 mm (Compact)</Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${paperWidth === 'standard' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setPaperWidth('standard')}
-                    >
-                      <Localized id="restaurant-preview-paper-width-standard">80 mm (Standard)</Localized>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Font Size Segmented Control (Very Small, Small, Medium, Large) */}
-                <div style={{ marginBottom: 'var(--space-3)' }}>
-                  <div className="resto-toggle-title" style={{ marginBottom: '6px' }}>
-                    <Localized id="restaurant-rcpt-font-size-heading">Font Size</Localized>
-                  </div>
-                  <div
-                    className="resto-segmented-group resto-segmented-group--4"
-                    role="group"
-                    aria-label={l10n.getString('restaurant-rcpt-font-size-heading') || 'Font Size'}
-                  >
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${fontSize === 'very_small' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setFontSize('very_small')}
-                    >
-                      <Localized id="restaurant-rcpt-font-size-very-small">Very Small</Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${fontSize === 'small' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setFontSize('small')}
-                    >
-                      <Localized id="restaurant-rcpt-font-size-small">Small</Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${fontSize === 'medium' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setFontSize('medium')}
-                    >
-                      <Localized id="restaurant-rcpt-font-size-medium">Medium</Localized>
-                    </button>
-                    <button
-                      type="button"
-                      className={`resto-segmented-btn ${fontSize === 'large' ? 'resto-segmented-btn--active' : ''}`}
-                      onClick={() => setFontSize('large')}
-                    >
-                      <Localized id="restaurant-rcpt-font-size-large">Large</Localized>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Paper Margins (0-30mm top/bottom, 0-15mm left/right) */}
-                <div>
+                {/* Business Logo Section */}
+                <div className="resto-logo-section">
                   <div className="resto-toggle-title">
-                    <Localized id="restaurant-margins-heading">Paper Margins (mm)</Localized>
+                    <Localized id="restaurant-logo-heading">Business Logo</Localized>
                   </div>
-                  <div className="resto-margins-grid">
-                    {/* Margin Top (0-30 mm) */}
-                    <div className="resto-margin-card">
-                      <div className="resto-margin-header">
-                        <label htmlFor="resto-margin-top" className="resto-margin-label">
-                          <Localized id="restaurant-margin-top">Top</Localized>
-                        </label>
-                        <span className="resto-margin-range">0 – 30 mm</span>
+                  <div className="resto-toggle-desc">
+                    <Localized id="restaurant-logo-desc">
+                      Upload a square PNG or SVG logo for the receipt header
+                    </Localized>
+                  </div>
+                  <div className="resto-logo-row">
+                    <div className="resto-logo-thumb-box">
+                      {businessLogo ? (
+                        <img src={businessLogo} alt="Logo preview" className="resto-logo-thumb" />
+                      ) : (
+                        <span style={{ fontSize: '10px', color: 'var(--color-fg-muted)' }}>No logo</span>
+                      )}
+                    </div>
+                    <div className="resto-logo-actions">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept=".svg,.png,.jpg,.jpeg,.webp"
+                        style={{ display: 'none' }}
+                        onChange={handleLogoFileChange}
+                      />
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <Button
+                          variant="secondary"
+                          size="md"
+                          className="resto-logo-upload-btn"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Localized id="restaurant-logo-upload-btn">Choose Logo</Localized>
+                        </Button>
+                        {businessLogo && (
+                          <Button
+                            variant="ghost"
+                            size="md"
+                            className="resto-logo-remove-btn"
+                            onClick={() => setBusinessLogo('')}
+                          >
+                            <Localized id="restaurant-logo-remove-btn">Remove Logo</Localized>
+                          </Button>
+                        )}
                       </div>
-                      <div className="resto-margin-input-wrap">
-                        <input
-                          id="resto-margin-top"
-                          type="number"
-                          className="resto-margin-input"
-                          min={0}
-                          max={30}
-                          value={marginTop}
-                          onChange={(e) => setMarginTop(clamp(Number(e.target.value), 0, 30))}
-                        />
-                        <span className="resto-margin-unit">mm</span>
+                      <input
+                        type="text"
+                        className="resto-text-input"
+                        placeholder={l10n.getString('restaurant-logo-url-placeholder') || 'Or paste Image URL / SVG code'}
+                        value={businessLogo.startsWith('data:') ? 'Custom uploaded image' : businessLogo}
+                        onChange={(e) => {
+                          if (!e.target.value.startsWith('Custom uploaded')) {
+                            setBusinessLogo(e.target.value);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {businessLogo && (
+                    <div style={{ marginTop: 'var(--space-2)' }}>
+                      <div className="resto-toggle-desc" style={{ marginBottom: '4px', fontWeight: 500 }}>
+                        <Localized id="restaurant-logo-position-heading">Logo Position</Localized>
+                      </div>
+                      <div className="resto-segmented-group" role="group" aria-label="Logo Position">
+                        <button
+                          type="button"
+                          className={`resto-segmented-btn ${logoPosition === 'left' ? 'resto-segmented-btn--active' : ''}`}
+                          onClick={() => setLogoPosition('left')}
+                        >
+                          <Localized id="restaurant-logo-pos-left">Left</Localized>
+                        </button>
+                        <button
+                          type="button"
+                          className={`resto-segmented-btn ${logoPosition === 'top' ? 'resto-segmented-btn--active' : ''}`}
+                          onClick={() => setLogoPosition('top')}
+                        >
+                          <Localized id="restaurant-logo-pos-top">Top</Localized>
+                        </button>
+                        <button
+                          type="button"
+                          className={`resto-segmented-btn ${logoPosition === 'right' ? 'resto-segmented-btn--active' : ''}`}
+                          onClick={() => setLogoPosition('right')}
+                        >
+                          <Localized id="restaurant-logo-pos-right">Right</Localized>
+                        </button>
                       </div>
                     </div>
+                  )}
+                </div>
 
-                    {/* Margin Bottom (0-30 mm) */}
-                    <div className="resto-margin-card">
-                      <div className="resto-margin-header">
-                        <label htmlFor="resto-margin-bottom" className="resto-margin-label">
-                          <Localized id="restaurant-margin-bottom">Bottom</Localized>
+                {/* Header Configuration (Title, Line 1, Line 2) */}
+                <div>
+                  <div className="resto-toggle-title" style={{ marginBottom: 'var(--space-2)' }}>
+                    <Localized id="restaurant-header-config-heading">Receipt Header Details</Localized>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
+                        <label htmlFor="resto-header-title" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                          <Localized id="restaurant-header-title-label">Receipt Title</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 30 mm</span>
+                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
+                          {headerTitle.length}/{MAX_HEADER_TITLE_LENGTH}
+                        </span>
                       </div>
-                      <div className="resto-margin-input-wrap">
-                        <input
-                          id="resto-margin-bottom"
-                          type="number"
-                          className="resto-margin-input"
-                          min={0}
-                          max={30}
-                          value={marginBottom}
-                          onChange={(e) => setMarginBottom(clamp(Number(e.target.value), 0, 30))}
-                        />
-                        <span className="resto-margin-unit">mm</span>
-                      </div>
+                      <input
+                        id="resto-header-title"
+                        type="text"
+                        maxLength={MAX_HEADER_TITLE_LENGTH}
+                        className="resto-text-input"
+                        placeholder={l10n.getString('restaurant-header-title-placeholder') || 'e.g. KASIR.MU RESTAURANT'}
+                        value={headerTitle}
+                        onChange={(e) => setHeaderTitle(e.target.value.slice(0, MAX_HEADER_TITLE_LENGTH))}
+                      />
                     </div>
-
-                    {/* Margin Left (0-15 mm) */}
-                    <div className="resto-margin-card">
-                      <div className="resto-margin-header">
-                        <label htmlFor="resto-margin-left" className="resto-margin-label">
-                          <Localized id="restaurant-margin-left">Left</Localized>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
+                        <label htmlFor="resto-header-line1" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                          <Localized id="restaurant-header-line1-label">Header Line 1</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 15 mm</span>
+                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
+                          {headerLine1.length}/{MAX_HEADER_LINE_LENGTH}
+                        </span>
                       </div>
-                      <div className="resto-margin-input-wrap">
-                        <input
-                          id="resto-margin-left"
-                          type="number"
-                          className="resto-margin-input"
-                          min={0}
-                          max={15}
-                          value={marginLeft}
-                          onChange={(e) => setMarginLeft(clamp(Number(e.target.value), 0, 15))}
-                        />
-                        <span className="resto-margin-unit">mm</span>
-                      </div>
+                      <input
+                        id="resto-header-line1"
+                        type="text"
+                        maxLength={MAX_HEADER_LINE_LENGTH}
+                        className="resto-text-input"
+                        placeholder={l10n.getString('restaurant-header-line1-placeholder') || 'e.g. Street Address, City'}
+                        value={headerLine1}
+                        onChange={(e) => setHeaderLine1(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
+                      />
                     </div>
-
-                    {/* Margin Right (0-15 mm) */}
-                    <div className="resto-margin-card">
-                      <div className="resto-margin-header">
-                        <label htmlFor="resto-margin-right" className="resto-margin-label">
-                          <Localized id="restaurant-margin-right">Right</Localized>
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 'var(--space-1)' }}>
+                        <label htmlFor="resto-header-line2" className="resto-toggle-desc" style={{ fontWeight: 500 }}>
+                          <Localized id="restaurant-header-line2-label">Header Line 2 (Optional)</Localized>
                         </label>
-                        <span className="resto-margin-range">0 – 15 mm</span>
+                        <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-fg-muted)' }}>
+                          {headerLine2.length}/{MAX_HEADER_LINE_LENGTH}
+                        </span>
                       </div>
-                      <div className="resto-margin-input-wrap">
-                        <input
-                          id="resto-margin-right"
-                          type="number"
-                          className="resto-margin-input"
-                          min={0}
-                          max={15}
-                          value={marginRight}
-                          onChange={(e) => setMarginRight(clamp(Number(e.target.value), 0, 15))}
-                        />
-                        <span className="resto-margin-unit">mm</span>
-                      </div>
+                      <input
+                        id="resto-header-line2"
+                        type="text"
+                        maxLength={MAX_HEADER_LINE_LENGTH}
+                        className="resto-text-input"
+                        placeholder={l10n.getString('restaurant-header-line2-placeholder') || 'e.g. Tel: 021-5551234, IG: @resto'}
+                        value={headerLine2}
+                        onChange={(e) => setHeaderLine2(e.target.value.slice(0, MAX_HEADER_LINE_LENGTH))}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1975,15 +1979,37 @@ export default function RestaurantReceiptsScreen({
                 </div>
 
                 {/* Kitchen Printer */}
-                <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 'var(--space-3)' }}>
-                  <div style={{ marginBottom: 'var(--space-3)' }}>
-                    <label htmlFor="resto-hw-kitchen-conn" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
-                      Kitchen Printer Connection
+                <div
+                  className={!hasKdsFeature ? 'resto-kitchen-printer--disabled' : undefined}
+                  style={{
+                    borderTop: '1px solid var(--color-border)',
+                    paddingTop: 'var(--space-3)',
+                    ...(!hasKdsFeature ? { opacity: 0.6 } : {}),
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label htmlFor="resto-hw-kitchen-conn" className="resto-toggle-title">
+                      <Localized id="restaurant-kitchen-printer-conn">Kitchen Printer Connection</Localized>
                     </label>
+                    {!hasKdsFeature && (
+                      <span className="restaurant-preview-badge" style={{ fontSize: '10px' }}>
+                        <Localized id="restaurant-kds-plan-required">Pro Plan or KDS Required</Localized>
+                      </span>
+                    )}
+                  </div>
+                  {!hasKdsFeature && (
+                    <p style={{ margin: '0 0 var(--space-2) 0', fontSize: 'var(--text-xs)', color: 'var(--color-fg-muted)' }}>
+                      <Localized id="restaurant-kds-plan-desc">
+                        Kitchen printer routing requires a subscription plan with Kitchen Display (KDS) enabled.
+                      </Localized>
+                    </p>
+                  )}
+                  <div style={{ marginBottom: 'var(--space-3)' }}>
                     <SettingsSelect
                       id="resto-hw-kitchen-conn"
-                      value={kitchenConnection}
+                      value={hasKdsFeature ? kitchenConnection : 'disabled'}
                       onChange={handleKitchenConnectionChange}
+                      disabled={!hasKdsFeature}
                       options={[
                         { value: 'disabled', label: 'Disabled' },
                         { value: 'network', label: 'Network / Ethernet' },
@@ -1993,7 +2019,7 @@ export default function RestaurantReceiptsScreen({
                     />
                   </div>
 
-                  {kitchenConnection !== 'disabled' && (
+                  {hasKdsFeature && kitchenConnection !== 'disabled' && (
                     <div>
                       <label htmlFor="resto-hw-kitchen-path" className="resto-toggle-title" style={{ display: 'block', marginBottom: '4px' }}>
                         Kitchen Printer IP / Device Path

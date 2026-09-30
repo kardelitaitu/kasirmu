@@ -250,7 +250,6 @@
   box-shadow: var(--receipt-paper-shadow);
   border-radius: 2px;
   box-sizing: border-box;
-  transition: width 0.2s ease, padding 0.15s ease, font-size 0.15s ease;
   user-select: none;
   font-variant-numeric: tabular-nums;
   position: relative;
@@ -285,17 +284,17 @@
 }
 
 .resto-receipt-paper--font-medium {
-  --rcpt-size-base: var(--text-sm);
-  --rcpt-size-title: var(--text-base);
+  --rcpt-size-base: 12.5px;
+  --rcpt-size-title: 14.5px;
   --rcpt-size-meta: 10px;
-  --rcpt-size-total: var(--text-base);
+  --rcpt-size-total: 14.5px;
 }
 
 .resto-receipt-paper--font-large {
-  --rcpt-size-base: 13.5px;
-  --rcpt-size-title: 15.5px;
+  --rcpt-size-base: 14px;
+  --rcpt-size-title: 16px;
   --rcpt-size-meta: 11px;
-  --rcpt-size-total: 15.5px;
+  --rcpt-size-total: 16px;
 }
 
 /* Font Size Variations (58mm compact paper) */
@@ -314,17 +313,21 @@
 }
 
 .resto-receipt-paper--58mm.resto-receipt-paper--font-medium {
-  --rcpt-size-base: 10px;
+  --rcpt-size-base: 10.5px;
   --rcpt-size-title: 12.5px;
   --rcpt-size-meta: 9px;
   --rcpt-size-total: 12.5px;
 }
 
 .resto-receipt-paper--58mm.resto-receipt-paper--font-large {
-  --rcpt-size-base: 11.5px;
-  --rcpt-size-title: 13.5px;
+  --rcpt-size-base: 12px;
+  --rcpt-size-title: 14px;
   --rcpt-size-meta: 9.5px;
-  --rcpt-size-total: 13.5px;
+  --rcpt-size-total: 14px;
+}
+
+.resto-kitchen-printer--disabled {
+  opacity: 0.6;
 }
 
 /* Printable content boundary guide (subtle dashed border on preview) */

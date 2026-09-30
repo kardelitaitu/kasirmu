@@ -1,8 +1,18 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '@/__tests__/test-utils/render';
+import { useSubscription } from '@/contexts/SubscriptionContext';
 import RestaurantReceiptsScreen from '@/features/restaurant/screens/RestaurantReceiptsScreen';
+
+beforeEach(() => {
+  vi.mocked(useSubscription).mockReturnValue({
+    caps: null,
+    state: 'active',
+    loading: false,
+    refresh: vi.fn(),
+  });
+});
 
 const mockIsManager = vi.hoisted(() => ({ current: true }));
 
@@ -180,6 +190,57 @@ describe('RestaurantReceiptsScreen — logo', () => {
     await user.click(within(group).getByRole('button', { name: /Right/ }));
     expect(document.querySelector('.resto-receipt-header-row--right')).toBeInTheDocument();
   });
+
+  it('renders Choose Logo and Remove Logo buttons with md size', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const chooseBtn = screen.getByRole('button', { name: /Choose Logo/i });
+    expect(chooseBtn).toHaveClass('btn--md');
+
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i) as HTMLInputElement;
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    const removeBtn = screen.getByRole('button', { name: /Remove Logo/i });
+    expect(removeBtn).toHaveClass('btn--md');
+  });
+
+  it('renders logo position buttons in left-top-right order', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const logoInput = screen.getByPlaceholderText(/Or paste Image URL \/ SVG code/i);
+    await user.clear(logoInput);
+    await user.type(logoInput, 'https://example.com/logo.png');
+
+    const group = screen.getByRole('group', { name: 'Logo Position' });
+    const buttons = within(group).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['Left', 'Top', 'Right']);
+  });
+});
+
+describe('RestaurantReceiptsScreen — font size scaling', () => {
+  it('switches font size from very small to large with proper modifier classes', async () => {
+    const user = userEvent.setup();
+    await renderScreen();
+
+    const verySmallBtn = screen.getByRole('button', { name: /Very Small/i });
+    await user.click(verySmallBtn);
+    expect(document.querySelector('.resto-receipt-paper--font-very-small')).toBeInTheDocument();
+
+    const smallBtn = screen.getByRole('button', { name: 'Small' });
+    await user.click(smallBtn);
+    expect(document.querySelector('.resto-receipt-paper--font-small')).toBeInTheDocument();
+
+    const mediumBtn = screen.getByRole('button', { name: 'Medium' });
+    await user.click(mediumBtn);
+    expect(document.querySelector('.resto-receipt-paper--font-medium')).toBeInTheDocument();
+
+    const largeBtn = screen.getByRole('button', { name: 'Large' });
+    await user.click(largeBtn);
+    expect(document.querySelector('.resto-receipt-paper--font-large')).toBeInTheDocument();
+  });
 });
 
 describe('RestaurantReceiptsScreen — printer hardware', () => {
@@ -208,6 +269,48 @@ describe('RestaurantReceiptsScreen — printer hardware', () => {
     const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
     await user.selectOptions(kitchenSel, 'network');
     expect(screen.getByLabelText(/Kitchen Printer IP \/ Device Path/i)).toBeInTheDocument();
+  });
+
+  it('greys out and disables kitchen printer when subscription lacks KDS feature', async () => {
+    vi.mocked(useSubscription).mockReturnValue({
+      caps: {
+        tier: 'free',
+        status: 'active',
+        state: 'active',
+        isTrial: false,
+        trialEndsAt: null,
+        features: {},
+        maxLocations: 1,
+        maxPosInstances: 1,
+        maxWarehouses: 0,
+        maxKdsScreens: 0,
+        maxStaffUsers: 2,
+        salesHistoryDays: 90,
+        supportsQris: false,
+        supportsAnalytics: false,
+        supportsLoyalty: false,
+        supportsDailyDashboard: false,
+        supportsCloudSync: false,
+        offlineGraceDays: 0,
+        expiresAt: null,
+        graceUntil: null,
+        isExpired: false,
+        locationCount: 1,
+        staffCount: 1,
+        terminalCount: 1,
+        addons: [],
+      },
+      state: 'active',
+      loading: false,
+      refresh: vi.fn(),
+    });
+
+    await renderScreen();
+
+    const kitchenSel = document.querySelector('#resto-hw-kitchen-conn') as HTMLSelectElement;
+    expect(kitchenSel).toBeDisabled();
+    expect(screen.getByText(/Pro Plan or KDS Required/i)).toBeInTheDocument();
+    expect(document.querySelector('.resto-kitchen-printer--disabled')).toBeInTheDocument();
   });
 });
 
