@@ -755,7 +755,6 @@ step "plugin-guide parity self-test" "python3 scripts/verify-plugin-guide-parity
 step "windows config drift" "python3 scripts/verify-windows-config.py" python3 scripts/verify-windows-config.py
 step "windows config drift self-test" "python3 scripts/verify-windows-config.py --self-test" python3 scripts/verify-windows-config.py --self-test
 step "tz invariance self-test" "python3 scripts/check-tz-invariance.py --self-test" python3 scripts/check-tz-invariance.py --self-test
-step "windows config drift self-test" "python3 scripts/verify-windows-config.py --self-test" python3 scripts/verify-windows-config.py --self-test
 
 # ── Release toolchain (AUDIT-28 RELEASE-04/05/06) — node self-tests ────
 # Validates the release scripts on every local gate run, not only in CI:

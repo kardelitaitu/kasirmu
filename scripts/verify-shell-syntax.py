@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -136,16 +138,53 @@ def targets() -> list[Path]:
     return sorted(out)
 
 
+_INTERPRETERS: dict[str, str] = {}
+
+
+def _interpreter(name: str) -> str:
+    """Absolute path to `name`, so PATH ambiguity cannot pick a different one.
+
+    Falls back to the bare name when nothing resolves, which is what the gate did
+    everywhere before; on a Linux runner the two forms are the same file.
+    """
+    if name not in _INTERPRETERS:
+        _INTERPRETERS[name] = shutil.which(name) or name
+    return _INTERPRETERS[name]
+
+
 def parser_for(path: Path) -> list[str]:
-    """Honour the shebang so a bash-only file is not parsed as POSIX sh."""
+    """Honour the shebang so a bash-only file is not parsed as POSIX sh.
+
+    The interpreter is an ABSOLUTE path, resolved once. Spawning a bare `bash`
+    looks equivalent on a Linux CI runner and is not: on Windows both
+    `C:\\Program Files\\Git\\bin\\bash.exe` and `C:\\Windows\\System32\\bash.exe`
+    (the WSL launcher) are on PATH, and the WSL one intermittently fails to start
+    -- measured here, `Error code: Bash/Service/0x8007274c`, UTF-16LE output on
+    stdout, about 1 spawn in 300. The gate used to trust the exit code, so a
+    WSL spawn failure was reported as
+
+        PARSE ERROR in scripts/wrangler-deploy.sh
+
+    for a file that parses, and the printed reason was a Windows socket error
+    rather than anything about the shell. The file is incidental: a second run
+    blamed scripts/test-typecheck-tripwire.sh for the identical reason. That is a
+    gate manufacturing a false finding, which is worse than having no gate -- it
+    trains the reader to dismiss real parse errors as host flakiness.
+
+    Resolution is the fix and the retry is the belt: with the absolute Git Bash
+    path the same stress run was 200/200 clean, and stripping WSLENV instead was
+    still 199/200, so the ambiguity is in WHICH executable gets picked, not in the
+    environment handed to it. The resolved absolute path is cached because
+    `shutil.which` is a PATH scan, and this runs once per tracked shell file.
+    """
     try:
         with path.open("rb") as fh:
             first = fh.readline(200).decode("utf-8", errors="replace")
     except OSError:
-        return ["sh", "-n"]
+        return [_interpreter("sh"), "-n"]
     if "bash" in first:
-        return ["bash", "-n"]
-    return ["sh", "-n"]
+        return [_interpreter("bash"), "-n"]
+    return [_interpreter("sh"), "-n"]
 
 
 def check(path: Path) -> tuple[bool, str]:
@@ -170,7 +209,39 @@ def check(path: Path) -> tuple[bool, str]:
         return False, f"could not run {cmd[0]}: {exc}"
     if r.returncode == 0:
         return True, ""
-    return False, (r.stderr or r.stdout or "parse failed").strip()
+    # A spawn that failed to START is not a parse verdict. bash and sh both print
+    # their syntax diagnostics to stderr, so a reason that is not there means the
+    # interpreter never ran, and a host that can fail to start its own shell must
+    # not be able to produce a red gate for a file that parses. Retrying the same
+    # absolute command separates the two: the flaky WSL launcher either works on
+    # the retry or never worked, and a real syntax error reproduces every time.
+    reason = (r.stderr or r.stdout or "").strip()
+    if not _looks_like_parse_output(reason):
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                           errors="replace")
+        if r.returncode == 0:
+            return True, ""
+        reason = (r.stderr or r.stdout or "").strip()
+        if not _looks_like_parse_output(reason):
+            return False, (f"{cmd[0]} did not run, so this file is UNVERIFIED "
+                           f"-- the result says NOTHING about its syntax: {reason}")
+    return False, reason
+
+
+def _looks_like_parse_output(reason: str) -> bool:
+    """Whether `reason` is a shell's own diagnostic rather than a spawn failure.
+
+    bash and sh put syntax errors on stderr and name the line. A Windows launch
+    failure arrives on stdout in UTF-16LE, which decodes to NUL-interleaved text
+    with no line number, and names a Windows error code. Keying on the absence of
+    a line reference is what makes this work for both: it does not need to
+    enumerate the ways a host can fail to spawn a process.
+    """
+    if not reason:
+        return False
+    if "\x00" in reason:
+        return False
+    return bool(re.search(r"line \d+", reason))
 
 
 def self_test() -> int:
@@ -251,6 +322,70 @@ def self_test() -> int:
         ok, why = check(scratch)
         if not ok:
             bad.append("the same file with fi separated from its comment must parse: " + why)
+
+        # The OTHER HALF of the same fix, and it needs a DIFFERENT kind of case. The
+        # spawn-failure case below patches subprocess.run, so it is blind to WHICH
+        # executable gets chosen and cannot see a regression to the bare name -- proven
+        # by mutation: reverting _interpreter() to `return _INTERPRETERS[name]` left the self-test green
+        # until this case existed. It reads the command off a real invocation instead.
+        # Where two `bash`es are on PATH the bare name is ambiguous by construction, so
+        # the assertion is the property rather than a literal: when the name resolves to
+        # a real file, the command must carry that file's path, not the name.
+        _cmd = parser_for(scratch)
+        _which = shutil.which(os.path.basename(_cmd[0]))
+        if _which and _cmd[0] == os.path.basename(_cmd[0]):
+            bad.append(f"parser_for spawned the bare name {_cmd[0]!r} while PATH "
+                       f"resolves it to {_which!r}; the two can be different programs")
+        del _which
+
+        # A SPAWN THAT FAILED TO START MUST NOT BE REPORTED AS A PARSE ERROR, and the
+        # reason it needs a case is that the defect was a FLAKY HOST, not a broken
+        # file: on Windows a bare `bash` intermittently resolved to the WSL launcher
+        # instead of Git Bash, and the gate printed
+        #
+        #     PARSE ERROR in scripts/wrangler-deploy.sh
+        #     A   c   o   n   n   e   c   t   i   o   n       a   t   t   e   m   p   t
+        #     Error code: Bash/Service/0x8007274c
+        #
+        # for a script that parses, blaming a DIFFERENT file each run. So the case
+        # forces a non-parse failure and asserts the reason says UNVERIFIED. A gate
+        # that manufactures findings trains its reader to dismiss real ones.
+        _real_run2 = subprocess.run
+
+        class _DeadInterpreter:
+            returncode = 1
+            stdout = "A\x00 \x00B\x00a\x00s\x00h\x00/\x00S\x00e\x00r\x00v\x00i\x00c\x00e\x00"
+            stderr = ""
+
+        def _spawn_died(*a, **k):
+            return _DeadInterpreter()
+
+        try:
+            scratch.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8", newline="\n")
+            subprocess.run = _spawn_died
+            ok, why = check(scratch)
+            if ok:
+                bad.append("a file whose interpreter never ran must NOT be reported "
+                           "as parsing")
+            elif "UNVERIFIED" not in why:
+                bad.append("a spawn failure must be reported as UNVERIFIED, not as a "
+                           f"parse error; got: {why[:120]}")
+            elif "did not parse" in why.lower() or "parse error" in why.lower():
+                bad.append("a spawn failure must not be worded as a parse failure: "
+                           f"{why[:120]}")
+        finally:
+            subprocess.run = _real_run2
+            scratch.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8", newline="\n")
+
+        # The classifier is exercised directly too, because the case above can only
+        # reach it through check(), and a change to either half alone should fail.
+        for good, why_ok in (("/x.sh: line 3: unexpected end of file", True),
+                             ("scripts/x.sh: line 12: syntax error near unexpected token", True),
+                             ("A\x00 \x00E\x00r\x00r\x00o\x00r\x00 \\x00c\x00o\x00d\x00e\x00", False),
+                             ("", False),
+                             ("bash: cannot execute: required file not found", False)):
+            if _looks_like_parse_output(good) is not why_ok:
+                bad.append(f"_looks_like_parse_output({good[:48]!r}) should be {why_ok}")
     finally:
         if scratch.exists():
             scratch.unlink()
@@ -260,7 +395,7 @@ def self_test() -> int:
     if bad:
         print("SELF-TEST WRONG: " + "; ".join(bad), file=sys.stderr)
         return 2
-    print("SELF-TEST OK (5 cases, no files left behind)")
+    print("SELF-TEST OK (7 cases, no files left behind)")
     return 0
 
 
