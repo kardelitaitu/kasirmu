@@ -467,35 +467,38 @@ export default function RestaurantReceiptsScreen({
           });
         }
         if (l.showTableNumber !== null && l.showTableNumber !== undefined) {
+          const val = l.showTableNumber;
           setShowTableNumber((cur) => {
             if (originalsRef.current && cur === originalsRef.current.showTableNumber) {
-              originalsRef.current.showTableNumber = l.showTableNumber;
-              return l.showTableNumber;
+              originalsRef.current.showTableNumber = val;
+              return val;
             }
             return cur;
           });
         }
         if (l.footerNote !== null && l.footerNote !== undefined) {
+          const val = l.footerNote;
           setFooter((cur) => {
             if (originalsRef.current && cur === originalsRef.current.footer) {
-              originalsRef.current.footer = l.footerNote;
-              return l.footerNote;
+              originalsRef.current.footer = val;
+              return val;
             }
             return cur;
           });
         }
         if (eff.content) {
+          const content = eff.content;
           setShowTax((cur) => {
             if (originalsRef.current && cur === originalsRef.current.showTax) {
-              originalsRef.current.showTax = eff.content.showTax;
-              return eff.content.showTax;
+              originalsRef.current.showTax = content.showTax;
+              return content.showTax;
             }
             return cur;
           });
           setShowCurrency((cur) => {
             if (originalsRef.current && cur === originalsRef.current.showCurrency) {
-              originalsRef.current.showCurrency = eff.content.showCurrency;
-              return eff.content.showCurrency;
+              originalsRef.current.showCurrency = content.showCurrency;
+              return content.showCurrency;
             }
             return cur;
           });
