@@ -59,6 +59,15 @@ TESTS = [
     # it here is what makes the new test mean anything -- a file that is never
     # replayed under another zone cannot demonstrate host-independence.
     "src/__tests__/AnalyticsScreen.test.tsx",
+    # Added 2026-09-30 with the UTC row-date repair. This file holds the pure
+    # data-layer cases: monthDayIntensities day-of-month key and
+    # yearlyWeekIntensities Monday-ordinal band, both of which read a date the
+    # BACKEND sent. Those are host-dependent in a way the range is not -- a
+    # window anchored correctly still routes a row into the wrong cell when the
+    # row own date is parsed in the device zone -- and unlike the range they
+    # disagree on the WEST side of UTC only, so AnalyticsScreen, whose failures
+    # were all east-of-UTC month rollover, would not have caught it.
+    "src/__tests__/analytics-data.test.ts",
 ]
 
 # Chosen to straddle the date line and both sides of UTC, and to include the
