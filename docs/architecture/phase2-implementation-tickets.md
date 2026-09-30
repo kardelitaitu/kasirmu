@@ -200,7 +200,7 @@ startup behavior is deterministic". A unit test on the registry (P2) does not pr
 1. Add `docs/architecture/module-boot-sequence.md` (to be created): registration → dependency sort → capability check →
    `on_load` → `on_start`, naming the real functions and line anchors.
 2. State the compatibility window explicitly (legacy `&Connection` access is allowed but logs a warning
-   until Phase 4 removes `raw()`).
+   until Phase 4 removed `raw()` — done 2026-10-03, P4.3).
 3. Link it from `docs/architecture/module-namespace-governance.md` and the plan's Phase 2 exit criteria.
 
 **Files:** `docs/architecture/module-boot-sequence.md` (to be created); inbound links from the governance doc.

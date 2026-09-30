@@ -747,7 +747,7 @@ Tasks:
   - clock
   - transaction coordinator
 - [x] Migrate module initialization to use `ModuleContext`. *(2026-10-03: `Kernel::load_all` delivers `KernelContext` via `on_context` (`platform/kernel/src/kernel/lifecycle.rs:281`); no vertical overrides the hook yet because each adds the accessors it needs as it migrates.)*
-- [x] Keep legacy shared-connection access available behind compatibility adapters. *(2026-10-03: `NamespacedStore::raw()` remains the compatibility hatch, removed in Phase 4.)*
+- [x] Keep legacy shared-connection access available behind compatibility adapters. *(2026-10-03: `NamespacedStore::raw()` was the compatibility hatch; it was removed 2026-10-03 in Phase 4 P4.3, ahead of schedule.)*
 - [x] Add tests proving modules cannot acquire ungranted capabilities. *(2026-10-03: `capability_tests.rs` 16, `capability_lifecycle_tests.rs` 8, `platform/startup/tests/boot_capability.rs` 4.)*
 - [x] Make module registration fail fast when required capabilities are missing. *(2026-10-03: `verify_capabilities()` runs before any `on_load`; `KernelError::MissingCapability` names module + capability.)*
 - [x] Document the boot sequence. *(2026-10-03: `docs/architecture/module-boot-sequence.md`.)*

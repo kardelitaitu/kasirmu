@@ -185,7 +185,7 @@ The plan's §9.3/§9.5 name reporting and inventory as the two bodies of work. C
 | 2.4 | reporting | Wrap; grant `sales.read` (+ whichever of `inventory`/`payments` the facade's queries actually name — `revenue.rs`, `sales_summary.rs`, `product_sales.rs`). Migrate `generate_daily_report` (`modules/reporting/src/repository.rs:34`) onto the facade (§9.5). | The one module whose *purpose* is cross-vertical; its grants are the ADR-62 D5 exception made explicit. |
 
 After 2.4, every production module function that touches the database does so through a `Namespace`, and the
-`raw()` escape hatch is the only remaining route to unchecked SQL — which is what Phase 4 removes.
+`raw()` escape hatch was the only remaining route to unchecked SQL; it was **removed 2026-10-03** (Phase 4 P4.3).
 
 ---
 

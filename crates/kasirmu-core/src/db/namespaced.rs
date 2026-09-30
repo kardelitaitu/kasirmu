@@ -298,15 +298,6 @@ impl Namespace<'_, '_> {
         Ok(out)
     }
 
-    /// Escape hatch for the migration window: run the check and return the SQL
-    /// unchanged. Removed in Phase 4.
-    ///
-    /// # Errors
-    /// Returns a [`NamespaceError`] if the statement is rejected.
-    pub fn raw<'b>(&self, sql: &'b str) -> Result<&'b str, NamespaceError> {
-        check_statement(self.owner, &Grants::none(), sql, self.posture)?;
-        Ok(sql)
-    }
 }
 
 /// The pure core of the namespace check: what tables does `sql` name, and may

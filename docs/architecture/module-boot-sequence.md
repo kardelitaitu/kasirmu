@@ -143,7 +143,7 @@ pass:
   compiling while it migrates. `Grants` has no `write` field, so there is no
   sanctioned cross-namespace write to open.
 
-Phase 4 closes both: `raw()` is removed and strict namespace enforcement
+Phase 4 closes both: `raw()` was **removed 2026-10-03** (P4.3) and strict namespace enforcement
 (reject unauthorised cross-namespace access) replaces the soft posture. The
 frozen record of what is tolerated until then is
 `scripts/namespace-governance-baseline.json`, checked by

@@ -166,19 +166,6 @@ fn reporting_without_a_grant_is_foreign() {
     assert!(matches!(err, NamespaceError::Foreign { .. }), "{err:?}");
 }
 
-#[test]
-fn raw_returns_sql_after_check() {
-    // The handle-level raw() is exercised against a real connection below.
-    assert!(
-        check_statement(
-            SALES,
-            &Grants::none(),
-            "SELECT * FROM sales",
-            Posture::ReadWrite
-        )
-        .is_ok()
-    );
-}
 
 #[cfg(test)]
 mod db_backed {
@@ -249,13 +236,6 @@ mod db_backed {
         assert!(rows.is_empty());
     }
 
-    #[test]
-    fn raw_rejects_a_foreign_table() {
-        let conn = mem();
-        let ns = NamespacedStore::new(Store::new(&conn), SALES, Grants::none());
-        let err = ns.own().raw("SELECT * FROM customers").unwrap_err();
-        assert!(matches!(err, NamespaceError::Foreign { .. }), "{err:?}");
-    }
 
     /// A stand-in domain error for the query_try tests: it can be built from the
     /// two errors the namespace layer produces, exactly like a module's own error.

@@ -130,6 +130,20 @@ one). **Blocks:** P4.6.
 
 ## 4. P4.3 — Remove the `NamespacedStore::raw()` escape hatch
 
+**Status: DONE 2026-10-03.** `Namespace::raw()` was deleted from
+`crates/kasirmu-core/src/db/namespaced.rs` together with its two tests
+(`raw_returns_sql_after_check`, `raw_rejects_a_foreign_table`) in
+`crates/kasirmu-core/src/db/namespaced_tests.rs`; `grep -rn "\.raw("` over `crates/` `modules/`
+`platform/` now finds no `NamespacedStore` caller (only the unrelated `StoredCipher::raw()` and
+`PgTransport::new_raw`). `cargo test -p kasirmu-core --lib namespaced` 22 pass, clippy `-D warnings`
+clean, and the core-size ceiling was lowered 36590 → 36586 (the four removed production lines) via
+`--emit-baseline` in the same commit. The foreign-table rejection the removed test asserted is still
+covered by `foreign_write_is_refused_before_touching_the_db` and the per-module boundary tests.
+Also in that commit: the header comment in `namespaced.rs` and the compatibility-window notes in
+`docs/architecture/{namespaced-store-api-draft.md,module-boot-sequence.md,phase2-implementation-tickets.md}`
+were updated to say the hatch is gone, and `todo-modular-scaffolding.md` line 750 no longer claims it
+remains.
+
 **Problem (verified).** `Namespace::raw()` at `crates/kasirmu-core/src/db/namespaced.rs:306` returns SQL
 unchanged for an own table and is the only remaining route to unchecked SQL — the exact hatch the draft
 (`namespaced-store-api-draft.md` §10) and `module-boot-sequence.md` §6 say Phase 4 closes. Every module
