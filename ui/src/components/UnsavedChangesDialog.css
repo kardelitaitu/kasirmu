@@ -15,8 +15,6 @@
 .unsaved-dialog-icon {
   width: 48px;
   height: 48px;
-  border-radius: var(--radius-full);
-  background: var(--color-warning-bg);
   color: var(--color-warning);
   display: flex;
   align-items: center;
