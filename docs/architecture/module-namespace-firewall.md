@@ -109,10 +109,12 @@ The Phase 4 work closed the named gaps. What remains is out of Phase 4 scope:
   behind the ownership map is a core extraction, tracked as Phase 5
   (`docs/architecture/phase5-implementation-tickets.md`). Progress: P5.1 declared the
   path's foreign writes machine-checkably; P5.4 assigned `payments` to `sales` in
-  `modules/ownership.json`, so the settlement `INSERT INTO payments` is an own-table
-  write; P5.2 extracted the shortfall decision logic into `plan_resolution_deductions`.
-  Open: P5.2's reads still sit at the call site, and P5.3 still routes the `customers`
-  accrual (the one remaining foreign write) behind the crm seam.
+  `modules/ownership.json`; P5.3 made `crates/kasirmu-core/src/db/customers.rs` the
+  single writer of `customers` (four seam functions), so `sales_lifecycle.rs` issues no
+  `UPDATE customers` and the loyalty/refunds paths route through the same surface; P5.2
+  extracted the shortfall decision logic into `plan_resolution_deductions`.
+  Open: P5.2's `products`/`stock_summary`/`workspace_inventory_locations` reads still sit
+  at the call site.
 
 Everything the firewall was built to enforce is now mechanical:
 

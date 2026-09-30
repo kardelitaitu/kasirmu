@@ -6,11 +6,11 @@ findings: MSL-4 FIXED here — earn_points and redeem_points now maintain custom
 next: none | perf: projection UPDATE is one indexed row per mutation
 */
 
-use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
+use rusqlite::{params, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::error::CoreError;
 use crate::loyalty::{LoyaltyAccount, LoyaltyAccountWithDetails, LoyaltyTier, LoyaltyTransaction};
-use crate::{Currency, format_minor};
+use crate::{format_minor, Currency};
 
 use super::Store;
 
@@ -505,13 +505,10 @@ impl Store<'_> {
         }
 
         // MSL-4 fix: mirror the redemption into the customers.loyalty_points
-        // projection inside the same transaction (see earn_points).
-        tx.execute(
-            "UPDATE customers SET loyalty_points =
-                (SELECT points FROM loyalty_accounts WHERE customer_id = ?1),
-             updated_at = ?2 WHERE id = ?1",
-            params![customer_id, now],
-        )?;
+        // projection inside the same transaction (see earn_points). Phase 5 P5.3:
+        // routed through the core-owned crm surface so the projection has one
+        // writer.
+        crate::db::Store::project_loyalty_points_in_tx(&tx, customer_id)?;
 
         tx.commit()?;
 
@@ -716,13 +713,10 @@ pub(crate) fn earn_points_with_conn(
     )?;
 
     // MSL-4: maintain `customers.loyalty_points` as a projection of the
-    // authoritative ledger balance, inside the same transaction.
-    conn.execute(
-        "UPDATE customers SET loyalty_points =
-            (SELECT points FROM loyalty_accounts WHERE customer_id = ?1),
-         updated_at = ?2 WHERE id = ?1",
-        params![customer_id, now],
-    )?;
+    // authoritative ledger balance, inside the same transaction. Phase 5 P5.3:
+    // the write goes through the core-owned crm surface (`db/customers.rs`),
+    // which is the only place core touches a `customers` column.
+    crate::db::Store::project_loyalty_points_in_tx(conn, customer_id)?;
 
     Ok(Some(LoyaltyTransaction {
         id: txn_id,
@@ -859,13 +853,9 @@ pub fn reverse_loyalty_on_refund(
         params![deduct, now, account_id],
     )?;
 
-    // MSL-4: keep the customers.loyalty_points projection in step.
-    conn.execute(
-        "UPDATE customers SET loyalty_points =
-            (SELECT points FROM loyalty_accounts WHERE id = ?1),
-         updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
-        params![account_id, now],
-    )?;
+    // MSL-4: keep the customers.loyalty_points projection in step. Phase 5 P5.3:
+    // through the core-owned crm surface (the account-keyed shape).
+    crate::db::Store::project_loyalty_points_for_account_in_tx(conn, &account_id)?;
 
     Ok(Some(LoyaltyTransaction {
         id: txn_id,

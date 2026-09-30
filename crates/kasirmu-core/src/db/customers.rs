@@ -304,6 +304,106 @@ impl Store<'_> {
         })
     }
 
+    /// Accrue a completed sale's base-currency total into the customer's
+    /// lifetime spend, inside the caller's transaction (Phase 5 P5.3).
+    ///
+    /// `customers` is owned by the `crm` module (`modules/ownership.json`); this
+    /// is the core-owned surface that module's data is written through, and the
+    /// single writer of `total_spent_minor`. The sale lifecycle calls it instead
+    /// of issuing the `UPDATE` itself, so the column has one entry point.
+    ///
+    /// Statement-level atomic increment (no read-modify-write race): SQLite
+    /// raises on i64 overflow, which the caller logs non-fatal. Returns the
+    /// number of rows touched (0 when the customer vanished).
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement itself fails.
+    pub fn accrue_lifetime_spend_in_tx(
+        tx: &rusqlite::Connection,
+        customer_id: &str,
+        amount_minor: i64,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = tx.execute(
+            "UPDATE customers SET total_spent_minor = total_spent_minor + ?1, updated_at = ?2 \
+             WHERE id = ?3",
+            params![amount_minor, now, customer_id],
+        )?;
+        Ok(rows)
+    }
+
+    /// Project the authoritative `loyalty_accounts.points` balance onto
+    /// `customers.loyalty_points`, inside the caller's transaction (Phase 5
+    /// P5.3, MSL-4).
+    ///
+    /// `customers` is crm-owned; this is the second core-owned writer of a
+    /// `customers` column, paired with [`Self::accrue_lifetime_spend_in_tx`], so
+    /// all core writes to the table live here rather than in the loyalty ledger.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn project_loyalty_points_in_tx(
+        tx: &rusqlite::Connection,
+        customer_id: &str,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = tx.execute(
+            "UPDATE customers SET loyalty_points = \
+                (SELECT points FROM loyalty_accounts WHERE customer_id = ?1), \
+             updated_at = ?2 WHERE id = ?1",
+            params![customer_id, now],
+        )?;
+        Ok(rows)
+    }
+
+    /// Project the ledger balance onto `customers.loyalty_points`, resolving the
+    /// customer from the loyalty ACCOUNT id (Phase 5 P5.3, MSL-4 refund-reversal
+    /// shape). Same single-writer contract as
+    /// [`Self::project_loyalty_points_in_tx`], for the path that has no customer
+    /// id in hand.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn project_loyalty_points_for_account_in_tx(
+        conn: &rusqlite::Connection,
+        account_id: &str,
+    ) -> Result<usize, CoreError> {
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let rows = conn.execute(
+            "UPDATE customers SET loyalty_points = \
+                (SELECT points FROM loyalty_accounts WHERE id = ?1), \
+             updated_at = ?2 WHERE id = (SELECT customer_id FROM loyalty_accounts WHERE id = ?1)",
+            params![account_id, now],
+        )?;
+        Ok(rows)
+    }
+
+    /// Reverse part of a customer's lifetime spend on refund, inside the caller's
+    /// transaction (Phase 5 P5.3). The mirror of
+    /// [`Self::accrue_lifetime_spend_in_tx`]: clamps at zero (`MAX(..., 0)`) so a
+    /// refund can never drive the lifetime total negative, and takes the timestamp
+    /// so the caller's existing clock is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CoreError::Db` when the statement fails.
+    pub fn reverse_lifetime_spend_in_tx(
+        conn: &rusqlite::Connection,
+        customer_id: &str,
+        amount_minor: i64,
+        at: &str,
+    ) -> Result<usize, CoreError> {
+        let rows = conn.execute(
+            "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0), \
+             updated_at = ?2 WHERE id = ?3",
+            params![amount_minor, at, customer_id],
+        )?;
+        Ok(rows)
+    }
+
     /// Delete a customer by id.
     pub fn delete_customer(&self, id: &str) -> Result<(), CoreError> {
         // COR-23: the referential guard is the FK itself (`sales.customer_id`

@@ -77,7 +77,7 @@ unowned table.
 > and the mutation test on the seam are still open. Core ceiling raised 36673 → 36694 deliberately
 > for the extraction.
 
-### P5.3 — Route the loyalty/customer accrual through the crm seam
+### P5.3 — Route the loyalty/customer accrual through the crm seam — **DONE 2026-10-03**
 
 `apply_customer_stats_on_completion` writes `customers` directly (:58–:67). Route the lifetime-spend
 accrual through a crm-owned entry point so the write is governed; keep it NON-FATAL exactly as
@@ -85,6 +85,8 @@ today (a captured payment must never roll back on a CRM problem). The loyalty ea
 `crate::db::loyalty::earn_points_with_conn` — decide in this ticket whether that stays in core or
 moves, and record the decision. **Acceptance:** `UPDATE customers` no longer appears in
 `sales_lifecycle.rs`; the non-fatal contract is pinned by a test.
+
+**Landed:** core cannot depend on `modules-crm` (that would invert the layering), so the crm seam is a core-owned surface: `crates/kasirmu-core/src/db/customers.rs` is now the single writer of `customers`, with four functions — `accrue_lifetime_spend_in_tx` (completion), `reverse_lifetime_spend_in_tx` (refund, clamps at zero), `project_loyalty_points_in_tx` (customer-keyed ledger projection), `project_loyalty_points_for_account_in_tx` (account-keyed, the refund-reversal shape). Every `UPDATE customers` in core now lives there: `sales_lifecycle.rs` no longer contains the statement, and the loyalty (`db/loyalty.rs`, three sites) and refunds (`db/refunds.rs`) sites were routed through the seam too. **Decision recorded:** the loyalty earn (`earn_points_with_conn`) stays in core — `db/loyalty.rs` is a core-owned ledger module — but every `customers` column it writes goes through the seam. Five seam tests in `customers_tests.rs` pin accumulation-not-overwrite, the zero-row missing-customer case (non-fatal), the refund clamp, and both projection shapes; a sixth asserts `owner_of("customers") == Some("crm")` so a re-home fails. Core ceiling raised 36694 → 36721.
 
 ### P5.4 — Settle the `payments` ownership question — **DONE 2026-10-03**
 

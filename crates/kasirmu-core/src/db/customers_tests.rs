@@ -490,3 +490,109 @@ fn search_customers_no_match_returns_empty() {
     assert!(items.is_empty());
     assert_eq!(total, 0);
 }
+
+// ── Phase 5 P5.3: the crm-surface seam ───────────────────────────────
+
+/// The seam is the single writer of `total_spent_minor`: an accrual adds to
+/// the column (it does not overwrite), so two sales accumulate.
+#[test]
+fn accrue_lifetime_spend_accumulates_not_overwrites() {
+    let conn = fresh();
+    seed_customers(&conn);
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 1500).unwrap();
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 250).unwrap();
+    let spent: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(spent, 1750);
+}
+
+/// A missing customer touches zero rows (the caller logs it non-fatal); it
+/// does not error, so the completion door never rolls back on it.
+#[test]
+fn accrue_lifetime_spend_missing_customer_is_zero_rows() {
+    let conn = fresh();
+    let rows = Store::accrue_lifetime_spend_in_tx(&conn, "nobody", 100).unwrap();
+    assert_eq!(rows, 0);
+}
+
+/// The reversal mirrors the accrual and clamps at zero: refunding more than
+/// was ever spent cannot drive lifetime spend negative.
+#[test]
+fn reverse_lifetime_spend_clamps_at_zero() {
+    let conn = fresh();
+    seed_customers(&conn);
+    Store::accrue_lifetime_spend_in_tx(&conn, "cust-1", 1000).unwrap();
+    Store::reverse_lifetime_spend_in_tx(&conn, "cust-1", 4000, "2025-02-01T00:00:00.000Z").unwrap();
+    let spent: i64 = conn
+        .query_row(
+            "SELECT total_spent_minor FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(spent, 0, "refund must clamp, never go negative");
+}
+
+/// The loyalty-points projection copies the ledger balance onto the customer
+/// row, keyed by customer id.
+#[test]
+fn project_loyalty_points_copies_the_ledger_balance() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute_batch(
+        "INSERT INTO loyalty_accounts (id, customer_id, tier_id, points, lifetime_points, created_at, updated_at)
+         VALUES ('acct-1', 'cust-1', 'tier-bronze', 42, 42, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    Store::project_loyalty_points_in_tx(&conn, "cust-1").unwrap();
+    let points: i64 = conn
+        .query_row(
+            "SELECT loyalty_points FROM customers WHERE id = 'cust-1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(points, 42);
+}
+
+/// The account-keyed projection shape resolves the customer through the
+/// account row (the refund-reversal path has only the account id).
+#[test]
+fn project_loyalty_points_for_account_resolves_customer() {
+    let conn = fresh();
+    seed_customers(&conn);
+    conn.execute_batch(
+        "INSERT INTO loyalty_accounts (id, customer_id, tier_id, points, lifetime_points, created_at, updated_at)
+         VALUES ('acct-2', 'cust-2', 'tier-bronze', 7, 7, '2025-01-01T00:00:00.000Z', '2025-01-01T00:00:00.000Z');"
+    )
+    .unwrap();
+    Store::project_loyalty_points_for_account_in_tx(&conn, "acct-2").unwrap();
+    let points: i64 = conn
+        .query_row(
+            "SELECT loyalty_points FROM customers WHERE id = 'cust-2'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(points, 7);
+}
+
+// ── Phase 5 P5.3: the seam is governed ───────────────────────────────
+
+/// The seam functions are core's only writers of `customers`, and `customers`
+/// is owned by the `crm` module. If the ownership map ever re-homes the table,
+/// this fails and names it, rather than letting the seam write a table no
+/// module claims.
+#[test]
+fn the_customer_seam_writes_a_table_crm_owns() {
+    assert_eq!(
+        crate::db::ownership::owner_of("customers"),
+        Some("crm"),
+        "the P5.3 seam writes `customers`; its owner is the crm module"
+    );
+}

@@ -17,8 +17,10 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 
 // Cross-vertical write contract for this core-owned path: Phase 5 P5.1, checked by
 // `the_foreign_writes_name_owners_that_sales_declares` in `sales_lifecycle_tests.rs`.
-// `payments` became sales-owned in P5.4 (modules/ownership.json); `customers` is the
-// one remaining foreign write, routed behind the crm seam by P5.3.
+// `payments` became sales-owned in P5.4 (modules/ownership.json). P5.3 removed the
+// last `customers` write from this file: the accrual now goes through
+// `Store::accrue_lifetime_spend_in_tx` in `db/customers.rs`, the single core writer
+// of that crm-owned table.
 
 /// LOY-06: award loyalty points at the moment a sale reaches `completed`.
 ///
@@ -32,8 +34,8 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior};
 /// points formula is currency-naive (`total_minor * points_per_unit /
 /// 100`), so charging in a low-exponent currency would otherwise
 /// multiply the reward by the exchange rate.
-fn apply_customer_stats_on_completion(conn: &rusqlite::Connection, sale_id: &str) {
-    let sale_row = conn.query_row(
+fn apply_customer_stats_on_completion(tx: &rusqlite::Transaction<'_>, sale_id: &str) {
+    let sale_row = tx.query_row(
         "SELECT customer_id, base_total_minor, total_minor FROM sales WHERE id = ?1",
         rusqlite::params![sale_id],
         |row| {
@@ -55,22 +57,18 @@ fn apply_customer_stats_on_completion(conn: &rusqlite::Connection, sale_id: &str
     };
     let earn_total = base_total_minor.unwrap_or(total_minor);
     // CRM-06: accrue lifetime spend in the SAME base-currency amount the
-    // award uses. Statement-level atomic increment (no read-modify-write
-    // race); SQLite raises on i64 overflow, which is logged non-fatal
-    // below. The old owner — the event-bus CrmHistoryHandler — had no
+    // award uses, through the core-owned crm surface (Phase 5 P5.3):
+    // `Store::accrue_lifetime_spend_in_tx` in `db/customers.rs` is the single
+    // writer of `total_spent_minor`, so the sale lifecycle never issues the
+    // `UPDATE customers` itself. Statement-level atomic increment (no
+    // read-modify-write race); SQLite raises on i64 overflow, which is logged
+    // non-fatal below. The old owner — the event-bus CrmHistoryHandler — had no
     // idempotency guard and no currency validation; its subscription
     // was removed in platform/startup so this is the single writer.
-    if let Err(e) = conn.execute(
-        "UPDATE customers SET total_spent_minor = total_spent_minor + ?1, updated_at = ?2 WHERE id = ?3",
-        rusqlite::params![
-            earn_total,
-            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-            customer_id
-        ],
-    ) {
+    if let Err(e) = Store::accrue_lifetime_spend_in_tx(tx, &customer_id, earn_total) {
         tracing::warn!(error = %e, sale_id, "customer spend accrual failed (non-fatal)");
     }
-    match crate::db::loyalty::earn_points_with_conn(conn, &customer_id, sale_id, earn_total) {
+    match crate::db::loyalty::earn_points_with_conn(tx, &customer_id, sale_id, earn_total) {
         Ok(Some(t)) => {
             tracing::debug!(
                 sale_id,

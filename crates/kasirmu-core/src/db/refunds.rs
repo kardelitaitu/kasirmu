@@ -748,11 +748,9 @@ pub fn reverse_customer_spend_on_refund(
         }
         _ => refund_total_minor,
     };
-    conn.execute(
-        "UPDATE customers SET total_spent_minor = MAX(total_spent_minor - ?1, 0),
-         updated_at = ?2 WHERE id = ?3",
-        params![refund_base, at, customer_id],
-    )?;
+    // Phase 5 P5.3: through the core-owned crm surface, the single writer of
+    // `customers.total_spent_minor` (the mirror of the completion accrual).
+    crate::db::Store::reverse_lifetime_spend_in_tx(conn, customer_id, refund_base, at)?;
     Ok(())
 }
 
