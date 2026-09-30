@@ -15,6 +15,10 @@
 //!   an account or lock out a POS till (ADR #57 §2.4 response policy).
 //! - Cooldown: 7 days minimum between repeat alerts for the same tenant and condition.
 //! - Fail-safe logging: unconfigured SMTP logs at WARN without recording cooldown.
+//! - A read that could not run is never reported as a clean result: enumeration,
+//!   the per-axis counts and the whole scan all return `Err` / `Result` rather
+//!   than an empty list or a `0` count, because both are the HEALTHY answer and
+//!   a detector that has gone blind must not look like a detector that saw nothing.
 
 use std::collections::HashMap;
 use std::sync::Arc;
