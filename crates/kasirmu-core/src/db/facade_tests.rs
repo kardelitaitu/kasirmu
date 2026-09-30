@@ -61,5 +61,9 @@ fn a_generic_caller_resolves_through_the_trait() {
     }
     let conn = fresh();
     let store = Store::new(&conn);
-    assert_eq!(revenue_days(&store), 0, "empty fresh db has no revenue rows");
+    assert_eq!(
+        revenue_days(&store),
+        0,
+        "empty fresh db has no revenue rows"
+    );
 }

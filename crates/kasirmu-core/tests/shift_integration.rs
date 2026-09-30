@@ -118,7 +118,9 @@ fn shift_open_succeeds_in_store_db_without_local_users() {
     // In store-scoped DBs, users table is empty; authorization was performed upstream.
     let s = store(&conn);
 
-    let shift = s.open_shift("scoped-user-123", Some("term-front"), 50000).unwrap();
+    let shift = s
+        .open_shift("scoped-user-123", Some("term-front"), 50000)
+        .unwrap();
     assert_eq!(shift.user_id, "scoped-user-123");
     assert_eq!(shift.terminal_id.as_deref(), Some("term-front"));
     assert_eq!(shift.opening_balance_minor, 50000);

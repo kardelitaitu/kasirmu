@@ -166,7 +166,6 @@ fn reporting_without_a_grant_is_foreign() {
     assert!(matches!(err, NamespaceError::Foreign { .. }), "{err:?}");
 }
 
-
 #[cfg(test)]
 mod db_backed {
     use super::*;
@@ -235,7 +234,6 @@ mod db_backed {
             .expect("query");
         assert!(rows.is_empty());
     }
-
 
     /// A stand-in domain error for the query_try tests: it can be built from the
     /// two errors the namespace layer produces, exactly like a module's own error.
@@ -375,7 +373,10 @@ fn grants_from_manifest_json_reads_the_capabilities_array() {
     let grants = Grants::from_manifest_json(ModuleId("reporting"), &manifest);
     assert!(grants.allows(ModuleId("inventory")));
     assert!(grants.allows(ModuleId("sales")));
-    assert!(!grants.allows(ModuleId("reporting")), "own read is not a grant");
+    assert!(
+        !grants.allows(ModuleId("reporting")),
+        "own read is not a grant"
+    );
     assert_eq!(grants.modules().len(), 2);
 }
 

@@ -63,11 +63,9 @@ impl Store<'_> {
         // exclusively in the global identity database and are authorized upstream
         // by require_session_permission.
         let users_present: bool = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM users LIMIT 1)",
-                [],
-                |row| row.get::<_, bool>(0),
-            )
+            .query_row("SELECT EXISTS(SELECT 1 FROM users LIMIT 1)", [], |row| {
+                row.get::<_, bool>(0)
+            })
             .unwrap_or(false);
 
         if users_present {
