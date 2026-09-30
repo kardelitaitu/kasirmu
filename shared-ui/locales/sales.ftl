@@ -54,6 +54,7 @@ payment-exchange-rate = Exchange rate
 payment-rate-source = Rate source
 payment-rate-timestamp = Rate timestamp
 payment-rate-source-manual = manual
+payment-rate-unknown = Could not load the exchange rate for this pair
 payment-receipt-currency-aria =
     .aria-label = Receipt currency information
 payment-charged-in = Charged in

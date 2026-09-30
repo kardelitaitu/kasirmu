@@ -86,7 +86,7 @@ const { invokeMock } = vi.hoisted(() => {
   return { invokeMock: mock };
 });
 
-const { mockListCurrenciesScoped, mockListExchangeRates } = vi.hoisted(() => ({
+const { mockListCurrenciesScoped, mockListExchangeRates, mockGetLatestExchangeRateScoped } = vi.hoisted(() => ({
   mockListCurrenciesScoped: vi.fn(() =>
     Promise.resolve([
       { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
@@ -105,6 +105,19 @@ const { mockListCurrenciesScoped, mockListExchangeRates } = vi.hoisted(() => ({
         created_at: '2026-07-31T00:00:00.000Z',
       },
     ]),
+  ),
+  // Held by reference so a test can make the CUR-04 rate read fail. The
+  // multi-currency block below needs that: with the read failing, the charge
+  // currency has no rate, and settling in it must refuse.
+  mockGetLatestExchangeRateScoped: vi.fn(() =>
+    Promise.resolve({
+      id: 'rate-1',
+      from_currency: 'USD',
+      to_currency: 'IDR',
+      rate_millionths: 16_000_000_000,
+      source: 'manual',
+      effective_date: '2026-01-01',
+    }),
   ),
 }));
 
@@ -139,16 +152,7 @@ vi.mock('@/api/currency', async () => {
   ),
   getDefaultCurrency: vi.fn(() => Promise.resolve('USD')),
   getDefaultCurrencyScoped: vi.fn(() => Promise.resolve('USD')),
-  getLatestExchangeRateScoped: vi.fn(() =>
-    Promise.resolve({
-      id: 'rate-1',
-      from_currency: 'USD',
-      to_currency: 'IDR',
-      rate_millionths: 16_000_000_000,
-      source: 'manual',
-      effective_date: '2026-01-01',
-    }),
-  ),
+  getLatestExchangeRateScoped: mockGetLatestExchangeRateScoped,
   };
 });
 
@@ -170,6 +174,17 @@ beforeEach(() => {
   invokeMock.mockClear();
   mockListCurrenciesScoped.mockClear();
   mockListExchangeRates.mockClear();
+  // Restore the answering default: the unknown-rate tests make this reject, and
+  // a vi.fn().mockRejectedValueOnce would otherwise leak into the next test.
+  mockGetLatestExchangeRateScoped.mockReset();
+  mockGetLatestExchangeRateScoped.mockResolvedValue({
+    id: 'rate-1',
+    from_currency: 'USD',
+    to_currency: 'IDR',
+    rate_millionths: 16_000_000_000,
+    source: 'manual',
+    effective_date: '2026-01-01',
+  });
 });
 
 describe('PaymentModal — rendering & fast interaction', () => {
@@ -849,5 +864,87 @@ describe('PaymentModal — promotionIds reach the checkout payload', () => {
     const call = invokeMock.mock.calls.find((c) => String(c[0]).startsWith('complete_sale'));
     const args = (call?.[1] as { args?: { promotionIds?: string[] } })?.args;
     expect(args?.promotionIds).toEqual(['promo-b']);
+  });
+});
+
+// ── An unknown exchange rate cannot be settled in ──────────────────────
+//
+// The CUR-04 rate read is how checkout learns `tender_rate_millionths` for the
+// sale. When it FAILED, `latestRate` used to be null, `effectiveRateInfo` fell
+// back to a find() over `list_latest_exchange_rates`, and the modal settled a
+// converted total against a rate the cashier was never shown -- or, with the
+// list empty of that pair, converted nothing while still labelling the total in
+// the charge currency. The backend does not catch it: the three CUR-02 fields
+// are assigned straight from the args (crates/kasirmu-bridge/src/pos/checkout.rs:424-428).
+//
+// These tests pin the two halves of the repair: the state is VISIBLE, and the
+// action that would record an unknown rate is UNAVAILABLE.
+describe('PaymentModal — a failed rate read cannot be settled in', () => {
+  beforeEach(() => {
+    invokeMock.mockClear();
+  });
+
+  async function openInIdr() {
+    await renderWithFluent(
+      <PaymentModal
+        open
+        lineItems={[lineItem({ unit_price: usd(350), qty: 2 })]}
+        total={usd(700)}
+        userId="test-user-id"
+        sessionToken="test-session-token"
+        onComplete={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByLabelText(/select charge currency/i)).toBeInTheDocument();
+    });
+    await userEvent.selectOptions(
+      screen.getByLabelText(/select charge currency/i),
+      'IDR',
+    );
+    // Cash is the default tender and `sufficient` is computed against the
+    // payable (useTenderMath.ts:157-159), so without a tender Complete is
+    // disabled for a second, unrelated reason and the rate assertion below
+    // would pass vacuously. The exact tender is sufficient under BOTH states:
+    // Rp 112,000 once the rate answers, and far more than the unconverted
+    // Rp 7.00 while the rate is unknown.
+    await userEvent.type(screen.getByLabelText(/amount tendered/i), '112000');
+  }
+
+  it('says the rate is unknown and refuses to enable Complete', async () => {
+    mockGetLatestExchangeRateScoped.mockRejectedValue(new Error('ipc down'));
+    await openInIdr();
+
+    // Anchor on the ARRIVING alert, never on the absence of the rate notice --
+    // while the read is still pending neither is rendered, so polling for an
+    // absence passes vacuously.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        /Could not load the exchange rate/i,
+      );
+    });
+    expect(screen.getByRole('button', { name: /Complete/i })).toBeDisabled();
+    // No converted total is shown either: nothing was converted.
+    expect(screen.queryByText(/Rp 112\.000/)).not.toBeInTheDocument();
+  });
+
+  it('a retry that answers restores the rate and re-enables Complete', async () => {
+    mockGetLatestExchangeRateScoped.mockRejectedValueOnce(new Error('ipc down'));
+    await openInIdr();
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        /Could not load the exchange rate/i,
+      );
+    });
+    expect(screen.getByRole('button', { name: /Complete/i })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: /Retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Complete/i })).toBeEnabled();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText(/Rp 112\.000/)).toBeInTheDocument();
   });
 });

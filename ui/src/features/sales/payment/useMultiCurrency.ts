@@ -34,6 +34,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { minorUnitExponent } from '@/types/domain';
+import { settleRead } from '@/utils/settle-read';
 import type { useToast } from '@/components/Toast';
 import {
   listCurrenciesScoped,
@@ -137,23 +138,67 @@ export function useMultiCurrency({
   // CUR-04: when a session store is active, ask the backend for the latest
   // rate effective today (or before) instead of relying on find() over the
   // full history list — the list is not ordered by effective date, so a
-  // stale rate could be chosen. Falls back to the in-memory list only when
-  // there is no session (single-store legacy path).
+  // stale rate could be chosen.
+  //
+  // `latestRate === null` used to mean BOTH "the pair has no rate" and "the
+  // read failed", because a rejection collapsed to null. That is not a cosmetic
+  // conflation here: `effectiveRateInfo` below falls back to a `find()` over
+  // `exchangeRates`, and THAT list is not the same question. `list_latest_exchange_rates`
+  // (modules/currency/src/repository.rs:84-114) returns one row per pair ordered by
+  // newest `effective_date` INCLUDING FUTURE-DATED rates; the CUR-04 read above
+  // (`get_latest_exchange_rate`, :157-187, as-of the store business date computed in
+  // crates/kasirmu-bridge/src/currency.rs:351-360) is the only one that honours the date.
+  // So a failed read silently substituted a different — possibly future-dated — rate
+  // for the one the sale was going to record, and rendered identically to a success.
+  //
+  // Three states, not two: a rate, genuinely no rate, and unknown. `rateUnknown`
+  // keeps the third distinct, and `retryRateRead` drives the retry the cashier is
+  // offered instead of a silent re-denomination.
   const [latestRate, setLatestRate] = useState<ExchangeRateDto | null>(null);
+  const [rateUnknown, setRateUnknown] = useState(false);
+  const [rateNonce, setRateNonce] = useState(0);
   useEffect(() => {
     setLatestRate(null);
+    setRateUnknown(false);
     if (!open || !multiCurrency || !sessionToken || selectedCurrency === totalCurrency) {
       return;
     }
-    getLatestExchangeRateScoped(sessionToken, {
-      fromCurrency: totalCurrency,
-      toCurrency: selectedCurrency,
-    })
-      .then((r) => setLatestRate(r))
-      .catch(() => setLatestRate(null));
-  }, [open, multiCurrency, sessionToken, selectedCurrency, totalCurrency]);
+    let cancelled = false;
+    settleRead(
+      'exchange_rate',
+      getLatestExchangeRateScoped(sessionToken, {
+        fromCurrency: totalCurrency,
+        toCurrency: selectedCurrency,
+      }),
+    ).then((settled) => {
+      if (cancelled) return;
+      if (settled.ok) {
+        setLatestRate(settled.value);
+        setRateUnknown(false);
+      } else {
+        // No fallback to `exchangeRateInfo` here: on an unknown rate the charge
+        // currency must not convert the total at all (see `convertToChargeCurrency`).
+        setLatestRate(null);
+        setRateUnknown(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, multiCurrency, sessionToken, selectedCurrency, totalCurrency, rateNonce]);
+
+  /** Re-run the rate read after a failure. Identity-stable via useCallback. */
+  const retryRateRead = useCallback(() => setRateNonce((n) => n + 1), []);
 
   const effectiveRateInfo = useMemo(() => {
+    // An unknown rate must NOT fall through to the in-memory `exchangeRateInfo`:
+    // that list answers a different question (newest row per pair, future-dated
+    // rates included) than the CUR-04 read does, and converting a total on the
+    // strength of it while the notice shows nothing is how money gets recorded
+    // against a rate nobody saw. Returning null makes `convertToChargeCurrency`
+    // an identity and `canComplete` refuse to arm — the two gates below are what
+    // make the unknown state safe rather than merely visible.
+    if (rateUnknown) return null;
     if (!sessionToken || !latestRate) return exchangeRateInfo;
     return {
       ...latestRate,
@@ -162,7 +207,7 @@ export function useMultiCurrency({
       // always the direct direction.
       inverted: false,
     };
-  }, [sessionToken, latestRate, exchangeRateInfo]);
+  }, [sessionToken, latestRate, exchangeRateInfo, rateUnknown]);
 
   // Convert base currency amount to selected charge currency using exchange rate
   const convertToChargeCurrency = useCallback(
@@ -196,5 +241,10 @@ export function useMultiCurrency({
     cartCurrency,
     effectiveRateInfo,
     convertToChargeCurrency,
+    // True only while the CUR-04 rate read is FAILED — not when the pair simply
+    // has no rate, which is an answer. The caller gates the settle action on it
+    // and shows the retry.
+    rateUnknown,
+    retryRateRead,
   };
 }

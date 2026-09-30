@@ -555,6 +555,7 @@ payment-exchange-rate = Nilai tukar
 payment-rate-source = Sumber nilai
 payment-rate-timestamp = Waktu nilai
 payment-rate-source-manual = manual
+payment-rate-unknown = Tidak dapat memuat nilai tukar untuk pasangan ini
 payment-receipt-currency-aria =
     .aria-label = Informasi mata uang nota
 payment-charged-in = Ditagih dalam
