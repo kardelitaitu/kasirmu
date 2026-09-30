@@ -468,6 +468,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   const [rowMenu, setRowMenu] = useState<ContextMenuState | null>(null);
 
   const loadProductsAndCategories = useCallback((token: string) => {
+    if (!token) return;
     // Abort any previous in-flight request to prevent race condition
     if (loadProductsAbortRef.current) {
       loadProductsAbortRef.current.abort();
@@ -852,6 +853,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
 
   const [storeSettings, setStoreSettings] = useState<StoreSettingsDto>({ name: '', address: '', taxId: '', currency: 'IDR', branch: '', logo: '' });
   useEffect(() => {
+    if (!sessionToken) return;
     let mounted = true;
     getStoreSettingsScoped(sessionToken).then((s) => { if (mounted) setStoreSettings(s); }).catch(() => { if (mounted) addToast({ message: requiredLocalized(l10nRef.current, 'retail-toast-failed-settings'), type: 'error' }); });
     return () => { mounted = false; };
@@ -887,6 +889,7 @@ export default function RetailPosScreen({ onNavigate }: RetailPosScreenProps) {
   );
 
   useEffect(() => {
+    if (!sessionToken) return;
     setActiveShift(null);
     setShiftLoading(true);
     getActiveShiftScoped(sessionToken)

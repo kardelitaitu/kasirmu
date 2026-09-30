@@ -83,6 +83,10 @@ const LocationPicker = memo(function LocationPicker({
   const ref = useRef<HTMLDivElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   // LOC-07: request-generation guard — a slower earlier request (session
   // switch, refreshKey bump, or instance change) must never overwrite a
   // newer result, and no load may re-trigger an outdated effect teardown.
@@ -101,7 +105,7 @@ const LocationPicker = memo(function LocationPicker({
     try {
       const data = await listInventoryLocations(token);
       if (seq !== loadSeqRef.current) return;
-      let scoped = data.filter((loc) => loc.is_active);
+      let scoped: PickerLocation[] = data.filter((loc) => loc.is_active);
 
       // LOC-08: when a workspace instance is active, restrict the picker to
       // locations BOUND to that workspace (with their binding policy) so the
@@ -133,6 +137,12 @@ const LocationPicker = memo(function LocationPicker({
       }
 
       setLocations(scoped);
+      if (!valueRef.current && scoped.length > 0) {
+        const primary = scoped.find((loc) => loc.is_primary) ?? scoped[0];
+        if (primary) {
+          onChangeRef.current(primary.id, primary.name);
+        }
+      }
     } catch {
       if (seq !== loadSeqRef.current) return;
       // Durable error state (INV-08): surface a retry affordance instead

@@ -141,6 +141,7 @@ export default function KdsScreen() {
   pendingQueueLengthRef.current = pendingQueueLength;
 
   const fetchOrders = useCallback(async () => {
+    if (!sessionToken) return;
     const zone = prefs.kdsZone || undefined;
     const { orders: fetchedOrders, fromCache } = await wrapFetch(() =>
       getKdsQueueScoped(sessionToken, zone),

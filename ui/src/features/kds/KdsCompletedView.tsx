@@ -78,6 +78,7 @@ export function KdsCompletedView({
   const loadSeqRef = useRef(0);
 
   const load = useCallback(() => {
+    if (!sessionToken) return;
     const seq = ++loadSeqRef.current;
     setLoading(true);
     setFetchFailed(false);
