@@ -250,6 +250,43 @@ async fn lookup_sale_by_gateway_ref_not_found() {
     assert_eq!(result.unwrap_err().0, StatusCode::NOT_FOUND);
 }
 
+/// A failed read is NOT a missing sale. The pair with the test above is the rule:
+/// the 404 above is the honest answer to "we looked and there is nothing", and it
+/// must not also cover "we could not look".
+///
+/// **What the caller does with the answer.** Both webhook handlers treat this
+/// function's error as terminal and return it to the sender, so collapsing the two
+/// told Stripe or Square that a payment it had confirmed belongs to no sale we know
+/// of, when the truth was a broken table, a column mismatch or a locked database. The
+/// paid-for sale is then never finalised, and nothing anywhere reports a fault. A
+/// 500 is retryable by the sender; a 404 is a promise that we will never change our
+/// mind.
+#[tokio::test]
+async fn a_failed_sale_lookup_is_a_500_not_a_404() {
+    let state = test_state();
+    {
+        let conn = state.db.lock().await;
+        seed_payment(&conn, "pi_broken", "sale-broken");
+        // The mapping exists, so "no sale found" is not available as an answer.
+        conn.execute("DROP TABLE payments", [])
+            .expect("drop payments");
+    }
+
+    let (status, message) = lookup_sale_by_gateway_reference(&state, "pi_broken")
+        .await
+        .expect_err("a failed read must not be reported as a missing sale");
+    assert_eq!(
+        status,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "the sender must see a retryable failure, not a permanent 404"
+    );
+    assert!(
+        message.contains("failed to read the gateway reference mapping"),
+        "the message must say the READ failed, so an operator reading the webhook
+        log knows to look at the database: got {message:?}"
+    );
+}
+
 // ── Webhook endpoint integration ──────────────────────────────
 
 #[tokio::test]

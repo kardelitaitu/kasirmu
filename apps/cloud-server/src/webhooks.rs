@@ -50,7 +50,7 @@ use axum::{
     Router, extract::State, http::StatusCode, middleware, response::Response, routing::post,
 };
 use hmac::{Hmac, Mac};
-use rusqlite::params;
+use rusqlite::{OptionalExtension as _, params};
 use sha2::Sha256;
 
 use crate::CloudServerState;
@@ -823,19 +823,37 @@ async fn lookup_sale_by_gateway_reference(
                 &[&gateway_ref],
             )
             .await
-            .ok()
-            .flatten()
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to read the gateway reference mapping: {e}"),
+                )
+            })?
             .map(|r| (r.get::<_, String>(0), r.get::<_, String>(1)));
         let _ = tx.commit().await;
         row
     } else {
         let conn = state.db.lock().await;
+        // `optional()`, not `.ok()`. Only a MISSING row may become the 404 below;
+        // a failed read is a 500, because the 404 says "no sale found for gateway
+        // reference" to Stripe or Square and the real reason may be a broken
+        // table, a column mismatch or a locked database. Telling the sender the
+        // payment is unknown when we merely could not read is how a paid-for sale
+        // never gets finalised and nobody is paged. The Postgres arm above and
+        // `LedgerDb::lookup` in midtrans_ledger.rs already propagate the same
+        // failure, so this SQLite arm was the odd one out.
         conn.query_row(
             "SELECT p.sale_id, s.tenant_id FROM payments p\n             JOIN sales s ON p.sale_id = s.id\n             WHERE p.gateway_reference = ?1 LIMIT 1",
             params![gateway_ref],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         )
-        .ok()
+        .optional()
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to read the gateway reference mapping: {e}"),
+            )
+        })?
     };
 
     row.ok_or_else(|| {
