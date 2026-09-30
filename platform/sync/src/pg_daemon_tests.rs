@@ -694,6 +694,39 @@ async fn tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 }
 
+/// An unreadable pull anchor must surface on `last_error`, not silently force a
+/// full re-pull.
+///
+/// `(None, None)` is what an operator rewind asks for, so collapsing a read
+/// failure into it replays all history every cycle with nothing shown. The PG
+/// daemon now propagates the anchor-read error into `read_error`.
+#[tokio::test]
+async fn tick_with_an_unreadable_pull_anchor_reports_an_error() {
+    let db = setup_db();
+    {
+        let db_clone = db.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = db_clone.blocking_lock();
+            conn.execute_batch("DROP TABLE sync_pull_state;").unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let daemon = PgSyncDaemon::with_interval(Duration::from_millis(30));
+    daemon.start(db).await;
+    tokio::time::sleep(Duration::from_millis(80)).await;
+
+    let status = daemon.status().await;
+    assert!(
+        status.last_error.is_some(),
+        "an unreadable pull anchor must surface on last_error"
+    );
+
+    daemon.stop().await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+}
+
 // ── Graceful shutdown ──────────────────────────────────────────
 
 #[tokio::test]

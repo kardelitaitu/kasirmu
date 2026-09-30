@@ -103,6 +103,45 @@ async fn spawn_rejecting_mock_sync_server() -> String {
     format!("http://localhost:{port}")
 }
 
+/// Spawn a mock server that COUNTS pull hits and returns an empty page.
+///
+/// Used by the pull-anchor pins: a daemon that replays history must show up as
+/// a hit, so 'the pull was skipped' is observable rather than assumed.
+async fn spawn_counting_pull_server() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    let listener = tokio::net::TcpListener::bind("localhost:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let hits = Arc::new(AtomicUsize::new(0));
+    let state = hits.clone();
+
+    async fn handle_push(Json(items): Json<Vec<serde_json::Value>>) -> Json<PushResponse> {
+        Json(PushResponse {
+            results: vec![PushOutcome::Accepted; items.len()],
+        })
+    }
+    async fn handle_pull(
+        State(hits): State<Arc<AtomicUsize>>,
+        Json(_req): Json<serde_json::Value>,
+    ) -> Json<PullResponse> {
+        hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Json(PullResponse {
+            items: vec![],
+            next_cursor: None,
+        })
+    }
+
+    let app = Router::new()
+        .route("/api/sync/push", post(handle_push))
+        .route("/api/sync/pull", post(handle_pull))
+        .with_state(state);
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    (format!("http://localhost:{port}"), hits)
+}
+
 /// Spawn a minimal mock sync server on port 0 and return its URL.
 /// Handles POST /api/sync/push (returns all accepted) and
 /// POST /api/sync/pull (returns empty items list).
@@ -775,6 +814,50 @@ fn read_config_and_pending_errors_when_the_offline_queue_cannot_be_read() {
     assert!(
         result.is_err(),
         "an unreadable queue must surface as an error, not as an empty push list"
+    );
+}
+
+/// An unreadable pull anchor must surface on `last_error`, not silently force a
+/// full re-pull.
+///
+/// `(None, None)` is the SAME state an operator rewind requests, so collapsing
+/// a read failure into it would replay all history every cycle with no error
+/// shown — the fail-blind shape, and the exact replay the SYNC-01 anchor exists
+/// to prevent. The daemon now propagates the read error and skips the pull.
+///
+/// RED before the fix: `.unwrap_or_default()` produced `(None, None)`, the pull
+/// ran, and `last_error` stayed `None`.
+#[tokio::test]
+async fn run_tick_surfaces_an_unreadable_pull_anchor_instead_of_replaying() {
+    let (server_url, pull_hits) = spawn_counting_pull_server().await;
+    let db = setup_db();
+    let db_setup = db.clone();
+    let url = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        let conn = db_setup.blocking_lock();
+        // Sync is ENABLED and pointed at the mock server, so the pull phase
+        // is reachable — otherwise the anchor is never read and the pin would
+        // pass for the wrong reason.
+        Settings::set_sync_enabled(&conn, true).unwrap();
+        Settings::set_sync_server_url(&conn, &url).unwrap();
+        // Drop the anchor table AFTER the settings are written.
+        conn.execute("DROP TABLE sync_pull_state", []).unwrap();
+    })
+    .await
+    .unwrap();
+
+    let status = Arc::new(RwLock::new(DaemonStatus::default()));
+    daemon_tick::run_tick(&db, &status, &noop_settings_sink()).await;
+
+    let s = status.read().await;
+    assert!(
+        s.last_error.is_some(),
+        "an unreadable pull anchor must surface on last_error, not read as (None, None)"
+    );
+    assert_eq!(
+        pull_hits.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the daemon must SKIP the pull when the anchor is unreadable, not replay history"
     );
 }
 

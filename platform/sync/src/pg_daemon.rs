@@ -269,9 +269,16 @@ impl PgSyncDaemon {
                 // cursor) survives restarts and advances only after a page
                 // applied — never re-derive it from the local queue's synced
                 // timestamps (pulled remote items do not move those).
-                let pull_state = store.get_sync_pull_state().ok();
-                let pull_since = pull_state.as_ref().and_then(|s| s.since.clone());
-                let pull_cursor = pull_state.as_ref().and_then(|s| s.cursor.clone());
+                //
+                // An unreadable anchor must NOT default to `(None, None)`: that
+                // is the SAME state an operator rewind requests, so a read
+                // failure would silently force a full re-pull of the entire
+                // history every cycle. Propagate it to `read_error` instead.
+                let pull_state = store.get_sync_pull_state().map_err(|e| {
+                    format!("could not read the durable pull anchor; refusing to replay all history: {e}")
+                })?;
+                let pull_since = pull_state.since.clone();
+                let pull_cursor = pull_state.cursor.clone();
 
                 // Build the transport whenever PG sync is ENABLED — not only
                 // when there are pending items — so a pull-only terminal (a

@@ -363,17 +363,46 @@ pub(super) async fn run_tick(
             // fetch updates newer than the last successfully-applied page
             // (previously every cycle pulled the ENTIRE queue and re-applied
             // stock/sale mutations, silently corrupting inventory).
-            let (pull_since, pull_cursor) = {
+            //
+            // An unreadable anchor must NOT default to `(None, None)`: that is
+            // the SAME state an operator rewind requests, so a read failure
+            // would silently force a full re-pull of the entire history every
+            // cycle, with no error surfaced. Propagate it to `sync_error`
+            // instead and skip the pull for this cycle.
+            let pull_anchor = {
                 let db_clone = db.clone();
                 tokio::task::spawn_blocking(move || {
                     let conn = db_clone.blocking_lock();
                     let store = Store::new(&conn);
-                    let st = store.get_sync_pull_state().unwrap_or_default();
-                    (st.since, st.cursor)
+                    store.get_sync_pull_state().map(|st| (st.since, st.cursor))
                 })
                 .await
-                .unwrap_or((None, None))
             };
+            let (pull_since, pull_cursor, anchor_readable) = match pull_anchor {
+                Ok(Ok(pair)) => (pair.0, pair.1, true),
+                Ok(Err(e)) => {
+                    let msg = format!(
+                        "could not read the durable pull anchor; skipping the pull rather than replaying all history: {e}"
+                    );
+                    tracing::error!(error = %e, "sync pull anchor read failed");
+                    if sync_error.is_none() {
+                        sync_error = Some(msg);
+                    }
+                    (None, None, false)
+                }
+                Err(join_err) => {
+                    let msg = format!("pull anchor read panicked: {join_err}");
+                    tracing::error!(error = %msg, "sync pull anchor read failed");
+                    if sync_error.is_none() {
+                        sync_error = Some(msg);
+                    }
+                    (None, None, false)
+                }
+            };
+            // `anchor_readable` tracks ONLY whether the anchor read succeeded.
+            // It must not be derived from `sync_error`, which may already hold a
+            // PUSH error (e.g. PlanRequired) that has nothing to do with the
+            // anchor — conflating them would skip a perfectly good pull.
 
             // RUST-05: fail closed for the pull phase as well.
             let transport = match SyncTransport::try_new(&cfg.server_url, cfg.api_key.as_deref()) {
@@ -390,7 +419,7 @@ pub(super) async fn run_tick(
                     None
                 }
             };
-            if let Some(transport) = transport {
+            if let Some(transport) = transport.filter(|_| anchor_readable) {
                 match transport
                     .pull_updates(pull_since.as_deref(), pull_cursor.as_deref())
                     .await
