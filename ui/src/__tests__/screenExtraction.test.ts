@@ -1361,7 +1361,11 @@ const SCREENS: ScreenEntry[] = [
     // so both rules graded dead. This is the genuine composed-at-runtime case the
     // field exists for — unlike `noise-dither` above, which is a literal name and
     // is therefore CITED rather than muted.
-    dynamicClassPrefixes: ['resto-receipt-paper--'],
+    // The Test Print status classes are composed at runtime from the result
+    // type: `resto-test-print-status--${testPrintResult.type}` (:1278), so the
+    // static walk cannot see `--success` / `--error` and both rules would grade
+    // dead. Same composed-at-runtime case as the paper widths above.
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
   },
   {
     // See the RestaurantReceiptsScreen note above for the shared-sheet ruling.
@@ -1388,7 +1392,7 @@ const SCREENS: ScreenEntry[] = [
     // Same runtime-composed paper widths as the Receipts entry above: this entry
     // now grades that sibling's markup, so it needs the same prefix door for the
     // `--58mm` / `--80mm` tails the static walk cannot see.
-    dynamicClassPrefixes: ['resto-receipt-paper--'],
+    dynamicClassPrefixes: ['resto-receipt-paper--', 'resto-test-print-status--'],
     // Same `noise-dither` cite as the Receipts entry: this entry grades that
     // sibling's markup through additionalTsx, and the preview card carries the
     // class, so the sheet that defines the utility must be named here too — the

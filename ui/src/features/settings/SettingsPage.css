@@ -534,10 +534,6 @@ body:has(.settings-footer) {
 
 /* ── Existing form styles (preserved from original) ──────────── */
 
-.settings-label--section {
-  font-weight: var(--font-weight-semibold);
-}
-
 .settings-section-title {
   font-size: var(--text-xl);
   font-weight: var(--font-weight-semibold);
@@ -654,20 +650,6 @@ body:has(.settings-footer) {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-sizing: border-box;
-}
-
-.settings-textarea {
-  resize: vertical;
-  font-family: inherit;
-  line-height: var(--leading-relaxed);
-}
-
-.settings-char-count {
-  text-align: right;
-  font-size: var(--text-xs);
-  color: var(--color-fg-tertiary);
-  padding-right: var(--space-0_5);
-  user-select: none;
 }
 
 .settings-input:focus-visible {

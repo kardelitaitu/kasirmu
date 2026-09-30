@@ -551,6 +551,17 @@
               transform var(--duration-200) var(--ease-out);
 }
 
+/* The stationary label inside the Test Print button. It shares the anim-btn
+   content geometry; the distinct name exists so the loading swap keeps the
+   label element stable for tests and for the fade/scale transition above. */
+.resto-test-print-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
 .resto-anim-btn__spinner-wrap {
   grid-area: content;
   display: inline-flex;
