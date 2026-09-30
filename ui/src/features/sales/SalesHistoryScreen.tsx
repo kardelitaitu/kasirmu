@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSwipe } from '@/hooks/useSwipe';
 import { l10nErrorMessage, plainErrorMessage } from '@/utils/app-error';
+import { settleRead } from '@/utils/settle-read';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useExitAnimation } from '@/hooks/useExitAnimation';
 import { EmptyState, ErrorState, requiredLocalized } from '@/components';
@@ -219,6 +220,14 @@ export default function SalesHistoryScreen() {
   const [printing, setPrinting] = useState(false);
   const [refundSaleId, setRefundSaleId] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundDto[]>([]);
+  // `[]` answers two questions here: 'this sale was never refunded' and 'we
+  // could not ask'. Those are not the same claim, and the difference is money:
+  // the Refund button is offered off the back of this list, and
+  // `create_refund` bounds a refund by the CUMULATIVE total already refunded
+  // (crates/kasirmu-core/src/db/refunds.rs:119-143), so a cashier acting on a
+  // failed read tries a refund the database will refuse for a reason the screen
+  // has hidden. `refundsUnknown` keeps the three states apart.
+  const [refundsUnknown, setRefundsUnknown] = useState(false);
   const [_refundsLoading, setRefundsLoading] = useState(false);
   const { session, isManager } = useAuth();
   const { sessionToken } = useWorkspace();
@@ -429,12 +438,9 @@ export default function SalesHistoryScreen() {
       setDetail(cached);
       setDetailLoading(false);
       // Still fetch refunds (they may have changed)
-      try {
-        const refundData = await listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]);
-        setRefunds(refundData);
-      } catch {
-        setRefunds([]);
-      }
+      const refundData = await settleRead('refunds', listRefundsScoped(sessionToken!, id));
+      setRefundsUnknown(!refundData.ok);
+      setRefunds(refundData.ok ? refundData.value : []);
       // Margin is a live report (costs can change) — always refresh.
       try {
         const margins = sessionToken
@@ -449,6 +455,7 @@ export default function SalesHistoryScreen() {
 
     setDetailLoading(true);
     setRefunds([]);
+    setRefundsUnknown(false);
     setLineMargins([]);
     try {
       const [sale, refundData, margins] = await Promise.all([
@@ -456,7 +463,7 @@ export default function SalesHistoryScreen() {
         // ambient, the next asserts a token with `!`, the third uses the ADR #7 conditional.
         // Now all three resolve from the session when one exists.
         sessionToken ? getSaleScoped(sessionToken, id) : getSale(id),
-        listRefundsScoped(sessionToken!, id).catch(() => [] as RefundDto[]),
+        settleRead('refunds', listRefundsScoped(sessionToken!, id)),
         sessionToken
           ? getSaleLineMarginsScoped(sessionToken, id).catch(() => [] as SaleLineMarginDto[])
           : Promise.resolve([] as SaleLineMarginDto[]),
@@ -466,7 +473,8 @@ export default function SalesHistoryScreen() {
         detailCacheRef.current.set(id, sale);
       }
       setDetail(sale);
-      setRefunds(refundData);
+      setRefundsUnknown(!refundData.ok);
+      setRefunds(refundData.ok ? refundData.value : []);
       setLineMargins(margins);
     } catch {
       // IPC unavailable.
@@ -627,14 +635,10 @@ export default function SalesHistoryScreen() {
 
   const loadRefunds = useCallback(async (saleId: string) => {
     setRefundsLoading(true);
-    try {
-      const data = await listRefundsScoped(sessionToken!, saleId);
-      setRefunds(data);
-    } catch {
-      setRefunds([]);
-    } finally {
-      setRefundsLoading(false);
-    }
+    const data = await settleRead('refunds', listRefundsScoped(sessionToken!, saleId));
+    setRefundsUnknown(!data.ok);
+    setRefunds(data.ok ? data.value : []);
+    setRefundsLoading(false);
     // sessionToken is a free variable from useWorkspace() at :164, read at :451. The sibling
     // effect above already lists [sessionToken, l10n] at :227, so the token was understood to
     // change -- this array just omitted it. With [] the callback kept the mount-time token, and
@@ -1441,6 +1445,9 @@ export default function SalesHistoryScreen() {
                       <strong><span>Total:</span></strong>
                     </Localized>
                     {' '}{formatMoney(detail.total)}
+                    {/* Same as the Previous Refunds gate below: a failed read clears
+                        the list, so `refunds.length > 0` is already false. The flag is
+                        not repeated here. */}
                     {refunds.length > 0 && (
                       <Badge variant="warning" style={{ marginLeft: 8 }}>
                         <Localized id="refund-status-refunded">
@@ -1557,7 +1564,31 @@ export default function SalesHistoryScreen() {
                 </table>
                 </Localized>
 
+                {/* ── Refund read did not answer ──────────────── */}
+                {refundsUnknown && (
+                  /* An unanswered read is not "no refunds". Rendering it as the
+                     empty case would erase the evidence AND leave the Refund
+                     button below enabled against a sale whose refund total is
+                     unknown -- and `create_refund` bounds a refund by that
+                     cumulative total, so the attempt ends in a validation error
+                     the operator cannot predict from what is on screen. Reload
+                     is the only action that can change the answer. */
+                  <div className="sales-history-refunds-unknown" role="alert">
+                    <Localized id="refund-history-unknown">
+                      <span>Refunds for this sale could not be loaded</span>
+                    </Localized>
+                    <Button variant="secondary" size="sm" onClick={() => detail && loadRefunds(detail.id)}>
+                      <Localized id="retry"><span>Retry</span></Localized>
+                    </Button>
+                  </div>
+                )}
+
                 {/* ── Previous Refunds ──────────────────────── */}
+                {/* No `!refundsUnknown` guard here, and deliberately: a failed read clears
+                    the list, so `refunds.length > 0` is already false. Adding the flag
+                    would be a dead condition -- mutations that removed it passed every
+                    test. The one gate that IS load-bearing is on the Refund button below,
+                    which is what the failed read would otherwise leave armed. */}
                 {refunds.length > 0 && (
                   <div className="sales-history-refunds">
                     <Localized id="refund-previous-refunds">
@@ -1599,7 +1630,11 @@ export default function SalesHistoryScreen() {
                   <Localized id="sales-history-detail-close">
                     <Button variant="ghost" onClick={detailExit.requestClose}>Close</Button>
                   </Localized>
-                  {detail.status === 'Completed' && session && (
+                  {/* Gated on the refund read having ANSWERED, not merely on the
+                      sale being completed: an unanswered read leaves the refunded
+                      total unknown, and offering the action is what turns a display
+                      gap into a wrong-reason refund rejection. */}
+                  {detail.status === 'Completed' && session && !refundsUnknown && (
                     <Localized id="refund-action-refund">
                       <Button variant="secondary" onClick={openRefund}>Refund</Button>
                     </Localized>

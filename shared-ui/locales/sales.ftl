@@ -480,6 +480,9 @@ refund-line-qty = Qty
 refund-line-total = Total
 refund-action-refund = Refund
 refund-status-refunded = Refunded
+# The refund list could not be READ. Distinct from refund-previous-refunds, which
+# asserts there are none: this one says the screen does not know.
+refund-history-unknown = Refunds for this sale could not be loaded
 
 # Item Modifier Modal
 modifier-no-options = No options available

@@ -446,6 +446,9 @@ refund-action-refund = Kembalikan
 # (refund-action-refund = Kembalikan) and the same word sales.id.ftl uses for the en
 # label "Refunded: { $amount }" at refund-done-amount.
 refund-status-refunded = Dikembalikan
+# en: Refunds for this sale could not be loaded. "bisa" is the conditional form the
+# bundle uses for a capability that did not come through (see app-error-offline).
+refund-history-unknown = Pengembalian untuk penjualan ini tidak dapat dimuat
 
 # Item Modifier Modal
 modifier-no-options = Tidak ada opsi tersedia

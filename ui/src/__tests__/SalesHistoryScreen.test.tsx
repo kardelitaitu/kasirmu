@@ -635,4 +635,76 @@ describe('SalesHistoryScreen', () => {
       });
     });
   });
+
+  // ── The refund read that did not answer ─────────────────────
+  //
+  // listRefundsScoped(...).catch(() => []) reported a FAILED read as "this sale
+  // was never refunded". The empty case is not a harmless mistake here: it
+  // hides the Refunded badge and the Previous Refunds section (the evidence), while
+  // the Refund button -- gated on sale status and session, never on this list --
+  // stays enabled. create_refund bounds a refund by the cumulative total already
+  // refunded (crates/kasirmu-core/src/db/refunds.rs:119-143), so the attempt is
+  // refused for a reason the operator cannot see on screen.
+
+  /** Open the detail modal for the first sample sale. */
+  async function openFirstSaleDetail() {
+    const user = userEvent.setup();
+    mockListSalesScoped.mockResolvedValue({ sales: [sampleSales[0]!], salesHistoryCapped: false });
+    mockGetSaleScoped.mockResolvedValue(sampleDetail);
+    renderWithProvidersSync(<SalesHistoryScreen />, salesFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('View').length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getAllByText('View')[0]!);
+    return user;
+  }
+
+  it('does not claim a sale was never refunded when the refund read failed', async () => {
+    mockListRefunds.mockRejectedValue(new Error('invoke failed'));
+    await openFirstSaleDetail();
+
+    // Wait for the ARRIVING state, never for an absence: before the detail opens,
+    // neither the badge nor the section is on screen either, so polling for their
+    // absence would pass without exercising anything.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Refunds for this sale could not be loaded',
+      );
+    });
+    // The badge claim AND the evidence section must both be absent, not merely
+    // accompanied by an error: each is gated on its own `!refundsUnknown`, so a
+    // fix that removed only one of the two gates passes this line for the other.
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument();
+    expect(screen.queryByText('Previous Refunds')).not.toBeInTheDocument();
+    // The action that would be refused for an invisible reason is not offered.
+    expect(screen.queryByText('Refund')).not.toBeInTheDocument();
+    // The detail itself still rendered -- only the refund read was unanswered.
+    // (The total label is split across elements by its <Localized> wrapper, so the
+    // footer action is the stable thing to anchor on.)
+    expect(screen.getByRole('button', { name: /reprint/i })).toBeInTheDocument();
+  });
+
+  it('offers the refund action again once a retry answers with no refunds', async () => {
+    mockListRefunds.mockRejectedValue(new Error('invoke failed'));
+    const user = await openFirstSaleDetail();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Refunds for this sale could not be loaded',
+      );
+    });
+
+    // The retry succeeds and answers [] -- a real answer now, not a swallowed throw.
+    mockListRefunds.mockResolvedValue([]);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refund')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // Absence becomes a fact only now: nothing was refunded, and a read said so.
+    expect(screen.queryByText('Refunded')).not.toBeInTheDocument();
+    expect(screen.queryByText('Previous Refunds')).not.toBeInTheDocument();
+  });
 });

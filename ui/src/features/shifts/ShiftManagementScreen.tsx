@@ -12,6 +12,9 @@ import { l10nErrorMessage } from '@/utils/app-error';
 import { useCurrency } from '@/contexts/CurrencyContext';
 import { useAnimatedModal } from '@/hooks/useAnimatedModal';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+// The shared answered-or-unknown read contract. Four screens each grew their own copy
+// before this moved to ui/src/utils/settle-read.ts.
+import { settleRead } from '@/utils/settle-read';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components';
@@ -35,37 +38,6 @@ import './ShiftManagementScreen.css';
 
 const fmt = (minor: number, currency = 'USD') =>
   formatMoney({ minor_units: minor, currency });
-
-// ── Read settlement ─────────────────────────────────────────────────
-
-/**
- * Await a read and report whether it ANSWERED, without ever handing a failed
- * read a value the caller can mistake for an answer.
- *
- * The defect this exists for: `getActiveShiftScoped(token).catch(() => null)`
- * collapsed "the read failed" into "no shift is open", and the screen's only
- * affordance in that state is Open Shift. A transient network error therefore
- * invited the cashier to open a SECOND shift against one the database still
- * holds open. The partial unique index `idx_shifts_open_per_user`
- * (migrations/20261011_open_shift_uniqueness.sql) refuses that write, so the
- * cost was not a corrupt ledger but a refusal reported for the wrong reason.
- *
- * `{ ok: false }` carries no value at all, which is the whole point: the caller
- * has to decide what an unanswered read means for its own state. The console
- * line is what keeps the two cases tellable apart later -- a swallowed throw
- * and a genuine "none" look identical on screen.
- */
-async function settleRead<T>(
-  label: string,
-  read: Promise<T>,
-): Promise<{ ok: true; value: T } | { ok: false }> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[shifts] ${label} read failed -- recording unknown:`, err);
-    return { ok: false };
-  }
-}
 
 // ── Component ───────────────────────────────────────────────────────
 
