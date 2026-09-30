@@ -138,7 +138,7 @@ export function updateQtyEntry(
 
 /**
  * KdsProductPickerModal — searchable product selector for adding items
- * to a KDS order mid-preparation (TODO 3f).
+ * to a KDS order mid-preparation.
  *
  * Fetches all products from the store, filters by restaurant/both type,
  * and lets the user pick items with quantities and course assignments.

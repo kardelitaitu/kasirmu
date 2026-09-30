@@ -46,9 +46,9 @@ export interface KdsLayoutProps {
   onSaveItems?: (orderId: string, itemsSummary: string, itemCount: number) => void;
   /** Session token for scoped API calls (e.g., fetching line items). */
   sessionToken: string;
-  /** Called when a single line item is tapped to advance its status (TODO 3e). */
+  /** Called when a single line item is tapped to advance its status. */
   onAdvanceItem?: (item: KdsLineItem) => void;
-  /** Called to open the product picker for adding items to a KDS order (TODO 3f). */
+  /** Called to open the product picker for adding items to a KDS order. */
   onAddItems?: (orderId: string) => void;
   /** Set of order IDs that just arrived — used for brief highlight animation. */
   newOrderIds: ReadonlySet<string>;
@@ -230,7 +230,7 @@ export default function KdsScreen() {
     }
   }, [sessionToken, speak, l10n, wrapUpdate]);
 
-  // ── Per-item status advance (TODO 3e) ──────────────────────────
+  // ── Per-item status advance ────────────────────────────────────
   const advanceItemStatus = useCallback(async (item: KdsLineItem) => {
     // ITEM_STATUS_ORDER used to be re-declared here as a fresh array literal on every
     // call; the item ladder is the same progression as the ticket ladder, so it now

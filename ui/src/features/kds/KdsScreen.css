@@ -1499,7 +1499,7 @@
   border-radius: var(--kds-r-sm);
 }
 
-/* Per-item status dot + label (TODO 3e) */
+/* Per-item status dot + label */
 .kds-ticket-item-row--actionable {
   cursor: pointer;
   min-height: 2.75rem;

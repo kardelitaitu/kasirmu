@@ -1,4 +1,4 @@
-// ── KdsProductPickerModal contract tests (TODO 3f) ────────────────
+// ── KdsProductPickerModal contract tests ──────────────────────────
 //
 // Pins the add → confirm / cancel semantics of the mid-preparation
 // product picker: tapping a product merges by SKU into the picked list
