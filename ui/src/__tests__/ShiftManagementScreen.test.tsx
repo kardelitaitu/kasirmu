@@ -348,4 +348,54 @@ describe('ShiftManagementScreen', () => {
     // unreachable by clicking, so that branch cannot be tested through the UI.
     expect(mockCreateCashPayout).not.toHaveBeenCalled();
   });
+
+  // ── Unanswered active-shift read ────────────────────────────
+  //
+  // The defect: `getActiveShiftScoped(token).catch(() => null)` reported a
+  // FAILED read as "no shift is open", and the screen's only affordance in that
+  // state is Open Shift. A transient error therefore invited the cashier to open
+  // a second shift against one the database still holds open. The read failing
+  // and the read answering "none" are now separate states, and the unanswered
+  // one offers Reload.
+
+  it('does not claim there is no active shift when the read failed', async () => {
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockRejectedValue(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+    // The claim itself must be absent -- not merely accompanied by an error.
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    expect(screen.queryByText('Open Shift')).not.toBeInTheDocument();
+    // The only action offered is the one that re-asks the question.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    // The history table still renders: only the active-shift read was unanswered.
+    expect(screen.getByText('Shift History')).toBeInTheDocument();
+  });
+
+  it('recovers the no-active banner once the retry answers', async () => {
+    const user = userEvent.setup();
+    mockListShifts.mockResolvedValue(closedShifts);
+    mockGetActiveShift.mockRejectedValue(new Error('invoke failed'));
+    renderWithFluentSync(<ToastProvider><ShiftManagementScreen /></ToastProvider>, shiftsFtl, sharedFtl);
+
+    // Wait for the FAILED state first. Polling for the banner's absence straight
+    // away passes vacuously -- while `loading` is still true the banner is not
+    // rendered either way, so that assertion proves nothing about the defect.
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to load shifts');
+    });
+    expect(screen.queryByText('No active shift')).not.toBeInTheDocument();
+    // The retry succeeds and answers "none". Only NOW is the absence a fact.
+    mockGetActiveShift.mockResolvedValue(null);
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No active shift')).toBeInTheDocument();
+      expect(screen.getByText('Open Shift')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

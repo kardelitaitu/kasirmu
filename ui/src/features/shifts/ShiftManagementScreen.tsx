@@ -36,6 +36,37 @@ import './ShiftManagementScreen.css';
 const fmt = (minor: number, currency = 'USD') =>
   formatMoney({ minor_units: minor, currency });
 
+// ── Read settlement ─────────────────────────────────────────────────
+
+/**
+ * Await a read and report whether it ANSWERED, without ever handing a failed
+ * read a value the caller can mistake for an answer.
+ *
+ * The defect this exists for: `getActiveShiftScoped(token).catch(() => null)`
+ * collapsed "the read failed" into "no shift is open", and the screen's only
+ * affordance in that state is Open Shift. A transient network error therefore
+ * invited the cashier to open a SECOND shift against one the database still
+ * holds open. The partial unique index `idx_shifts_open_per_user`
+ * (migrations/20261011_open_shift_uniqueness.sql) refuses that write, so the
+ * cost was not a corrupt ledger but a refusal reported for the wrong reason.
+ *
+ * `{ ok: false }` carries no value at all, which is the whole point: the caller
+ * has to decide what an unanswered read means for its own state. The console
+ * line is what keeps the two cases tellable apart later -- a swallowed throw
+ * and a genuine "none" look identical on screen.
+ */
+async function settleRead<T>(
+  label: string,
+  read: Promise<T>,
+): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await read };
+  } catch (err) {
+    console.error(`[shifts] ${label} read failed -- recording unknown:`, err);
+    return { ok: false };
+  }
+}
+
 // ── Component ───────────────────────────────────────────────────────
 
 /** Shift management screen — view active shift status, open and close shifts, record cash payouts, and display reconciliation reports. */
@@ -47,6 +78,13 @@ export default function ShiftManagementScreen() {
   const { currency } = useCurrency();
   const [shifts, setShifts] = useState<ShiftDto[]>([]);
   const [activeShift, setActiveShift] = useState<ShiftDto | null>(null);
+  // `null` is the honest answer to BOTH 'no open shift' and 'we could not ask',
+  // so the screen needs a third state to tell them apart. `unknown` means the
+  // read failed; it must never reach the no-active banner below, which invites
+  // the cashier to open a second shift while the first may still be open. The
+  // partial unique index (migrations/20261011_open_shift_uniqueness.sql) would
+  // refuse that write, but the operator would be told the wrong reason.
+  const [activeShiftUnknown, setActiveShiftUnknown] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // ── Modals ────────────────────────────────────────────────────────
@@ -74,10 +112,19 @@ export default function ShiftManagementScreen() {
     try {
       const [allShifts, active] = await Promise.all([
         listShiftsScoped(sessionToken),
-        getActiveShiftScoped(sessionToken).catch(() => null),
+        settleRead('active_shift', getActiveShiftScoped(sessionToken)),
       ]);
       setShifts(allShifts);
-      setActiveShift(active);
+      if (active.ok) {
+        setActiveShift(active.value);
+        setActiveShiftUnknown(false);
+      } else {
+        // `null` is what BOTH answers look like from here: a read that found
+        // nothing, and a read that failed. Only the flag keeps them apart, and
+        // the no-active banner below is gated on it so a transient failure can
+        // never invite the cashier to open a shift that is already open.
+        setActiveShiftUnknown(true);
+      }
     } catch {
       addToast({ message: requiredLocalized(l10n, 'shift-load-error'), type: 'error' });
     } finally {
@@ -399,8 +446,33 @@ export default function ShiftManagementScreen() {
             </Card>
           )}
 
+          {/* ── Unanswered active-shift read ──────────────────── */}
+          {activeShiftUnknown && !closedShiftSummary && (
+            /* The screen does NOT know whether a shift is open. That is not the
+               same claim as "none is open", so this branch is deliberately
+               separate from the banner below and offers Reload rather than Open
+               Shift -- opening here would be the exact wrong action. Reuses the
+               copy the screen already ships and the one error class it already
+               owns, so no new Fluent key and no new sheet rule. */
+            <Card shadow="sm" className="shift-mgmt-no-active">
+              <div className="shift-mgmt-no-active-content">
+                <div className="shift-mgmt-modal-error" role="alert">
+                  <Localized id="shift-load-error">
+                    <span>Failed to load shifts</span>
+                  </Localized>
+                </div>
+                {/* Direct child of the flex row so the sheet's existing
+                    `.shift-mgmt-no-active-content > button { margin-left: auto }`
+                    pushes it right with no new rule. */}
+                <Button variant="secondary" onClick={load}>
+                  <Localized id="retry"><span>Retry</span></Localized>
+                </Button>
+              </div>
+            </Card>
+          )}
+
           {/* ── No active shift banner ──────────────────── */}
-          {!activeShift && !closedShiftSummary && (
+          {!activeShift && !activeShiftUnknown && !closedShiftSummary && (
             <Card shadow="sm" className="shift-mgmt-no-active">
               <div className="shift-mgmt-no-active-content">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="32" height="32" aria-hidden="true">
