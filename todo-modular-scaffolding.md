@@ -801,8 +801,8 @@ Exit criteria:
 
 **Goal:** Enforce the modular boundaries mechanically.
 
-> **Status 2026-10-03:** open. Phase 4 is strict enforcement and needs its own ticket document
-> (the same shape as the Phase 1–3 documents). Two of its gates shipped early in Phase 3 — the
+> **Status 2026-10-03:** open. Executable tickets: `docs/architecture/phase4-implementation-tickets.md`
+> (P4.1–P4.6). Two of its gates shipped early in Phase 3 — the
 > core-size ratchet and the handler-classification gate — because they are structural and do not
 > depend on strict enforcement. The remaining work: a `ReportingFacade` trait, strict
 > `NamespacedStore` rejection of ungranted access, removing `NamespacedStore::raw()`, lifting
@@ -931,8 +931,8 @@ The actions this section listed when Phases 0–3 began (run the handler census,
 ADR, add the soft governance rules, draft `NamespacedStore`, prepare the Phase 1 tickets) are all
 delivered — see §15. The next concrete action is:
 
-1. **Write the Phase 4 implementation tickets** (`docs/architecture/phase4-implementation-tickets.md`,
-   to be created), in the same shape as the Phase 1–3 documents, covering:
+1. **Execute the Phase 4 implementation tickets** (`docs/architecture/phase4-implementation-tickets.md`,
+   written 2026-10-03 — P4.1–P4.6), covering:
    - a `ReportingFacade` trait so reporting reads go through one named surface
      (`docs/architecture/reporting-facade-inventory.md` §7 sketches the four methods);
    - strict `NamespacedStore` rejection of ungranted access;

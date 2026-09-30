@@ -13,6 +13,8 @@ and checkout behaviour unchanged.
 - `docs/architecture/reporting-facade-inventory.md` — the facade surface and its single bypass edge.
 - `docs/architecture/module-namespace-governance.md` §3–§4 — the ownership map, the frozen edges, the checker.
 
+**Successor:** `docs/architecture/phase4-implementation-tickets.md` — Phase 4 (strict namespace firewall).
+
 **Grounding rule (kept from Phases 0–2):** every ticket names a repository fact verified at the time of
 writing. Where the plan's prose disagrees with the tree, the tree wins and the disagreement is recorded.
 
