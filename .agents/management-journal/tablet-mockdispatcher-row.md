@@ -5,6 +5,13 @@ and revert the tablet half. Nothing here is committed and nothing here was commi
 command was run after 06:0x on your crate, so every anchor below is a file hash, not a sha,
 and every claim carries the command that produced it. Reproduce any of them before acting.
 
+> **Package names were repointed on 2026-09-30.** The rebrand renamed `oz-pos-tablet` to
+> `kasirmu-mobile`, so the commands below named a package that no longer exists and each
+> one failed at argument parsing before reaching a single test. The results recorded
+> beside them are the delegated auditor's measurements from 2026-09-13 and are left
+> exactly as written; the commands now name the package those measurements were taken
+> against. Read the exit codes as the auditor's, not as a fresh run.
+
 ## 1. what to insert, and where
 
 Anchor: the existing `dev-mock/tauri-api.ts` entry in the `allowed` array of
@@ -33,7 +40,7 @@ returns 0 now.
 
 ## 2. the measurement that makes them safe
 
-`cargo test -p oz-pos-tablet registration` on your current bytes prints, verbatim:
+`cargo test -p kasirmu-mobile registration` on your current bytes prints, verbatim:
 
 > PIN OF A KNOWN HAZARD, NOT AN ENDORSEMENT: 100 of 103 invoke() sites in ui/src name the
 > command as a literal and these 1 build it at runtime:
@@ -54,7 +61,7 @@ point. so this entry adds a case to a class the file defines, it does not weaken
 
 ## 3. two measurements to run yourself, not to trust from me
 
-- `cargo test -p oz-pos-tablet registration` — on your current bytes this is **exit 101,
+- `cargo test -p kasirmu-mobile registration` — on your current bytes this is **exit 101,
   `6 passed; 1 failed`**, the failure being
   `drift_pin_no_computed_command_names_in_ui` (query: run it, then
   `grep "test result" <log>`). I measured that at ~06:12 on the restored file, so the red is
@@ -63,13 +70,13 @@ point. so this entry adds a case to a class the file defines, it does not weaken
   same pin from red to green on desktop, where it was measured
   (`cargo test -p kasirmu-app registration` → `running 8 tests`, `8 passed; 0 failed`, exit 0),
   but I never ran your crate while patched, because I reverted to your bytes first.
-- `cargo check -p oz-pos-tablet --tests` — must be exit 0 with **zero warnings**, because
+- `cargo check -p kasirmu-mobile --tests` — must be exit 0 with **zero warnings**, because
   `.github/workflows/dev-ci.yml:10` sets `RUSTFLAGS: -D warnings` and the `cargo-check` job
   at `:200` runs `--all-targets`, so a doc warning in a comment you add is a red build
   rather than a cosmetic thing. `grep -c "^warning" <log>` → 0.
 - ordering note from my own runs tonight: cargo skips a rebuild when a restore preserves the
   source mtime, so `Copy-Item` back can silently re-test a stale binary. Count the
-  `Compiling oz-pos-tablet` line in the log before believing any pass or fail.
+  `Compiling kasirmu-mobile` line in the log before believing any pass or fail.
 
 ## 4. provenance, the three things that keep this honest
 
@@ -113,7 +120,7 @@ tablet copy is not this lane's fence.
 ## 6. the measurement that turned the reading into a fact (2026-09-13, 09:13 +07)
 
 appended 09:16 +07. nothing above is retracted; §2 and §3 are now reproduced rather than predicted.
-- `cargo test -p oz-pos-tablet registration_gate` → exit 101, `running 7 tests`, `6 passed; 1
+- `cargo test -p kasirmu-mobile registration_gate` → exit 101, `running 7 tests`, `6 passed; 1
   failed`, `finished in 0.16s` on a warm target (cargo printed `Finished ... in 0.74s`, the whole
   invocation 1.4s wall, 09:13:04 +07; the earlier 09:07 +07 run read 1.04s warm — same verdict).
 - the failure is `drift_pin_no_computed_command_names_in_ui`, panicking at
