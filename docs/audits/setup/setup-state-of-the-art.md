@@ -1707,4 +1707,5 @@ them. The field is a build stamp, not a route inventory; it cannot answer "is th
 So the blocker a merchant would have hit is gone, but the thing Round 34 actually wanted — a
 terminal completing first-run against the live server on real hardware — is still unmeasured.
 
-> last audited 30-09-26 by DSH (round 35 · live re-measure of round 34's deferred deploy)
+> **Round 35 ·** a live re-measure of round 34's deferred deploy.
+> last audited 30-09-26 by DSH
