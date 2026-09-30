@@ -9,6 +9,7 @@ use super::*;
 const SALES: ModuleId = ModuleId("sales");
 const INVENTORY: ModuleId = ModuleId("inventory");
 const REPORTING: ModuleId = ModuleId("reporting");
+const SETTINGS: ModuleId = ModuleId("settings");
 
 #[test]
 fn own_table_passes() {
@@ -19,6 +20,46 @@ fn own_table_passes() {
         Posture::ReadWrite,
     );
     assert!(ok.is_ok(), "own table must pass: {ok:?}");
+}
+
+#[test]
+fn upsert_do_update_set_does_not_name_a_table() {
+    // Regression: `ON CONFLICT (key) DO UPDATE SET value = ?2` is an UPSERT,
+    // not a reference to a table called "set". The scanner used to read the
+    // token after "update" unconditionally, so this failed with
+    // UnknownTable { table: "set" }.
+    let sql = "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
+               ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3";
+    assert!(
+        check_statement(SETTINGS, &Grants::none(), sql, Posture::ReadWrite).is_ok(),
+        "an UPSERT must be accepted as an own-table write"
+    );
+}
+
+#[test]
+fn upsert_on_a_foreign_table_is_still_caught() {
+    // The fix must not blind the check: the INSERT target is what governs.
+    let sql = "INSERT INTO products (sku) VALUES (?1)
+               ON CONFLICT(sku) DO UPDATE SET sku = ?1";
+    let err = check_statement(SALES, &Grants::none(), sql, Posture::ReadWrite).unwrap_err();
+    assert!(
+        matches!(err, NamespaceError::Foreign { ref table, .. } if table == "products"),
+        "expected Foreign on products, got {err:?}"
+    );
+}
+
+#[test]
+fn statement_initial_update_still_names_its_table() {
+    let sql = "UPDATE sales SET status = ?1 WHERE id = ?2";
+    assert!(check_statement(SALES, &Grants::none(), sql, Posture::ReadWrite).is_ok());
+    let err = check_statement(
+        SALES,
+        &Grants::none(),
+        "UPDATE products SET sku = ?1",
+        Posture::ReadWrite,
+    )
+    .unwrap_err();
+    assert!(matches!(err, NamespaceError::Foreign { .. }), "got {err:?}");
 }
 
 #[test]

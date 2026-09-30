@@ -434,6 +434,14 @@ fn extract_table_references(sql: &str) -> Vec<String> {
                 start = at + kw.len();
                 continue;
             }
+            // `UPDATE` introduces a table only as a statement-initial write
+            // verb. Inside an UPSERT it is `... ON CONFLICT (...) DO UPDATE
+            // SET ...`, where "update" is part of the clause, not a table
+            // reference — reading the next token would name "set".
+            if kw == "update" && lower[..at].trim_end().ends_with(" do") {
+                start = at + kw.len();
+                continue;
+            }
             let after = at + kw.len();
             if after < bytes.len() && (bytes[after].is_ascii_alphanumeric() || bytes[after] == b'_')
             {

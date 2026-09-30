@@ -8,30 +8,42 @@ next: when this mirror is wired into the runtime, route writes through platform_
 //! Settings Repository — key-value database persistence layer.
 
 use crate::error::SettingsError;
-use rusqlite::{Connection, params};
+use kasirmu_core::db::Store;
+use kasirmu_core::db::namespaced::{Grants, ModuleId, NamespacedStore};
+use rusqlite::Connection;
+
+/// The settings module's own namespace id, as the ownership map names it.
+const OWNER: ModuleId = ModuleId("settings");
 
 /// Database access repository for key-value settings.
+///
+/// Phase 3 P3.2: the repository now reaches the database through a
+/// [`NamespacedStore`] scoped to the `settings` namespace rather than a bare
+/// `&Connection`. `settings` owns the `settings` table
+/// (`modules/ownership.json`), so the store carries `Grants::none()` and every
+/// statement is checked against the ownership map before it runs — a future
+/// edit that reached for another vertical's table would fail the check instead
+/// of compiling into a silent foreign read.
 pub struct SettingsRepository<'a> {
-    conn: &'a Connection,
+    ns: NamespacedStore<'a>,
 }
 
 impl<'a> SettingsRepository<'a> {
-    /// Create a new `SettingsRepository`.
+    /// Create a new `SettingsRepository` over the module's own namespace.
     pub fn new(conn: &'a Connection) -> Self {
-        Self { conn }
+        Self {
+            ns: NamespacedStore::new(Store::new(conn), OWNER, Grants::none()),
+        }
     }
 
     /// Retrieve setting value by key.
     pub fn get(&self, key: &str) -> Result<Option<String>, SettingsError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT value FROM settings WHERE key = ?1")?;
-        let mut rows = stmt.query(params![key])?;
-        if let Some(row) = rows.next()? {
-            Ok(Some(row.get(0)?))
-        } else {
-            Ok(None)
-        }
+        let rows = self.ns.own().query(
+            "SELECT value FROM settings WHERE key = ?1",
+            rusqlite::params![key],
+            |row| row.get::<_, String>(0),
+        )?;
+        Ok(rows.into_iter().next())
     }
 
     /// Insert or update a setting value by key.
@@ -83,10 +95,10 @@ impl<'a> SettingsRepository<'a> {
     /// that pin goes red and this comment must be updated with it.
     pub fn set(&self, key: &str, value: &str) -> Result<(), SettingsError> {
         let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        self.conn.execute(
+        self.ns.own().execute(
             "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, ?3)
              ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",
-            params![key, value, now],
+            rusqlite::params![key, value, now],
         )?;
         Ok(())
     }
