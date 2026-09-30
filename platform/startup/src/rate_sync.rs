@@ -18,10 +18,12 @@ next: none | perf: blocking DB work off the async runtime
 //! both ends: nothing started it and nothing configured it. As of 2026-09-29:
 //!
 //! - **Backend:** each Tauri shell's `setup` closure starts it via
-//!   `platform_startup::spawn_once("rate-sync", …)` → [`init_rate_sync`] with
+//!   `platform_startup::spawn_once("rate-sync", …)` → [`init_rate_sync_at`] with
 //!   the shared `AppState` connection (`apps/desktop-tauri/src/lib.rs`,
 //!   `apps/mobile-tauri/src/lib.rs`). The cloud server deliberately does not:
-//!   rates are a per-store client concern.
+//!   rates are a per-store client concern. (The wrapper takes a
+//!   `&Path` and opens its own connection, which is the only call shape
+//!   the shells can build from a `setup` closure.)
 //! - **Frontend:** the currency screen's auto-sync toggle writes
 //!   `rate_sync.enabled`.
 //! - **Cycle order changed with the wiring:** the daemon now TICKS FIRST and
@@ -256,9 +258,9 @@ impl RateSyncDaemon {
         .await
         {
             Ok((false, _)) => DISABLED_POLL_INTERVAL,
-            Ok((true, Some(minutes))) => {
-                Duration::from_secs(minutes.clamp(MIN_SYNC_INTERVAL_MINUTES, MAX_SYNC_INTERVAL_MINUTES) * 60)
-            }
+            Ok((true, Some(minutes))) => Duration::from_secs(
+                minutes.clamp(MIN_SYNC_INTERVAL_MINUTES, MAX_SYNC_INTERVAL_MINUTES) * 60,
+            ),
             Ok((true, None)) => fallback,
             Err(join_err) => {
                 tracing::error!(
@@ -276,32 +278,30 @@ impl RateSyncDaemon {
         client: &reqwest::Client,
     ) {
         let db_clone = db.clone();
-        let (enabled, base_currency) =
-            match tokio::task::spawn_blocking(move || {
-                // RUST-07: recover from a poisoned lock by reusing the guard
-                // (the Connection itself is still usable) instead of panicking.
-                let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
-                let enabled =
-                    kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
-                let base = kasirmu_core::settings::Settings::get_rate_sync_base_currency(&conn)
-                    .unwrap_or_else(|_| "USD".into());
-                (enabled, base)
-            })
-            .await
-            {
-                Ok(v) => v,
-                Err(join_err) => {
-                    let msg = format!("rate sync settings read panicked: {join_err}");
-                    tracing::error!(error = %msg, "rate sync read phase failed");
-                    let mut s = daemon_status.write().await;
-                    s.last_sync_at = Some(
-                        chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    );
-                    s.last_error = Some(msg);
-                    s.rates_updated = 0;
-                    return;
-                }
-            };
+        let (enabled, base_currency) = match tokio::task::spawn_blocking(move || {
+            // RUST-07: recover from a poisoned lock by reusing the guard
+            // (the Connection itself is still usable) instead of panicking.
+            let conn = db_clone.lock().unwrap_or_else(|e| e.into_inner());
+            let enabled =
+                kasirmu_core::settings::Settings::is_rate_sync_enabled(&conn).unwrap_or(false);
+            let base = kasirmu_core::settings::Settings::get_rate_sync_base_currency(&conn)
+                .unwrap_or_else(|_| "USD".into());
+            (enabled, base)
+        })
+        .await
+        {
+            Ok(v) => v,
+            Err(join_err) => {
+                let msg = format!("rate sync settings read panicked: {join_err}");
+                tracing::error!(error = %msg, "rate sync read phase failed");
+                let mut s = daemon_status.write().await;
+                s.last_sync_at =
+                    Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+                s.last_error = Some(msg);
+                s.rates_updated = 0;
+                return;
+            }
+        };
 
         // Update status with base currency
         {
