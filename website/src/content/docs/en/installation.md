@@ -52,4 +52,4 @@ reinstalled manually from the releases page.
 ## Next steps
 
 [Ring up your first sale](../first-sale/), or see [activation](../activation/)
-when you're ready to unlock more stores, QRIS payments, and cloud sync.
+when you're ready to unlock more locations, QRIS payments, and cloud sync.

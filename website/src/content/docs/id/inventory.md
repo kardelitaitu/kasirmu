@@ -2,7 +2,7 @@
 title: Inventaris & Gudang
 description: Pantau stok lintas gudang dengan riwayat pergerakan.
 category: guides
-order: 5
+order: 3
 updated: "2026-09-09"
 ---
 

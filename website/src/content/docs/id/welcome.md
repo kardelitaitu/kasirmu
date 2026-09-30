@@ -40,20 +40,20 @@ perjalanan, dan langsung mendukung bahasa Inggris dan Bahasa Indonesia.
 - **Memutuskan dengan data** — dasbor penjualan harian, laporan penjualan,
   menu engineering, dan analitik.
 - **Berkembang** — loyalitas, kartu hadiah, promosi, kiosk layanan mandiri,
-  dan topologi multi-toko.
+  dan topologi multi-lokasi.
 
 ## Perangkat keras & perangkat
 
 kasir.mu bekerja dengan perangkat keras yang sudah ada di kasir: pemindai
 barcode, printer struk, laci kas, layar pelanggan, dan pembaca NFC. Perangkat
-dikelola sebagai terminal — daftarkan, ikat ke toko dan ruang kerja, lalu
+dikelola sebagai terminal — daftarkan, ikat ke lokasi dan ruang kerja, lalu
 sesuaikan fitur per perangkat. Lihat [Terminal](../terminals/) dan
-[Toko & Topologi](../stores/).
+[Lokasi & Topologi](../location/).
 
 ## Paket & harga
 
-kasir.mu **gratis selamanya** untuk memulai — satu toko, satu register, dan
-riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih banyak toko dan
+kasir.mu **gratis selamanya** untuk memulai — satu lokasi, satu register, dan
+riwayat penjualan 3 bulan. Paket berbayar menambahkan lebih banyak lokasi dan
 register, plus pembayaran QRIS, sinkron cloud, dan otomasi; ruang kerja gudang
 mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
 
@@ -62,9 +62,11 @@ mulai paket Premium. Lihat [Lisensi & Paket](../licensing/).
 1. [Pasang kasir.mu](../installation/) di Windows — paket gratis dimulai saat
    peluncuran pertama, tanpa perlu akun. Platform lain segera hadir.
 2. Selesaikan wizard pengaturan — nama usaha dan mata uang bawaan.
-3. [Transaksi pertama Anda](../first-sale/) — bahkan tanpa internet.
-4. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak
-   toko, pembayaran QRIS, dan sinkron cloud.
+3. [Aktifkan kunci lisensi](../activation/) saat siap membuka lebih banyak
+   lokasi, pembayaran QRIS, dan sinkron cloud.
+4. [Transaksi pertama Anda](../first-sale/) dari ruang kerja yang Anda
+   butuhkan — [Ruang Kerja](../workspaces/) mencakup POS Ritel, POS
+   Restoran, Layar Dapur, dan Gudang — bahkan tanpa internet.
 
 ## Instal ulang atau terkunci?
 
@@ -76,9 +78,11 @@ sekali per 24 jam. Lihat [Instal ulang atau pemulihan lisensi](../activation/#in
 
 ## Cara dokumentasi disusun
 
-- **Memulai** — instal, aktivasi, dan transaksi pertama Anda.
-- **Panduan** — alur kerja harian: sinkron, pembayaran, shift, inventaris,
-  ruang kerja, dan terminal.
+- **Memulai** — instal, aktivasi, transaksi pertama Anda, dan pilih ruang
+  kerja tempat Anda bekerja.
+- **Panduan** — alur kerja harian: pembayaran, shift, inventaris, lokasi,
+  terminal, dan cara mode offline serta sinkron cloud menjaga Anda tetap
+  berjalan.
 - **Referensi** — lisensi, paket, dan pengaturan.
 
 ## Mendapatkan bantuan

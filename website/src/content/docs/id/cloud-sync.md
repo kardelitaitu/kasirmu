@@ -1,8 +1,8 @@
 ---
 title: Sinkron Cloud
-description: Sinkron lintas toko dan register melalui cloud.
+description: Sinkron lintas lokasi dan register melalui cloud.
 category: guides
-order: 2
+order: 8
 updated: "2026-08-16"
 ---
 

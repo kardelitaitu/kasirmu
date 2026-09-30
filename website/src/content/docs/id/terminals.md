@@ -2,7 +2,7 @@
 title: Terminal
 description: Daftarkan dan konfigurasikan perangkat yang menjalankan kasir.mu.
 category: guides
-order: 8
+order: 5
 updated: "2026-09-09"
 ---
 
@@ -68,6 +68,6 @@ kejutan di kasir.
 
 Terminal muncul di editor topologi bersama toko dan gudang, dan tata letak
 tersinkron ke setiap perangkat saat terhubung kembali. Lihat
-[Toko & Topologi](../stores/) dan [Ruang Kerja](../workspaces/).
+[Lokasi & Topologi](../location/) dan [Ruang Kerja](../workspaces/).
 
 > last audited 09-09-26 by docs-auditor

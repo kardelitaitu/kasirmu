@@ -2,7 +2,7 @@
 title: Shifts & Reconciliation
 description: Close cashier shifts cleanly with a full audit trail.
 category: guides
-order: 4
+order: 2
 updated: "2026-09-09"
 ---
 

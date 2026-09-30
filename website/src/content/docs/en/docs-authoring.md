@@ -2,7 +2,7 @@
 title: Docs Styling Guide
 description: How to use callouts, links, tables, code, and charts when writing documentation.
 category: reference
-order: 3
+order: 4
 updated: "2026-08-16"
 ---
 

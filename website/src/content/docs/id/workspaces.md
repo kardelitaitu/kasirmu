@@ -1,8 +1,8 @@
 ---
 title: Ruang Kerja
 description: Pilih fungsi setiap layar — kasir ritel, layanan restoran, dapur, atau back office.
-category: guides
-order: 7
+category: gettingStarted
+order: 5
 updated: "2026-09-19"
 ---
 
@@ -47,12 +47,12 @@ mengatur tata letak meja, pengiriman kursus, dan printer dapur. Tampilan
 Dapur mengatur eskalasi SLA dan suara pesanan baru. Lihat [Pengaturan](../settings/)
 untuk daftar lengkap.
 
-## Ruang kerja milik sebuah toko
+## Ruang kerja milik sebuah lokasi
 
-Setiap instance ruang kerja terikat ke toko. Saat mulai, perangkat
-menyelesaikan tokonya — dari binding terminal bila ada, jika tidak toko
-utama — lalu menampilkan ruang kerja toko tersebut. Lihat
-[Toko & Topologi](../stores/) dan [Terminal](../terminals/).
+Setiap instance ruang kerja terikat ke lokasi. Saat mulai, perangkat
+menyelesaikan lokasinya — dari binding terminal bila ada, jika tidak lokasi
+utama — lalu menampilkan ruang kerja lokasi tersebut. Lihat
+[Lokasi & Topologi](../location/) dan [Terminal](../terminals/).
 
 ## Ruang kerja yang direncanakan
 

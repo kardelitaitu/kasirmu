@@ -1,8 +1,8 @@
 ---
-title: Toko & Topologi
+title: Lokasi & Topologi
 description: Modelkan cabang, register, dan gudang dalam satu editor visual.
 category: guides
-order: 6
+order: 4
 updated: "2026-08-16"
 ---
 
@@ -10,8 +10,8 @@ updated: "2026-08-16"
 
 ## Editor topologi
 
-Toko, register, gudang, dan perangkat keras disusun dalam diagram visual —
-**Builder Topologi Visual Toko & Workspace**. Node diseret dari palet (atau
+Lokasi, register, gudang, dan perangkat keras disusun dalam diagram visual —
+**Builder Topologi Visual Lokasi & Workspace**. Node diseret dari palet (atau
 ditambah dengan tombol angka) dan dihubungkan dengan kabel di kanvas yang
 mendukung zoom, pan, minimap, tata letak otomatis, snap ke grid, serta
 undo/redo. Preset siap pakai **Ritel** dan **Resto & KDS** membuat kerangka
@@ -20,7 +20,7 @@ melalui tata letak sehingga Anda dapat melihat alurnya sebelum diluncurkan.
 
 ## Node dan koneksi
 
-Setiap node adalah bagian nyata dari bisnis Anda: **Toko** (profil cabang),
+Setiap node adalah bagian nyata dari bisnis Anda: **Lokasi** (profil cabang),
 **POS Ritel**, **POS Restoran**, **Layar Dapur (KDS)**, **Gudang**, **Node
 Gudang Stok**, dan **Perangkat Keras** (printer dan periferal). Kartu
 menampilkan port berjenis — **Lokasi**, **Operasi**, **Stok Masuk/Keluar**,
@@ -57,7 +57,7 @@ menerapkan tata letak yang sama ke setiap cabang.
 
 ## Batas paket
 
-Jumlah toko, register, dan gudang ditentukan oleh paket Anda. Editor menandai
+Jumlah lokasi, register, dan gudang ditentukan oleh paket Anda. Editor menandai
 apa pun yang melebihi batas sebelum Anda menerapkannya, dan beberapa gudang
 atau batas kapasitas gudang memerlukan lisensi Premium.
 
@@ -66,4 +66,6 @@ atau batas kapasitas gudang memerlukan lisensi Premium.
 Perangkat menarik topologi saat terhubung kembali, sehingga register baru
 muncul di setiap layar tanpa pengaturan manual.
 
+> 2026-09-30 · Seruan penamaan ulang **Toko → Lokasi**; halaman berganti
+> nama stores.md → location.md.
 > last audited 08-09-26 by docs-auditor

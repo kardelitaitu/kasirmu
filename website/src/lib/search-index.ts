@@ -58,11 +58,11 @@ export const DOC_KEYWORDS: Record<string, string> = {
   'user-roles': 'roles permissions staff cashier manager admin supervisor access presets accounts',
   // guides
   'offline-mode': 'offline local first no internet connectivity queue sync later',
-  'cloud-sync': 'cloud sync peer to peer local first backup across stores registers',
+  'cloud-sync': 'cloud sync peer to peer local first backup across locations registers',
   payments: 'midtrans paddle qris qr card edc cash payments ewallet',
   shifts: 'shift cash in cash out cash drawer float reconciliation open close audit trail',
   inventory: 'stock items inventory variants low stock alert sku warehouse movement history',
-  stores: 'store stores branch branches outlet outlets register registers warehouse topology multi store',
+  location: 'location locations store stores branch branches outlet outlets register registers warehouse topology multi lokasi cabang',
   terminals: 'terminal terminals device devices register configure machine onboarding',
   workspaces: 'workspace workspaces layout screen retail restaurant service kitchen back office modes',
   // reference

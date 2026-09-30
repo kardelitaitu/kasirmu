@@ -1,8 +1,8 @@
 ---
-title: Stores & Topology
-description: Model branches, registers, and warehouses in one visual editor.
+title: Locations & Topology
+description: Model locations, registers, and warehouses in one visual editor.
 category: guides
-order: 6
+order: 4
 updated: "2026-09-08"
 ---
 
@@ -10,8 +10,8 @@ updated: "2026-09-08"
 
 ## The topology editor
 
-Stores, registers, warehouses, and hardware are arranged in a visual diagram —
-the **Visual Store & Workspace Topology Builder**. Nodes are dragged from the
+Locations, registers, warehouses, and hardware are arranged in a visual diagram —
+the **Visual Location & Workspace Topology Builder**. Nodes are dragged from the
 palette (or added with the number keys) and wired together on a canvas with
 zoom, pan, minimap, auto-layout, snap-to-grid, and undo/redo. Ready-made
 **Retail** and **Resto & KDS** presets scaffold a full store in one click, and
@@ -20,7 +20,7 @@ watch the flow before going live.
 
 ## Nodes and connections
 
-Each node is a real piece of your business: **Store** (branch location),
+Each node is a real piece of your business: **Location** (a branch),
 **Retail POS**, **Restaurant POS**, **Kitchen Display (KDS)**, **Warehouse**,
 **Stock Room**, and **Hardware** (printers and peripherals). Cards expose typed
 ports — **Location**, **Operation**, **Stock In/Out**, **Ticket**, and
@@ -77,7 +77,7 @@ elsewhere — handy for rolling out the same layout to every branch.
 
 ## Plan limits
 
-The number of stores, registers, and warehouses is set by your plan tier. The
+The number of locations, registers, and warehouses is set by your plan tier. The
 editor flags anything that exceeds your limits before you apply it, and
 multiple warehouses or warehouse capacity limits require a Premium tier license.
 
@@ -86,4 +86,7 @@ multiple warehouses or warehouse capacity limits require a Premium tier license.
 Devices pull the topology when they reconnect, so a new register appears on
 every screen without manual setup.
 
+> 2026-09-30 · Customer rename sweep: **Store → Location**. Page renamed
+> stores.md → location.md; node name, builder name, and plan-limit copy
+> updated. Slugs of inbound cross-links updated the same day.
 > last audited 08-09-26 by docs-auditor

@@ -2,7 +2,7 @@
 title: Terminals
 description: Register and configure the devices that run kasir.mu.
 category: guides
-order: 8
+order: 5
 updated: "2026-09-09"
 ---
 
@@ -66,8 +66,8 @@ at the counter.
 
 ## Terminals in the topology
 
-Terminals appear in the topology editor alongside your stores and
+Terminals appear in the topology editor alongside your locations and
 warehouses, and the layout syncs to every device on reconnect. See
-[Stores & Topology](../stores/) and [Workspaces](../workspaces/).
+[Locations & Topology](../location/) and [Workspaces](../workspaces/).
 
 > last audited 09-09-26 by docs-auditor

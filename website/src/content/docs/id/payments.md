@@ -2,7 +2,7 @@
 title: Pembayaran & QRIS
 description: Terima tunai dan QRIS di semua paket — QR statis dan QR dinamis, tanpa perangkat tambahan.
 category: guides
-order: 3
+order: 1
 updated: "2026-09-17"
 ---
 

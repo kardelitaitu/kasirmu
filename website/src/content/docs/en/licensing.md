@@ -9,12 +9,12 @@ updated: "2026-08-17"
 ## Plans
 
 kasir.mu has five tiers: `free`, `plus`, `pro`, `premium`, and `enterprise`.
-What each plan unlocks — stores, registers, warehouses, QRIS payments, cloud
+What each plan unlocks — locations, registers, warehouses, QRIS payments, cloud
 sync, and scripting — is shown on the [pricing page](../../pricing/).
 
 | Capability      | Free | Plus | Pro | Premium | Enterprise |
 | --------------- | ---- | ---- | --- | ------- | ---------- |
-| Stores          | 1    | 1    | 2   | 5       | Unlimited |
+| Locations          | 1    | 1    | 2   | 5       | Unlimited |
 | Registers / store | 1  | 2    | 5   | Unlimited | Unlimited |
 | Warehouses      | No   | No   | No  | Unlimited | Unlimited |
 | Staff users     | 1    | 5    | 20  | 50      | Unlimited |
@@ -66,6 +66,6 @@ and signs the device out.
 ## Where to see it
 
 **Settings → License** shows your tier, status, expiry date, grace period
-until, max stores and POS instances, tenant ID, and allowed workspace types.
+until, max locations and POS instances, tenant ID, and allowed workspace types.
 The website's account page shows the same from your browser, with machine
 management. See [License Activation](../activation/).

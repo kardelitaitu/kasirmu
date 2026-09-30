@@ -1,8 +1,8 @@
 ---
 title: Cloud Sync
-description: Sync across stores and registers through the cloud.
+description: Sync across locations and registers through the cloud.
 category: guides
-order: 2
+order: 8
 updated: "2026-08-16"
 ---
 

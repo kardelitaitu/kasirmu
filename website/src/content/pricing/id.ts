@@ -12,7 +12,7 @@ import type { FeatureRow, PricingTier } from './types';
 // of the English words: "ruang kerja" for workspace (shared.id.ftl
 // nav-switch-workspace = "Ganti Ruang Kerja", workspace-home-available =
 // "{ $count } ruang kerja tersedia"; docs/id/workspaces.md is titled "Ruang
-// Kerja"), "Layar Dapur (KDS)" for the kitchen display (docs/id/stores.md
+// Kerja"), "Layar Dapur (KDS)" for the kitchen display (docs/id/location.md
 // names the preset exactly that) and "perangkat keras" for hardware
 // (docs/id/terminals.md). Two borrowings stay on purpose: "register" for a
 // cashier terminal (docs/id/terminals.md writes "register kasir") and "Memo",

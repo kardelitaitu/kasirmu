@@ -52,4 +52,4 @@ sebelumnya dapat dipasang ulang secara manual dari halaman rilis.
 ## Langkah berikutnya
 
 [Transaksi pertama Anda](../first-sale/), atau lihat [aktivasi](../activation/)
-saat siap membuka lebih banyak toko, pembayaran QRIS, dan sinkron cloud.
+saat siap membuka lebih banyak lokasi, pembayaran QRIS, dan sinkron cloud.

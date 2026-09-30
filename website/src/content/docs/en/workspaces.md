@@ -1,8 +1,8 @@
 ---
 title: Workspaces
 description: Choose what each screen does — retail checkout, restaurant service, kitchen, or back office.
-category: guides
-order: 7
+category: gettingStarted
+order: 5
 updated: "2026-09-19"
 ---
 
@@ -45,11 +45,12 @@ the table layout, course firing, and the kitchen printer. Kitchen Display
 controls SLA escalation and the new-order sound. See
 [Settings](../settings/) for the full list.
 
-## Workspaces belong to a store
+## Workspaces belong to a location
 
-Every workspace instance is scoped to a store. On startup the device
-resolves its store — from a terminal binding when one is set, otherwise the
-primary store — and shows that store's workspaces. See [Stores & Topology](../stores/) and [Terminals](../terminals/).
+Every workspace instance is scoped to a location. On startup the device
+resolves its location — from a terminal binding when one is set, otherwise the
+primary location — and shows that location's workspaces. See
+[Locations & Topology](../location/) and [Terminals](../terminals/).
 
 ## Planned workspaces
 

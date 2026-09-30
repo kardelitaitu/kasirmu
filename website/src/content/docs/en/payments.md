@@ -2,7 +2,7 @@
 title: Payments & QRIS
 description: Accept cash and QRIS on every plan — static and dynamic QR, no extra hardware.
 category: guides
-order: 3
+order: 1
 updated: "2026-09-17"
 ---
 

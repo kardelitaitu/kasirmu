@@ -2,7 +2,7 @@
 title: Offline-First Mode
 description: How kasir.mu keeps working with zero connectivity.
 category: guides
-order: 1
+order: 7
 updated: "2026-08-16"
 ---
 

@@ -2,7 +2,7 @@
 title: Shift & Rekonsiliasi
 description: Tutup shift kasir dengan rapi dan jejak audit lengkap.
 category: guides
-order: 4
+order: 2
 updated: "2026-09-09"
 ---
 

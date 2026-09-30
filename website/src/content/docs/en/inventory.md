@@ -2,7 +2,7 @@
 title: Inventory & Warehouses
 description: Track stock across warehouses with movement history.
 category: guides
-order: 5
+order: 3
 updated: "2026-09-09"
 ---
 

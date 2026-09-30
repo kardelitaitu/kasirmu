@@ -2,7 +2,7 @@
 title: Panduan Gaya Dokumentasi
 description: Cara menggunakan callout, tautan, tabel, kode, dan bagan saat menulis dokumentasi.
 category: reference
-order: 3
+order: 4
 updated: "2026-08-16"
 ---
 
