@@ -340,10 +340,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  /* Horizontal inset matches the rows' own padding (`--space-3`), so the
-     avatar's left edge sits on the same column as the row tiles: the panel
-     pads by `--space-2`, then both the header and each row add `--space-3`. */
-  padding: var(--space-1) var(--space-3) var(--space-2);
+  padding: var(--space-2_5) var(--space-3);
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
   min-width: 0;
 }
 

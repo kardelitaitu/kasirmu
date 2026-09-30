@@ -307,7 +307,7 @@ export function RestaurantSidebar({
     <ProductThumb
       hash={profile.avatarHash}
       name={profile.displayName}
-      size={38}
+      size={48}
       shape="circle"
       lazy={false}
       hue={hueFromName(profile.displayName)}
