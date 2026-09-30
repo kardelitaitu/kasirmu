@@ -377,3 +377,54 @@ fn unknown_element_code_is_named_in_the_error() {
         other => panic!("expected Validation, got {other:?}"),
     }
 }
+
+// ── AN UNREADABLE settings TABLE IS NOT AN UNCONFIGURED REGISTER ─────
+
+/// `effective_receipt_format` probes the ten legacy keys to decide whether a
+/// legacy configuration exists at all. That probe used
+/// `Settings::get(conn, key).is_ok_and(|v| v.is_some())`, so an unreadable
+/// `settings` table (SQLITE_BUSY, corrupt, locked) answered "no" for every key:
+/// `has_any` was false, the function returned `ReceiptSource::Unset`, and the
+/// operator's saved receipt settings silently stopped applying with no error
+/// reaching the print path. The four fills below the probe had the same shape
+/// (`unwrap_or_default` / `unwrap_or(0)` / `unwrap_or(false)`), and the layout
+/// half of the function repeated both.
+///
+/// The pin makes `settings` PRESENT but unreadable — `value` is a BLOB, so
+/// every `row.get::<_, String>(0)` fails — and asserts the read REFUSES. A
+/// probe that cannot run must not be reported as a negative probe.
+#[test]
+fn an_unreadable_settings_table_is_an_error_not_an_unconfigured_register() {
+    let store_db = migrations::fresh_db();
+    let store = store(&store_db);
+    // A readable settings table answers Unset (no legacy key set) — the
+    // honest-source rule, and the behaviour that must survive.
+    let eff = store
+        .effective_receipt_format(Some("term-1"), None)
+        .expect("a readable settings table must resolve");
+    assert_eq!(eff.content_source, ReceiptSource::Unset);
+
+    // Now make the table unreadable without removing it, which is exactly the
+    // locked/corrupt/short-read case the probe used to absorb.
+    store
+        .conn
+        .execute_batch(
+            "DROP TABLE settings; \
+             CREATE TABLE settings (key TEXT PRIMARY KEY, value BLOB NOT NULL, \
+                                     updated_at TEXT NOT NULL DEFAULT ''); \
+             INSERT INTO settings (key, value) VALUES ('receipt.footer', x'80');",
+        )
+        .expect("rebuilding settings with an unreadable value");
+
+    let err = store
+        .effective_receipt_format(Some("term-1"), None)
+        .expect_err("an unreadable settings table must not read as Unset");
+    // The exact variant is the platform error wrapping the SQLite column-type
+    // failure; the point of the pin is that it is an ERROR rather than a
+    // silently-Unset answer, so assert on the shape and name the actual value
+    // in the message.
+    assert!(
+        matches!(err, CoreError::Platform(_)),
+        "expected the read failure to surface as a Platform error, got {err:?}"
+    );
+}

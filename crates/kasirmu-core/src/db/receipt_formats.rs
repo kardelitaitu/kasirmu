@@ -405,23 +405,37 @@ impl crate::db::Store<'_> {
         }
         if content.is_none() {
             // Legacy fallback: the ten pinned org-global keys.
-            let has_any = LEGACY_RECEIPT_KEYS.iter().any(|key| {
-                platform_core::settings::Settings::get(self.conn, key).is_ok_and(|v| v.is_some())
-            });
+            //
+            // The probe PROPAGATES a read failure instead of folding it into
+            // `false`. `is_ok_and(|v| v.is_some())` made an unreadable
+            // `settings` table (SQLITE_BUSY, corrupt, locked) answer "no" for
+            // every key, so `has_any` was false and this function reported
+            // `ReceiptSource::Unset` -- the same answer as a register that has
+            // genuinely never been configured. An operator's saved receipt
+            // settings would silently stop applying, with no error reaching
+            // the print path. A probe that cannot run is not a negative probe.
+            let mut has_any = false;
+            for key in LEGACY_RECEIPT_KEYS {
+                if platform_core::settings::Settings::get(self.conn, key)?.is_some() {
+                    has_any = true;
+                    break;
+                }
+            }
             if has_any {
+                // The typed getters already carry their own documented
+                // defaults for an ABSENT key (empty footer, tax on, currency
+                // off, dot separator), so the outer `unwrap_or*` only ever
+                // fired on a real error -- absorbing it. `?` keeps the
+                // defaults that belong to absence and drops the swallow.
                 content = Some(ReceiptContent {
                     required_fields: Vec::new(),
-                    footer_text: platform_core::settings::Settings::get_receipt_footer(self.conn)
-                        .unwrap_or_default(),
-                    show_tax: platform_core::settings::Settings::get_receipt_show_tax(self.conn)
-                        .unwrap_or(true),
+                    footer_text: platform_core::settings::Settings::get_receipt_footer(self.conn)?,
+                    show_tax: platform_core::settings::Settings::get_receipt_show_tax(self.conn)?,
                     show_currency: platform_core::settings::Settings::get_receipt_show_currency(
                         self.conn,
-                    )
-                    .unwrap_or(false),
+                    )?,
                     decimal_separator:
-                        platform_core::settings::Settings::get_receipt_decimal_separator(self.conn)
-                            .unwrap_or_else(|_| "dot".into()),
+                        platform_core::settings::Settings::get_receipt_decimal_separator(self.conn)?,
                 });
                 content_source = ReceiptSource::Legacy;
             }
@@ -553,21 +567,30 @@ impl crate::db::Store<'_> {
         // when a legacy key is ACTUALLY set; otherwise the values below are
         // the renderer's BUILT-IN defaults, and the honest source is Unset,
         // not Legacy (a default is not a configuration).
-        let legacy_layout_keys_set = [
+        // Same rule as the content probe above: a probe that cannot RUN is not
+        // a negative probe, and a fill that cannot READ is not an absence. The
+        // `is_ok_and` form made an unreadable `settings` table answer "not
+        // set" for every key (so the honest-source check below reported Unset
+        // for a configured register), and each `unwrap_or*` then absorbed the
+        // same failure into a renderer default. The typed getters already
+        // supply those defaults for an ABSENT key, so `?` keeps them where
+        // they belong and surfaces the error where one occurred.
+        let mut legacy_layout_keys_set = false;
+        for key in [
             platform_core::settings::keys::RECEIPT_PAPER_WIDTH,
             platform_core::settings::keys::RECEIPT_MARGIN_TOP,
             platform_core::settings::keys::RECEIPT_MARGIN_BOTTOM,
             platform_core::settings::keys::RECEIPT_MARGIN_LEFT,
             platform_core::settings::keys::RECEIPT_MARGIN_RIGHT,
             platform_core::settings::keys::RECEIPT_SHOW_TABLE_NUMBER,
-        ]
-        .iter()
-        .any(|key| {
-            platform_core::settings::Settings::get(self.conn, key).is_ok_and(|v| v.is_some())
-        });
+        ] {
+            if platform_core::settings::Settings::get(self.conn, key)?.is_some() {
+                legacy_layout_keys_set = true;
+                break;
+            }
+        }
         if layout.paper_width_mm.is_none() {
-            let width = platform_core::settings::Settings::get_receipt_paper_width(self.conn)
-                .unwrap_or_else(|_| "standard".into());
+            let width = platform_core::settings::Settings::get_receipt_paper_width(self.conn)?;
             layout.paper_width_mm = match width.as_str() {
                 "narrow" => Some(58),
                 "standard" => Some(80),
@@ -575,31 +598,27 @@ impl crate::db::Store<'_> {
             };
         }
         if layout.margin_top_mm.is_none() {
-            layout.margin_top_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_top(self.conn).unwrap_or(0),
-            );
+            layout.margin_top_mm = Some(platform_core::settings::Settings::get_receipt_margin_top(
+                self.conn,
+            )?);
         }
         if layout.margin_bottom_mm.is_none() {
-            layout.margin_bottom_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_bottom(self.conn)
-                    .unwrap_or(0),
-            );
+            layout.margin_bottom_mm =
+                Some(platform_core::settings::Settings::get_receipt_margin_bottom(self.conn)?);
         }
         if layout.margin_left_mm.is_none() {
             layout.margin_left_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_left(self.conn).unwrap_or(0),
+                platform_core::settings::Settings::get_receipt_margin_left(self.conn)?,
             );
         }
         if layout.margin_right_mm.is_none() {
             layout.margin_right_mm = Some(
-                platform_core::settings::Settings::get_receipt_margin_right(self.conn).unwrap_or(0),
+                platform_core::settings::Settings::get_receipt_margin_right(self.conn)?,
             );
         }
         if layout.show_table_number.is_none() {
-            layout.show_table_number = Some(
-                platform_core::settings::Settings::get_receipt_show_table_number(self.conn)
-                    .unwrap_or(false),
-            );
+            layout.show_table_number =
+                Some(platform_core::settings::Settings::get_receipt_show_table_number(self.conn)?);
         }
         if layout_source == ReceiptSource::Unset && legacy_layout_keys_set {
             layout_source = ReceiptSource::Legacy;
