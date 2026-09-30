@@ -691,8 +691,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const handleSetActive = useCallback((key: string | null) => {
     if (key) setLastWorkspace(key);
     setActiveWorkspace(key);
-    // activeInstance syncs via useEffect above
-  }, []);
+    if (key && availableWorkspaces.length > 0) {
+      const instance = availableWorkspaces.find((i) => i.type_key === key);
+      setActiveInstance(instance ?? null);
+    } else if (!key) {
+      setActiveInstance(null);
+    }
+  }, [availableWorkspaces]);
 
   // ADR #4: set active instance directly.
   // Always updates lastWorkspace — even with null — so the active

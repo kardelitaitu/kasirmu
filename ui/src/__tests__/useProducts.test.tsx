@@ -261,6 +261,26 @@ describe('useProducts', () => {
       expect(mocks.listCategories).not.toHaveBeenCalled();
       expect(result.current.error).not.toBeNull();
     });
+
+    it('recovers and clears error when sessionToken arrives after initial mount', async () => {
+      mocks.listProducts.mockResolvedValueOnce([makeProductDto()]);
+      mocks.listCategories.mockResolvedValueOnce([]);
+
+      const { result, rerender } = renderHook(({ token }: { token?: string | undefined }) => useProducts(token), {
+        initialProps: { token: undefined as string | undefined },
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.error).not.toBeNull();
+      expect(result.current.usingFallback).toBe(true);
+
+      rerender({ token: TOKEN });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.error).toBeNull();
+      expect(result.current.usingFallback).toBe(false);
+      expect(result.current.products).toHaveLength(1);
+    });
   });
 
   describe('cleanup', () => {

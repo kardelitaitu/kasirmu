@@ -157,11 +157,14 @@ export function useProducts(sessionToken?: string): UseProductsResult {
           applyUnavailableCatalog();
           return;
         }
+        setLoading(true);
+        setError(null);
         const [dtos, cats] = await Promise.all([
           listProductsScoped(sessionToken),
           listCategoriesScoped(sessionToken),
         ]);
         if (cancelled) return;
+        setError(null);
         setCategoryMeta(cats);
         if (dtos.length > 0) {
           const uncategorisedLabel = l10nRef.current.getString('product-lookup-uncategorised');
