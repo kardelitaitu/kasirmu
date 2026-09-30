@@ -932,11 +932,31 @@ sync daemons' queue depth, stamping seed and pull anchor (ADR-20 family) each tu
 unreadable value into a default. The pattern is the same in all of them: a value that could
 not be read is reported as the value that means "nothing configured".
 
-**One sibling remains unfixed and is named here rather than left to be rediscovered.**
-`crates/kasirmu-core/src/db/receipt_formats.rs` inside `effective_receipt_format` still has
-`get_receipt_footer(self.conn).unwrap_or_default()` (`:414`), `get_receipt_show_tax` with
-`.unwrap_or(true)` (`:416`) and `get_receipt_show_currency` with `.unwrap_or(false)` (`:418`)
-in its legacy branch. Those are the same shape on the same chain, one layer down; they were
-not changed in this commit and are recorded so the next pass does not have to re-derive that
-they exist.
+**The sibling named here was fixed the next round (commit `41be80d34`).**
+`crates/kasirmu-core/src/db/receipt_formats.rs` inside `effective_receipt_format` had
+`get_receipt_footer(self.conn).unwrap_or_default()`, `get_receipt_show_tax(...).unwrap_or(true)`
+and `get_receipt_show_currency(...).unwrap_or(false)` in its legacy branch — the same shape on
+the same chain, one layer down. Those now propagate with `?`.
+
+**The sharper defect was the PROBE above them, and it was worse than the fills.** The legacy
+branch decides whether a legacy configuration exists at all with
+`LEGACY_RECEIPT_KEYS.iter().any(|key| Settings::get(conn, key).is_ok_and(|v| v.is_some()))`.
+`is_ok_and` folds a read FAILURE into `false`, so an unreadable `settings` table (SQLITE_BUSY,
+corrupt, locked) answered "no" for all ten keys: `has_any` was false and the function returned
+`ReceiptSource::Unset` — byte-identical to the answer for a register that has never been
+configured. The operator's saved receipt settings silently stopped applying and no error
+reached the print path. The layout half of the same function repeated **both** shapes on its
+own probe and its six fills.
+
+**A probe that cannot run is not a negative probe.** That is the general form this round adds
+to the family: the earlier sites turned an unreadable VALUE into a default, this one turned an
+inexecutable CHECK into a "no". `has_any` is now an explicit loop that propagates, and every
+fill uses `?`.
+
+**No defaults were lost, which is why `?` is the right answer rather than a new sentinel.** The
+typed getters already carry their own documented defaults for an ABSENT key — empty footer
+(`typed.rs:132`), tax on (`:119`), currency off (`:89`), dot separator (`:107`). The outer
+`unwrap_or*` could therefore only ever fire on a real error; it was absorbing one, not supplying
+a default. `?` keeps the defaults that belong to absence and surfaces the error where one
+actually occurred.
 > last audited 29-09-26 by docs-auditor
