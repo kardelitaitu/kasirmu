@@ -21,8 +21,8 @@ use crate::downgrade::QuotaDimension;
 use crate::{permission_registry, permissions};
 
 use super::{
-    PROFILE_ASSIGNMENTS, PROFILE_COLUMNS, ProfileView, SensitiveWritePolicy, UserProfile,
-    decrypt_sensitive, sha256_hex,
+    PROFILE_ASSIGNMENTS, PROFILE_COLUMNS, ProfileView, SensitiveWritePolicy, StoredCipher,
+    UserProfile, decrypt_sensitive, sha256_hex,
 };
 
 impl Store<'_> {
@@ -62,6 +62,23 @@ impl Store<'_> {
             })
             .optional()?;
         Ok(profile)
+    }
+
+    /// Whether either sensitive seal (`national_id`, `monthly_take_home_minor`)
+    /// is present but does NOT decrypt under the current key set.
+    ///
+    /// COR-24: the display read ([`Self::get_user_profile`]) deliberately fails
+    /// closed to `None`, which is indistinguishable from an empty column and from
+    /// a value withheld by permission. That is the right answer for a renderer and
+    /// the wrong one for an operator checking whether a key rotation or a storage
+    /// fault has stranded PII ciphertext: this accessor is the distinction, read
+    /// from the stored bytes with [`StoredCipher`], with no plaintext ever
+    /// escaping. It is a diagnostic, not a gate — it does not itself deny any
+    /// read.
+    pub fn user_profile_has_unreadable_seal(&self, user_id: &str) -> Result<bool, CoreError> {
+        let columns = self.stored_sensitive_columns(user_id)?;
+        Ok(matches!(columns.national_id, StoredCipher::Unreadable(_))
+            || matches!(columns.pay, StoredCipher::Unreadable(_)))
     }
 
     /// Create a user with the full profile contract: validates the 9

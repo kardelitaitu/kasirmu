@@ -2,7 +2,7 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice B5 part 3: profile/PII deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: model PII implementation — national_id + monthly pay encrypted at rest (encrypt_profile_field), uniqueness via SHA-256 hash (plaintext never stored), last-4 masking everywhere, sensitive reads permission-gated (staff:read_identity / staff:read_payroll) AND audited (access recorded, never values), decrypt fails closed, incomplete-profile blocks sensitive-role assignment. CROSS-CRATE: ciphertext keys derive from kasirmu-crypto static key (CRY-1) — the at-rest guarantee for PII is only as strong as CRY-1's remediation; elevate CRY-1 fix priority. COR-24 INFO: decrypt_sensitive returns None silently on decrypt failure (fail-closed direction, but corrupt ciphertext reads as missing field with no signal)
+findings: model PII implementation — national_id + monthly pay encrypted at rest (encrypt_profile_field), uniqueness via SHA-256 hash (plaintext never stored), last-4 masking everywhere, sensitive reads permission-gated (staff:read_identity / staff:read_payroll) AND audited (access recorded, never values), decrypt fails closed, incomplete-profile blocks sensitive-role assignment. CROSS-CRATE: ciphertext keys derive from kasirmu-crypto static key (CRY-1) — the at-rest guarantee for PII is only as strong as CRY-1's remediation; elevate CRY-1 fix priority. COR-24 FIXED 2026-10-04: the display read still fails closed, but a corrupt/unopenable seal is no longer silent — decrypt_sensitive logs a tracing::warn! (key-rotation or storage fault is now visible) and Store::user_profile_has_unreadable_seal reports the distinction between empty and unreadable from the stored bytes
 next: none here; CRY-1 remediation covers the encryption gap | perf: single-row queries, indexed
 */
 //!
@@ -368,7 +368,24 @@ pub fn mask_last4(value: &str) -> String {
 /// later key restore could still read. The write path therefore re-derives the
 /// distinction from the stored bytes themselves — see [`StoredCipher`].
 fn decrypt_sensitive(cipher: Option<String>) -> Option<String> {
-    cipher.and_then(|c| decrypt_profile_field(&c).ok())
+    let stored = cipher.filter(|s| !s.is_empty())?;
+    match decrypt_profile_field(&stored) {
+        Ok(clear) => Some(clear),
+        Err(e) => {
+            // COR-24: a seal that no longer opens is NOT an empty field, and
+            // returning `None` without a signal made the two indistinguishable
+            // to every caller and every log. The value still fails closed (we
+            // return `None`, never ciphertext), but corruption is now LOUD: an
+            // operator can see a key-rotation or storage fault instead of
+            // reading an undecryptable PII column as "this staff member has no
+            // national id". The write path independently protects the bytes.
+            tracing::warn!(
+                error = %e,
+                "a stored profile seal could not be decrypted; reporting the field as absent (the ciphertext is preserved for a later key restore)"
+            );
+            None
+        }
+    }
 }
 
 /// What one sensitive profile column actually holds, as the **write** path must
