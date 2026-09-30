@@ -3,7 +3,15 @@
 last audited 26-09-06 by DSH (offline-sync spec verification pass; prior slice-B deep read by RSA-Agent 25-07-26)
 crate: platform-sync | status: SAFE | lint: CLEAN
 findings: exemplary — apply_remote_atomic_full runs quarantine gate, receipt-exists check, domain mutation, and receipt insert in ONE transaction (crash-safe replay protection); failure path drops the tx then records the failure — with retry budget 1 for a permanent failure (CoreError::is_permanent: Validation/NotFound/Conflict, quarantined on the FIRST failure) and 3 for a transient one; CRDT delta merge arms for stock payloads; SYNC-10 settings with non-fatal delta write (savepoint-safe inside caller tx); finalize_sale idempotent pending-to-completed only; unsupported actions fail closed; apply_push_conflict is the single SYNC-02 shared resolver entry; apply_remote is the deprecated non-atomic legacy mirror. CORRECTED TWICE — the earlier "pull items are not validated" concern was WRONG for sku/name/price/currency: the product.created arm's unwrap_or("")/unwrap_or(-1) defaults are caught at the storage boundary, since create_product_if_absent_in_tx rejects blank/oversize sku+name and negative price_minor/initial_stock, and returns CoreError::Conflict on a same-sku-different-data replay (a remote update that disagrees is NOT silently overwritten — it fails and dead-letters visibly). BUT the same claim was FALSE for product_type (MSL-81): the producer's ProductCreated event cannot carry a type at all, so the arm's unwrap_or("retail") invented a LEGAL value that the validation layer cannot distinguish from data, and the store then compared it — dead-lettering a byte-identical replay of any non-retail product as a spurious Conflict. Fixed by passing absence through as absence (create_product_if_absent_with_tx takes Option<&str>; None is not compared). LESSON: a default that is a PLAUSIBLE value is more dangerous than one that is invalid, because the validation designed to catch the invalid ones cannot see it. Every other pull arm parses a typed serde struct (missing required fields fail deserialization) or a validating store fn, so the whole pull path is fail-closed and conflict-visible without a separate payload-validation layer.
-next: malformed/conflicting pull items are permanent failures but still burn the retry-3 budget before dead-lettering — consider classifying apply-time Validation/Conflict errors as non-retryable to fail fast (low value, behavior change in the highest-risk path, deliberately not done here) | DONE 2026-10-04: CoreError::is_permanent (Validation/NotFound/Conflict) now records max_attempts=1 at the failure site, so a permanent poison item is quarantined on its FIRST failure instead of holding the pull anchor for two more cycles; a transient failure (Db/Platform/Internal/MoneyOverflow/stock contention, plus permission/subscription/licence conditions) keeps the three-attempt budget | perf: prepared upserts
+next: none | perf: prepared upserts
+DONE 2026-10-04: the former next item — 'malformed/conflicting pull items burn the
+retry-3 budget before dead-lettering; consider classifying apply-time
+Validation/Conflict errors as non-retryable to fail fast' — is closed.
+CoreError::is_permanent (Validation/NotFound/Conflict) now records max_attempts=1
+at the failure site, so a permanent poison item is quarantined on its FIRST
+failure instead of holding the pull anchor for two more cycles; a transient
+failure (Db/Platform/Internal/MoneyOverflow/stock contention, plus
+permission/subscription/licence conditions) keeps the three-attempt budget.
 */
 //!
 //! Wraps the `kasirmu_core` offline queue Store methods into a clean interface
@@ -175,8 +183,8 @@ impl SyncQueue {
     /// Apply a push-conflict outcome using the shared ADR #21 resolver.
     ///
     /// **This is the single conflict-application service** used by both the
-    /// immediate [`SyncEngine`](crate::SyncEngine) and the background
-    /// [`SyncDaemon`](crate::daemon::SyncDaemon), so the same ADR #21
+    /// immediate `SyncEngine` (crate::SyncEngine) and the background
+    /// `SyncDaemon` (crate::daemon::SyncDaemon), so the same ADR #21
     /// strategy (version LWW / sale status DAG / stock CRDT merge) applies
     /// regardless of which trigger processes the conflict (SYNC-02).
     ///
@@ -201,7 +209,7 @@ impl SyncQueue {
     /// the mutation and the receipt, while a replay after commit is skipped.
     ///
     /// Returns only whether the mutation applied — see
-    /// [`apply_remote_atomic_full`](Self::apply_remote_atomic_full) for the
+    /// `apply_remote_atomic_full` (Self::apply_remote_atomic_full) for the
     /// variant that also reports settings changes for `SettingsUpdated`.
     pub fn apply_remote_atomic(
         &self,
@@ -215,7 +223,7 @@ impl SyncQueue {
     /// settings changes (SYNC-10).
     ///
     /// Identical transaction semantics to
-    /// [`apply_remote_atomic`](Self::apply_remote_atomic), but the outcome
+    /// `apply_remote_atomic` (Self::apply_remote_atomic), but the outcome
     /// also carries the changed settings key and its originating terminal so
     /// the sync daemon can publish `SettingsUpdated` after the commit —
     /// making a change made on another terminal reactive in this one's UI.

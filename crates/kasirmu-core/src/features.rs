@@ -2,8 +2,8 @@
 /*
 last audited 25-07-26 by RSA-Agent (kasirmu-core slice C4: features deep read)
 crate: kasirmu-core | status: SAFE | lint: CLEAN
-findings: production logic (1-685) clean — dependency DAG with recursive enable, kebab-case settings keys, FeatureGuard veto registry (KDS tickets / open shifts), format! interpolates an internal constant only; COR-33 CONVENTION: ~660 lines of inline #[test]/proptest (691-1349) live in this production file despite the declared sibling features_tests.rs — violates AGENTS.md ("never tests in production files", 1,000-line rule); guard COUNT queries use .unwrap_or(0) -> DB error = veto passes (fail-open on a safety guard, COR-11/25 family, INFO)
-next: move inline tests to features_tests.rs (COR-33); propagate guard query errors | perf: N/A
+findings: production logic clean — dependency DAG with recursive enable, kebab-case settings keys, FeatureGuard veto registry (KDS tickets / open shifts), format! interpolates an internal constant only; COR-33 CLOSED 2026-10-04: the inline tests were moved out — this file is 748 lines and ends with #[cfg(test)] #[path = "features_tests.rs"] mod tests; plus #[path = "features_proptests.rs"] mod proptests (no inline #[test]/proptest remains); COR-11/25 CLOSED 2026-10-04: both guard COUNT queries (KdsFeatureGuard::can_disable kds_orders, ShiftFeatureGuard::can_disable shifts) now propagate the read error with .map_err(..)? so an unreadable count fails CLOSED instead of vetoing open
+next: none | perf: N/A
 */
 //!
 //! The [`Feature`] enum defines all 32 toggleable features in the

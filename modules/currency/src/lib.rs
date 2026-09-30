@@ -3,7 +3,14 @@ last audited 25-07-26 by RSA-Agent
 crate: modules-currency | status: SAFE | lint: CLEAN
 findings: Implements Module trait, exchange-rate domain model, repository, and error type.
   Re-exports Currency from foundation and ExchangeRateRow from models. No unsafe code.
-next: Migrate currency/exchange-rate callers from kasirmu-core Store to CurrencyRepository.
+next: none
+CLOSED 2026-10-04: the migration to CurrencyRepository is done — the bridge
+currency module (crates/kasirmu-bridge/src/currency.rs, 12+ CurrencyRepository::new
+call sites) and both shells' commands (apps/desktop-tauri/src/commands/currencies.rs
+"R2 Phase 3 moved these reads onto CurrencyRepository", apps/mobile-tauri and
+crates/kasirmu-api/src/routes/exchange_rates.rs) all construct CurrencyRepository
+rather than Store. The legacy desktop create_exchange_rate (global catalog path)
+is deliberate ADR #48 Decision 3 compat, not a missed migration.
 fixed 2026-07-25 (glm-5.3 review P2 pass): F-022 — repository write paths (create/upsert/delete
   exchange rate) now run inside transactions (INSERT + read-back SELECT share one consistent
   commit; delete wrapped per the never-write-outside-a-transaction rule); all five production
