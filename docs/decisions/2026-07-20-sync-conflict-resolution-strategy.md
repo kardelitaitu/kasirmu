@@ -686,3 +686,13 @@ Pinned by `read_config_and_pending_errors_when_the_offline_queue_cannot_be_read`
 The fix above for the HTTP daemon's queue read had a twin. The PG daemon (`platform/sync/src/pg_daemon.rs`) read its offline queue with the identical `store.list_pending_offline().unwrap_or_default()`, and gated its push phase on the identical `!pending.is_empty()`. Its `read_error` was only ever set from a `spawn_blocking` join error, so a failed queue read produced no error at all: `pushed = 0`, `last_error` clean.
 
 The read now propagates its error out of the blocking closure; `run_tick` maps it to `read_error`, which surfaces on `last_error` and drives backoff — the same path the HTTP daemon uses. Pinned by `tick_with_an_unreadable_queue_reports_an_error_not_a_clean_cycle` (`platform/sync/src/pg_daemon_tests.rs`), which drops `offline_queue`, ticks, and demands `last_error.is_some()`; it was verified RED against the old `unwrap_or_default()` and GREEN with the fix.
+
+## An unreadable pull anchor is not a rewind (2026-10-04)
+
+Both daemons read the durable SYNC-01 pull anchor and collapsed a read failure into the default `(None, None)`: the HTTP daemon via `store.get_sync_pull_state().unwrap_or_default()` (`daemon_tick.rs`), the PG daemon via `store.get_sync_pull_state().ok()` (`pg_daemon.rs`).
+
+`(None, None)` is not a neutral fallback — it is the exact state an operator rewind requests, since `requeue_remote_failure` sets `since = NULL` to force a full re-pull. So a failed anchor read was indistinguishable from a deliberate rewind: the terminal re-fetched the entire remote history on every cycle and surfaced no error. The idempotency receipt ledger makes each replay a no-op, so this is not corruption, but the anchor exists precisely to avoid the re-pull and the silence hides a broken store.
+
+The HTTP daemon now tracks anchor readability with an explicit flag — deliberately NOT derived from `sync_error`, which may already hold an unrelated push error such as `PlanRequired`; conflating the two would skip a healthy pull (this exact mistake briefly broke `daemon_surfaces_plan_required_without_retry_or_quarantine`, which asserts push and pull each fire once). A failed anchor read surfaces on `sync_error` and skips the pull for the cycle. The PG daemon propagates the error into `read_error`.
+
+Pinned by `run_tick_surfaces_an_unreadable_pull_anchor_instead_of_replaying` (`daemon_tests.rs`; drops `sync_pull_state`, ticks against a pull-counting server, and requires `last_error` set with zero pull hits) and `tick_with_an_unreadable_pull_anchor_reports_an_error` (`pg_daemon_tests.rs`).
