@@ -58,7 +58,7 @@ coverage. **Acceptance:** deleting a declared table from the list makes the test
 
 > **Finding surfaced by P5.1:** the declaration has to name `customers` (owned by crm) to pass, but `modules/sales/manifest.json` declares only `dependencies: ["inventory"]`. `MODULE_DEPENDENCIES` currently mirrors what the code *needs* (`[inventory, crm]`) rather than the manifest, so the gap is visible in one place. P5.3 closes it by routing the accrual through the crm seam and declaring the dependency.
 
-### P5.2 — Extract stock settlement behind an inventory seam
+### P5.2 — Extract stock settlement behind an inventory seam — **PARTIAL 2026-10-03**
 
 Replace the inline `products` / `stock_summary` / `workspace_inventory_locations` reads and the
 `adjust_stock_batch` call inside `complete_sale_with_resolved_shortfalls` with one inventory-owned
@@ -68,6 +68,14 @@ core; the *stock mutation* moves behind the seam. **Acceptance:** the foreign `p
 `stock_summary` statements at :202, :269, :281, :294, :339 are gone from `sales_lifecycle.rs`,
 the behaviour tests still pass unchanged, and a mutation test proves the seam refuses an
 unowned table.
+
+> **Progress 2026-10-03:** the resolution branch's *decision logic* (allocation-sum validation,
+> non-positive skip, insufficient-stock refusal) moved out of the 500-line inline block into
+> `plan_resolution_deductions` in `crates/kasirmu-core/src/sale_deduction.rs`, taking the DB reads as
+> two closures. It is now unit-testable without a connection (5 new tests). The foreign reads
+> themselves still sit at the call site, so the full "behind the inventory seam" move (P5.2 proper)
+> and the mutation test on the seam are still open. Core ceiling raised 36673 → 36694 deliberately
+> for the extraction.
 
 ### P5.3 — Route the loyalty/customer accrual through the crm seam
 

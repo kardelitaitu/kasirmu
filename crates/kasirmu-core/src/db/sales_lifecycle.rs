@@ -247,82 +247,51 @@ impl Store<'_> {
             // If this line has a resolution, use the resolved allocations.
             // Otherwise, for tracked lines, deduct from the primary location.
             if let Some(resolution) = resolutions_by_sku.get(line.sku.as_str()) {
-                // Validate allocation sums match requested qty
-                let alloc_sum: i64 = resolution.allocations.iter().map(|a| a.qty).sum();
-                if alloc_sum != line.qty {
-                    tx.rollback()?;
-                    return Err(CoreError::Validation {
-                        field: "resolutions",
-                        message: format!(
-                            "SKU {}: allocation sum {} does not match requested qty {}",
-                            line.sku, alloc_sum, line.qty
-                        ),
-                    });
-                }
-
-                // Check stock at each location and build deduction entries
-                for alloc in &resolution.allocations {
-                    if alloc.qty <= 0 {
-                        continue;
-                    }
-
-                    // Resolve product_id from SKU
-                    let product_id: String = tx
-                        .query_row(
-                            "SELECT id FROM products WHERE sku = ?1",
-                            rusqlite::params![line.sku],
-                            |row| row.get(0),
-                        )
-                        .map_err(|_| CoreError::NotFound {
-                            entity: "product",
-                            id: line.sku.clone(),
-                        })?;
-
-                    // Re-check availability at this location
-                    let available: i64 = tx
-                        .query_row(
+                // Phase 5 P5.2: logic in `plan_resolution_deductions`; reads stay here.
+                let planned = crate::sale_deduction::plan_resolution_deductions(
+                    &line.sku,
+                    line.qty,
+                    resolution,
+                    |location| {
+                        let product_id: String = tx
+                            .query_row(
+                                "SELECT id FROM products WHERE sku = ?1",
+                                rusqlite::params![line.sku],
+                                |row| row.get(0),
+                            )
+                            .map_err(|_| CoreError::NotFound {
+                                entity: "product",
+                                id: line.sku.clone(),
+                            })?;
+                        tx.query_row(
                             "SELECT COALESCE(qty, 0) FROM stock_summary \
                              WHERE item_id = ?1 AND location_id = ?2",
-                            rusqlite::params![product_id, alloc.location_id.as_str()],
+                            rusqlite::params![product_id, location.as_str()],
                             |row| row.get(0),
                         )
-                        .optional()?
-                        .unwrap_or(0);
-
-                    if available < alloc.qty {
-                        // Allow negative stock check: does this binding allow it?
+                        .optional()
+                        .map(|v| v.unwrap_or(0))
+                        .map_err(CoreError::from)
+                    },
+                    |location| {
                         let allow_neg = if let Some(ws_id) = workspace_instance_id {
                             tx.query_row(
                                 "SELECT COALESCE(allow_negative_stock, 0) \
                                  FROM workspace_inventory_locations \
                                  WHERE instance_id = ?1 AND location_id = ?2",
-                                rusqlite::params![ws_id, alloc.location_id.as_str()],
+                                rusqlite::params![ws_id, location.as_str()],
                                 |row| row.get::<_, i64>(0),
                             )
-                            .optional()?
-                            .unwrap_or(0)
-                                == 1
+                            .optional()
+                            .map(|v| v.unwrap_or(0) == 1)
+                            .map_err(CoreError::from)?
                         } else {
                             false
                         };
-
-                        if !allow_neg {
-                            tx.rollback()?;
-                            return Err(CoreError::InsufficientStockAtLocation {
-                                sku: line.sku.clone(),
-                                location_id: alloc.location_id.clone(),
-                                requested_delta: alloc.qty,
-                                available_qty: available,
-                            });
-                        }
-                    }
-
-                    deductions.push(crate::sale_deduction::StockDeduction {
-                        sku: line.sku.clone(),
-                        location_id: alloc.location_id.clone(),
-                        delta: -alloc.qty,
-                    });
-                }
+                        Ok(allow_neg)
+                    },
+                )?;
+                deductions.extend(planned);
             } else if needs_stock {
                 // Lines NOT in resolutions but that track inventory still need
                 // stock deduction because the entire first sale transaction was
