@@ -86,7 +86,18 @@ const { invokeMock } = vi.hoisted(() => {
   return { invokeMock: mock };
 });
 
-const { mockListCurrenciesScoped, mockListExchangeRates, mockGetLatestExchangeRateScoped } = vi.hoisted(() => ({
+const {
+  mockListCurrenciesScoped,
+  mockListExchangeRates,
+  mockGetLatestExchangeRateScoped,
+  mockGetDefaultCurrencyScoped,
+} = vi.hoisted(() => ({
+  // Held by reference so a test can make the store-default read refuse. Both
+  // this and the rate list are gated on permissions::SETTINGS_READ
+  // (crates/kasirmu-bridge/src/currency.rs:262 and :107), which the picker
+  // read is NOT (:72-86) -- so one of them can be refused while the picker
+  // answers, and the modal has to say which.
+  mockGetDefaultCurrencyScoped: vi.fn(() => Promise.resolve('USD')),
   mockListCurrenciesScoped: vi.fn(() =>
     Promise.resolve([
       { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
@@ -151,7 +162,7 @@ vi.mock('@/api/currency', async () => {
     ]),
   ),
   getDefaultCurrency: vi.fn(() => Promise.resolve('USD')),
-  getDefaultCurrencyScoped: vi.fn(() => Promise.resolve('USD')),
+    getDefaultCurrencyScoped: mockGetDefaultCurrencyScoped,
   getLatestExchangeRateScoped: mockGetLatestExchangeRateScoped,
   };
 });
@@ -174,6 +185,10 @@ beforeEach(() => {
   invokeMock.mockClear();
   mockListCurrenciesScoped.mockClear();
   mockListExchangeRates.mockClear();
+    // Reset, not clear: the store-default tests make this REJECT rather than
+    // reject once, and a clear would hand the rejection to the next test.
+    mockGetDefaultCurrencyScoped.mockReset();
+    mockGetDefaultCurrencyScoped.mockResolvedValue('USD');
   // Restore the answering default: the unknown-rate tests make this reject, and
   // a vi.fn().mockRejectedValueOnce would otherwise leak into the next test.
   mockGetLatestExchangeRateScoped.mockReset();
@@ -946,5 +961,85 @@ describe('PaymentModal — a failed rate read cannot be settled in', () => {
     });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByText(/Rp 112\.000/)).toBeInTheDocument();
+  });
+});
+
+describe('PaymentModal — a refused currency read cannot be settled in', () => {
+  // The three first-load reads were ONE `Promise.all` behind a single `.catch`
+  // that toasted. `list_currencies_scoped` gates nothing
+  // (crates/kasirmu-bridge/src/currency.rs:72-86) while the rate list and the
+  // store default both require permissions::SETTINGS_READ (:262 and :107), so a
+  // cashier who may take a payment here is routinely refused both of those, and
+  // the old shape emptied the picker and printed the sale's own currency as the
+  // store default with nothing on screen to say so.
+  beforeEach(() => {
+    invokeMock.mockClear();
+    mockListCurrenciesScoped.mockReset();
+    mockListCurrenciesScoped.mockResolvedValue([
+      { code: 'USD', name: 'US Dollar', minor_exponent: 2, symbol: '$' },
+      { code: 'IDR', name: 'Indonesian Rupiah', minor_exponent: 0, symbol: 'Rp' },
+    ]);
+  });
+
+  it('names a refused picker list instead of showing an empty picker', async () => {
+    mockListCurrenciesScoped.mockRejectedValue(new Error('ipc down'));
+
+    await renderWithFluent(<PaymentModal open lineItems={[lineItem()]} total={usd(700)} userId="user-1" onComplete={vi.fn()} onClose={vi.fn()} />);
+
+    // Anchored on the ARRIVING alert. An absence poll would also pass while the
+    // modal is still loading, which is the state this test starts in.
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The list of supported currencies could not be loaded.',
+      ),
+    );
+    // The picker keeps the sale's own currency as its only option: correct as a
+    // default, and NOT an answer this read gave. Every option carries the
+    // rendered code, so the IDR one must be absent.
+    expect(screen.queryAllByRole('option').map((o) => o.textContent)).toEqual(['USD']);
+  });
+
+  it('restores the picker once a retry answers', async () => {
+    mockListCurrenciesScoped.mockRejectedValueOnce(new Error('ipc down'));
+
+    await renderWithFluent(<PaymentModal open lineItems={[lineItem()]} total={usd(700)} userId="user-1" onComplete={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The list of supported currencies could not be loaded.',
+      ),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /retry/i }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    expect(screen.queryAllByRole('option').map((o) => o.textContent)).toContain(
+      'IDR — Indonesian Rupiah',
+    );
+  });
+
+  it('does not claim a store default the read never returned', async () => {
+    mockGetDefaultCurrencyScoped.mockRejectedValue(new Error('permission denied'));
+
+    await renderWithFluent(<PaymentModal open lineItems={[lineItem()]} total={usd(700)} userId="user-1" onComplete={vi.fn()} onClose={vi.fn()} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The default currency for this store could not be loaded.',
+      ),
+    );
+
+    // The receipt block is where a wrong default is read as fact, and it only
+    // appears once a charge currency is chosen, so the test has to choose one.
+    // The select carries its own aria-label and the <label> has one too, so a
+    // label query matches both. The combobox role is the control itself.
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: /charge currency/i }),
+      'IDR',
+    );
+    const rows = screen.getByTestId('payment-modal');
+    const defaultRow = rows.querySelectorAll('.payment-receipt-currency-row')[1];
+    expect(defaultRow).toHaveTextContent('Default currency');
+    // The em dash is the one claim available: we do not know the default. The
+    // old shape printed 'USD', the sale's own currency, as the store default.
+    expect(defaultRow?.lastElementChild?.textContent).toBe('—');
   });
 });

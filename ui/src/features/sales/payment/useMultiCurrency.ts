@@ -35,7 +35,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { minorUnitExponent } from '@/types/domain';
 import { settleRead } from '@/utils/settle-read';
-import type { useToast } from '@/components/Toast';
 import {
   listCurrenciesScoped,
   listLatestExchangeRatesScoped,
@@ -47,11 +46,6 @@ import {
   type ExchangeRateDto,
 } from '@/api/currency';
 
-/** Exact addToast signature, taken from the Toast provider's own hook. */
-type AddToast = ReturnType<typeof useToast>['addToast'];
-/** Structural twin of the caller's useRef(l10n) result — only getString is used. */
-type L10nRef = { current: { getString: (id: string) => string } };
-
 export interface UseMultiCurrencyParams {
   /** Modal visibility: the loads and the rate lookup run on an open only. */
   open: boolean;
@@ -61,8 +55,6 @@ export interface UseMultiCurrencyParams {
   sessionToken: string | undefined;
   /** The sale's own currency (total.currency in the shell). */
   totalCurrency: string;
-  addToast: AddToast;
-  l10nRef: L10nRef;
 }
 
 /**
@@ -75,40 +67,62 @@ export function useMultiCurrency({
   multiCurrency,
   sessionToken,
   totalCurrency,
-  addToast,
-  l10nRef,
 }: UseMultiCurrencyParams) {
   const [currencies, setCurrencies] = useState<CurrencyDto[]>([]);
   const [exchangeRates, setExchangeRates] = useState<ExchangeRateDto[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState(totalCurrency);
   const [baseCurrency, setBaseCurrency] = useState(totalCurrency);
 
+  // `Promise.all` over the three first-load reads gave the modal ONE answer for
+  // three different questions, and any single failure discarded all three. A
+  // refused read is an EXPECTED outcome here, not a malfunction: the two rate
+  // and default reads require permissions::SETTINGS_READ
+  // (crates/kasirmu-bridge/src/currency.rs:262 and :107), while the picker read
+  // `list_currencies_scoped` requires nothing at all (crates/kasirmu-bridge/src/currency.rs:72-86).
+  // So a cashier who may take a payment and see the currency list is routinely
+  // refused the other two. Each arm is settled on its own now.
+  const [currenciesUnknown, setCurrenciesUnknown] = useState(false);
+  // `baseCurrency` is the store DEFAULT, printed beside the sale as the Default
+  // currency row. It falls back to the sale's own currency when the read fails,
+  // which prints a plausible answer the screen never received.
+  const [baseCurrencyUnknown, setBaseCurrencyUnknown] = useState(false);
+  const [loadNonce, setLoadNonce] = useState(0);
+
   useEffect(() => {
-    if (open && multiCurrency) {
-      const loads: [
-        Promise<CurrencyDto[]>,
-        Promise<ExchangeRateDto[]>,
-        Promise<string | null>,
-      ] = [
-        listCurrenciesScoped(sessionToken!),
-        // CUR-11: the picker needs the CURRENT rate per pair, not the
-        // whole history — bounded query, no first-match ambiguity.
-        listLatestExchangeRatesScoped(sessionToken!),
-        getDefaultCurrencyScoped(sessionToken!),
-      ];
-      Promise.all(loads)
-        .then(([currs, rates, base]) => {
-          setCurrencies(currs);
-          setExchangeRates(rates);
-          if (base) setBaseCurrency(base);
-        })
-        .catch(() => addToast({ message: l10nRef.current.getString('payment-toast-currency-failed'), type: 'error' }));
-    }
-    // l10n via ref — stable dep chain. l10nRef is listed only because it is a
-    // parameter here rather than a local useRef in the shell; a useRef object's
-    // identity never changes, so this effect re-runs on exactly the same
-    // triggers as before (React-stability argument, not measured).
-  }, [open, multiCurrency, sessionToken, addToast, l10nRef]);
+    if (!(open && multiCurrency)) return;
+    let cancelled = false;
+    // Settled arm by arm. `Promise.all` would let one refusal discard the other
+    // two, and the outer `.catch` recorded it in a toast that has usually
+    // scrolled away before the operator looks at the picker.
+    settleRead('currencies', listCurrenciesScoped(sessionToken!)).then((currenciesRead) => {
+      if (cancelled) return;
+      setCurrencies(currenciesRead.ok ? currenciesRead.value : []);
+      setCurrenciesUnknown(!currenciesRead.ok);
+    });
+    // CUR-11: the picker needs the CURRENT rate per pair, not the whole
+    // history -- bounded query, no first-match ambiguity.
+    settleRead('exchange_rate_list', listLatestExchangeRatesScoped(sessionToken!)).then((ratesRead) => {
+      if (cancelled) return;
+      setExchangeRates(ratesRead.ok ? ratesRead.value : []);
+    });
+    settleRead('default_currency', getDefaultCurrencyScoped(sessionToken!)).then((defaultRead) => {
+      if (cancelled) return;
+      if (!defaultRead.ok) {
+        setBaseCurrencyUnknown(true);
+        return;
+      }
+      // A store with no configured default answers null, and the sale's own
+      // currency is the honest reading of THAT. Only a failed read is unknown.
+      if (defaultRead.value) setBaseCurrency(defaultRead.value);
+      setBaseCurrencyUnknown(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, multiCurrency, sessionToken, loadNonce]);
+
+  /** Re-run the three first-load reads after a failure. */
+  const retryCurrencyLoad = useCallback(() => setLoadNonce((n) => n + 1), []);
 
   const exchangeRateInfo = useMemo(() => {
     if (selectedCurrency === totalCurrency) return null;
@@ -245,6 +259,11 @@ export function useMultiCurrency({
     // has no rate, which is an answer. The caller gates the settle action on it
     // and shows the retry.
     rateUnknown,
+    // Unknown is a distinct answer, not a missing one: the picker is not empty,
+    // it was never asked. The caller shows the alert and the retry.
+    currenciesUnknown,
+baseCurrencyUnknown,
+    retryCurrencyLoad,
     retryRateRead,
   };
 }

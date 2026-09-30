@@ -142,3 +142,108 @@ describe('useMultiCurrency — the rate read has three outcomes', () => {
     expect(result.current.convertToChargeCurrency(700)).toBe(700);
   });
 });
+
+// ── The three first-load reads: three answers, not one ──────────────
+//
+// `Promise.all([listCurrenciesScoped, listLatestExchangeRatesScoped,
+// getDefaultCurrencyScoped]).catch(() => addToast(...))` gave the modal ONE
+// answer for three different questions, and a single refusal discarded all
+// three: the picker list went empty, the default fell back to the sale's own
+// currency, and the only record was a toast. The refusals are ordinary here --
+// list_currencies_scoped gates nothing (crates/kasirmu-bridge/src/currency.rs:72-86)
+// while the other two require permissions::SETTINGS_READ (:262 and :107) -- so
+// a cashier who may take a payment in this store is routinely refused both.
+//
+// The two answers a caller can act on: `currenciesUnknown` (the picker is not
+// empty, it was never asked) and `baseCurrencyUnknown` (the Default currency row
+// is not this store's default, we did not get one).
+
+describe('useMultiCurrency — the first load settles each read on its own', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetLatest.mockResolvedValue(RATE);
+  });
+
+  it('a refused rate list does not empty the picker or the default', async () => {
+    mockListLatest.mockRejectedValue(new Error('permission denied'));
+    mockListCurrencies.mockResolvedValue([
+      { code: BASE, name: 'US Dollar', minor_exponent: 2, symbol: '$' },
+      { code: CHARGE, name: 'Indonesian Rupiah', minor_exponent: 0, symbol: 'Rp' },
+    ]);
+    mockGetDefault.mockResolvedValue(CHARGE);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(mockListLatest).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.baseCurrency).toBe(CHARGE));
+
+    // The defect this pins: the old Promise.all rejected, so NONE of the three
+    // setters ran. The picker would have been empty and the default would have
+    // printed the sale's own currency as though the store had chosen it.
+    expect(result.current.currencies.map((c) => c.code)).toEqual([BASE, CHARGE]);
+    expect(result.current.currenciesUnknown).toBe(false);
+    expect(result.current.baseCurrencyUnknown).toBe(false);
+  });
+
+  it('a refused picker list is an unknown picker, not an empty one', async () => {
+    mockListCurrencies.mockRejectedValue(new Error('ipc down'));
+    mockListLatest.mockResolvedValue([RATE]);
+    mockGetDefault.mockResolvedValue(BASE);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(result.current.currenciesUnknown).toBe(true));
+    expect(result.current.currencies).toEqual([]);
+    // The other two answers still arrived: a refusal must not silence them.
+    expect(result.current.baseCurrency).toBe(BASE);
+    expect(result.current.baseCurrencyUnknown).toBe(false);
+  });
+
+  it('a refused default leaves the flag unknown while the value stays put', async () => {
+    mockGetDefault.mockRejectedValue(new Error('permission denied'));
+    mockListCurrencies.mockResolvedValue([{ code: BASE, name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
+    mockListLatest.mockResolvedValue([RATE]);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(result.current.baseCurrencyUnknown).toBe(true));
+
+    // `baseCurrency` still holds its initial value, which is the SALE's own
+    // currency -- plausible, and not an answer this store gave. The flag is what
+    // keeps the caller from printing it as 'Default currency'.
+    expect(result.current.baseCurrency).toBe(BASE);
+    expect(result.current.currenciesUnknown).toBe(false);
+  });
+
+  it('a store with NO configured default is an answer, not an unknown', async () => {
+    mockGetDefault.mockResolvedValue(null);
+    mockListCurrencies.mockResolvedValue([{ code: BASE, name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
+    mockListLatest.mockResolvedValue([RATE]);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(mockGetDefault).toHaveBeenCalled());
+    expect(result.current.baseCurrencyUnknown).toBe(false);
+    expect(result.current.baseCurrency).toBe(BASE);
+  });
+
+  it('a retry re-runs the three reads and clears both unknowns', async () => {
+    mockListCurrencies.mockRejectedValueOnce(new Error('ipc down'));
+    mockGetDefault.mockRejectedValueOnce(new Error('permission denied'));
+    mockListCurrencies.mockResolvedValue([{ code: BASE, name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
+    mockGetDefault.mockResolvedValue(CHARGE);
+    mockListLatest.mockResolvedValue([RATE]);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(result.current.currenciesUnknown).toBe(true));
+    expect(result.current.baseCurrencyUnknown).toBe(true);
+
+    act(() => {
+      result.current.retryCurrencyLoad();
+    });
+    await waitFor(() => expect(result.current.currenciesUnknown).toBe(false));
+    expect(result.current.baseCurrencyUnknown).toBe(false);
+    expect(result.current.baseCurrency).toBe(CHARGE);
+  });
+
+  it('the rate list being unknown does not touch the two flags it shares no permission with', async () => {
+    mockListLatest.mockRejectedValue(new Error('permission denied'));
+    mockListCurrencies.mockResolvedValue([{ code: BASE, name: 'US Dollar', minor_exponent: 2, symbol: '$' }]);
+    mockGetDefault.mockResolvedValue(CHARGE);
+    const { result } = renderHook(() => useMultiCurrency(PARAMS));
+    await waitFor(() => expect(result.current.baseCurrency).toBe(CHARGE));
+    expect(result.current.currenciesUnknown).toBe(false);
+    expect(result.current.baseCurrencyUnknown).toBe(false);
+  });
+});

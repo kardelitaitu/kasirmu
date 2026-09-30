@@ -329,14 +329,15 @@ export default function PaymentModal({
     effectiveRateInfo,
     convertToChargeCurrency,
     rateUnknown,
+currenciesUnknown,
+baseCurrencyUnknown,
+retryCurrencyLoad,
     retryRateRead,
   } = useMultiCurrency({
     open,
     multiCurrency,
     sessionToken,
     totalCurrency: total.currency,
-    addToast,
-    l10nRef,
   });
 
   useEffect(() => {
@@ -1521,6 +1522,33 @@ export default function PaymentModal({
                   </Localized>
               </div>
             )}
+            {(currenciesUnknown || baseCurrencyUnknown) && (
+              <div className="payment-currency-unknown" role="alert">
+                <div className="payment-currency-unknown-text">
+                  {currenciesUnknown && (
+                    <Localized id="payment-currency-list-unknown">
+                      <span>The list of supported currencies could not be loaded.</span>
+                    </Localized>
+                  )}
+                  {baseCurrencyUnknown && (
+                    <Localized id="payment-default-currency-unknown">
+                      <span>The default currency for this store could not be loaded.</span>
+                    </Localized>
+                  )}
+                </div>
+                <Localized id="payment-retry-aria" attrs={{ 'aria-label': true }}>
+                <button
+                  type="button"
+                  className="payment-currency-unknown-retry"
+                  onClick={retryCurrencyLoad}
+                >
+                  <Localized id="payment-retry">
+                    <span>Retry</span>
+                  </Localized>
+                </button>
+                </Localized>
+              </div>
+            )}
 
             {selectedCurrency !== total.currency && rateUnknown && (
               <div className="payment-rate-unknown" role="alert">
@@ -1583,7 +1611,7 @@ export default function PaymentModal({
                   <Localized id="payment-default-currency">
                     <span>Default currency</span>
                   </Localized>
-                  <span>{baseCurrency}</span>
+                  <span>{baseCurrencyUnknown ? '—' : baseCurrency}</span>
                 </div>
                 <div className="payment-receipt-currency-row">
                   <Localized id="payment-base-amount">

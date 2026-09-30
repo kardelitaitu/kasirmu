@@ -173,7 +173,15 @@ payment-complete = Complete
 payment-retry-aria =
     .aria-label = Retry payment
 payment-retry = Retry
-payment-toast-currency-failed = Failed to load currency data
+
+# The picker list and the store default are SEPARATE reads with separate
+# permissions -- list_currencies_scoped gates nothing, while the default and
+# the rate list require SETTINGS_READ (crates/kasirmu-bridge/src/currency.rs:262
+# and :107) -- so one can be refused while the other answers. Each names
+# itself here: an empty picker and the sale's own currency standing in for
+# the default are both answers the screen never received.
+payment-currency-list-unknown = The list of supported currencies could not be loaded.
+payment-default-currency-unknown = The default currency for this store could not be loaded.
 payment-toast-customers-failed = Failed to load customers
 payment-toast-loyalty-failed = Failed to load loyalty account
 payment-toast-points-value-failed = Failed to load points value
