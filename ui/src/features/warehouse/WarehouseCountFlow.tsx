@@ -12,6 +12,7 @@ import { useLocalization } from '@fluent/react';
 import { requiredLocalized } from '@/components';
 import { useToast } from '@/components/Toast';
 import { l10nErrorMessage } from '@/utils/app-error';
+import { settleRead } from '@/utils/settle-read';
 import { Button } from '@/components/Button';
 import { Skeleton } from '@/components/Skeleton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -29,23 +30,13 @@ import {
 } from '@/api/inventoryCounts';
 import { listWarehouseProductsAtLocation, type ProductDto } from '@/api/products';
 
-/**
- * One settled read. `ok: false` means the call NEVER ANSWERED — a different
- * fact from "answered, and the answer was an empty list". The shape is the
- * sanctioned boot idiom (app/AppShell.tsx:87-94); the load-bearing
- * half is that the caller writes nothing on `ok: false`, so the state keeps
- * its UNKNOWN value instead of being overwritten with a plausible empty one.
- */
-type Read<T> = { ok: true; value: T } | { ok: false };
-
-async function settle<T>(label: string, read: Promise<T>): Promise<Read<T>> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[warehouse-count] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
-}
+// One settled read. `ok: false` records that the call NEVER ANSWERED -- a
+// different fact from "answered, and the answer was an empty list". The shape
+// is the sanctioned boot idiom (ui/src/utils/settle-read.ts); the
+// load-bearing half is that the caller writes nothing on `ok: false`, so the
+// state keeps its UNKNOWN value instead of being overwritten with a plausible
+// empty one. The subsystem label on each call carries that attribution into
+// the console line.
 
 interface Props {
   sessionToken: string;
@@ -101,7 +92,9 @@ export default function WarehouseCountFlow({ sessionToken, locationId, onComplet
       return;
     }
     let cancelled = false;
-    void settle('product catalogue', listWarehouseProductsAtLocation(sessionToken, locationId)).then(
+    void settleRead('warehouse-count product catalogue',
+      listWarehouseProductsAtLocation(sessionToken, locationId),
+    ).then(
       (read) => {
         // A throw writes nothing, so the catalogue stays UNKNOWN.
         if (!cancelled && read.ok) setProducts(read.value);

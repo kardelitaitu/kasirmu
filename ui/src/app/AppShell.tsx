@@ -17,6 +17,7 @@ import { useFeatures } from '@/hooks/useFeatures';
 import { useTerminalProfile } from '@/hooks/useTerminalProfile';
 import { getPage, isPageAccessible, type PageRegistration } from '@/registries/page-registry';
 import { recordMark } from '@/utils/perf-metrics';
+import { settleRead } from '@/utils/settle-read';
 import PermissionDenied from '@/components/PermissionDenied';
 import { ErrorState } from '@/components/ErrorState';
 import { LazyBoundary } from '@/components/LazyBoundary';
@@ -93,23 +94,12 @@ function useWorkspaceNavShortcuts(active: string | null, onBack: () => void) {
  */
 export type LicenseBootState = 'active' | 'grace' | 'inactive' | 'unknown';
 
-/** One settled boot read: `ok: false` records UNKNOWN — never a borrowed fact. */
-type BootRead<T> = { ok: true; value: T } | { ok: false };
-
-/**
- * Await `read` and tag it as answered-or-unknown. Every boot IPC gets its OWN
- * `settle`, so a throw from one call cannot forge another call's answer — the
- * behaviour this replaces was one try/catch around a Promise.all whose catch
- * wrote BOTH licence-active and setup-complete.
- */
-async function settle<T>(label: string, read: Promise<T>): Promise<BootRead<T>> {
-  try {
-    return { ok: true, value: await read };
-  } catch (err) {
-    console.error(`[boot] ${label} read failed — recording unknown:`, err);
-    return { ok: false };
-  }
-}
+// Every boot IPC gets its OWN settled read, so a throw from one call cannot
+// forge another call's answer -- the behaviour this replaces was one try/catch
+// around a Promise.all whose catch wrote BOTH licence-active and
+// setup-complete. `settleRead` is the one implementation of that contract
+// (ui/src/utils/settle-read.ts); it was hand-copied here from the day that
+// util existed. The `boot ` label carries this subsystem into the console line.
 
 /**
  * Application shell — handles setup wizard flow, auth gates,
@@ -234,7 +224,7 @@ export default function AppShell() {
       // UNKNOWN that the badge below renders — so an unavailable capability is
       // never reported as the positive assertion "this store has no users", the
       // value that would open CreatePinScreen.
-      settle('has_users', hasUsers()).then((res) => {
+      settleRead('boot has_users', hasUsers()).then((res) => {
         if (res.ok) setHasAnyUsers(res.value.has_users);
       });
       return;
@@ -248,12 +238,12 @@ export default function AppShell() {
       // splash in `finally`.
       try {
         const [licenseRes, setupRes, usersRes] = await Promise.all([
-          settle('get_license_status', getLicenseStatus()),
-          settle(
-            'get_first_run_state',
+          settleRead('boot get_license_status', getLicenseStatus()),
+          settleRead(
+            'boot get_first_run_state',
             getDeviceId().then((terminalId) => getFirstRunState(terminalId)),
           ),
-          settle('has_users', hasUsers()),
+          settleRead('boot has_users', hasUsers()),
         ]);
         if (cancelled) return;
 

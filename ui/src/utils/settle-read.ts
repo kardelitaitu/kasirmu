@@ -15,6 +15,14 @@
 // answers, because from the caller's side `null`/`[]` is a perfectly good value
 // when it is genuinely what the read returned.
 
+//
+// The `label` is written into the console line verbatim, so a caller that wants
+// its subsystem in the prefix passes it there: `settleRead('boot has_users', …)`
+// logs `[read] boot has_users read failed -- recording unknown:`. Four local
+// copies of this function predate it and each carried its own prefix
+// (`[boot]`, `[stock-transfers]`, `[warehouse-count]`, `[read]`); the label is
+// how that attribution survives the merge instead of being flattened away.
+
 export type SettledRead<T> = { ok: true; value: T } | { ok: false };
 
 /**
@@ -29,7 +37,13 @@ export type SettledRead<T> = { ok: true; value: T } | { ok: false };
  *   - ShiftManagementScreen.tsx -- the active shift, where a failed read was
  *     inviting the cashier to open a shift that was already open
  *   - SalesHistoryScreen.tsx -- the refunds of the open sale, where a failed
- *     read was presenting a refunded sale as one that was never refunded
+ *     read was presenting a refunded sale as one that was never refunded; then
+ *     the sale's roster, then its per-line cost/margin report
+ *   - useMultiCurrency.ts -- the exchange rate pair, the picker list and the
+ *     store default
+ *   - AppShell.tsx -- every boot read (`boot ` prefix)
+ *   - StockTransfersScreen.tsx (`stock-transfers ` prefix)
+ *   - WarehouseCountFlow.tsx (`warehouse-count ` prefix)
  */
 export async function settleRead<T>(label: string, read: Promise<T>): Promise<SettledRead<T>> {
   try {
